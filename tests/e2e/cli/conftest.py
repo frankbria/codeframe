@@ -79,8 +79,9 @@ def anthropic_api_key() -> str:
             line = line.strip()
             if line.startswith("ANTHROPIC_API_KEY="):
                 key = line.split("=", 1)[1].strip().strip('"').strip("'")
-                os.environ["ANTHROPIC_API_KEY"] = key
-                return key
+                if key:
+                    os.environ["ANTHROPIC_API_KEY"] = key
+                    return key
 
     pytest.skip("ANTHROPIC_API_KEY not available")
 
@@ -112,26 +113,30 @@ def clean_cf_test(cf_test_path: Path) -> Path:
     if codeframe_dir.exists():
         shutil.rmtree(codeframe_dir)
 
-    # Remove generated source files (keep directory structure)
+    # Remove generated source files (recursively, keep directory structure)
     src_dir = cf_test_path / "src" / "task_tracker"
     if src_dir.exists():
-        for f in src_dir.iterdir():
+        for f in sorted(src_dir.rglob("*"), reverse=True):
             if f.name == "__pycache__":
                 shutil.rmtree(f)
             elif f.name != "__init__.py" and f.is_file():
                 f.unlink()
+            elif f.is_dir() and not any(f.iterdir()):
+                f.rmdir()
         # Reset __init__.py to empty
         init_file = src_dir / "__init__.py"
         init_file.write_text("")
 
-    # Remove generated test files (keep directory structure)
+    # Remove generated test files (recursively, keep directory structure)
     tests_dir = cf_test_path / "tests"
     if tests_dir.exists():
-        for f in tests_dir.iterdir():
+        for f in sorted(tests_dir.rglob("*"), reverse=True):
             if f.name == "__pycache__":
                 shutil.rmtree(f)
             elif f.name != "__init__.py" and f.is_file():
                 f.unlink()
+            elif f.is_dir() and not any(f.iterdir()):
+                f.rmdir()
         init_file = tests_dir / "__init__.py"
         if not init_file.exists():
             init_file.write_text("")

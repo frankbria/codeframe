@@ -58,7 +58,8 @@ def validate_tests_pass(project_path: Path) -> tuple[bool, str]:
         )
         if proc.returncode == 0:
             return True, f"All tests passed\n{proc.stdout[-300:]}"
-        return False, f"Tests failed (exit {proc.returncode}):\n{proc.stdout[-500:]}"
+        combined = proc.stdout[-300:] + "\n--- stderr ---\n" + proc.stderr[-200:]
+        return False, f"Tests failed (exit {proc.returncode}):\n{combined}"
     except OSError as exc:
         return False, f"uv/pytest not available: {exc}"
 
@@ -120,7 +121,7 @@ def validate_files_generated(project_path: Path) -> tuple[bool, str]:
     if not src_dir.exists():
         return False, "src/task_tracker/ directory not found"
 
-    py_files = list(src_dir.glob("*.py"))
+    py_files = list(src_dir.rglob("*.py"))
     # Expect at least models + cli + storage (or similar)
     non_init = [f for f in py_files if f.name != "__init__.py"]
     if len(non_init) >= 2:
