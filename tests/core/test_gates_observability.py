@@ -1,5 +1,6 @@
 """Tests for gate observability enhancements."""
 
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -254,3 +255,25 @@ class TestRunLintOnFile:
 
         check = run_lint_on_file(py_file, tmp_path)
         assert check.status == GateStatus.SKIPPED
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_uv_run_missing_tool_returns_skipped(self, mock_which, mock_run, tmp_path):
+        """When uv run fails because the linter isn't a project dependency, return SKIPPED."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text("x = 1\n")
+
+        # ruff not on PATH but uv is → gates proceeds with 'uv run ruff'
+        mock_which.side_effect = lambda cmd: "/usr/bin/uv" if cmd == "uv" else None
+
+        # Simulate uv failing to spawn ruff (exit code 2)
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["uv", "run", "ruff", "check", str(py_file)],
+            returncode=2,
+            stdout="",
+            stderr="error: Failed to spawn: `ruff`\nCaused by: No such file or directory (os error 2)",
+        )
+
+        check = run_lint_on_file(py_file, tmp_path)
+        assert check.status == GateStatus.SKIPPED
+        assert "not found" in check.output.lower() or "not found" in (check.output or "").lower()
