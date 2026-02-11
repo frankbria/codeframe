@@ -152,7 +152,7 @@ The ReAct agent enters a **verification gate loop**: it generates code, the veri
 
 ## pytest Results
 
-```
+```text
 17 collected tests:
   15 passed (workflow steps, ruff lint, pyproject preserved, metrics)
    2 failed:

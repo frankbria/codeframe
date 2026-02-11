@@ -27,8 +27,8 @@ def validate_ruff_lint(project_path: Path) -> tuple[bool, str]:
             return True, "0 lint errors"
         error_count = proc.stdout.count("\n")
         return False, f"{error_count} lint errors:\n{proc.stdout[:500]}"
-    except FileNotFoundError:
-        return False, "ruff not found on PATH"
+    except OSError as exc:
+        return False, f"ruff not available: {exc}"
 
 
 def validate_pyproject_preserved(
@@ -59,8 +59,8 @@ def validate_tests_pass(project_path: Path) -> tuple[bool, str]:
         if proc.returncode == 0:
             return True, f"All tests passed\n{proc.stdout[-300:]}"
         return False, f"Tests failed (exit {proc.returncode}):\n{proc.stdout[-500:]}"
-    except FileNotFoundError:
-        return False, "uv/pytest not found on PATH"
+    except OSError as exc:
+        return False, f"uv/pytest not available: {exc}"
 
 
 def validate_cli_works(project_path: Path) -> tuple[bool, str]:
@@ -76,8 +76,8 @@ def validate_cli_works(project_path: Path) -> tuple[bool, str]:
         if proc.returncode == 0:
             return True, "CLI --help works"
         return False, f"CLI --help failed (exit {proc.returncode}):\n{proc.stderr[:300]}"
-    except FileNotFoundError:
-        return False, "uv not found on PATH"
+    except OSError as exc:
+        return False, f"uv not available: {exc}"
 
 
 def validate_no_import_errors(project_path: Path) -> tuple[bool, str]:
@@ -94,8 +94,8 @@ def validate_no_import_errors(project_path: Path) -> tuple[bool, str]:
         if proc.returncode == 0 and "OK" in proc.stdout:
             return True, "Package imports cleanly"
         return False, f"Import error:\n{proc.stderr[:300]}"
-    except FileNotFoundError:
-        return False, "uv/python not found"
+    except OSError as exc:
+        return False, f"uv/python not available: {exc}"
 
 
 def validate_iteration_counts(

@@ -14,8 +14,12 @@ from pathlib import Path
 
 import pytest
 
-CF_TEST_PROJECT = Path.home() / "projects" / "cf-test"
-CODEFRAME_ROOT = Path.home() / "projects" / "codeframe"
+CF_TEST_PROJECT = Path(
+    os.getenv("CF_TEST_PROJECT", Path.home() / "projects" / "cf-test")
+)
+CODEFRAME_ROOT = Path(
+    os.getenv("CODEFRAME_ROOT", Path.home() / "projects" / "codeframe")
+)
 
 
 def _ensure_api_key() -> None:
