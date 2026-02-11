@@ -15,7 +15,6 @@ from pathlib import Path
 import pytest
 
 from .golden_path_runner import GoldenPathRunner, ValidationRun
-from .validators import run_all_validators
 
 pytestmark = [pytest.mark.e2e, pytest.mark.e2e_llm]
 

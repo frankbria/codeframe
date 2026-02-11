@@ -423,7 +423,7 @@ print(json.dumps(result))
 
         run.finished_at = time.time()
 
-        self._log(f"\n=== Run complete ===")
+        self._log("\n=== Run complete ===")
         self._log(f"Engine: {self.engine}")
         self._log(f"Success rate: {run.success_rate:.0%}")
         self._log(f"Total time: {run.total_duration:.1f}s")

@@ -11,9 +11,7 @@ The -s flag is important for seeing real-time progress output.
 
 from __future__ import annotations
 
-import hashlib
 import json
-import time
 from pathlib import Path
 
 import pytest
@@ -158,7 +156,7 @@ class TestMetrics:
     """Capture metrics for the validation report (these always pass)."""
 
     def test_report_success_rate(self, react_run: ValidationRun):
-        print(f"\n=== METRICS ===")
+        print("\n=== METRICS ===")
         print(f"Engine: {react_run.engine}")
         print(f"Success rate: {react_run.success_rate:.0%}")
         print(f"Tasks: {react_run.tasks_succeeded}/{len(react_run.task_results)}")
