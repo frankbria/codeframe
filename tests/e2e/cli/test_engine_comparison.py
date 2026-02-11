@@ -57,19 +57,23 @@ def plan_run(
         shutil.rmtree(codeframe_dir)
     src_dir = project / "src" / "task_tracker"
     if src_dir.exists():
-        for f in src_dir.iterdir():
+        for f in sorted(src_dir.rglob("*"), reverse=True):
             if f.name == "__pycache__":
                 shutil.rmtree(f)
             elif f.name != "__init__.py" and f.is_file():
                 f.unlink()
+            elif f.is_dir() and not any(f.iterdir()):
+                f.rmdir()
         (src_dir / "__init__.py").write_text("")
     tests_dir = project / "tests"
     if tests_dir.exists():
-        for f in tests_dir.iterdir():
+        for f in sorted(tests_dir.rglob("*"), reverse=True):
             if f.name == "__pycache__":
                 shutil.rmtree(f)
             elif f.name != "__init__.py" and f.is_file():
                 f.unlink()
+            elif f.is_dir() and not any(f.iterdir()):
+                f.rmdir()
 
     runner = GoldenPathRunner(
         project_path=project,

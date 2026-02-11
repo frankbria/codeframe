@@ -222,9 +222,15 @@ class GoldenPathRunner:
         Uses the core module directly (via a Python subprocess) since
         the CLI table output is hard to parse reliably.
         """
+        import os
+
+        codeframe_root = os.getenv(
+            "CODEFRAME_ROOT",
+            str(Path(__file__).parents[3]),
+        )
         script = f"""
 import json, sys
-sys.path.insert(0, "{Path(__file__).parents[3]}")
+sys.path.insert(0, "{codeframe_root}")
 from pathlib import Path
 from codeframe.core.workspace import get_workspace
 from codeframe.core import tasks
@@ -240,7 +246,11 @@ print(json.dumps(result))
             timeout=30,
         )
         if result.success and result.stdout.strip():
-            return json.loads(result.stdout.strip())
+            try:
+                return json.loads(result.stdout.strip())
+            except json.JSONDecodeError:
+                self._log(f"Failed to parse task list: {result.stdout[:200]}")
+                return []
         return []
 
     def run_execute_task(self, task_id: str, task_title: str) -> TaskExecutionResult:
