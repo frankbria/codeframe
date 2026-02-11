@@ -229,7 +229,17 @@ class ReactAgent:
         Returns AgentStatus.BLOCKED when a blocker pattern is detected.
         Returns AgentStatus.FAILED when max_iterations is reached.
         """
-        messages: list[dict] = []
+        messages: list[dict] = [
+            {
+                "role": "user",
+                "content": (
+                    "Implement the task described in the system prompt. "
+                    "Start by reading relevant files to understand the current "
+                    "codebase, then make the necessary changes. "
+                    "When you are done, respond with a brief summary."
+                ),
+            }
+        ]
         iterations = 0
         prompt_summary = system_prompt[:200]
 
