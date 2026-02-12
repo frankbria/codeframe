@@ -637,8 +637,9 @@ def run_lint_on_file(
     """Run the appropriate linter on a single file.
 
     Returns a ``GateCheck`` with status PASSED / FAILED / SKIPPED / ERROR.
-    SKIPPED is returned when no linter is registered for the file extension
-    or the required binary is not installed.
+    SKIPPED is returned when no linter is registered for the file extension,
+    the required binary is not installed, or the tool is not found in the
+    project's dependencies (e.g. ``uv run ruff`` fails to spawn).
     """
     import time
 
@@ -673,6 +674,30 @@ def run_lint_on_file(
         if result.stderr:
             output += "\n" + result.stderr
         output = output.strip()
+
+        # Detect tool-not-found: uv/shell report "Failed to spawn",
+        # "command not found", or "No such file or directory" when the
+        # linter binary isn't installed in the target project.
+        # Note: "no such file or directory" is only matched when the tool
+        # name also appears in stderr, to avoid false positives from
+        # missing *target* files.
+        if result.returncode != 0 and result.stderr:
+            stderr_lower = result.stderr.lower()
+            tool_names = {cfg.cmd[0].lower(), cfg.name.lower()}
+            if (
+                "failed to spawn" in stderr_lower
+                or "command not found" in stderr_lower
+                or (
+                    "no such file or directory" in stderr_lower
+                    and any(name in stderr_lower for name in tool_names)
+                )
+            ):
+                return GateCheck(
+                    name=cfg.name,
+                    status=GateStatus.SKIPPED,
+                    output=f"{cfg.name} not found in project dependencies",
+                    duration_ms=duration_ms,
+                )
 
         passed = result.returncode == 0
         check = GateCheck(
