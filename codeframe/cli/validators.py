@@ -14,8 +14,8 @@ def require_anthropic_api_key() -> str:
     """Ensure ANTHROPIC_API_KEY is available, loading from .env if needed.
 
     Checks os.environ first. If not found, attempts to load from .env files
-    (cwd/.env, then ~/.env). If found after loading, sets in os.environ so
-    subprocesses inherit it.
+    (~/.env as base, then cwd/.env with override). If found after loading,
+    sets in os.environ so subprocesses inherit it.
 
     Returns:
         The API key string.

@@ -2360,10 +2360,7 @@ def work_diagnose(
             report = existing_report
             console.print("[dim]Using cached diagnostic report (use --force to re-analyze)[/dim]\n")
         else:
-            # Run diagnostic analysis — requires LLM
-            from codeframe.cli.validators import require_anthropic_api_key
-            require_anthropic_api_key()
-
+            # Run diagnostic analysis (LLM is optional — used if provider passed)
             console.print("[bold]Analyzing run logs...[/bold]\n")
             agent = DiagnosticAgent(workspace)
             report = agent.analyze(task.id, latest_run.id)
@@ -2494,6 +2491,10 @@ def work_retry(
 
         task = matching[0]
 
+        # Validate API key before any state modifications
+        from codeframe.cli.validators import require_anthropic_api_key
+        require_anthropic_api_key()
+
         # Reset task to READY if it's FAILED or BLOCKED
         if task.status in (TaskStatus.FAILED, TaskStatus.BLOCKED):
             # Reset any blocked runs first
@@ -2513,10 +2514,6 @@ def work_retry(
         elif task.status == TaskStatus.DONE:
             console.print("[yellow]Task is already completed[/yellow]")
             raise typer.Exit(0)
-
-        # Validate API key before creating run record
-        from codeframe.cli.validators import require_anthropic_api_key
-        require_anthropic_api_key()
 
         # Start new run
         console.print(f"\n[bold]Retrying task:[/bold] {task.title}")
