@@ -53,7 +53,7 @@ _TOOL_PHASE_MAP = {
 }
 
 # ---------------------------------------------------------------------------
-# Layer 1: Base rules (verbatim from AGENT_V3_UNIFIED_PLAN.md)
+# Layer 1: Base rules (adapted from AGENT_V3_UNIFIED_PLAN.md)
 # ---------------------------------------------------------------------------
 
 _LAYER_1_RULES = """\
@@ -61,10 +61,12 @@ You are CodeFRAME, an autonomous software engineering agent.
 
 ## Rules
 
-- ALWAYS read a file before editing it. Never assume file contents.
+- Read files before editing them unless their contents are already provided in \
+the "Relevant Source Files" section below. Never assume file contents that aren't shown.
 - Make small, targeted edits. Do not rewrite entire files.
 - For NEW files: use create_file. For EXISTING files: use edit_file with search/replace.
-- Never edit_file on a file you haven't read in this session.
+- Never edit_file on a file you haven't seen in this session (either via \
+read_file tool or in the Relevant Source Files section).
 - Run tests after implementing each major feature, not after every line change.
 - Keep solutions simple. Do not add features beyond what was asked.
 - Do not change configuration files (pyproject.toml, package.json, etc.) unless
@@ -234,8 +236,8 @@ class ReactAgent:
                 "role": "user",
                 "content": (
                     "Implement the task described in the system prompt. "
-                    "Start by reading relevant files to understand the current "
-                    "codebase, then make the necessary changes. "
+                    "Relevant source files are provided above when available. "
+                    "Use tools to explore further only if needed. "
                     "When you are done, respond with a brief summary."
                 ),
             }
@@ -499,6 +501,7 @@ class ReactAgent:
 
         Layer 1: Base rules (verbatim)
         Layer 2: Project preferences + tech stack + file tree summary
+                 + loaded file contents (reduces redundant read_file calls)
         Layer 3: Task title/description + PRD + answered blockers
         """
         sections: list[str] = []
@@ -506,7 +509,7 @@ class ReactAgent:
         # Layer 1: Base rules
         sections.append(_LAYER_1_RULES)
 
-        # Layer 2: Preferences, tech stack, file tree
+        # Layer 2: Preferences, tech stack, file tree, loaded file contents
         if context.preferences and context.preferences.has_preferences():
             pref_section = context.preferences.to_prompt_section()
             if pref_section:
@@ -522,6 +525,16 @@ class ReactAgent:
             if len(context.file_tree) > 50:
                 tree_lines.append(f"  ... and {len(context.file_tree) - 50} more")
             sections.append("\n".join(tree_lines))
+
+        if context.loaded_files:
+            file_lines = ["## Relevant Source Files"]
+            for f in context.loaded_files:
+                file_lines.append(f"### {f.path}")
+                file_lines.append("```")
+                file_lines.append(f.content)
+                file_lines.append("```")
+                file_lines.append("")
+            sections.append("\n".join(file_lines))
 
         # Layer 3: Task info
         sections.append(f"## Current Task\n**Title:** {context.task.title}")

@@ -15,7 +15,7 @@ from codeframe.adapters.llm.base import (
 )
 from codeframe.adapters.llm.mock import MockProvider
 from codeframe.core.agent import AgentStatus
-from codeframe.core.context import TaskContext
+from codeframe.core.context import FileContent, TaskContext
 from codeframe.core.gates import GateResult, GateCheck, GateStatus
 from codeframe.core.tasks import Task, TaskStatus
 from codeframe.core.models import ProgressEvent
@@ -234,14 +234,121 @@ class TestSystemPrompt:
         first_call = provider.get_call(0)
         system_prompt = first_call["system"]
 
-        # Layer 1: base rules
-        assert "ALWAYS read a file before editing" in system_prompt
+        # Layer 1: base rules (updated for pre-loaded context awareness)
+        assert "Read files before editing" in system_prompt
 
         # Layer 2: tech stack / preferences
         assert "Python with uv" in system_prompt
 
         # Layer 3: task info
         assert "Add hello function" in system_prompt
+
+
+class TestPreloadedFileContext:
+    """Tests for pre-loaded file contents in the system prompt (issue #373)."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_system_prompt_includes_loaded_files(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """When loaded_files is populated, system prompt should include
+        a 'Relevant Source Files' section with file contents."""
+        from codeframe.core.react_agent import ReactAgent
+
+        mock_context.loaded_files = [
+            FileContent(path="src/main.py", content="def hello():\n    return 'Hello'", tokens_estimate=10),
+            FileContent(path="src/utils.py", content="def add(a, b):\n    return a + b", tokens_estimate=10),
+        ]
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent.run("task-1")
+
+        first_call = provider.get_call(0)
+        system_prompt = first_call["system"]
+
+        assert "## Relevant Source Files" in system_prompt
+        assert "src/main.py" in system_prompt
+        assert "src/utils.py" in system_prompt
+        assert "def hello():" in system_prompt
+        assert "def add(a, b):" in system_prompt
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_system_prompt_no_loaded_files_section_when_empty(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """When loaded_files is empty, no 'Relevant Source Files' section should appear."""
+        from codeframe.core.react_agent import ReactAgent
+
+        # mock_context.loaded_files is already empty by default
+        assert mock_context.loaded_files == []
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent.run("task-1")
+
+        first_call = provider.get_call(0)
+        system_prompt = first_call["system"]
+
+        assert "## Relevant Source Files" not in system_prompt
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_rules_acknowledge_preloaded_context(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """Base rules should acknowledge that pre-loaded files don't need re-reading."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent.run("task-1")
+
+        first_call = provider.get_call(0)
+        system_prompt = first_call["system"]
+
+        # Should NOT contain the old "ALWAYS read" rule
+        assert "ALWAYS read a file before editing" not in system_prompt
+        # Should contain updated rule that acknowledges pre-loaded context
+        assert "Read files before editing them unless" in system_prompt
+        assert "Relevant Source Files" in system_prompt
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_initial_message_does_not_mandate_reading(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """The initial user message should not tell the agent to 'start by reading files'."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent.run("task-1")
+
+        first_call = provider.get_call(0)
+        messages = first_call["messages"]
+        initial_message = messages[0]["content"]
+
+        # Should NOT mandate reading
+        assert "Start by reading relevant files" not in initial_message
 
 
 class TestFinalVerification:
