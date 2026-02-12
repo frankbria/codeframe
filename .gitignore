@@ -45,6 +45,7 @@ htmlcov/
 artifacts/
 tests/e2e/run-e2e-full.sh
 test-results/
+tests/test_new_feature.py
 
 # CodeFRAME specific
 .codeframe/state.db
