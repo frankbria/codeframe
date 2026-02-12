@@ -2529,6 +2529,9 @@ def work_retry(
             console.print("[red]Task execution failed[/red]")
             console.print("  Use 'codeframe work diagnose' for analysis")
 
+        if state.status in (AgentStatus.BLOCKED, AgentStatus.FAILED):
+            raise typer.Exit(1)
+
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
@@ -2986,6 +2989,9 @@ def batch_run(
                     console.print("\n[bold yellow]⚠ Some verification gates failed[/bold yellow]")
             else:
                 console.print("\n[dim]Skipping review - not all tasks completed successfully[/dim]")
+
+        if failed > 0 or blocked > 0:
+            raise typer.Exit(1)
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")
