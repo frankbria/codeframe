@@ -35,6 +35,10 @@ class TestDetectSuccess:
         output = "ANTHROPIC_API_KEY environment variable is required"
         assert runner._detect_success(exit_code=0, output=output) is False
 
+    def test_api_key_missing_nonzero_exit_returns_false(self, runner):
+        output = "ANTHROPIC_API_KEY environment variable is required"
+        assert runner._detect_success(exit_code=1, output=output) is False
+
     def test_error_pattern_returns_false(self, runner):
         output = "Error: something went wrong"
         assert runner._detect_success(exit_code=0, output=output) is False
@@ -63,3 +67,51 @@ class TestDetectSuccess:
         """When both success and failure patterns present, failure wins."""
         output = "Task completed successfully!\nBut then Error: crash"
         assert runner._detect_success(exit_code=0, output=output) is False
+
+
+class TestBuildEnv:
+    """Tests for _build_env() .env loading logic."""
+
+    def test_returns_env_dict(self, runner):
+        """_build_env() always returns a dict."""
+        env = runner._build_env()
+        assert isinstance(env, dict)
+
+    def test_propagates_existing_api_key(self, runner, monkeypatch):
+        """When ANTHROPIC_API_KEY is in os.environ, it appears in result."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-existing")
+        env = runner._build_env()
+        assert env["ANTHROPIC_API_KEY"] == "sk-test-existing"
+
+    def test_loads_api_key_from_dotenv(self, runner, tmp_path, monkeypatch):
+        """When key is NOT in os.environ, _build_env loads it from .env file."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        # Ensure CWD has no .env that could interfere
+        monkeypatch.chdir(tmp_path)
+        # Create a .env file in CODEFRAME_ROOT
+        env_file = tmp_path / ".env"
+        env_file.write_text('ANTHROPIC_API_KEY=sk-from-dotenv-123\n')
+        monkeypatch.setenv("CODEFRAME_ROOT", str(tmp_path))
+        env = runner._build_env()
+        assert env.get("ANTHROPIC_API_KEY") == "sk-from-dotenv-123"
+
+    def test_loads_api_key_with_quotes(self, runner, tmp_path, monkeypatch):
+        """Handles quoted values in .env file."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.chdir(tmp_path)
+        env_file = tmp_path / ".env"
+        env_file.write_text('ANTHROPIC_API_KEY="sk-quoted-key"\n')
+        monkeypatch.setenv("CODEFRAME_ROOT", str(tmp_path))
+        env = runner._build_env()
+        assert env.get("ANTHROPIC_API_KEY") == "sk-quoted-key"
+
+    def test_no_dotenv_no_key_returns_env_without_key(self, runner, tmp_path, monkeypatch):
+        """When no .env and no env var, result has no ANTHROPIC_API_KEY."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        # Use a clean tmp dir with no .env file for both CWD and CODEFRAME_ROOT
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+        monkeypatch.chdir(empty_dir)
+        monkeypatch.setenv("CODEFRAME_ROOT", str(empty_dir))
+        env = runner._build_env()
+        assert "ANTHROPIC_API_KEY" not in env

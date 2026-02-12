@@ -516,6 +516,8 @@ def generate_from_prd(
     if use_llm:
         try:
             tasks_data = _generate_tasks_with_llm(prd.content)
+        except ValueError:
+            raise  # Config errors (missing API key) should fail loudly
         except Exception as e:
             # Fall back to simple extraction
             print(f"LLM generation failed ({e}), using simple extraction")
