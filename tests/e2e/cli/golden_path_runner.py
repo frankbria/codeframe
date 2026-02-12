@@ -172,11 +172,31 @@ class GoldenPathRunner:
             )
 
     def _build_env(self) -> dict:
-        """Build environment with API key."""
+        """Build environment with API key from .env if needed."""
         import os
 
         env = os.environ.copy()
-        # Ensure ANTHROPIC_API_KEY propagates
+        if "ANTHROPIC_API_KEY" not in env:
+            codeframe_root = Path(
+                os.getenv(
+                    "CODEFRAME_ROOT",
+                    str(Path(__file__).parents[3]),
+                )
+            )
+            search_paths = [
+                Path.cwd() / ".env",
+                codeframe_root / ".env",
+            ]
+            for env_path in search_paths:
+                if env_path.exists():
+                    for line in env_path.read_text().splitlines():
+                        line = line.strip()
+                        if line.startswith("ANTHROPIC_API_KEY="):
+                            key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            env["ANTHROPIC_API_KEY"] = key
+                            break
+                    if "ANTHROPIC_API_KEY" in env:
+                        break
         return env
 
     def _log(self, msg: str) -> None:

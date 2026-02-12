@@ -1557,6 +1557,10 @@ def tasks_generate(
 
         console.print(f"Generating tasks from PRD: [bold]{prd_record.title}[/bold]")
 
+        if not no_llm:
+            from codeframe.cli.validators import require_anthropic_api_key
+            require_anthropic_api_key()
+
         if no_llm:
             console.print("[dim]Using simple extraction (--no-llm)[/dim]")
         else:
@@ -2032,6 +2036,11 @@ def work_start(
 
         task = matching[0]
 
+        # Validate API key before creating run record (avoids dangling IN_PROGRESS state)
+        if execute:
+            from codeframe.cli.validators import require_anthropic_api_key
+            require_anthropic_api_key()
+
         # Start the run
         run = runtime.start_task_run(workspace, task.id)
 
@@ -2351,7 +2360,7 @@ def work_diagnose(
             report = existing_report
             console.print("[dim]Using cached diagnostic report (use --force to re-analyze)[/dim]\n")
         else:
-            # Run diagnostic analysis
+            # Run diagnostic analysis (LLM is optional — used if provider passed)
             console.print("[bold]Analyzing run logs...[/bold]\n")
             agent = DiagnosticAgent(workspace)
             report = agent.analyze(task.id, latest_run.id)
@@ -2481,6 +2490,10 @@ def work_retry(
             raise typer.Exit(1)
 
         task = matching[0]
+
+        # Validate API key before any state modifications
+        from codeframe.cli.validators import require_anthropic_api_key
+        require_anthropic_api_key()
 
         # Reset task to READY if it's FAILED or BLOCKED
         if task.status in (TaskStatus.FAILED, TaskStatus.BLOCKED):
@@ -2928,6 +2941,10 @@ def batch_run(
                 title = task.title if task else tid
                 console.print(f"  [{i + 1}] {tid[:8]} - {title}")
             return
+
+        # Validate API key before batch execution
+        from codeframe.cli.validators import require_anthropic_api_key
+        require_anthropic_api_key()
 
         # Execute batch
         if max_retries > 0:
