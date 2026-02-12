@@ -2063,12 +2063,14 @@ def work_start(
                     if state.blocker:
                         console.print(f"  Question: {state.blocker.question}")
                     console.print("  Use 'codeframe blocker list' to see blockers")
+                    raise typer.Exit(1)
                 elif state.status == AgentStatus.FAILED:
                     console.print("[red]Task execution failed[/red]")
                     if state.step_results:
                         last_result = state.step_results[-1]
                         if last_result.error:
                             console.print(f"  Error: {last_result.error[:200]}")
+                    raise typer.Exit(1)
 
                 # Show debug log location if debugging was enabled
                 if debug:

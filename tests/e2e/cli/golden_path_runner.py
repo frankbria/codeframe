@@ -315,8 +315,9 @@ print(json.dumps(result))
     def _detect_success(self, exit_code: int, output: str) -> bool:
         """Determine actual success from CLI output patterns.
 
-        The CLI currently returns exit code 0 even for failed tasks,
-        so we inspect the output for success/failure markers.
+        Uses conservative detection: only returns True when an explicit
+        success pattern is found AND no failure patterns are present.
+        Returns False when output is ambiguous (no patterns matched).
         """
         if exit_code != 0:
             return False
@@ -331,15 +332,17 @@ print(json.dumps(result))
             "Task completed successfully",
         ]
 
-        for pattern in success_patterns:
-            if pattern in output:
-                return True
+        # Check failure patterns first — failure takes precedence
         for pattern in failure_patterns:
             if pattern in output:
                 return False
 
-        # If no clear signal, fall back to exit code
-        return exit_code == 0
+        for pattern in success_patterns:
+            if pattern in output:
+                return True
+
+        # No clear signal — conservative default: treat as failure
+        return False
 
     def _extract_iterations(self, output: str) -> Optional[int]:
         """Extract iteration count from agent output."""
