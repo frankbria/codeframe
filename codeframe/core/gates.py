@@ -683,11 +683,14 @@ def run_lint_on_file(
         # missing *target* files.
         if result.returncode != 0 and result.stderr:
             stderr_lower = result.stderr.lower()
-            tool_name = cfg.cmd[0].lower()
+            tool_names = {cfg.cmd[0].lower(), cfg.name.lower()}
             if (
                 "failed to spawn" in stderr_lower
                 or "command not found" in stderr_lower
-                or ("no such file or directory" in stderr_lower and tool_name in stderr_lower)
+                or (
+                    "no such file or directory" in stderr_lower
+                    and any(name in stderr_lower for name in tool_names)
+                )
             ):
                 return GateCheck(
                     name=cfg.name,
