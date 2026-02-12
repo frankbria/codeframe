@@ -11,6 +11,8 @@ import pytest
 
 from tests.e2e.cli.golden_path_runner import GoldenPathRunner
 
+pytestmark = pytest.mark.v2
+
 
 @pytest.fixture
 def runner(tmp_path):
