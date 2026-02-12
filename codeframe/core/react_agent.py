@@ -368,8 +368,14 @@ class ReactAgent:
                         })
                         return AgentStatus.BLOCKED
 
-            # Loop detection: track tool call patterns
-            sig = tuple(sorted(tc.name for tc in response.tool_calls))
+            # Loop detection: track tool call patterns (preserve order,
+            # include key input to distinguish e.g. read_file("a.py") from
+            # read_file("b.py")).
+            def _tool_sig(tc) -> str:
+                key = tc.input.get("path") or tc.input.get("pattern") or tc.input.get("command") or ""
+                return f"{tc.name}:{key}"
+
+            sig = tuple(_tool_sig(tc) for tc in response.tool_calls)
             recent_tool_signatures.append(sig)
 
             # Check for stuck loop: 3 identical consecutive patterns
@@ -703,23 +709,26 @@ class ReactAgent:
     def _calculate_adaptive_budget(self, context: TaskContext) -> int:
         """Calculate iteration budget based on task complexity.
 
-        Uses the AgentBudgetConfig from the environment config (or defaults).
-        Scales the base_iterations by a multiplier derived from complexity_score:
+        Uses ``AgentBudgetConfig`` from the environment config (or defaults).
+        Scales ``base_iterations`` by a multiplier derived from ``complexity_score``:
         score 1 -> 1x, 2 -> 1.5x, 3 -> 2x, 4 -> 2.5x, 5 -> 3x.
 
-        The result is clamped to [min_iterations, max_iterations].
+        When ``complexity_score`` is absent the default is **2** (medium),
+        giving a 1.5x multiplier over the base.  The result is clamped to
+        ``[min_iterations, max_iterations]``.
         """
         from codeframe.core.config import AgentBudgetConfig, load_environment_config
 
-        # Load config (or use defaults)
+        # Load config (or use defaults).  Guard against YAML ``agent_budget: null``.
         env_config = load_environment_config(self.workspace.repo_path)
         if env_config:
-            budget_config = env_config.agent_budget
+            budget_config = env_config.agent_budget or AgentBudgetConfig()
         else:
             budget_config = AgentBudgetConfig()
 
         base = budget_config.base_iterations
-        score = getattr(context.task, "complexity_score", None) or 2  # default medium
+        # Default to medium complexity (2) when score is absent.
+        score = getattr(context.task, "complexity_score", None) or 2
 
         # Scale: score 1->1x, 2->1.5x, 3->2x, 4->2.5x, 5->3x
         multiplier = 1.0 + (score - 1) * 0.5

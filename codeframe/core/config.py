@@ -143,6 +143,17 @@ class EnvironmentConfig:
                     f"Must be one of: {', '.join(valid_lint_tools)}"
                 )
 
+        # Validate agent budget
+        budget = self.agent_budget
+        if any(v <= 0 for v in (budget.base_iterations, budget.min_iterations, budget.max_iterations)):
+            errors.append("agent_budget iterations must be positive integers")
+        if budget.min_iterations > budget.max_iterations:
+            errors.append("agent_budget.min_iterations cannot exceed max_iterations")
+        if not (budget.min_iterations <= budget.base_iterations <= budget.max_iterations):
+            errors.append(
+                "agent_budget.base_iterations must be between min_iterations and max_iterations"
+            )
+
         return errors
 
     def get_install_command(self, package: str) -> str:

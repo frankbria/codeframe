@@ -2189,6 +2189,39 @@ class TestLoopDetection:
         assert status == AgentStatus.COMPLETED
         assert provider.call_count == 4  # All 4 calls made (3 tool + 1 text)
 
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_same_tool_different_paths_no_false_positive(
+        self, mock_loader, mock_gates, workspace, provider, mock_context
+    ):
+        """read_file on different files should NOT trigger loop detection."""
+        from codeframe.core.react_agent import ReactAgent
+
+        mock_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        # Three read_file calls to DIFFERENT files — not a loop
+        provider.add_tool_response([
+            ToolCall(id="tc1", name="read_file", input={"path": "a.py"})
+        ])
+        provider.add_tool_response([
+            ToolCall(id="tc2", name="read_file", input={"path": "b.py"})
+        ])
+        provider.add_tool_response([
+            ToolCall(id="tc3", name="read_file", input={"path": "c.py"})
+        ])
+        provider.add_text_response("Done")
+
+        agent = ReactAgent(workspace, provider, max_iterations=10)
+        with patch.object(
+            agent, "_execute_tool_with_lint",
+            return_value=ToolResult(tool_call_id="tc1", content="ok"),
+        ):
+            status = agent.run("task-1")
+
+        assert status == AgentStatus.COMPLETED
+        assert provider.call_count == 4  # All 4 calls, no early termination
+
 
 class TestAutofixIntegration:
     """Tests for autofix running before lint in _execute_tool_with_lint."""
