@@ -53,7 +53,7 @@ _TOOL_PHASE_MAP = {
 }
 
 # ---------------------------------------------------------------------------
-# Layer 1: Base rules (verbatim from AGENT_V3_UNIFIED_PLAN.md)
+# Layer 1: Base rules (adapted from AGENT_V3_UNIFIED_PLAN.md)
 # ---------------------------------------------------------------------------
 
 _LAYER_1_RULES = """\

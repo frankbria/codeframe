@@ -324,6 +324,7 @@ class TestPreloadedFileContext:
         # Should NOT contain the old "ALWAYS read" rule
         assert "ALWAYS read a file before editing" not in system_prompt
         # Should contain updated rule that acknowledges pre-loaded context
+        assert "Read files before editing them unless" in system_prompt
         assert "Relevant Source Files" in system_prompt
 
     @patch("codeframe.core.react_agent.gates")
