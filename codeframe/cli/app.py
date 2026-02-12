@@ -2078,6 +2078,9 @@ def work_start(
                         latest_log = max(debug_logs, key=lambda p: p.stat().st_mtime)
                         console.print(f"\n[dim]Debug log written to: {latest_log}[/dim]")
 
+                if state.status in (AgentStatus.BLOCKED, AgentStatus.FAILED):
+                    raise typer.Exit(1)
+
             except ValueError as e:
                 console.print(f"[red]Error:[/red] {e}")
                 raise typer.Exit(1)
