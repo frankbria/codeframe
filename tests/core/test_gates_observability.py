@@ -9,8 +9,11 @@ from codeframe.core.gates import (
     GateCheck,
     GateResult,
     GateStatus,
+    LinterConfig,
+    LINTER_REGISTRY,
     _find_linter_for_file,
     _parse_ruff_errors,
+    run_autofix_on_file,
     run_lint_on_file,
 )
 
@@ -277,3 +280,96 @@ class TestRunLintOnFile:
         check = run_lint_on_file(py_file, tmp_path)
         assert check.status == GateStatus.SKIPPED
         assert "not found" in check.output.lower()
+
+
+class TestAutofixSupport:
+    """Tests for autofix_cmd on LinterConfig and run_autofix_on_file."""
+
+    def test_linter_config_has_autofix_cmd(self):
+        """LinterConfig accepts an optional autofix_cmd field."""
+        cfg = LinterConfig(
+            name="test",
+            extensions={".py"},
+            cmd=["test", "{file}"],
+            autofix_cmd=["test", "--fix", "{file}"],
+        )
+        assert cfg.autofix_cmd == ["test", "--fix", "{file}"]
+
+    def test_linter_config_autofix_cmd_defaults_none(self):
+        """autofix_cmd defaults to None when not specified."""
+        cfg = LinterConfig(
+            name="test",
+            extensions={".py"},
+            cmd=["test", "{file}"],
+        )
+        assert cfg.autofix_cmd is None
+
+    def test_ruff_registry_has_autofix_cmd(self):
+        """LINTER_REGISTRY ruff entry has autofix_cmd set."""
+        ruff_cfg = next(c for c in LINTER_REGISTRY if c.name == "ruff")
+        assert ruff_cfg.autofix_cmd is not None
+        assert "ruff" in ruff_cfg.autofix_cmd
+        assert "--fix" in ruff_cfg.autofix_cmd
+
+    def test_eslint_registry_has_autofix_cmd(self):
+        """LINTER_REGISTRY eslint entry has autofix_cmd set."""
+        eslint_cfg = next(c for c in LINTER_REGISTRY if c.name == "eslint")
+        assert eslint_cfg.autofix_cmd is not None
+        assert "--fix" in eslint_cfg.autofix_cmd
+
+    def test_run_autofix_on_file_no_linter(self, tmp_path):
+        """run_autofix_on_file returns SKIPPED for files with no linter."""
+        txt_file = tmp_path / "readme.txt"
+        txt_file.write_text("hello\n")
+
+        check = run_autofix_on_file(txt_file, tmp_path)
+        assert check.name == "autofix"
+        assert check.status == GateStatus.SKIPPED
+
+    @patch("codeframe.core.gates._find_linter_for_file")
+    def test_run_autofix_on_file_skipped_when_no_cmd(self, mock_find, tmp_path):
+        """run_autofix_on_file returns SKIPPED when linter has no autofix_cmd."""
+        mock_find.return_value = LinterConfig(
+            name="nofixer",
+            extensions={".py"},
+            cmd=["nofixer", "{file}"],
+            autofix_cmd=None,
+        )
+        py_file = tmp_path / "test.py"
+        py_file.write_text("x = 1\n")
+
+        check = run_autofix_on_file(py_file, tmp_path)
+        assert check.name == "autofix"
+        assert check.status == GateStatus.SKIPPED
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_run_autofix_on_python_file(self, mock_which, mock_run, tmp_path):
+        """run_autofix_on_file calls ruff --fix on Python files."""
+        py_file = tmp_path / "bad.py"
+        py_file.write_text("import os\n")
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["uv", "run", "ruff", "check", "--fix", str(py_file)],
+            returncode=0,
+            stdout="Fixed 1 error.\n",
+            stderr="",
+        )
+
+        check = run_autofix_on_file(py_file, tmp_path)
+        assert check.name == "autofix-ruff"
+        assert check.status == GateStatus.PASSED
+        # Verify the command included --fix
+        call_args = mock_run.call_args
+        cmd_list = call_args[0][0] if call_args[0] else call_args[1].get("args", [])
+        assert "--fix" in cmd_list
+
+    @patch("codeframe.core.gates.shutil.which", return_value=None)
+    def test_run_autofix_missing_binary_skips(self, mock_which, tmp_path):
+        """run_autofix_on_file returns SKIPPED when binary is not installed."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text("x = 1\n")
+
+        check = run_autofix_on_file(py_file, tmp_path)
+        assert check.status == GateStatus.SKIPPED

@@ -71,6 +71,16 @@ class ContextConfig:
 
 
 @dataclass
+class AgentBudgetConfig:
+    """Agent iteration budget configuration."""
+    base_iterations: int = 30
+    min_iterations: int = 15
+    max_iterations: int = 100
+    auto_fix_enabled: bool = True
+    early_termination_enabled: bool = True
+
+
+@dataclass
 class EnvironmentConfig:
     """v2 project environment configuration.
 
@@ -93,6 +103,9 @@ class EnvironmentConfig:
 
     # Context loading
     context: ContextConfig = dataclass_field(default_factory=ContextConfig)
+
+    # Agent budget
+    agent_budget: AgentBudgetConfig = dataclass_field(default_factory=AgentBudgetConfig)
 
     # Custom command overrides
     custom_commands: dict[str, str] = dataclass_field(default_factory=dict)
@@ -219,6 +232,8 @@ class EnvironmentConfig:
         # Handle nested ContextConfig
         if "context" in data and isinstance(data["context"], dict):
             data["context"] = ContextConfig(**data["context"])
+        if "agent_budget" in data and isinstance(data["agent_budget"], dict):
+            data["agent_budget"] = AgentBudgetConfig(**data["agent_budget"])
         return cls(**data)
 
 

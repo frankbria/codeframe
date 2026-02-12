@@ -168,6 +168,21 @@ class ReactAgent:
             loader = ContextLoader(self.workspace)
             context = loader.load(task_id)
 
+            # Adaptive budget based on task complexity
+            adaptive = self._calculate_adaptive_budget(context)
+            if adaptive != self.max_iterations:
+                self._verbose_print(
+                    f"[ReactAgent] Adaptive budget: {adaptive} iterations "
+                    f"(complexity={getattr(context.task, 'complexity_score', None)})"
+                )
+                self.max_iterations = adaptive
+
+            self._emit(EventType.AGENT_BUDGET_CALCULATED, {
+                "task_id": task_id,
+                "budget": self.max_iterations,
+                "complexity_score": getattr(context.task, "complexity_score", None),
+            })
+
             self._emit_progress(AgentPhase.PLANNING, message="Building system prompt")
 
             system_prompt = self._build_system_prompt(context)
@@ -243,6 +258,7 @@ class ReactAgent:
             }
         ]
         iterations = 0
+        recent_tool_signatures: list[tuple[str, ...]] = []
         prompt_summary = system_prompt[:200]
 
         while iterations < self.max_iterations:
@@ -351,6 +367,25 @@ class ReactAgent:
                             "has_tool_calls": True,
                         })
                         return AgentStatus.BLOCKED
+
+            # Loop detection: track tool call patterns
+            sig = tuple(sorted(tc.name for tc in response.tool_calls))
+            recent_tool_signatures.append(sig)
+
+            # Check for stuck loop: 3 identical consecutive patterns
+            if len(recent_tool_signatures) >= 3:
+                last_three = recent_tool_signatures[-3:]
+                if last_three[0] == last_three[1] == last_three[2]:
+                    self._verbose_print(
+                        f"[ReactAgent] Loop detected: same tool pattern repeated 3 times ({sig})"
+                    )
+                    self._emit(EventType.AGENT_EARLY_TERMINATION, {
+                        "task_id": self._current_task_id,
+                        "iteration": iterations,
+                        "reason": "loop_detected",
+                        "pattern": list(sig),
+                    })
+                    return AgentStatus.COMPLETED
 
             # Add tool results as user message
             messages.append({"role": "user", "content": "", "tool_results": tool_results})
@@ -593,7 +628,11 @@ class ReactAgent:
         result = execute_tool(tc, self.workspace.repo_path)
 
         if tc.name in ("edit_file", "create_file") and not result.is_error:
-            lint_output = self._run_lint_on_file(tc.input.get("path", ""))
+            rel_path = tc.input.get("path", "")
+            # Auto-fix first (reduces lint errors the agent has to fix manually)
+            self._run_autofix_on_file(rel_path)
+            # Then lint check for remaining issues
+            lint_output = self._run_lint_on_file(rel_path)
             if lint_output:
                 result = ToolResult(
                     tool_call_id=result.tool_call_id,
@@ -660,6 +699,63 @@ class ReactAgent:
             return check.output[:2000]
 
         return ""
+
+    def _calculate_adaptive_budget(self, context: TaskContext) -> int:
+        """Calculate iteration budget based on task complexity.
+
+        Uses the AgentBudgetConfig from the environment config (or defaults).
+        Scales the base_iterations by a multiplier derived from complexity_score:
+        score 1 -> 1x, 2 -> 1.5x, 3 -> 2x, 4 -> 2.5x, 5 -> 3x.
+
+        The result is clamped to [min_iterations, max_iterations].
+        """
+        from codeframe.core.config import AgentBudgetConfig, load_environment_config
+
+        # Load config (or use defaults)
+        env_config = load_environment_config(self.workspace.repo_path)
+        if env_config:
+            budget_config = env_config.agent_budget
+        else:
+            budget_config = AgentBudgetConfig()
+
+        base = budget_config.base_iterations
+        score = getattr(context.task, "complexity_score", None) or 2  # default medium
+
+        # Scale: score 1->1x, 2->1.5x, 3->2x, 4->2.5x, 5->3x
+        multiplier = 1.0 + (score - 1) * 0.5
+        calculated = int(base * multiplier)
+
+        return max(budget_config.min_iterations, min(calculated, budget_config.max_iterations))
+
+    def _run_autofix_on_file(self, rel_path: str) -> None:
+        """Run the appropriate linter autofix on a single file within the workspace.
+
+        Delegates to ``gates.run_autofix_on_file()`` for language-aware fixing.
+        Silently skips if the path is empty, outside the workspace, or missing.
+        """
+        if not rel_path:
+            return
+
+        file_path = (self.workspace.repo_path / rel_path).resolve()
+
+        # Prevent path traversal outside workspace
+        try:
+            file_path.relative_to(self.workspace.repo_path.resolve())
+        except ValueError:
+            return
+
+        if not file_path.exists():
+            return
+
+        check = gates.run_autofix_on_file(file_path, self.workspace.repo_path)
+
+        self._verbose_print(
+            f"[ReactAgent] Autofix {rel_path}: {check.status.value}"
+        )
+        self._emit(EventType.AGENT_AUTOFIX_APPLIED, {
+            "path": rel_path,
+            "status": check.status.value,
+        })
 
     # ------------------------------------------------------------------
     # Verbose and debug logging
