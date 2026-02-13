@@ -585,6 +585,7 @@ class LinterConfig:
     check_available: str | None = None
     use_uv: bool = False
     parse_errors: Optional[Callable[[str], list[dict[str, Any]]]] = None
+    autofix_cmd: list[str] | None = None
 
 
 # ---- Registry ---------------------------------------------------------------
@@ -599,12 +600,14 @@ LINTER_REGISTRY: list[LinterConfig] = [
         check_available="ruff",
         use_uv=True,
         parse_errors=_parse_ruff_errors,
+        autofix_cmd=["ruff", "check", "--fix", "{file}"],
     ),
     LinterConfig(
         name="eslint",
         extensions={".ts", ".tsx", ".js", ".jsx"},
         cmd=["npx", "eslint", "{file}"],
         check_available="npx",
+        autofix_cmd=["npx", "eslint", "--fix", "{file}"],
     ),
     # Clippy lints the whole crate, not a single file.  Omitted from the
     # per-file registry to avoid slow full-project checks on every edit.
@@ -721,6 +724,94 @@ def run_lint_on_file(
                          output=f"{cfg.check_available or cfg.cmd[0]} not found")
     except Exception as e:
         return GateCheck(name=cfg.name, status=GateStatus.ERROR,
+                         output=str(e))
+
+
+def run_autofix_on_file(
+    file_path: Path,
+    repo_path: Path,
+    *,
+    timeout: int = 30,
+) -> GateCheck:
+    """Run the appropriate linter autofix on a single file.
+
+    Returns a ``GateCheck`` with status PASSED / SKIPPED / ERROR.
+    SKIPPED is returned when no linter is registered for the file extension,
+    the linter has no ``autofix_cmd``, or the required binary is not installed.
+    """
+    import time
+
+    cfg = _find_linter_for_file(file_path)
+    if cfg is None:
+        return GateCheck(name="autofix", status=GateStatus.SKIPPED,
+                         output=f"No linter configured for {file_path.suffix}")
+
+    if cfg.autofix_cmd is None:
+        return GateCheck(name="autofix", status=GateStatus.SKIPPED,
+                         output=f"{cfg.name} has no autofix command")
+
+    # Check binary availability — when use_uv is set, uv can provide the tool
+    if cfg.check_available and not shutil.which(cfg.check_available):
+        if not (cfg.use_uv and shutil.which("uv")):
+            return GateCheck(name=f"autofix-{cfg.name}", status=GateStatus.SKIPPED,
+                             output=f"{cfg.check_available} not found")
+
+    # Build command – replace {file} placeholder
+    cmd = [part.replace("{file}", str(file_path)) for part in cfg.autofix_cmd]
+    if cfg.use_uv and shutil.which("uv"):
+        cmd = ["uv", "run"] + cmd
+
+    start = time.time()
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+
+        duration_ms = int((time.time() - start) * 1000)
+        output = result.stdout
+        if result.stderr:
+            output += "\n" + result.stderr
+        output = output.strip()
+
+        # Detect tool-not-found (same pattern as run_lint_on_file)
+        if result.returncode != 0 and result.stderr:
+            stderr_lower = result.stderr.lower()
+            tool_names = {cfg.autofix_cmd[0].lower(), cfg.name.lower()}
+            if (
+                "failed to spawn" in stderr_lower
+                or "command not found" in stderr_lower
+                or (
+                    "no such file or directory" in stderr_lower
+                    and any(name in stderr_lower for name in tool_names)
+                )
+            ):
+                return GateCheck(
+                    name=f"autofix-{cfg.name}",
+                    status=GateStatus.SKIPPED,
+                    output=f"{cfg.name} not found in project dependencies",
+                    duration_ms=duration_ms,
+                )
+
+        return GateCheck(
+            name=f"autofix-{cfg.name}",
+            status=GateStatus.PASSED if result.returncode == 0 else GateStatus.ERROR,
+            exit_code=result.returncode,
+            output=output,
+            duration_ms=duration_ms,
+        )
+
+    except subprocess.TimeoutExpired:
+        return GateCheck(name=f"autofix-{cfg.name}", status=GateStatus.ERROR,
+                         output=f"Timeout after {timeout}s")
+    except FileNotFoundError:
+        return GateCheck(name=f"autofix-{cfg.name}", status=GateStatus.SKIPPED,
+                         output=f"{cfg.check_available or cfg.autofix_cmd[0]} not found")
+    except Exception as e:
+        return GateCheck(name=f"autofix-{cfg.name}", status=GateStatus.ERROR,
                          output=str(e))
 
 

@@ -137,11 +137,22 @@ class TestReactLoopTermination:
         """When max_iterations is reached, the agent should return FAILED."""
         from codeframe.core.react_agent import ReactAgent
 
-        # Always return tool calls — never a text-only response
-        for _ in range(5):
-            provider.add_tool_response(
-                [ToolCall(id="tc1", name="read_file", input={"path": "test.py"})]
-            )
+        # Use different tool calls each iteration to avoid loop detection
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="read_file", input={"path": "a.py"})]
+        )
+        provider.add_tool_response(
+            [ToolCall(id="tc2", name="list_files", input={"path": "."})]
+        )
+        provider.add_tool_response(
+            [ToolCall(id="tc3", name="search_codebase", input={"pattern": "x"})]
+        )
+        provider.add_tool_response(
+            [ToolCall(id="tc4", name="read_file", input={"path": "b.py"})]
+        )
+        provider.add_tool_response(
+            [ToolCall(id="tc5", name="list_files", input={"path": "src"})]
+        )
 
         mock_ctx_loader.return_value.load.return_value = mock_context
 
@@ -152,7 +163,9 @@ class TestReactLoopTermination:
         agent = ReactAgent(
             workspace=workspace, llm_provider=provider, max_iterations=3
         )
-        status = agent.run("task-1")
+        # Disable adaptive budget so max_iterations stays at 3
+        with patch.object(agent, "_calculate_adaptive_budget", return_value=3):
+            status = agent.run("task-1")
 
         assert status == AgentStatus.FAILED
         # Should have made exactly max_iterations calls
@@ -759,10 +772,16 @@ class TestEventEmissions:
         from codeframe.core.react_agent import ReactAgent
         from codeframe.core.events import EventType
 
-        for _ in range(3):
-            provider.add_tool_response(
-                [ToolCall(id="tc1", name="read_file", input={"path": "x.py"})]
-            )
+        # Use different tool calls to avoid loop detection
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="read_file", input={"path": "x.py"})]
+        )
+        provider.add_tool_response(
+            [ToolCall(id="tc2", name="list_files", input={"path": "."})]
+        )
+        provider.add_tool_response(
+            [ToolCall(id="tc3", name="search_codebase", input={"pattern": "y"})]
+        )
         mock_ctx_loader.return_value.load.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="contents"
@@ -771,7 +790,9 @@ class TestEventEmissions:
         agent = ReactAgent(
             workspace=workspace, llm_provider=provider, max_iterations=2
         )
-        status = agent.run("task-1")
+        # Disable adaptive budget so max_iterations stays at 2
+        with patch.object(agent, "_calculate_adaptive_budget", return_value=2):
+            status = agent.run("task-1")
 
         assert status == AgentStatus.FAILED
 
@@ -1561,10 +1582,16 @@ class TestStreamCompletion:
         from codeframe.core.react_agent import ReactAgent
         from codeframe.core.models import ErrorEvent
 
-        for _ in range(3):
-            provider.add_tool_response(
-                [ToolCall(id="tc1", name="read_file", input={"path": "x.py"})]
-            )
+        # Use different tool calls to avoid loop detection
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="read_file", input={"path": "x.py"})]
+        )
+        provider.add_tool_response(
+            [ToolCall(id="tc2", name="list_files", input={"path": "."})]
+        )
+        provider.add_tool_response(
+            [ToolCall(id="tc3", name="search_codebase", input={"pattern": "z"})]
+        )
         mock_ctx_loader.return_value.load.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="contents"
@@ -1575,7 +1602,9 @@ class TestStreamCompletion:
             workspace=workspace, llm_provider=provider,
             max_iterations=2, event_publisher=publisher,
         )
-        status = agent.run("task-1")
+        # Disable adaptive budget so max_iterations stays at 2
+        with patch.object(agent, "_calculate_adaptive_budget", return_value=2):
+            status = agent.run("task-1")
 
         assert status == AgentStatus.FAILED
 
@@ -2043,3 +2072,213 @@ class TestAllParamsTogether:
         assert len(logger.lines) > 0
         # on_event called
         assert len(received_events) > 0
+
+
+class TestAdaptiveBudget:
+    """Tests for adaptive iteration budget calculation."""
+
+    def test_default_complexity_gives_45(self, workspace, provider, mock_context):
+        """No complexity_score defaults to score 2 -> 45 iterations."""
+        from codeframe.core.react_agent import ReactAgent
+
+        agent = ReactAgent(workspace, provider, max_iterations=30)
+        budget = agent._calculate_adaptive_budget(mock_context)
+        assert budget == 45  # 30 * 1.5
+
+    def test_low_complexity_gives_base(self, workspace, provider, mock_context):
+        """Complexity 1 -> base iterations (30)."""
+        from codeframe.core.react_agent import ReactAgent
+
+        mock_context.task.complexity_score = 1
+        agent = ReactAgent(workspace, provider, max_iterations=30)
+        budget = agent._calculate_adaptive_budget(mock_context)
+        assert budget == 30  # 30 * 1.0
+
+    def test_high_complexity_gives_90(self, workspace, provider, mock_context):
+        """Complexity 5 -> 90 iterations."""
+        from codeframe.core.react_agent import ReactAgent
+
+        mock_context.task.complexity_score = 5
+        agent = ReactAgent(workspace, provider, max_iterations=30)
+        budget = agent._calculate_adaptive_budget(mock_context)
+        assert budget == 90  # 30 * 3.0
+
+    def test_budget_capped_at_max(self, workspace, provider, mock_context):
+        """Budget never exceeds max_iterations from config."""
+        from codeframe.core.react_agent import ReactAgent
+
+        mock_context.task.complexity_score = 5
+        agent = ReactAgent(workspace, provider, max_iterations=30)
+        # Default max is 100, so 90 should be fine
+        budget = agent._calculate_adaptive_budget(mock_context)
+        assert budget <= 100
+
+    def test_budget_clamped_at_min(self, workspace, provider, mock_context):
+        """Budget never goes below min_iterations from config."""
+        from codeframe.core.react_agent import ReactAgent
+
+        mock_context.task.complexity_score = 1
+        # Very low base: 5 * 1.0 = 5, but min is 15
+        agent = ReactAgent(workspace, provider, max_iterations=5)
+        budget = agent._calculate_adaptive_budget(mock_context)
+        assert budget >= 15
+
+
+class TestLoopDetection:
+    """Tests for early termination on repeated tool patterns."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_loop_detected_returns_completed(
+        self, mock_loader, mock_gates, workspace, provider, mock_context
+    ):
+        """3 identical tool call patterns -> COMPLETED (not FAILED)."""
+        from codeframe.core.react_agent import ReactAgent
+
+        mock_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        # Queue 4 responses all with the same read_file tool call
+        for _ in range(4):
+            provider.add_tool_response([
+                ToolCall(id="tc1", name="read_file", input={"path": "foo.py"})
+            ])
+        # Final text response (shouldn't reach here due to loop detection)
+        provider.add_text_response("Done")
+
+        agent = ReactAgent(workspace, provider, max_iterations=10)
+        with patch.object(
+            agent, "_execute_tool_with_lint",
+            return_value=ToolResult(tool_call_id="tc1", content="ok"),
+        ):
+            status = agent.run("task-1")
+
+        assert status == AgentStatus.COMPLETED
+        # Should have been detected in 3 iterations, not 10
+        assert provider.call_count <= 4
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_different_tools_no_false_positive(
+        self, mock_loader, mock_gates, workspace, provider, mock_context
+    ):
+        """Different tool calls don't trigger loop detection."""
+        from codeframe.core.react_agent import ReactAgent
+
+        mock_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        provider.add_tool_response([
+            ToolCall(id="tc1", name="read_file", input={"path": "a.py"})
+        ])
+        provider.add_tool_response([
+            ToolCall(id="tc2", name="create_file", input={"path": "b.py", "content": "x"})
+        ])
+        provider.add_tool_response([
+            ToolCall(id="tc3", name="edit_file", input={"path": "c.py", "old_text": "x", "new_text": "y"})
+        ])
+        provider.add_text_response("Done")
+
+        agent = ReactAgent(workspace, provider, max_iterations=10)
+        with patch.object(
+            agent, "_execute_tool_with_lint",
+            return_value=ToolResult(tool_call_id="tc1", content="ok"),
+        ):
+            status = agent.run("task-1")
+
+        assert status == AgentStatus.COMPLETED
+        assert provider.call_count == 4  # All 4 calls made (3 tool + 1 text)
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_same_tool_different_paths_no_false_positive(
+        self, mock_loader, mock_gates, workspace, provider, mock_context
+    ):
+        """read_file on different files should NOT trigger loop detection."""
+        from codeframe.core.react_agent import ReactAgent
+
+        mock_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        # Three read_file calls to DIFFERENT files — not a loop
+        provider.add_tool_response([
+            ToolCall(id="tc1", name="read_file", input={"path": "a.py"})
+        ])
+        provider.add_tool_response([
+            ToolCall(id="tc2", name="read_file", input={"path": "b.py"})
+        ])
+        provider.add_tool_response([
+            ToolCall(id="tc3", name="read_file", input={"path": "c.py"})
+        ])
+        provider.add_text_response("Done")
+
+        agent = ReactAgent(workspace, provider, max_iterations=10)
+        with patch.object(
+            agent, "_execute_tool_with_lint",
+            return_value=ToolResult(tool_call_id="tc1", content="ok"),
+        ):
+            status = agent.run("task-1")
+
+        assert status == AgentStatus.COMPLETED
+        assert provider.call_count == 4  # All 4 calls, no early termination
+
+
+class TestAutofixIntegration:
+    """Tests for autofix running before lint in _execute_tool_with_lint."""
+
+    @patch("codeframe.core.react_agent.gates.run_autofix_on_file")
+    @patch("codeframe.core.react_agent.gates.run_lint_on_file")
+    def test_autofix_called_before_lint(self, mock_lint, mock_autofix, workspace, provider):
+        """Autofix runs before lint check on file edit."""
+        from codeframe.core.react_agent import ReactAgent
+
+        mock_autofix.return_value = GateCheck(name="autofix", status=GateStatus.PASSED)
+        mock_lint.return_value = GateCheck(name="ruff", status=GateStatus.PASSED)
+
+        agent = ReactAgent(workspace, provider)
+        # Create a dummy file in workspace
+        (workspace.repo_path / "test.py").write_text("x = 1\n")
+
+        tc = ToolCall(id="tc1", name="edit_file", input={"path": "test.py", "old_text": "x", "new_text": "y"})
+        with patch("codeframe.core.react_agent.execute_tool", return_value=ToolResult(tool_call_id="tc1", content="ok")):
+            agent._execute_tool_with_lint(tc)
+
+        mock_autofix.assert_called_once()
+        mock_lint.assert_called_once()
+        # Autofix should be called on the same file as lint
+        autofix_path = mock_autofix.call_args[0][0]
+        lint_path = mock_lint.call_args[0][0]
+        assert autofix_path == lint_path
+
+    @patch("codeframe.core.react_agent.gates.run_autofix_on_file")
+    @patch("codeframe.core.react_agent.gates.run_lint_on_file")
+    def test_autofix_not_called_for_read_file(self, mock_lint, mock_autofix, workspace, provider):
+        """Autofix and lint should NOT run for read_file tool calls."""
+        from codeframe.core.react_agent import ReactAgent
+
+        agent = ReactAgent(workspace, provider)
+        (workspace.repo_path / "test.py").write_text("x = 1\n")
+
+        tc = ToolCall(id="tc1", name="read_file", input={"path": "test.py"})
+        with patch("codeframe.core.react_agent.execute_tool", return_value=ToolResult(tool_call_id="tc1", content="x = 1")):
+            agent._execute_tool_with_lint(tc)
+
+        mock_autofix.assert_not_called()
+        mock_lint.assert_not_called()
+
+    @patch("codeframe.core.react_agent.gates.run_autofix_on_file")
+    @patch("codeframe.core.react_agent.gates.run_lint_on_file")
+    def test_autofix_skipped_for_empty_path(self, mock_lint, mock_autofix, workspace, provider):
+        """Autofix is skipped when path is empty."""
+        from codeframe.core.react_agent import ReactAgent
+
+        mock_lint.return_value = GateCheck(name="ruff", status=GateStatus.PASSED)
+
+        agent = ReactAgent(workspace, provider)
+
+        tc = ToolCall(id="tc1", name="edit_file", input={"path": "", "old_text": "x", "new_text": "y"})
+        with patch("codeframe.core.react_agent.execute_tool", return_value=ToolResult(tool_call_id="tc1", content="ok")):
+            agent._execute_tool_with_lint(tc)
+
+        # Autofix should not be called with empty path
+        mock_autofix.assert_not_called()
