@@ -494,9 +494,44 @@ def _run_pytest(repo_path: Path, verbose: bool = False) -> GateCheck:
         if len(output) > 10000:
             output = output[:5000] + "\n...[truncated]...\n" + output[-5000:]
 
+        # Determine status based on exit code and output patterns
+        # pytest exit codes:
+        # 0 = all tests passed
+        # 1 = tests were collected and run but some failed
+        # 2 = test execution was interrupted by the user
+        # 3 = internal error happened while executing tests
+        # 4 = pytest command line usage error (often import errors)
+        # 5 = no tests were collected
+        status = GateStatus.PASSED
+
+        if result.returncode == 0:
+            status = GateStatus.PASSED
+        elif result.returncode == 1:
+            # Tests ran but failed - this is a legitimate FAILED
+            status = GateStatus.FAILED
+        elif result.returncode in [2, 3, 4]:
+            # Collection errors, internal errors, usage errors - all FAILED
+            status = GateStatus.FAILED
+        elif result.returncode == 5:
+            # Exit code 5: no tests collected
+            # Check if this is a clean "no tests" or an error during collection
+            output_lower = output.lower()
+            if "error" in output_lower or "importerror" in output_lower or "modulenotfounderror" in output_lower:
+                # Collection error disguised as "no tests collected"
+                status = GateStatus.FAILED
+            elif "no tests ran" in output_lower or "collected 0 items" in output_lower:
+                # Legitimately empty test suite - acceptable
+                status = GateStatus.PASSED
+            else:
+                # Unclear, default to FAILED to be safe
+                status = GateStatus.FAILED
+        else:
+            # Unknown exit code - treat as FAILED
+            status = GateStatus.FAILED
+
         return GateCheck(
             name="pytest",
-            status=GateStatus.PASSED if result.returncode == 0 else GateStatus.FAILED,
+            status=status,
             exit_code=result.returncode,
             output=output if verbose else _summarize_pytest_output(output),
             duration_ms=duration_ms,

@@ -539,6 +539,125 @@ class TestTypeScriptTypeCheckGate:
         gates = _detect_available_gates(tmp_path)
 
         assert "tsc" in gates
+
+
+class TestPytestGateHardening:
+    """Tests for hardened pytest gate with collection error detection."""
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_pytest_collection_error_fails_gate(self, mock_which, mock_run, tmp_path):
+        """pytest collection errors (exit code 2/3/4) should FAIL the gate."""
+        from codeframe.core.gates import _run_pytest
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock collection error (exit code 4 = usage error, often import issues)
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["pytest", "-v", "--tb=short"],
+            returncode=4,
+            stdout=(
+                "ERROR: not found: /path/to/tests/test_api.py::test_init_db\n"
+                "ERROR: file or directory not found: tests/test_api.py\n"
+            ),
+            stderr="ERROR collecting tests/test_api.py",
+        )
+
+        check = _run_pytest(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert check.exit_code == 4
+        assert "ERROR" in check.output
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_pytest_import_error_during_collection_fails(self, mock_which, mock_run, tmp_path):
+        """ImportError during collection (exit code 2) should FAIL the gate."""
+        from codeframe.core.gates import _run_pytest
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock import error during collection
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["pytest", "-v", "--tb=short"],
+            returncode=2,
+            stdout=(
+                "ImportError while importing test module 'tests/test_db.py'.\n"
+                "ERROR: ModuleNotFoundError: No module named 'sqlalchemy'\n"
+            ),
+            stderr="",
+        )
+
+        check = _run_pytest(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert "ImportError" in check.output or "ModuleNotFoundError" in check.output
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_pytest_no_tests_collected_passes(self, mock_which, mock_run, tmp_path):
+        """Exit code 5 with 'no tests collected' should PASS (acceptable empty suite)."""
+        from codeframe.core.gates import _run_pytest
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock no tests collected (exit code 5, but clean)
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["pytest", "-v", "--tb=short"],
+            returncode=5,
+            stdout="collected 0 items\n\nno tests ran in 0.01s\n",
+            stderr="",
+        )
+
+        check = _run_pytest(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.PASSED
+        assert "no tests ran" in check.output.lower()
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_pytest_exit_code_5_with_error_fails(self, mock_which, mock_run, tmp_path):
+        """Exit code 5 with ERROR messages should FAIL (collection error, not empty suite)."""
+        from codeframe.core.gates import _run_pytest
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock exit code 5 but with collection errors
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["pytest", "-v", "--tb=short"],
+            returncode=5,
+            stdout=(
+                "ERROR collecting tests/test_api.py\n"
+                "collected 0 items\n"
+            ),
+            stderr="ImportError: cannot import name 'app' from 'main'",
+        )
+
+        check = _run_pytest(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert "ERROR" in check.output or "ImportError" in check.output
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_pytest_exit_code_1_test_failures(self, mock_which, mock_run, tmp_path):
+        """Exit code 1 (tests failed) should FAIL the gate."""
+        from codeframe.core.gates import _run_pytest
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock test failures
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["pytest", "-v", "--tb=short"],
+            returncode=1,
+            stdout="tests/test_api.py::test_foo FAILED\n\n1 failed, 0 passed in 0.5s\n",
+            stderr="",
+        )
+
+        check = _run_pytest(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert check.exit_code == 1
         cfg = LinterConfig(
             name="test",
             extensions={".py"},
