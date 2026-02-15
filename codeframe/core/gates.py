@@ -25,6 +25,7 @@ def _utc_now() -> datetime:
 
 
 _RUFF_ERROR_PATTERN = re.compile(r'^(.+?):(\d+):(\d+): ([A-Z]+\d+) (.+)$')
+_TSC_ERROR_PATTERN = re.compile(r'^(.+?)\((\d+),(\d+)\): error (TS\d+): (.+)$')
 
 
 def _parse_ruff_errors(output: str) -> list[dict[str, Any]]:
@@ -41,6 +42,31 @@ def _parse_ruff_errors(output: str) -> list[dict[str, Any]]:
     errors = []
     for line in output.splitlines():
         match = _RUFF_ERROR_PATTERN.match(line.strip())
+        if match:
+            errors.append({
+                "file": match.group(1),
+                "line": int(match.group(2)),
+                "col": int(match.group(3)),
+                "code": match.group(4),
+                "message": match.group(5),
+            })
+    return errors
+
+
+def _parse_tsc_errors(output: str) -> list[dict[str, Any]]:
+    """Parse TypeScript compiler output into structured error dicts.
+
+    Parses lines matching the pattern: src/file.ts(10,5): error TS2339: Property does not exist
+
+    Args:
+        output: Raw tsc stdout/stderr output.
+
+    Returns:
+        List of dicts with keys: file, line, col, code, message.
+    """
+    errors = []
+    for line in output.splitlines():
+        match = _TSC_ERROR_PATTERN.match(line.strip())
         if match:
             errors.append({
                 "file": match.group(1),
@@ -327,7 +353,7 @@ def run(
         gates = _detect_available_gates(repo_path)
 
     # Known gate names
-    known_gates = {"pytest", "ruff", "mypy", "npm-test", "npm-lint"}
+    known_gates = {"pytest", "ruff", "mypy", "npm-test", "npm-lint", "tsc"}
 
     # Run each gate
     for gate_name in gates:
@@ -341,6 +367,8 @@ def run(
             check = _run_npm_test(repo_path, verbose)
         elif gate_name == "npm-lint":
             check = _run_npm_lint(repo_path, verbose)
+        elif gate_name == "tsc":
+            check = _run_tsc(repo_path, verbose)
         else:
             # Unknown gate: FAILED if explicitly requested, SKIPPED if auto-detected
             if gates_explicitly_provided:
@@ -419,6 +447,10 @@ def _detect_available_gates(repo_path: Path) -> list[str]:
                 gates.append("npm-lint")
         except Exception:
             pass
+
+    # TypeScript: tsc type checking
+    if (repo_path / "tsconfig.json").exists():
+        gates.append("tsc")
 
     return gates
 
@@ -693,6 +725,87 @@ def _run_npm_lint(repo_path: Path, verbose: bool = False) -> GateCheck:
     except Exception as e:
         return GateCheck(
             name="npm-lint",
+            status=GateStatus.ERROR,
+            output=str(e),
+        )
+
+
+def _run_tsc(repo_path: Path, verbose: bool = False) -> GateCheck:
+    """Run TypeScript type checking (tsc --noEmit).
+
+    Checks for type-check script in package.json first, otherwise uses npx tsc --noEmit.
+    """
+    import json
+    import time
+
+    start = time.time()
+
+    # Check if tsconfig.json exists
+    tsconfig_path = repo_path / "tsconfig.json"
+    if not tsconfig_path.exists():
+        return GateCheck(
+            name="tsc",
+            status=GateStatus.SKIPPED,
+            output="tsconfig.json not found",
+        )
+
+    # Check if npx is available
+    if not shutil.which("npx"):
+        return GateCheck(
+            name="tsc",
+            status=GateStatus.SKIPPED,
+            output="npx not found",
+        )
+
+    # Determine command: prefer "type-check" script in package.json
+    package_json_path = repo_path / "package.json"
+    cmd = ["npx", "tsc", "--noEmit"]  # Default fallback
+
+    if package_json_path.exists():
+        try:
+            package_data = json.loads(package_json_path.read_text())
+            scripts = package_data.get("scripts", {})
+            if "type-check" in scripts:
+                cmd = ["npm", "run", "type-check"]
+        except Exception:
+            pass  # Fallback to npx tsc --noEmit
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=120,  # 2 minutes, same as mypy
+        )
+
+        duration_ms = int((time.time() - start) * 1000)
+
+        output = result.stdout
+        if result.stderr:
+            output += "\n" + result.stderr
+
+        # Parse TypeScript errors into structured format
+        detailed_errors = _parse_tsc_errors(output) if result.returncode != 0 else None
+
+        return GateCheck(
+            name="tsc",
+            status=GateStatus.PASSED if result.returncode == 0 else GateStatus.FAILED,
+            exit_code=result.returncode,
+            output=output[:2000] if not verbose else output,
+            duration_ms=duration_ms,
+            detailed_errors=detailed_errors,
+        )
+
+    except subprocess.TimeoutExpired:
+        return GateCheck(
+            name="tsc",
+            status=GateStatus.ERROR,
+            output="Timeout after 120 seconds",
+        )
+    except Exception as e:
+        return GateCheck(
+            name="tsc",
             status=GateStatus.ERROR,
             output=str(e),
         )

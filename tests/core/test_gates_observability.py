@@ -414,6 +414,131 @@ class TestDependencyPreFlight:
 
         assert success is False
         assert "error" in message.lower() or "fail" in message.lower()
+
+
+class TestTypeScriptTypeCheckGate:
+    """Tests for TypeScript type-check gate (tsc)."""
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_tsc_gate_runs_type_check_script(self, mock_which, mock_run, tmp_path):
+        """When package.json has type-check script, use it instead of tsc directly."""
+        from codeframe.core.gates import _run_tsc
+
+        # Create tsconfig.json and package.json with type-check script
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {"strict": true}}')
+        (tmp_path / "package.json").write_text('{"scripts": {"type-check": "tsc --noEmit"}}')
+
+        # npm is available
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock successful type check
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npm", "run", "type-check"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        check = _run_tsc(tmp_path, verbose=False)
+
+        assert check.name == "tsc"
+        assert check.status == GateStatus.PASSED
+        # Verify it used npm run type-check, not npx tsc
+        mock_run.assert_called_once()
+        assert "npm" in mock_run.call_args[0][0]
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_tsc_gate_fallback_to_npx(self, mock_which, mock_run, tmp_path):
+        """When no type-check script, fallback to npx tsc --noEmit."""
+        from codeframe.core.gates import _run_tsc
+
+        # Create tsconfig.json without type-check script
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+
+        # npx is available
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock successful type check
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npx", "tsc", "--noEmit"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        check = _run_tsc(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.PASSED
+        # Verify it used npx tsc --noEmit
+        assert "npx" in mock_run.call_args[0][0]
+        assert "--noEmit" in mock_run.call_args[0][0]
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_tsc_gate_detects_type_errors(self, mock_which, mock_run, tmp_path):
+        """Type errors from tsc should return FAILED status with structured errors."""
+        from codeframe.core.gates import _run_tsc
+
+        (tmp_path / "tsconfig.json").write_text('{}')
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock type error output
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npx", "tsc", "--noEmit"],
+            returncode=2,
+            stdout=(
+                "src/api.ts(15,10): error TS2339: Property 'completed' does not exist on type 'CreateTodoRequest'.\n"
+                "src/api.ts(20,5): error TS2322: Type 'string' is not assignable to type 'number'.\n"
+            ),
+            stderr="",
+        )
+
+        check = _run_tsc(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert check.exit_code == 2
+        assert "TS2339" in check.output
+        # Check for structured errors
+        assert check.detailed_errors is not None
+        assert len(check.detailed_errors) == 2
+        assert check.detailed_errors[0]["code"] == "TS2339"
+        assert check.detailed_errors[0]["file"] == "src/api.ts"
+        assert check.detailed_errors[0]["line"] == 15
+
+    def test_tsc_gate_skipped_no_tsconfig(self, tmp_path):
+        """Without tsconfig.json, tsc gate is SKIPPED."""
+        from codeframe.core.gates import _run_tsc
+
+        check = _run_tsc(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.SKIPPED
+        assert "tsconfig.json" in check.output.lower()
+
+    @patch("codeframe.core.gates.shutil.which", return_value=None)
+    def test_tsc_gate_skipped_no_npx(self, mock_which, tmp_path):
+        """Without npx available, tsc gate is SKIPPED."""
+        from codeframe.core.gates import _run_tsc
+
+        (tmp_path / "tsconfig.json").write_text('{}')
+
+        check = _run_tsc(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.SKIPPED
+        assert "npx" in check.output.lower()
+
+    def test_tsc_gate_auto_detected(self, tmp_path):
+        """tsc gate is auto-detected when tsconfig.json exists."""
+        from codeframe.core.gates import _detect_available_gates
+
+        (tmp_path / "tsconfig.json").write_text('{}')
+
+        gates = _detect_available_gates(tmp_path)
+
+        assert "tsc" in gates
         cfg = LinterConfig(
             name="test",
             extensions={".py"},
