@@ -981,7 +981,7 @@ def _execute_serial_resume(
             # Gates failed - change status to PARTIAL (tasks done, integration broken)
             batch.status = BatchStatus.PARTIAL
             event_type = events.EventType.BATCH_PARTIAL
-            print(f"\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
+            print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
             print(f"Validation error: {validation_error}")
 
     elif final_completed == 0 and (final_failed > 0 or final_blocked > 0):
@@ -1128,7 +1128,7 @@ def _execute_retries(
             # Gates failed - change status to PARTIAL (tasks done, integration broken)
             batch.status = BatchStatus.PARTIAL
             event_type = events.EventType.BATCH_PARTIAL
-            print(f"\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
+            print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
             print(f"Validation error: {validation_error}")
 
     elif final_completed == 0 and (final_failed > 0 or final_blocked > 0):
@@ -1322,7 +1322,7 @@ def _execute_serial(
             # Gates failed - change status to PARTIAL (tasks done, integration broken)
             batch.status = BatchStatus.PARTIAL
             event_type = events.EventType.BATCH_PARTIAL
-            print(f"\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
+            print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
             print(f"Validation error: {validation_error}")
 
     elif completed_count == 0 and (failed_count > 0 or blocked_count > 0):
@@ -1462,7 +1462,7 @@ def _execute_parallel(
             # Gates failed - change status to PARTIAL (tasks done, integration broken)
             batch.status = BatchStatus.PARTIAL
             event_type = events.EventType.BATCH_PARTIAL
-            print(f"\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
+            print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
             print(f"Validation error: {validation_error}")
 
     elif completed_count == 0 and (failed_count > 0 or blocked_count > 0):
