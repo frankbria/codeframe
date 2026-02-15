@@ -297,6 +297,123 @@ class TestAutofixSupport:
 
     def test_linter_config_autofix_cmd_defaults_none(self):
         """autofix_cmd defaults to None when not specified."""
+
+
+class TestDependencyPreFlight:
+    """Tests for dependency installation pre-flight checks."""
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_python_deps_missing_auto_installs(self, mock_which, mock_run, tmp_path):
+        """When requirements.txt exists but no venv, auto-install deps if enabled."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create requirements.txt
+        (tmp_path / "requirements.txt").write_text("pytest==7.0.0\n")
+
+        # uv is available
+        mock_which.side_effect = lambda cmd: "/usr/bin/uv" if cmd == "uv" else None
+
+        # Mock successful installation
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["uv", "pip", "install", "-r", "requirements.txt"],
+            returncode=0,
+            stdout="Successfully installed pytest-7.0.0",
+            stderr="",
+        )
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=True)
+
+        assert success is True
+        assert "installed" in message.lower() or "success" in message.lower()
+        mock_run.assert_called_once()
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_node_deps_missing_auto_installs(self, mock_which, mock_run, tmp_path):
+        """When package.json exists but no node_modules, auto-install deps."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create package.json
+        (tmp_path / "package.json").write_text('{"name": "test", "dependencies": {"jest": "^29.0.0"}}')
+
+        # npm is available
+        mock_which.side_effect = lambda cmd: "/usr/bin/npm" if cmd == "npm" else None
+
+        # Mock successful installation
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npm", "install"],
+            returncode=0,
+            stdout="added 100 packages",
+            stderr="",
+        )
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=True)
+
+        assert success is True
+        mock_run.assert_called_once()
+
+    def test_venv_exists_skips_python_install(self, tmp_path):
+        """When .venv exists, skip Python dependency installation."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create requirements.txt and .venv directory
+        (tmp_path / "requirements.txt").write_text("pytest==7.0.0\n")
+        (tmp_path / ".venv").mkdir()
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=True)
+
+        assert success is True
+        assert "skip" in message.lower() or "already" in message.lower()
+
+    def test_node_modules_exists_skips_npm_install(self, tmp_path):
+        """When node_modules exists, skip npm install."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create package.json and node_modules directory
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "node_modules").mkdir()
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=True)
+
+        assert success is True
+
+    def test_auto_install_disabled_skips_installation(self, tmp_path):
+        """When auto_install=False, skip installation and return skip message."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create requirements.txt without venv
+        (tmp_path / "requirements.txt").write_text("pytest==7.0.0\n")
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=False)
+
+        assert success is True
+        assert "disabled" in message.lower() or "skip" in message.lower()
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_installation_failure_returns_false(self, mock_which, mock_run, tmp_path):
+        """When dependency installation fails, return (False, error_message)."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create requirements.txt
+        (tmp_path / "requirements.txt").write_text("nonexistent-package==99.99.99\n")
+
+        # uv is available
+        mock_which.side_effect = lambda cmd: "/usr/bin/uv" if cmd == "uv" else None
+
+        # Mock failed installation
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["uv", "pip", "install", "-r", "requirements.txt"],
+            returncode=1,
+            stdout="",
+            stderr="ERROR: Could not find a version that satisfies the requirement",
+        )
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=True)
+
+        assert success is False
+        assert "error" in message.lower() or "fail" in message.lower()
         cfg = LinterConfig(
             name="test",
             extensions={".py"},

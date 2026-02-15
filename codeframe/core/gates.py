@@ -151,10 +151,116 @@ class GateResult:
         return by_file
 
 
+def _ensure_dependencies_installed(
+    repo_path: Path,
+    auto_install: bool = True,
+) -> tuple[bool, str]:
+    """Ensure project dependencies are installed before running test gates.
+
+    Checks for missing dependencies and optionally installs them:
+    - Python: If requirements.txt exists but no .venv/ or venv/ directory
+    - Node.js: If package.json exists but no node_modules/ directory
+
+    Args:
+        repo_path: Path to the repository root
+        auto_install: Whether to auto-install missing dependencies (default: True)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success=True means deps installed or already present
+        - success=False means installation failed
+    """
+    messages = []
+
+    # Check Python dependencies
+    requirements_txt = repo_path / "requirements.txt"
+    venv_dirs = [repo_path / ".venv", repo_path / "venv"]
+    has_venv = any(d.exists() and d.is_dir() for d in venv_dirs)
+
+    if requirements_txt.exists() and not has_venv:
+        if not auto_install:
+            messages.append("Python dependencies not installed (auto-install disabled)")
+        else:
+            # Try to install using uv first, fallback to pip
+            uv_bin = shutil.which("uv")
+            pip_bin = shutil.which("pip")
+
+            if uv_bin:
+                try:
+                    result = subprocess.run(
+                        ["uv", "pip", "install", "-r", str(requirements_txt)],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=300,  # 5 minutes
+                    )
+                    if result.returncode == 0:
+                        messages.append(f"Installed Python dependencies via uv: {requirements_txt.name}")
+                    else:
+                        return False, f"Failed to install Python dependencies: {result.stderr}"
+                except Exception as e:
+                    return False, f"Error installing Python dependencies: {e}"
+            elif pip_bin:
+                try:
+                    result = subprocess.run(
+                        ["pip", "install", "-r", str(requirements_txt)],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                    )
+                    if result.returncode == 0:
+                        messages.append(f"Installed Python dependencies via pip: {requirements_txt.name}")
+                    else:
+                        return False, f"Failed to install Python dependencies: {result.stderr}"
+                except Exception as e:
+                    return False, f"Error installing Python dependencies: {e}"
+            else:
+                messages.append("Python dependencies needed but no package manager found (uv/pip)")
+    elif requirements_txt.exists() and has_venv:
+        messages.append("Python dependencies already installed (venv exists)")
+
+    # Check Node.js dependencies
+    package_json = repo_path / "package.json"
+    node_modules = repo_path / "node_modules"
+
+    if package_json.exists() and not node_modules.exists():
+        if not auto_install:
+            messages.append("Node dependencies not installed (auto-install disabled)")
+        else:
+            npm_bin = shutil.which("npm")
+
+            if npm_bin:
+                try:
+                    result = subprocess.run(
+                        ["npm", "install"],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=300,  # 5 minutes
+                    )
+                    if result.returncode == 0:
+                        messages.append("Installed Node dependencies via npm")
+                    else:
+                        return False, f"Failed to install Node dependencies: {result.stderr}"
+                except Exception as e:
+                    return False, f"Error installing Node dependencies: {e}"
+            else:
+                messages.append("Node dependencies needed but npm not found")
+    elif package_json.exists() and node_modules.exists():
+        messages.append("Node dependencies already installed (node_modules exists)")
+
+    # Success if we get here
+    if not messages:
+        return True, "No dependency checks needed"
+    return True, " | ".join(messages)
+
+
 def run(
     workspace: Workspace,
     gates: Optional[list[str]] = None,
     verbose: bool = False,
+    auto_install_deps: bool = True,
 ) -> GateResult:
     """Run verification gates.
 
@@ -162,6 +268,7 @@ def run(
         workspace: Target workspace
         gates: Specific gates to run (None = all available)
         verbose: Whether to capture full output
+        auto_install_deps: Whether to auto-install missing dependencies before test gates (default: True)
 
     Returns:
         GateResult with all check results
@@ -178,6 +285,39 @@ def run(
         {"gates": gates if gates is not None else ["auto"]},
         print_event=True,
     )
+
+    # PRE-FLIGHT: Ensure dependencies are installed before running test gates
+    dep_success, dep_message = _ensure_dependencies_installed(
+        workspace.repo_path,
+        auto_install=auto_install_deps,
+    )
+    if verbose:
+        print(f"[gates] Dependency check: {dep_message}")
+
+    # If dependency installation fails, create an ERROR check and return early
+    if not dep_success:
+        check = GateCheck(
+            name="dependency-check",
+            status=GateStatus.ERROR,
+            output=f"Dependency installation failed: {dep_message}",
+        )
+        result = GateResult(
+            passed=False,
+            checks=[check],
+            started_at=started_at,
+            completed_at=_utc_now(),
+        )
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.GATES_COMPLETED,
+            {
+                "passed": False,
+                "summary": "Dependency installation failed",
+                "checks": [{"name": check.name, "status": check.status.value}],
+            },
+            print_event=True,
+        )
+        return result
 
     checks: list[GateCheck] = []
     repo_path = workspace.repo_path
