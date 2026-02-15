@@ -973,6 +973,17 @@ def _execute_serial_resume(
     if final_completed == total:
         batch.status = BatchStatus.COMPLETED
         event_type = events.EventType.BATCH_COMPLETED
+
+        # Run batch-level validation (full gate sweep)
+        validation_passed, validation_error = _run_batch_level_validation(workspace, batch)
+
+        if not validation_passed:
+            # Gates failed - change status to PARTIAL (tasks done, integration broken)
+            batch.status = BatchStatus.PARTIAL
+            event_type = events.EventType.BATCH_PARTIAL
+            print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
+            print(f"Validation error: {validation_error}")
+
     elif final_completed == 0 and (final_failed > 0 or final_blocked > 0):
         batch.status = BatchStatus.FAILED
         event_type = events.EventType.BATCH_FAILED
@@ -1109,6 +1120,17 @@ def _execute_retries(
     if final_completed == total:
         batch.status = BatchStatus.COMPLETED
         event_type = events.EventType.BATCH_COMPLETED
+
+        # Run batch-level validation (full gate sweep)
+        validation_passed, validation_error = _run_batch_level_validation(workspace, batch)
+
+        if not validation_passed:
+            # Gates failed - change status to PARTIAL (tasks done, integration broken)
+            batch.status = BatchStatus.PARTIAL
+            event_type = events.EventType.BATCH_PARTIAL
+            print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
+            print(f"Validation error: {validation_error}")
+
     elif final_completed == 0 and (final_failed > 0 or final_blocked > 0):
         batch.status = BatchStatus.FAILED
         event_type = events.EventType.BATCH_FAILED
@@ -1142,6 +1164,51 @@ def _execute_retries(
         print("\n✓ All tasks succeeded after retries")
     else:
         print(f"\n⚠ {final_failed} task(s) still failing after {max_retries} retries")
+
+
+def _run_batch_level_validation(workspace: Workspace, batch: BatchRun) -> tuple[bool, Optional[str]]:
+    """Run full gate sweep after all tasks complete to catch cross-task inconsistencies.
+
+    Args:
+        workspace: The workspace
+        batch: The batch run that just completed
+
+    Returns:
+        Tuple of (passed: bool, failure_summary: Optional[str])
+        - passed=True means all gates passed
+        - passed=False means gates failed, with summary of failures
+    """
+    from codeframe.core import gates
+
+    print("\n[Conductor] Running batch-level validation (full gate sweep)...")
+
+    # Run all auto-detected gates against the full workspace
+    result = gates.run(workspace, gates=None, verbose=False, auto_install_deps=True)
+
+    if result.passed:
+        print("[Conductor] ✓ Batch-level validation passed")
+        return True, None
+    else:
+        # Extract failure summary
+        failure_summary = result.get_error_summary()
+        if not failure_summary:
+            failure_summary = "Gates failed (see individual gate outputs)"
+
+        print(f"[Conductor] ✗ Batch-level validation failed:\n{failure_summary}")
+
+        # Emit batch validation failed event
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.BATCH_VALIDATION_FAILED,
+            {
+                "batch_id": batch.id,
+                "failed_gates": [check.name for check in result.checks if check.status == gates.GateStatus.FAILED],
+                "summary": failure_summary[:500],  # Truncate for event payload
+            },
+            print_event=True,
+        )
+
+        return False, failure_summary
 
 
 def _execute_serial(
@@ -1247,6 +1314,17 @@ def _execute_serial(
     if completed_count == total:
         batch.status = BatchStatus.COMPLETED
         event_type = events.EventType.BATCH_COMPLETED
+
+        # Run batch-level validation (full gate sweep)
+        validation_passed, validation_error = _run_batch_level_validation(workspace, batch)
+
+        if not validation_passed:
+            # Gates failed - change status to PARTIAL (tasks done, integration broken)
+            batch.status = BatchStatus.PARTIAL
+            event_type = events.EventType.BATCH_PARTIAL
+            print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
+            print(f"Validation error: {validation_error}")
+
     elif completed_count == 0 and (failed_count > 0 or blocked_count > 0):
         batch.status = BatchStatus.FAILED
         event_type = events.EventType.BATCH_FAILED
@@ -1376,6 +1454,17 @@ def _execute_parallel(
     if completed_count == total:
         batch.status = BatchStatus.COMPLETED
         event_type = events.EventType.BATCH_COMPLETED
+
+        # Run batch-level validation (full gate sweep)
+        validation_passed, validation_error = _run_batch_level_validation(workspace, batch)
+
+        if not validation_passed:
+            # Gates failed - change status to PARTIAL (tasks done, integration broken)
+            batch.status = BatchStatus.PARTIAL
+            event_type = events.EventType.BATCH_PARTIAL
+            print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
+            print(f"Validation error: {validation_error}")
+
     elif completed_count == 0 and (failed_count > 0 or blocked_count > 0):
         batch.status = BatchStatus.FAILED
         event_type = events.EventType.BATCH_FAILED

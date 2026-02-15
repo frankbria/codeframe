@@ -297,6 +297,509 @@ class TestAutofixSupport:
 
     def test_linter_config_autofix_cmd_defaults_none(self):
         """autofix_cmd defaults to None when not specified."""
+
+
+class TestDependencyPreFlight:
+    """Tests for dependency installation pre-flight checks."""
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_python_deps_missing_auto_installs(self, mock_which, mock_run, tmp_path):
+        """When requirements.txt exists but no venv, auto-install deps if enabled."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create requirements.txt
+        (tmp_path / "requirements.txt").write_text("pytest==7.0.0\n")
+
+        # uv is available
+        mock_which.side_effect = lambda cmd: "/usr/bin/uv" if cmd == "uv" else None
+
+        # Mock successful installation
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["uv", "pip", "install", "-r", "requirements.txt"],
+            returncode=0,
+            stdout="Successfully installed pytest-7.0.0",
+            stderr="",
+        )
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=True)
+
+        assert success is True
+        assert "installed" in message.lower() or "success" in message.lower()
+        mock_run.assert_called_once()
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_node_deps_missing_auto_installs(self, mock_which, mock_run, tmp_path):
+        """When package.json exists but no node_modules, auto-install deps."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create package.json
+        (tmp_path / "package.json").write_text('{"name": "test", "dependencies": {"jest": "^29.0.0"}}')
+
+        # npm is available
+        mock_which.side_effect = lambda cmd: "/usr/bin/npm" if cmd == "npm" else None
+
+        # Mock successful installation
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npm", "install"],
+            returncode=0,
+            stdout="added 100 packages",
+            stderr="",
+        )
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=True)
+
+        assert success is True
+        mock_run.assert_called_once()
+
+    def test_venv_exists_skips_python_install(self, tmp_path):
+        """When .venv exists, skip Python dependency installation."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create requirements.txt and .venv directory
+        (tmp_path / "requirements.txt").write_text("pytest==7.0.0\n")
+        (tmp_path / ".venv").mkdir()
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=True)
+
+        assert success is True
+        assert "skip" in message.lower() or "already" in message.lower()
+
+    def test_node_modules_exists_skips_npm_install(self, tmp_path):
+        """When node_modules exists, skip npm install."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create package.json and node_modules directory
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+        (tmp_path / "node_modules").mkdir()
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=True)
+
+        assert success is True
+
+    def test_auto_install_disabled_skips_installation(self, tmp_path):
+        """When auto_install=False, skip installation and return skip message."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create requirements.txt without venv
+        (tmp_path / "requirements.txt").write_text("pytest==7.0.0\n")
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=False)
+
+        assert success is True
+        assert "disabled" in message.lower() or "skip" in message.lower()
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_installation_failure_returns_false(self, mock_which, mock_run, tmp_path):
+        """When dependency installation fails, return (False, error_message)."""
+        from codeframe.core.gates import _ensure_dependencies_installed
+
+        # Create requirements.txt
+        (tmp_path / "requirements.txt").write_text("nonexistent-package==99.99.99\n")
+
+        # uv is available
+        mock_which.side_effect = lambda cmd: "/usr/bin/uv" if cmd == "uv" else None
+
+        # Mock failed installation
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["uv", "pip", "install", "-r", "requirements.txt"],
+            returncode=1,
+            stdout="",
+            stderr="ERROR: Could not find a version that satisfies the requirement",
+        )
+
+        success, message = _ensure_dependencies_installed(tmp_path, auto_install=True)
+
+        assert success is False
+        assert "error" in message.lower() or "fail" in message.lower()
+
+
+class TestTypeScriptTypeCheckGate:
+    """Tests for TypeScript type-check gate (tsc)."""
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_tsc_gate_runs_type_check_script(self, mock_which, mock_run, tmp_path):
+        """When package.json has type-check script, use it instead of tsc directly."""
+        from codeframe.core.gates import _run_tsc
+
+        # Create tsconfig.json and package.json with type-check script
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {"strict": true}}')
+        (tmp_path / "package.json").write_text('{"scripts": {"type-check": "tsc --noEmit"}}')
+
+        # npm is available
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock successful type check
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npm", "run", "type-check"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        check = _run_tsc(tmp_path, verbose=False)
+
+        assert check.name == "tsc"
+        assert check.status == GateStatus.PASSED
+        # Verify it used npm run type-check, not npx tsc
+        mock_run.assert_called_once()
+        assert "npm" in mock_run.call_args[0][0]
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_tsc_gate_fallback_to_npx(self, mock_which, mock_run, tmp_path):
+        """When no type-check script, fallback to npx tsc --noEmit."""
+        from codeframe.core.gates import _run_tsc
+
+        # Create tsconfig.json without type-check script
+        (tmp_path / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+
+        # npx is available
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock successful type check
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npx", "tsc", "--noEmit"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        check = _run_tsc(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.PASSED
+        # Verify it used npx tsc --noEmit
+        assert "npx" in mock_run.call_args[0][0]
+        assert "--noEmit" in mock_run.call_args[0][0]
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_tsc_gate_detects_type_errors(self, mock_which, mock_run, tmp_path):
+        """Type errors from tsc should return FAILED status with structured errors."""
+        from codeframe.core.gates import _run_tsc
+
+        (tmp_path / "tsconfig.json").write_text('{}')
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock type error output
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npx", "tsc", "--noEmit"],
+            returncode=2,
+            stdout=(
+                "src/api.ts(15,10): error TS2339: Property 'completed' does not exist on type 'CreateTodoRequest'.\n"
+                "src/api.ts(20,5): error TS2322: Type 'string' is not assignable to type 'number'.\n"
+            ),
+            stderr="",
+        )
+
+        check = _run_tsc(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert check.exit_code == 2
+        assert "TS2339" in check.output
+        # Check for structured errors
+        assert check.detailed_errors is not None
+        assert len(check.detailed_errors) == 2
+        assert check.detailed_errors[0]["code"] == "TS2339"
+        assert check.detailed_errors[0]["file"] == "src/api.ts"
+        assert check.detailed_errors[0]["line"] == 15
+
+    def test_tsc_gate_skipped_no_tsconfig(self, tmp_path):
+        """Without tsconfig.json, tsc gate is SKIPPED."""
+        from codeframe.core.gates import _run_tsc
+
+        check = _run_tsc(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.SKIPPED
+        assert "tsconfig.json" in check.output.lower()
+
+    @patch("codeframe.core.gates.shutil.which", return_value=None)
+    def test_tsc_gate_skipped_no_npx(self, mock_which, tmp_path):
+        """Without npx available, tsc gate is SKIPPED."""
+        from codeframe.core.gates import _run_tsc
+
+        (tmp_path / "tsconfig.json").write_text('{}')
+
+        check = _run_tsc(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.SKIPPED
+        assert "npx" in check.output.lower()
+
+    def test_tsc_gate_auto_detected(self, tmp_path):
+        """tsc gate is auto-detected when tsconfig.json exists."""
+        from codeframe.core.gates import _detect_available_gates
+
+        (tmp_path / "tsconfig.json").write_text('{}')
+
+        gates = _detect_available_gates(tmp_path)
+
+        assert "tsc" in gates
+
+
+class TestPytestGateHardening:
+    """Tests for hardened pytest gate with collection error detection."""
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_pytest_collection_error_fails_gate(self, mock_which, mock_run, tmp_path):
+        """pytest collection errors (exit code 2/3/4) should FAIL the gate."""
+        from codeframe.core.gates import _run_pytest
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock collection error (exit code 4 = usage error, often import issues)
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["pytest", "-v", "--tb=short"],
+            returncode=4,
+            stdout=(
+                "ERROR: not found: /path/to/tests/test_api.py::test_init_db\n"
+                "ERROR: file or directory not found: tests/test_api.py\n"
+            ),
+            stderr="ERROR collecting tests/test_api.py",
+        )
+
+        check = _run_pytest(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert check.exit_code == 4
+        assert "ERROR" in check.output
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_pytest_import_error_during_collection_fails(self, mock_which, mock_run, tmp_path):
+        """ImportError during collection (exit code 2) should FAIL the gate."""
+        from codeframe.core.gates import _run_pytest
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock import error during collection
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["pytest", "-v", "--tb=short"],
+            returncode=2,
+            stdout=(
+                "ImportError while importing test module 'tests/test_db.py'.\n"
+                "ERROR: ModuleNotFoundError: No module named 'sqlalchemy'\n"
+            ),
+            stderr="",
+        )
+
+        check = _run_pytest(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert "ImportError" in check.output or "ModuleNotFoundError" in check.output
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_pytest_no_tests_collected_passes(self, mock_which, mock_run, tmp_path):
+        """Exit code 5 with 'no tests collected' should PASS (acceptable empty suite)."""
+        from codeframe.core.gates import _run_pytest
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock no tests collected (exit code 5, but clean)
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["pytest", "-v", "--tb=short"],
+            returncode=5,
+            stdout="collected 0 items\n\nno tests ran in 0.01s\n",
+            stderr="",
+        )
+
+        check = _run_pytest(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.PASSED
+        assert "no tests ran" in check.output.lower()
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_pytest_exit_code_5_with_error_fails(self, mock_which, mock_run, tmp_path):
+        """Exit code 5 with ERROR messages should FAIL (collection error, not empty suite)."""
+        from codeframe.core.gates import _run_pytest
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock exit code 5 but with collection errors
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["pytest", "-v", "--tb=short"],
+            returncode=5,
+            stdout=(
+                "ERROR collecting tests/test_api.py\n"
+                "collected 0 items\n"
+            ),
+            stderr="ImportError: cannot import name 'app' from 'main'",
+        )
+
+        check = _run_pytest(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert "ERROR" in check.output or "ImportError" in check.output
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_pytest_exit_code_1_test_failures(self, mock_which, mock_run, tmp_path):
+        """Exit code 1 (tests failed) should FAIL the gate."""
+        from codeframe.core.gates import _run_pytest
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock test failures
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["pytest", "-v", "--tb=short"],
+            returncode=1,
+            stdout="tests/test_api.py::test_foo FAILED\n\n1 failed, 0 passed in 0.5s\n",
+            stderr="",
+        )
+
+        check = _run_pytest(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert check.exit_code == 1
+
+
+class TestBuildVerificationGates:
+    """Tests for build verification gates (python-build, npm-build)."""
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_python_build_gate_smoke_test_success(self, mock_which, mock_run, tmp_path):
+        """python-build gate runs smoke test by importing common entry points."""
+        from codeframe.core.gates import _run_python_build
+
+        # Create a simple main.py
+        (tmp_path / "main.py").write_text("app = 'test'\n")
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock successful import
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["python", "-c", "from main import app"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        check = _run_python_build(tmp_path, verbose=False)
+
+        assert check.name == "python-build"
+        assert check.status == GateStatus.PASSED
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_python_build_gate_import_error_fails(self, mock_which, mock_run, tmp_path):
+        """python-build gate FAILS when import smoke test fails."""
+        from codeframe.core.gates import _run_python_build
+
+        (tmp_path / "main.py").write_text("import nonexistent_module\n")
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock import error
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["python", "-c", "from main import app"],
+            returncode=1,
+            stdout="",
+            stderr="ModuleNotFoundError: No module named 'nonexistent_module'",
+        )
+
+        check = _run_python_build(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert "ModuleNotFoundError" in check.output
+
+    def test_python_build_gate_skipped_no_entry_points(self, tmp_path):
+        """python-build gate SKIPPED when no entry points found."""
+        from codeframe.core.gates import _run_python_build
+
+        # Empty directory, no entry points
+        check = _run_python_build(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.SKIPPED
+        assert "entry point" in check.output.lower()
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_npm_build_gate_success(self, mock_which, mock_run, tmp_path):
+        """npm-build gate runs npm run build when build script exists."""
+        from codeframe.core.gates import _run_npm_build
+
+        # Create package.json with build script
+        (tmp_path / "package.json").write_text('{"scripts": {"build": "tsc && webpack"}}')
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock successful build
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npm", "run", "build"],
+            returncode=0,
+            stdout="Build completed successfully",
+            stderr="",
+        )
+
+        check = _run_npm_build(tmp_path, verbose=False)
+
+        assert check.name == "npm-build"
+        assert check.status == GateStatus.PASSED
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_npm_build_gate_build_failure(self, mock_which, mock_run, tmp_path):
+        """npm-build gate FAILS when build fails."""
+        from codeframe.core.gates import _run_npm_build
+
+        (tmp_path / "package.json").write_text('{"scripts": {"build": "tsc"}}')
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock build failure
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npm", "run", "build"],
+            returncode=1,
+            stdout="",
+            stderr="error TS2322: Type 'string' is not assignable to type 'number'",
+        )
+
+        check = _run_npm_build(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert "TS2322" in check.output
+
+    def test_npm_build_gate_skipped_no_build_script(self, tmp_path):
+        """npm-build gate SKIPPED when package.json has no build script."""
+        from codeframe.core.gates import _run_npm_build
+
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+
+        check = _run_npm_build(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.SKIPPED
+        assert "build" in check.output.lower()
+
+    def test_npm_build_gate_skipped_no_package_json(self, tmp_path):
+        """npm-build gate SKIPPED when no package.json exists."""
+        from codeframe.core.gates import _run_npm_build
+
+        check = _run_npm_build(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.SKIPPED
+
+    def test_build_gates_auto_detected(self, tmp_path):
+        """Build gates are auto-detected based on project files."""
+        from codeframe.core.gates import _detect_available_gates
+
+        # Python project
+        (tmp_path / "main.py").write_text("app = 'test'\n")
+        gates = _detect_available_gates(tmp_path)
+        assert "python-build" in gates
+
+        # Node project with build script
+        (tmp_path / "main.py").unlink()
+        (tmp_path / "package.json").write_text('{"scripts": {"build": "tsc"}}')
+        gates = _detect_available_gates(tmp_path)
+        assert "npm-build" in gates
         cfg = LinterConfig(
             name="test",
             extensions={".py"},

@@ -25,6 +25,7 @@ def _utc_now() -> datetime:
 
 
 _RUFF_ERROR_PATTERN = re.compile(r'^(.+?):(\d+):(\d+): ([A-Z]+\d+) (.+)$')
+_TSC_ERROR_PATTERN = re.compile(r'^(.+?)\((\d+),(\d+)\): error (TS\d+): (.+)$')
 
 
 def _parse_ruff_errors(output: str) -> list[dict[str, Any]]:
@@ -41,6 +42,31 @@ def _parse_ruff_errors(output: str) -> list[dict[str, Any]]:
     errors = []
     for line in output.splitlines():
         match = _RUFF_ERROR_PATTERN.match(line.strip())
+        if match:
+            errors.append({
+                "file": match.group(1),
+                "line": int(match.group(2)),
+                "col": int(match.group(3)),
+                "code": match.group(4),
+                "message": match.group(5),
+            })
+    return errors
+
+
+def _parse_tsc_errors(output: str) -> list[dict[str, Any]]:
+    """Parse TypeScript compiler output into structured error dicts.
+
+    Parses lines matching the pattern: src/file.ts(10,5): error TS2339: Property does not exist
+
+    Args:
+        output: Raw tsc stdout/stderr output.
+
+    Returns:
+        List of dicts with keys: file, line, col, code, message.
+    """
+    errors = []
+    for line in output.splitlines():
+        match = _TSC_ERROR_PATTERN.match(line.strip())
         if match:
             errors.append({
                 "file": match.group(1),
@@ -151,10 +177,116 @@ class GateResult:
         return by_file
 
 
+def _ensure_dependencies_installed(
+    repo_path: Path,
+    auto_install: bool = True,
+) -> tuple[bool, str]:
+    """Ensure project dependencies are installed before running test gates.
+
+    Checks for missing dependencies and optionally installs them:
+    - Python: If requirements.txt exists but no .venv/ or venv/ directory
+    - Node.js: If package.json exists but no node_modules/ directory
+
+    Args:
+        repo_path: Path to the repository root
+        auto_install: Whether to auto-install missing dependencies (default: True)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - success=True means deps installed or already present
+        - success=False means installation failed
+    """
+    messages = []
+
+    # Check Python dependencies
+    requirements_txt = repo_path / "requirements.txt"
+    venv_dirs = [repo_path / ".venv", repo_path / "venv"]
+    has_venv = any(d.exists() and d.is_dir() for d in venv_dirs)
+
+    if requirements_txt.exists() and not has_venv:
+        if not auto_install:
+            messages.append("Python dependencies not installed (auto-install disabled)")
+        else:
+            # Try to install using uv first, fallback to pip
+            uv_bin = shutil.which("uv")
+            pip_bin = shutil.which("pip")
+
+            if uv_bin:
+                try:
+                    result = subprocess.run(
+                        ["uv", "pip", "install", "-r", str(requirements_txt)],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=300,  # 5 minutes
+                    )
+                    if result.returncode == 0:
+                        messages.append(f"Installed Python dependencies via uv: {requirements_txt.name}")
+                    else:
+                        return False, f"Failed to install Python dependencies: {result.stderr}"
+                except Exception as e:
+                    return False, f"Error installing Python dependencies: {e}"
+            elif pip_bin:
+                try:
+                    result = subprocess.run(
+                        ["pip", "install", "-r", str(requirements_txt)],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                    )
+                    if result.returncode == 0:
+                        messages.append(f"Installed Python dependencies via pip: {requirements_txt.name}")
+                    else:
+                        return False, f"Failed to install Python dependencies: {result.stderr}"
+                except Exception as e:
+                    return False, f"Error installing Python dependencies: {e}"
+            else:
+                messages.append("Python dependencies needed but no package manager found (uv/pip)")
+    elif requirements_txt.exists() and has_venv:
+        messages.append("Python dependencies already installed (venv exists)")
+
+    # Check Node.js dependencies
+    package_json = repo_path / "package.json"
+    node_modules = repo_path / "node_modules"
+
+    if package_json.exists() and not node_modules.exists():
+        if not auto_install:
+            messages.append("Node dependencies not installed (auto-install disabled)")
+        else:
+            npm_bin = shutil.which("npm")
+
+            if npm_bin:
+                try:
+                    result = subprocess.run(
+                        ["npm", "install"],
+                        cwd=repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=300,  # 5 minutes
+                    )
+                    if result.returncode == 0:
+                        messages.append("Installed Node dependencies via npm")
+                    else:
+                        return False, f"Failed to install Node dependencies: {result.stderr}"
+                except Exception as e:
+                    return False, f"Error installing Node dependencies: {e}"
+            else:
+                messages.append("Node dependencies needed but npm not found")
+    elif package_json.exists() and node_modules.exists():
+        messages.append("Node dependencies already installed (node_modules exists)")
+
+    # Success if we get here
+    if not messages:
+        return True, "No dependency checks needed"
+    return True, " | ".join(messages)
+
+
 def run(
     workspace: Workspace,
     gates: Optional[list[str]] = None,
     verbose: bool = False,
+    auto_install_deps: bool = True,
 ) -> GateResult:
     """Run verification gates.
 
@@ -162,6 +294,7 @@ def run(
         workspace: Target workspace
         gates: Specific gates to run (None = all available)
         verbose: Whether to capture full output
+        auto_install_deps: Whether to auto-install missing dependencies before test gates (default: True)
 
     Returns:
         GateResult with all check results
@@ -179,6 +312,39 @@ def run(
         print_event=True,
     )
 
+    # PRE-FLIGHT: Ensure dependencies are installed before running test gates
+    dep_success, dep_message = _ensure_dependencies_installed(
+        workspace.repo_path,
+        auto_install=auto_install_deps,
+    )
+    if verbose:
+        print(f"[gates] Dependency check: {dep_message}")
+
+    # If dependency installation fails, create an ERROR check and return early
+    if not dep_success:
+        check = GateCheck(
+            name="dependency-check",
+            status=GateStatus.ERROR,
+            output=f"Dependency installation failed: {dep_message}",
+        )
+        result = GateResult(
+            passed=False,
+            checks=[check],
+            started_at=started_at,
+            completed_at=_utc_now(),
+        )
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.GATES_COMPLETED,
+            {
+                "passed": False,
+                "summary": "Dependency installation failed",
+                "checks": [{"name": check.name, "status": check.status.value}],
+            },
+            print_event=True,
+        )
+        return result
+
     checks: list[GateCheck] = []
     repo_path = workspace.repo_path
 
@@ -187,7 +353,7 @@ def run(
         gates = _detect_available_gates(repo_path)
 
     # Known gate names
-    known_gates = {"pytest", "ruff", "mypy", "npm-test", "npm-lint"}
+    known_gates = {"pytest", "ruff", "mypy", "npm-test", "npm-lint", "tsc", "python-build", "npm-build"}
 
     # Run each gate
     for gate_name in gates:
@@ -201,6 +367,12 @@ def run(
             check = _run_npm_test(repo_path, verbose)
         elif gate_name == "npm-lint":
             check = _run_npm_lint(repo_path, verbose)
+        elif gate_name == "tsc":
+            check = _run_tsc(repo_path, verbose)
+        elif gate_name == "python-build":
+            check = _run_python_build(repo_path, verbose)
+        elif gate_name == "npm-build":
+            check = _run_npm_build(repo_path, verbose)
         else:
             # Unknown gate: FAILED if explicitly requested, SKIPPED if auto-detected
             if gates_explicitly_provided:
@@ -280,6 +452,27 @@ def _detect_available_gates(repo_path: Path) -> list[str]:
         except Exception:
             pass
 
+    # TypeScript: tsc type checking
+    if (repo_path / "tsconfig.json").exists():
+        gates.append("tsc")
+
+    # Python build verification (smoke test import)
+    for entry_point in ["main.py", "app.py", "api.py", "__main__.py"]:
+        if (repo_path / entry_point).exists():
+            gates.append("python-build")
+            break
+
+    # Node.js build verification
+    if package_json.exists():
+        try:
+            import json
+            pkg = json.loads(package_json.read_text())
+            scripts = pkg.get("scripts", {})
+            if "build" in scripts:
+                gates.append("npm-build")
+        except Exception:
+            pass
+
     return gates
 
 
@@ -322,9 +515,44 @@ def _run_pytest(repo_path: Path, verbose: bool = False) -> GateCheck:
         if len(output) > 10000:
             output = output[:5000] + "\n...[truncated]...\n" + output[-5000:]
 
+        # Determine status based on exit code and output patterns
+        # pytest exit codes:
+        # 0 = all tests passed
+        # 1 = tests were collected and run but some failed
+        # 2 = test execution was interrupted by the user
+        # 3 = internal error happened while executing tests
+        # 4 = pytest command line usage error (often import errors)
+        # 5 = no tests were collected
+        status = GateStatus.PASSED
+
+        if result.returncode == 0:
+            status = GateStatus.PASSED
+        elif result.returncode == 1:
+            # Tests ran but failed - this is a legitimate FAILED
+            status = GateStatus.FAILED
+        elif result.returncode in [2, 3, 4]:
+            # Collection errors, internal errors, usage errors - all FAILED
+            status = GateStatus.FAILED
+        elif result.returncode == 5:
+            # Exit code 5: no tests collected
+            # Check if this is a clean "no tests" or an error during collection
+            output_lower = output.lower()
+            if "error" in output_lower or "importerror" in output_lower or "modulenotfounderror" in output_lower:
+                # Collection error disguised as "no tests collected"
+                status = GateStatus.FAILED
+            elif "no tests ran" in output_lower or "collected 0 items" in output_lower:
+                # Legitimately empty test suite - acceptable
+                status = GateStatus.PASSED
+            else:
+                # Unclear, default to FAILED to be safe
+                status = GateStatus.FAILED
+        else:
+            # Unknown exit code - treat as FAILED
+            status = GateStatus.FAILED
+
         return GateCheck(
             name="pytest",
-            status=GateStatus.PASSED if result.returncode == 0 else GateStatus.FAILED,
+            status=status,
             exit_code=result.returncode,
             output=output if verbose else _summarize_pytest_output(output),
             duration_ms=duration_ms,
@@ -553,6 +781,246 @@ def _run_npm_lint(repo_path: Path, verbose: bool = False) -> GateCheck:
     except Exception as e:
         return GateCheck(
             name="npm-lint",
+            status=GateStatus.ERROR,
+            output=str(e),
+        )
+
+
+def _run_python_build(repo_path: Path, verbose: bool = False) -> GateCheck:
+    """Run Python build verification via smoke test import.
+
+    Attempts to import common entry points to verify the project builds/imports correctly.
+    Checks for: main.py, app.py, api.py, __main__.py
+    """
+    import time
+
+    start = time.time()
+
+    # Detect entry points
+    entry_points = []
+    for candidate in ["main", "app", "api", "__main__"]:
+        if (repo_path / f"{candidate}.py").exists():
+            entry_points.append(candidate)
+
+    if not entry_points:
+        return GateCheck(
+            name="python-build",
+            status=GateStatus.SKIPPED,
+            output="No entry point files found (main.py, app.py, api.py, __main__.py)",
+        )
+
+    # Check if python is available
+    python_cmd = "python"
+    if shutil.which("uv"):
+        python_cmd = "uv run python"
+    elif not shutil.which("python"):
+        return GateCheck(
+            name="python-build",
+            status=GateStatus.SKIPPED,
+            output="python not found",
+        )
+
+    # Try importing the first entry point
+    entry_point = entry_points[0]
+
+    try:
+        # Try to import the module (smoke test)
+        cmd = python_cmd.split() + ["-c", f"import {entry_point}"]
+
+        result = subprocess.run(
+            cmd,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=60,  # 1 minute for import check
+        )
+
+        duration_ms = int((time.time() - start) * 1000)
+
+        output = result.stdout
+        if result.stderr:
+            output += "\n" + result.stderr
+
+        return GateCheck(
+            name="python-build",
+            status=GateStatus.PASSED if result.returncode == 0 else GateStatus.FAILED,
+            exit_code=result.returncode,
+            output=output[:2000] if not verbose else output,
+            duration_ms=duration_ms,
+        )
+
+    except subprocess.TimeoutExpired:
+        return GateCheck(
+            name="python-build",
+            status=GateStatus.ERROR,
+            output="Timeout after 60 seconds",
+        )
+    except Exception as e:
+        return GateCheck(
+            name="python-build",
+            status=GateStatus.ERROR,
+            output=str(e),
+        )
+
+
+def _run_npm_build(repo_path: Path, verbose: bool = False) -> GateCheck:
+    """Run npm build if build script exists in package.json."""
+    import json
+    import time
+
+    start = time.time()
+
+    # Check if package.json exists
+    package_json = repo_path / "package.json"
+    if not package_json.exists():
+        return GateCheck(
+            name="npm-build",
+            status=GateStatus.SKIPPED,
+            output="package.json not found",
+        )
+
+    # Check if build script exists
+    try:
+        pkg = json.loads(package_json.read_text())
+        scripts = pkg.get("scripts", {})
+        if "build" not in scripts:
+            return GateCheck(
+                name="npm-build",
+                status=GateStatus.SKIPPED,
+                output="No build script in package.json",
+            )
+    except Exception as e:
+        return GateCheck(
+            name="npm-build",
+            status=GateStatus.ERROR,
+            output=f"Failed to parse package.json: {e}",
+        )
+
+    # Check if npm is available
+    if not shutil.which("npm"):
+        return GateCheck(
+            name="npm-build",
+            status=GateStatus.SKIPPED,
+            output="npm not found",
+        )
+
+    try:
+        result = subprocess.run(
+            ["npm", "run", "build"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 minutes for builds
+        )
+
+        duration_ms = int((time.time() - start) * 1000)
+
+        output = result.stdout
+        if result.stderr:
+            output += "\n" + result.stderr
+
+        # Truncate long build output
+        if len(output) > 5000 and not verbose:
+            output = output[:2500] + "\n...[truncated]...\n" + output[-2500:]
+
+        return GateCheck(
+            name="npm-build",
+            status=GateStatus.PASSED if result.returncode == 0 else GateStatus.FAILED,
+            exit_code=result.returncode,
+            output=output,
+            duration_ms=duration_ms,
+        )
+
+    except subprocess.TimeoutExpired:
+        return GateCheck(
+            name="npm-build",
+            status=GateStatus.ERROR,
+            output="Timeout after 5 minutes",
+        )
+    except Exception as e:
+        return GateCheck(
+            name="npm-build",
+            status=GateStatus.ERROR,
+            output=str(e),
+        )
+
+
+def _run_tsc(repo_path: Path, verbose: bool = False) -> GateCheck:
+    """Run TypeScript type checking (tsc --noEmit).
+
+    Checks for type-check script in package.json first, otherwise uses npx tsc --noEmit.
+    """
+    import json
+    import time
+
+    start = time.time()
+
+    # Check if tsconfig.json exists
+    tsconfig_path = repo_path / "tsconfig.json"
+    if not tsconfig_path.exists():
+        return GateCheck(
+            name="tsc",
+            status=GateStatus.SKIPPED,
+            output="tsconfig.json not found",
+        )
+
+    # Check if npx is available
+    if not shutil.which("npx"):
+        return GateCheck(
+            name="tsc",
+            status=GateStatus.SKIPPED,
+            output="npx not found",
+        )
+
+    # Determine command: prefer "type-check" script in package.json
+    package_json_path = repo_path / "package.json"
+    cmd = ["npx", "tsc", "--noEmit"]  # Default fallback
+
+    if package_json_path.exists():
+        try:
+            package_data = json.loads(package_json_path.read_text())
+            scripts = package_data.get("scripts", {})
+            if "type-check" in scripts:
+                cmd = ["npm", "run", "type-check"]
+        except Exception:
+            pass  # Fallback to npx tsc --noEmit
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=120,  # 2 minutes, same as mypy
+        )
+
+        duration_ms = int((time.time() - start) * 1000)
+
+        output = result.stdout
+        if result.stderr:
+            output += "\n" + result.stderr
+
+        # Parse TypeScript errors into structured format
+        detailed_errors = _parse_tsc_errors(output) if result.returncode != 0 else None
+
+        return GateCheck(
+            name="tsc",
+            status=GateStatus.PASSED if result.returncode == 0 else GateStatus.FAILED,
+            exit_code=result.returncode,
+            output=output[:2000] if not verbose else output,
+            duration_ms=duration_ms,
+            detailed_errors=detailed_errors,
+        )
+
+    except subprocess.TimeoutExpired:
+        return GateCheck(
+            name="tsc",
+            status=GateStatus.ERROR,
+            output="Timeout after 120 seconds",
+        )
+    except Exception as e:
+        return GateCheck(
+            name="tsc",
             status=GateStatus.ERROR,
             output=str(e),
         )
