@@ -353,7 +353,7 @@ def run(
         gates = _detect_available_gates(repo_path)
 
     # Known gate names
-    known_gates = {"pytest", "ruff", "mypy", "npm-test", "npm-lint", "tsc"}
+    known_gates = {"pytest", "ruff", "mypy", "npm-test", "npm-lint", "tsc", "python-build", "npm-build"}
 
     # Run each gate
     for gate_name in gates:
@@ -369,6 +369,10 @@ def run(
             check = _run_npm_lint(repo_path, verbose)
         elif gate_name == "tsc":
             check = _run_tsc(repo_path, verbose)
+        elif gate_name == "python-build":
+            check = _run_python_build(repo_path, verbose)
+        elif gate_name == "npm-build":
+            check = _run_npm_build(repo_path, verbose)
         else:
             # Unknown gate: FAILED if explicitly requested, SKIPPED if auto-detected
             if gates_explicitly_provided:
@@ -451,6 +455,23 @@ def _detect_available_gates(repo_path: Path) -> list[str]:
     # TypeScript: tsc type checking
     if (repo_path / "tsconfig.json").exists():
         gates.append("tsc")
+
+    # Python build verification (smoke test import)
+    for entry_point in ["main.py", "app.py", "api.py", "__main__.py"]:
+        if (repo_path / entry_point).exists():
+            gates.append("python-build")
+            break
+
+    # Node.js build verification
+    if package_json.exists():
+        try:
+            import json
+            pkg = json.loads(package_json.read_text())
+            scripts = pkg.get("scripts", {})
+            if "build" in scripts:
+                gates.append("npm-build")
+        except Exception:
+            pass
 
     return gates
 
@@ -760,6 +781,165 @@ def _run_npm_lint(repo_path: Path, verbose: bool = False) -> GateCheck:
     except Exception as e:
         return GateCheck(
             name="npm-lint",
+            status=GateStatus.ERROR,
+            output=str(e),
+        )
+
+
+def _run_python_build(repo_path: Path, verbose: bool = False) -> GateCheck:
+    """Run Python build verification via smoke test import.
+
+    Attempts to import common entry points to verify the project builds/imports correctly.
+    Checks for: main.py, app.py, api.py, __main__.py
+    """
+    import time
+
+    start = time.time()
+
+    # Detect entry points
+    entry_points = []
+    for candidate in ["main", "app", "api", "__main__"]:
+        if (repo_path / f"{candidate}.py").exists():
+            entry_points.append(candidate)
+
+    if not entry_points:
+        return GateCheck(
+            name="python-build",
+            status=GateStatus.SKIPPED,
+            output="No entry point files found (main.py, app.py, api.py, __main__.py)",
+        )
+
+    # Check if python is available
+    python_cmd = "python"
+    if shutil.which("uv"):
+        python_cmd = "uv run python"
+    elif not shutil.which("python"):
+        return GateCheck(
+            name="python-build",
+            status=GateStatus.SKIPPED,
+            output="python not found",
+        )
+
+    # Try importing the first entry point
+    entry_point = entry_points[0]
+
+    try:
+        # Try to import the module (smoke test)
+        cmd = python_cmd.split() + ["-c", f"import {entry_point}"]
+
+        result = subprocess.run(
+            cmd,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=60,  # 1 minute for import check
+        )
+
+        duration_ms = int((time.time() - start) * 1000)
+
+        output = result.stdout
+        if result.stderr:
+            output += "\n" + result.stderr
+
+        return GateCheck(
+            name="python-build",
+            status=GateStatus.PASSED if result.returncode == 0 else GateStatus.FAILED,
+            exit_code=result.returncode,
+            output=output[:2000] if not verbose else output,
+            duration_ms=duration_ms,
+        )
+
+    except subprocess.TimeoutExpired:
+        return GateCheck(
+            name="python-build",
+            status=GateStatus.ERROR,
+            output="Timeout after 60 seconds",
+        )
+    except Exception as e:
+        return GateCheck(
+            name="python-build",
+            status=GateStatus.ERROR,
+            output=str(e),
+        )
+
+
+def _run_npm_build(repo_path: Path, verbose: bool = False) -> GateCheck:
+    """Run npm build if build script exists in package.json."""
+    import json
+    import time
+
+    start = time.time()
+
+    # Check if package.json exists
+    package_json = repo_path / "package.json"
+    if not package_json.exists():
+        return GateCheck(
+            name="npm-build",
+            status=GateStatus.SKIPPED,
+            output="package.json not found",
+        )
+
+    # Check if build script exists
+    try:
+        pkg = json.loads(package_json.read_text())
+        scripts = pkg.get("scripts", {})
+        if "build" not in scripts:
+            return GateCheck(
+                name="npm-build",
+                status=GateStatus.SKIPPED,
+                output="No build script in package.json",
+            )
+    except Exception as e:
+        return GateCheck(
+            name="npm-build",
+            status=GateStatus.ERROR,
+            output=f"Failed to parse package.json: {e}",
+        )
+
+    # Check if npm is available
+    if not shutil.which("npm"):
+        return GateCheck(
+            name="npm-build",
+            status=GateStatus.SKIPPED,
+            output="npm not found",
+        )
+
+    try:
+        result = subprocess.run(
+            ["npm", "run", "build"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 minutes for builds
+        )
+
+        duration_ms = int((time.time() - start) * 1000)
+
+        output = result.stdout
+        if result.stderr:
+            output += "\n" + result.stderr
+
+        # Truncate long build output
+        if len(output) > 5000 and not verbose:
+            output = output[:2500] + "\n...[truncated]...\n" + output[-2500:]
+
+        return GateCheck(
+            name="npm-build",
+            status=GateStatus.PASSED if result.returncode == 0 else GateStatus.FAILED,
+            exit_code=result.returncode,
+            output=output,
+            duration_ms=duration_ms,
+        )
+
+    except subprocess.TimeoutExpired:
+        return GateCheck(
+            name="npm-build",
+            status=GateStatus.ERROR,
+            output="Timeout after 5 minutes",
+        )
+    except Exception as e:
+        return GateCheck(
+            name="npm-build",
             status=GateStatus.ERROR,
             output=str(e),
         )

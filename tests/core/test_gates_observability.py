@@ -658,6 +658,148 @@ class TestPytestGateHardening:
 
         assert check.status == GateStatus.FAILED
         assert check.exit_code == 1
+
+
+class TestBuildVerificationGates:
+    """Tests for build verification gates (python-build, npm-build)."""
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_python_build_gate_smoke_test_success(self, mock_which, mock_run, tmp_path):
+        """python-build gate runs smoke test by importing common entry points."""
+        from codeframe.core.gates import _run_python_build
+
+        # Create a simple main.py
+        (tmp_path / "main.py").write_text("app = 'test'\n")
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock successful import
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["python", "-c", "from main import app"],
+            returncode=0,
+            stdout="",
+            stderr="",
+        )
+
+        check = _run_python_build(tmp_path, verbose=False)
+
+        assert check.name == "python-build"
+        assert check.status == GateStatus.PASSED
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_python_build_gate_import_error_fails(self, mock_which, mock_run, tmp_path):
+        """python-build gate FAILS when import smoke test fails."""
+        from codeframe.core.gates import _run_python_build
+
+        (tmp_path / "main.py").write_text("import nonexistent_module\n")
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock import error
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["python", "-c", "from main import app"],
+            returncode=1,
+            stdout="",
+            stderr="ModuleNotFoundError: No module named 'nonexistent_module'",
+        )
+
+        check = _run_python_build(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert "ModuleNotFoundError" in check.output
+
+    def test_python_build_gate_skipped_no_entry_points(self, tmp_path):
+        """python-build gate SKIPPED when no entry points found."""
+        from codeframe.core.gates import _run_python_build
+
+        # Empty directory, no entry points
+        check = _run_python_build(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.SKIPPED
+        assert "entry point" in check.output.lower()
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_npm_build_gate_success(self, mock_which, mock_run, tmp_path):
+        """npm-build gate runs npm run build when build script exists."""
+        from codeframe.core.gates import _run_npm_build
+
+        # Create package.json with build script
+        (tmp_path / "package.json").write_text('{"scripts": {"build": "tsc && webpack"}}')
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock successful build
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npm", "run", "build"],
+            returncode=0,
+            stdout="Build completed successfully",
+            stderr="",
+        )
+
+        check = _run_npm_build(tmp_path, verbose=False)
+
+        assert check.name == "npm-build"
+        assert check.status == GateStatus.PASSED
+
+    @patch("codeframe.core.gates.subprocess.run")
+    @patch("codeframe.core.gates.shutil.which")
+    def test_npm_build_gate_build_failure(self, mock_which, mock_run, tmp_path):
+        """npm-build gate FAILS when build fails."""
+        from codeframe.core.gates import _run_npm_build
+
+        (tmp_path / "package.json").write_text('{"scripts": {"build": "tsc"}}')
+
+        mock_which.side_effect = lambda cmd: f"/usr/bin/{cmd}"
+
+        # Mock build failure
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=["npm", "run", "build"],
+            returncode=1,
+            stdout="",
+            stderr="error TS2322: Type 'string' is not assignable to type 'number'",
+        )
+
+        check = _run_npm_build(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.FAILED
+        assert "TS2322" in check.output
+
+    def test_npm_build_gate_skipped_no_build_script(self, tmp_path):
+        """npm-build gate SKIPPED when package.json has no build script."""
+        from codeframe.core.gates import _run_npm_build
+
+        (tmp_path / "package.json").write_text('{"name": "test"}')
+
+        check = _run_npm_build(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.SKIPPED
+        assert "build" in check.output.lower()
+
+    def test_npm_build_gate_skipped_no_package_json(self, tmp_path):
+        """npm-build gate SKIPPED when no package.json exists."""
+        from codeframe.core.gates import _run_npm_build
+
+        check = _run_npm_build(tmp_path, verbose=False)
+
+        assert check.status == GateStatus.SKIPPED
+
+    def test_build_gates_auto_detected(self, tmp_path):
+        """Build gates are auto-detected based on project files."""
+        from codeframe.core.gates import _detect_available_gates
+
+        # Python project
+        (tmp_path / "main.py").write_text("app = 'test'\n")
+        gates = _detect_available_gates(tmp_path)
+        assert "python-build" in gates
+
+        # Node project with build script
+        (tmp_path / "main.py").unlink()
+        (tmp_path / "package.json").write_text('{"scripts": {"build": "tsc"}}')
+        gates = _detect_available_gates(tmp_path)
+        assert "npm-build" in gates
         cfg = LinterConfig(
             name="test",
             extensions={".py"},
