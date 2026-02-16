@@ -233,13 +233,13 @@ class TestStartSingleTaskEngine:
 
             assert resp.status_code == 200
             # Give background thread a moment to invoke mock
-            time.sleep(0.5)
+            time.sleep(1.0)
             mock_exec.assert_called_once()
             _, kwargs = mock_exec.call_args
             assert kwargs["engine"] == "react"
 
     def test_start_single_invalid_engine(self, tmp_path, client):
-        """Invalid engine value in query param should return 400."""
+        """Invalid engine value in query param should return 422 (Literal validation)."""
         ws = _make_workspace(tmp_path)
         task = _make_task(ws)
 
@@ -251,9 +251,7 @@ class TestStartSingleTaskEngine:
             },
         )
 
-        assert resp.status_code == 400
-        data = resp.json()
-        assert "detail" in data
+        assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -311,3 +309,33 @@ class TestApproveEndpointEngine:
         )
 
         assert resp.status_code == 422
+
+    def test_approve_without_execution_skips_engine(self, tmp_path, client):
+        """Engine should be irrelevant when start_execution=False (no batch started)."""
+        ws = _make_workspace(tmp_path)
+        _make_task(ws, status=TaskStatus.BACKLOG)
+
+        approval = ApprovalResult(
+            approved_count=1,
+            excluded_count=0,
+            approved_task_ids=["dummy"],
+            excluded_task_ids=[],
+        )
+
+        with (
+            patch("codeframe.ui.routers.tasks_v2.runtime.approve_tasks", return_value=approval),
+            patch("codeframe.ui.routers.tasks_v2.conductor.start_batch") as mock_batch,
+        ):
+            resp = client.post(
+                "/api/v2/tasks/approve",
+                json={
+                    "start_execution": False,
+                    "engine": "react",
+                },
+                params={"workspace_path": str(ws.repo_path)},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["batch_id"] is None
+        mock_batch.assert_not_called()

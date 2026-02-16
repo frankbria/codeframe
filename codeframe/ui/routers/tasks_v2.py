@@ -16,7 +16,7 @@ existing web UI until Phase 3 (Web UI Rebuild).
 
 import logging
 import threading
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -586,7 +586,7 @@ async def start_single_task(
     execute: bool = Query(False, description="Run agent execution (requires ANTHROPIC_API_KEY)"),
     dry_run: bool = Query(False, description="Preview changes without making them"),
     verbose: bool = Query(False, description="Show detailed progress output"),
-    engine: str = Query("plan", description="Execution engine: 'plan' (default) or 'react' (ReAct loop)"),
+    engine: Literal["plan", "react"] = Query("plan", description="Execution engine: 'plan' (default) or 'react' (ReAct loop)"),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict[str, Any]:
     """Start a single task run.
@@ -611,17 +611,6 @@ async def start_single_task(
             - 404: Task not found
             - 500: Execution error
     """
-    valid_engines = ("plan", "react")
-    if engine not in valid_engines:
-        raise HTTPException(
-            status_code=400,
-            detail=api_error(
-                "Invalid engine",
-                ErrorCodes.VALIDATION_ERROR,
-                f"Engine must be one of: {', '.join(valid_engines)}",
-            ),
-        )
-
     try:
         # Start the run
         run = runtime.start_task_run(workspace, task_id)
