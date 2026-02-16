@@ -596,7 +596,7 @@ def execute_agent(
     verbose: bool = False,
     fix_coordinator: Optional["GlobalFixCoordinator"] = None,
     event_publisher: Optional["EventPublisher"] = None,
-    engine: str = "plan",
+    engine: str = "react",
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -611,7 +611,7 @@ def execute_agent(
         verbose: If True, print detailed progress to stdout
         fix_coordinator: Optional coordinator for global fixes (for parallel execution)
         event_publisher: Optional EventPublisher for SSE streaming (real-time events)
-        engine: Agent engine to use ("plan" for existing Agent, "react" for ReactAgent)
+        engine: Agent engine to use ("react" for ReactAgent (default), "plan" for legacy Agent)
 
     Returns:
         Final AgentState after execution

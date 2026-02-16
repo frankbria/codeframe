@@ -65,24 +65,24 @@ class TestRuntimeEngineSelection:
     @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"})
     @patch("codeframe.core.streaming.RunOutputLogger")
     @patch("codeframe.adapters.llm.get_provider")
-    @patch("codeframe.core.agent.Agent")
-    def test_default_engine_uses_plan_agent(
-        self, mock_agent_cls, mock_get_provider, mock_output_logger, temp_workspace
+    @patch("codeframe.core.react_agent.ReactAgent")
+    def test_default_engine_uses_react_agent(
+        self, mock_react_cls, mock_get_provider, mock_output_logger, temp_workspace
     ):
-        """Default engine ('plan') should use the existing Agent class."""
+        """Default engine ('react') should use the ReactAgent class."""
         from codeframe.core.runtime import execute_agent, start_task_run
 
         task = tasks.create(temp_workspace, title="Test", status=TaskStatus.READY)
         run = start_task_run(temp_workspace, task.id)
 
-        # Mock agent
+        # Mock agent — ReactAgent.run() returns AgentStatus, not AgentState
         mock_agent = MagicMock()
-        mock_agent.run.return_value = AgentState(status=AgentStatus.COMPLETED)
-        mock_agent_cls.return_value = mock_agent
+        mock_agent.run.return_value = AgentStatus.COMPLETED
+        mock_react_cls.return_value = mock_agent
 
         state = execute_agent(temp_workspace, run)
 
-        mock_agent_cls.assert_called_once()
+        mock_react_cls.assert_called_once()
         assert state.status == AgentStatus.COMPLETED
 
     @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"})
@@ -223,7 +223,7 @@ class TestBatchRunEngineField:
     """Tests for engine field on BatchRun dataclass."""
 
     def test_batch_run_default_engine(self):
-        """BatchRun should default to engine='plan'."""
+        """BatchRun should default to engine='react'."""
         batch = BatchRun(
             id="test-batch",
             workspace_id="ws-1",
@@ -235,7 +235,7 @@ class TestBatchRunEngineField:
             started_at=datetime.now(timezone.utc),
             completed_at=None,
         )
-        assert batch.engine == "plan"
+        assert batch.engine == "react"
 
     def test_batch_run_react_engine(self):
         """BatchRun should accept engine='react'."""
@@ -281,7 +281,7 @@ class TestBatchRunEnginePersistence:
         assert loaded.engine == "react"
 
     def test_save_and_load_batch_default_engine(self, temp_workspace):
-        """Default engine ('plan') should persist correctly."""
+        """Default engine ('react') should persist correctly."""
         from codeframe.core.conductor import get_batch
 
         batch = BatchRun(
@@ -300,7 +300,7 @@ class TestBatchRunEnginePersistence:
 
         loaded = get_batch(temp_workspace, "test-engine-default")
         assert loaded is not None
-        assert loaded.engine == "plan"
+        assert loaded.engine == "react"
 
 
 class TestSubprocessCommandConstruction:
@@ -330,8 +330,8 @@ class TestSubprocessCommandConstruction:
         assert "react" in cmd
 
     @patch("codeframe.core.conductor.subprocess.Popen")
-    def test_subprocess_default_engine_is_plan(self, mock_popen, temp_workspace):
-        """Default engine should be 'plan' in subprocess command."""
+    def test_subprocess_default_engine_is_react(self, mock_popen, temp_workspace):
+        """Default engine should be 'react' in subprocess command."""
         from codeframe.core.conductor import _execute_task_subprocess
         from codeframe.core.runtime import RunStatus
 
@@ -348,7 +348,7 @@ class TestSubprocessCommandConstruction:
 
         cmd = mock_popen.call_args[0][0]
         assert "--engine" in cmd
-        assert "plan" in cmd
+        assert "react" in cmd
 
 
 class TestStartBatchEngineParam:
@@ -380,7 +380,7 @@ class TestStartBatchEngineParam:
 
     @patch("codeframe.core.conductor._execute_task_subprocess")
     def test_start_batch_default_engine(self, mock_subprocess, workspace_with_tasks):
-        """start_batch without engine param should default to 'plan'."""
+        """start_batch without engine param should default to 'react'."""
         workspace, task_list = workspace_with_tasks
         task_ids = [t.id for t in task_list]
 
@@ -392,7 +392,7 @@ class TestStartBatchEngineParam:
             strategy="serial",
         )
 
-        assert batch.engine == "plan"
+        assert batch.engine == "react"
 
 
 class TestBackwardCompatibility:
@@ -401,28 +401,29 @@ class TestBackwardCompatibility:
     @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"})
     @patch("codeframe.core.streaming.RunOutputLogger")
     @patch("codeframe.adapters.llm.get_provider")
-    @patch("codeframe.core.agent.Agent")
+    @patch("codeframe.core.react_agent.ReactAgent")
     def test_execute_agent_without_engine_param(
-        self, mock_agent_cls, mock_get_provider, mock_output_logger, temp_workspace
+        self, mock_react_cls, mock_get_provider, mock_output_logger, temp_workspace
     ):
-        """Calling execute_agent without engine should work (backward compatible)."""
+        """Calling execute_agent without engine should use ReactAgent (default)."""
         from codeframe.core.runtime import execute_agent, start_task_run
 
         task = tasks.create(temp_workspace, title="Test", status=TaskStatus.READY)
         run = start_task_run(temp_workspace, task.id)
 
+        # ReactAgent.run() returns AgentStatus, not AgentState
         mock_agent = MagicMock()
-        mock_agent.run.return_value = AgentState(status=AgentStatus.COMPLETED)
-        mock_agent_cls.return_value = mock_agent
+        mock_agent.run.return_value = AgentStatus.COMPLETED
+        mock_react_cls.return_value = mock_agent
 
-        # Call without engine parameter - should still work
+        # Call without engine parameter - should use ReactAgent (default)
         state = execute_agent(temp_workspace, run)
 
         assert state.status == AgentStatus.COMPLETED
-        mock_agent_cls.assert_called_once()
+        mock_react_cls.assert_called_once()
 
     def test_batch_run_without_engine_field(self, temp_workspace):
-        """BatchRun created without engine should default to 'plan'."""
+        """BatchRun created without engine should default to 'react'."""
         batch = BatchRun(
             id="compat-test",
             workspace_id=temp_workspace.id,
@@ -434,4 +435,4 @@ class TestBackwardCompatibility:
             started_at=datetime.now(timezone.utc),
             completed_at=None,
         )
-        assert batch.engine == "plan"
+        assert batch.engine == "react"

@@ -151,21 +151,19 @@ class TestRuntimeCreatesLogger:
         """Runtime execute_agent should create an output logger for the run."""
         from codeframe.core import runtime, tasks as tasks_module
         from codeframe.core.streaming import run_output_exists
+        from codeframe.core.agent import AgentStatus
 
         # Create task and run
         task = tasks_module.create(temp_workspace, title="Test task")
         run = runtime.start_task_run(temp_workspace, task.id)
 
-        # Mock the Agent class at its definition location
-        with patch("codeframe.core.agent.Agent") as MockAgent, \
+        # Mock the ReactAgent class (default engine is now "react")
+        with patch("codeframe.core.react_agent.ReactAgent") as MockReact, \
              patch("codeframe.adapters.llm.get_provider"):
 
             mock_agent = MagicMock()
-            mock_agent.run.return_value = MagicMock(
-                status=MagicMock(value="completed"),
-                blocker=None,
-            )
-            MockAgent.return_value = mock_agent
+            mock_agent.run.return_value = AgentStatus.COMPLETED
+            MockReact.return_value = mock_agent
 
             # Patch os.getenv to provide API key
             with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
@@ -178,9 +176,10 @@ class TestRuntimeCreatesLogger:
         assert run_output_exists(temp_workspace, run.id)
 
     def test_output_logger_passed_to_agent(self, temp_workspace: Workspace):
-        """Runtime should pass the output logger to the Agent."""
+        """Runtime should pass the output logger to the ReactAgent (default engine)."""
         from codeframe.core import runtime, tasks as tasks_module
         from codeframe.core.streaming import RunOutputLogger
+        from codeframe.core.agent import AgentStatus
 
         task = tasks_module.create(temp_workspace, title="Test task")
         run = runtime.start_task_run(temp_workspace, task.id)
@@ -191,13 +190,10 @@ class TestRuntimeCreatesLogger:
             nonlocal captured_logger
             captured_logger = kwargs.get("output_logger")
             mock = MagicMock()
-            mock.run.return_value = MagicMock(
-                status=MagicMock(value="completed"),
-                blocker=None,
-            )
+            mock.run.return_value = AgentStatus.COMPLETED
             return mock
 
-        with patch("codeframe.core.agent.Agent", side_effect=capture_agent), \
+        with patch("codeframe.core.react_agent.ReactAgent", side_effect=capture_agent), \
              patch("codeframe.adapters.llm.get_provider"), \
              patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
             try:

@@ -52,8 +52,8 @@ class ApproveTasksRequest(BaseModel):
         description="Whether to start batch execution after approval",
     )
     engine: str = Field(
-        "plan",
-        description="Execution engine: 'plan' (default) or 'react' (ReAct loop)",
+        "react",
+        description="Execution engine: 'react' (default, ReAct loop) or 'plan' (legacy step-based)",
     )
 
     @model_validator(mode="after")
@@ -109,8 +109,8 @@ class StartExecutionRequest(BaseModel):
         description="Number of retries for failed tasks",
     )
     engine: str = Field(
-        "plan",
-        description="Execution engine: 'plan' (default) or 'react' (ReAct loop)",
+        "react",
+        description="Execution engine: 'react' (default, ReAct loop) or 'plan' (legacy step-based)",
     )
 
     @model_validator(mode="after")
@@ -586,7 +586,7 @@ async def start_single_task(
     execute: bool = Query(False, description="Run agent execution (requires ANTHROPIC_API_KEY)"),
     dry_run: bool = Query(False, description="Preview changes without making them"),
     verbose: bool = Query(False, description="Show detailed progress output"),
-    engine: Literal["plan", "react"] = Query("plan", description="Execution engine: 'plan' (default) or 'react' (ReAct loop)"),
+    engine: Literal["plan", "react"] = Query("react", description="Execution engine: 'react' (default, ReAct loop) or 'plan' (legacy step-based)"),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict[str, Any]:
     """Start a single task run.

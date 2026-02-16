@@ -456,7 +456,7 @@ class BatchRun:
     started_at: datetime
     completed_at: Optional[datetime]
     results: dict[str, str] = field(default_factory=dict)
-    engine: str = "plan"
+    engine: str = "react"
 
 
 def start_batch(
@@ -468,7 +468,7 @@ def start_batch(
     dry_run: bool = False,
     max_retries: int = 0,
     on_event: Optional[Callable[[str, dict], None]] = None,
-    engine: str = "plan",
+    engine: str = "react",
 ) -> BatchRun:
     """Start a batch execution of multiple tasks.
 
@@ -481,7 +481,7 @@ def start_batch(
         dry_run: If True, don't actually execute tasks
         max_retries: Max retry attempts for failed tasks (0 = no retries)
         on_event: Optional callback for batch events
-        engine: Agent engine to use ("plan" or "react")
+        engine: Agent engine to use ("react" default, or "plan" for legacy)
 
     Returns:
         BatchRun with results populated
@@ -1699,7 +1699,7 @@ def _execute_task_subprocess(
     workspace: Workspace,
     task_id: str,
     batch_id: Optional[str] = None,
-    engine: str = "plan",
+    engine: str = "react",
 ) -> str:
     """Execute a single task via subprocess.
 

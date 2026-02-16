@@ -1,10 +1,10 @@
 # CodeFRAME Development Guidelines (v2 Reset)
 
-Last updated: 2026-02-03
+Last updated: 2026-02-15
 
 This repo is in an **in-place v2 refactor** ("strangler rewrite"). The goal is to deliver a **headless, CLI-first Golden Path** and treat all UI/server layers as optional adapters.
 
-**Status: Phase 1 Complete ✅ | Phase 2 Complete ✅** - Server layer with full REST API, authentication, rate limiting, and real-time streaming. See `docs/V2_STRATEGIC_ROADMAP.md` for the 5-phase plan.
+**Status: Phase 1 ✅ | Phase 2 ✅ | Phase 2.5 ✅** - ReAct agent is default engine. Server layer with full REST API, authentication, rate limiting, and real-time streaming. See `docs/V2_STRATEGIC_ROADMAP.md` for the 5-phase plan.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -31,13 +31,14 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 ---
 
-## Current Reality (Phase 1 & 2 Complete)
+## Current Reality (Phase 1, 2 & 2.5 Complete)
 
 ### What's Working Now
-- **Full agent execution**: `cf work start <task-id> --execute`
+- **Full agent execution**: `cf work start <task-id> --execute` (uses ReAct engine by default)
+- **Engine selection**: `--engine react` (default) or `--engine plan` (legacy)
 - **Verbose mode**: `cf work start <task-id> --execute --verbose` shows detailed progress
 - **Dry run mode**: `cf work start <task-id> --execute --dry-run`
-- **Self-correction loop**: Agent automatically fixes failing verification gates (up to 3 attempts)
+- **Self-correction loop**: Agent automatically fixes failing verification gates (up to 5 attempts with ReAct)
 - **FAILED task status**: Tasks can transition to FAILED for proper error visibility
 - **Tech stack configuration**: `cf init . --detect` auto-detects tech stack from project files
 - **Project preferences**: Agent loads AGENTS.md or CLAUDE.md for per-project configuration
@@ -79,9 +80,12 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 ```
 codeframe/
 ├── core/                    # Headless domain + orchestration (NO FastAPI imports)
-│   ├── agent.py            # Agent orchestrator with blocker detection
-│   ├── planner.py          # LLM-powered implementation planning
-│   ├── executor.py         # Code execution engine with rollback
+│   ├── react_agent.py      # ReAct agent (default engine) - observe-think-act loop
+│   ├── tools.py            # Tool definitions for ReAct agent (7 tools)
+│   ├── editor.py           # Search-replace file editor with fuzzy matching
+│   ├── agent.py            # Legacy plan-based agent (--engine plan)
+│   ├── planner.py          # LLM-powered implementation planning (plan engine)
+│   ├── executor.py         # Code execution engine with rollback (plan engine)
 │   ├── context.py          # Task context loader with relevance scoring
 │   ├── tasks.py            # Task management with depends_on field
 │   ├── blockers.py         # Human-in-the-loop blocker system
@@ -200,14 +204,17 @@ At all times:
 
 | Component | File | Purpose |
 |-----------|------|---------|
+| **ReactAgent** | **`core/react_agent.py`** | **Default engine: observe-think-act loop with tool use** |
+| **Tools** | **`core/tools.py`** | **7 agent tools: read/edit/create file, run command/tests, search, list** |
+| **Editor** | **`core/editor.py`** | **Search-replace editor with 4-level fuzzy matching** |
 | LLM Adapter | `adapters/llm/base.py` | Protocol, ModelSelector, Purpose enum |
 | Anthropic Provider | `adapters/llm/anthropic.py` | Claude integration with streaming |
 | Mock Provider | `adapters/llm/mock.py` | Testing with call tracking |
 | Context Loader | `core/context.py` | Codebase scanning, relevance scoring |
-| Planner | `core/planner.py` | Task → ImplementationPlan via LLM |
-| Executor | `core/executor.py` | File ops, shell commands, rollback |
-| Agent | `core/agent.py` | Orchestration loop, blocker detection |
-| Runtime | `core/runtime.py` | Run lifecycle, agent invocation |
+| Planner | `core/planner.py` | Task → ImplementationPlan via LLM (plan engine) |
+| Executor | `core/executor.py` | File ops, shell commands, rollback (plan engine) |
+| Agent (legacy) | `core/agent.py` | Plan-based orchestration (--engine plan) |
+| Runtime | `core/runtime.py` | Run lifecycle, engine selection, agent invocation |
 | Conductor | `core/conductor.py` | Batch orchestration, worker pool |
 | Dependency Graph | `core/dependency_graph.py` | DAG operations, topological sort |
 | Dependency Analyzer | `core/dependency_analyzer.py` | LLM-based dependency inference |
@@ -228,13 +235,50 @@ Task-based heuristic via `Purpose` enum:
 
 Future: `cf tasks set provider <id> <provider>` for per-task override.
 
-### Execution Flow
-```
+### Engine Selection
+
+CodeFRAME supports two execution engines, selected via `--engine`:
+
+| Engine | Flag | Pattern | Best For |
+|--------|------|---------|----------|
+| **ReAct** (default) | `--engine react` | Observe → Think → Act loop | Most tasks, adaptive execution |
+| **Plan** (legacy) | `--engine plan` | Plan all steps → Execute sequentially | Well-defined, predictable tasks |
+
+### Execution Flow (ReAct — default)
+```text
 cf work start <id> --execute [--verbose]
     │
     ├── runtime.start_task_run()      # Creates run, transitions task→IN_PROGRESS
     │
-    └── runtime.execute_agent(verbose=True/False)
+    └── runtime.execute_agent(engine="react")
+            │
+            └── ReactAgent.run(task_id)
+                ├── Load context (PRD, codebase, blockers, AGENTS.md, tech_stack)
+                ├── Build layered system prompt
+                │
+                └── Tool-use loop (until complete/blocked/failed):
+                    ├── LLM decides next action (tool call)
+                    ├── Execute tool: read_file, edit_file, create_file,
+                    │   run_command, run_tests, search_codebase, list_files
+                    ├── Observe result → feed back to LLM
+                    ├── Incremental verification (ruff after file changes)
+                    └── Token budget management (3-tier compaction)
+                │
+                └── Final verification with self-correction (up to 5 retries)
+                │
+                └── Update run/task status based on agent result
+                    ├── COMPLETED → complete_run() → task→DONE
+                    ├── BLOCKED → block_run() → task→BLOCKED
+                    └── FAILED → fail_run() → task→FAILED
+```
+
+### Execution Flow (Plan — legacy, `--engine plan`)
+```text
+cf work start <id> --execute --engine plan
+    │
+    ├── runtime.start_task_run()
+    │
+    └── runtime.execute_agent(engine="plan")
             │
             ├── agent.run(task_id)
             │   ├── Load context (PRD, codebase, blockers, AGENTS.md)
@@ -289,7 +333,8 @@ cf tasks show <id>
 
 # Work execution (single task)
 cf work start <task-id>                    # Creates run record
-cf work start <task-id> --execute          # Runs AI agent
+cf work start <task-id> --execute          # Runs AI agent (ReAct engine, default)
+cf work start <task-id> --execute --engine plan  # Use legacy plan engine
 cf work start <task-id> --execute --verbose  # With detailed output
 cf work start <task-id> --execute --dry-run  # Preview changes
 cf work stop <task-id>                     # Cancel stale run
@@ -298,13 +343,14 @@ cf work follow <task-id>                   # Stream real-time output
 cf work follow <task-id> --tail 50         # Show last 50 lines then stream
 
 # Batch execution (multiple tasks)
-cf work batch run <id1> <id2> ...          # Execute multiple tasks
+cf work batch run <id1> <id2> ...          # Execute multiple tasks (ReAct default)
 cf work batch run --all-ready              # All READY tasks
+cf work batch run --all-ready --engine plan  # Use legacy plan engine
 cf work batch run --strategy serial        # Serial (default)
 cf work batch run --strategy parallel      # Parallel execution
 cf work batch run --strategy auto          # LLM-inferred dependencies
 cf work batch run --max-parallel 4         # Concurrent limit
-cf work batch run --retry 3                # Auto-retry failures
+cf work batch run --retry 3               # Auto-retry failures
 cf work batch status [batch_id]            # Show batch status
 cf work batch cancel <batch_id>            # Cancel running batch
 cf work batch resume <batch_id>            # Re-run failed tasks
@@ -360,6 +406,11 @@ Do not expand frontend scope during Golden Path work.
 - `docs/AGENT_IMPLEMENTATION_TASKS.md` - Agent system components
 - `docs/V2_STRATEGIC_ROADMAP.md` - 5-phase plan from CLI to multi-agent
 
+### Agent Architecture (Phase 2.5)
+- `docs/AGENT_V3_UNIFIED_PLAN.md` - ReAct architecture design and rules
+- `docs/REACT_AGENT_ARCHITECTURE.md` - Deep-dive: tools, editor, token management
+- `docs/REACT_AGENT_ANALYSIS.md` - Golden path test run analysis
+
 ### API Documentation (Phase 2)
 - `/docs` - Swagger UI (interactive API explorer)
 - `/redoc` - ReDoc (readable API documentation)
@@ -406,18 +457,36 @@ If you are unsure which direction to take, default to:
 
 ---
 
-## Recent Updates (2026-02-03)
+## Recent Updates (2026-02-15)
 
-### Phase 2 Complete: Server Layer
-All Phase 2 deliverables are complete:
+### Phase 2.5 Complete: ReAct Agent Architecture (#355)
+Default execution engine switched from plan-based to **ReAct (Reasoning + Acting)**.
+
+**What changed:**
+- Default engine is now `"react"` — all `cf work start --execute` and `cf work batch run` commands use ReactAgent
+- Legacy plan engine available via `--engine plan` flag
+- ReactAgent uses iterative tool-use loop (observe → think → act) instead of plan-all-then-execute
+- 7 structured tools: `read_file`, `edit_file`, `create_file`, `run_command`, `run_tests`, `search_codebase`, `list_files`
+- Search-replace editing with 4-level fuzzy matching (exact → whitespace-normalized → indentation-agnostic → fuzzy)
+- Token budget management with 3-tier compaction
+- Adaptive iteration budget based on task complexity
+
+**Phase 2.5 deliverables:**
+- ✅ ReAct agent implementation (`core/react_agent.py`, `core/tools.py`, `core/editor.py`)
+- ✅ CLI `--engine` flag (#353)
+- ✅ API engine parameter (#354)
+- ✅ Default switch to react + documentation (#355)
 
 | Phase | Focus | Status |
 |-------|-------|--------|
 | 1 | CLI Completion | ✅ **Complete** |
 | 2 | Server Layer | ✅ **Complete** |
+| 2.5 | ReAct Agent | ✅ **Complete** |
 | 3 | Web UI Rebuild | Planned |
 | 4 | Multi-Agent Coordination | Planned |
 | 5 | Advanced Features | Planned |
+
+### Phase 2 Complete: Server Layer (2026-02-03)
 
 **Phase 2 deliverables completed:**
 - ✅ Server audit and refactor (#322) - 15 v2 routers following thin adapter pattern
