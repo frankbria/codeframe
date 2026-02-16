@@ -1,10 +1,10 @@
 # CodeFRAME Development Guidelines (v2 Reset)
 
-Last updated: 2026-02-03
+Last updated: 2026-02-15
 
 This repo is in an **in-place v2 refactor** ("strangler rewrite"). The goal is to deliver a **headless, CLI-first Golden Path** and treat all UI/server layers as optional adapters.
 
-**Status: Phase 1 Complete ✅ | Phase 2 Complete ✅** - Server layer with full REST API, authentication, rate limiting, and real-time streaming. See `docs/V2_STRATEGIC_ROADMAP.md` for the 5-phase plan.
+**Status: Phase 1 ✅ | Phase 2 ✅ | Phase 2.5 ✅** - ReAct agent is default engine. Server layer with full REST API, authentication, rate limiting, and real-time streaming. See `docs/V2_STRATEGIC_ROADMAP.md` for the 5-phase plan.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -245,7 +245,7 @@ CodeFRAME supports two execution engines, selected via `--engine`:
 | **Plan** (legacy) | `--engine plan` | Plan all steps → Execute sequentially | Well-defined, predictable tasks |
 
 ### Execution Flow (ReAct — default)
-```
+```text
 cf work start <id> --execute [--verbose]
     │
     ├── runtime.start_task_run()      # Creates run, transitions task→IN_PROGRESS
@@ -273,7 +273,7 @@ cf work start <id> --execute [--verbose]
 ```
 
 ### Execution Flow (Plan — legacy, `--engine plan`)
-```
+```text
 cf work start <id> --execute --engine plan
     │
     ├── runtime.start_task_run()

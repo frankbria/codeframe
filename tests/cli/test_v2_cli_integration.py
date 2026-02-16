@@ -995,7 +995,8 @@ class TestReactAgentIntegration:
             ],
         )
         assert result.exit_code == 0, f"react verbose failed: {result.output}"
-        assert "engine=react" in result.output
+        # engine=react is the default, so the label should be hidden
+        assert "engine=react" not in result.output
         assert "[ReactAgent]" in result.output
         assert provider.call_count >= 1
 

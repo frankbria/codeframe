@@ -2056,7 +2056,7 @@ def work_start(
             mode = "[dim](dry run)[/dim]" if dry_run else ""
             debug_mode = " [dim](debug logging enabled)[/dim]" if debug else ""
             verbose_mode = " [dim](verbose)[/dim]" if verbose else ""
-            engine_mode = f" [dim](engine={engine})[/dim]" if engine != "plan" else ""
+            engine_mode = f" [dim](engine={engine})[/dim]" if engine != "react" else ""
             console.print(f"\n[bold]Executing agent...{mode}{debug_mode}{verbose_mode}{engine_mode}[/bold]")
 
             try:
