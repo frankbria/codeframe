@@ -1,8 +1,8 @@
 # CodeFRAME v2 Strategic Roadmap
 
 **Created**: 2026-01-29
-**Updated**: 2026-02-03
-**Status**: Active - Phase 2 In Progress
+**Updated**: 2026-02-15
+**Status**: Active - Phase 2.5 Complete, Phase 3 Next
 
 ## Executive Summary
 
@@ -164,6 +164,59 @@ See `docs/PHASE_2_DEVELOPER_GUIDE.md` for implementation guide.
 
 ---
 
+## Phase 2.5: ReAct Agent Architecture ✅ COMPLETE
+
+**Goal**: Replace plan-then-execute agent with iterative ReAct (Reasoning + Acting) loop as the default engine.
+**Status**: ✅ **COMPLETE** (2026-02-15)
+
+### Motivation
+
+The plan-based agent had several failure modes discovered during testing:
+- Config file overwrites (whole-file generation ignores existing content)
+- Cross-file naming inconsistency (each file generated in isolation)
+- Accumulated lint errors (no incremental verification)
+- Ineffective self-correction (empty error context)
+
+### Deliverables
+
+1. **ReAct Agent Implementation** - ✅ COMPLETE
+   - `core/react_agent.py` - Observe-Think-Act loop with tool use
+   - `core/tools.py` - 7 structured tools (read/edit/create file, run command/tests, search, list)
+   - `core/editor.py` - Search-replace editor with 4-level fuzzy matching
+
+2. **Engine Selection** - ✅ COMPLETE
+   - `--engine react` (default) or `--engine plan` (legacy) on all work commands
+   - Runtime routes to ReactAgent or Agent based on engine parameter
+   - API endpoints support engine parameter with validation
+
+3. **CLI Validation** (#353) - ✅ COMPLETE
+   - `--engine` flag on `cf work start` and `cf work batch run`
+   - Default switched to "react"
+
+4. **API Validation** (#354) - ✅ COMPLETE
+   - Engine parameter on execute, approve, and stream endpoints
+   - Backward compatible — omitting engine uses "react" default
+
+5. **Default Switch + Documentation** (#355) - ✅ COMPLETE
+   - Default engine changed from "plan" to "react" across CLI, API, and runtime
+   - CLAUDE.md updated with ReAct architecture documentation
+
+### Key Architecture Decisions
+
+- **Search-replace editing**: ~98% accuracy vs ~70-80% for whole-file regeneration
+- **Read before write**: Agent always sees actual file state before editing
+- **Lint after every change**: Catch errors immediately, not after they accumulate
+- **7 focused tools**: Fewer tools = higher accuracy
+- **Token budget management**: 3-tier compaction prevents context window overflow
+- **Adaptive iteration budget**: Task complexity scoring adjusts iteration limits
+
+### Reference Documentation
+- `docs/AGENT_V3_UNIFIED_PLAN.md` - Architecture design and rules
+- `docs/REACT_AGENT_ARCHITECTURE.md` - Deep-dive on tools, editor, token management
+- `docs/PHASE_25_VALIDATION_REPORT.md` - End-to-end validation results
+
+---
+
 ## Phase 3: Web UI Rebuild
 
 **Goal**: Modern dashboard consuming REST/WebSocket API.
@@ -317,9 +370,10 @@ After each phase:
 | Phase | Focus | Key Outcome | Status |
 |-------|-------|-------------|--------|
 | 1 | CLI Completion | Production-ready headless agent | ✅ **COMPLETE** |
-| 2 | Server Layer | REST API + real-time events | 🔄 **90% COMPLETE** |
+| 2 | Server Layer | REST API + real-time events | ✅ **COMPLETE** |
+| 2.5 | ReAct Agent | Iterative tool-use execution engine | ✅ **COMPLETE** |
 | 3 | Web UI | Modern dashboard | Planned |
 | 4 | Multi-Agent | Agent swarms | Planned |
 | 5 | Advanced | Power features | Planned |
 
-**Current focus**: Phase 2 - Completing remaining items (WebSocket events, OpenAPI docs, pagination).
+**Current focus**: Phase 3 - Web UI rebuild on v2 foundation.

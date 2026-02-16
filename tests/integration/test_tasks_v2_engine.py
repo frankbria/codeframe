@@ -52,7 +52,7 @@ def _make_task(workspace, title="Test task", status=TaskStatus.READY):
     return task
 
 
-def _make_batch_run(workspace_id, task_ids, engine="plan"):
+def _make_batch_run(workspace_id, task_ids, engine="react"):
     """Build a BatchRun stub for mock return values."""
     return BatchRun(
         id=str(uuid.uuid4()),
@@ -108,7 +108,7 @@ class TestExecuteEndpointEngine:
     """Tests for POST /api/v2/tasks/execute engine parameter."""
 
     def test_execute_default_engine(self, tmp_path, client):
-        """Default engine should be 'plan' when not specified."""
+        """Default engine should be 'react' when not specified."""
         ws = _make_workspace(tmp_path)
         task = _make_task(ws)
 
@@ -128,7 +128,7 @@ class TestExecuteEndpointEngine:
         assert data["success"] is True
         mock_batch.assert_called_once()
         _, kwargs = mock_batch.call_args
-        assert kwargs["engine"] == "plan"
+        assert kwargs["engine"] == "react"
 
     def test_execute_with_react_engine(self, tmp_path, client):
         """Passing engine='react' should forward it to conductor."""
@@ -195,7 +195,7 @@ class TestStartSingleTaskEngine:
     """Tests for POST /api/v2/tasks/{task_id}/start engine parameter."""
 
     def test_start_single_default_engine(self, tmp_path, client):
-        """Default engine should be 'plan' when query param not provided."""
+        """Default engine should be 'react' when query param not provided."""
         ws = _make_workspace(tmp_path)
         task = _make_task(ws)
         run = _make_run(ws.id, task.id)

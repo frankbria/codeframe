@@ -1994,9 +1994,9 @@ def work_start(
         help="Run stub agent (for testing, does nothing real)",
     ),
     engine: str = typer.Option(
-        "plan",
+        "react",
         "--engine",
-        help="Agent engine: 'plan' (default, step-based) or 'react' (ReAct tool-use loop)",
+        help="Agent engine: 'react' (default, ReAct tool-use loop) or 'plan' (legacy step-based)",
     ),
 ) -> None:
     """Start working on a task.
@@ -2007,7 +2007,7 @@ def work_start(
     Example:
         codeframe work start abc123
         codeframe work start abc123 --execute
-        codeframe work start abc123 --execute --engine react
+        codeframe work start abc123 --execute --engine plan
         codeframe work start abc123 --execute --dry-run
         codeframe work start abc123 --execute --verbose
     """
@@ -2860,9 +2860,9 @@ def batch_run(
         help="Run verification gates (pytest, ruff) after successful batch completion",
     ),
     engine: str = typer.Option(
-        "plan",
+        "react",
         "--engine",
-        help="Agent engine: 'plan' (default, step-based) or 'react' (ReAct tool-use loop)",
+        help="Agent engine: 'react' (default, ReAct tool-use loop) or 'plan' (legacy step-based)",
     ),
 ) -> None:
     """Execute multiple tasks in batch.
@@ -2876,7 +2876,7 @@ def batch_run(
         codeframe work batch run task1 task2 task3
         codeframe work batch run --all-ready
         codeframe work batch run --all-ready --strategy serial
-        codeframe work batch run --all-ready --engine react
+        codeframe work batch run --all-ready --engine plan
         codeframe work batch run task1 task2 --dry-run
         codeframe work batch run task1 task2 --retry 2
     """

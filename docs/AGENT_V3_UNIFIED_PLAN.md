@@ -1,7 +1,7 @@
 # Agent V3: Unified Architectural Plan
 
 **Date**: 2026-02-07
-**Status**: Final Draft — Synthesized from research team debate
+**Status**: ✅ Implemented — Default engine since 2026-02-15 (#355)
 **Sources**: AGENT_ARCHITECTURE_RESEARCH.md, AGENT_FRAMEWORK_DEEP_DIVE.md, AGENT_ARCHITECTURE_CRITIQUE.md, REACT_AGENT_ARCHITECTURE.md
 
 ---
@@ -27,7 +27,7 @@ This plan redesigns CodeFRAME's agent execution from Plan-and-Execute to a **Hyb
 3. **Lint after every file change** — catch errors immediately, not after 92 accumulate
 4. **Model is the planner** — the LLM decides what to do next based on observed reality
 5. **Fewer tools = higher accuracy** — 7 focused tools, not a large surface area
-6. **Backward compatible** — `--engine plan` preserved as default until ReAct is validated
+6. **Backward compatible** — `--engine plan` available as fallback (ReAct is now default)
 
 ---
 
@@ -39,7 +39,7 @@ This plan redesigns CodeFRAME's agent execution from Plan-and-Execute to a **Hyb
 cf work start <task-id> --execute [--engine react]
     │
     ├── runtime.start_task_run()
-    │   └── Select engine: "plan" (default, existing) or "react" (new)
+    │   └── Select engine: "react" (default) or "plan" (legacy)
     │
     └── runtime.execute_agent(engine="react")
             │

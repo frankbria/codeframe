@@ -873,6 +873,7 @@ class TestAIAgentExecution:
             [
                 "work", "start", tid,
                 "--execute", "--dry-run",
+                "--engine", "plan",
                 "-w", str(workspace_with_ready_tasks),
             ],
         )
@@ -882,7 +883,7 @@ class TestAIAgentExecution:
         assert provider.call_count >= 1
 
     def test_execute_creates_file(self, workspace_with_ready_tasks, mock_llm):
-        """work start --execute runs agent that creates a file via MockProvider."""
+        """work start --execute --engine plan runs agent that creates a file via MockProvider."""
         # Plan says create hello.py, executor generates content via LLM
         provider = mock_llm([MOCK_PLAN_RESPONSE, MOCK_FILE_CONTENT])
 
@@ -896,6 +897,7 @@ class TestAIAgentExecution:
             [
                 "work", "start", tid,
                 "--execute",
+                "--engine", "plan",
                 "-w", str(workspace_with_ready_tasks),
             ],
         )
@@ -949,7 +951,7 @@ class TestAIGoldenPathE2E:
         assert len(task_list) > 0
         tid = task_list[0].id[:8]
 
-        r = runner.invoke(app, ["work", "start", tid, "--execute", "-w", wp])
+        r = runner.invoke(app, ["work", "start", tid, "--execute", "--engine", "plan", "-w", wp])
         assert r.exit_code == 0, f"work start --execute: {r.output}"
 
         # Verify LLM was exercised through the full path
