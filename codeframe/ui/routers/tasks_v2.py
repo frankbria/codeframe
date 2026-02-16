@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
@@ -51,6 +51,17 @@ class ApproveTasksRequest(BaseModel):
         default=False,
         description="Whether to start batch execution after approval",
     )
+    engine: str = Field(
+        "plan",
+        description="Execution engine: 'plan' (default) or 'react' (ReAct loop)",
+    )
+
+    @model_validator(mode="after")
+    def _validate_engine(self) -> "ApproveTasksRequest":
+        valid = ("plan", "react")
+        if self.engine not in valid:
+            raise ValueError(f"engine must be one of: {', '.join(valid)}")
+        return self
 
 
 class ApproveTasksResponse(BaseModel):
@@ -97,6 +108,17 @@ class StartExecutionRequest(BaseModel):
         le=5,
         description="Number of retries for failed tasks",
     )
+    engine: str = Field(
+        "plan",
+        description="Execution engine: 'plan' (default) or 'react' (ReAct loop)",
+    )
+
+    @model_validator(mode="after")
+    def _validate_engine(self) -> "StartExecutionRequest":
+        valid = ("plan", "react")
+        if self.engine not in valid:
+            raise ValueError(f"engine must be one of: {', '.join(valid)}")
+        return self
 
 
 class StartExecutionResponse(BaseModel):
@@ -106,6 +128,7 @@ class StartExecutionResponse(BaseModel):
     batch_id: str
     task_count: int
     strategy: str
+    engine: str
     message: str
 
 
@@ -423,6 +446,7 @@ async def approve_tasks_endpoint(
                 strategy="serial",
                 max_parallel=4,
                 on_failure="continue",
+                engine=body.engine,
             )
             batch_id = batch.id
             message = f"Approved {result.approved_count} task(s) and started execution (batch {batch_id[:8]})."
@@ -530,8 +554,9 @@ async def start_execution(
             task_ids=task_ids,
             strategy=body.strategy,
             max_parallel=body.max_parallel,
-            retry_count=body.retry_count,
+            max_retries=body.retry_count,
             on_failure="continue",
+            engine=body.engine,
         )
 
         return StartExecutionResponse(
@@ -539,6 +564,7 @@ async def start_execution(
             batch_id=batch.id,
             task_count=len(task_ids),
             strategy=body.strategy,
+            engine=body.engine,
             message=f"Started execution for {len(task_ids)} task(s) (batch {batch.id[:8]}).",
         )
 
@@ -560,6 +586,7 @@ async def start_single_task(
     execute: bool = Query(False, description="Run agent execution (requires ANTHROPIC_API_KEY)"),
     dry_run: bool = Query(False, description="Preview changes without making them"),
     verbose: bool = Query(False, description="Show detailed progress output"),
+    engine: str = Query("plan", description="Execution engine: 'plan' (default) or 'react' (ReAct loop)"),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict[str, Any]:
     """Start a single task run.
@@ -584,6 +611,17 @@ async def start_single_task(
             - 404: Task not found
             - 500: Execution error
     """
+    valid_engines = ("plan", "react")
+    if engine not in valid_engines:
+        raise HTTPException(
+            status_code=400,
+            detail=api_error(
+                "Invalid engine",
+                ErrorCodes.VALIDATION_ERROR,
+                f"Engine must be one of: {', '.join(valid_engines)}",
+            ),
+        )
+
     try:
         # Start the run
         run = runtime.start_task_run(workspace, task_id)
@@ -610,6 +648,7 @@ async def start_single_task(
                         dry_run=dry_run,
                         verbose=verbose,
                         event_publisher=publisher,
+                        engine=engine,
                     )
                 except Exception as exc:
                     logger.error(f"Background agent failed for task {task_id}: {exc}", exc_info=True)
