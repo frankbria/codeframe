@@ -24,6 +24,8 @@ interface TaskColumnProps {
   onToggleSelect: (taskId: string) => void;
   onExecute: (taskId: string) => void;
   onMarkReady: (taskId: string) => void;
+  onStop?: (taskId: string) => void;
+  onReset?: (taskId: string) => void;
 }
 
 export function TaskColumn({
@@ -35,6 +37,8 @@ export function TaskColumn({
   onToggleSelect,
   onExecute,
   onMarkReady,
+  onStop,
+  onReset,
 }: TaskColumnProps) {
   return (
     <div className="flex min-w-[220px] flex-col rounded-lg bg-muted/30 p-3">
@@ -65,6 +69,8 @@ export function TaskColumn({
               onClick={onTaskClick}
               onExecute={onExecute}
               onMarkReady={onMarkReady}
+              onStop={onStop}
+              onReset={onReset}
             />
           ))
         )}

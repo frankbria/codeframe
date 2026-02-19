@@ -126,6 +126,34 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
     [workspacePath, mutate]
   );
 
+  const handleStop = useCallback(
+    async (taskId: string) => {
+      setActionError(null);
+      try {
+        await tasksApi.stopExecution(workspacePath, taskId);
+        await mutate();
+      } catch (err) {
+        const apiErr = err as ApiError;
+        setActionError(apiErr.detail || 'Failed to stop task');
+      }
+    },
+    [workspacePath, mutate]
+  );
+
+  const handleReset = useCallback(
+    async (taskId: string) => {
+      setActionError(null);
+      try {
+        await tasksApi.updateStatus(workspacePath, taskId, 'READY');
+        await mutate();
+      } catch (err) {
+        const apiErr = err as ApiError;
+        setActionError(apiErr.detail || 'Failed to reset task');
+      }
+    },
+    [workspacePath, mutate]
+  );
+
   const handleExecuteBatch = useCallback(async () => {
     if (selectedTaskIds.size === 0) return;
     setIsExecuting(true);
@@ -225,6 +253,8 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onToggleSelect={handleToggleSelect}
         onExecute={handleExecute}
         onMarkReady={handleMarkReady}
+        onStop={handleStop}
+        onReset={handleReset}
       />
 
       {/* Task detail modal */}

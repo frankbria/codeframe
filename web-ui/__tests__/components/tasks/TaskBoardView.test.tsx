@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskBoardView } from '@/components/tasks/TaskBoardView';
 import type { Task, TaskListResponse } from '@/types';
@@ -12,6 +12,7 @@ jest.mock('@/lib/api', () => ({
     updateStatus: jest.fn(),
     startExecution: jest.fn(),
     executeBatch: jest.fn(),
+    stopExecution: jest.fn(),
   },
 }));
 
@@ -225,5 +226,62 @@ describe('TaskBoardView', () => {
     });
     render(<TaskBoardView workspacePath="/test" />);
     expect(screen.getByText('1 task total')).toBeInTheDocument();
+  });
+
+  it('shows Stop button on IN_PROGRESS task cards', () => {
+    render(<TaskBoardView workspacePath="/test" />);
+    // t3 is IN_PROGRESS - should have a Stop button
+    expect(screen.getByRole('button', { name: /stop/i })).toBeInTheDocument();
+  });
+
+  it('shows Reset button on FAILED task cards', () => {
+    render(<TaskBoardView workspacePath="/test" />);
+    // t6 is FAILED - should have a Reset button
+    expect(screen.getByRole('button', { name: /reset/i })).toBeInTheDocument();
+  });
+
+  it('calls stopExecution and mutates when Stop is clicked', async () => {
+    const { tasksApi } = require('@/lib/api');
+    tasksApi.stopExecution.mockResolvedValue(undefined);
+    mockMutate.mockResolvedValue(undefined);
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    await user.click(screen.getByRole('button', { name: /stop/i }));
+
+    expect(tasksApi.stopExecution).toHaveBeenCalledWith('/test', 't3');
+    expect(mockMutate).toHaveBeenCalled();
+  });
+
+  it('calls updateStatus(READY) and mutates when Reset is clicked', async () => {
+    const { tasksApi } = require('@/lib/api');
+    tasksApi.updateStatus.mockResolvedValue({});
+    mockMutate.mockResolvedValue(undefined);
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    await user.click(screen.getByRole('button', { name: /reset/i }));
+
+    expect(tasksApi.updateStatus).toHaveBeenCalledWith('/test', 't6', 'READY');
+    expect(mockMutate).toHaveBeenCalled();
+  });
+
+  it('shows error banner when stop fails', async () => {
+    const { tasksApi } = require('@/lib/api');
+    tasksApi.stopExecution.mockRejectedValue({ detail: 'Task not running' });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    await user.click(screen.getByRole('button', { name: /stop/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Task not running')).toBeInTheDocument();
+    });
   });
 });
