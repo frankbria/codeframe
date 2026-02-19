@@ -108,7 +108,9 @@ export function TaskCard({
         {(task.status === 'READY' || task.status === 'BACKLOG' || task.status === 'IN_PROGRESS' || task.status === 'FAILED') && (
           <div className="mt-2 flex gap-1">
             {isLoading ? (
-              <Loading03Icon className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              <span role="status" aria-label="Loading">
+                <Loading03Icon className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              </span>
             ) : (
               <>
                 {task.status === 'READY' && (

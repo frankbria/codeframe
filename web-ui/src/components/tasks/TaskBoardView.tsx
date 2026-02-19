@@ -8,6 +8,7 @@ import { TaskDetailModal } from './TaskDetailModal';
 import { TaskFilters } from './TaskFilters';
 import { BatchActionsBar } from './BatchActionsBar';
 import { BulkActionConfirmDialog, type BulkActionType } from './BulkActionConfirmDialog';
+import { Cancel01Icon } from '@hugeicons/react';
 import { tasksApi } from '@/lib/api';
 import type {
   TaskStatus,
@@ -43,6 +44,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   const [confirmAction, setConfirmAction] = useState<{
     type: BulkActionType;
     count: number;
+    taskIds: string[];
   } | null>(null);
 
   // ─── Detail modal state ────────────────────────────────────────
@@ -221,13 +223,13 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   }, [workspacePath, selectedTaskIds, batchStrategy, router]);
 
   const handleStopBatch = useCallback(() => {
-    const inProgressCount = selectedTasks.filter((t) => t.status === 'IN_PROGRESS').length;
-    setConfirmAction({ type: 'stop', count: inProgressCount });
+    const inProgressTasks = selectedTasks.filter((t) => t.status === 'IN_PROGRESS');
+    setConfirmAction({ type: 'stop', count: inProgressTasks.length, taskIds: inProgressTasks.map((t) => t.id) });
   }, [selectedTasks]);
 
   const handleResetBatch = useCallback(() => {
-    const failedCount = selectedTasks.filter((t) => t.status === 'FAILED').length;
-    setConfirmAction({ type: 'reset', count: failedCount });
+    const failedTasks = selectedTasks.filter((t) => t.status === 'FAILED');
+    setConfirmAction({ type: 'reset', count: failedTasks.length, taskIds: failedTasks.map((t) => t.id) });
   }, [selectedTasks]);
 
   const handleConfirmAction = useCallback(async () => {
@@ -236,9 +238,8 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
 
     if (confirmAction.type === 'stop') {
       setIsStoppingBatch(true);
-      const inProgressTasks = selectedTasks.filter((t) => t.status === 'IN_PROGRESS');
       const results = await Promise.allSettled(
-        inProgressTasks.map((t) => tasksApi.stopExecution(workspacePath, t.id))
+        confirmAction.taskIds.map((id) => tasksApi.stopExecution(workspacePath, id))
       );
       const failures = results.filter((r) => r.status === 'rejected');
       if (failures.length > 0) {
@@ -247,9 +248,8 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
       setIsStoppingBatch(false);
     } else if (confirmAction.type === 'reset') {
       setIsResettingBatch(true);
-      const failedTasks = selectedTasks.filter((t) => t.status === 'FAILED');
       const results = await Promise.allSettled(
-        failedTasks.map((t) => tasksApi.updateStatus(workspacePath, t.id, 'READY'))
+        confirmAction.taskIds.map((id) => tasksApi.updateStatus(workspacePath, id, 'READY'))
       );
       const failures = results.filter((r) => r.status === 'rejected');
       if (failures.length > 0) {
@@ -263,7 +263,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
     setConfirmAction(null);
     handleClearSelection();
     await mutate();
-  }, [confirmAction, selectedTasks, workspacePath, mutate, handleClearSelection, handleExecuteBatch]);
+  }, [confirmAction, workspacePath, mutate, handleClearSelection, handleExecuteBatch]);
 
   const handleStatusChange = useCallback(() => {
     mutate();
@@ -335,8 +335,15 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
 
       {/* Action error banner */}
       {actionError && (
-        <div className="rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          {actionError}
+        <div role="alert" className="flex items-center justify-between rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            aria-label="Dismiss error"
+            className="ml-2 rounded p-0.5 text-destructive hover:text-destructive/80 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+          >
+            <Cancel01Icon className="h-4 w-4" />
+          </button>
         </div>
       )}
 
