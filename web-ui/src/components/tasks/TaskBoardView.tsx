@@ -7,6 +7,7 @@ import { TaskBoardContent } from './TaskBoardContent';
 import { TaskDetailModal } from './TaskDetailModal';
 import { TaskFilters } from './TaskFilters';
 import { BatchActionsBar } from './BatchActionsBar';
+import { BulkActionConfirmDialog, type BulkActionType } from './BulkActionConfirmDialog';
 import { tasksApi } from '@/lib/api';
 import type {
   TaskStatus,
@@ -37,6 +38,12 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [batchStrategy, setBatchStrategy] = useState<BatchStrategy>('serial');
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isStoppingBatch, setIsStoppingBatch] = useState(false);
+  const [isResettingBatch, setIsResettingBatch] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    type: BulkActionType;
+    count: number;
+  } | null>(null);
 
   // ─── Detail modal state ────────────────────────────────────────
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
@@ -64,6 +71,12 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
 
     return tasks;
   }, [data?.tasks, statusFilter, searchQuery]);
+
+  // ─── Selected tasks (for batch actions) ───────────────────────
+  const selectedTasks = useMemo(
+    () => filteredTasks.filter((t) => selectedTaskIds.has(t.id)),
+    [filteredTasks, selectedTaskIds]
+  );
 
   // ─── Handlers ──────────────────────────────────────────────────
   const handleToggleSelectionMode = useCallback(() => {
@@ -174,6 +187,51 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
     }
   }, [workspacePath, selectedTaskIds, batchStrategy, router]);
 
+  const handleStopBatch = useCallback(() => {
+    const inProgressCount = selectedTasks.filter((t) => t.status === 'IN_PROGRESS').length;
+    setConfirmAction({ type: 'stop', count: inProgressCount });
+  }, [selectedTasks]);
+
+  const handleResetBatch = useCallback(() => {
+    const failedCount = selectedTasks.filter((t) => t.status === 'FAILED').length;
+    setConfirmAction({ type: 'reset', count: failedCount });
+  }, [selectedTasks]);
+
+  const handleConfirmAction = useCallback(async () => {
+    if (!confirmAction) return;
+    setActionError(null);
+
+    if (confirmAction.type === 'stop') {
+      setIsStoppingBatch(true);
+      const inProgressTasks = selectedTasks.filter((t) => t.status === 'IN_PROGRESS');
+      const results = await Promise.allSettled(
+        inProgressTasks.map((t) => tasksApi.stopExecution(workspacePath, t.id))
+      );
+      const failures = results.filter((r) => r.status === 'rejected');
+      if (failures.length > 0) {
+        setActionError(`Failed to stop ${failures.length} task(s)`);
+      }
+      setIsStoppingBatch(false);
+    } else if (confirmAction.type === 'reset') {
+      setIsResettingBatch(true);
+      const failedTasks = selectedTasks.filter((t) => t.status === 'FAILED');
+      const results = await Promise.allSettled(
+        failedTasks.map((t) => tasksApi.updateStatus(workspacePath, t.id, 'READY'))
+      );
+      const failures = results.filter((r) => r.status === 'rejected');
+      if (failures.length > 0) {
+        setActionError(`Failed to reset ${failures.length} task(s)`);
+      }
+      setIsResettingBatch(false);
+    } else if (confirmAction.type === 'execute') {
+      await handleExecuteBatch();
+    }
+
+    setConfirmAction(null);
+    handleClearSelection();
+    await mutate();
+  }, [confirmAction, selectedTasks, workspacePath, mutate, handleClearSelection, handleExecuteBatch]);
+
   const handleStatusChange = useCallback(() => {
     mutate();
   }, [mutate]);
@@ -234,6 +292,11 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
           onExecuteBatch={handleExecuteBatch}
           onClearSelection={handleClearSelection}
           isExecuting={isExecuting}
+          selectedTasks={selectedTasks}
+          onStopBatch={handleStopBatch}
+          onResetBatch={handleResetBatch}
+          isStoppingBatch={isStoppingBatch}
+          isResettingBatch={isResettingBatch}
         />
       </div>
 
@@ -265,6 +328,18 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onClose={handleCloseDetail}
         onExecute={handleExecute}
         onStatusChange={handleStatusChange}
+      />
+
+      {/* Bulk action confirmation */}
+      <BulkActionConfirmDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null);
+        }}
+        actionType={confirmAction?.type ?? 'execute'}
+        taskCount={confirmAction?.count ?? 0}
+        onConfirm={handleConfirmAction}
+        isLoading={isStoppingBatch || isResettingBatch || isExecuting}
       />
     </div>
   );
