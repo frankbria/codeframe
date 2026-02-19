@@ -381,7 +381,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onOpenChange={(open) => {
           if (!open) setConfirmAction(null);
         }}
-        actionType={confirmAction?.type ?? 'execute'}
+        actionType={confirmAction?.type ?? 'stop'}
         taskCount={confirmAction?.count ?? 0}
         onConfirm={handleConfirmAction}
         isLoading={isStoppingBatch || isResettingBatch || isExecuting}

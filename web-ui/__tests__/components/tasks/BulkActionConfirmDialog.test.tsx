@@ -5,7 +5,7 @@ import { BulkActionConfirmDialog } from '@/components/tasks/BulkActionConfirmDia
 const defaultProps = {
   open: true,
   onOpenChange: jest.fn(),
-  actionType: 'execute' as const,
+  actionType: 'stop' as const,
   taskCount: 3,
   onConfirm: jest.fn(),
   isLoading: false,
@@ -16,12 +16,6 @@ beforeEach(() => {
 });
 
 describe('BulkActionConfirmDialog', () => {
-  it('renders execute confirmation with correct title and description', () => {
-    render(<BulkActionConfirmDialog {...defaultProps} actionType="execute" taskCount={5} />);
-    expect(screen.getByText('Execute Tasks')).toBeInTheDocument();
-    expect(screen.getByText(/execute 5 task\(s\)/i)).toBeInTheDocument();
-  });
-
   it('renders stop confirmation with correct title and description', () => {
     render(<BulkActionConfirmDialog {...defaultProps} actionType="stop" taskCount={2} />);
     expect(screen.getByText('Stop Tasks')).toBeInTheDocument();
@@ -56,7 +50,7 @@ describe('BulkActionConfirmDialog', () => {
 
   it('does not render when open is false', () => {
     render(<BulkActionConfirmDialog {...defaultProps} open={false} />);
-    expect(screen.queryByText('Execute Tasks')).not.toBeInTheDocument();
+    expect(screen.queryByText('Stop Tasks')).not.toBeInTheDocument();
   });
 
   it('shows destructive styling for stop action confirm button', () => {

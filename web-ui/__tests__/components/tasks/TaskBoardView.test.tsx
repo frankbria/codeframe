@@ -388,4 +388,29 @@ describe('TaskBoardView', () => {
     });
     expect(mockMutate).toHaveBeenCalled();
   });
+
+  it('shows error message when batch stop partially fails', async () => {
+    const { tasksApi } = require('@/lib/api');
+    tasksApi.stopExecution.mockRejectedValue({ detail: 'Task not running' });
+    mockMutate.mockResolvedValue(undefined);
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    // Enter selection mode and select IN_PROGRESS task
+    await user.click(screen.getByRole('button', { name: /batch/i }));
+    const buildApiCheckbox = screen.getByRole('checkbox', { name: /select build api/i });
+    await user.click(buildApiCheckbox);
+
+    // Click batch Stop button to open dialog
+    await user.click(screen.getByRole('button', { name: /stop 1/i }));
+
+    // Click Confirm in dialog
+    await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/failed to stop 1 task/i);
+    });
+  });
 });

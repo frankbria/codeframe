@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-export type BulkActionType = 'execute' | 'stop' | 'reset';
+export type BulkActionType = 'stop' | 'reset';
 
 interface BulkActionConfirmDialogProps {
   open: boolean;
@@ -28,11 +28,6 @@ const ACTION_CONFIG: Record<BulkActionType, {
   description: (count: number) => string;
   destructive: boolean;
 }> = {
-  execute: {
-    title: 'Execute Tasks',
-    description: (count) => `This will execute ${count} task(s) using the selected strategy.`,
-    destructive: false,
-  },
   stop: {
     title: 'Stop Tasks',
     description: (count) => `This will stop ${count} running task(s). They will need to be re-executed.`,
