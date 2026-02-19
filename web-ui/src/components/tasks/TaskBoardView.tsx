@@ -51,6 +51,9 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   // ─── Error state for actions ───────────────────────────────────
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // ─── Per-task loading state ──────────────────────────────────────
+  const [loadingTaskIds, setLoadingTaskIds] = useState<Set<string>>(new Set());
+
   // ─── Filtered tasks ────────────────────────────────────────────
   const filteredTasks = useMemo(() => {
     if (!data?.tasks) return [];
@@ -158,12 +161,19 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   const handleStop = useCallback(
     async (taskId: string) => {
       setActionError(null);
+      setLoadingTaskIds((prev) => new Set(prev).add(taskId));
       try {
         await tasksApi.stopExecution(workspacePath, taskId);
         await mutate();
       } catch (err) {
         const apiErr = err as ApiError;
         setActionError(apiErr.detail || 'Failed to stop task');
+      } finally {
+        setLoadingTaskIds((prev) => {
+          const next = new Set(prev);
+          next.delete(taskId);
+          return next;
+        });
       }
     },
     [workspacePath, mutate]
@@ -172,12 +182,19 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   const handleReset = useCallback(
     async (taskId: string) => {
       setActionError(null);
+      setLoadingTaskIds((prev) => new Set(prev).add(taskId));
       try {
         await tasksApi.updateStatus(workspacePath, taskId, 'READY');
         await mutate();
       } catch (err) {
         const apiErr = err as ApiError;
         setActionError(apiErr.detail || 'Failed to reset task');
+      } finally {
+        setLoadingTaskIds((prev) => {
+          const next = new Set(prev);
+          next.delete(taskId);
+          return next;
+        });
       }
     },
     [workspacePath, mutate]
@@ -336,6 +353,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onReset={handleReset}
         onSelectAll={handleSelectAll}
         onDeselectAll={handleDeselectAll}
+        loadingTaskIds={loadingTaskIds}
       />
 
       {/* Task detail modal */}

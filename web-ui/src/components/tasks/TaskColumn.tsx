@@ -29,6 +29,7 @@ interface TaskColumnProps {
   onReset?: (taskId: string) => void;
   onSelectAll?: (taskIds: string[]) => void;
   onDeselectAll?: (taskIds: string[]) => void;
+  loadingTaskIds?: Set<string>;
 }
 
 export function TaskColumn({
@@ -44,6 +45,7 @@ export function TaskColumn({
   onReset,
   onSelectAll,
   onDeselectAll,
+  loadingTaskIds = new Set(),
 }: TaskColumnProps) {
   const taskIds = tasks.map((t) => t.id);
   const selectedCount = tasks.filter((t) => selectedTaskIds.has(t.id)).length;
@@ -96,6 +98,7 @@ export function TaskColumn({
               onMarkReady={onMarkReady}
               onStop={onStop}
               onReset={onReset}
+              isLoading={loadingTaskIds.has(task.id)}
             />
           ))
         )}

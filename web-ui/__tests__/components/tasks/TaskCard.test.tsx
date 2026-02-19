@@ -201,4 +201,30 @@ describe('TaskCard', () => {
     const stopBtn = screen.getByRole('button', { name: /stop/i });
     expect(stopBtn).toHaveClass('text-destructive');
   });
+
+  // ─── Loading state tests ──────────────────────────────────────────
+
+  it('shows loading spinner instead of action button when isLoading', () => {
+    renderCard({ status: 'IN_PROGRESS' }, { isLoading: true });
+    // Should show spinner, not the Stop button
+    expect(screen.queryByRole('button', { name: /stop/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('icon-Loading03Icon')).toBeInTheDocument();
+  });
+
+  it('shows action buttons when isLoading is false', () => {
+    renderCard({ status: 'IN_PROGRESS' }, { isLoading: false });
+    expect(screen.getByRole('button', { name: /stop/i })).toBeInTheDocument();
+  });
+
+  it('shows loading spinner for READY task when isLoading', () => {
+    renderCard({ status: 'READY' }, { isLoading: true });
+    expect(screen.queryByRole('button', { name: /execute/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('icon-Loading03Icon')).toBeInTheDocument();
+  });
+
+  it('shows loading spinner for FAILED task when isLoading', () => {
+    renderCard({ status: 'FAILED' }, { isLoading: true });
+    expect(screen.queryByRole('button', { name: /reset/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('icon-Loading03Icon')).toBeInTheDocument();
+  });
 });
