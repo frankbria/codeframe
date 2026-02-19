@@ -5,27 +5,11 @@ import { ArrowDown01Icon, ArrowUp01Icon, CheckmarkCircle01Icon } from '@hugeicon
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatRelativeTime } from '@/lib/format';
 import type { Blocker } from '@/types';
 
 interface ResolvedBlockersSectionProps {
   blockers: Blocker[];
-}
-
-/**
- * Formats an ISO date string as a human-readable relative time.
- * Returns strings like "just now", "5m ago", "2h ago", or "3d ago".
- */
-function formatRelativeTime(isoDate: string): string {
-  const now = new Date();
-  const date = new Date(isoDate);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
 }
 
 /**
@@ -70,7 +54,7 @@ export function ResolvedBlockersSection({ blockers }: ResolvedBlockersSectionPro
       >
         {blockers.map((blocker) => {
           const timestamp = blocker.answered_at ?? blocker.created_at;
-          const badgeVariant = blocker.status === 'RESOLVED' ? 'done' : 'in-progress';
+          const badgeVariant = 'done' as const;
 
           return (
             <Card key={blocker.id} className="bg-muted/50">

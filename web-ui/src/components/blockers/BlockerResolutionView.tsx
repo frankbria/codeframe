@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import useSWR from 'swr';
+import { useMemo, useCallback } from 'react';
+import useSWR, { useSWRConfig } from 'swr';
 import { CheckmarkCircle01Icon, Loading03Icon } from '@hugeicons/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,11 +15,18 @@ interface BlockerResolutionViewProps {
 }
 
 export function BlockerResolutionView({ workspacePath }: BlockerResolutionViewProps) {
+  const { mutate: globalMutate } = useSWRConfig();
   const { data, isLoading, error, mutate } = useSWR<BlockerListResponse, ApiError>(
     `/api/v2/blockers?path=${workspacePath}`,
     () => blockersApi.getAll(workspacePath),
     { refreshInterval: 5000, revalidateOnFocus: true }
   );
+
+  // Invalidate both main view and sidebar badge caches
+  const revalidateAll = useCallback(() => {
+    mutate();
+    globalMutate(`/api/v2/blockers/sidebar?path=${workspacePath}`);
+  }, [mutate, globalMutate, workspacePath]);
 
   const openBlockers = useMemo(
     () => data?.blockers.filter((b) => b.status === 'OPEN') ?? [],
@@ -57,7 +64,7 @@ export function BlockerResolutionView({ workspacePath }: BlockerResolutionViewPr
           <p className="mb-3 text-sm text-destructive">
             {error.detail || 'Failed to load blockers'}
           </p>
-          <Button variant="outline" size="sm" onClick={() => mutate()}>
+          <Button variant="outline" size="sm" onClick={() => revalidateAll()}>
             Retry
           </Button>
         </div>
@@ -91,7 +98,7 @@ export function BlockerResolutionView({ workspacePath }: BlockerResolutionViewPr
               key={blocker.id}
               blocker={blocker}
               workspacePath={workspacePath}
-              onAnswered={() => mutate()}
+              onAnswered={() => revalidateAll()}
             />
           ))}
         </div>

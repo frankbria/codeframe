@@ -6,25 +6,13 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { blockersApi } from '@/lib/api';
+import { formatRelativeTime } from '@/lib/format';
 import type { Blocker, ApiError } from '@/types';
 
 interface BlockerCardProps {
   blocker: Blocker;
   workspacePath: string;
   onAnswered: () => void;
-}
-
-function formatRelativeTime(isoDate: string): string {
-  const now = new Date();
-  const date = new Date(isoDate);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
 }
 
 export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardProps) {
@@ -154,6 +142,18 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
               </Button>
             </div>
           </div>
+        )}
+
+        {/* Collapsed state — allow re-expanding */}
+        {isOpen && collapsed && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            onClick={() => setCollapsed(false)}
+          >
+            Show answer form
+          </Button>
         )}
       </CardContent>
     </Card>
