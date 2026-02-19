@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import useSWR from 'swr';
 import {
   Home01Icon,
   FileEditIcon,
@@ -12,6 +13,8 @@ import {
   GitBranchIcon,
 } from '@hugeicons/react';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
+import { blockersApi } from '@/lib/api';
+import type { BlockerListResponse } from '@/types';
 
 interface NavItem {
   href: string;
@@ -25,22 +28,27 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/prd', label: 'PRD', icon: FileEditIcon, enabled: true },
   { href: '/tasks', label: 'Tasks', icon: Task01Icon, enabled: true },
   { href: '/execution', label: 'Execution', icon: PlayIcon, enabled: true },
-  { href: '/blockers', label: 'Blockers', icon: Alert02Icon, enabled: false },
+  { href: '/blockers', label: 'Blockers', icon: Alert02Icon, enabled: true },
   { href: '/review', label: 'Review', icon: GitBranchIcon, enabled: false },
 ];
 
 export function AppSidebar() {
   const pathname = usePathname();
   const [hasWorkspace, setHasWorkspace] = useState(false);
+  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
 
   useEffect(() => {
-    setHasWorkspace(!!getSelectedWorkspacePath());
+    const path = getSelectedWorkspacePath();
+    setHasWorkspace(!!path);
+    setWorkspacePath(path);
   }, []);
 
   // Listen for workspace changes (cross-tab via 'storage', same-tab via custom event)
   useEffect(() => {
     const handleWorkspaceChange = () => {
-      setHasWorkspace(!!getSelectedWorkspacePath());
+      const path = getSelectedWorkspacePath();
+      setHasWorkspace(!!path);
+      setWorkspacePath(path);
     };
     window.addEventListener('storage', handleWorkspaceChange);
     window.addEventListener('workspaceChanged', handleWorkspaceChange);
@@ -49,6 +57,14 @@ export function AppSidebar() {
       window.removeEventListener('workspaceChanged', handleWorkspaceChange);
     };
   }, []);
+
+  // Fetch open blocker count for badge
+  const { data: blockerData } = useSWR<BlockerListResponse>(
+    workspacePath ? `/api/v2/blockers/sidebar?path=${workspacePath}` : null,
+    () => blockersApi.getAll(workspacePath!, { status: 'OPEN' }),
+    { refreshInterval: 10000 }
+  );
+  const openBlockerCount = blockerData?.by_status?.OPEN ?? 0;
 
   // Don't render sidebar when no workspace is selected
   if (!hasWorkspace) return null;
@@ -95,6 +111,11 @@ export function AppSidebar() {
             >
               <Icon className="h-5 w-5 shrink-0" />
               <span className="hidden lg:inline">{label}</span>
+              {label === 'Blockers' && openBlockerCount > 0 && (
+                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                  {openBlockerCount}
+                </span>
+              )}
             </Link>
           );
         })}

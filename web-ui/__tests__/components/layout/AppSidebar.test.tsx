@@ -25,6 +25,12 @@ jest.mock('@/lib/workspace-storage', () => ({
   getSelectedWorkspacePath: jest.fn(),
 }));
 
+// Mock SWR (used for blocker badge count)
+jest.mock('swr', () => ({
+  __esModule: true,
+  default: () => ({ data: undefined, isLoading: false, error: undefined }),
+}));
+
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 const mockGetWorkspacePath = getSelectedWorkspacePath as jest.MockedFunction<
   typeof getSelectedWorkspacePath
@@ -81,10 +87,11 @@ describe('AppSidebar', () => {
     mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
     render(<AppSidebar />);
 
-    // Tasks and Execution are now enabled; Blockers, Review are still disabled
+    // Tasks, Execution, and Blockers are enabled; Review is still disabled
     expect(screen.getByRole('link', { name: /^tasks$/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^execution$/i })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /^blockers$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^blockers$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^review$/i })).not.toBeInTheDocument();
   });
 
   it('highlights the active route', () => {
