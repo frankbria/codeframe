@@ -439,6 +439,23 @@ These describe old server/UI-driven architecture:
 
 ---
 
+## Testing / Demoing CodeFRAME on Sample Projects
+
+When running `uv run cf` commands against a sample project (e.g., `cf-test/`) to test or demo CodeFRAME's capabilities, you are **observing the CodeFRAME agent's work, not doing the work yourself**.
+
+**Rules for testing/demo mode:**
+- You are evaluating how well the CodeFRAME agent (ReAct or Plan engine) builds the project
+- **Do NOT help out, fix errors, or write code** on behalf of the CodeFRAME agent
+- **Do NOT intervene** when the agent makes mistakes — that's data
+- Your job is to **report the process**: what worked, what failed, how close the agent got
+- Document the agent's output, errors encountered, and final state
+- Assess completion against the PRD/acceptance criteria objectively
+- If the agent gets stuck or fails, report that as a finding — don't rescue it
+
+This applies when using commands like `cf work start <id> --execute`, `cf work batch run`, or any command that triggers the AI agent to do implementation work on a target project.
+
+---
+
 ## Practical Working Mode for Agents
 
 When implementing anything, do this loop:

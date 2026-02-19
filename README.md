@@ -26,7 +26,7 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 
 ---
 
-## What's New (Updated: 2026-02-05)
+## What's New (Updated: 2026-02-19)
 
 ### Phase 3: Web UI Rebuild In Progress
 
@@ -38,6 +38,7 @@ Phases 1 and 2 are complete! We're now rebuilding the web dashboard on the v2 fo
 | Workspace View with activity feed | ✅ Complete | #335 |
 | PRD View with document creation & discovery | ✅ Complete | #330 |
 | Task Board View with Kanban & batch execution | ✅ Complete | #331 |
+| Task Board bulk stop, reset & state management | ✅ Complete | #340 |
 | Execution Monitor View | Planned | — |
 | Blocker Resolution View | Planned | — |
 | Review & Commit View | Planned | — |
@@ -68,7 +69,10 @@ Phases 1 and 2 are complete! We're now rebuilding the web dashboard on the v2 fo
 - **6-Column Kanban** — Backlog → Ready → In Progress → Blocked → Failed → Done
 - **Search & Filter** — Debounced search with status pill toggles
 - **Batch Execution** — Select multiple tasks, choose serial/parallel strategy, execute in one click
+- **Bulk Stop & Reset** — Stop running tasks or reset failed/done tasks back to READY with confirmation dialogs
 - **Task Detail Modal** — View full task metadata, dependencies, estimated hours, and trigger actions
+- **View Execution** — IN_PROGRESS tasks navigate directly to the Execution Monitor from the detail modal
+- **Per-Task Loading States** — Individual spinners on task cards during stop/reset operations
 - **Keyboard Accessible** — Full WCAG 2.1 keyboard navigation support
 
 ### Web UI Tech Stack
@@ -400,7 +404,8 @@ cf work batch run --all-ready --retry 3
 ### Web Dashboard (v2 — Phase 3)
 - **Workspace View** — Project selection, stats cards, activity feed, and quick actions
 - **PRD View** — Markdown editor with AI-powered Socratic discovery panel
-- **Task Board** — 6-column Kanban with search, filtering, batch execution, and task detail modal
+- **Task Board** — 6-column Kanban with search, filtering, batch execution, bulk stop/reset, and task detail modal
+- **Execution Navigation** — IN_PROGRESS tasks link directly to the Execution Monitor
 - **Real-time Streaming** — SSE-based live updates for task execution and discovery sessions
 - **Golden Path Navigation** — UI follows the same workflow as the CLI
 
@@ -897,6 +902,7 @@ We welcome contributions! To get started:
 - **Workspace View** (#335) — Project dashboard with activity feed ✅
 - **PRD View** (#330) — Document creation & AI discovery ✅
 - **Task Board View** (#331) — Kanban board with batch execution ✅
+- **Task Board Bulk Actions** (#340) — Bulk stop, reset & state management ✅
 - **Execution Monitor View** — Planned
 - **Blocker Resolution View** — Planned
 - **Review & Commit View** — Planned
