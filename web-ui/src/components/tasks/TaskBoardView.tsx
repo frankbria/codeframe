@@ -102,6 +102,22 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
     setSelectedTaskIds(new Set());
   }, []);
 
+  const handleSelectAll = useCallback((taskIds: string[]) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      for (const id of taskIds) next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleDeselectAll = useCallback((taskIds: string[]) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      for (const id of taskIds) next.delete(id);
+      return next;
+    });
+  }, []);
+
   const handleTaskClick = useCallback((taskId: string) => {
     setDetailTaskId(taskId);
   }, []);
@@ -318,6 +334,8 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onMarkReady={handleMarkReady}
         onStop={handleStop}
         onReset={handleReset}
+        onSelectAll={handleSelectAll}
+        onDeselectAll={handleDeselectAll}
       />
 
       {/* Task detail modal */}
