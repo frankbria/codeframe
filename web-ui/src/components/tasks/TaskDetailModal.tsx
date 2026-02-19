@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   PlayCircleIcon,
   CheckmarkCircle01Icon,
   LinkCircleIcon,
   Loading03Icon,
   Time01Icon,
+  ViewIcon,
 } from '@hugeicons/react';
 import {
   Dialog,
@@ -58,6 +60,7 @@ export function TaskDetailModal({
   onExecute,
   onStatusChange,
 }: TaskDetailModalProps) {
+  const router = useRouter();
   const [task, setTask] = useState<Task | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +195,18 @@ export function TaskDetailModal({
                     <CheckmarkCircle01Icon className="mr-1.5 h-3.5 w-3.5" />
                   )}
                   Mark Ready
+                </Button>
+              )}
+              {task.status === 'IN_PROGRESS' && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    onClose();
+                    router.push(`/execution/${task.id}`);
+                  }}
+                >
+                  <ViewIcon className="mr-1.5 h-3.5 w-3.5" />
+                  View Execution
                 </Button>
               )}
               {task.status === 'READY' && (
