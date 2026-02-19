@@ -26,6 +26,7 @@ import type {
   GeneratePrdResponse,
   GenerateTasksResponse,
   Blocker,
+  BlockerStatus,
   BlockerListResponse,
   BatchResponse,
 } from '@/types';
@@ -246,6 +247,23 @@ export const eventsApi = {
 
 // Blockers API methods
 export const blockersApi = {
+  /**
+   * Get all blockers with optional filters
+   */
+  getAll: async (
+    workspacePath: string,
+    options?: { status?: BlockerStatus; limit?: number }
+  ): Promise<BlockerListResponse> => {
+    const response = await api.get<BlockerListResponse>('/api/v2/blockers', {
+      params: {
+        workspace_path: workspacePath,
+        ...(options?.status ? { status: options.status } : {}),
+        ...(options?.limit ? { limit: options.limit } : {}),
+      },
+    });
+    return response.data;
+  },
+
   /**
    * Get blockers, optionally filtered by task
    */

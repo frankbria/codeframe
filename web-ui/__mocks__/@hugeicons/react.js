@@ -51,5 +51,6 @@ module.exports = {
   WifiDisconnected01Icon: createIconMock('WifiDisconnected01Icon'),
   SidebarLeftIcon: createIconMock('SidebarLeftIcon'),
   ArrowDown01Icon: createIconMock('ArrowDown01Icon'),
+  ArrowUp01Icon: createIconMock('ArrowUp01Icon'),
   StopIcon: createIconMock('StopIcon'),
 };
