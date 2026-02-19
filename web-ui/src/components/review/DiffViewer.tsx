@@ -76,7 +76,7 @@ export function DiffViewer({ diffFiles, selectedFile }: DiffViewerProps) {
   useEffect(() => {
     if (!selectedFile) return;
     for (const [key, el] of fileRefs.current.entries()) {
-      if (key.includes(selectedFile) || selectedFile.includes(key)) {
+      if (key === selectedFile) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         break;
       }
