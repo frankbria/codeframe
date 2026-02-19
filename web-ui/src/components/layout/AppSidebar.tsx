@@ -29,7 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/tasks', label: 'Tasks', icon: Task01Icon, enabled: true },
   { href: '/execution', label: 'Execution', icon: PlayIcon, enabled: true },
   { href: '/blockers', label: 'Blockers', icon: Alert02Icon, enabled: true },
-  { href: '/review', label: 'Review', icon: GitBranchIcon, enabled: false },
+  { href: '/review', label: 'Review', icon: GitBranchIcon, enabled: true },
 ];
 
 export function AppSidebar() {

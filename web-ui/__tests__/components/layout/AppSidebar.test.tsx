@@ -83,15 +83,15 @@ describe('AppSidebar', () => {
     expect(screen.getByRole('link', { name: /prd/i })).toHaveAttribute('href', '/prd');
   });
 
-  it('renders disabled items as non-link spans', () => {
+  it('renders all navigation items as links when enabled', () => {
     mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
     render(<AppSidebar />);
 
-    // Tasks, Execution, and Blockers are enabled; Review is still disabled
+    // All nav items are enabled including Review
     expect(screen.getByRole('link', { name: /^tasks$/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^execution$/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^blockers$/i })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /^review$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^review$/i })).toBeInTheDocument();
   });
 
   it('highlights the active route', () => {

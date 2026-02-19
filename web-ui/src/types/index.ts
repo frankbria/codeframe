@@ -184,3 +184,85 @@ export interface ApiError {
   detail: string;
   status_code?: number;
 }
+
+// Review & Commit View types
+// Must match backend: codeframe/ui/routers/review_v2.py + gates_v2.py + git_v2.py + pr_v2.py
+export type FileChangeType = 'modified' | 'added' | 'deleted' | 'renamed';
+
+export interface FileChange {
+  path: string;
+  change_type: FileChangeType;
+  insertions: number;
+  deletions: number;
+}
+
+export interface DiffStatsResponse {
+  diff: string;
+  files_changed: number;
+  insertions: number;
+  deletions: number;
+  changed_files: FileChange[];
+}
+
+export interface PatchResponse {
+  patch: string;
+  filename: string;
+}
+
+export interface CommitMessageResponse {
+  message: string;
+}
+
+// Gate types (mirrors gates_v2.py)
+export type GateStatus = 'PASSED' | 'FAILED' | 'SKIPPED' | 'ERROR';
+
+export interface GateCheck {
+  name: string;
+  status: GateStatus;
+  exit_code: number | null;
+  output: string;
+  duration_ms: number;
+}
+
+export interface GateResult {
+  passed: boolean;
+  checks: GateCheck[];
+  summary: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+// Git types (mirrors git_v2.py)
+export interface GitStatusResponse {
+  current_branch: string;
+  is_dirty: boolean;
+  modified_files: string[];
+  untracked_files: string[];
+  staged_files: string[];
+}
+
+export interface CommitResultResponse {
+  commit_hash: string;
+  commit_message: string;
+  files_changed: number;
+}
+
+// PR types (mirrors pr_v2.py)
+export interface PRResponse {
+  number: number;
+  url: string;
+  state: string;
+  title: string;
+  body: string | null;
+  created_at: string;
+  merged_at: string | null;
+  head_branch: string;
+  base_branch: string;
+}
+
+export interface CreatePRRequest {
+  branch: string;
+  title: string;
+  body?: string;
+  base?: string;
+}
