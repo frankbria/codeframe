@@ -25,6 +25,8 @@ const defaultHandlers = {
   onClick: jest.fn(),
   onExecute: jest.fn(),
   onMarkReady: jest.fn(),
+  onStop: jest.fn(),
+  onReset: jest.fn(),
 };
 
 function renderCard(taskOverrides: Partial<Task> = {}, props: Partial<Parameters<typeof TaskCard>[0]> = {}) {
@@ -154,5 +156,49 @@ describe('TaskCard', () => {
       expect(screen.getByText(labels[i])).toBeInTheDocument();
       unmount();
     });
+  });
+
+  // ─── Stop / Reset action tests ──────────────────────────────────────
+
+  it('shows Stop button for IN_PROGRESS tasks', () => {
+    renderCard({ status: 'IN_PROGRESS' });
+    expect(screen.getByRole('button', { name: /stop/i })).toBeInTheDocument();
+  });
+
+  it('does not show Stop button for non-IN_PROGRESS tasks', () => {
+    renderCard({ status: 'READY' });
+    expect(screen.queryByRole('button', { name: /stop/i })).not.toBeInTheDocument();
+  });
+
+  it('calls onStop without triggering onClick', async () => {
+    const user = userEvent.setup();
+    renderCard({ status: 'IN_PROGRESS' });
+    await user.click(screen.getByRole('button', { name: /stop/i }));
+    expect(defaultHandlers.onStop).toHaveBeenCalledWith('task-1');
+    expect(defaultHandlers.onClick).not.toHaveBeenCalled();
+  });
+
+  it('shows Reset button for FAILED tasks', () => {
+    renderCard({ status: 'FAILED' });
+    expect(screen.getByRole('button', { name: /reset/i })).toBeInTheDocument();
+  });
+
+  it('does not show Reset button for non-FAILED tasks', () => {
+    renderCard({ status: 'READY' });
+    expect(screen.queryByRole('button', { name: /reset/i })).not.toBeInTheDocument();
+  });
+
+  it('calls onReset without triggering onClick', async () => {
+    const user = userEvent.setup();
+    renderCard({ status: 'FAILED' });
+    await user.click(screen.getByRole('button', { name: /reset/i }));
+    expect(defaultHandlers.onReset).toHaveBeenCalledWith('task-1');
+    expect(defaultHandlers.onClick).not.toHaveBeenCalled();
+  });
+
+  it('Stop button has destructive ghost styling', () => {
+    renderCard({ status: 'IN_PROGRESS' });
+    const stopBtn = screen.getByRole('button', { name: /stop/i });
+    expect(stopBtn).toHaveClass('text-destructive');
   });
 });

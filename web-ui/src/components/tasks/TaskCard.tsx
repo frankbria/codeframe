@@ -1,6 +1,6 @@
 'use client';
 
-import { PlayCircleIcon, CheckmarkCircle01Icon, LinkCircleIcon } from '@hugeicons/react';
+import { PlayCircleIcon, CheckmarkCircle01Icon, LinkCircleIcon, Cancel01Icon, ArrowTurnBackwardIcon } from '@hugeicons/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,8 @@ interface TaskCardProps {
   onClick: (taskId: string) => void;
   onExecute: (taskId: string) => void;
   onMarkReady: (taskId: string) => void;
+  onStop?: (taskId: string) => void;
+  onReset?: (taskId: string) => void;
 }
 
 export function TaskCard({
@@ -47,6 +49,8 @@ export function TaskCard({
   onClick,
   onExecute,
   onMarkReady,
+  onStop,
+  onReset,
 }: TaskCardProps) {
   return (
     <Card
@@ -99,7 +103,7 @@ export function TaskCard({
         )}
 
         {/* Action buttons */}
-        {(task.status === 'READY' || task.status === 'BACKLOG') && (
+        {(task.status === 'READY' || task.status === 'BACKLOG' || task.status === 'IN_PROGRESS' || task.status === 'FAILED') && (
           <div className="mt-2 flex gap-1">
             {task.status === 'READY' && (
               <Button
@@ -127,6 +131,34 @@ export function TaskCard({
               >
                 <CheckmarkCircle01Icon className="h-3.5 w-3.5" />
                 Mark Ready
+              </Button>
+            )}
+            {task.status === 'IN_PROGRESS' && onStop && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 px-2 text-xs text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStop(task.id);
+                }}
+              >
+                <Cancel01Icon className="h-3.5 w-3.5" />
+                Stop
+              </Button>
+            )}
+            {task.status === 'FAILED' && onReset && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReset(task.id);
+                }}
+              >
+                <ArrowTurnBackwardIcon className="h-3.5 w-3.5" />
+                Reset
               </Button>
             )}
           </div>
