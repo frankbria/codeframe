@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Alert02Icon, Loading03Icon, CheckmarkCircle01Icon } from '@hugeicons/react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,8 +21,16 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isOpen = blocker.status === 'OPEN';
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const handleSubmit = async () => {
     if (!answer.trim() || isSubmitting) return;
@@ -31,7 +39,7 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
     try {
       await blockersApi.answer(workspacePath, blocker.id, answer.trim());
       setSubmitted(true);
-      setTimeout(() => onAnswered(), 1500);
+      timerRef.current = setTimeout(() => onAnswered(), 1500);
     } catch (err) {
       const apiErr = err as ApiError;
       setError(apiErr.detail || 'Failed to submit answer');

@@ -64,7 +64,7 @@ export function BlockerResolutionView({ workspacePath }: BlockerResolutionViewPr
           <p className="mb-3 text-sm text-destructive">
             {error.detail || 'Failed to load blockers'}
           </p>
-          <Button variant="outline" size="sm" onClick={() => revalidateAll()}>
+          <Button variant="outline" size="sm" onClick={revalidateAll}>
             Retry
           </Button>
         </div>
@@ -98,7 +98,7 @@ export function BlockerResolutionView({ workspacePath }: BlockerResolutionViewPr
               key={blocker.id}
               blocker={blocker}
               workspacePath={workspacePath}
-              onAnswered={() => revalidateAll()}
+              onAnswered={revalidateAll}
             />
           ))}
         </div>
