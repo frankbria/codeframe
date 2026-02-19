@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskBoardView } from '@/components/tasks/TaskBoardView';
 import type { Task, TaskListResponse } from '@/types';
@@ -12,6 +12,7 @@ jest.mock('@/lib/api', () => ({
     updateStatus: jest.fn(),
     startExecution: jest.fn(),
     executeBatch: jest.fn(),
+    stopExecution: jest.fn(),
   },
 }));
 
@@ -225,5 +226,191 @@ describe('TaskBoardView', () => {
     });
     render(<TaskBoardView workspacePath="/test" />);
     expect(screen.getByText('1 task total')).toBeInTheDocument();
+  });
+
+  it('shows Stop button on IN_PROGRESS task cards', () => {
+    render(<TaskBoardView workspacePath="/test" />);
+    // t3 is IN_PROGRESS - should have a Stop button
+    expect(screen.getByRole('button', { name: /stop/i })).toBeInTheDocument();
+  });
+
+  it('shows Reset button on FAILED task cards', () => {
+    render(<TaskBoardView workspacePath="/test" />);
+    // t6 is FAILED - should have a Reset button
+    expect(screen.getByRole('button', { name: /reset/i })).toBeInTheDocument();
+  });
+
+  it('calls stopExecution and mutates when Stop is clicked', async () => {
+    const { tasksApi } = require('@/lib/api');
+    tasksApi.stopExecution.mockResolvedValue(undefined);
+    mockMutate.mockResolvedValue(undefined);
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    await user.click(screen.getByRole('button', { name: /stop/i }));
+
+    expect(tasksApi.stopExecution).toHaveBeenCalledWith('/test', 't3');
+    expect(mockMutate).toHaveBeenCalled();
+  });
+
+  it('calls updateStatus(READY) and mutates when Reset is clicked', async () => {
+    const { tasksApi } = require('@/lib/api');
+    tasksApi.updateStatus.mockResolvedValue({});
+    mockMutate.mockResolvedValue(undefined);
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    await user.click(screen.getByRole('button', { name: /reset/i }));
+
+    expect(tasksApi.updateStatus).toHaveBeenCalledWith('/test', 't6', 'READY');
+    expect(mockMutate).toHaveBeenCalled();
+  });
+
+  it('shows error banner when stop fails', async () => {
+    const { tasksApi } = require('@/lib/api');
+    tasksApi.stopExecution.mockRejectedValue({ detail: 'Task not running' });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    await user.click(screen.getByRole('button', { name: /stop/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Task not running')).toBeInTheDocument();
+    });
+  });
+
+  // ─── Bulk action confirmation flow tests ──────────────────────────
+
+  it('shows batch Stop button after selecting IN_PROGRESS tasks', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    // Enter selection mode
+    await user.click(screen.getByRole('button', { name: /batch/i }));
+
+    // Select the IN_PROGRESS task (t3 "Build API")
+    const buildApiCheckbox = screen.getByRole('checkbox', { name: /select build api/i });
+    await user.click(buildApiCheckbox);
+
+    // Should see Stop 1 button in batch bar
+    expect(screen.getByRole('button', { name: /stop 1/i })).toBeInTheDocument();
+  });
+
+  it('shows confirmation dialog when batch Stop is clicked', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    // Enter selection mode and select IN_PROGRESS task
+    await user.click(screen.getByRole('button', { name: /batch/i }));
+    const buildApiCheckbox = screen.getByRole('checkbox', { name: /select build api/i });
+    await user.click(buildApiCheckbox);
+
+    // Click batch Stop button
+    await user.click(screen.getByRole('button', { name: /stop 1/i }));
+
+    // Confirmation dialog should appear
+    expect(screen.getByText('Stop Tasks')).toBeInTheDocument();
+    expect(screen.getByText(/stop 1 running task/i)).toBeInTheDocument();
+  });
+
+  it('executes batch stop after confirming', async () => {
+    const { tasksApi } = require('@/lib/api');
+    tasksApi.stopExecution.mockResolvedValue(undefined);
+    mockMutate.mockResolvedValue(undefined);
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    // Enter selection mode and select IN_PROGRESS task
+    await user.click(screen.getByRole('button', { name: /batch/i }));
+    const buildApiCheckbox = screen.getByRole('checkbox', { name: /select build api/i });
+    await user.click(buildApiCheckbox);
+
+    // Click batch Stop button to open dialog
+    await user.click(screen.getByRole('button', { name: /stop 1/i }));
+
+    // Click Confirm in dialog
+    await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+    await waitFor(() => {
+      expect(tasksApi.stopExecution).toHaveBeenCalledWith('/test', 't3');
+    });
+    expect(mockMutate).toHaveBeenCalled();
+  });
+
+  it('shows batch Reset button after selecting FAILED tasks', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    // Enter selection mode
+    await user.click(screen.getByRole('button', { name: /batch/i }));
+
+    // Select the FAILED task (t6 "Deploy v1")
+    const deployCheckbox = screen.getByRole('checkbox', { name: /select deploy v1/i });
+    await user.click(deployCheckbox);
+
+    // Should see Reset 1 button in batch bar
+    expect(screen.getByRole('button', { name: /reset 1/i })).toBeInTheDocument();
+  });
+
+  it('executes batch reset after confirming', async () => {
+    const { tasksApi } = require('@/lib/api');
+    tasksApi.updateStatus.mockResolvedValue({});
+    mockMutate.mockResolvedValue(undefined);
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    // Enter selection mode and select FAILED task
+    await user.click(screen.getByRole('button', { name: /batch/i }));
+    const deployCheckbox = screen.getByRole('checkbox', { name: /select deploy v1/i });
+    await user.click(deployCheckbox);
+
+    // Click batch Reset button to open dialog
+    await user.click(screen.getByRole('button', { name: /reset 1/i }));
+
+    // Click Confirm in dialog
+    await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+    await waitFor(() => {
+      expect(tasksApi.updateStatus).toHaveBeenCalledWith('/test', 't6', 'READY');
+    });
+    expect(mockMutate).toHaveBeenCalled();
+  });
+
+  it('shows error message when batch stop partially fails', async () => {
+    const { tasksApi } = require('@/lib/api');
+    tasksApi.stopExecution.mockRejectedValue({ detail: 'Task not running' });
+    mockMutate.mockResolvedValue(undefined);
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<TaskBoardView workspacePath="/test" />);
+    act(() => { jest.advanceTimersByTime(350); });
+
+    // Enter selection mode and select IN_PROGRESS task
+    await user.click(screen.getByRole('button', { name: /batch/i }));
+    const buildApiCheckbox = screen.getByRole('checkbox', { name: /select build api/i });
+    await user.click(buildApiCheckbox);
+
+    // Click batch Stop button to open dialog
+    await user.click(screen.getByRole('button', { name: /stop 1/i }));
+
+    // Click Confirm in dialog
+    await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/failed to stop 1 task/i);
+    });
   });
 });

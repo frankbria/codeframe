@@ -40,6 +40,7 @@ module.exports = {
   // Task Board components
   PlayCircleIcon: createIconMock('PlayCircleIcon'),
   LinkCircleIcon: createIconMock('LinkCircleIcon'),
+  ViewIcon: createIconMock('ViewIcon'),
   Search01Icon: createIconMock('Search01Icon'),
   CheckListIcon: createIconMock('CheckListIcon'),
   // Execution Monitor components

@@ -6,6 +6,11 @@ import type { Task } from '@/types';
 
 // ─── Mocks ──────────────────────────────────────────────────────────
 
+const mockPush = jest.fn();
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush, replace: jest.fn(), prefetch: jest.fn() }),
+}));
+
 jest.mock('@/lib/api', () => ({
   tasksApi: {
     getOne: jest.fn(),
@@ -142,6 +147,21 @@ describe('TaskDetailModal', () => {
     });
     expect(screen.queryByRole('button', { name: /execute/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /mark ready/i })).not.toBeInTheDocument();
+  });
+
+  it('shows View Execution button for IN_PROGRESS tasks and navigates on click', async () => {
+    const user = userEvent.setup();
+    mockGetOne.mockResolvedValue(makeTask({ status: 'IN_PROGRESS' }));
+    render(<TaskDetailModal {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /view execution/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /execute/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /view execution/i }));
+    expect(defaultProps.onClose).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith('/execution/task-1');
   });
 
   it('calls onExecute when Execute button is clicked', async () => {

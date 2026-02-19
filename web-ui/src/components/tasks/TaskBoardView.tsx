@@ -7,6 +7,8 @@ import { TaskBoardContent } from './TaskBoardContent';
 import { TaskDetailModal } from './TaskDetailModal';
 import { TaskFilters } from './TaskFilters';
 import { BatchActionsBar } from './BatchActionsBar';
+import { BulkActionConfirmDialog, type BulkActionType } from './BulkActionConfirmDialog';
+import { Cancel01Icon } from '@hugeicons/react';
 import { tasksApi } from '@/lib/api';
 import type {
   TaskStatus,
@@ -37,12 +39,22 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [batchStrategy, setBatchStrategy] = useState<BatchStrategy>('serial');
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isStoppingBatch, setIsStoppingBatch] = useState(false);
+  const [isResettingBatch, setIsResettingBatch] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    type: BulkActionType;
+    count: number;
+    taskIds: string[];
+  } | null>(null);
 
   // ─── Detail modal state ────────────────────────────────────────
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
 
   // ─── Error state for actions ───────────────────────────────────
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // ─── Per-task loading state ──────────────────────────────────────
+  const [loadingTaskIds, setLoadingTaskIds] = useState<Set<string>>(new Set());
 
   // ─── Filtered tasks ────────────────────────────────────────────
   const filteredTasks = useMemo(() => {
@@ -64,6 +76,14 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
 
     return tasks;
   }, [data?.tasks, statusFilter, searchQuery]);
+
+  // ─── Selected tasks (for batch actions) ───────────────────────
+  // Derive from full task list (not filteredTasks) so bulk actions
+  // include all selected tasks even when filters hide some of them.
+  const selectedTasks = useMemo(
+    () => (data?.tasks ?? []).filter((t) => selectedTaskIds.has(t.id)),
+    [data?.tasks, selectedTaskIds]
+  );
 
   // ─── Handlers ──────────────────────────────────────────────────
   const handleToggleSelectionMode = useCallback(() => {
@@ -87,6 +107,22 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
 
   const handleClearSelection = useCallback(() => {
     setSelectedTaskIds(new Set());
+  }, []);
+
+  const handleSelectAll = useCallback((taskIds: string[]) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      for (const id of taskIds) next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleDeselectAll = useCallback((taskIds: string[]) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      for (const id of taskIds) next.delete(id);
+      return next;
+    });
   }, []);
 
   const handleTaskClick = useCallback((taskId: string) => {
@@ -126,6 +162,48 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
     [workspacePath, mutate]
   );
 
+  const handleStop = useCallback(
+    async (taskId: string) => {
+      setActionError(null);
+      setLoadingTaskIds((prev) => new Set(prev).add(taskId));
+      try {
+        await tasksApi.stopExecution(workspacePath, taskId);
+        await mutate();
+      } catch (err) {
+        const apiErr = err as ApiError;
+        setActionError(apiErr.detail || 'Failed to stop task');
+      } finally {
+        setLoadingTaskIds((prev) => {
+          const next = new Set(prev);
+          next.delete(taskId);
+          return next;
+        });
+      }
+    },
+    [workspacePath, mutate]
+  );
+
+  const handleReset = useCallback(
+    async (taskId: string) => {
+      setActionError(null);
+      setLoadingTaskIds((prev) => new Set(prev).add(taskId));
+      try {
+        await tasksApi.updateStatus(workspacePath, taskId, 'READY');
+        await mutate();
+      } catch (err) {
+        const apiErr = err as ApiError;
+        setActionError(apiErr.detail || 'Failed to reset task');
+      } finally {
+        setLoadingTaskIds((prev) => {
+          const next = new Set(prev);
+          next.delete(taskId);
+          return next;
+        });
+      }
+    },
+    [workspacePath, mutate]
+  );
+
   const handleExecuteBatch = useCallback(async () => {
     if (selectedTaskIds.size === 0) return;
     setIsExecuting(true);
@@ -145,6 +223,49 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
       setIsExecuting(false);
     }
   }, [workspacePath, selectedTaskIds, batchStrategy, router]);
+
+  const handleStopBatch = useCallback(() => {
+    const inProgressTasks = selectedTasks.filter((t) => t.status === 'IN_PROGRESS');
+    setConfirmAction({ type: 'stop', count: inProgressTasks.length, taskIds: inProgressTasks.map((t) => t.id) });
+  }, [selectedTasks]);
+
+  const handleResetBatch = useCallback(() => {
+    const failedTasks = selectedTasks.filter((t) => t.status === 'FAILED');
+    setConfirmAction({ type: 'reset', count: failedTasks.length, taskIds: failedTasks.map((t) => t.id) });
+  }, [selectedTasks]);
+
+  const handleConfirmAction = useCallback(async () => {
+    if (!confirmAction) return;
+    setActionError(null);
+
+    try {
+      if (confirmAction.type === 'stop') {
+        setIsStoppingBatch(true);
+        const results = await Promise.allSettled(
+          confirmAction.taskIds.map((id) => tasksApi.stopExecution(workspacePath, id))
+        );
+        const failures = results.filter((r) => r.status === 'rejected');
+        if (failures.length > 0) {
+          setActionError(`Failed to stop ${failures.length} task(s)`);
+        }
+      } else if (confirmAction.type === 'reset') {
+        setIsResettingBatch(true);
+        const results = await Promise.allSettled(
+          confirmAction.taskIds.map((id) => tasksApi.updateStatus(workspacePath, id, 'READY'))
+        );
+        const failures = results.filter((r) => r.status === 'rejected');
+        if (failures.length > 0) {
+          setActionError(`Failed to reset ${failures.length} task(s)`);
+        }
+      }
+    } finally {
+      setIsStoppingBatch(false);
+      setIsResettingBatch(false);
+      setConfirmAction(null);
+      handleClearSelection();
+      await mutate();
+    }
+  }, [confirmAction, workspacePath, mutate, handleClearSelection]);
 
   const handleStatusChange = useCallback(() => {
     mutate();
@@ -206,13 +327,25 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
           onExecuteBatch={handleExecuteBatch}
           onClearSelection={handleClearSelection}
           isExecuting={isExecuting}
+          selectedTasks={selectedTasks}
+          onStopBatch={handleStopBatch}
+          onResetBatch={handleResetBatch}
+          isStoppingBatch={isStoppingBatch}
+          isResettingBatch={isResettingBatch}
         />
       </div>
 
       {/* Action error banner */}
       {actionError && (
-        <div className="rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          {actionError}
+        <div role="alert" className="flex items-center justify-between rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            aria-label="Dismiss error"
+            className="ml-2 rounded p-0.5 text-destructive hover:text-destructive/80 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+          >
+            <Cancel01Icon className="h-4 w-4" />
+          </button>
         </div>
       )}
 
@@ -225,6 +358,11 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onToggleSelect={handleToggleSelect}
         onExecute={handleExecute}
         onMarkReady={handleMarkReady}
+        onStop={handleStop}
+        onReset={handleReset}
+        onSelectAll={handleSelectAll}
+        onDeselectAll={handleDeselectAll}
+        loadingTaskIds={loadingTaskIds}
       />
 
       {/* Task detail modal */}
@@ -235,6 +373,18 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onClose={handleCloseDetail}
         onExecute={handleExecute}
         onStatusChange={handleStatusChange}
+      />
+
+      {/* Bulk action confirmation */}
+      <BulkActionConfirmDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null);
+        }}
+        actionType={confirmAction?.type ?? 'stop'}
+        taskCount={confirmAction?.count ?? 0}
+        onConfirm={handleConfirmAction}
+        isLoading={isStoppingBatch || isResettingBatch || isExecuting}
       />
     </div>
   );

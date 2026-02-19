@@ -22,6 +22,11 @@ interface TaskBoardContentProps {
   onToggleSelect: (taskId: string) => void;
   onExecute: (taskId: string) => void;
   onMarkReady: (taskId: string) => void;
+  onStop?: (taskId: string) => void;
+  onReset?: (taskId: string) => void;
+  onSelectAll?: (taskIds: string[]) => void;
+  onDeselectAll?: (taskIds: string[]) => void;
+  loadingTaskIds?: Set<string>;
 }
 
 export function TaskBoardContent({
@@ -32,6 +37,11 @@ export function TaskBoardContent({
   onToggleSelect,
   onExecute,
   onMarkReady,
+  onStop,
+  onReset,
+  onSelectAll,
+  onDeselectAll,
+  loadingTaskIds,
 }: TaskBoardContentProps) {
   /** Group flat task array into per-status buckets. */
   const tasksByStatus = useMemo(() => {
@@ -60,6 +70,11 @@ export function TaskBoardContent({
           onToggleSelect={onToggleSelect}
           onExecute={onExecute}
           onMarkReady={onMarkReady}
+          onStop={onStop}
+          onReset={onReset}
+          onSelectAll={onSelectAll}
+          onDeselectAll={onDeselectAll}
+          loadingTaskIds={loadingTaskIds}
         />
       ))}
     </div>
