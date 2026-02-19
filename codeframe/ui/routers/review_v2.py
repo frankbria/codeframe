@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
-from codeframe.core import review
+from codeframe.core import review, git
 from codeframe.ui.dependencies import get_v2_workspace
 
 logger = logging.getLogger(__name__)
@@ -69,6 +69,38 @@ class ReviewTaskRequest(BaseModel):
 
     task_id: str = Field(..., description="Task ID")
     files_modified: list[str] = Field(..., min_length=1, description="Modified files to review")
+
+
+class FileChangeResponse(BaseModel):
+    """Per-file change statistics."""
+
+    path: str
+    change_type: str
+    insertions: int
+    deletions: int
+
+
+class DiffStatsResponse(BaseModel):
+    """Response model for diff with statistics."""
+
+    diff: str
+    files_changed: int
+    insertions: int
+    deletions: int
+    changed_files: list[FileChangeResponse]
+
+
+class PatchResponse(BaseModel):
+    """Response model for patch export."""
+
+    patch: str
+    filename: str
+
+
+class CommitMessageResponse(BaseModel):
+    """Response model for generated commit message."""
+
+    message: str
 
 
 # ============================================================================
@@ -204,4 +236,125 @@ async def review_files_summary(
 
     except Exception as e:
         logger.error(f"Failed to get review summary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Diff & Patch Endpoints (for Review & Commit View)
+# ============================================================================
+
+
+@router.get("/diff", response_model=DiffStatsResponse)
+@rate_limit_standard()
+async def get_review_diff(
+    request: Request,
+    staged: bool = False,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> DiffStatsResponse:
+    """Get unified diff with parsed statistics.
+
+    Returns the raw diff plus per-file change counts for display
+    in the Review & Commit View.
+
+    Args:
+        request: HTTP request for rate limiting
+        staged: If True, show staged changes; if False, show unstaged
+        workspace: v2 Workspace
+
+    Returns:
+        DiffStatsResponse with diff text and statistics
+    """
+    try:
+        stats = git.get_diff_stats(workspace, staged=staged)
+
+        return DiffStatsResponse(
+            diff=stats.diff,
+            files_changed=stats.files_changed,
+            insertions=stats.insertions,
+            deletions=stats.deletions,
+            changed_files=[
+                FileChangeResponse(
+                    path=f.path,
+                    change_type=f.change_type,
+                    insertions=f.insertions,
+                    deletions=f.deletions,
+                )
+                for f in stats.changed_files
+            ],
+        )
+
+    except ValueError as e:
+        logger.error(f"Get review diff failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to get review diff: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/patch", response_model=PatchResponse)
+@rate_limit_standard()
+async def get_review_patch(
+    request: Request,
+    staged: bool = False,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> PatchResponse:
+    """Get patch-formatted diff for export.
+
+    Returns the diff in patch format suitable for `git apply`.
+
+    Args:
+        request: HTTP request for rate limiting
+        staged: If True, show staged changes; if False, show unstaged
+        workspace: v2 Workspace
+
+    Returns:
+        PatchResponse with patch content and suggested filename
+    """
+    try:
+        patch_content = git.get_patch(workspace, staged=staged)
+        branch = git.get_current_branch(workspace)
+        filename = f"{branch.replace('/', '-')}.patch"
+
+        return PatchResponse(
+            patch=patch_content,
+            filename=filename,
+        )
+
+    except ValueError as e:
+        logger.error(f"Get patch failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to get patch: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/commit-message", response_model=CommitMessageResponse)
+@rate_limit_standard()
+async def generate_commit_message(
+    request: Request,
+    staged: bool = False,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> CommitMessageResponse:
+    """Generate a commit message from the current diff.
+
+    Analyzes changed files to suggest a conventional commit message.
+
+    Args:
+        request: HTTP request for rate limiting
+        staged: If True, analyze staged changes; if False, unstaged
+        workspace: v2 Workspace
+
+    Returns:
+        CommitMessageResponse with suggested message
+    """
+    try:
+        message = git.generate_commit_message(workspace, staged=staged)
+
+        return CommitMessageResponse(message=message)
+
+    except ValueError as e:
+        logger.error(f"Generate commit message failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to generate commit message: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

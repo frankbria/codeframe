@@ -29,6 +29,14 @@ import type {
   BlockerStatus,
   BlockerListResponse,
   BatchResponse,
+  DiffStatsResponse,
+  PatchResponse,
+  CommitMessageResponse,
+  GateResult,
+  GitStatusResponse,
+  CommitResultResponse,
+  PRResponse,
+  CreatePRRequest,
 } from '@/types';
 
 // FastAPI validation error format
@@ -478,6 +486,82 @@ export const discoveryApi = {
     const response = await api.post<GenerateTasksResponse>(
       '/api/v2/discovery/generate-tasks',
       {},
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+};
+
+// Review API methods (diff, patch, commit message)
+export const reviewApi = {
+  getDiff: async (workspacePath: string, staged?: boolean): Promise<DiffStatsResponse> => {
+    const response = await api.get<DiffStatsResponse>('/api/v2/review/diff', {
+      params: { workspace_path: workspacePath, ...(staged ? { staged } : {}) },
+    });
+    return response.data;
+  },
+
+  getPatch: async (workspacePath: string, staged?: boolean): Promise<PatchResponse> => {
+    const response = await api.get<PatchResponse>('/api/v2/review/patch', {
+      params: { workspace_path: workspacePath, ...(staged ? { staged } : {}) },
+    });
+    return response.data;
+  },
+
+  generateCommitMessage: async (workspacePath: string, staged?: boolean): Promise<CommitMessageResponse> => {
+    const response = await api.post<CommitMessageResponse>(
+      '/api/v2/review/commit-message',
+      {},
+      { params: { workspace_path: workspacePath, ...(staged ? { staged } : {}) } }
+    );
+    return response.data;
+  },
+};
+
+// Gates API methods
+export const gatesApi = {
+  run: async (
+    workspacePath: string,
+    options?: { gates?: string[]; verbose?: boolean }
+  ): Promise<GateResult> => {
+    const response = await api.post<GateResult>(
+      '/api/v2/gates/run',
+      { gates: options?.gates ?? null, verbose: options?.verbose ?? false },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+};
+
+// Git API methods
+export const gitApi = {
+  getStatus: async (workspacePath: string): Promise<GitStatusResponse> => {
+    const response = await api.get<GitStatusResponse>('/api/v2/git/status', {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  commit: async (
+    workspacePath: string,
+    files: string[],
+    message: string
+  ): Promise<CommitResultResponse> => {
+    const response = await api.post<CommitResultResponse>(
+      '/api/v2/git/commit',
+      { files, message },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+};
+
+// PR API methods
+export const prApi = {
+  create: async (workspacePath: string, request: CreatePRRequest): Promise<PRResponse> => {
+    const response = await api.post<PRResponse>(
+      '/api/v2/pr',
+      request,
       { params: { workspace_path: workspacePath } }
     );
     return response.data;
