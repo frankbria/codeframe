@@ -78,9 +78,11 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   }, [data?.tasks, statusFilter, searchQuery]);
 
   // ─── Selected tasks (for batch actions) ───────────────────────
+  // Derive from full task list (not filteredTasks) so bulk actions
+  // include all selected tasks even when filters hide some of them.
   const selectedTasks = useMemo(
-    () => filteredTasks.filter((t) => selectedTaskIds.has(t.id)),
-    [filteredTasks, selectedTaskIds]
+    () => (data?.tasks ?? []).filter((t) => selectedTaskIds.has(t.id)),
+    [data?.tasks, selectedTaskIds]
   );
 
   // ─── Handlers ──────────────────────────────────────────────────
@@ -236,34 +238,34 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
     if (!confirmAction) return;
     setActionError(null);
 
-    if (confirmAction.type === 'stop') {
-      setIsStoppingBatch(true);
-      const results = await Promise.allSettled(
-        confirmAction.taskIds.map((id) => tasksApi.stopExecution(workspacePath, id))
-      );
-      const failures = results.filter((r) => r.status === 'rejected');
-      if (failures.length > 0) {
-        setActionError(`Failed to stop ${failures.length} task(s)`);
+    try {
+      if (confirmAction.type === 'stop') {
+        setIsStoppingBatch(true);
+        const results = await Promise.allSettled(
+          confirmAction.taskIds.map((id) => tasksApi.stopExecution(workspacePath, id))
+        );
+        const failures = results.filter((r) => r.status === 'rejected');
+        if (failures.length > 0) {
+          setActionError(`Failed to stop ${failures.length} task(s)`);
+        }
+      } else if (confirmAction.type === 'reset') {
+        setIsResettingBatch(true);
+        const results = await Promise.allSettled(
+          confirmAction.taskIds.map((id) => tasksApi.updateStatus(workspacePath, id, 'READY'))
+        );
+        const failures = results.filter((r) => r.status === 'rejected');
+        if (failures.length > 0) {
+          setActionError(`Failed to reset ${failures.length} task(s)`);
+        }
       }
+    } finally {
       setIsStoppingBatch(false);
-    } else if (confirmAction.type === 'reset') {
-      setIsResettingBatch(true);
-      const results = await Promise.allSettled(
-        confirmAction.taskIds.map((id) => tasksApi.updateStatus(workspacePath, id, 'READY'))
-      );
-      const failures = results.filter((r) => r.status === 'rejected');
-      if (failures.length > 0) {
-        setActionError(`Failed to reset ${failures.length} task(s)`);
-      }
       setIsResettingBatch(false);
-    } else if (confirmAction.type === 'execute') {
-      await handleExecuteBatch();
+      setConfirmAction(null);
+      handleClearSelection();
+      await mutate();
     }
-
-    setConfirmAction(null);
-    handleClearSelection();
-    await mutate();
-  }, [confirmAction, workspacePath, mutate, handleClearSelection, handleExecuteBatch]);
+  }, [confirmAction, workspacePath, mutate, handleClearSelection]);
 
   const handleStatusChange = useCallback(() => {
     mutate();

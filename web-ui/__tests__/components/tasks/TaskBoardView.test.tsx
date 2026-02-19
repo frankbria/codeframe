@@ -296,8 +296,6 @@ describe('TaskBoardView', () => {
     await user.click(screen.getByRole('button', { name: /batch/i }));
 
     // Select the IN_PROGRESS task (t3 "Build API")
-    const checkboxes = screen.getAllByRole('checkbox');
-    // Find the checkbox for "Build API" - it's the one with aria-label containing "Build API"
     const buildApiCheckbox = screen.getByRole('checkbox', { name: /select build api/i });
     await user.click(buildApiCheckbox);
 

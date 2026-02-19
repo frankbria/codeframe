@@ -208,7 +208,7 @@ describe('TaskCard', () => {
     renderCard({ status: 'IN_PROGRESS' }, { isLoading: true });
     // Should show spinner, not the Stop button
     expect(screen.queryByRole('button', { name: /stop/i })).not.toBeInTheDocument();
-    expect(screen.getByTestId('icon-Loading03Icon')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: /loading/i })).toBeInTheDocument();
   });
 
   it('shows action buttons when isLoading is false', () => {
@@ -219,12 +219,12 @@ describe('TaskCard', () => {
   it('shows loading spinner for READY task when isLoading', () => {
     renderCard({ status: 'READY' }, { isLoading: true });
     expect(screen.queryByRole('button', { name: /execute/i })).not.toBeInTheDocument();
-    expect(screen.getByTestId('icon-Loading03Icon')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: /loading/i })).toBeInTheDocument();
   });
 
   it('shows loading spinner for FAILED task when isLoading', () => {
     renderCard({ status: 'FAILED' }, { isLoading: true });
     expect(screen.queryByRole('button', { name: /reset/i })).not.toBeInTheDocument();
-    expect(screen.getByTestId('icon-Loading03Icon')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: /loading/i })).toBeInTheDocument();
   });
 });

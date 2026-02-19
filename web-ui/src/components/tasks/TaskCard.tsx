@@ -37,7 +37,9 @@ interface TaskCardProps {
   onClick: (taskId: string) => void;
   onExecute: (taskId: string) => void;
   onMarkReady: (taskId: string) => void;
+  /** Optional — when omitted, IN_PROGRESS cards silently hide the Stop button. TaskBoardView always provides this. */
   onStop?: (taskId: string) => void;
+  /** Optional — when omitted, FAILED cards silently hide the Reset button. TaskBoardView always provides this. */
   onReset?: (taskId: string) => void;
   isLoading?: boolean;
 }
