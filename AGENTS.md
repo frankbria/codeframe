@@ -137,6 +137,16 @@ Do NOT import legacy UI/server modules into core. Do NOT "fix the UI" during Gol
 ### ReAct Agent Tools (7)
 `read_file`, `edit_file`, `create_file`, `run_command`, `run_tests`, `search_codebase`, `list_files`
 
+### Stall Detection
+If the agent makes no tool calls for a configurable duration, the stall monitor kills execution and creates a blocker.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `--stall-timeout` CLI flag | 300s | Seconds without a tool call before agent is considered stalled (0 = disabled) |
+| `agent_budget.stall_timeout_s` in `.codeframe/config.yaml` | 300 | Same, configured via project config |
+
+On stall: a blocker is created with context about the stall, and the task transitions to BLOCKED.
+
 ### Model Selection
 - **PLANNING** → claude-sonnet-4-20250514 (complex reasoning)
 - **EXECUTION** → claude-sonnet-4-20250514 (balanced)
