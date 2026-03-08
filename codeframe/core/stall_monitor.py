@@ -76,6 +76,7 @@ class StallMonitor:
         if self._stall_timeout_s <= 0:
             return  # Disabled
 
+        self.stop()  # Clean up any previous run
         self._task_id = task_id
         self._last_activity = datetime.now(timezone.utc)
         self._iterations = 0

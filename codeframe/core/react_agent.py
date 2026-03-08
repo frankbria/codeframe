@@ -199,6 +199,8 @@ class ReactAgent:
 
             system_prompt = self._build_system_prompt(context)
 
+            self._stall_triggered.clear()
+            self._stall_event = None
             self._stall_monitor.start(task_id)
             try:
                 status = self._react_loop(system_prompt)
