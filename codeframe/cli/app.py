@@ -1998,6 +1998,11 @@ def work_start(
         "--engine",
         help="Agent engine: 'react' (default, ReAct tool-use loop) or 'plan' (legacy step-based)",
     ),
+    stall_timeout: int = typer.Option(
+        300,
+        "--stall-timeout",
+        help="Seconds without a tool call before agent is considered stalled (0 = disabled)",
+    ),
 ) -> None:
     """Start working on a task.
 
@@ -2062,7 +2067,7 @@ def work_start(
             try:
                 state = runtime.execute_agent(
                     workspace, run, dry_run=dry_run, debug=debug, verbose=verbose,
-                    engine=engine,
+                    engine=engine, stall_timeout_s=stall_timeout,
                 )
 
                 if state.status == AgentStatus.COMPLETED:
@@ -2864,6 +2869,11 @@ def batch_run(
         "--engine",
         help="Agent engine: 'react' (default, ReAct tool-use loop) or 'plan' (legacy step-based)",
     ),
+    stall_timeout: int = typer.Option(
+        300,
+        "--stall-timeout",
+        help="Seconds without a tool call before agent is considered stalled (0 = disabled)",
+    ),
 ) -> None:
     """Execute multiple tasks in batch.
 
@@ -2961,6 +2971,7 @@ def batch_run(
             dry_run=False,
             max_retries=max_retries,
             engine=engine,
+            stall_timeout_s=stall_timeout,
         )
 
         # Show summary

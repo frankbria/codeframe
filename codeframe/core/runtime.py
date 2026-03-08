@@ -597,6 +597,7 @@ def execute_agent(
     fix_coordinator: Optional["GlobalFixCoordinator"] = None,
     event_publisher: Optional["EventPublisher"] = None,
     engine: str = "react",
+    stall_timeout_s: int = 300,
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -676,6 +677,7 @@ def execute_agent(
             react_agent = ReactAgent(
                 workspace=workspace,
                 llm_provider=provider,
+                stall_timeout_s=stall_timeout_s,
                 event_publisher=event_publisher,
                 dry_run=dry_run,
                 verbose=verbose,

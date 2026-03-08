@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Callable, Optional
@@ -22,6 +23,7 @@ from codeframe.core.blocker_detection import classify_error_for_blocker
 from codeframe.core.context import ContextLoader, TaskContext
 from codeframe.core.events import EventType
 from codeframe.core.fix_tracker import EscalationDecision, FixAttemptTracker, FixOutcome
+from codeframe.core.stall_monitor import StallEvent, StallMonitor
 from codeframe.core.models import AgentPhase, CompletionEvent, ErrorEvent, ProgressEvent
 from codeframe.core.quick_fixes import apply_quick_fix, find_quick_fix
 from codeframe.core.tools import AGENT_TOOLS, execute_tool
@@ -107,6 +109,7 @@ class ReactAgent:
         llm_provider: LLMProvider,
         max_iterations: int = 30,
         max_verification_retries: int = 5,
+        stall_timeout_s: float = 300,
         event_publisher: Optional[EventPublisher] = None,
         dry_run: bool = False,
         verbose: bool = False,
@@ -119,6 +122,7 @@ class ReactAgent:
         self.llm_provider = llm_provider
         self.max_iterations = max_iterations
         self.max_verification_retries = max_verification_retries
+        self._stall_timeout_s = stall_timeout_s
         self.event_publisher = event_publisher
         self.dry_run = dry_run
         self.verbose = verbose
@@ -128,6 +132,14 @@ class ReactAgent:
         self.fix_coordinator = fix_coordinator
         self.fix_tracker = FixAttemptTracker()
         self.blocker_id: Optional[str] = None
+
+        # Stall detection
+        self._stall_triggered = threading.Event()
+        self._stall_event: Optional[StallEvent] = None
+        self._stall_monitor = StallMonitor(
+            stall_timeout_s=stall_timeout_s,
+            on_stall=self._on_stall,
+        )
 
         # Token budget tracking for conversation compaction
         self._context_window_size: int = DEFAULT_CONTEXT_WINDOW
@@ -187,7 +199,11 @@ class ReactAgent:
 
             system_prompt = self._build_system_prompt(context)
 
-            status = self._react_loop(system_prompt)
+            self._stall_monitor.start(task_id)
+            try:
+                status = self._react_loop(system_prompt)
+            finally:
+                self._stall_monitor.stop()
             if status == AgentStatus.FAILED:
                 self._emit(EventType.AGENT_FAILED, {
                     "task_id": task_id,
@@ -262,6 +278,20 @@ class ReactAgent:
         prompt_summary = system_prompt[:200]
 
         while iterations < self.max_iterations:
+            # Check for stall before each iteration
+            if self._stall_triggered.is_set():
+                stall_ctx = ""
+                if self._stall_event:
+                    stall_ctx = (
+                        f"Agent stalled: no tool call for {self._stall_event.elapsed_s:.0f}s "
+                        f"(timeout: {self._stall_event.stall_timeout_s}s)"
+                    )
+                self._create_text_blocker(
+                    stall_ctx or "Agent stalled with no tool activity",
+                    "stall_detected",
+                )
+                return AgentStatus.BLOCKED
+
             self._verbose_print(f"[ReactAgent] Iteration {iterations + 1}/{self.max_iterations}")
             self._emit(EventType.AGENT_ITERATION_STARTED, {
                 "task_id": self._current_task_id,
@@ -336,6 +366,11 @@ class ReactAgent:
                 })
 
                 result = self._execute_tool_with_lint(tc)
+
+                if not result.is_error:
+                    self._stall_monitor.notify_tool_executed(
+                        self._current_task_id, iterations,
+                    )
 
                 self._emit(EventType.AGENT_TOOL_RESULT, {
                     "task_id": self._current_task_id,
@@ -437,6 +472,9 @@ class ReactAgent:
         max_fix_turns = 5  # LLM turns per retry attempt
 
         for attempt in range(1 + self.max_verification_retries):
+            if self._stall_triggered.is_set():
+                return (False, "stall_detected")
+
             self._verbose_print("[ReactAgent] Running final verification...")
             self._emit_progress(
                 AgentPhase.VERIFYING,
@@ -911,6 +949,25 @@ class ReactAgent:
                 self.event_publisher.complete_task_sync(task_id)
             except Exception:
                 logger.debug("Failed to close task stream", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Stall detection
+    # ------------------------------------------------------------------
+
+    def _on_stall(self, event: StallEvent) -> None:
+        """Callback invoked by StallMonitor when inactivity is detected."""
+        self._stall_event = event
+        self._stall_triggered.set()
+        self._verbose_print(
+            f"[ReactAgent] Stall detected: no tool call for {event.elapsed_s:.0f}s "
+            f"(timeout={event.stall_timeout_s}s, iterations={event.iterations_completed})"
+        )
+        self._emit(EventType.AGENT_STALL_DETECTED, {
+            "task_id": event.task_id,
+            "elapsed_s": event.elapsed_s,
+            "stall_timeout_s": event.stall_timeout_s,
+            "iterations_completed": event.iterations_completed,
+        })
 
     # ------------------------------------------------------------------
     # Blocker creation helpers

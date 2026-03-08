@@ -196,3 +196,66 @@ class TestStallEventType:
         from codeframe.core.events import EventType
         assert hasattr(EventType, "AGENT_STALL_DETECTED")
         assert EventType.AGENT_STALL_DETECTED == "AGENT_STALL_DETECTED"
+
+
+class TestReactAgentStallIntegration:
+    """Test stall detection integrated into ReactAgent."""
+
+    def test_react_agent_has_stall_timeout_param(self):
+        """ReactAgent constructor accepts stall_timeout_s."""
+        from codeframe.core.react_agent import ReactAgent
+        mock_provider = MagicMock()
+        mock_workspace = MagicMock()
+        agent = ReactAgent(
+            workspace=mock_workspace,
+            llm_provider=mock_provider,
+            stall_timeout_s=600,
+        )
+        assert agent._stall_timeout_s == 600
+
+    def test_react_agent_default_stall_timeout(self):
+        """ReactAgent defaults to 300s stall timeout."""
+        from codeframe.core.react_agent import ReactAgent
+        mock_provider = MagicMock()
+        mock_workspace = MagicMock()
+        agent = ReactAgent(
+            workspace=mock_workspace,
+            llm_provider=mock_provider,
+        )
+        assert agent._stall_timeout_s == 300
+
+    def test_react_agent_has_stall_monitor(self):
+        """ReactAgent should have a StallMonitor instance."""
+        from codeframe.core.react_agent import ReactAgent
+        mock_provider = MagicMock()
+        mock_workspace = MagicMock()
+        agent = ReactAgent(
+            workspace=mock_workspace,
+            llm_provider=mock_provider,
+        )
+        assert hasattr(agent, "_stall_monitor")
+        assert isinstance(agent._stall_monitor, StallMonitor)
+
+    def test_react_agent_has_stall_triggered_event(self):
+        """ReactAgent should have a threading.Event for stall detection."""
+        from codeframe.core.react_agent import ReactAgent
+        mock_provider = MagicMock()
+        mock_workspace = MagicMock()
+        agent = ReactAgent(
+            workspace=mock_workspace,
+            llm_provider=mock_provider,
+        )
+        assert hasattr(agent, "_stall_triggered")
+        assert isinstance(agent._stall_triggered, threading.Event)
+
+
+class TestExecuteAgentStallParam:
+    """Test that execute_agent passes stall_timeout_s."""
+
+    def test_execute_agent_has_stall_timeout_param(self):
+        """execute_agent should accept stall_timeout_s parameter."""
+        import inspect
+        from codeframe.core.runtime import execute_agent
+        sig = inspect.signature(execute_agent)
+        assert "stall_timeout_s" in sig.parameters
+        assert sig.parameters["stall_timeout_s"].default == 300
