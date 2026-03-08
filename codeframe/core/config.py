@@ -78,6 +78,7 @@ class AgentBudgetConfig:
     max_iterations: int = 100
     auto_fix_enabled: bool = True
     early_termination_enabled: bool = True
+    stall_timeout_s: int = 300
 
 
 @dataclass
@@ -153,6 +154,8 @@ class EnvironmentConfig:
             errors.append(
                 "agent_budget.base_iterations must be between min_iterations and max_iterations"
             )
+        if budget.stall_timeout_s < 0:
+            errors.append("agent_budget.stall_timeout_s must be >= 0 (0 = disabled)")
 
         return errors
 
