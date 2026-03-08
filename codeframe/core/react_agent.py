@@ -202,46 +202,46 @@ class ReactAgent:
             self._stall_monitor.start(task_id)
             try:
                 status = self._react_loop(system_prompt)
+                if status == AgentStatus.FAILED:
+                    self._emit(EventType.AGENT_FAILED, {
+                        "task_id": task_id,
+                        "reason": "max_iterations_reached",
+                    })
+                    self._emit_stream_error(task_id, "max_iterations_reached")
+                    return status
+
+                if status == AgentStatus.BLOCKED:
+                    self._emit(EventType.AGENT_FAILED, {
+                        "task_id": task_id,
+                        "reason": "blocked",
+                    })
+                    self._emit_stream_error(task_id, "blocked")
+                    return AgentStatus.BLOCKED
+
+                # Final verification with retry
+                passed, reason = self._run_final_verification(system_prompt)
+                if passed:
+                    self._verbose_print(f"[ReactAgent] Task {task_id} completed: {AgentStatus.COMPLETED.name}")
+                    self._emit(EventType.AGENT_COMPLETED, {"task_id": task_id})
+                    self._emit_stream_completion(task_id)
+                    return AgentStatus.COMPLETED
+
+                if reason == "escalated_to_blocker" or reason == "stall_detected":
+                    self._emit(EventType.AGENT_FAILED, {
+                        "task_id": task_id,
+                        "reason": "blocked",
+                    })
+                    self._emit_stream_error(task_id, "blocked")
+                    return AgentStatus.BLOCKED
+
+                self._emit(EventType.AGENT_FAILED, {
+                    "task_id": task_id,
+                    "reason": "verification_failed",
+                })
+                self._emit_stream_error(task_id, "verification_failed")
+                return AgentStatus.FAILED
             finally:
                 self._stall_monitor.stop()
-            if status == AgentStatus.FAILED:
-                self._emit(EventType.AGENT_FAILED, {
-                    "task_id": task_id,
-                    "reason": "max_iterations_reached",
-                })
-                self._emit_stream_error(task_id, "max_iterations_reached")
-                return status
-
-            if status == AgentStatus.BLOCKED:
-                self._emit(EventType.AGENT_FAILED, {
-                    "task_id": task_id,
-                    "reason": "blocked",
-                })
-                self._emit_stream_error(task_id, "blocked")
-                return AgentStatus.BLOCKED
-
-            # Final verification with retry
-            passed, reason = self._run_final_verification(system_prompt)
-            if passed:
-                self._verbose_print(f"[ReactAgent] Task {task_id} completed: {AgentStatus.COMPLETED.name}")
-                self._emit(EventType.AGENT_COMPLETED, {"task_id": task_id})
-                self._emit_stream_completion(task_id)
-                return AgentStatus.COMPLETED
-
-            if reason == "escalated_to_blocker":
-                self._emit(EventType.AGENT_FAILED, {
-                    "task_id": task_id,
-                    "reason": "blocked",
-                })
-                self._emit_stream_error(task_id, "blocked")
-                return AgentStatus.BLOCKED
-
-            self._emit(EventType.AGENT_FAILED, {
-                "task_id": task_id,
-                "reason": "verification_failed",
-            })
-            self._emit_stream_error(task_id, "verification_failed")
-            return AgentStatus.FAILED
         except Exception:
             logger.exception("ReactAgent.run() failed for task %s", task_id)
             self._emit(EventType.AGENT_FAILED, {

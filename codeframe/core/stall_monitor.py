@@ -65,6 +65,7 @@ class StallMonitor:
 
         self._task_id: Optional[str] = None
         self._last_activity: Optional[datetime] = None
+        self._last_tool_call_at: Optional[datetime] = None
         self._iterations: int = 0
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -101,7 +102,9 @@ class StallMonitor:
         inactivity timer.
         """
         with self._lock:
-            self._last_activity = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
+            self._last_activity = now
+            self._last_tool_call_at = now
             self._iterations = iteration
 
     def _watch_loop(self) -> None:
@@ -112,14 +115,14 @@ class StallMonitor:
                     continue
                 elapsed = (datetime.now(timezone.utc) - self._last_activity).total_seconds()
                 iterations = self._iterations
-                last_activity = self._last_activity
+                last_tool_call = self._last_tool_call_at
 
             if elapsed >= self._stall_timeout_s:
                 event = StallEvent(
                     task_id=self._task_id or "",
                     stall_timeout_s=self._stall_timeout_s,
                     elapsed_s=elapsed,
-                    last_tool_call_at=last_activity,
+                    last_tool_call_at=last_tool_call,
                     iterations_completed=iterations,
                 )
                 try:
