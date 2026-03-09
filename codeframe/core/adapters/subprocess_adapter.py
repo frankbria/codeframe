@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 from typing import Callable
 
@@ -20,18 +21,28 @@ class SubprocessAdapter:
     Subclasses override build_command() to customize CLI invocation.
     """
 
-    def __init__(self, binary: str, cli_args: list[str] | None = None) -> None:
+    # Default timeout: 30 minutes (coding agents can be long-running)
+    DEFAULT_TIMEOUT_S = 1800
+
+    def __init__(
+        self,
+        binary: str,
+        cli_args: list[str] | None = None,
+        timeout_s: int | None = None,
+    ) -> None:
         """Initialize with the binary name and default CLI args.
 
         Args:
             binary: Name of the CLI binary (e.g., 'claude', 'opencode')
             cli_args: Default CLI arguments appended to every invocation
+            timeout_s: Max execution time in seconds (default: 1800, None = no limit)
 
         Raises:
             EnvironmentError: If the binary is not found on PATH
         """
         self._binary = binary
         self._cli_args = cli_args or []
+        self._timeout_s = timeout_s if timeout_s is not None else self.DEFAULT_TIMEOUT_S
 
         resolved = shutil.which(binary)
         if resolved is None:
@@ -81,7 +92,7 @@ class SubprocessAdapter:
         stdin_content = self.get_stdin(prompt)
 
         stdout_lines: list[str] = []
-        stderr_lines: list[str] = []
+        stderr_chunks: list[str] = []
 
         try:
             process = subprocess.Popen(
@@ -98,6 +109,16 @@ class SubprocessAdapter:
                 process.stdin.write(stdin_content)
                 process.stdin.close()
 
+            # Drain stderr in a background thread to prevent deadlock.
+            # Without this, if the child fills the stderr pipe buffer (~64KB)
+            # before finishing stdout, both processes block indefinitely.
+            def _drain_stderr() -> None:
+                if process.stderr:
+                    stderr_chunks.append(process.stderr.read())
+
+            stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+            stderr_thread.start()
+
             # Stream stdout line-by-line
             if process.stdout:
                 for line in process.stdout:
@@ -106,11 +127,18 @@ class SubprocessAdapter:
                     if on_event:
                         on_event(AgentEvent(type="output", data={"line": stripped}))
 
-            # Collect stderr
-            if process.stderr:
-                stderr_lines = process.stderr.read().splitlines()
-
-            process.wait()
+            # Wait for stderr thread and process to finish
+            stderr_thread.join(timeout=10)
+            try:
+                process.wait(timeout=self._timeout_s)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+                return AgentResult(
+                    status="failed",
+                    output="\n".join(stdout_lines),
+                    error=f"Process timed out after {self._timeout_s}s",
+                )
 
         except FileNotFoundError:
             return AgentResult(
@@ -123,10 +151,12 @@ class SubprocessAdapter:
                 error=f"Failed to start '{self._binary}': {e}",
             )
 
+        stderr_output = "".join(stderr_chunks)
+
         return self._map_result(
             exit_code=process.returncode,
             stdout="\n".join(stdout_lines),
-            stderr="\n".join(stderr_lines),
+            stderr=stderr_output,
             workspace_path=workspace_path,
         )
 

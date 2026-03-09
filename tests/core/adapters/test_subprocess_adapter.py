@@ -1,5 +1,7 @@
 """Tests for SubprocessAdapter base class."""
 
+import subprocess
+
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -165,6 +167,29 @@ class TestSubprocessAdapterRun:
 
     def test_conforms_to_agent_adapter_protocol(self, adapter):
         assert isinstance(adapter, AgentAdapter)
+
+    def test_timeout_kills_process(self):
+        """Process should be killed when timeout expires."""
+        with patch("shutil.which", return_value="/usr/bin/agent"):
+            adapter = SubprocessAdapter("agent", timeout_s=1)
+
+        mock_process = MagicMock()
+        mock_process.stdout = iter(["working...\n"])
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = ""
+        mock_process.stdin = MagicMock()
+        mock_process.wait.side_effect = [
+            subprocess.TimeoutExpired(cmd="agent", timeout=1),
+            None,
+        ]
+        mock_process.returncode = -9
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            result = adapter.run("task-1", "fix", Path("/tmp"))
+
+        assert result.status == "failed"
+        assert "timed out" in result.error
+        mock_process.kill.assert_called_once()
 
 
 class TestSubprocessAdapterBuildCommand:
