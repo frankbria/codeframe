@@ -4,5 +4,12 @@ from codeframe.core.adapters.agent_adapter import (
     AgentResult,
 )
 from codeframe.core.adapters.subprocess_adapter import SubprocessAdapter
+from codeframe.core.adapters.verification_wrapper import VerificationWrapper
 
-__all__ = ["AgentAdapter", "AgentEvent", "AgentResult", "SubprocessAdapter"]
+__all__ = [
+    "AgentAdapter",
+    "AgentEvent",
+    "AgentResult",
+    "SubprocessAdapter",
+    "VerificationWrapper",
+]
