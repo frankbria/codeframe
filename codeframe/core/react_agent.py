@@ -208,11 +208,12 @@ class ReactAgent:
             try:
                 status = self._react_loop(system_prompt)
                 if status == AgentStatus.FAILED:
+                    reason = "stall_detected" if self._stall_triggered.is_set() else "max_iterations_reached"
                     self._emit(EventType.AGENT_FAILED, {
                         "task_id": task_id,
-                        "reason": "max_iterations_reached",
+                        "reason": reason,
                     })
-                    self._emit_stream_error(task_id, "max_iterations_reached")
+                    self._emit_stream_error(task_id, reason)
                     return status
 
                 if status == AgentStatus.BLOCKED:
@@ -495,6 +496,13 @@ class ReactAgent:
 
         for attempt in range(1 + self.max_verification_retries):
             if self._stall_triggered.is_set():
+                if self._stall_action == StallAction.RETRY:
+                    raise StallDetectedError(
+                        elapsed_s=self._stall_event.elapsed_s if self._stall_event else 0,
+                        iterations=0,
+                    )
+                elif self._stall_action == StallAction.FAIL:
+                    return (False, "stall_failed")
                 return (False, "stall_detected")
 
             self._verbose_print("[ReactAgent] Running final verification...")
