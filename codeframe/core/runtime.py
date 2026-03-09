@@ -614,6 +614,8 @@ def execute_agent(
         fix_coordinator: Optional coordinator for global fixes (for parallel execution)
         event_publisher: Optional EventPublisher for SSE streaming (real-time events)
         engine: Agent engine to use ("react" for ReactAgent (default), "plan" for legacy Agent)
+        stall_timeout_s: Seconds without tool activity before stall detection (0 = disabled)
+        stall_action: Recovery action on stall ("blocker", "retry", or "fail")
 
     Returns:
         Final AgentState after execution
