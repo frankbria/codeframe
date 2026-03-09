@@ -1971,7 +1971,7 @@ def work_start(
         False,
         "--execute",
         "-x",
-        help="Run the agent to execute the task (requires ANTHROPIC_API_KEY)",
+        help="Run the agent to execute the task (builtin engines require ANTHROPIC_API_KEY)",
     ),
     dry_run: bool = typer.Option(
         False,
@@ -1997,7 +1997,7 @@ def work_start(
     engine: str = typer.Option(
         "react",
         "--engine",
-        help="Agent engine: 'react' (default, ReAct tool-use loop) or 'plan' (legacy step-based)",
+        help="Agent engine: react (default), plan (legacy), claude-code, opencode, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
@@ -2049,9 +2049,12 @@ def work_start(
         task = matching[0]
 
         # Validate API key before creating run record (avoids dangling IN_PROGRESS state)
+        # External engines (claude-code, opencode) manage their own authentication
         if execute:
-            from codeframe.cli.validators import require_anthropic_api_key
-            require_anthropic_api_key()
+            from codeframe.core.engine_registry import is_external_engine
+            if not is_external_engine(engine):
+                from codeframe.cli.validators import require_anthropic_api_key
+                require_anthropic_api_key()
 
         # Start the run
         run = runtime.start_task_run(workspace, task.id)
@@ -2875,7 +2878,7 @@ def batch_run(
     engine: str = typer.Option(
         "react",
         "--engine",
-        help="Agent engine: 'react' (default, ReAct tool-use loop) or 'plan' (legacy step-based)",
+        help="Agent engine: react (default), plan (legacy), claude-code, opencode, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
@@ -2967,8 +2970,11 @@ def batch_run(
             return
 
         # Validate API key before batch execution
-        from codeframe.cli.validators import require_anthropic_api_key
-        require_anthropic_api_key()
+        # External engines (claude-code, opencode) manage their own authentication
+        from codeframe.core.engine_registry import is_external_engine
+        if not is_external_engine(engine):
+            from codeframe.cli.validators import require_anthropic_api_key
+            require_anthropic_api_key()
 
         # Execute batch
         if max_retries > 0:
