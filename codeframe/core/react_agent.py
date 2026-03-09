@@ -249,8 +249,7 @@ class ReactAgent:
             finally:
                 self._stall_monitor.stop()
         except StallDetectedError:
-            self._stall_monitor.stop()
-            raise  # Let runtime handle retry
+            raise  # Monitor stopped by finally above; let runtime handle retry
         except Exception:
             logger.exception("ReactAgent.run() failed for task %s", task_id)
             self._emit(EventType.AGENT_FAILED, {

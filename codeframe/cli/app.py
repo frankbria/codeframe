@@ -17,6 +17,7 @@ Examples:
 from pathlib import Path
 from typing import Optional
 
+import click
 import typer
 from dotenv import load_dotenv
 from rich.console import Console
@@ -2007,6 +2008,7 @@ def work_start(
         "blocker",
         "--stall-action",
         help="Recovery action on stall: 'blocker' (default), 'retry', or 'fail'",
+        click_type=click.Choice(["blocker", "retry", "fail"], case_sensitive=False),
     ),
 ) -> None:
     """Start working on a task.
@@ -2884,6 +2886,7 @@ def batch_run(
         "blocker",
         "--stall-action",
         help="Recovery action on stall: 'blocker' (default), 'retry', or 'fail'",
+        click_type=click.Choice(["blocker", "retry", "fail"], case_sensitive=False),
     ),
 ) -> None:
     """Execute multiple tasks in batch.
