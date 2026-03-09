@@ -613,7 +613,7 @@ def execute_agent(
         verbose: If True, print detailed progress to stdout
         fix_coordinator: Optional coordinator for global fixes (for parallel execution)
         event_publisher: Optional EventPublisher for SSE streaming (real-time events)
-        engine: Agent engine to use ("react" for ReactAgent (default), "plan" for legacy Agent)
+        engine: Agent engine to use ("react", "plan", "claude-code", "opencode", "built-in")
         stall_timeout_s: Seconds without tool activity before stall detection (0 = disabled)
         stall_action: Recovery action on stall ("blocker", "retry", or "fail")
 
@@ -621,28 +621,29 @@ def execute_agent(
         Final AgentState after execution
 
     Raises:
-        ValueError: If ANTHROPIC_API_KEY is not set or engine is invalid
+        ValueError: If ANTHROPIC_API_KEY is not set (for builtin engines) or engine is invalid
     """
     import os
     from codeframe.core.agent import Agent, AgentState, AgentStatus
     from codeframe.adapters.llm import get_provider
     from codeframe.core.diagnostics import RunLogger, LogCategory
+    from codeframe.core.engine_registry import VALID_ENGINES, is_external_engine
 
     # Validate engine parameter
-    valid_engines = ("plan", "react")
-    if engine not in valid_engines:
+    if engine not in VALID_ENGINES:
         raise ValueError(
-            f"Invalid engine '{engine}'. Must be one of: {', '.join(valid_engines)}"
+            f"Invalid engine '{engine}'. Must be one of: {', '.join(sorted(VALID_ENGINES))}"
         )
 
-    # Get LLM provider
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    # External engines manage their own authentication
+    if not is_external_engine(engine) and not os.getenv("ANTHROPIC_API_KEY"):
         raise ValueError(
             "ANTHROPIC_API_KEY environment variable is required for agent execution. "
             "Set it with: export ANTHROPIC_API_KEY=your-key"
         )
 
-    provider = get_provider("anthropic")
+    # Only create LLM provider for builtin engines (external engines manage their own)
+    provider = get_provider("anthropic") if not is_external_engine(engine) else None
 
     # Create run logger for structured logging
     run_logger = RunLogger(workspace, run.id, run.task_id)
@@ -672,7 +673,69 @@ def execute_agent(
             run_logger.info(category, f"Agent event: {event_type}", data)
 
         # Create and run agent based on engine selection
-        if engine == "react":
+        # --- External engine path (claude-code, opencode, etc.) ---
+        if is_external_engine(engine):
+            from codeframe.core.engine_registry import get_external_adapter
+            from codeframe.core.context_packager import TaskContextPackager
+            from codeframe.core.adapters.verification_wrapper import VerificationWrapper
+            from codeframe.core.adapters.agent_adapter import AgentEvent
+
+            run_logger.info(
+                LogCategory.AGENT_ACTION,
+                f"Using external engine: {engine}",
+                {"engine": engine},
+            )
+
+            # Build rich context prompt for the external agent
+            packager = TaskContextPackager(workspace)
+            packaged = packager.build(run.task_id)
+
+            # Get the adapter and wrap with verification gates
+            adapter = get_external_adapter(engine)
+            wrapper = VerificationWrapper(
+                adapter,
+                workspace,
+                max_correction_rounds=3,
+                verbose=verbose,
+            )
+
+            # Bridge AgentEvent callbacks to workspace event system
+            def on_adapter_event(event: AgentEvent) -> None:
+                on_agent_event(event.type, event.data)
+
+            result = wrapper.run(
+                run.task_id,
+                packaged.prompt,
+                workspace.repo_path,
+                on_event=on_adapter_event,
+            )
+
+            # Map AgentResult to AgentState for compatibility with rest of runtime
+            status_map = {
+                "completed": AgentStatus.COMPLETED,
+                "failed": AgentStatus.FAILED,
+                "blocked": AgentStatus.BLOCKED,
+            }
+            agent_status = status_map.get(result.status, AgentStatus.FAILED)
+            state = AgentState(status=agent_status)
+
+            # Create blocker if adapter reported one
+            if result.status == "blocked" and result.blocker_question:
+                from codeframe.core import blockers
+                blockers.create(
+                    workspace,
+                    task_id=run.task_id,
+                    question=result.blocker_question,
+                )
+
+            run_logger.info(
+                LogCategory.AGENT_ACTION,
+                f"External engine completed: {result.status}",
+                {"engine": engine, "output_length": len(result.output)},
+            )
+
+        # --- Builtin engine paths (react, plan) ---
+        elif engine == "react":
             # ReactAgent has a simpler interface — it handles its own
             # retries and verification internally.
             from codeframe.core.react_agent import ReactAgent
