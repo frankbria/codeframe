@@ -598,6 +598,7 @@ def execute_agent(
     event_publisher: Optional["EventPublisher"] = None,
     engine: str = "react",
     stall_timeout_s: int = 300,
+    stall_action: str = "blocker",
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -673,22 +674,52 @@ def execute_agent(
             # ReactAgent has a simpler interface — it handles its own
             # retries and verification internally.
             from codeframe.core.react_agent import ReactAgent
+            from codeframe.core.stall_detector import StallAction, StallDetectedError
 
-            react_agent = ReactAgent(
-                workspace=workspace,
-                llm_provider=provider,
-                stall_timeout_s=stall_timeout_s,
-                event_publisher=event_publisher,
-                dry_run=dry_run,
-                verbose=verbose,
-                on_event=on_agent_event,
-                debug=debug,
-                output_logger=output_logger,
-                fix_coordinator=fix_coordinator,
-            )
-            react_status = react_agent.run(run.task_id)
-            # Wrap AgentStatus enum into AgentState dataclass for compatibility
-            state = AgentState(status=react_status)
+            resolved_action = StallAction(stall_action)
+
+            def _build_react_agent() -> ReactAgent:
+                return ReactAgent(
+                    workspace=workspace,
+                    llm_provider=provider,
+                    stall_timeout_s=stall_timeout_s,
+                    stall_action=resolved_action,
+                    event_publisher=event_publisher,
+                    dry_run=dry_run,
+                    verbose=verbose,
+                    on_event=on_agent_event,
+                    debug=debug,
+                    output_logger=output_logger,
+                    fix_coordinator=fix_coordinator,
+                )
+
+            max_stall_retries = 1
+            for stall_attempt in range(1 + max_stall_retries):
+                try:
+                    react_agent = _build_react_agent()
+                    react_status = react_agent.run(run.task_id)
+                    # Wrap AgentStatus enum into AgentState dataclass for compatibility
+                    state = AgentState(status=react_status)
+                    break
+                except StallDetectedError as exc:
+                    run_logger.warning(
+                        LogCategory.AGENT_ACTION,
+                        f"Stall detected (attempt {stall_attempt + 1}): {exc}",
+                        {"elapsed_s": exc.elapsed_s, "iterations": exc.iterations},
+                    )
+                    if stall_attempt >= max_stall_retries:
+                        run_logger.error(
+                            LogCategory.AGENT_ACTION,
+                            "Max stall retries exceeded, failing task",
+                            {},
+                        )
+                        state = AgentState(status=AgentStatus.FAILED)
+                        break
+                    run_logger.info(
+                        LogCategory.AGENT_ACTION,
+                        "Retrying after stall",
+                        {"attempt": stall_attempt + 2},
+                    )
         else:
             agent = Agent(
                 workspace=workspace,

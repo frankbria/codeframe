@@ -2003,6 +2003,11 @@ def work_start(
         "--stall-timeout",
         help="Seconds without a tool call before agent is considered stalled (0 = disabled)",
     ),
+    stall_action: str = typer.Option(
+        "blocker",
+        "--stall-action",
+        help="Recovery action on stall: 'blocker' (default), 'retry', or 'fail'",
+    ),
 ) -> None:
     """Start working on a task.
 
@@ -2068,6 +2073,7 @@ def work_start(
                 state = runtime.execute_agent(
                     workspace, run, dry_run=dry_run, debug=debug, verbose=verbose,
                     engine=engine, stall_timeout_s=stall_timeout,
+                    stall_action=stall_action,
                 )
 
                 if state.status == AgentStatus.COMPLETED:
@@ -2874,6 +2880,11 @@ def batch_run(
         "--stall-timeout",
         help="Seconds without a tool call before agent is considered stalled (0 = disabled)",
     ),
+    stall_action: str = typer.Option(
+        "blocker",
+        "--stall-action",
+        help="Recovery action on stall: 'blocker' (default), 'retry', or 'fail'",
+    ),
 ) -> None:
     """Execute multiple tasks in batch.
 
@@ -2972,6 +2983,7 @@ def batch_run(
             max_retries=max_retries,
             engine=engine,
             stall_timeout_s=stall_timeout,
+            stall_action=stall_action,
         )
 
         # Show summary
