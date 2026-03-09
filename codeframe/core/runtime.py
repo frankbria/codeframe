@@ -627,13 +627,10 @@ def execute_agent(
     from codeframe.core.agent import Agent, AgentState, AgentStatus
     from codeframe.adapters.llm import get_provider
     from codeframe.core.diagnostics import RunLogger, LogCategory
-    from codeframe.core.engine_registry import VALID_ENGINES, is_external_engine
+    from codeframe.core.engine_registry import is_external_engine, resolve_engine
 
-    # Validate engine parameter
-    if engine not in VALID_ENGINES:
-        raise ValueError(
-            f"Invalid engine '{engine}'. Must be one of: {', '.join(sorted(VALID_ENGINES))}"
-        )
+    # Resolve engine (handles "built-in" alias and CODEFRAME_ENGINE env var)
+    engine = resolve_engine(engine)
 
     # External engines manage their own authentication
     if not is_external_engine(engine) and not os.getenv("ANTHROPIC_API_KEY"):
