@@ -91,6 +91,6 @@ class TestStallDetector:
         assert d.is_stalled() is False
 
     def test_very_short_timeout_stalls_quickly(self, short_detector):
-        # With 1ms timeout, should be stalled almost immediately
-        time.sleep(0.01)
+        # Deterministic: backdate activity to guarantee stall
+        short_detector._last_activity = time.monotonic() - 1.0
         assert short_detector.is_stalled() is True
