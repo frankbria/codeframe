@@ -2,966 +2,327 @@
 
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-v2%20Phase%203%20In%20Progress-blue)
+![Status](https://img.shields.io/badge/status-v2%20Active%20Development-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-4331%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-4200%2B%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
-> AI coding agents that work autonomously while you sleep. Check in like a coworker, answer questions when needed, ship features continuously.
+> **The IDE of the future is not a better text editor with AI autocomplete. It is a project delivery system where writing code is a subprocess.**
 
 ---
 
-## Overview
+## The Problem
 
-CodeFRAME is an autonomous AI development system where specialized agents collaborate to build software features end-to-end. It combines multi-agent orchestration, human-in-the-loop blockers, and intelligent context management to enable truly autonomous software development cycles.
+Coding agents are getting remarkably good at writing code. But shipping software is not the same as writing code.
 
-Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME agents work independently on tasks, ask questions when blocked, and coordinate with each other to ship complete features—day and night.
+Before code gets written, someone has to figure out *what* to build, decompose it into tasks that an agent can execute, and resolve ambiguities. After code gets written, someone has to verify it actually works, catch regressions, and deploy with confidence. Today, that "someone" is still you.
 
-**Three modes of operation:**
-- **CLI-first (v2)** — Complete Golden Path workflow from the command line, no server required
-- **Web Dashboard (v2)** — Next.js UI with workspace management, PRD discovery, and real-time SSE streaming
-- **Dashboard (v1)** — Legacy web UI with WebSocket updates (reference only)
+CodeFRAME owns the **edges** of the pipeline -- everything that happens before and after the code gets written. The actual coding is delegated to frontier agents (Claude Code, Codex, OpenCode, or CodeFRAME's built-in ReAct agent) that are better at it than any custom agent could be.
+
+## Think. Build. Prove. Ship.
+
+```
+THINK    What are you building? How should it be broken down?
+           cf prd generate         Socratic requirements gathering
+           cf prd stress-test      Recursive decomposition, surface ambiguities  [planned]
+           cf tasks generate       Atomic tasks with dependency graphs
+
+BUILD    Delegate to the best coding agent for the job
+           cf work start --engine  Claude Code, Codex, OpenCode, or built-in
+           CodeFRAME owns: verification gates, self-correction, stall detection
+
+PROVE    Is the output any good?
+           cf proof run            9-gate evidence-based quality system           [planned]
+           cf proof capture        Glitch becomes a permanent requirement         [planned]
+
+SHIP     Deploy with confidence
+           cf pr create            PR with proof report attached
+           cf pr merge             Only merges if proof passes
+
+THE CLOSED LOOP
+  Glitch in production
+    -> cf proof capture
+    -> New requirement
+    -> Enforced on every future build
+    = Quality compounding interest
+```
 
 ---
 
-## What's New (Updated: 2026-02-19)
+## Why CodeFRAME
 
-### Phase 3: Web UI Rebuild In Progress
+**Nobody else does the full upstream pipeline.** Most orchestrators assume issues and specs already exist. CodeFRAME generates them through AI-guided Socratic discovery and recursive decomposition.
 
-Phases 1 and 2 are complete! We're now rebuilding the web dashboard on the v2 foundation with Next.js, Shadcn/UI, and real-time SSE streaming.
+**Agent-agnostic execution.** CodeFRAME does not compete with Claude Code or Codex. It orchestrates them. The built-in ReAct agent is a capable fallback, not the point.
 
-| Feature | Status | Issue |
-|---------|--------|-------|
-| Phase 3 UI architecture & information design | ✅ Complete | — |
-| Workspace View with activity feed | ✅ Complete | #335 |
-| PRD View with document creation & discovery | ✅ Complete | #330 |
-| Task Board View with Kanban & batch execution | ✅ Complete | #331 |
-| Task Board bulk stop, reset & state management | ✅ Complete | #340 |
-| Execution Monitor View | Planned | — |
-| Blocker Resolution View | Planned | — |
-| Review & Commit View | Planned | — |
+**Quality memory (PROOF9).** Every failure becomes a permanent proof obligation across 9 verification gates. Not just test coverage -- evidence-based verification that compounds over time. The closed loop is what turns a project into a learning system.
 
-### Workspace View
-
-**Project dashboard** — Select a workspace, view stats, and see recent activity at a glance.
-
-- **Workspace Selector** — Initialize or connect to existing projects with tech stack auto-detection
-- **Stats Cards** — Tech stack, task counts by status, active runs
-- **Activity Feed** — Timeline of recent events (tasks completed, runs started, blockers raised)
-- **Quick Actions** — One-click access to generate PRD, create tasks, and start execution
-
-### PRD View
-
-**Document creation and AI discovery** — Write, upload, or generate PRDs with Socratic AI assistance.
-
-- **Markdown Editor** — Edit PRD content directly with live preview
-- **Upload Modal** — Import PRD from file or paste markdown
-- **Discovery Panel** — AI-guided conversation panel for requirements elicitation
-- **Task Summary** — Associated tasks broken down by status
-- **Version History** — Track changes across PRD revisions
-
-### Task Board View
-
-**Kanban board with batch execution** — Visualize, filter, and execute tasks across the development lifecycle.
-
-- **6-Column Kanban** — Backlog → Ready → In Progress → Blocked → Failed → Done
-- **Search & Filter** — Debounced search with status pill toggles
-- **Batch Execution** — Select multiple tasks, choose serial/parallel strategy, execute in one click
-- **Bulk Stop & Reset** — Stop running tasks or reset failed/done tasks back to READY with confirmation dialogs
-- **Task Detail Modal** — View full task metadata, dependencies, estimated hours, and trigger actions
-- **View Execution** — IN_PROGRESS tasks navigate directly to the Execution Monitor from the detail modal
-- **Per-Task Loading States** — Individual spinners on task cards during stop/reset operations
-- **Keyboard Accessible** — Full WCAG 2.1 keyboard navigation support
-
-### Web UI Tech Stack
-
-- **Next.js 16** with App Router
-- **Shadcn/UI** (Nova preset) with gray color scheme
-- **Hugeicons** for consistent iconography
-- **Tailwind CSS** for styling
-- **SSE hooks** (`useEventSource`, `useTaskStream`) for real-time streaming
+**Radical simplicity.** Single CLI binary, SQLite, no daemons, no infrastructure. Install and start building in under a minute.
 
 ---
 
-<details>
-<summary>Phase 2 Complete: Server Layer (2026-02-03)</summary>
-
-Server layer built as a thin adapter over the CLI-first core:
-
-| Feature | Status | Issue |
-|---------|--------|-------|
-| API key authentication for CLI & REST | ✅ Complete | #326 |
-| Rate limiting with slowapi | ✅ Complete | #327 |
-| Server audit & v2 routes | ✅ Complete | #322 |
-| Real-time events (SSE) | ✅ Complete | #328 |
-| OpenAPI documentation | ✅ Complete | #119 |
-
-**API Key Authentication** — Programmatic access with scope-based permissions (`read`, `write`, `admin`). Use via header: `X-API-Key: your_key_here`
-
-**Rate Limiting** — Configurable per-endpoint limits. Supports Redis backend for distributed deployments.
-
-**OpenAPI Documentation** — Swagger UI at `/docs`, ReDoc at `/redoc`, OpenAPI JSON at `/openapi.json`.
-
-</details>
-
-### Phase 1 Complete 🎉 (2026-02-01)
-
-<details>
-<summary>Interactive PRD Generation</summary>
-
-**`cf prd generate`** — AI-guided requirements discovery using Socratic questioning.
+## Quick Start
 
 ```bash
-# Start interactive PRD creation
-cf prd generate
+# Install
+git clone https://github.com/frankbria/codeframe.git
+cd codeframe
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv venv && source .venv/bin/activate && uv sync
+export ANTHROPIC_API_KEY="your-key"
 
-# Non-interactive with initial description
-cf prd generate --description "User authentication system with OAuth"
-
-# Use specific template
-cf prd generate --template lean
-cf prd generate --template enterprise
-```
-
-The AI conducts 5+ turn discovery sessions, progressively refining from broad vision → specific requirements → acceptance criteria.
-
-</details>
-
-<details>
-<summary>PRD Template System</summary>
-
-**Customizable PRD output formats** for different team needs:
-
-```bash
-# List available templates
-cf prd templates list
-
-# Show template structure
-cf prd templates show standard
-
-# Export template for customization
-cf prd templates export enterprise ./my-template.yaml
-
-# Import custom template
-cf prd templates import ./my-template.yaml
-```
-
-**Built-in templates:**
-- `standard` - Balanced PRD with all essential sections
-- `lean` - Minimal viable PRD for rapid iteration
-- `enterprise` - Comprehensive PRD with compliance sections
-- `technical` - Developer-focused with architecture details
-- `user-story` - Agile/Scrum format with user stories
-
-</details>
-
-<details>
-<summary>Live Execution Streaming</summary>
-
-**`cf work follow`** — Watch agent execution in real-time.
-
-```bash
-# Stream live output from a running task
-cf work follow <task-id>
-
-# Show last 50 lines then continue streaming
-cf work follow <task-id> --tail 50
-```
-
-</details>
-
----
-
-### Previous Updates
-
-<details>
-<summary>Environment Validation & Tool Detection (2026-01-29)</summary>
-
-**New `cf env` commands** — Validate your development environment and auto-install missing tools.
-
-```bash
-# Quick environment health check
-cf env check
-
-# Comprehensive diagnostics
-cf env doctor
-
-# Install a specific missing tool
-cf env install-missing pytest
-
-# Auto-install all missing required tools
-cf env auto-install --yes
-```
-
-**Supported tool ecosystems:**
-- Python: pytest, ruff, mypy, black, flake8, coverage, pre-commit
-- JavaScript/TypeScript: eslint, prettier, jest, typescript, vite, vitest
-- Rust: clippy, rustfmt, rust-analyzer, cargo-edit
-- System: git, docker, make, curl, gh
-
-</details>
-
-<details>
-<summary>GitHub PR Workflow Commands (2026-01-29)</summary>
-
-**New `cf pr` commands** — Manage pull requests directly from the CLI.
-
-```bash
-# Create a PR from current branch
-cf pr create --title "Add feature X" --body "Description..."
-
-# List open PRs
-cf pr list
-
-# View PR details
-cf pr view 123
-
-# Merge a PR
-cf pr merge 123 --method squash
-
-# Close a PR
-cf pr close 123
-```
-
-</details>
-
-<details>
-<summary>Task Self-Diagnosis (2026-01-29)</summary>
-
-**New `cf work diagnose` command** — Automatically analyze failed tasks and get actionable recommendations.
-
-```bash
-# Diagnose why a task failed
-cf work diagnose <task-id>
-
-# Verbose output with detailed logs
-cf work diagnose <task-id> --verbose
-```
-
-The diagnostic agent analyzes run logs, identifies root causes, and provides specific fix recommendations.
-
-</details>
-
-<details>
-<summary>Task Scheduling & Templates (2026-01-25)</summary>
-
-**Task Scheduling with Critical Path Analysis:**
-
-```bash
-# Show task schedule with dependencies
-cf schedule show
-
-# Predict completion dates
-cf schedule predict
-
-# Identify bottleneck tasks
-cf schedule bottlenecks
-```
-
-**Task Templates for Common Patterns:**
-
-```bash
-# List available templates
-cf templates list
-
-# Show template details
-cf templates show api-endpoint
-
-# Apply template to generate tasks
-cf templates apply api-endpoint --name "User API"
-```
-
-**7 Built-in Templates:**
-- `api-endpoint` - REST API endpoint with tests
-- `react-component` - React component with tests
-- `database-migration` - Schema migration with rollback
-- `cli-command` - CLI command with help and tests
-- `integration-test` - Integration test suite
-- `bug-fix` - Bug investigation and fix workflow
-- `feature-flag` - Feature flag implementation
-
-**Effort Estimation:**
-- Tasks now support `estimated_hours` field
-- CPM-based scheduling calculates critical path
-- Bottleneck detection identifies blocking tasks
-
-</details>
-
-<details>
-<summary>Tech Stack Configuration (2026-01-16)</summary>
-
-**Describe your tech stack** — Tell CodeFRAME what technologies your project uses during initialization.
-
-```bash
-# Auto-detect from project files (pyproject.toml, package.json, Cargo.toml, etc.)
+# Initialize a project
+cd /path/to/your/project
 cf init . --detect
 
-# Provide explicit tech stack description
-cf init . --tech-stack "Python 3.11 with FastAPI, uv, pytest"
-cf init . --tech-stack "TypeScript monorepo with pnpm, Next.js frontend"
-cf init . --tech-stack "Rust project using cargo"
+# Generate requirements through AI-guided discovery
+cf prd generate
 
-# Interactive setup
-cf init . --tech-stack-interactive
+# Decompose into atomic tasks
+cf tasks generate
+
+# Execute (delegates to the agent engine)
+cf work start <task-id> --execute
+
+# Ship
+cf pr create
 ```
 
-**Why this matters:** The agent uses your tech stack description to determine appropriate commands and patterns. Works with any stack — Python, TypeScript, Rust, Go, monorepos, or mixed environments.
-
-</details>
-
-<details>
-<summary>Agent Self-Correction & Observability (2026-01-16)</summary>
-
-**Verification self-correction loop** — Agent now automatically attempts to fix failing verification gates.
-
-```bash
-# Execute with verbose output to see self-correction progress
-cf work start <task-id> --execute --verbose
-
-# Watch the agent attempt fixes in real-time
-[VERIFY] Running final verification (attempt 1/3)
-[VERIFY] Gates failed: pytest, ruff
-[SELFCORRECT] Attempting to fix verification failures
-[SELFCORRECT] Applied 2/2 fixes, re-verifying...
-```
-
-**Capabilities:**
-- **Self-Correction Loop** — Agent analyzes gate errors and generates fix plans using LLM
-- **Verbose Mode** — `--verbose` / `-v` flag shows detailed verification and self-correction progress
-- **FAILED Task Status** — Tasks can now transition to FAILED state for proper error visibility
-- **Project Preferences** — Agent loads AGENTS.md or CLAUDE.md for per-project configuration
-
-</details>
-
-<details>
-<summary>Parallel Batch Execution (2026-01-15)</summary>
-
-**Multi-task batch execution** — Run multiple tasks with intelligent parallelization.
-
-```bash
-# Execute multiple tasks in parallel
-cf work batch run task1 task2 task3 --strategy parallel
-
-# Execute all READY tasks with LLM-inferred dependencies
-cf work batch run --all-ready --strategy auto
-
-# Automatic retry on failure
-cf work batch run --all-ready --retry 3
-```
-
-**Batch Capabilities:**
-- **Parallel Execution** — ThreadPoolExecutor-based concurrent task execution
-- **Dependency Graph** — DAG-based task ordering with cycle detection
-- **LLM Dependency Inference** — `--strategy auto` analyzes task descriptions to infer dependencies
-- **Automatic Retry** — `--retry N` retries failed tasks up to N times
-- **Batch Resume** — `cf work batch resume <batch-id>` re-runs failed/blocked tasks
-
-</details>
-
----
-
-## Key Features
-
-### CLI-First Agent System (v2)
-- **Autonomous Execution** — `cf work start --execute` runs the full agent loop
-- **Self-Correction Loop** — Agent automatically fixes failing verification gates (up to 3 attempts)
-- **Human-in-the-Loop Blockers** — Agents pause and ask questions when they need decisions
-- **Verification Gates** — Automatic ruff/pytest/BUILD checks after changes
-- **Live Streaming** — `cf work follow` for real-time execution output
-- **Verbose Mode** — `--verbose` flag shows detailed progress and self-correction activity
-- **Dry Run Mode** — Preview changes without applying them
-- **State Persistence** — Resume work across sessions
-- **Task Diagnosis** — Automatic root cause analysis for failed tasks
-- **PRD Generation** — AI-guided requirements discovery with templates
-
-### Multi-Agent Orchestration
-- **Multi-Agent Orchestra** — Lead agent coordinates backend, frontend, test, and review specialists
-- **Async/Await Architecture** — Non-blocking agent execution with true concurrency
-- **Self-Correction Loops** — Agents automatically fix failing tests (up to 3 attempts)
-- **WebSocket Agent Broadcasting** — Real-time agent status updates to all connected clients
-- **Tactical Pattern Handling** — Automatic resolution of common file conflicts
-
-### Quality & Review
-- **AI Quality Enforcement** — Dual-layer quality system preventing test skipping and enforcing 85%+ coverage
-- **Quality Gates** — Pre-completion checks block bad code (tests, types, coverage, review)
-- **BUILD Gate** — Validates configuration errors before execution
-- **Automated Code Review** — Security scanning, OWASP pattern detection, and complexity analysis
-- **Lint Enforcement** — Multi-language linting with trend tracking and automatic fixes
-
-### State & Context Management
-- **Context-Aware Memory** — Tiered HOT/WARM/COLD memory system reduces token usage by 30-50%
-- **Session Lifecycle** — Auto-save/restore work context across CLI restarts
-- **Checkpoint & Recovery** — Git + DB snapshots enable project state rollback
-- **Phase-Aware Components** — UI intelligently selects data sources based on project phase
-
-### Security & API
-- **API Key Authentication** — Scope-based programmatic access (read/write/admin)
-- **Rate Limiting** — Configurable limits per endpoint type with Redis support
-- **JWT Authentication** — Session-based auth for web dashboard
-
-### Web Dashboard (v2 — Phase 3)
-- **Workspace View** — Project selection, stats cards, activity feed, and quick actions
-- **PRD View** — Markdown editor with AI-powered Socratic discovery panel
-- **Task Board** — 6-column Kanban with search, filtering, batch execution, bulk stop/reset, and task detail modal
-- **Execution Navigation** — IN_PROGRESS tasks link directly to the Execution Monitor
-- **Real-time Streaming** — SSE-based live updates for task execution and discovery sessions
-- **Golden Path Navigation** — UI follows the same workflow as the CLI
-
-### Developer Experience
-- **Environment Validation** — `cf env check` validates tools and dependencies
-- **PR Workflow** — `cf pr create/list/merge` for GitHub integration
-- **Task Scheduling** — CPM-based critical path analysis
-- **Task Templates** — 7 built-in templates for common development patterns
-- **PRD Templates** — 5 built-in PRD formats for different team needs
-- **Cost Tracking** — Real-time token usage and cost analytics per agent/task
+That is the entire workflow. Everything else is optional.
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────┐    ┌──────────────────────────────────────┐
-│  Web UI (Next.js) │    │        CLI (Typer)                    │
-│  • Workspace View │    │  • cf work start --execute            │
-│  • PRD Discovery  │    │  • cf prd generate                    │
-│  • Task Board     │    │  • cf work follow                     │
-└────────┬─────────┘    └────────────────┬─────────────────────┘
-         │                               │
-         │    ┌──────────────────────┐    │
-         └───►│  FastAPI Server      │◄───┘
-              │  (thin adapter)      │
-              │  • REST API (v2)     │
-              │  • SSE streaming     │
-              │  • API key auth      │
-              └──────────┬───────────┘
-                         │
-         ┌───────────────▼───────────────────────────────────┐
-         │              Core Domain (headless)                 │
-         │  • Agent orchestrator with self-correction          │
-         │  • Planning → Execution → Verification loop         │
-         │  • Blocker detection and human-in-loop              │
-         └──────┬──────────┬──────────┬────────────┬─────────┘
-                │          │          │            │
-        ┌───────▼──┐ ┌─────▼─────┐ ┌──▼───────┐ ┌─▼───────┐
-        │ Backend  │ │ Frontend  │ │  Test    │ │ Review  │
-        │ Worker   │ │ Worker    │ │  Worker  │ │ Worker  │
-        └──────────┘ └───────────┘ └──────────┘ └─────────┘
-                         │
-         ┌───────────────▼───────────────────────────────────┐
-         │              Context Management Layer               │
-         │  • Tiered memory (HOT/WARM/COLD)                   │
-         │  • State persistence (SQLite)                       │
-         │  • Checkpoint & recovery                            │
-         └────────────────────────────────────────────────────┘
+    YOU
+     |
+     v
+  +-THINK---------------------------------------------+
+  |  cf prd generate    Socratic requirements          |
+  |  cf tasks generate  Atomic decomposition           |
+  +----------------------------+-----------------------+
+                               |
+                               v
+  +-BUILD---------------------------------------------+
+  |  cf work start --engine <agent>                    |
+  |                                                    |
+  |  +-- Claude Code / Codex / OpenCode / ReactAgent   |
+  |  |                                                 |
+  |  +-- Verification gates (ruff, pytest, BUILD)      |
+  |  +-- Self-correction loop (up to 5 retries)        |
+  |  +-- Stall detection -> retry / blocker / fail       |
+  +----------------------------+-----------------------+
+                               |
+                               v
+  +-PROVE---------------------------------------------+
+  |  cf proof run       9-gate quality system [planned]|
+  |  cf review          Verification gates             |
+  +----------------------------+-----------------------+
+                               |
+                               v
+  +-SHIP----------------------------------------------+
+  |  cf pr create       PR with proof report           |
+  |  cf pr merge        Merge if proof passes          |
+  +---------------------------------------------------+
+                               |
+            Glitch in production?
+                               |
+                               v
+            cf proof capture -> new requirement
+            -> enforced forever (closed loop)
+```
+
+The core domain is headless and runs entirely from the CLI. The FastAPI server and web UI are optional adapters for teams that want a dashboard.
+
+---
+
+## CLI Reference
+
+### THINK -- Requirements and Planning
+
+```bash
+# Workspace
+cf init <path>                        # Initialize workspace
+cf init <path> --detect               # Auto-detect tech stack
+cf status                             # Workspace status
+
+# Requirements
+cf prd generate                       # AI-guided Socratic PRD creation
+cf prd generate --template lean       # Use a specific template
+cf prd add <file.md>                  # Import existing PRD
+cf prd show                           # Display current PRD
+
+# Task decomposition
+cf tasks generate                     # Generate tasks from PRD (LLM-powered)
+cf tasks list                         # List all tasks
+cf tasks list --status READY          # Filter by status
+cf tasks show <id>                    # Task details with dependencies
+
+# Scheduling
+cf schedule show                      # Task schedule with dependencies
+cf schedule predict                   # Completion date estimates
+cf schedule bottlenecks               # Identify blocking tasks
+```
+
+### BUILD -- Execution
+
+```bash
+# Single task
+cf work start <id> --execute          # Execute with default engine (ReAct)
+cf work start <id> --execute --engine plan   # Use legacy plan engine
+cf work start <id> --execute --verbose       # Detailed progress output
+cf work start <id> --execute --dry-run       # Preview without applying
+cf work start <id> --execute --stall-timeout 120   # Custom stall timeout (seconds)
+cf work start <id> --execute --stall-action retry  # Auto-retry on stall (blocker|retry|fail)
+cf work follow <id>                   # Stream live output
+cf work stop <id>                     # Cancel a run
+cf work resume <id>                   # Resume after answering blockers
+
+# Batch execution
+cf work batch run --all-ready                # All READY tasks
+cf work batch run --strategy parallel        # Parallel execution
+cf work batch run --strategy auto            # LLM-inferred dependencies
+cf work batch run --retry 3                  # Auto-retry failures
+cf work batch status [batch_id]              # Batch progress
+cf work batch resume <batch_id>              # Re-run failed tasks
+
+# Blockers (human-in-the-loop)
+cf blocker list                       # Questions the agent needs answered
+cf blocker show <id>                  # Blocker details
+cf blocker answer <id> "answer"       # Unblock the agent
+
+# Diagnostics
+cf work diagnose <id>                 # AI-powered failure analysis
+cf env check                          # Validate environment
+cf env doctor                         # Comprehensive health check
+```
+
+### PROVE -- Verification
+
+```bash
+cf review                             # Run verification gates
+cf checkpoint create "milestone"      # Snapshot project state
+cf checkpoint list                    # List checkpoints
+cf checkpoint restore <id>            # Roll back to checkpoint
+```
+
+### SHIP -- Delivery
+
+```bash
+cf pr create                          # Create PR from current branch
+cf pr status                          # PR status and review state
+cf pr checks                          # CI check results
+cf pr merge                           # Merge approved PR
+cf commit                             # Commit verified changes
+cf patch export                       # Export changes as patch
 ```
 
 ---
 
-## Quick Start
-
-### Prerequisites
-- Python 3.11+
-- Node.js 18+ (for frontend, optional)
-- Anthropic API key
-- SQLite 3 (included with Python)
-
-### Installation
-
-```bash
-# Clone repository
-git clone https://github.com/frankbria/codeframe.git
-cd codeframe
-
-# Install uv package manager
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Set up backend
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-uv sync
-
-# Set up environment
-export ANTHROPIC_API_KEY="your-api-key-here"
-
-# Validate environment (optional but recommended)
-cf env check
-```
-
-### CLI-First Workflow (v2 — Recommended)
-
-```bash
-# 1. Initialize workspace (with optional tech stack detection)
-cd /path/to/your/project
-cf init . --detect
-# Or explicit: cf init . --tech-stack "Python with FastAPI, uv, pytest"
-
-# 2. Generate PRD interactively (NEW!)
-cf prd generate
-# Or add existing PRD file
-cf prd add requirements.md
-
-# 3. Generate tasks from PRD
-cf tasks generate
-
-# 4. List tasks
-cf tasks list
-
-# 5. Start work on a task (with AI agent)
-cf work start <task-id> --execute
-
-# 6. Follow execution in real-time (NEW!)
-cf work follow <task-id>
-
-# 7. Check for blockers (questions the agent needs answered)
-cf blocker list
-cf blocker answer <blocker-id> "Your answer here"
-
-# 8. Resume work after answering blockers
-cf work resume <task-id>
-
-# 9. If a task fails, diagnose the issue
-cf work diagnose <task-id>
-
-# 10. Review changes and create checkpoint
-cf review
-cf checkpoint create "Feature complete"
-```
-
-### Web Dashboard (v2)
-
-```bash
-# Terminal 1: Start the API server
-uv run uvicorn codeframe.ui.server:app --reload --port 8080
-
-# Terminal 2: Start the web UI
-cd web-ui && npm install && npm run dev
-
-# Access dashboard at http://localhost:3000
-```
-
-The web dashboard provides:
-- **Workspace View** (`/`) — Project selection, stats, activity feed
-- **PRD View** (`/prd`) — Document editing with AI discovery panel
-- **Task Board** (`/tasks`) — Kanban board with filtering, batch execution, and task detail modal
-- More views coming: Execution Monitor, Blockers, Review
-
----
-
-## CLI Commands
-
-### Workspace Management
-```bash
-cf init <path>                           # Initialize workspace for a repo
-cf init <path> --detect                  # Initialize + auto-detect tech stack
-cf init <path> --tech-stack "description"  # Initialize + explicit tech stack
-cf init <path> --tech-stack-interactive  # Initialize + interactive setup
-cf status                                # Show workspace status
-```
-
-### Environment Validation
-```bash
-cf env check                    # Quick environment health check
-cf env doctor                   # Comprehensive diagnostics
-cf env install-missing <tool>   # Install specific missing tool
-cf env auto-install --yes       # Install all missing tools
-```
-
-### Authentication & API Keys
-```bash
-cf auth setup --provider anthropic       # Configure API credentials
-cf auth list                             # List configured credentials
-cf auth validate anthropic               # Test credential validity
-cf auth api-key-create -n "Key Name" -u 1  # Create API key
-cf auth api-key-list -u 1                # List your API keys
-cf auth api-key-revoke <id> -u 1 --yes   # Revoke an API key
-cf auth api-key-rotate <id> -u 1         # Rotate an API key
-```
-
-### PRD (Product Requirements)
-```bash
-cf prd generate                 # Interactive AI-guided PRD creation (NEW!)
-cf prd generate --template lean # Use specific template
-cf prd add <file.md>            # Add/update PRD from file
-cf prd show                     # Display current PRD
-cf prd list                     # List all PRDs
-cf prd versions <id>            # Show version history
-cf prd diff <id> <v1> <v2>      # Compare versions
-```
-
-### PRD Templates
-```bash
-cf prd templates list           # List available templates
-cf prd templates show <id>      # Show template structure
-cf prd templates export <id> <path>  # Export template to file
-cf prd templates import <path>  # Import custom template
-```
-
-### Task Management
-```bash
-cf tasks generate           # Generate tasks from PRD (uses LLM)
-cf tasks list               # List all tasks
-cf tasks list --status READY  # Filter by status
-cf tasks show <id>          # Show task details
-```
-
-### Task Scheduling
-```bash
-cf schedule show            # Show task schedule with dependencies
-cf schedule predict         # Predict completion dates
-cf schedule bottlenecks     # Identify blocking tasks
-```
-
-### Task Templates
-```bash
-cf templates list           # List available templates
-cf templates show <name>    # Show template details
-cf templates apply <name>   # Generate tasks from template
-```
-
-### Work Execution
-```bash
-cf work start <id>          # Start work (creates run record)
-cf work start <id> --execute     # Start with AI agent execution
-cf work start <id> --execute --verbose  # Execute with detailed output
-cf work start <id> --execute --dry-run  # Preview changes only
-cf work stop <id>           # Stop current run
-cf work resume <id>         # Resume blocked work
-cf work follow <id>         # Stream real-time output (NEW!)
-cf work follow <id> --tail 50  # Show last N lines then stream
-cf work diagnose <id>       # Diagnose failed task
-```
-
-### Batch Execution
-```bash
-cf work batch run <id1> <id2> ...     # Execute multiple tasks
-cf work batch run --all-ready         # Execute all READY tasks
-cf work batch run --strategy parallel # Parallel execution
-cf work batch run --strategy auto     # LLM-inferred dependencies
-cf work batch run --retry 3           # Auto-retry failed tasks
-cf work batch status [batch_id]       # Show batch status
-cf work batch cancel <batch_id>       # Cancel running batch
-cf work batch resume <batch_id>       # Re-run failed tasks
-```
-
-### Blockers
-```bash
-cf blocker list             # List open blockers
-cf blocker show <id>        # Show blocker details
-cf blocker answer <id> "answer"  # Answer a blocker
-```
-
-### Pull Requests
-```bash
-cf pr create --title "..." --body "..."  # Create PR
-cf pr list                               # List open PRs
-cf pr view <number>                      # View PR details
-cf pr merge <number> --method squash     # Merge PR
-cf pr close <number>                     # Close PR
-```
-
-### Quality & Review
-```bash
-cf review                   # Run verification gates
-cf patch export             # Export changes as patch
-cf commit                   # Commit changes
-```
-
-### Checkpoints
-```bash
-cf checkpoint create <name>  # Create checkpoint
-cf checkpoint list          # List checkpoints
-cf checkpoint restore <id>  # Restore to checkpoint
-cf summary                  # Show session summary
-```
-
----
-
-## Configuration
-
-### Environment Variables
-
-```bash
-# Required
-ANTHROPIC_API_KEY=sk-ant-...           # Anthropic API key
-
-# Optional - Database
-DATABASE_PATH=./codeframe.db           # SQLite database path (default: in-memory)
-
-# Optional - Quality Enforcement
-MIN_COVERAGE_PERCENT=85                # Minimum test coverage required
-CODEFRAME_ENABLE_SKIP_DETECTION=true   # Enable skip detection gate (default: true)
-
-# Optional - Git Integration
-AUTO_COMMIT_ENABLED=true               # Enable automatic commits after test passes
-
-# Optional - Notifications
-NOTIFICATION_DESKTOP_ENABLED=true      # Enable desktop notifications
-NOTIFICATION_WEBHOOK_URL=https://...   # Webhook endpoint for agent events
-
-# Optional - Rate Limiting
-RATE_LIMIT_ENABLED=true                # Enable rate limiting (default: true)
-RATE_LIMIT_AUTH=10/minute              # Auth endpoints
-RATE_LIMIT_STANDARD=100/minute         # Standard API endpoints
-RATE_LIMIT_AI=20/minute                # AI/chat operations
-RATE_LIMIT_STORAGE=memory              # memory or redis
-
-# Frontend (set at build time for Next.js)
-NEXT_PUBLIC_API_URL=http://localhost:8080
-NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
-```
-
-### Project Configuration
-
-See `CLAUDE.md` in project root for project-specific configuration including:
-- Active technologies and frameworks
-- Coding standards and conventions
-- Testing requirements
-- Documentation structure
-
----
-
-## API Documentation
-
-### Core Endpoints
-
-```
-POST   /api/projects                          # Create project
-GET    /api/projects/{id}                     # Get project details
-POST   /api/projects/{id}/prd                 # Submit PRD
-
-GET    /api/projects/{id}/agents              # List agents
-POST   /api/projects/{id}/agents              # Create agent
-
-GET    /api/projects/{id}/blockers            # List blockers
-POST   /api/blockers/{id}/answer              # Answer blocker
-
-GET    /api/projects/{id}/tasks               # List tasks
-GET    /api/tasks/{id}                        # Get task details
-POST   /api/tasks/approve                     # Approve tasks for development
-
-GET    /api/schedule/{project_id}             # Get task schedule
-GET    /api/templates                         # List task templates
-POST   /api/templates/{name}/apply            # Apply template
-```
-
-### V2 API Endpoints (Phase 2)
-
-```
-# Tasks
-GET    /api/v2/tasks                          # List tasks with filtering
-GET    /api/v2/tasks/{id}                     # Get task details
-POST   /api/v2/tasks                          # Create task
-PATCH  /api/v2/tasks/{id}                     # Update task
-DELETE /api/v2/tasks/{id}                     # Delete task
-GET    /api/v2/tasks/{id}/stream              # SSE streaming
-
-# PRD
-GET    /api/v2/prd                            # List PRDs
-POST   /api/v2/prd                            # Create PRD
-GET    /api/v2/prd/{id}/versions              # Version history
-
-# Blockers
-GET    /api/v2/blockers                       # List blockers
-POST   /api/v2/blockers/{id}/answer           # Answer blocker
-```
-
-### Authentication
-
-```
-# Session-based (JWT)
-POST   /api/auth/login                        # Login, get JWT
-POST   /api/auth/register                     # Register new user
-GET    /api/auth/me                           # Current user info
-
-# API Key
-Header: X-API-Key: your_key_here              # Include in all requests
-```
-
-### WebSocket
-
-```
-WS     /ws?token=JWT_TOKEN                    # WebSocket connection (auth required)
-```
-
-For detailed API documentation, see `/docs` (Swagger UI) or `/redoc` (ReDoc) when the server is running.
-
----
-
-## Testing
-
-### Run Tests
-
-```bash
-# Run all Python tests
-uv run pytest
-
-# Run specific test suite
-uv run pytest tests/core/           # Core module tests
-uv run pytest tests/agents/         # Agent tests
-uv run pytest tests/api/            # API endpoint tests
-uv run pytest tests/cli/            # CLI command tests
-uv run pytest tests/ui/             # Server router tests
-
-# Run with coverage
-uv run pytest --cov=codeframe --cov-report=html
-
-# Run v2 tests only
-uv run pytest -m v2
-
-# Run frontend tests
-cd web-ui && npm test                # Jest unit tests
-```
-
-### Test Statistics
-
-- **Total Tests**: 4285+
-  - Core module tests: ~1200
-  - Unit tests: ~1500 (Python + TypeScript)
-  - Integration tests: ~1000
-  - E2E tests: 100+ (Backend + Playwright)
-- **Coverage**: 88%+
-- **Pass Rate**: 100%
-
----
-
-## Documentation
-
-For detailed documentation, see:
-
-- **Strategic Roadmap**: [docs/V2_STRATEGIC_ROADMAP.md](docs/V2_STRATEGIC_ROADMAP.md) - 5-phase development plan
-- **Quick Start (v2)**: [docs/QUICKSTART.md](docs/QUICKSTART.md) - Get started in 5 minutes
-- **Golden Path (v2)**: [docs/GOLDEN_PATH.md](docs/GOLDEN_PATH.md) - CLI-first workflow contract
-- **Agent Implementation**: [docs/AGENT_IMPLEMENTATION_TASKS.md](docs/AGENT_IMPLEMENTATION_TASKS.md) - Agent system details
-- **CLI Wireframe**: [docs/CLI_WIREFRAME.md](docs/CLI_WIREFRAME.md) - Command structure
-- **CLI Test Report**: [docs/CLI_V2_TEST_REPORT.md](docs/CLI_V2_TEST_REPORT.md) - End-to-end test results
-- **Phase 2 Developer Guide**: [docs/PHASE_2_DEVELOPER_GUIDE.md](docs/PHASE_2_DEVELOPER_GUIDE.md) - Server layer patterns
-- **Phase 3 UI Architecture**: [docs/PHASE_3_UI_ARCHITECTURE.md](docs/PHASE_3_UI_ARCHITECTURE.md) - Web UI information design
-- **Product Requirements**: [PRD.md](PRD.md)
-- **System Architecture**: [CODEFRAME_SPEC.md](CODEFRAME_SPEC.md)
-- **Sprint Planning**: [SPRINTS.md](SPRINTS.md)
-- **Agent Guide**: [AGENTS.md](AGENTS.md)
-
----
-
-## Contributing
-
-We welcome contributions! To get started:
-
-1. **Fork and clone** the repository
-2. **Install dependencies**: `uv sync`
-3. **Install pre-commit hooks**: `pre-commit install`
-4. **Run tests** to ensure everything works: `uv run pytest`
-
-### Code Standards
-
-- **Python**: Follow PEP 8, use `ruff` for linting
-- **TypeScript**: Follow ESLint rules, use Prettier for formatting
-- **Type Hints**: Required for all Python functions
-- **Tests**: Required for all new features (85%+ coverage)
-- **Documentation**: Update README and docstrings for API changes
-
-### Pull Request Process
-
-1. Create a feature branch: `git checkout -b feature/my-feature`
-2. Write tests first (TDD approach encouraged)
-3. Implement feature with proper error handling
-4. Ensure all tests pass: `uv run pytest`
-5. Run quality checks: `uv run ruff check .`
-6. Update documentation if needed
-7. Submit PR with clear description of changes
+## What Works Today
+
+CodeFRAME v2 (Phase 2.5 complete) delivers the full Think-Build-Ship loop:
+
+- **THINK**: Socratic PRD generation, LLM-powered task decomposition with dependency graphs, 5 PRD templates, 7 task templates, CPM-based scheduling
+- **BUILD**: ReAct agent with 7 tools, self-correction with loop prevention, verification gates (ruff/pytest/BUILD), stall detection with configurable recovery (retry/blocker/fail), batch execution (serial/parallel/auto), human-in-the-loop blockers, checkpointing, state persistence
+- **SHIP**: GitHub PR workflow, environment validation, task self-diagnosis
+- **Server layer** (optional): FastAPI with 15 v2 routers, API key auth, rate limiting, SSE streaming, OpenAPI docs
+- **Web UI** (Phase 3, partial): Workspace view, PRD view with discovery, Task board with Kanban and batch execution, Blocker resolution, Review and commit with diff viewer
+- **Test suite**: 4200+ tests, 88% coverage
 
 ---
 
 ## Roadmap
 
-### Completed
-- **Phase 0**: CLI-first Golden Path workflow
-- **Phase 1**: CLI Foundation ✅
-  - Interactive PRD generation with Socratic discovery
-  - Live execution streaming (`cf work follow`)
-  - PRD template system
-  - Integration tests for credentials/environment
-  - Batch execution (serial, parallel, auto strategies)
-  - Self-correction loop for verification failures
-  - Task scheduling with CPM analysis
-  - Task templates (7 built-in)
-  - Environment validation and tool detection
-  - GitHub PR workflow commands
-  - Task self-diagnosis system
-- **Phase 2**: Server Layer ✅
-  - Server audit and refactor — 15 v2 routers as thin adapters over core
-  - API key authentication with scopes (read/write/admin)
-  - Rate limiting with Redis support
-  - Real-time SSE streaming for task execution
-  - OpenAPI documentation (Swagger UI + ReDoc)
+### THINK (upstream pipeline)
+- [ ] `cf prd stress-test` -- Recursive decomposition that surfaces ambiguities before execution
+- [ ] Multi-round PRD refinement with domain-specific probes
+- [ ] Specification-level dependency analysis
 
-### In Progress (Phase 3: Web UI Rebuild)
-- **UI architecture and information design** — ✅ Complete
-- **Workspace View** (#335) — Project dashboard with activity feed ✅
-- **PRD View** (#330) — Document creation & AI discovery ✅
-- **Task Board View** (#331) — Kanban board with batch execution ✅
-- **Task Board Bulk Actions** (#340) — Bulk stop, reset & state management ✅
-- **Execution Monitor View** — Planned
-- **Blocker Resolution View** — Planned
-- **Review & Commit View** — Planned
+### BUILD (agent adapters)
+- [ ] Agent adapter architecture -- delegate to Claude Code, Codex, OpenCode via workspace hooks
+- [ ] Worktree isolation for parallel agent execution
+- [ ] Engine performance tracking and automatic routing
+- [ ] Reconciliation layer for multi-agent output
 
-### Planned (Phases 4-5)
-- **Phase 4**: Multi-agent coordination (agent roles, conflict resolution, handoffs)
-- **Phase 5**: Advanced features (TUI dashboard, token/cost tracking, debug/replay mode)
+### PROVE (quality memory)
+- [ ] PROOF9 -- 9-gate evidence-based quality system
+- [ ] `cf proof capture` -- Glitch-to-requirement closed loop
+- [ ] Quality compounding: every failure becomes a permanent proof obligation
+- [ ] Per-engine quality scoring
 
-See [docs/V2_STRATEGIC_ROADMAP.md](docs/V2_STRATEGIC_ROADMAP.md) for the complete roadmap.
+### SHIP (delivery confidence)
+- [ ] Proof report attached to PRs
+- [ ] Merge gating on PROOF9 pass
+- [ ] Unified configuration (`cf config`)
+- [ ] Deployment hooks
+
+### Web UI
+- [x] Blocker Resolution view
+- [x] Review and Commit view with diff viewer
+- [ ] Execution Monitor view
+
+---
+
+## Configuration
+
+```bash
+# Required
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# Optional
+export DATABASE_PATH=./codeframe.db         # Default: in-memory SQLite
+export RATE_LIMIT_ENABLED=true              # API rate limiting
+export RATE_LIMIT_DEFAULT=100/minute        # Default limit
+```
+
+For server configuration, rate limiting options, and API key setup, see [docs/PHASE_2_DEVELOPER_GUIDE.md](docs/PHASE_2_DEVELOPER_GUIDE.md).
+
+---
+
+## Testing
+
+```bash
+uv run pytest                          # All tests
+uv run pytest -m v2                    # v2 tests only
+uv run pytest tests/core/             # Core module tests
+uv run pytest --cov=codeframe --cov-report=html   # With coverage
+```
+
+---
+
+## Documentation
+
+- [Golden Path](docs/GOLDEN_PATH.md) -- The CLI-first workflow contract
+- [Strategic Roadmap](docs/V2_STRATEGIC_ROADMAP.md) -- 5-phase development plan
+- [CLI Wireframe](docs/CLI_WIREFRAME.md) -- Command-to-module mapping
+- [ReAct Agent Architecture](docs/REACT_AGENT_ARCHITECTURE.md) -- Tools, editor, token management
+- [Phase 2 Developer Guide](docs/PHASE_2_DEVELOPER_GUIDE.md) -- Server layer patterns
+- [Phase 3 UI Architecture](docs/PHASE_3_UI_ARCHITECTURE.md) -- Web UI information design
+
+---
+
+## Contributing
+
+1. Fork and clone the repository
+2. Install dependencies: `uv sync`
+3. Install pre-commit hooks: `pre-commit install`
+4. Run tests: `uv run pytest`
+5. Submit PR with tests and clear description
+
+Code standards: PEP 8, `ruff` for linting, type hints required, 85%+ test coverage.
 
 ---
 
 ## License
 
-This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
-
-Key points:
-- **Open Source**: Free to use, modify, and distribute
-- **Copyleft**: Derivative works must also be AGPL-3.0
-- **Network Use**: If you run a modified version as a service, you must release source code
-- **Commercial Use**: Permitted with AGPL-3.0 compliance
-
-See [LICENSE](LICENSE) for full details.
+[AGPL-3.0](LICENSE) -- Free to use, modify, and distribute. Derivative works and network services must release source code under the same license.
 
 ---
 
-## Credits & Acknowledgments
+**Built by [Frank Bria](https://x.com/FrankBria18044)**
 
-### Core Team
-- **Frank Bria** - Creator and Lead Developer
-
-### Technologies
-- **Anthropic Claude** - AI reasoning engine powering all agents
-- **FastAPI** - High-performance async web framework
-- **FastAPI Users** - Authentication and user management
-- **SlowAPI** - Rate limiting for FastAPI
-- **Next.js 16** - React framework with App Router for web dashboard
-- **Shadcn/UI** - Component library (Nova preset with Hugeicons)
-- **Tailwind CSS** - Utility-first CSS framework
-- **TypeScript** - Type-safe frontend and tooling
-- **SQLite** - Embedded database for persistence
-- **Playwright** - End-to-end testing framework
-- **pytest + jest** - Comprehensive testing frameworks
-
-### Inspiration
-Built on the principles of:
-- Autonomous agent systems (AutoGPT, BabyAGI)
-- Multi-agent orchestration (LangGraph, CrewAI)
-- Human-in-the-loop design (Constitutional AI)
-- Test-driven development (Kent Beck, Robert Martin)
-
----
-
-## Support & Community
-
-- **Issues**: [GitHub Issues](https://github.com/frankbria/codeframe/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/frankbria/codeframe/discussions)
-- **Documentation**: [Full Documentation](https://github.com/frankbria/codeframe/tree/main/docs)
-
----
-
-**Built with care by humans and AI agents working together**
+[Issues](https://github.com/frankbria/codeframe/issues) | [Discussions](https://github.com/frankbria/codeframe/discussions) | [Documentation](https://github.com/frankbria/codeframe/tree/main/docs)

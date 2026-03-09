@@ -1,16 +1,30 @@
-# CodeFRAME Development Guidelines (v2 Reset)
+# CodeFRAME Development Guidelines
 
-Last updated: 2026-02-15
+Last updated: 2026-03-09
 
-This repo is in an **in-place v2 refactor** ("strangler rewrite"). The goal is to deliver a **headless, CLI-first Golden Path** and treat all UI/server layers as optional adapters.
+## Product Vision
 
-**Status: Phase 1 ✅ | Phase 2 ✅ | Phase 2.5 ✅** - ReAct agent is default engine. Server layer with full REST API, authentication, rate limiting, and real-time streaming. See `docs/V2_STRATEGIC_ROADMAP.md` for the 5-phase plan.
+CodeFrame is a **project delivery system**: Think → Build → Prove → Ship.
+
+It owns the **edges** of the AI coding pipeline — everything BEFORE code gets written (PRD, specification, task decomposition) and everything AFTER (verification gates, quality memory, deployment). The actual code writing is delegated to frontier coding agents (Claude Code, Codex, OpenCode) that are better at it than any custom agent.
+
+**CodeFrame does not compete with coding agents. It orchestrates them.**
+
+```
+THINK:  cf prd generate → cf prd stress-test → cf tasks generate
+BUILD:  cf work start --engine claude-code  (or codex, opencode, built-in)
+PROVE:  cf proof run  (9-gate evidence-based quality system)
+SHIP:   cf pr create → cf pr merge
+LOOP:   Glitch → cf proof capture → New REQ → Enforced forever
+```
+
+**Status: Phase 1 ✅ | Phase 2 ✅ | Phase 2.5 ✅** — CLI workflow, server layer, and ReAct agent complete. Agent adapter architecture (#408) and PROOF9 quality system (#422) are next priorities. See `docs/V2_STRATEGIC_ROADMAP.md` for the full plan.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
 ---
 
-## 🚦Primary Contract (MUST FOLLOW)
+## Primary Contract (MUST FOLLOW)
 
 1) **Golden Path**: `docs/GOLDEN_PATH.md`
    The only workflow we build until it works end-to-end.
@@ -25,9 +39,17 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
    Tracks the agent system components (all complete).
 
 5) **Strategic Roadmap**: `docs/V2_STRATEGIC_ROADMAP.md`
-   5-phase plan: CLI completion → Server layer → Web UI → Multi-agent → Advanced features.
+   5-phase plan from CLI to multi-agent.
 
-**Rule 0:** If a change does not directly support Golden Path, do not implement it.
+**Rule 0:** If a change does not directly support the Think → Build → Prove → Ship pipeline, do not implement it.
+
+### Strategic Priority (Phase 4)
+
+The next major architectural work is the **Agent Adapter Architecture** (#408):
+- Define `AgentAdapter` protocol so any coding agent can be an execution engine
+- CodeFrame's built-in ReactAgent becomes the fallback, not the primary
+- Verification gates and self-correction wrap ALL engines uniformly
+- See issues #408-#417 for the full breakdown
 
 ---
 
@@ -42,6 +64,7 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 - **FAILED task status**: Tasks can transition to FAILED for proper error visibility
 - **Tech stack configuration**: `cf init . --detect` auto-detects tech stack from project files
 - **Project preferences**: Agent loads AGENTS.md or CLAUDE.md for per-project configuration
+- **Stall detection**: Thread-based monitor with configurable recovery (`--stall-action blocker|retry|fail`)
 - **Blocker detection**: Agent creates blockers when stuck
 - **Verification gates**: Ruff/pytest checks after file changes
 - **State persistence**: Pause/resume across sessions
@@ -106,6 +129,8 @@ codeframe/
 │   ├── diagnostics.py      # Failed task analysis
 │   ├── diagnostic_agent.py # AI-powered task diagnosis
 │   ├── credentials.py      # API key and credential management
+│   ├── stall_detector.py   # Synchronous stall detector + StallAction enum + StallDetectedError
+│   ├── stall_monitor.py    # Thread-based stall watchdog with callback
 │   ├── streaming.py        # Real-time output streaming for cf work follow
 │   └── ...
 ├── adapters/
@@ -207,6 +232,8 @@ At all times:
 | **ReactAgent** | **`core/react_agent.py`** | **Default engine: observe-think-act loop with tool use** |
 | **Tools** | **`core/tools.py`** | **7 agent tools: read/edit/create file, run command/tests, search, list** |
 | **Editor** | **`core/editor.py`** | **Search-replace editor with 4-level fuzzy matching** |
+| **Stall Detector** | **`core/stall_detector.py`** | **Synchronous stall check + StallAction enum + StallDetectedError** |
+| **Stall Monitor** | **`core/stall_monitor.py`** | **Thread-based watchdog with callback (integrated into ReactAgent)** |
 | LLM Adapter | `adapters/llm/base.py` | Protocol, ModelSelector, Purpose enum |
 | Anthropic Provider | `adapters/llm/anthropic.py` | Claude integration with streaming |
 | Mock Provider | `adapters/llm/mock.py` | Testing with call tracking |
@@ -257,10 +284,12 @@ cf work start <id> --execute [--verbose]
                 ├── Build layered system prompt
                 │
                 └── Tool-use loop (until complete/blocked/failed):
+                    ├── Check stall detector (configurable: retry/blocker/fail)
                     ├── LLM decides next action (tool call)
                     ├── Execute tool: read_file, edit_file, create_file,
                     │   run_command, run_tests, search_codebase, list_files
                     ├── Observe result → feed back to LLM
+                    ├── Record activity (resets stall timer)
                     ├── Incremental verification (ruff after file changes)
                     └── Token budget management (3-tier compaction)
                 │
@@ -337,6 +366,8 @@ cf work start <task-id> --execute          # Runs AI agent (ReAct engine, defaul
 cf work start <task-id> --execute --engine plan  # Use legacy plan engine
 cf work start <task-id> --execute --verbose  # With detailed output
 cf work start <task-id> --execute --dry-run  # Preview changes
+cf work start <task-id> --execute --stall-timeout 120  # Custom stall timeout (0=disabled)
+cf work start <task-id> --execute --stall-action retry  # Recovery: blocker|retry|fail
 cf work stop <task-id>                     # Cancel stale run
 cf work resume <task-id>                   # Resume blocked work
 cf work follow <task-id>                   # Stream real-time output
@@ -474,7 +505,30 @@ If you are unsure which direction to take, default to:
 
 ---
 
-## Recent Updates (2026-02-15)
+## Recent Updates (2026-03-09)
+
+### Stall Detection System (#399, #400, #401)
+Complete stall detection and configurable recovery for agent execution:
+
+**Components:**
+- `StallMonitor` (`core/stall_monitor.py`) — Thread-based watchdog polling every 5s
+- `StallDetector` (`core/stall_detector.py`) — Synchronous time-tracking primitive
+- `StallAction` enum — Recovery strategy: RETRY, BLOCKER, FAIL
+- `StallDetectedError` — Exception for RETRY path (propagates to runtime for retry)
+
+**CLI flags:**
+- `--stall-timeout N` — Seconds without tool activity before stall (default: 300, 0=disabled)
+- `--stall-action {blocker,retry,fail}` — Recovery action (default: blocker)
+- Both flags available on `cf work start` and `cf work batch run`
+
+**Recovery flow:**
+- **BLOCKER** (default): Creates informative blocker, task → BLOCKED
+- **RETRY**: Raises `StallDetectedError`, runtime retries once with fresh agent
+- **FAIL**: Task transitions directly to FAILED
+
+**Config:** `agent_budget.stall_timeout_s` in `.codeframe/config.yaml` (0 = disabled)
+
+---
 
 ### Phase 2.5 Complete: ReAct Agent Architecture (#355)
 Default execution engine switched from plan-based to **ReAct (Reasoning + Acting)**.
@@ -494,14 +548,14 @@ Default execution engine switched from plan-based to **ReAct (Reasoning + Acting
 - ✅ API engine parameter (#354)
 - ✅ Default switch to react + documentation (#355)
 
-| Phase | Focus | Status |
-|-------|-------|--------|
-| 1 | CLI Completion | ✅ **Complete** |
-| 2 | Server Layer | ✅ **Complete** |
-| 2.5 | ReAct Agent | ✅ **Complete** |
-| 3 | Web UI Rebuild | Planned |
-| 4 | Multi-Agent Coordination | Planned |
-| 5 | Advanced Features | Planned |
+| Phase | Focus | Pipeline Stage | Status |
+|-------|-------|---------------|--------|
+| 1 | CLI Completion | Think + Build | ✅ **Complete** |
+| 2 | Server Layer | Build (API) | ✅ **Complete** |
+| 2.5 | ReAct Agent | Build (execution) | ✅ **Complete** |
+| 3 | Web UI Rebuild | All (dashboard) | In Progress |
+| 4 | Agent Adapters + Orchestration | Build (delegate to frontier agents) | **Next** |
+| 5 | PROOF9 + Advanced | Prove + Ship (quality memory) | Planned |
 
 ### Phase 2 Complete: Server Layer (2026-02-03)
 
