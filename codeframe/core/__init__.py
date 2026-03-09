@@ -3,7 +3,7 @@
 from codeframe.core.project import Project
 from codeframe.core.config import Config
 from codeframe.core.models import Task, TaskStatus, AgentMaturity
-from codeframe.core.stall_detector import StallAction, StallDetector
+from codeframe.core.stall_detector import StallAction, StallDetectedError, StallDetector
 
 __all__ = [
     "Project",
@@ -12,5 +12,6 @@ __all__ = [
     "TaskStatus",
     "AgentMaturity",
     "StallAction",
+    "StallDetectedError",
     "StallDetector",
 ]

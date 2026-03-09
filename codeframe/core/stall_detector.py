@@ -24,6 +24,23 @@ class StallAction(str, Enum):
     FAIL = "fail"
 
 
+class StallDetectedError(Exception):
+    """Raised when a stall is detected with RETRY action.
+
+    Propagates up to ``execute_agent()`` so the runtime can re-invoke
+    the agent with context about why the previous attempt stalled.
+    """
+
+    def __init__(self, elapsed_s: float, iterations: int, last_tool: str = "") -> None:
+        self.elapsed_s = elapsed_s
+        self.iterations = iterations
+        self.last_tool = last_tool
+        super().__init__(
+            f"Agent stalled after {elapsed_s:.0f}s "
+            f"(iterations={iterations}, last_tool={last_tool!r})"
+        )
+
+
 class StallDetector:
     """Tracks elapsed time since the last recorded activity.
 

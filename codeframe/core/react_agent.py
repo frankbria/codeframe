@@ -23,6 +23,7 @@ from codeframe.core.blocker_detection import classify_error_for_blocker
 from codeframe.core.context import ContextLoader, TaskContext
 from codeframe.core.events import EventType
 from codeframe.core.fix_tracker import EscalationDecision, FixAttemptTracker, FixOutcome
+from codeframe.core.stall_detector import StallAction, StallDetectedError
 from codeframe.core.stall_monitor import StallEvent, StallMonitor
 from codeframe.core.models import AgentPhase, CompletionEvent, ErrorEvent, ProgressEvent
 from codeframe.core.quick_fixes import apply_quick_fix, find_quick_fix
@@ -110,6 +111,7 @@ class ReactAgent:
         max_iterations: int = 30,
         max_verification_retries: int = 5,
         stall_timeout_s: float = 300,
+        stall_action: StallAction = StallAction.BLOCKER,
         event_publisher: Optional[EventPublisher] = None,
         dry_run: bool = False,
         verbose: bool = False,
@@ -123,6 +125,7 @@ class ReactAgent:
         self.max_iterations = max_iterations
         self.max_verification_retries = max_verification_retries
         self._stall_timeout_s = stall_timeout_s
+        self._stall_action = stall_action
         self.event_publisher = event_publisher
         self.dry_run = dry_run
         self.verbose = verbose
@@ -244,6 +247,9 @@ class ReactAgent:
                 return AgentStatus.FAILED
             finally:
                 self._stall_monitor.stop()
+        except StallDetectedError:
+            self._stall_monitor.stop()
+            raise  # Let runtime handle retry
         except Exception:
             logger.exception("ReactAgent.run() failed for task %s", task_id)
             self._emit(EventType.AGENT_FAILED, {
@@ -283,16 +289,30 @@ class ReactAgent:
             # Check for stall before each iteration
             if self._stall_triggered.is_set():
                 stall_ctx = ""
+                elapsed_s = 0.0
                 if self._stall_event:
+                    elapsed_s = self._stall_event.elapsed_s
                     stall_ctx = (
-                        f"Agent stalled: no tool call for {self._stall_event.elapsed_s:.0f}s "
+                        f"Agent stalled: no tool call for {elapsed_s:.0f}s "
                         f"(timeout: {self._stall_event.stall_timeout_s}s)"
                     )
-                self._create_text_blocker(
-                    stall_ctx or "Agent stalled with no tool activity",
-                    "stall_detected",
-                )
-                return AgentStatus.BLOCKED
+
+                if self._stall_action == StallAction.RETRY:
+                    raise StallDetectedError(
+                        elapsed_s=elapsed_s,
+                        iterations=iterations,
+                        last_tool=recent_tool_signatures[-1][0] if recent_tool_signatures else "",
+                    )
+                elif self._stall_action == StallAction.FAIL:
+                    self._verbose_print(f"[ReactAgent] Stall → FAILED: {stall_ctx}")
+                    return AgentStatus.FAILED
+                else:
+                    # StallAction.BLOCKER (default)
+                    self._create_text_blocker(
+                        stall_ctx or "Agent stalled with no tool activity",
+                        "stall_detected",
+                    )
+                    return AgentStatus.BLOCKED
 
             self._verbose_print(f"[ReactAgent] Iteration {iterations + 1}/{self.max_iterations}")
             self._emit(EventType.AGENT_ITERATION_STARTED, {

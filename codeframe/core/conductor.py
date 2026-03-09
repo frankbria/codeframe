@@ -458,6 +458,7 @@ class BatchRun:
     results: dict[str, str] = field(default_factory=dict)
     engine: str = "react"
     stall_timeout_s: int = 300
+    stall_action: str = "blocker"
 
 
 def start_batch(
@@ -471,6 +472,7 @@ def start_batch(
     on_event: Optional[Callable[[str, dict], None]] = None,
     engine: str = "react",
     stall_timeout_s: int = 300,
+    stall_action: str = "blocker",
 ) -> BatchRun:
     """Start a batch execution of multiple tasks.
 
@@ -518,6 +520,7 @@ def start_batch(
         results={},
         engine=engine,
         stall_timeout_s=stall_timeout_s,
+        stall_action=stall_action,
     )
 
     # Save to database
@@ -924,7 +927,7 @@ def _execute_serial_resume(
             on_event("batch_task_started", {"task_id": task_id, "position": i + 1, "is_retry": True})
 
         # Execute task via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s)
+        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
 
         # Record result (overwrites previous result)
         batch.results[task_id] = result_status
@@ -1092,7 +1095,7 @@ def _execute_retries(
             print(f"      Previous: {previous_status}")
 
             # Execute task
-            result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s)
+            result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
 
             # Update result
             batch.results[task_id] = result_status
@@ -1259,7 +1262,7 @@ def _execute_serial(
             on_event("batch_task_started", {"task_id": task_id, "position": i + 1})
 
         # Execute task via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s)
+        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
 
         # If task is BLOCKED, try supervisor resolution
         if result_status == RunStatus.BLOCKED.value:
@@ -1267,7 +1270,7 @@ def _execute_serial(
             if supervisor.try_resolve_blocked_task(task_id):
                 # Supervisor resolved the blocker - retry the task
                 print("      [Supervisor] Retrying task after auto-resolution...")
-                result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s)
+                result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
 
         # Record result
         batch.results[task_id] = result_status
@@ -1547,7 +1550,7 @@ def _execute_single_task(
         on_event("batch_task_started", {"task_id": task_id, "position": position})
 
     # Execute task via subprocess
-    result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s)
+    result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
 
     # If task is BLOCKED, try supervisor resolution
     if result_status == RunStatus.BLOCKED.value:
@@ -1555,7 +1558,7 @@ def _execute_single_task(
         if supervisor.try_resolve_blocked_task(task_id):
             # Supervisor resolved the blocker - retry the task
             print("      [Supervisor] Retrying task after auto-resolution...")
-            result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s)
+            result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
 
     # Record result
     batch.results[task_id] = result_status
@@ -1646,7 +1649,7 @@ def _execute_group_parallel(
             on_event("batch_task_started", {"task_id": task_id, "parallel": True})
 
         # Execute via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s)
+        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
 
         # Record result (thread-safe due to GIL for simple dict operations)
         batch.results[task_id] = result_status
@@ -1704,6 +1707,7 @@ def _execute_task_subprocess(
     batch_id: Optional[str] = None,
     engine: str = "react",
     stall_timeout_s: int = 300,
+    stall_action: str = "blocker",
 ) -> str:
     """Execute a single task via subprocess.
 
@@ -1715,6 +1719,7 @@ def _execute_task_subprocess(
         batch_id: Optional batch ID for process tracking (enables force stop)
         engine: Agent engine to use ("plan" or "react")
         stall_timeout_s: Stall detection timeout in seconds (0 = disabled)
+        stall_action: Recovery action on stall ("blocker", "retry", or "fail")
 
     Returns:
         RunStatus value string (COMPLETED, FAILED, BLOCKED)
@@ -1725,6 +1730,7 @@ def _execute_task_subprocess(
         "work", "start", task_id, "--execute",
         "--engine", engine,
         "--stall-timeout", str(stall_timeout_s),
+        "--stall-action", stall_action,
     ]
 
     process = None
