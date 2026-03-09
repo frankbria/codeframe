@@ -3,5 +3,6 @@ from codeframe.core.adapters.agent_adapter import (
     AgentEvent,
     AgentResult,
 )
+from codeframe.core.adapters.subprocess_adapter import SubprocessAdapter
 
-__all__ = ["AgentAdapter", "AgentEvent", "AgentResult"]
+__all__ = ["AgentAdapter", "AgentEvent", "AgentResult", "SubprocessAdapter"]
