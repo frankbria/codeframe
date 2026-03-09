@@ -19,6 +19,7 @@ __all__ = [
     "BuiltinPlanAdapter",
     "BuiltinReactAdapter",
     "ClaudeCodeAdapter",
+    "OpenCodeAdapter",
     "SubprocessAdapter",
     "VerificationWrapper",
 ]
