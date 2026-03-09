@@ -1,7 +1,6 @@
 """Tests for runtime execute_agent with external engine adapters."""
 
 import pytest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from codeframe.core.adapters.agent_adapter import AgentResult

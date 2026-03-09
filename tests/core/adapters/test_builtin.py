@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from codeframe.core.adapters.agent_adapter import AgentAdapter, AgentEvent, AgentResult
+from codeframe.core.adapters.agent_adapter import AgentAdapter, AgentEvent
 from codeframe.core.adapters.builtin import BuiltinPlanAdapter, BuiltinReactAdapter
 from codeframe.core.agent import AgentState, AgentStatus
 
