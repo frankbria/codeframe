@@ -7,9 +7,12 @@ Validates:
 - Streaming iterator contract
 """
 
+import pytest
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
+
+pytestmark = pytest.mark.v2
 
 
 class TestAgentResultStatus:
