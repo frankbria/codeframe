@@ -4,12 +4,9 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from codeframe.core.adapters.verification_wrapper import (
-    VerificationWrapper,
-    build_escalation_question,
-)
+from codeframe.core.adapters.verification_wrapper import VerificationWrapper
 from codeframe.core.adapters.agent_adapter import AgentAdapter, AgentEvent, AgentResult
-from codeframe.core.fix_tracker import FixAttemptTracker, FixOutcome
+from codeframe.core.fix_tracker import FixAttemptTracker, FixOutcome, build_escalation_question
 from codeframe.core.gates import GateStatus
 
 

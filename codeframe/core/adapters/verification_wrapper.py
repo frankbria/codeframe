@@ -14,38 +14,18 @@ from typing import Callable, Optional
 
 from codeframe.core.adapters.agent_adapter import AgentAdapter, AgentEvent, AgentResult
 from codeframe.core import blockers
-from codeframe.core.fix_tracker import EscalationDecision, FixAttemptTracker, FixOutcome
+from codeframe.core.fix_tracker import (
+    EscalationDecision,
+    FixAttemptTracker,
+    FixOutcome,
+    build_escalation_question,
+)
 from codeframe.core.gates import GateStatus
 from codeframe.core.gates import run as run_gates
 from codeframe.core.quick_fixes import apply_quick_fix, find_quick_fix
 from codeframe.core.workspace import Workspace
 
 logger = logging.getLogger(__name__)
-
-
-def build_escalation_question(
-    error: str,
-    escalation_reason: str,
-    fix_tracker: FixAttemptTracker,
-) -> str:
-    """Build a human-readable blocker question for escalation.
-
-    Shared by VerificationWrapper and ReactAgent to produce consistent
-    escalation blocker messages.
-    """
-    context = fix_tracker.get_blocker_context(error)
-    attempted = context.get("attempted_fixes", [])
-    attempted_str = (
-        "\n".join(f"  - {f}" for f in attempted) if attempted else "  (none)"
-    )
-    return (
-        f"Verification keeps failing and automated fixes are not working.\n\n"
-        f"Error: {error[:300]}\n\n"
-        f"Reason for escalation: {escalation_reason}\n\n"
-        f"Fixes already attempted:\n{attempted_str}\n\n"
-        f"Total failures in this run: {context.get('total_run_failures', 0)}\n\n"
-        f"Please investigate and provide guidance."
-    )
 
 
 class VerificationWrapper:
@@ -146,6 +126,7 @@ class VerificationWrapper:
                 )
                 return self._create_escalation_blocker(
                     task_id, error_summary, escalation,
+                    last_output=result.output,
                 )
 
             # 3. Try quick fix first (no adapter re-invocation needed)
@@ -189,7 +170,9 @@ class VerificationWrapper:
 
         # All rounds exhausted — create blocker
         error_summary = self._format_gate_errors(gate_result)
-        return self._create_exhaustion_blocker(task_id, error_summary)
+        return self._create_exhaustion_blocker(
+            task_id, error_summary, last_output=result.output,
+        )
 
     def _try_quick_fix(self, error_summary: str) -> bool:
         """Attempt a pattern-based quick fix for the gate error.
@@ -206,7 +189,11 @@ class VerificationWrapper:
         return success
 
     def _create_escalation_blocker(
-        self, task_id: str, error: str, escalation: EscalationDecision,
+        self,
+        task_id: str,
+        error: str,
+        escalation: EscalationDecision,
+        last_output: str = "",
     ) -> AgentResult:
         """Create a blocker when fix tracker recommends escalation."""
         question = build_escalation_question(
@@ -224,12 +211,16 @@ class VerificationWrapper:
 
         return AgentResult(
             status="blocked",
+            output=last_output,
             blocker_question=question,
             error=f"Escalated to blocker: {escalation.reason}",
         )
 
     def _create_exhaustion_blocker(
-        self, task_id: str, error_summary: str,
+        self,
+        task_id: str,
+        error_summary: str,
+        last_output: str = "",
     ) -> AgentResult:
         """Create a blocker when all correction rounds are exhausted."""
         question = (
@@ -250,6 +241,7 @@ class VerificationWrapper:
 
         return AgentResult(
             status="blocked",
+            output=last_output,
             blocker_question=question,
             error=(
                 f"Verification gates still failing after "

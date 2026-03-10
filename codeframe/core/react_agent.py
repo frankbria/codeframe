@@ -22,11 +22,15 @@ from codeframe.core.agent import AgentStatus
 from codeframe.core.blocker_detection import classify_error_for_blocker
 from codeframe.core.context import ContextLoader, TaskContext
 from codeframe.core.events import EventType
-from codeframe.core.fix_tracker import EscalationDecision, FixAttemptTracker, FixOutcome
+from codeframe.core.fix_tracker import (
+    EscalationDecision,
+    FixAttemptTracker,
+    FixOutcome,
+    build_escalation_question,
+)
 from codeframe.core.stall_detector import StallAction, StallDetectedError
 from codeframe.core.stall_monitor import StallEvent, StallMonitor
 from codeframe.core.models import AgentPhase, CompletionEvent, ErrorEvent, ProgressEvent
-from codeframe.core.adapters.verification_wrapper import build_escalation_question
 from codeframe.core.quick_fixes import apply_quick_fix, find_quick_fix
 from codeframe.core.tools import AGENT_TOOLS, execute_tool
 from codeframe.core.workspace import Workspace

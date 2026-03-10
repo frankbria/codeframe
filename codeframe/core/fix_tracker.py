@@ -453,3 +453,28 @@ class FixAttemptTracker:
         tracker._file_counts = dict(data.get("file_counts", {}))
 
         return tracker
+
+
+def build_escalation_question(
+    error: str,
+    escalation_reason: str,
+    fix_tracker: FixAttemptTracker,
+) -> str:
+    """Build a human-readable blocker question for escalation.
+
+    Shared by VerificationWrapper and ReactAgent to produce consistent
+    escalation blocker messages.
+    """
+    context = fix_tracker.get_blocker_context(error)
+    attempted = context.get("attempted_fixes", [])
+    attempted_str = (
+        "\n".join(f"  - {f}" for f in attempted) if attempted else "  (none)"
+    )
+    return (
+        f"Verification keeps failing and automated fixes are not working.\n\n"
+        f"Error: {error[:300]}\n\n"
+        f"Reason for escalation: {escalation_reason}\n\n"
+        f"Fixes already attempted:\n{attempted_str}\n\n"
+        f"Total failures in this run: {context.get('total_run_failures', 0)}\n\n"
+        f"Please investigate and provide guidance."
+    )
