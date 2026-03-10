@@ -624,10 +624,13 @@ def execute_agent(
         ValueError: If ANTHROPIC_API_KEY is not set (for builtin engines) or engine is invalid
     """
     import os
-    from codeframe.core.agent import Agent, AgentState, AgentStatus
+    from codeframe.core.agent import AgentState, AgentStatus
     from codeframe.adapters.llm import get_provider
     from codeframe.core.diagnostics import RunLogger, LogCategory
-    from codeframe.core.engine_registry import is_external_engine, resolve_engine
+    from codeframe.core.engine_registry import (
+        is_external_engine, resolve_engine, get_external_adapter, get_builtin_adapter,
+    )
+    from codeframe.core.adapters.agent_adapter import AgentEvent as AdapterEvent
 
     # Resolve engine (handles "built-in" alias and CODEFRAME_ENGINE env var)
     engine = resolve_engine(engine)
@@ -669,13 +672,14 @@ def execute_agent(
             category = _event_type_to_category(event_type)
             run_logger.info(category, f"Agent event: {event_type}", data)
 
-        # Create and run agent based on engine selection
-        # --- External engine path (claude-code, opencode, etc.) ---
+        # Bridge AgentEvent callbacks to workspace event system
+        def on_adapter_event(event: AdapterEvent) -> None:
+            on_agent_event(event.type, event.data)
+
+        # Get adapter via registry and run
         if is_external_engine(engine):
-            from codeframe.core.engine_registry import get_external_adapter
             from codeframe.core.context_packager import TaskContextPackager
             from codeframe.core.adapters.verification_wrapper import VerificationWrapper
-            from codeframe.core.adapters.agent_adapter import AgentEvent
 
             run_logger.info(
                 LogCategory.AGENT_ACTION,
@@ -683,284 +687,97 @@ def execute_agent(
                 {"engine": engine},
             )
 
-            # Build rich context prompt for the external agent
             packager = TaskContextPackager(workspace)
             packaged = packager.build(run.task_id)
 
-            # Get the adapter and wrap with verification gates
             adapter = get_external_adapter(engine)
             wrapper = VerificationWrapper(
-                adapter,
-                workspace,
-                max_correction_rounds=3,
-                verbose=verbose,
+                adapter, workspace, max_correction_rounds=3, verbose=verbose,
             )
 
-            # Bridge AgentEvent callbacks to workspace event system
-            def on_adapter_event(event: AgentEvent) -> None:
-                on_agent_event(event.type, event.data)
-
             result = wrapper.run(
-                run.task_id,
-                packaged.prompt,
-                workspace.repo_path,
+                run.task_id, packaged.prompt, workspace.repo_path,
+                on_event=on_adapter_event,
+            )
+        else:
+            from codeframe.core.stall_detector import StallAction
+
+            resolved_action = StallAction(stall_action)
+            builtin_kwargs: dict = {
+                "event_publisher": event_publisher,
+                "dry_run": dry_run,
+                "verbose": verbose,
+                "debug": debug,
+                "output_logger": output_logger,
+                "fix_coordinator": fix_coordinator,
+            }
+            # Stall detection is only relevant for the react engine
+            if engine in ("react", "built-in"):
+                builtin_kwargs["stall_timeout_s"] = stall_timeout_s
+                builtin_kwargs["stall_action"] = resolved_action
+
+            adapter = get_builtin_adapter(
+                engine, workspace, provider, **builtin_kwargs,
+            )
+
+            result = adapter.run(
+                run.task_id, "", workspace.repo_path,
                 on_event=on_adapter_event,
             )
 
-            # Map AgentResult to AgentState for compatibility with rest of runtime
-            status_map = {
-                "completed": AgentStatus.COMPLETED,
-                "failed": AgentStatus.FAILED,
-                "blocked": AgentStatus.BLOCKED,
-            }
-            agent_status = status_map.get(result.status, AgentStatus.FAILED)
-            state = AgentState(status=agent_status)
+        run_logger.info(
+            LogCategory.AGENT_ACTION,
+            f"Engine '{engine}' completed: {result.status}",
+            {"engine": engine, "output_length": len(result.output)},
+        )
 
-            # Create blocker if adapter reported one
-            if result.status == "blocked" and result.blocker_question:
-                from codeframe.core import blockers
-                blockers.create(
-                    workspace,
-                    task_id=run.task_id,
-                    question=result.blocker_question,
-                )
+        # Map AgentResult to AgentState for rest of runtime
+        status_map = {
+            "completed": AgentStatus.COMPLETED,
+            "failed": AgentStatus.FAILED,
+            "blocked": AgentStatus.BLOCKED,
+        }
+        agent_status = status_map.get(result.status, AgentStatus.FAILED)
+        state = AgentState(status=agent_status)
 
-            run_logger.info(
-                LogCategory.AGENT_ACTION,
-                f"External engine completed: {result.status}",
-                {"engine": engine, "output_length": len(result.output)},
+        # Create blocker if adapter reported one and populate state for CLI
+        if result.status == "blocked" and result.blocker_question:
+            from codeframe.core import blockers as blockers_mod
+            blocker_obj = blockers_mod.create(
+                workspace, task_id=run.task_id, question=result.blocker_question,
             )
-
-        # --- Builtin engine paths (react, plan) ---
-        elif engine == "react":
-            # ReactAgent has a simpler interface — it handles its own
-            # retries and verification internally.
-            from codeframe.core.react_agent import ReactAgent
-            from codeframe.core.stall_detector import StallAction, StallDetectedError
-
-            resolved_action = StallAction(stall_action)
-
-            def _build_react_agent() -> ReactAgent:
-                return ReactAgent(
-                    workspace=workspace,
-                    llm_provider=provider,
-                    stall_timeout_s=stall_timeout_s,
-                    stall_action=resolved_action,
-                    event_publisher=event_publisher,
-                    dry_run=dry_run,
-                    verbose=verbose,
-                    on_event=on_agent_event,
-                    debug=debug,
-                    output_logger=output_logger,
-                    fix_coordinator=fix_coordinator,
-                )
-
-            max_stall_retries = 1
-            for stall_attempt in range(1 + max_stall_retries):
-                try:
-                    react_agent = _build_react_agent()
-                    react_status = react_agent.run(run.task_id)
-                    # Wrap AgentStatus enum into AgentState dataclass for compatibility
-                    state = AgentState(status=react_status)
-                    break
-                except StallDetectedError as exc:
-                    run_logger.warning(
-                        LogCategory.AGENT_ACTION,
-                        f"Stall detected (attempt {stall_attempt + 1}): {exc}",
-                        {"elapsed_s": exc.elapsed_s, "iterations": exc.iterations},
-                    )
-                    if stall_attempt >= max_stall_retries:
-                        run_logger.error(
-                            LogCategory.AGENT_ACTION,
-                            "Max stall retries exceeded, failing task",
-                            {},
-                        )
-                        state = AgentState(status=AgentStatus.FAILED)
-                        break
-                    run_logger.info(
-                        LogCategory.AGENT_ACTION,
-                        "Retrying after stall",
-                        {"attempt": stall_attempt + 2},
-                    )
-        else:
-            agent = Agent(
-                workspace=workspace,
-                llm_provider=provider,
-                dry_run=dry_run,
-                on_event=on_agent_event,
-                debug=debug,
-                verbose=verbose,
-                fix_coordinator=fix_coordinator,
-                output_logger=output_logger,
-                event_publisher=event_publisher,
-            )
-
-            state = agent.run(run.task_id)
-
-            # If agent is BLOCKED, try supervisor resolution
-            # (only for plan engine — ReactAgent handles retries internally)
-            if state.status == AgentStatus.BLOCKED:
-                from codeframe.core.conductor import get_supervisor
-
-                supervisor = get_supervisor(workspace)
-                if supervisor.try_resolve_blocked_task(run.task_id):
-                    # Supervisor resolved the blocker - retry the agent
-                    print("[Supervisor] Retrying task after auto-resolution...")
-
-                    # Create a new agent instance and retry
-                    agent = Agent(
-                        workspace=workspace,
-                        llm_provider=provider,
-                        dry_run=dry_run,
-                        on_event=on_agent_event,
-                        debug=debug,
-                        verbose=verbose,
-                        fix_coordinator=fix_coordinator,
-                        output_logger=output_logger,
-                        event_publisher=event_publisher,
-                    )
-                    state = agent.run(run.task_id)
-
-        # If agent FAILED, check if supervisor can help with common technical issues
-        # (only for plan engine — ReactAgent handles retries internally and
-        # doesn't populate the AgentState fields that supervisor inspection needs)
-        if state.status == AgentStatus.FAILED and engine == "plan":
-            from codeframe.core.conductor import get_supervisor, SUPERVISOR_TACTICAL_PATTERNS
-
-            if debug:
-                logger.debug("Agent FAILED - analyzing for supervisor intervention")
-                logger.debug("state.blocker: %s", state.blocker)
-                logger.debug(
-                    "state.step_results count: %d",
-                    len(state.step_results) if state.step_results else 0
-                )
-                logger.debug(
-                    "state.gate_results count: %d",
-                    len(state.gate_results) if state.gate_results else 0
-                )
-
-            # Extract error message from available sources
-            error_msg = ""
-            error_source = "none"
-            if state.blocker:
-                error_msg = state.blocker.reason or state.blocker.question or ""
-                error_source = "blocker"
-            elif state.step_results:
-                # Check last step result for error info
-                last_result = state.step_results[-1]
-                if debug:
-                    error_preview = last_result.error[:200] if last_result.error else "None"
-                    logger.debug(
-                        "Last step result: status=%s, error=%s",
-                        last_result.status, error_preview
-                    )
-                if hasattr(last_result, 'error') and last_result.error:
-                    error_msg = last_result.error
-                    error_source = "step_result.error"
-                elif hasattr(last_result, 'output') and last_result.output:
-                    error_msg = last_result.output
-                    error_source = "step_result.output"
-            elif state.gate_results:
-                # Check gate results for failure info
-                for gate in state.gate_results:
-                    if debug:
-                        logger.debug("Gate result: passed=%s", gate.passed)
-                    if not gate.passed:
-                        for check in gate.checks:
-                            if debug:
-                                output_preview = check.output[:100] if check.output else "None"
-                                logger.debug(
-                                    "  Check: %s status=%s output=%s",
-                                    check.name, check.status, output_preview
-                                )
-                            if check.output:
-                                error_msg = check.output
-                                error_source = f"gate.{check.name}"
-                                break
-
-            if debug:
-                logger.debug("Extracted error from: %s", error_source)
-                error_preview = error_msg[:300] if error_msg else "EMPTY"
-                logger.debug("Error message (first 300 chars): %s", error_preview)
-
-            error_msg_lower = error_msg.lower()
-            matched_patterns = [p for p in SUPERVISOR_TACTICAL_PATTERNS if p in error_msg_lower]
-            if debug:
-                logger.debug("Matched tactical patterns: %s", matched_patterns)
-
-            if error_msg and matched_patterns:
-                supervisor = get_supervisor(workspace)
-                resolution = supervisor._generate_tactical_resolution(error_msg)
-                logger.info(
-                    "Supervisor detected recoverable error, providing guidance: %s...",
-                    resolution[:100]
-                )
-
-                # Create a blocker with the resolution for the agent's next run
-                from codeframe.core import blockers
-                blocker = blockers.create(
-                    workspace,
-                    task_id=run.task_id,
-                    question=f"Technical error: {error_msg[:500]}",
-                )
-                blockers.answer(workspace, blocker.id, resolution)
-                if debug:
-                    logger.debug("Created blocker %s and answered with resolution", blocker.id[:8])
-
-                # Retry the agent with the new context
-                logger.info("Supervisor retrying task with guidance...")
-                agent = Agent(
-                    workspace=workspace,
-                    llm_provider=provider,
-                    dry_run=dry_run,
-                    on_event=on_agent_event,
-                    debug=debug,
-                    verbose=verbose,
-                    fix_coordinator=fix_coordinator,
-                    output_logger=output_logger,
-                    event_publisher=event_publisher,
-                )
-                state = agent.run(run.task_id)
-                if debug:
-                    logger.debug("Retry completed with status: %s", state.status)
-            elif debug:
-                logger.debug(
-                    "No supervisor intervention - error_msg empty=%s, no pattern match=%s",
-                    not error_msg, not matched_patterns
-                )
+            state.blocker = blocker_obj
 
         # Log final status
         if state.status == AgentStatus.COMPLETED:
             run_logger.info(LogCategory.STATE_CHANGE, "Agent completed successfully")
         elif state.status == AgentStatus.BLOCKED:
-            blocker_reason = state.blocker.question if state.blocker else "Unknown"
-            run_logger.warning(LogCategory.BLOCKER, f"Agent blocked: {blocker_reason[:200]}", {
-                "blocker_question": blocker_reason,
+            run_logger.warning(LogCategory.BLOCKER, f"Agent blocked: {result.blocker_question or 'Unknown'}", {
+                "blocker_question": result.blocker_question or "Unknown",
             })
         elif state.status == AgentStatus.FAILED:
-            # Log detailed error information for diagnosis
-            error_info = {}
-            if state.step_results:
-                last_step = state.step_results[-1]
-                error_info["last_step_status"] = last_step.status.value if hasattr(last_step.status, 'value') else str(last_step.status)
-                error_info["last_step_error"] = last_step.error[:500] if last_step.error else None
-            if state.gate_results:
-                error_info["gate_failures"] = sum(1 for g in state.gate_results if not g.passed)
-            run_logger.error(LogCategory.ERROR, "Agent execution failed", error_info)
+            run_logger.error(LogCategory.ERROR, "Agent execution failed", {
+                "error": (result.error or "")[:500],
+            })
 
         # Update run status based on agent result
         if state.status == AgentStatus.COMPLETED:
             complete_run(workspace, run.id)
         elif state.status == AgentStatus.BLOCKED:
-            # Get blocker ID from state if available
-            blocker_id = ""
-            if state.blocker and hasattr(state, "_blocker_id"):
-                blocker_id = state._blocker_id
-            block_run(workspace, run.id, blocker_id)
+            block_run(workspace, run.id, "")
         elif state.status == AgentStatus.FAILED:
             fail_run(workspace, run.id)
 
         return state
+
+    except Exception as exc:
+        # Fail the run so it doesn't stay IN_PROGRESS forever
+        run_logger.error(LogCategory.ERROR, f"Unhandled error in execute_agent: {exc}", {})
+        try:
+            fail_run(workspace, run.id)
+        except Exception:
+            pass  # Best-effort — don't mask the original error
+        return AgentState(status=AgentStatus.FAILED)
 
     finally:
         # Always close the output logger to ensure file is properly flushed
