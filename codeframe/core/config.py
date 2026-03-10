@@ -108,6 +108,9 @@ class EnvironmentConfig:
     # Agent budget
     agent_budget: AgentBudgetConfig = dataclass_field(default_factory=AgentBudgetConfig)
 
+    # Execution engine
+    engine: str = "react"
+
     # Custom command overrides
     custom_commands: dict[str, str] = dataclass_field(default_factory=dict)
 
@@ -143,6 +146,14 @@ class EnvironmentConfig:
                     f"Invalid lint tool '{tool}'. "
                     f"Must be one of: {', '.join(valid_lint_tools)}"
                 )
+
+        # Validate engine
+        from codeframe.core.engine_registry import VALID_ENGINES
+        if self.engine not in VALID_ENGINES:
+            errors.append(
+                f"Invalid engine '{self.engine}'. "
+                f"Must be one of: {', '.join(sorted(VALID_ENGINES))}"
+            )
 
         # Validate agent budget
         budget = self.agent_budget

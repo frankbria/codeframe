@@ -134,6 +134,61 @@ def get_builtin_adapter(
         )
 
 
+def check_requirements(engine: str) -> dict[str, bool]:
+    """Check if an engine's requirements are met.
+
+    Args:
+        engine: Engine name to check.
+
+    Returns:
+        Dict of requirement-name → bool (True if satisfied).
+
+    Raises:
+        ValueError: If engine is not valid.
+    """
+    if engine not in VALID_ENGINES:
+        raise ValueError(
+            f"Invalid engine '{engine}'. "
+            f"Must be one of: {', '.join(sorted(VALID_ENGINES))}"
+        )
+
+    # Resolve alias
+    resolved = "react" if engine == "built-in" else engine
+
+    # Get the adapter class and check for a requirements() classmethod
+    adapter_cls = _get_adapter_class(resolved)
+    if adapter_cls is None:
+        return {}
+
+    req_method = getattr(adapter_cls, "requirements", None)
+    if req_method is None or not callable(req_method):
+        return {}
+
+    reqs = req_method()
+    result: dict[str, bool] = {}
+    for key in reqs:
+        # Check environment variables
+        result[key] = bool(os.getenv(key))
+    return result
+
+
+def _get_adapter_class(engine: str) -> type | None:
+    """Get the adapter class for an engine (without instantiating)."""
+    if engine == "react":
+        from codeframe.core.adapters.builtin import BuiltinReactAdapter
+        return BuiltinReactAdapter
+    elif engine == "plan":
+        from codeframe.core.adapters.builtin import BuiltinPlanAdapter
+        return BuiltinPlanAdapter
+    elif engine == "claude-code":
+        from codeframe.core.adapters.claude_code import ClaudeCodeAdapter
+        return ClaudeCodeAdapter
+    elif engine == "opencode":
+        from codeframe.core.adapters.opencode import OpenCodeAdapter
+        return OpenCodeAdapter
+    return None
+
+
 def get_adapter(
     engine: str,
     workspace: Any = None,

@@ -26,6 +26,7 @@ from rich.console import Console
 from codeframe.cli.auth_commands import auth_app
 from codeframe.cli.pr_commands import pr_app
 from codeframe.cli.env_commands import env_app
+from codeframe.cli.engines_commands import engines_app
 
 # Load environment variables from .env files
 # Priority: workspace .env > home .env
@@ -1994,8 +1995,8 @@ def work_start(
         "--stub",
         help="Run stub agent (for testing, does nothing real)",
     ),
-    engine: str = typer.Option(
-        "react",
+    engine: Optional[str] = typer.Option(
+        None,
         "--engine",
         help="Agent engine: react (default), plan (legacy), claude-code, opencode, or built-in",
     ),
@@ -2028,6 +2029,12 @@ def work_start(
     from codeframe.core.state_machine import InvalidTransitionError
 
     path = workspace_path or Path.cwd()
+
+    # Resolve engine: CLI flag → workspace config → env var → default "react"
+    if engine is None:
+        from codeframe.core.config import load_environment_config
+        env_config = load_environment_config(path)
+        engine = env_config.engine if env_config else "react"
 
     try:
         workspace = get_workspace(path)
@@ -2875,8 +2882,8 @@ def batch_run(
         "--review",
         help="Run verification gates (pytest, ruff) after successful batch completion",
     ),
-    engine: str = typer.Option(
-        "react",
+    engine: Optional[str] = typer.Option(
+        None,
         "--engine",
         help="Agent engine: react (default), plan (legacy), claude-code, opencode, or built-in",
     ),
@@ -2912,6 +2919,12 @@ def batch_run(
     from codeframe.core.state_machine import TaskStatus
 
     path = workspace_path or Path.cwd()
+
+    # Resolve engine: CLI flag → workspace config → env var → default "react"
+    if engine is None:
+        from codeframe.core.config import load_environment_config
+        env_config = load_environment_config(path)
+        engine = env_config.engine if env_config else "react"
 
     try:
         workspace = get_workspace(path)
@@ -4823,6 +4836,8 @@ app.add_typer(templates_app, name="templates")
 app.add_typer(auth_app, name="auth")
 app.add_typer(pr_app, name="pr")
 app.add_typer(env_app, name="env")
+
+app.add_typer(engines_app, name="engines")
 
 
 # =============================================================================
