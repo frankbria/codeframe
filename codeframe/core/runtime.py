@@ -769,6 +769,15 @@ def execute_agent(
 
         return state
 
+    except Exception as exc:
+        # Fail the run so it doesn't stay IN_PROGRESS forever
+        run_logger.error(LogCategory.ERROR, f"Unhandled error in execute_agent: {exc}", {})
+        try:
+            fail_run(workspace, run.id)
+        except Exception:
+            pass  # Best-effort — don't mask the original error
+        return AgentState(status=AgentStatus.FAILED)
+
     finally:
         # Always close the output logger to ensure file is properly flushed
         output_logger.close()
