@@ -14,7 +14,7 @@ from typing import Callable, Optional
 
 from codeframe.core.adapters.agent_adapter import AgentAdapter, AgentEvent, AgentResult
 from codeframe.core import blockers
-from codeframe.core.fix_tracker import FixAttemptTracker, FixOutcome
+from codeframe.core.fix_tracker import EscalationDecision, FixAttemptTracker, FixOutcome
 from codeframe.core.gates import GateStatus
 from codeframe.core.gates import run as run_gates
 from codeframe.core.quick_fixes import apply_quick_fix, find_quick_fix
@@ -135,26 +135,33 @@ class VerificationWrapper:
                     },
                 ))
 
-            # 1. Check fix tracker for escalation before doing more work
+            # 1. Record the attempt (outcome deferred until we know if fix works)
             self.fix_tracker.record_attempt(error_summary, "verification_gate")
-            self.fix_tracker.record_outcome(
-                error_summary, "verification_gate", FixOutcome.FAILED,
-            )
 
+            # 2. Check escalation based on prior history
             escalation = self.fix_tracker.should_escalate(error_summary)
             if escalation.should_escalate:
+                self.fix_tracker.record_outcome(
+                    error_summary, "verification_gate", FixOutcome.FAILED,
+                )
                 return self._create_escalation_blocker(
                     task_id, error_summary, escalation,
                 )
 
-            # 2. Try quick fix first (no adapter re-invocation needed)
+            # 3. Try quick fix first (no adapter re-invocation needed)
             if self._try_quick_fix(error_summary):
+                self.fix_tracker.record_outcome(
+                    error_summary, "verification_gate", FixOutcome.SUCCESS,
+                )
                 self._verbose_print(
                     f"[VerificationWrapper] Quick fix applied (round {round_num + 1})"
                 )
                 continue  # Re-run gates without re-invoking adapter
 
-            # 3. No quick fix available — re-invoke adapter with error context
+            # 4. No quick fix — record failure and re-invoke adapter with error context
+            self.fix_tracker.record_outcome(
+                error_summary, "verification_gate", FixOutcome.FAILED,
+            )
             formatted_errors = self._format_gate_errors(gate_result)
             correction_prompt = (
                 f"{prompt}\n\n"
@@ -199,7 +206,7 @@ class VerificationWrapper:
         return success
 
     def _create_escalation_blocker(
-        self, task_id: str, error: str, escalation,
+        self, task_id: str, error: str, escalation: EscalationDecision,
     ) -> AgentResult:
         """Create a blocker when fix tracker recommends escalation."""
         question = build_escalation_question(

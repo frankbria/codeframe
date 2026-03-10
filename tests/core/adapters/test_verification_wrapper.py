@@ -9,7 +9,7 @@ from codeframe.core.adapters.verification_wrapper import (
     build_escalation_question,
 )
 from codeframe.core.adapters.agent_adapter import AgentAdapter, AgentEvent, AgentResult
-from codeframe.core.fix_tracker import FixAttemptTracker
+from codeframe.core.fix_tracker import FixAttemptTracker, FixOutcome
 from codeframe.core.gates import GateStatus
 
 
@@ -345,7 +345,7 @@ class TestEscalationIntegration:
                 wrapper.fix_tracker.record_attempt(error_text, "gate_failure")
                 wrapper.fix_tracker.record_outcome(
                     error_text, "gate_failure",
-                    __import__("codeframe.core.fix_tracker", fromlist=["FixOutcome"]).FixOutcome.FAILED,
+                    FixOutcome.FAILED,
                 )
 
             result = wrapper.run("t1", "prompt", Path("/tmp"))
