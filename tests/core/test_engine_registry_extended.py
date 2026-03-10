@@ -145,6 +145,90 @@ class TestBuiltinReactAdapterStallRetry:
         assert "Stall detected" in result.error
 
 
+class TestBuiltinPlanAdapterRetry:
+    def _make_state(self, status, blocker=None, gate_results=None, step_results=None):
+        state = MagicMock()
+        state.status = status
+        state.blocker = blocker
+        state.gate_results = gate_results or []
+        state.step_results = step_results or []
+        return state
+
+    def test_completed_returns_completed(self):
+        from codeframe.core.adapters.builtin import BuiltinPlanAdapter
+        from codeframe.core.agent import AgentStatus
+
+        ws = MagicMock()
+        ws.repo_path = Path("/tmp/test")
+        provider = MagicMock()
+
+        with patch("codeframe.core.agent.Agent") as mock_cls:
+            mock_cls.return_value.run.return_value = self._make_state(AgentStatus.COMPLETED)
+            adapter = BuiltinPlanAdapter(ws, provider)
+            result = adapter.run("task-1", "", Path("/tmp"))
+
+        assert result.status == "completed"
+
+    def test_blocked_triggers_supervisor_unblock(self):
+        from codeframe.core.adapters.builtin import BuiltinPlanAdapter
+        from codeframe.core.agent import AgentStatus
+
+        ws = MagicMock()
+        ws.repo_path = Path("/tmp/test")
+        provider = MagicMock()
+
+        with patch("codeframe.core.agent.Agent") as mock_cls:
+            mock_cls.return_value.run.return_value = self._make_state(AgentStatus.BLOCKED)
+            with patch("codeframe.core.conductor.get_supervisor") as mock_sup:
+                mock_sup.return_value.try_resolve_blocked_task.return_value = False
+                adapter = BuiltinPlanAdapter(ws, provider)
+                result = adapter.run("task-1", "", Path("/tmp"))
+
+        assert result.status == "blocked"
+        mock_sup.return_value.try_resolve_blocked_task.assert_called_once_with("task-1")
+
+    def test_supervisor_exception_returns_original_state(self):
+        from codeframe.core.adapters.builtin import BuiltinPlanAdapter
+        from codeframe.core.agent import AgentStatus
+
+        ws = MagicMock()
+        ws.repo_path = Path("/tmp/test")
+        provider = MagicMock()
+
+        with patch("codeframe.core.agent.Agent") as mock_cls:
+            mock_cls.return_value.run.return_value = self._make_state(AgentStatus.BLOCKED)
+            with patch("codeframe.core.conductor.get_supervisor") as mock_sup:
+                mock_sup.side_effect = Exception("Database error")
+                adapter = BuiltinPlanAdapter(ws, provider)
+                result = adapter.run("task-1", "", Path("/tmp"))
+
+        assert result.status == "blocked"
+
+    def test_failed_triggers_tactical_recovery(self):
+        from codeframe.core.adapters.builtin import BuiltinPlanAdapter
+        from codeframe.core.agent import AgentStatus
+
+        ws = MagicMock()
+        ws.repo_path = Path("/tmp/test")
+        provider = MagicMock()
+
+        step_result = MagicMock()
+        step_result.error = "modulenotfounderror: No module named 'foo'"
+        step_result.output = ""
+
+        with patch("codeframe.core.agent.Agent") as mock_cls:
+            mock_cls.return_value.run.return_value = self._make_state(
+                AgentStatus.FAILED, step_results=[step_result]
+            )
+            with patch("codeframe.core.conductor.get_supervisor") as mock_sup:
+                mock_sup.side_effect = Exception("Database error")
+                adapter = BuiltinPlanAdapter(ws, provider)
+                result = adapter.run("task-1", "", Path("/tmp"))
+
+        # Even with supervisor failure, the adapter returns gracefully
+        assert result.status == "failed"
+
+
 class TestBuiltinAdapterRequirements:
     def test_react_has_requirements(self):
         from codeframe.core.adapters.builtin import BuiltinReactAdapter

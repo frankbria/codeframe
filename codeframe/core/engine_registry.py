@@ -167,8 +167,14 @@ def check_requirements(engine: str) -> dict[str, bool]:
     reqs = req_method()
     result: dict[str, bool] = {}
     for key in reqs:
-        # Check environment variables
+        # Check environment variables for builtin engines
         result[key] = bool(os.getenv(key))
+
+    # External adapters may also have a check_ready() classmethod
+    check_ready = getattr(adapter_cls, "check_ready", None)
+    if check_ready and callable(check_ready):
+        result.update(check_ready())
+
     return result
 
 

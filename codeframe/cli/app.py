@@ -2030,7 +2030,10 @@ def work_start(
 
     path = workspace_path or Path.cwd()
 
-    # Resolve engine: CLI flag → workspace config → env var → default "react"
+    # Resolve engine: CLI flag → env var → workspace config → default "react"
+    if engine is None:
+        import os
+        engine = os.environ.get("CODEFRAME_ENGINE")
     if engine is None:
         from codeframe.core.config import load_environment_config
         env_config = load_environment_config(path)
@@ -2920,7 +2923,10 @@ def batch_run(
 
     path = workspace_path or Path.cwd()
 
-    # Resolve engine: CLI flag → workspace config → env var → default "react"
+    # Resolve engine: CLI flag → env var → workspace config → default "react"
+    if engine is None:
+        import os
+        engine = os.environ.get("CODEFRAME_ENGINE")
     if engine is None:
         from codeframe.core.config import load_environment_config
         env_config = load_environment_config(path)
