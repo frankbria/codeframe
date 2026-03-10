@@ -56,7 +56,7 @@ class TaskContextPackager:
         if attempt > 0 and previous_errors:
             prompt_parts.append(self._build_retry_section(attempt, previous_errors))
 
-        gates = gate_names or ["pytest", "ruff"]
+        gates = gate_names if gate_names is not None else ["pytest", "ruff"]
         prompt_parts.append(self._build_gate_section(gates))
         prompt_parts.append(self._build_instructions_section())
 
@@ -87,7 +87,7 @@ class TaskContextPackager:
             AgentContext populated from TaskContext fields.
         """
         context = self._loader.load(task_id)
-        gates = gate_names or ["pytest", "ruff"]
+        gates = gate_names if gate_names is not None else ["pytest", "ruff"]
 
         prd_content = None
         if context.prd is not None:
@@ -130,7 +130,7 @@ class TaskContextPackager:
             packaged: A previously built PackagedContext.
 
         Returns:
-            List of relevant file paths sorted by relevance score.
+            List of relevant file paths in ContextLoader's relevance order.
         """
         return [fi.path for fi in packaged.context.relevant_files]
 
@@ -158,7 +158,8 @@ class TaskContextPackager:
             "",
         ]
         for error in errors:
-            lines.append(f"- {error}")
+            collapsed = error.replace("\n", " ").strip()
+            lines.append(f"- {collapsed}")
         lines.append("")
         lines.append(
             "Review these errors carefully. Do NOT repeat the same approach "

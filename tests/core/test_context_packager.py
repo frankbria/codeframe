@@ -259,6 +259,27 @@ class TestBuildAgentContext:
             assert ctx.attempt == 2
             assert "ImportError: jwt not found" in ctx.previous_errors
 
+    def test_custom_gate_names(self, mock_workspace, rich_task_context):
+        with patch("codeframe.core.context_packager.ContextLoader") as MockLoader:
+            MockLoader.return_value.load.return_value = rich_task_context
+
+            packager = TaskContextPackager(mock_workspace)
+            ctx = packager.build_agent_context(
+                "task-99", gate_names=["mypy", "eslint"]
+            )
+
+            assert ctx.verification_gates == ["mypy", "eslint"]
+
+    def test_empty_gate_names_override(self, mock_workspace, rich_task_context):
+        """Explicit empty list should produce empty gates, not defaults."""
+        with patch("codeframe.core.context_packager.ContextLoader") as MockLoader:
+            MockLoader.return_value.load.return_value = rich_task_context
+
+            packager = TaskContextPackager(mock_workspace)
+            ctx = packager.build_agent_context("task-99", gate_names=[])
+
+            assert ctx.verification_gates == []
+
     def test_defaults_for_optional_fields(self, mock_workspace):
         """When TaskContext has no PRD or tech stack, those fields are None."""
         bare_ctx = MagicMock(spec=TaskContext)
@@ -307,6 +328,22 @@ class TestBuildWithRetryContext:
             assert "Previous Attempt Errors" in result.prompt
             assert "SyntaxError: unexpected indent" in result.prompt
             assert "Attempt 2" in result.prompt
+
+    def test_multiline_errors_collapsed(self, mock_workspace, mock_task_context):
+        """Multiline errors should be collapsed to single lines in the prompt."""
+        with patch("codeframe.core.context_packager.ContextLoader") as MockLoader:
+            MockLoader.return_value.load.return_value = mock_task_context
+
+            packager = TaskContextPackager(mock_workspace)
+            result = packager.build(
+                "task-1",
+                attempt=1,
+                previous_errors=["FAILED tests/test_foo.py\n  assert 1 == 2\nAssertionError"],
+            )
+
+            assert "Previous Attempt Errors" in result.prompt
+            # Multiline error should be on a single markdown list line
+            assert "\n  assert" not in result.prompt
 
     def test_build_first_attempt_no_retry_section(
         self, mock_workspace, mock_task_context
