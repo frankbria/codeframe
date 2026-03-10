@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 from codeframe.core.engine_registry import check_requirements, _get_adapter_class
 
+pytestmark = pytest.mark.v2
+
 
 class TestCheckRequirements:
     def test_react_checks_anthropic_key(self):

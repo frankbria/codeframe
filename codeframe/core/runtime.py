@@ -740,12 +740,13 @@ def execute_agent(
         agent_status = status_map.get(result.status, AgentStatus.FAILED)
         state = AgentState(status=agent_status)
 
-        # Create blocker if adapter reported one
+        # Create blocker if adapter reported one and populate state for CLI
         if result.status == "blocked" and result.blocker_question:
-            from codeframe.core import blockers
-            blockers.create(
+            from codeframe.core import blockers as blockers_mod
+            blocker_obj = blockers_mod.create(
                 workspace, task_id=run.task_id, question=result.blocker_question,
             )
+            state.blocker = blocker_obj
 
         # Log final status
         if state.status == AgentStatus.COMPLETED:
