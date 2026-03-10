@@ -692,7 +692,7 @@ def execute_agent(
 
             adapter = get_external_adapter(engine)
             wrapper = VerificationWrapper(
-                adapter, workspace, max_correction_rounds=3, verbose=verbose,
+                adapter, workspace, max_correction_rounds=5, verbose=verbose,
             )
 
             result = wrapper.run(
