@@ -22,7 +22,12 @@ from codeframe.core.agent import AgentStatus
 from codeframe.core.blocker_detection import classify_error_for_blocker
 from codeframe.core.context import ContextLoader, TaskContext
 from codeframe.core.events import EventType
-from codeframe.core.fix_tracker import EscalationDecision, FixAttemptTracker, FixOutcome
+from codeframe.core.fix_tracker import (
+    EscalationDecision,
+    FixAttemptTracker,
+    FixOutcome,
+    build_escalation_question,
+)
 from codeframe.core.stall_detector import StallAction, StallDetectedError
 from codeframe.core.stall_monitor import StallEvent, StallMonitor
 from codeframe.core.models import AgentPhase, CompletionEvent, ErrorEvent, ProgressEvent
@@ -1029,17 +1034,8 @@ class ReactAgent:
         the run record to the blocker.  If creation fails the exception
         propagates — callers in ``run()`` catch it and return FAILED.
         """
-        context = self.fix_tracker.get_blocker_context(error)
-        attempted = context.get("attempted_fixes", [])
-        attempted_str = "\n".join(f"  - {f}" for f in attempted) if attempted else "  (none)"
-
-        question = (
-            f"Verification keeps failing and automated fixes are not working.\n\n"
-            f"Error: {error[:300]}\n\n"
-            f"Reason for escalation: {escalation.reason}\n\n"
-            f"Fixes already attempted:\n{attempted_str}\n\n"
-            f"Total failures in this run: {context.get('total_run_failures', 0)}\n\n"
-            f"Please investigate and provide guidance."
+        question = build_escalation_question(
+            error, escalation.reason, self.fix_tracker,
         )
         blocker = blockers.create(
             workspace=self.workspace,
