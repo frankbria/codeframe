@@ -12,6 +12,7 @@ this adapter maintains a bidirectional conversation with the subprocess:
 from __future__ import annotations
 
 import json
+import selectors
 import shutil
 import subprocess
 import threading
@@ -25,6 +26,7 @@ from codeframe.core.adapters.agent_adapter import (
     AgentEvent,
     AgentResult,
 )
+from codeframe.core.adapters.git_utils import detect_modified_files
 
 
 class CodexAdapter:
@@ -161,11 +163,26 @@ class CodexAdapter:
         stdin.flush()
 
     def _recv_line(self, stdout: Any, timeout_s: float) -> dict | None:
-        """Read one JSON-RPC line from stdout.
+        """Read one JSON-RPC line from stdout with enforced timeout.
 
-        Returns the parsed dict, or None on EOF / empty line.
-        Timeout is approximate (based on readline blocking behaviour).
+        Uses ``selectors`` to wait for data availability before reading,
+        preventing indefinite blocking if the subprocess stops writing.
+
+        Returns the parsed dict, or None on EOF / timeout.
         """
+        # Use selectors for real timeout enforcement on file-based stdout.
+        # Mock objects (in tests) won't have fileno(), so fall back to
+        # direct readline for those.
+        if hasattr(stdout, "fileno"):
+            sel = selectors.DefaultSelector()
+            try:
+                sel.register(stdout, selectors.EVENT_READ)
+                ready = sel.select(timeout=timeout_s)
+            finally:
+                sel.close()
+            if not ready:
+                return None
+
         line = stdout.readline()
         if not line:
             return None
@@ -324,6 +341,13 @@ class CodexAdapter:
                     type="progress",
                     message=f"Auto-approved tool call: {tool_name}",
                 ))
+        else:
+            self._send(stdin, "tool_call/rejected", {"id": tool_id})
+            if on_event:
+                on_event(AgentEvent(
+                    type="progress",
+                    message=f"Rejected tool call (policy={self._approval_policy}): {tool_name}",
+                ))
 
     # ------------------------------------------------------------------
     # Token usage
@@ -352,31 +376,7 @@ class CodexAdapter:
             except subprocess.TimeoutExpired:
                 pass
 
-    def _detect_modified_files(self, workspace_path: Path) -> list[str]:
+    @staticmethod
+    def _detect_modified_files(workspace_path: Path) -> list[str]:
         """Detect files modified by the subprocess via git diff."""
-        try:
-            result = subprocess.run(
-                ["git", "diff", "--name-only", "HEAD"],
-                cwd=str(workspace_path),
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode != 0:
-                return []
-
-            files = [f for f in result.stdout.strip().splitlines() if f]
-
-            untracked = subprocess.run(
-                ["git", "ls-files", "--others", "--exclude-standard"],
-                cwd=str(workspace_path),
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if untracked.returncode == 0:
-                files.extend(f for f in untracked.stdout.strip().splitlines() if f)
-
-            return list(dict.fromkeys(files))
-        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
-            return []
+        return detect_modified_files(workspace_path)

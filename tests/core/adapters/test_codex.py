@@ -265,6 +265,21 @@ class TestCodexApproval:
         adapter._handle_approval(stdin, event, on_event=events.append)
         assert any("auto-approved" in e.message.lower() for e in events)
 
+    def test_non_auto_policy_rejects_tool_call(self) -> None:
+        adapter = self._make_adapter(approval_policy="require")
+        events: list[AgentEvent] = []
+
+        stdin = MagicMock()
+        event = {"method": "tool_call", "params": {"id": "tc-2", "name": "write_file"}}
+
+        adapter._handle_approval(stdin, event, on_event=events.append)
+
+        written = stdin.write.call_args[0][0]
+        parsed = json.loads(written.strip())
+        assert parsed["method"] == "tool_call/rejected"
+        assert parsed["params"]["id"] == "tc-2"
+        assert any("rejected" in e.message.lower() for e in events)
+
 
 class TestCodexFullRun:
     """Integration test: full run() with mock subprocess."""
