@@ -658,7 +658,41 @@ def execute_agent(
     from codeframe.core.streaming import RunOutputLogger
     output_logger = RunOutputLogger(workspace, run.id)
 
+    # Load hook config (before main try block so it's available everywhere)
+    from codeframe.core.config import load_environment_config
+    from codeframe.core.hooks import HookAbortError, HookContext, execute_hook
+    env_config = load_environment_config(workspace.repo_path)
+    hook_ctx: HookContext | None = None
+    if env_config:
+        task_record = tasks.get(workspace, run.task_id)
+        hook_ctx = HookContext(
+            task_id=run.task_id,
+            task_title=task_record.title if task_record else "",
+            task_status="in_progress",
+            workspace_path=str(workspace.repo_path),
+        )
+
     try:
+        # Execute before_task hook (aborts on failure)
+        if env_config and hook_ctx:
+            try:
+                hook_result = execute_hook(
+                    "before_task", env_config, workspace.repo_path, hook_ctx,
+                    abort_on_failure=True,
+                )
+                if hook_result:
+                    events.emit_for_workspace(
+                        workspace, events.EventType.HOOK_EXECUTED,
+                        {"hook": "before_task", "success": hook_result.success},
+                    )
+            except HookAbortError as hook_err:
+                events.emit_for_workspace(
+                    workspace, events.EventType.HOOK_FAILED,
+                    {"hook": "before_task", "error": str(hook_err)},
+                )
+                fail_run(workspace, run.id)
+                from codeframe.core.agent import AgentState, AgentStatus
+                return AgentState(status=AgentStatus.FAILED)
         # Create event callback to emit workspace events and log
         def on_agent_event(event_type: str, data: dict) -> None:
             events.emit_for_workspace(
@@ -760,13 +794,32 @@ def execute_agent(
                 "error": (result.error or "")[:500],
             })
 
-        # Update run status based on agent result
+        # Update run status based on agent result (before hooks, so hooks see final state)
         if state.status == AgentStatus.COMPLETED:
             complete_run(workspace, run.id)
         elif state.status == AgentStatus.BLOCKED:
             block_run(workspace, run.id, "")
         elif state.status == AgentStatus.FAILED:
             fail_run(workspace, run.id)
+
+        # Execute after_task hooks (non-blocking, after state is persisted)
+        if env_config and hook_ctx:
+            after_hook = None
+            if state.status == AgentStatus.COMPLETED:
+                hook_ctx.task_status = "done"
+                after_hook = "after_task_success"
+            elif state.status == AgentStatus.FAILED:
+                hook_ctx.task_status = "failed"
+                after_hook = "after_task_failure"
+
+            if after_hook:
+                hook_result = execute_hook(
+                    after_hook, env_config, workspace.repo_path, hook_ctx,
+                    abort_on_failure=False,
+                )
+                if hook_result:
+                    evt = events.EventType.HOOK_EXECUTED if hook_result.success else events.EventType.HOOK_FAILED
+                    events.emit_for_workspace(workspace, evt, {"hook": after_hook, "success": hook_result.success})
 
         return state
 
@@ -777,6 +830,13 @@ def execute_agent(
             fail_run(workspace, run.id)
         except Exception:
             pass  # Best-effort — don't mask the original error
+        # Fire after_task_failure hook even on unhandled exceptions
+        if env_config and hook_ctx:
+            hook_ctx.task_status = "failed"
+            execute_hook(
+                "after_task_failure", env_config, workspace.repo_path, hook_ctx,
+                abort_on_failure=False,
+            )
         return AgentState(status=AgentStatus.FAILED)
 
     finally:

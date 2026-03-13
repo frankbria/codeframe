@@ -82,6 +82,22 @@ class AgentBudgetConfig:
 
 
 @dataclass
+class HooksConfig:
+    """Workspace lifecycle hooks configuration.
+
+    Hooks are shell commands executed at specific lifecycle points.
+    Template variables (e.g., {{task_id}}) are rendered via Jinja2.
+    """
+
+    after_init: Optional[str] = None
+    before_task: Optional[str] = None
+    after_task_success: Optional[str] = None
+    after_task_failure: Optional[str] = None
+    before_remove: Optional[str] = None
+    hook_timeout: int = 60
+
+
+@dataclass
 class EnvironmentConfig:
     """v2 project environment configuration.
 
@@ -107,6 +123,9 @@ class EnvironmentConfig:
 
     # Agent budget
     agent_budget: AgentBudgetConfig = dataclass_field(default_factory=AgentBudgetConfig)
+
+    # Workspace lifecycle hooks
+    hooks: HooksConfig = dataclass_field(default_factory=HooksConfig)
 
     # Execution engine
     engine: str = "react"
@@ -259,6 +278,8 @@ class EnvironmentConfig:
             data["context"] = ContextConfig(**data["context"])
         if "agent_budget" in data and isinstance(data["agent_budget"], dict):
             data["agent_budget"] = AgentBudgetConfig(**data["agent_budget"])
+        if "hooks" in data and isinstance(data["hooks"], dict):
+            data["hooks"] = HooksConfig(**data["hooks"])
         return cls(**data)
 
 

@@ -27,6 +27,7 @@ from codeframe.cli.auth_commands import auth_app
 from codeframe.cli.pr_commands import pr_app
 from codeframe.cli.env_commands import env_app
 from codeframe.cli.engines_commands import engines_app
+from codeframe.cli.hooks_commands import hooks_app
 
 # Load environment variables from .env files
 # Priority: workspace .env > home .env
@@ -148,6 +149,26 @@ def init(
         console.print(f"  State: {workspace.state_dir}")
         if workspace.tech_stack:
             console.print(f"  Tech Stack: {workspace.tech_stack}")
+
+        # Execute after_init hook (non-blocking, only on fresh init)
+        from codeframe.core.config import load_environment_config
+        from codeframe.core.hooks import HookContext, execute_hook
+        env_config = load_environment_config(repo_path)
+        if env_config and not already_existed:
+            hook_ctx = HookContext(
+                task_id="", task_title="", task_status="init",
+                workspace_path=str(repo_path),
+            )
+            hook_result = execute_hook(
+                "after_init", env_config, repo_path, hook_ctx,
+                abort_on_failure=False,
+            )
+            if hook_result:
+                if hook_result.success:
+                    console.print(f"  Hook after_init: [green]OK[/green] ({hook_result.duration_ms}ms)")
+                else:
+                    console.print(f"  Hook after_init: [yellow]failed[/yellow] ({hook_result.stderr[:100]})")
+
         console.print()
         console.print("Next steps:")
         console.print("  codeframe prd add <file.md>   Add a PRD")
@@ -4848,6 +4869,7 @@ app.add_typer(pr_app, name="pr")
 app.add_typer(env_app, name="env")
 
 app.add_typer(engines_app, name="engines")
+app.add_typer(hooks_app, name="hooks")
 
 
 # =============================================================================
