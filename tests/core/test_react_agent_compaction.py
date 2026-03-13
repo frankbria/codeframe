@@ -894,7 +894,7 @@ class TestReactLoopCompactionIntegration:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_compact_conversation_called_in_loop(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -906,7 +906,7 @@ class TestReactLoopCompactionIntegration:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="contents")
         mock_gates.run.return_value = _gate_passed()
 
@@ -926,7 +926,7 @@ class TestReactLoopCompactionIntegration:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_verbose_output_on_compaction(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, capsys
     ):
@@ -940,7 +940,7 @@ class TestReactLoopCompactionIntegration:
             )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="x" * 2000)
         mock_gates.run.return_value = _gate_passed()
 
@@ -1074,7 +1074,7 @@ class TestExistingTestsUnaffected:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_basic_loop_still_works(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -1082,7 +1082,7 @@ class TestExistingTestsUnaffected:
         from codeframe.core.react_agent import ReactAgent
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
@@ -1091,7 +1091,7 @@ class TestExistingTestsUnaffected:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_tool_calls_then_text_still_works(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -1103,7 +1103,7 @@ class TestExistingTestsUnaffected:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="contents")
         mock_gates.run.return_value = _gate_passed()
 

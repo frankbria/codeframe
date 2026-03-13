@@ -172,6 +172,39 @@ class TestTaskContextPackager:
             assert isinstance(result.prompt, str)
 
 
+class TestLoadContext:
+    """Tests for load_context() — returns raw TaskContext for internal agents."""
+
+    def test_returns_task_context(self, mock_workspace, mock_task_context):
+        with patch("codeframe.core.context_packager.ContextLoader") as MockLoader:
+            MockLoader.return_value.load.return_value = mock_task_context
+
+            packager = TaskContextPackager(mock_workspace)
+            ctx = packager.load_context("task-42")
+
+            assert ctx is mock_task_context
+
+    def test_delegates_to_loader(self, mock_workspace, mock_task_context):
+        with patch("codeframe.core.context_packager.ContextLoader") as MockLoader:
+            MockLoader.return_value.load.return_value = mock_task_context
+
+            packager = TaskContextPackager(mock_workspace)
+            packager.load_context("task-42")
+
+            MockLoader.return_value.load.assert_called_once_with("task-42")
+
+    def test_returns_same_context_as_build(self, mock_workspace, mock_task_context):
+        """load_context() and build() should use the same underlying loader."""
+        with patch("codeframe.core.context_packager.ContextLoader") as MockLoader:
+            MockLoader.return_value.load.return_value = mock_task_context
+
+            packager = TaskContextPackager(mock_workspace)
+            raw_ctx = packager.load_context("task-42")
+            packaged = packager.build("task-42")
+
+            assert raw_ctx is packaged.context
+
+
 class TestBuildAgentContext:
     """Tests for build_agent_context() — produces AgentContext from TaskContext."""
 

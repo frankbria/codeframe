@@ -99,7 +99,7 @@ class TestEscalationAfterRepeatedFailures:
     @patch("codeframe.core.react_agent.blockers")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_escalate_after_repeated_gate_failures(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_blockers,
         workspace, provider, mock_context,
@@ -115,7 +115,7 @@ class TestEscalationAfterRepeatedFailures:
         for _ in range(10):
             provider.add_text_response("Tried to fix it.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         # Gates always fail with the same error
         mock_gates.run.return_value = _gate_failed("test.py:1:1: E501 line too long")
@@ -143,7 +143,7 @@ class TestEscalationAfterRepeatedFailures:
     @patch("codeframe.core.react_agent.blockers")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_blocker_includes_attempted_fixes_context(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_blockers,
         workspace, provider, mock_context,
@@ -155,7 +155,7 @@ class TestEscalationAfterRepeatedFailures:
         for _ in range(10):
             provider.add_text_response("Tried to fix.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_failed()
 
         mock_blocker = MagicMock()
@@ -189,7 +189,7 @@ class TestQuickFixIntegration:
     @patch("codeframe.core.react_agent.find_quick_fix")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_quick_fix_attempted_before_llm(
         self, mock_ctx_loader, mock_exec_tool, mock_gates,
         mock_find_qf, mock_apply_qf,
@@ -201,7 +201,7 @@ class TestQuickFixIntegration:
         # Main loop completes
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         # First gate run fails, second passes (after quick fix)
         mock_gates.run.side_effect = [_gate_failed(), _gate_passed()]
@@ -226,7 +226,7 @@ class TestQuickFixIntegration:
     @patch("codeframe.core.react_agent.find_quick_fix")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_quick_fix_failure_falls_through_to_llm(
         self, mock_ctx_loader, mock_exec_tool, mock_gates,
         mock_find_qf, mock_apply_qf,
@@ -240,7 +240,7 @@ class TestQuickFixIntegration:
         # LLM fix attempt in mini-loop
         provider.add_text_response("Fixed the issue.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         # Gate fails, then passes after LLM fix
         mock_gates.run.side_effect = [_gate_failed(), _gate_passed()]
@@ -261,7 +261,7 @@ class TestQuickFixIntegration:
     @patch("codeframe.core.react_agent.find_quick_fix")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_no_quick_fix_available_proceeds_to_llm(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_find_qf,
         workspace, provider, mock_context,
@@ -272,7 +272,7 @@ class TestQuickFixIntegration:
         provider.add_text_response("Done.")
         provider.add_text_response("Fixed it.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.side_effect = [_gate_failed(), _gate_passed()]
 
         mock_find_qf.return_value = None
@@ -295,7 +295,7 @@ class TestBlockerDetectionFromText:
     @patch("codeframe.core.react_agent.blockers")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_text_with_access_denied_creates_blocker(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_blockers,
         workspace, provider, mock_context,
@@ -307,7 +307,7 @@ class TestBlockerDetectionFromText:
             "I cannot proceed because permission denied on the secrets file."
         )
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         mock_blocker = MagicMock()
         mock_blocker.id = "blocker-access"
@@ -322,7 +322,7 @@ class TestBlockerDetectionFromText:
     @patch("codeframe.core.react_agent.blockers")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_text_with_requirements_ambiguity_creates_blocker(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_blockers,
         workspace, provider, mock_context,
@@ -334,7 +334,7 @@ class TestBlockerDetectionFromText:
             "There are conflicting requirements in the spec regarding error handling."
         )
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         mock_blocker = MagicMock()
         mock_blocker.id = "blocker-req"
@@ -348,7 +348,7 @@ class TestBlockerDetectionFromText:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_text_with_technical_error_does_not_block(
         self, mock_ctx_loader, mock_exec_tool, mock_gates,
         workspace, provider, mock_context,
@@ -360,7 +360,7 @@ class TestBlockerDetectionFromText:
             "I fixed the file not found error and the implementation is complete."
         )
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
@@ -371,7 +371,7 @@ class TestBlockerDetectionFromText:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_tactical_text_does_not_create_blocker(
         self, mock_ctx_loader, mock_exec_tool, mock_gates,
         workspace, provider, mock_context,
@@ -383,7 +383,7 @@ class TestBlockerDetectionFromText:
             "I decided which approach to use and implemented it."
         )
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
@@ -394,7 +394,7 @@ class TestBlockerDetectionFromText:
     @patch("codeframe.core.react_agent.blockers")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_text_with_external_service_creates_blocker(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_blockers,
         workspace, provider, mock_context,
@@ -410,7 +410,7 @@ class TestBlockerDetectionFromText:
             "I cannot proceed because the API returned service unavailable."
         )
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         mock_blocker = MagicMock()
         mock_blocker.id = "blocker-ext-svc"
@@ -425,7 +425,7 @@ class TestBlockerDetectionFromText:
     @patch("codeframe.core.react_agent.blockers")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_tool_error_with_access_pattern_creates_blocker(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_blockers,
         workspace, provider, mock_context,
@@ -438,7 +438,7 @@ class TestBlockerDetectionFromText:
             [ToolCall(id="tc1", name="run_command", input={"command": "deploy"})]
         )
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         # Tool returns error with access pattern
         mock_exec_tool.return_value = ToolResult(
@@ -470,7 +470,7 @@ class TestFullEscalationFlow:
     @patch("codeframe.core.react_agent.find_quick_fix")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_quick_fix_fails_then_llm_fails_then_escalation(
         self, mock_ctx_loader, mock_exec_tool, mock_gates,
         mock_find_qf, mock_blockers,
@@ -487,7 +487,7 @@ class TestFullEscalationFlow:
         for _ in range(10):
             provider.add_text_response("Tried to fix it.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         # Gates always fail
         mock_gates.run.return_value = _gate_failed()
@@ -514,7 +514,7 @@ class TestFullEscalationFlow:
     @patch("codeframe.core.react_agent.blockers")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_blocked_status_emits_correct_events(
         self, mock_ctx_loader, mock_exec_tool, mock_gates,
         mock_blockers, mock_events,
@@ -529,7 +529,7 @@ class TestFullEscalationFlow:
             "I cannot proceed because permission denied on the deployment config."
         )
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         mock_blocker = MagicMock()
         mock_blocker.id = "blocker-ev"
@@ -568,7 +568,7 @@ class TestFixTrackerState:
     @patch("codeframe.core.react_agent.blockers")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_blocker_id_set_after_blocked(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_blockers,
         workspace, provider, mock_context,
@@ -579,7 +579,7 @@ class TestFixTrackerState:
         provider.add_text_response(
             "I cannot proceed because permission denied on the config."
         )
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         mock_blocker = MagicMock()
         mock_blocker.id = "blocker-link-test"

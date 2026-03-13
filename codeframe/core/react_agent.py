@@ -20,7 +20,8 @@ from codeframe.adapters.llm.base import LLMProvider, Purpose, ToolResult
 from codeframe.core import blockers, events, gates
 from codeframe.core.agent import AgentStatus
 from codeframe.core.blocker_detection import classify_error_for_blocker
-from codeframe.core.context import ContextLoader, TaskContext
+from codeframe.core.context import TaskContext
+from codeframe.core.context_packager import TaskContextPackager
 from codeframe.core.events import EventType
 from codeframe.core.fix_tracker import (
     EscalationDecision,
@@ -185,8 +186,8 @@ class ReactAgent:
         try:
             self._emit_progress(AgentPhase.EXPLORING, message="Loading task context")
 
-            loader = ContextLoader(self.workspace)
-            context = loader.load(task_id)
+            packager = TaskContextPackager(self.workspace)
+            context = packager.load_context(task_id)
 
             # Adaptive budget based on task complexity
             adaptive = self._calculate_adaptive_budget(context)
