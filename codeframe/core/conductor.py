@@ -414,6 +414,73 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@dataclass
+class ConcurrencyConfig:
+    """Per-state concurrency limits for batch execution.
+
+    When ``by_status`` is non-empty, each status key caps the number of
+    concurrent workers for tasks in that state. Unspecified statuses
+    fall back to ``max_parallel``.
+    """
+
+    max_parallel: int = 4
+    by_status: dict[str, int] = field(default_factory=dict)
+
+    def get_limit_for_status(self, status: str) -> int:
+        """Return the concurrency limit for a given task status."""
+        return self.by_status.get(status, self.max_parallel)
+
+    def effective_workers(
+        self,
+        *,
+        statuses: list[str],
+        group_size: int,
+        global_running: int,
+    ) -> int:
+        """Compute the effective worker count for a group of tasks.
+
+        Takes the minimum of:
+        - Global slots remaining (max_parallel - global_running)
+        - Per-status limit for the most constrained status in the group
+        - Group size
+        """
+        global_slots = max(1, self.max_parallel - global_running)
+        if statuses and self.by_status:
+            per_status = min(self.get_limit_for_status(s) for s in statuses)
+        else:
+            per_status = self.max_parallel
+        return max(1, min(global_slots, per_status, group_size))
+
+
+def parse_concurrency_by_status(value: str | None) -> dict[str, int]:
+    """Parse a --max-parallel-by-status string into a dict.
+
+    Format: "READY=3,IN_PROGRESS=2"
+
+    Raises:
+        ValueError: On invalid status names or format.
+    """
+    from codeframe.core.state_machine import TaskStatus
+
+    if not value:
+        return {}
+
+    valid_statuses = {s.value for s in TaskStatus}
+    result: dict[str, int] = {}
+
+    for pair in value.split(","):
+        pair = pair.strip()
+        if "=" not in pair:
+            raise ValueError(f"Invalid format '{pair}'. Expected STATUS=N")
+        key, val = pair.split("=", 1)
+        key = key.strip().upper()
+        if key not in valid_statuses:
+            raise ValueError(f"Invalid status '{key}'. Valid: {', '.join(sorted(valid_statuses))}")
+        result[key] = int(val.strip())
+
+    return result
+
+
 class BatchStatus(str, Enum):
     """Status of a batch execution."""
 
@@ -462,6 +529,7 @@ class BatchRun:
     engine: str = "react"
     stall_timeout_s: int = 300
     stall_action: str = "blocker"
+    concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
 
 
 def start_batch(
@@ -476,6 +544,7 @@ def start_batch(
     engine: str = "react",
     stall_timeout_s: int = 300,
     stall_action: str = "blocker",
+    concurrency_by_status: Optional[dict[str, int]] = None,
 ) -> BatchRun:
     """Start a batch execution of multiple tasks.
 
@@ -510,6 +579,11 @@ def start_batch(
     now = _utc_now()
     on_failure_enum = OnFailure(on_failure)
 
+    concurrency = ConcurrencyConfig(
+        max_parallel=max_parallel,
+        by_status=concurrency_by_status or {},
+    )
+
     batch = BatchRun(
         id=batch_id,
         workspace_id=workspace.id,
@@ -524,6 +598,7 @@ def start_batch(
         engine=engine,
         stall_timeout_s=stall_timeout_s,
         stall_action=stall_action,
+        concurrency=concurrency,
     )
 
     # Save to database
