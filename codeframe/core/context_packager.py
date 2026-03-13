@@ -65,6 +65,15 @@ class TaskContextPackager:
             context=context,
         )
 
+    def load_context(self, task_id: str) -> TaskContext:
+        """Load raw TaskContext for internal agent use.
+
+        Unlike build() (flat prompt for external engines) or build_agent_context()
+        (AgentContext protocol type), this returns the raw TaskContext that internal
+        agents like ReactAgent need for their own prompt rendering.
+        """
+        return self._loader.load(task_id)
+
     def build_agent_context(
         self,
         task_id: str,

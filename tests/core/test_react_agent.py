@@ -104,7 +104,7 @@ class TestReactLoopTermination:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_loop_terminates_on_text_response(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -116,7 +116,7 @@ class TestReactLoopTermination:
         provider.add_text_response("I have completed the task.")
 
         # Context loader returns our mock context
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         # Final verification passes
         mock_gates.run.return_value = _gate_passed()
@@ -130,7 +130,7 @@ class TestReactLoopTermination:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_loop_terminates_at_max_iterations(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -154,7 +154,7 @@ class TestReactLoopTermination:
             [ToolCall(id="tc5", name="list_files", input={"path": "src"})]
         )
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="file contents"
@@ -177,7 +177,7 @@ class TestToolDispatch:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_tool_calls_dispatched_correctly(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -191,7 +191,7 @@ class TestToolDispatch:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="print('hello')"
@@ -219,7 +219,7 @@ class TestSystemPrompt:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_system_prompt_contains_all_3_layers(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -235,7 +235,7 @@ class TestSystemPrompt:
 
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         mock_gates.run.return_value = _gate_passed()
 
@@ -262,7 +262,7 @@ class TestPreloadedFileContext:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_system_prompt_includes_loaded_files(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -276,7 +276,7 @@ class TestPreloadedFileContext:
         ]
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
@@ -293,7 +293,7 @@ class TestPreloadedFileContext:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_system_prompt_no_loaded_files_section_when_empty(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -304,7 +304,7 @@ class TestPreloadedFileContext:
         assert mock_context.loaded_files == []
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
@@ -317,7 +317,7 @@ class TestPreloadedFileContext:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_rules_acknowledge_preloaded_context(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -325,7 +325,7 @@ class TestPreloadedFileContext:
         from codeframe.core.react_agent import ReactAgent
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
@@ -342,7 +342,7 @@ class TestPreloadedFileContext:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_initial_message_does_not_mandate_reading(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -350,7 +350,7 @@ class TestPreloadedFileContext:
         from codeframe.core.react_agent import ReactAgent
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
@@ -369,7 +369,7 @@ class TestFinalVerification:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_final_verification_triggered(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -378,7 +378,7 @@ class TestFinalVerification:
 
         provider.add_text_response("All done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         mock_gates.run.return_value = _gate_passed()
 
@@ -390,7 +390,7 @@ class TestFinalVerification:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_verification_retry_on_gate_failure(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -408,7 +408,7 @@ class TestFinalVerification:
         )
         provider.add_text_response("Fixed the lint error.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc-fix", content="Edit applied."
@@ -430,7 +430,7 @@ class TestFinalVerification:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_verification_retry_exhaustion(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -444,7 +444,7 @@ class TestFinalVerification:
         for _ in range(3):
             provider.add_text_response("Tried to fix it.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         # Verification always fails
         mock_gates.run.return_value = _gate_failed()
@@ -464,7 +464,7 @@ class TestIntentPreview:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_intent_preview_for_high_complexity(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -478,7 +478,7 @@ class TestIntentPreview:
 
         provider.add_text_response("Here is my plan and implementation.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         mock_gates.run.return_value = _gate_passed()
 
@@ -495,7 +495,7 @@ class TestIntentPreview:
 class TestExceptionHandling:
     """Tests for error resilience."""
 
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_run_returns_failed_on_exception(
         self, mock_ctx_loader, workspace, provider
     ):
@@ -516,7 +516,7 @@ class TestPerEditLint:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_lint_errors_appended_to_edit_file_result(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
     ):
@@ -533,7 +533,7 @@ class TestPerEditLint:
         )
         provider.add_text_response("Done editing.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
 
         # execute_tool succeeds
         mock_exec_tool.return_value = ToolResult(
@@ -568,7 +568,7 @@ class TestPerEditLint:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_lint_errors_appended_to_create_file_result(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
     ):
@@ -583,7 +583,7 @@ class TestPerEditLint:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="File created.")
 
         mock_gates.run_lint_on_file.return_value = GateCheck(
@@ -607,7 +607,7 @@ class TestPerEditLint:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_clean_file_no_lint_appended(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
     ):
@@ -622,7 +622,7 @@ class TestPerEditLint:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="Edit applied.")
 
         mock_gates.run_lint_on_file.return_value = GateCheck(
@@ -644,7 +644,7 @@ class TestPerEditLint:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_non_python_file_skips_lint(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
     ):
@@ -659,7 +659,7 @@ class TestPerEditLint:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="File created.")
 
         mock_gates.run_lint_on_file.return_value = GateCheck(
@@ -681,7 +681,7 @@ class TestPerEditLint:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_lint_error_status_does_not_surface_as_lint_error(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
     ):
@@ -696,7 +696,7 @@ class TestPerEditLint:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="Edit applied.")
 
         mock_gates.run_lint_on_file.return_value = GateCheck(
@@ -735,7 +735,7 @@ class TestEventEmissions:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_lifecycle_events_on_success(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -745,7 +745,7 @@ class TestEventEmissions:
         from codeframe.core.events import EventType
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
@@ -763,7 +763,7 @@ class TestEventEmissions:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_lifecycle_events_on_failure(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -782,7 +782,7 @@ class TestEventEmissions:
         provider.add_tool_response(
             [ToolCall(id="tc3", name="search_codebase", input={"pattern": "y"})]
         )
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="contents"
         )
@@ -805,7 +805,7 @@ class TestEventEmissions:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_iteration_and_tool_events(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -820,7 +820,7 @@ class TestEventEmissions:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="code"
         )
@@ -840,7 +840,7 @@ class TestEventEmissions:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_tool_result_payload_includes_lint_flag(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -854,7 +854,7 @@ class TestEventEmissions:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="code"
         )
@@ -875,7 +875,7 @@ class TestEventEmissions:
         assert payload["has_lint_errors"] is False
 
     @patch("codeframe.core.react_agent.events")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_exception_emits_agent_failed(
         self, mock_ctx_loader, mock_events, workspace, provider,
     ):
@@ -1004,7 +1004,7 @@ class TestPhaseEmission:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_exploring_and_planning_emitted_at_start(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1017,7 +1017,7 @@ class TestPhaseEmission:
         publisher = MockEventPublisher()
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(
@@ -1038,7 +1038,7 @@ class TestPhaseEmission:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_tool_phase_mapping_read_file(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1054,7 +1054,7 @@ class TestPhaseEmission:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="file contents"
         )
@@ -1077,7 +1077,7 @@ class TestPhaseEmission:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_tool_phase_mapping_edit_file(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1093,7 +1093,7 @@ class TestPhaseEmission:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="Edit applied."
         )
@@ -1116,7 +1116,7 @@ class TestPhaseEmission:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_tool_phase_mapping_create_file(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1132,7 +1132,7 @@ class TestPhaseEmission:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="File created."
         )
@@ -1154,7 +1154,7 @@ class TestPhaseEmission:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_tool_phase_mapping_run_tests(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1170,7 +1170,7 @@ class TestPhaseEmission:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="All tests passed."
         )
@@ -1193,7 +1193,7 @@ class TestPhaseEmission:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_verifying_phase_emitted(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1205,7 +1205,7 @@ class TestPhaseEmission:
         publisher = MockEventPublisher()
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(
@@ -1220,7 +1220,7 @@ class TestPhaseEmission:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_fixing_phase_during_verification_retry(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1240,7 +1240,7 @@ class TestPhaseEmission:
         )
         provider.add_text_response("Fixed the lint error.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc-fix", content="Edit applied."
         )
@@ -1266,7 +1266,7 @@ class TestPhaseEmission:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_no_publisher_no_crash(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1275,7 +1275,7 @@ class TestPhaseEmission:
         from codeframe.core.react_agent import ReactAgent
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         # No event_publisher passed
@@ -1287,7 +1287,7 @@ class TestPhaseEmission:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_iteration_included_in_tool_events(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1306,7 +1306,7 @@ class TestPhaseEmission:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="contents"
         )
@@ -1359,7 +1359,7 @@ class TestPhaseEmissionEdgeCases:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_publisher_exception_does_not_crash_agent(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1372,7 +1372,7 @@ class TestPhaseEmissionEdgeCases:
                 raise RuntimeError("publish failed")
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(
@@ -1386,7 +1386,7 @@ class TestPhaseEmissionEdgeCases:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_multiple_tool_calls_in_single_iteration(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1404,7 +1404,7 @@ class TestPhaseEmissionEdgeCases:
         ])
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="ok"
         )
@@ -1432,7 +1432,7 @@ class TestPhaseEmissionEdgeCases:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_run_command_maps_to_testing(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1448,7 +1448,7 @@ class TestPhaseEmissionEdgeCases:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="output"
         )
@@ -1470,7 +1470,7 @@ class TestPhaseEmissionEdgeCases:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_progress_events_carry_correct_task_id(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1481,7 +1481,7 @@ class TestPhaseEmissionEdgeCases:
         publisher = MockEventPublisher()
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(
@@ -1501,7 +1501,7 @@ class TestRuntimeWiring:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_react_agent_receives_event_publisher(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1521,7 +1521,7 @@ class TestRuntimeWiring:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_react_agent_event_publisher_defaults_to_none(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider,
@@ -1539,7 +1539,7 @@ class TestStreamCompletion:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_completion_event_and_stream_close_on_success(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1549,7 +1549,7 @@ class TestStreamCompletion:
         from codeframe.core.models import CompletionEvent
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         publisher = MockEventPublisher()
@@ -1573,7 +1573,7 @@ class TestStreamCompletion:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_error_event_and_stream_close_on_max_iterations(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1592,7 +1592,7 @@ class TestStreamCompletion:
         provider.add_tool_response(
             [ToolCall(id="tc3", name="search_codebase", input={"pattern": "z"})]
         )
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="contents"
         )
@@ -1617,7 +1617,7 @@ class TestStreamCompletion:
         assert "task-1" in publisher.completed_tasks
 
     @patch("codeframe.core.react_agent.events")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_error_event_and_stream_close_on_exception(
         self, mock_ctx_loader, mock_events, workspace, provider,
     ):
@@ -1646,7 +1646,7 @@ class TestStreamCompletion:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_no_stream_events_without_publisher(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1655,7 +1655,7 @@ class TestStreamCompletion:
         from codeframe.core.react_agent import ReactAgent
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
@@ -1667,7 +1667,7 @@ class TestStreamCompletion:
     @patch("codeframe.core.react_agent.events")
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_stream_closed_even_if_publish_fails(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
@@ -1676,7 +1676,7 @@ class TestStreamCompletion:
         from codeframe.core.react_agent import ReactAgent
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         publisher = MockEventPublisher()
@@ -1725,7 +1725,7 @@ class TestVerboseParameter:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_verbose_prints_to_stdout(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, capsys
     ):
@@ -1733,7 +1733,7 @@ class TestVerboseParameter:
         from codeframe.core.react_agent import ReactAgent
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider, verbose=True)
@@ -1744,7 +1744,7 @@ class TestVerboseParameter:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_verbose_false_no_stdout(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, capsys
     ):
@@ -1752,7 +1752,7 @@ class TestVerboseParameter:
         from codeframe.core.react_agent import ReactAgent
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider, verbose=False)
@@ -1767,7 +1767,7 @@ class TestOutputLoggerParameter:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_output_logger_always_written(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -1777,7 +1777,7 @@ class TestOutputLoggerParameter:
         logger = MockOutputLogger()
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(
@@ -1795,7 +1795,7 @@ class TestDebugParameter:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_debug_creates_log_file(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
     ):
@@ -1803,7 +1803,7 @@ class TestDebugParameter:
         from codeframe.core.react_agent import ReactAgent
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider, debug=True)
@@ -1814,7 +1814,7 @@ class TestDebugParameter:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_debug_false_no_log_file(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
     ):
@@ -1822,7 +1822,7 @@ class TestDebugParameter:
         from codeframe.core.react_agent import ReactAgent
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider, debug=False)
@@ -1837,7 +1837,7 @@ class TestOnEventCallback:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_on_event_callback_invoked(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -1850,7 +1850,7 @@ class TestOnEventCallback:
             received_events.append((event_type, payload))
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(
@@ -1862,7 +1862,7 @@ class TestOnEventCallback:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_on_event_exception_does_not_crash(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -1873,7 +1873,7 @@ class TestOnEventCallback:
             raise RuntimeError("callback boom")
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(
@@ -1889,7 +1889,7 @@ class TestDryRunParameter:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_dry_run_skips_write_tools(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -1901,7 +1901,7 @@ class TestDryRunParameter:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider, dry_run=True)
@@ -1912,7 +1912,7 @@ class TestDryRunParameter:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_dry_run_allows_read_tools(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -1924,7 +1924,7 @@ class TestDryRunParameter:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="file contents"
         )
@@ -1942,7 +1942,7 @@ class TestFixCoordinatorParameter:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_fix_coordinator_accepted_as_noop(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -1955,7 +1955,7 @@ class TestFixCoordinatorParameter:
         coordinator = MockFixCoordinator()
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(
@@ -1973,7 +1973,7 @@ class TestDryRunUnknownTool:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_dry_run_blocks_unknown_tool(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -1985,7 +1985,7 @@ class TestDryRunUnknownTool:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider, dry_run=True)
@@ -2000,7 +2000,7 @@ class TestFailureCountIncrement:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_failure_count_increments_on_tool_error(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
     ):
@@ -2012,7 +2012,7 @@ class TestFailureCountIncrement:
         )
         provider.add_text_response("Done.")
 
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_exec_tool.return_value = ToolResult(
             tool_call_id="tc1", content="File not found", is_error=True,
         )
@@ -2029,7 +2029,7 @@ class TestAllParamsTogether:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_all_params_together(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, capsys
     ):
@@ -2048,7 +2048,7 @@ class TestAllParamsTogether:
         publisher = MockEventPublisher()
 
         provider.add_text_response("Done.")
-        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(
@@ -2128,14 +2128,14 @@ class TestLoopDetection:
     """Tests for early termination on repeated tool patterns."""
 
     @patch("codeframe.core.react_agent.gates")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_loop_detected_returns_completed(
         self, mock_loader, mock_gates, workspace, provider, mock_context
     ):
         """3 identical tool call patterns -> COMPLETED (not FAILED)."""
         from codeframe.core.react_agent import ReactAgent
 
-        mock_loader.return_value.load.return_value = mock_context
+        mock_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         # Queue 4 responses all with the same read_file tool call
@@ -2158,14 +2158,14 @@ class TestLoopDetection:
         assert provider.call_count <= 4
 
     @patch("codeframe.core.react_agent.gates")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_different_tools_no_false_positive(
         self, mock_loader, mock_gates, workspace, provider, mock_context
     ):
         """Different tool calls don't trigger loop detection."""
         from codeframe.core.react_agent import ReactAgent
 
-        mock_loader.return_value.load.return_value = mock_context
+        mock_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         provider.add_tool_response([
@@ -2190,14 +2190,14 @@ class TestLoopDetection:
         assert provider.call_count == 4  # All 4 calls made (3 tool + 1 text)
 
     @patch("codeframe.core.react_agent.gates")
-    @patch("codeframe.core.react_agent.ContextLoader")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_same_tool_different_paths_no_false_positive(
         self, mock_loader, mock_gates, workspace, provider, mock_context
     ):
         """read_file on different files should NOT trigger loop detection."""
         from codeframe.core.react_agent import ReactAgent
 
-        mock_loader.return_value.load.return_value = mock_context
+        mock_loader.return_value.load_context.return_value = mock_context
         mock_gates.run.return_value = _gate_passed()
 
         # Three read_file calls to DIFFERENT files — not a loop
