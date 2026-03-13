@@ -41,7 +41,13 @@ def hooks_show(
     """Display configured hooks from .codeframe/config.yaml."""
     from codeframe.core.config import load_environment_config
 
+    from codeframe.core.workspace import get_workspace
     path = workspace_path or Path.cwd()
+    try:
+        ws = get_workspace(path)
+        path = ws.repo_path
+    except Exception:
+        pass
     config = load_environment_config(path)
 
     if not config:
@@ -86,7 +92,13 @@ def hooks_run(
         console.print(f"Valid hooks: {', '.join(VALID_HOOK_NAMES)}")
         raise typer.Exit(1)
 
+    from codeframe.core.workspace import get_workspace
     path = workspace_path or Path.cwd()
+    try:
+        ws = get_workspace(path)
+        path = ws.repo_path
+    except Exception:
+        pass
     config = load_environment_config(path)
 
     if not config:
@@ -140,7 +152,13 @@ def hooks_set(
         console.print(f"Valid hooks: {', '.join(VALID_HOOK_NAMES)}")
         raise typer.Exit(1)
 
+    from codeframe.core.workspace import get_workspace
     path = workspace_path or Path.cwd()
+    try:
+        ws = get_workspace(path)
+        path = ws.repo_path
+    except Exception:
+        pass
     config = load_environment_config(path) or get_default_environment_config()
 
     setattr(config.hooks, hook_name, command)
@@ -168,7 +186,13 @@ def hooks_clear(
         console.print(f"Valid hooks: {', '.join(VALID_HOOK_NAMES)}")
         raise typer.Exit(1)
 
+    from codeframe.core.workspace import get_workspace
     path = workspace_path or Path.cwd()
+    try:
+        ws = get_workspace(path)
+        path = ws.repo_path
+    except Exception:
+        pass
     config = load_environment_config(path)
 
     if not config:

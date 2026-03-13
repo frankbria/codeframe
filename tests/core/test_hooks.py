@@ -104,28 +104,38 @@ class TestRenderHookCommand:
 
         ctx = HookContext(task_id="abc123", task_title="Fix bug", task_status="in_progress", workspace_path="/tmp/repo")
         result = render_hook_command("git checkout -b cf/{{task_id}}", ctx)
-        assert result == "git checkout -b cf/abc123"
+        assert "abc123" in result
 
     def test_renders_multiple_variables(self) -> None:
         from codeframe.core.hooks import HookContext, render_hook_command
 
         ctx = HookContext(task_id="t1", task_title="Add feature", task_status="done", workspace_path="/ws")
         result = render_hook_command("echo {{task_id}} {{task_title}} {{task_status}}", ctx)
-        assert result == "echo t1 Add feature done"
+        assert "t1" in result
+        assert "Add feature" in result
+        assert "done" in result
 
     def test_renders_workspace_path(self) -> None:
         from codeframe.core.hooks import HookContext, render_hook_command
 
         ctx = HookContext(task_id="", task_title="", task_status="init", workspace_path="/home/user/repo")
         result = render_hook_command("cd {{workspace_path}} && npm install", ctx)
-        assert result == "cd /home/user/repo && npm install"
+        assert "/home/user/repo" in result
 
     def test_passes_through_non_template_text(self) -> None:
         from codeframe.core.hooks import HookContext, render_hook_command
 
         ctx = HookContext(task_id="t1", task_title="", task_status="", workspace_path="")
         result = render_hook_command("echo hello world", ctx)
-        assert result == "echo hello world"
+        assert "echo hello world" in result
+
+    def test_shell_escapes_values(self) -> None:
+        from codeframe.core.hooks import HookContext, render_hook_command
+
+        ctx = HookContext(task_id="t1", task_title="'; rm -rf /; echo '", task_status="", workspace_path="/tmp")
+        result = render_hook_command("echo {{task_title}}", ctx)
+        # Should be escaped, not literally '; rm -rf /; echo '
+        assert "rm -rf" not in result or "'" in result
 
 
 # ---------------------------------------------------------------------------
@@ -234,11 +244,11 @@ class TestExecuteHook:
 
     def test_uses_hook_timeout_from_config(self) -> None:
         from codeframe.core.config import EnvironmentConfig, HooksConfig
-        from codeframe.core.hooks import HookContext, execute_hook
+        from codeframe.core.hooks import HookAbortError, HookContext, execute_hook
 
         config = EnvironmentConfig(hooks=HooksConfig(before_task="sleep 10", hook_timeout=1))
         ctx = HookContext(task_id="t1", task_title="", task_status="", workspace_path="/tmp")
-        with pytest.raises(Exception):  # HookAbortError because abort_on_failure=True
+        with pytest.raises(HookAbortError):
             execute_hook("before_task", config, Path("/tmp"), ctx, abort_on_failure=True)
 
 

@@ -15,6 +15,7 @@ Hook points:
 from __future__ import annotations
 
 import logging
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass
@@ -72,12 +73,16 @@ class HookAbortError(Exception):
 
 
 def render_hook_command(template: str, ctx: HookContext) -> str:
-    """Render a hook command template with context variables."""
+    """Render a hook command template with context variables.
+
+    Variable values are shell-escaped to prevent injection via task_title
+    or other user-controlled fields.
+    """
     return Template(template).render(
-        task_id=ctx.task_id,
-        task_title=ctx.task_title,
-        task_status=ctx.task_status,
-        workspace_path=ctx.workspace_path,
+        task_id=shlex.quote(ctx.task_id),
+        task_title=shlex.quote(ctx.task_title),
+        task_status=shlex.quote(ctx.task_status),
+        workspace_path=shlex.quote(ctx.workspace_path),
     )
 
 
@@ -155,7 +160,16 @@ def execute_hook(
     if not command:
         return None
 
-    result = run_hook(hook_name, command, workspace_path, ctx, config.hooks.hook_timeout)
+    try:
+        result = run_hook(hook_name, command, workspace_path, ctx, config.hooks.hook_timeout)
+    except Exception as exc:
+        if abort_on_failure:
+            raise
+        logger.warning("Hook '%s' raised unexpected error (non-blocking): %s", hook_name, exc)
+        return HookResult(
+            hook_name=hook_name, command=command, success=False,
+            stdout="", stderr=str(exc), duration_ms=0, timed_out=False,
+        )
 
     if not result.success:
         if abort_on_failure:

@@ -150,11 +150,11 @@ def init(
         if workspace.tech_stack:
             console.print(f"  Tech Stack: {workspace.tech_stack}")
 
-        # Execute after_init hook (non-blocking)
+        # Execute after_init hook (non-blocking, only on fresh init)
         from codeframe.core.config import load_environment_config
         from codeframe.core.hooks import HookContext, execute_hook
         env_config = load_environment_config(repo_path)
-        if env_config:
+        if env_config and not already_existed:
             hook_ctx = HookContext(
                 task_id="", task_title="", task_status="init",
                 workspace_path=str(repo_path),

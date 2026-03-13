@@ -792,7 +792,15 @@ def execute_agent(
                 "error": (result.error or "")[:500],
             })
 
-        # Execute after_task hooks (non-blocking)
+        # Update run status based on agent result (before hooks, so hooks see final state)
+        if state.status == AgentStatus.COMPLETED:
+            complete_run(workspace, run.id)
+        elif state.status == AgentStatus.BLOCKED:
+            block_run(workspace, run.id, "")
+        elif state.status == AgentStatus.FAILED:
+            fail_run(workspace, run.id)
+
+        # Execute after_task hooks (non-blocking, after state is persisted)
         if env_config and hook_ctx:
             after_hook = None
             if state.status == AgentStatus.COMPLETED:
@@ -810,14 +818,6 @@ def execute_agent(
                 if hook_result:
                     evt = events.EventType.HOOK_EXECUTED if hook_result.success else events.EventType.HOOK_FAILED
                     events.emit_for_workspace(workspace, evt, {"hook": after_hook, "success": hook_result.success})
-
-        # Update run status based on agent result
-        if state.status == AgentStatus.COMPLETED:
-            complete_run(workspace, run.id)
-        elif state.status == AgentStatus.BLOCKED:
-            block_run(workspace, run.id, "")
-        elif state.status == AgentStatus.FAILED:
-            fail_run(workspace, run.id)
 
         return state
 
