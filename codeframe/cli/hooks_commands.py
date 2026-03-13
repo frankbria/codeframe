@@ -46,8 +46,8 @@ def hooks_show(
     try:
         ws = get_workspace(path)
         path = ws.repo_path
-    except Exception:
-        pass
+    except (FileNotFoundError, ValueError):
+        pass  # Workspace not initialized; fall back to raw path
     config = load_environment_config(path)
 
     if not config:
@@ -97,8 +97,8 @@ def hooks_run(
     try:
         ws = get_workspace(path)
         path = ws.repo_path
-    except Exception:
-        pass
+    except (FileNotFoundError, ValueError):
+        pass  # Workspace not initialized; fall back to raw path
     config = load_environment_config(path)
 
     if not config:
@@ -130,6 +130,9 @@ def hooks_run(
     if result.stderr.strip():
         console.print(f"  stderr: {result.stderr.strip()[:500]}")
 
+    if not result.success:
+        raise typer.Exit(1)
+
 
 @hooks_app.command("set")
 def hooks_set(
@@ -157,8 +160,8 @@ def hooks_set(
     try:
         ws = get_workspace(path)
         path = ws.repo_path
-    except Exception:
-        pass
+    except (FileNotFoundError, ValueError):
+        pass  # Workspace not initialized; fall back to raw path
     config = load_environment_config(path) or get_default_environment_config()
 
     setattr(config.hooks, hook_name, command)
@@ -191,8 +194,8 @@ def hooks_clear(
     try:
         ws = get_workspace(path)
         path = ws.repo_path
-    except Exception:
-        pass
+    except (FileNotFoundError, ValueError):
+        pass  # Workspace not initialized; fall back to raw path
     config = load_environment_config(path)
 
     if not config:

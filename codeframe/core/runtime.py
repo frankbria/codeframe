@@ -658,7 +658,7 @@ def execute_agent(
     from codeframe.core.streaming import RunOutputLogger
     output_logger = RunOutputLogger(workspace, run.id)
 
-    # Execute before_task hook (aborts on failure)
+    # Load hook config (before main try block so it's available everywhere)
     from codeframe.core.config import load_environment_config
     from codeframe.core.hooks import HookAbortError, HookContext, execute_hook
     env_config = load_environment_config(workspace.repo_path)
@@ -671,26 +671,28 @@ def execute_agent(
             task_status="in_progress",
             workspace_path=str(workspace.repo_path),
         )
-        try:
-            hook_result = execute_hook(
-                "before_task", env_config, workspace.repo_path, hook_ctx,
-                abort_on_failure=True,
-            )
-            if hook_result:
-                events.emit_for_workspace(
-                    workspace, events.EventType.HOOK_EXECUTED,
-                    {"hook": "before_task", "success": hook_result.success},
-                )
-        except HookAbortError as hook_err:
-            events.emit_for_workspace(
-                workspace, events.EventType.HOOK_FAILED,
-                {"hook": "before_task", "error": str(hook_err)},
-            )
-            fail_run(workspace, run.id)
-            from codeframe.core.agent import AgentState, AgentStatus
-            return AgentState(status=AgentStatus.FAILED)
 
     try:
+        # Execute before_task hook (aborts on failure)
+        if env_config and hook_ctx:
+            try:
+                hook_result = execute_hook(
+                    "before_task", env_config, workspace.repo_path, hook_ctx,
+                    abort_on_failure=True,
+                )
+                if hook_result:
+                    events.emit_for_workspace(
+                        workspace, events.EventType.HOOK_EXECUTED,
+                        {"hook": "before_task", "success": hook_result.success},
+                    )
+            except HookAbortError as hook_err:
+                events.emit_for_workspace(
+                    workspace, events.EventType.HOOK_FAILED,
+                    {"hook": "before_task", "error": str(hook_err)},
+                )
+                fail_run(workspace, run.id)
+                from codeframe.core.agent import AgentState, AgentStatus
+                return AgentState(status=AgentStatus.FAILED)
         # Create event callback to emit workspace events and log
         def on_agent_event(event_type: str, data: dict) -> None:
             events.emit_for_workspace(
@@ -828,6 +830,13 @@ def execute_agent(
             fail_run(workspace, run.id)
         except Exception:
             pass  # Best-effort — don't mask the original error
+        # Fire after_task_failure hook even on unhandled exceptions
+        if env_config and hook_ctx:
+            hook_ctx.task_status = "failed"
+            execute_hook(
+                "after_task_failure", env_config, workspace.repo_path, hook_ctx,
+                abort_on_failure=False,
+            )
         return AgentState(status=AgentStatus.FAILED)
 
     finally:
