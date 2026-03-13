@@ -229,7 +229,7 @@ class CodexAdapter:
         # Step 2: wait for initialized
         timeout_s = self._read_timeout_ms / 1000
         response = self._recv_line(stdout, timeout_s=timeout_s)
-        if response is None:
+        if response is _TIMEOUT or response is None:
             return False
 
         # Accept either method="initialized" or a result response to id=1
