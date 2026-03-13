@@ -42,6 +42,12 @@ class TestSubprocessAdapterInit:
 class TestSubprocessAdapterRun:
     """Tests for subprocess execution."""
 
+    @pytest.fixture(autouse=True)
+    def _no_git(self):
+        """Prevent _detect_modified_files from calling real git."""
+        with patch.object(SubprocessAdapter, "_detect_modified_files", return_value=[]):
+            yield
+
     @pytest.fixture
     def adapter(self):
         with patch("shutil.which", return_value="/usr/bin/test-agent"):
@@ -220,6 +226,119 @@ class TestSubprocessAdapterGetStdin:
         with patch("shutil.which", return_value="/usr/bin/agent"):
             adapter = SubprocessAdapter("agent")
             assert adapter.get_stdin("") == ""
+
+
+class TestSubprocessAdapterModifiedFiles:
+    """Tests for git diff file detection after execution."""
+
+    @pytest.fixture
+    def adapter(self):
+        with patch("shutil.which", return_value="/usr/bin/test-agent"):
+            return SubprocessAdapter("test-agent")
+
+    def _make_mock_process(
+        self, stdout_lines=None, stderr_text="", returncode=0
+    ):
+        mock = MagicMock()
+        mock.stdout = iter(stdout_lines or [])
+        mock.stderr = MagicMock()
+        mock.stderr.read.return_value = stderr_text
+        mock.stdin = MagicMock()
+        mock.returncode = returncode
+        mock.wait.return_value = None
+        return mock
+
+    def test_populates_modified_files_on_success(self, adapter, tmp_path):
+        """After successful execution, modified_files should list changed files."""
+        mock_process = self._make_mock_process(
+            stdout_lines=["done\n"], returncode=0
+        )
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    MagicMock(returncode=0, stdout="src/main.py\ntests/test_main.py\n"),
+                    MagicMock(returncode=0, stdout=""),  # no untracked files
+                ],
+            ),
+        ):
+            result = adapter.run("task-1", "fix", tmp_path)
+
+        assert result.status == "completed"
+        assert result.modified_files == ["src/main.py", "tests/test_main.py"]
+
+    def test_empty_modified_files_when_no_changes(self, adapter, tmp_path):
+        mock_process = self._make_mock_process(
+            stdout_lines=["done\n"], returncode=0
+        )
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    MagicMock(returncode=0, stdout=""),
+                    MagicMock(returncode=0, stdout=""),
+                ],
+            ),
+        ):
+            result = adapter.run("task-1", "fix", tmp_path)
+
+        assert result.modified_files == []
+
+    def test_detects_files_even_on_failure(self, adapter, tmp_path):
+        """Failed execution should still detect modified files."""
+        mock_process = self._make_mock_process(
+            stderr_text="error", returncode=1
+        )
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    MagicMock(returncode=0, stdout="src/broken.py\n"),
+                    MagicMock(returncode=0, stdout=""),
+                ],
+            ),
+        ):
+            result = adapter.run("task-1", "fix", tmp_path)
+
+        assert result.status == "failed"
+        assert "src/broken.py" in result.modified_files
+
+    def test_graceful_when_not_git_repo(self, adapter, tmp_path):
+        """Should return empty modified_files if git is unavailable."""
+        mock_process = self._make_mock_process(
+            stdout_lines=["done\n"], returncode=0
+        )
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch(
+                "subprocess.run",
+                side_effect=FileNotFoundError("git not found"),
+            ),
+        ):
+            result = adapter.run("task-1", "fix", tmp_path)
+
+        assert result.status == "completed"
+        assert result.modified_files == []
+
+    def test_graceful_when_git_fails(self, adapter, tmp_path):
+        """Should return empty modified_files if git diff fails."""
+        mock_process = self._make_mock_process(
+            stdout_lines=["done\n"], returncode=0
+        )
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch(
+                "subprocess.run",
+                return_value=MagicMock(returncode=128, stdout=""),
+            ),
+        ):
+            result = adapter.run("task-1", "fix", tmp_path)
+
+        assert result.status == "completed"
+        assert result.modified_files == []
 
 
 class TestSubprocessAdapterBlockerExtraction:
