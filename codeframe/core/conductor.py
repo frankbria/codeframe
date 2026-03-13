@@ -476,7 +476,10 @@ def parse_concurrency_by_status(value: str | None) -> dict[str, int]:
         key = key.strip().upper()
         if key not in valid_statuses:
             raise ValueError(f"Invalid status '{key}'. Valid: {', '.join(sorted(valid_statuses))}")
-        result[key] = int(val.strip())
+        try:
+            result[key] = int(val.strip())
+        except ValueError:
+            raise ValueError(f"Invalid value '{val.strip()}' for status '{key}'. Must be an integer.")
 
     return result
 
@@ -1521,8 +1524,18 @@ def _execute_parallel(
             else:
                 failed_count += 1
         else:
-            # Multiple tasks - run in parallel
-            effective_workers = min(group_size, batch.max_parallel)
+            # Multiple tasks - run in parallel (use per-status limits if configured)
+            if batch.concurrency.by_status:
+                group_statuses = []
+                for tid in group:
+                    t = tasks.get(workspace, tid)
+                    if t:
+                        group_statuses.append(t.status.value)
+                effective_workers = batch.concurrency.effective_workers(
+                    statuses=group_statuses, group_size=group_size, global_running=0,
+                )
+            else:
+                effective_workers = min(group_size, batch.max_parallel)
             print(f"Running {group_size} tasks with {effective_workers} workers")
 
             # Execute group in parallel
