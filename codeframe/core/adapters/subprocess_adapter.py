@@ -215,6 +215,7 @@ class SubprocessAdapter:
                 timeout=10,
             )
             if result.returncode != 0:
+                # Also covers repos with no commits (HEAD does not exist)
                 return []
 
             files = [f for f in result.stdout.strip().splitlines() if f]
@@ -232,7 +233,8 @@ class SubprocessAdapter:
                     f for f in untracked.stdout.strip().splitlines() if f
                 )
 
-            return files
+            # Deduplicate while preserving order
+            return list(dict.fromkeys(files))
         except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
             return []
 

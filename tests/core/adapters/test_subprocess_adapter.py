@@ -253,22 +253,20 @@ class TestSubprocessAdapterModifiedFiles:
         mock_process = self._make_mock_process(
             stdout_lines=["done\n"], returncode=0
         )
-        # Simulate git diff output
         with (
             patch("subprocess.Popen", return_value=mock_process),
             patch(
                 "subprocess.run",
-                return_value=MagicMock(
-                    returncode=0,
-                    stdout="src/main.py\ntests/test_main.py\n",
-                ),
+                side_effect=[
+                    MagicMock(returncode=0, stdout="src/main.py\ntests/test_main.py\n"),
+                    MagicMock(returncode=0, stdout=""),  # no untracked files
+                ],
             ),
         ):
             result = adapter.run("task-1", "fix", tmp_path)
 
         assert result.status == "completed"
-        assert "src/main.py" in result.modified_files
-        assert "tests/test_main.py" in result.modified_files
+        assert result.modified_files == ["src/main.py", "tests/test_main.py"]
 
     def test_empty_modified_files_when_no_changes(self, adapter, tmp_path):
         mock_process = self._make_mock_process(
@@ -278,15 +276,18 @@ class TestSubprocessAdapterModifiedFiles:
             patch("subprocess.Popen", return_value=mock_process),
             patch(
                 "subprocess.run",
-                return_value=MagicMock(returncode=0, stdout=""),
+                side_effect=[
+                    MagicMock(returncode=0, stdout=""),
+                    MagicMock(returncode=0, stdout=""),
+                ],
             ),
         ):
             result = adapter.run("task-1", "fix", tmp_path)
 
         assert result.modified_files == []
 
-    def test_modified_files_empty_on_failure(self, adapter, tmp_path):
-        """Failed execution should still attempt file detection."""
+    def test_detects_files_even_on_failure(self, adapter, tmp_path):
+        """Failed execution should still detect modified files."""
         mock_process = self._make_mock_process(
             stderr_text="error", returncode=1
         )
@@ -294,9 +295,10 @@ class TestSubprocessAdapterModifiedFiles:
             patch("subprocess.Popen", return_value=mock_process),
             patch(
                 "subprocess.run",
-                return_value=MagicMock(
-                    returncode=0, stdout="src/broken.py\n"
-                ),
+                side_effect=[
+                    MagicMock(returncode=0, stdout="src/broken.py\n"),
+                    MagicMock(returncode=0, stdout=""),
+                ],
             ),
         ):
             result = adapter.run("task-1", "fix", tmp_path)
