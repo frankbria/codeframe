@@ -104,6 +104,10 @@ class EventType:
     BATCH_CANCELLED = "BATCH_CANCELLED"
     BATCH_VALIDATION_FAILED = "BATCH_VALIDATION_FAILED"
 
+    # Hook events
+    HOOK_EXECUTED = "HOOK_EXECUTED"
+    HOOK_FAILED = "HOOK_FAILED"
+
 
 @dataclass
 class Event:
