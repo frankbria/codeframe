@@ -133,6 +133,8 @@ def _init_database(db_path: Path) -> None:
         cursor.execute("ALTER TABLE tasks ADD COLUMN complexity_score INTEGER")
     if "uncertainty_level" not in columns:
         cursor.execute("ALTER TABLE tasks ADD COLUMN uncertainty_level TEXT")
+    if "github_issue_number" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN github_issue_number INTEGER")
 
     # Append-only event log
     cursor.execute("""

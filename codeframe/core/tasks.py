@@ -55,6 +55,7 @@ class Task:
     estimated_hours: Optional[float] = None
     complexity_score: Optional[int] = None
     uncertainty_level: Optional[str] = None
+    github_issue_number: Optional[int] = None
 
 
 def create(
@@ -669,4 +670,5 @@ def _row_to_task(row: tuple) -> Task:
         uncertainty_level=row[10],
         created_at=datetime.fromisoformat(row[11]),
         updated_at=datetime.fromisoformat(row[12]),
+        github_issue_number=row[13] if len(row) > 13 else None,
     )
