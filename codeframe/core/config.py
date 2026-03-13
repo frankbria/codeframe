@@ -127,6 +127,9 @@ class EnvironmentConfig:
     # Workspace lifecycle hooks
     hooks: HooksConfig = dataclass_field(default_factory=HooksConfig)
 
+    # Reconciliation during batch execution
+    reconciliation_interval_seconds: int = 30
+
     # Execution engine
     engine: str = "react"
 

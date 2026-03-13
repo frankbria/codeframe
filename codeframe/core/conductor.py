@@ -8,6 +8,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 
 import hashlib
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -25,6 +26,8 @@ from codeframe.core.dependency_graph import create_execution_plan, CycleDetected
 from codeframe.core.dependency_analyzer import analyze_dependencies, apply_inferred_dependencies
 from codeframe.core.runtime import RunStatus, get_active_run, reset_blocked_run
 
+
+logger = logging.getLogger(__name__)
 
 # Tactical patterns that the supervisor should auto-resolve
 SUPERVISOR_TACTICAL_PATTERNS = [
@@ -1226,6 +1229,12 @@ def _execute_serial(
 
     Updates batch.results and batch.status as tasks complete.
     """
+    # Start reconciliation thread for continuous state checking
+    from codeframe.core.config import load_environment_config
+    env_config = load_environment_config(workspace.repo_path)
+    interval = env_config.reconciliation_interval_seconds if env_config else 30
+    reconcile_stop = _start_reconciliation_thread(workspace, batch, interval_seconds=interval)
+
     completed_count = 0
     failed_count = 0
     blocked_count = 0
@@ -1359,6 +1368,9 @@ def _execute_serial(
         print_event=True,
     )
 
+    # Stop reconciliation thread
+    reconcile_stop.set()
+
     # Print summary
     print(f"\nBatch {batch.status.value.lower()}: {completed_count}/{total} tasks completed")
     if failed_count > 0:
@@ -1393,6 +1405,12 @@ def _execute_parallel(
         print(f"Parallelizable groups found - using max {batch.max_parallel} workers")
     else:
         print("All tasks are sequential (chain dependencies)")
+
+    # Start reconciliation thread for continuous state checking
+    from codeframe.core.config import load_environment_config as _load_env_config
+    _env_config_p = _load_env_config(workspace.repo_path)
+    _interval_p = _env_config_p.reconciliation_interval_seconds if _env_config_p else 30
+    _reconcile_stop_p = _start_reconciliation_thread(workspace, batch, interval_seconds=_interval_p)
 
     completed_count = 0
     failed_count = 0
@@ -1500,6 +1518,9 @@ def _execute_parallel(
         print_event=True,
     )
 
+    # Stop reconciliation thread
+    _reconcile_stop_p.set()
+
     # Print summary
     print(f"\nBatch {batch.status.value.lower()}: {completed_count}/{total} tasks completed")
     print(f"  Execution: {plan.num_groups} groups (parallel strategy)")
@@ -1507,6 +1528,71 @@ def _execute_parallel(
         print(f"  Failed: {failed_count}")
     if blocked_count > 0:
         print(f"  Blocked: {blocked_count}")
+
+
+def _start_reconciliation_thread(
+    workspace: Workspace,
+    batch: BatchRun,
+    interval_seconds: int = 30,
+    github_checker: Optional[Callable] = None,
+) -> threading.Event:
+    """Start a daemon thread that periodically reconciles batch state.
+
+    The thread checks all active tasks for external state changes every
+    ``interval_seconds`` and applies adjustments (skip completed tasks,
+    re-queue unblocked tasks).
+
+    Returns a threading.Event that can be set to stop the thread.
+    """
+    from codeframe.core.reconciliation import ReconciliationEngine
+
+    stop_event = threading.Event()
+    engine = ReconciliationEngine(workspace, github_checker=github_checker)
+
+    def _loop() -> None:
+        while not stop_event.wait(timeout=interval_seconds):
+            try:
+                # Get currently active task IDs from the batch
+                active_ids = [
+                    tid for tid in batch.task_ids
+                    if batch.results.get(tid) is None
+                    or batch.results.get(tid) == "RUNNING"
+                ]
+                if not active_ids:
+                    continue
+
+                result = engine.check_all_active(active_ids)
+                if result.changes_detected:
+                    with _active_processes_lock:
+                        procs = _active_processes.get(batch.id, {})
+                        engine.apply_changes(result, batch, procs)
+
+                    # Emit events for changes
+                    for tid in result.tasks_skipped:
+                        events.emit_for_workspace(
+                            workspace,
+                            events.EventType.RECONCILIATION_TASK_SKIPPED,
+                            {"batch_id": batch.id, "task_id": tid},
+                        )
+                    for tid in result.tasks_requeued:
+                        events.emit_for_workspace(
+                            workspace,
+                            events.EventType.RECONCILIATION_TASK_REQUEUED,
+                            {"batch_id": batch.id, "task_id": tid},
+                        )
+                if result.errors:
+                    for err in result.errors:
+                        events.emit_for_workspace(
+                            workspace,
+                            events.EventType.RECONCILIATION_ERROR,
+                            {"batch_id": batch.id, "error": err},
+                        )
+            except Exception as exc:
+                logger.warning("Reconciliation loop error: %s", exc)
+
+    thread = threading.Thread(target=_loop, daemon=True, name=f"reconcile-{batch.id[:8]}")
+    thread.start()
+    return stop_event
 
 
 def _execute_single_task(
