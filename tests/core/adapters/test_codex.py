@@ -5,8 +5,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from codeframe.core.adapters.agent_adapter import AgentAdapter, AgentEvent
+
+pytestmark = pytest.mark.v2
 
 
 def _make_jsonrpc(method: str, params: dict | None = None, id_: int | None = None) -> str:
@@ -220,15 +221,15 @@ class TestCodexTurnStreaming:
         assert result.status == "completed"
         assert any("Reading file" in e.message for e in events)
 
-    def test_stall_timeout(self) -> None:
-        adapter = self._make_adapter(stall_timeout_ms=100)
+    def test_eof_detected_as_failure(self) -> None:
+        adapter = self._make_adapter()
 
-        # Stdout that blocks forever (empty)
+        # Empty stdout = process terminated (EOF)
         stdout = _FakeStdout([])
 
         result = adapter._stream_turn(stdout, on_event=None)
         assert result.status == "failed"
-        assert "stall" in (result.error or "").lower()
+        assert "eof" in (result.error or "").lower()
 
 
 class TestCodexApproval:

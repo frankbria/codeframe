@@ -29,6 +29,9 @@ from codeframe.core.adapters.agent_adapter import (
 from codeframe.core.adapters.git_utils import detect_modified_files
 
 
+_TIMEOUT = object()  # Sentinel for read timeout (distinct from EOF/None)
+
+
 class CodexAdapter:
     """Adapter that delegates code execution to OpenAI Codex via app-server protocol.
 
@@ -162,13 +165,15 @@ class CodexAdapter:
         stdin.write(json.dumps(msg) + "\n")
         stdin.flush()
 
-    def _recv_line(self, stdout: Any, timeout_s: float) -> dict | None:
+    def _recv_line(self, stdout: Any, timeout_s: float) -> dict | object | None:
         """Read one JSON-RPC line from stdout with enforced timeout.
 
         Uses ``selectors`` to wait for data availability before reading,
         preventing indefinite blocking if the subprocess stops writing.
 
-        Returns the parsed dict, or None on EOF / timeout.
+        Returns:
+            Parsed dict on success, ``_TIMEOUT`` sentinel on timeout (caller
+            should loop and re-check stall/turn timeouts), or ``None`` on EOF.
         """
         # Use selectors for real timeout enforcement on file-based stdout.
         # Mock objects (in tests) won't have fileno(), so fall back to
@@ -181,7 +186,7 @@ class CodexAdapter:
             finally:
                 sel.close()
             if not ready:
-                return None
+                return _TIMEOUT
 
         line = stdout.readline()
         if not line:
@@ -216,7 +221,10 @@ class CodexAdapter:
         turn_id = str(uuid.uuid4())
 
         # Step 1: initialize
-        self._send(stdin, "initialize", {"capabilities": {}}, msg_id=1)
+        init_params: dict[str, Any] = {"capabilities": {}}
+        if self._sandbox_mode:
+            init_params["sandbox_mode"] = self._sandbox_mode
+        self._send(stdin, "initialize", init_params, msg_id=1)
 
         # Step 2: wait for initialized
         timeout_s = self._read_timeout_ms / 1000
@@ -277,11 +285,14 @@ class CodexAdapter:
                 )
 
             msg = self._recv_line(stdout, timeout_s=read_timeout_s)
+            if msg is _TIMEOUT:
+                # Read timed out — loop back to check stall/turn timeouts
+                continue
             if msg is None:
                 # EOF — process likely terminated
                 return AgentResult(
                     status="failed",
-                    error="Stall timeout: no events received (EOF)",
+                    error="Process terminated unexpectedly (EOF)",
                 )
 
             last_event_time = time.monotonic()
