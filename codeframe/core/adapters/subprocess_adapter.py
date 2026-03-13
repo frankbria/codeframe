@@ -153,12 +153,16 @@ class SubprocessAdapter:
 
         stderr_output = "".join(stderr_chunks)
 
-        return self._map_result(
+        modified_files = self._detect_modified_files(workspace_path)
+
+        result = self._map_result(
             exit_code=process.returncode,
             stdout="\n".join(stdout_lines),
             stderr=stderr_output,
             workspace_path=workspace_path,
         )
+        result.modified_files = modified_files
+        return result
 
     def _map_result(
         self,
@@ -195,6 +199,42 @@ class SubprocessAdapter:
             output=stdout,
             error=stderr or f"Process exited with code {exit_code}",
         )
+
+    def _detect_modified_files(self, workspace_path: Path) -> list[str]:
+        """Detect files modified by the subprocess via git diff.
+
+        Combines modified, staged, and untracked files. Returns an empty list
+        if git is unavailable or the workspace is not a git repo.
+        """
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD"],
+                cwd=str(workspace_path),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return []
+
+            files = [f for f in result.stdout.strip().splitlines() if f]
+
+            # Also pick up untracked files
+            untracked = subprocess.run(
+                ["git", "ls-files", "--others", "--exclude-standard"],
+                cwd=str(workspace_path),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if untracked.returncode == 0:
+                files.extend(
+                    f for f in untracked.stdout.strip().splitlines() if f
+                )
+
+            return files
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+            return []
 
     def _extract_blocker_question(self, output: str) -> str:
         """Extract a meaningful blocker question from output."""

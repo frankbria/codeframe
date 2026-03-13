@@ -12,6 +12,12 @@ from codeframe.core.adapters.claude_code import ClaudeCodeAdapter
 class TestClaudeCodeAdapter:
     """Unit tests for ClaudeCodeAdapter."""
 
+    @pytest.fixture(autouse=True)
+    def _no_git(self):
+        """Prevent _detect_modified_files from calling real git."""
+        with patch.object(ClaudeCodeAdapter, "_detect_modified_files", return_value=[]):
+            yield
+
     def test_name(self) -> None:
         with patch("shutil.which", return_value="/usr/bin/claude"):
             adapter = ClaudeCodeAdapter()
