@@ -13,6 +13,7 @@ VALID_ENGINES = frozenset({
     "react",
     "plan",
     "claude-code",
+    "codex",
     "opencode",
     "built-in",  # Alias for "react"
 })
@@ -20,6 +21,7 @@ VALID_ENGINES = frozenset({
 # External engines that use subprocess adapters (no LLM provider needed)
 EXTERNAL_ENGINES = frozenset({
     "claude-code",
+    "codex",
     "opencode",
 })
 
@@ -86,6 +88,10 @@ def get_external_adapter(engine: str, **kwargs: Any) -> AgentAdapter:
         from codeframe.core.adapters.claude_code import ClaudeCodeAdapter
 
         return ClaudeCodeAdapter(**kwargs)
+    elif engine == "codex":
+        from codeframe.core.adapters.codex import CodexAdapter
+
+        return CodexAdapter(**kwargs)
     elif engine == "opencode":
         from codeframe.core.adapters.opencode import OpenCodeAdapter
 
@@ -189,6 +195,9 @@ def _get_adapter_class(engine: str) -> type | None:
     elif engine == "claude-code":
         from codeframe.core.adapters.claude_code import ClaudeCodeAdapter
         return ClaudeCodeAdapter
+    elif engine == "codex":
+        from codeframe.core.adapters.codex import CodexAdapter
+        return CodexAdapter
     elif engine == "opencode":
         from codeframe.core.adapters.opencode import OpenCodeAdapter
         return OpenCodeAdapter

@@ -1998,7 +1998,7 @@ def work_start(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Agent engine: react (default), plan (legacy), claude-code, opencode, or built-in",
+        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
@@ -2059,10 +2059,12 @@ def work_start(
         task = matching[0]
 
         # Validate API key before creating run record (avoids dangling IN_PROGRESS state)
-        # External engines (claude-code, opencode) manage their own authentication
         if execute:
             from codeframe.core.engine_registry import is_external_engine
-            if not is_external_engine(engine):
+            if engine == "codex":
+                from codeframe.cli.validators import require_openai_api_key
+                require_openai_api_key()
+            elif not is_external_engine(engine):
                 from codeframe.cli.validators import require_anthropic_api_key
                 require_anthropic_api_key()
 
@@ -2888,7 +2890,7 @@ def batch_run(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Agent engine: react (default), plan (legacy), claude-code, opencode, or built-in",
+        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
@@ -2989,9 +2991,11 @@ def batch_run(
             return
 
         # Validate API key before batch execution
-        # External engines (claude-code, opencode) manage their own authentication
         from codeframe.core.engine_registry import is_external_engine
-        if not is_external_engine(engine):
+        if engine == "codex":
+            from codeframe.cli.validators import require_openai_api_key
+            require_openai_api_key()
+        elif not is_external_engine(engine):
             from codeframe.cli.validators import require_anthropic_api_key
             require_anthropic_api_key()
 
