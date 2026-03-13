@@ -82,6 +82,14 @@ class AgentBudgetConfig:
 
 
 @dataclass
+class BatchConfig:
+    """Batch execution configuration."""
+
+    max_parallel: int = 4
+    max_parallel_by_status: dict[str, int] = dataclass_field(default_factory=dict)
+
+
+@dataclass
 class HooksConfig:
     """Workspace lifecycle hooks configuration.
 
@@ -123,6 +131,9 @@ class EnvironmentConfig:
 
     # Agent budget
     agent_budget: AgentBudgetConfig = dataclass_field(default_factory=AgentBudgetConfig)
+
+    # Batch execution
+    batch: BatchConfig = dataclass_field(default_factory=BatchConfig)
 
     # Workspace lifecycle hooks
     hooks: HooksConfig = dataclass_field(default_factory=HooksConfig)
@@ -281,6 +292,8 @@ class EnvironmentConfig:
             data["context"] = ContextConfig(**data["context"])
         if "agent_budget" in data and isinstance(data["agent_budget"], dict):
             data["agent_budget"] = AgentBudgetConfig(**data["agent_budget"])
+        if "batch" in data and isinstance(data["batch"], dict):
+            data["batch"] = BatchConfig(**data["batch"])
         if "hooks" in data and isinstance(data["hooks"], dict):
             data["hooks"] = HooksConfig(**data["hooks"])
         return cls(**data)
