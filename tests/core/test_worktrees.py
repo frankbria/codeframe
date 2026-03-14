@@ -52,25 +52,26 @@ class TestTaskWorktreeCreate:
     def test_creates_worktree(self, tmp_path: Path) -> None:
         from codeframe.core.worktrees import TaskWorktree
 
-        # Set up a real git repo
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
         subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"], capture_output=True)
+        base = _get_default_branch(tmp_path)
 
         wt = TaskWorktree()
-        worktree_path = wt.create(tmp_path, "task-1")
+        worktree_path = wt.create(tmp_path, "task-1", base_branch=base)
 
         assert worktree_path.exists()
         assert worktree_path.name == "task-1"
-        assert (worktree_path / ".git").exists()  # worktrees have a .git file
+        assert (worktree_path / ".git").exists()
 
     def test_returns_correct_path(self, tmp_path: Path) -> None:
         from codeframe.core.worktrees import TaskWorktree
 
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
         subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"], capture_output=True)
+        base = _get_default_branch(tmp_path)
 
         wt = TaskWorktree()
-        path = wt.create(tmp_path, "my-task")
+        path = wt.create(tmp_path, "my-task", base_branch=base)
 
         expected = tmp_path / ".codeframe" / "worktrees" / "my-task"
         assert path == expected
@@ -80,9 +81,10 @@ class TestTaskWorktreeCreate:
 
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
         subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"], capture_output=True)
+        base = _get_default_branch(tmp_path)
 
         wt = TaskWorktree()
-        wt.create(tmp_path, "task-1")
+        wt.create(tmp_path, "task-1", base_branch=base)
 
         # Check branch exists
         result = subprocess.run(
@@ -155,9 +157,10 @@ class TestTaskWorktreeCleanup:
 
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
         subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"], capture_output=True)
+        base = _get_default_branch(tmp_path)
 
         wt = TaskWorktree()
-        worktree_path = wt.create(tmp_path, "task-1")
+        worktree_path = wt.create(tmp_path, "task-1", base_branch=base)
         assert worktree_path.exists()
 
         wt.cleanup(tmp_path, "task-1")
