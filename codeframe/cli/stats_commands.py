@@ -197,8 +197,6 @@ def costs(
     """
     db = _get_db()
     try:
-        tracker = _get_tracker(db)
-
         # Calculate date range from period
         start_date = None
         end_date = None
@@ -216,7 +214,24 @@ def costs(
             )
             raise typer.Exit(1)
 
-        cost_data = tracker.get_workspace_costs(start_date=start_date, end_date=end_date)
+        # Single fetch: get raw records and compute summary + per-model breakdown in one pass
+        records = db.get_workspace_token_usage(start_date=start_date, end_date=end_date)
+
+        total_cost = 0.0
+        total_tokens = 0
+        model_costs: dict[str, dict] = {}
+        for record in records:
+            cost = record["estimated_cost_usd"]
+            tokens = record["input_tokens"] + record["output_tokens"]
+            total_cost += cost
+            total_tokens += tokens
+
+            model = record["model_name"]
+            if model not in model_costs:
+                model_costs[model] = {"cost_usd": 0.0, "tokens": 0, "calls": 0}
+            model_costs[model]["cost_usd"] += cost
+            model_costs[model]["tokens"] += tokens
+            model_costs[model]["calls"] += 1
 
         period_label = f" ({period})" if period else " (all time)"
         console.print(f"\n[bold]Cost Report{period_label}[/bold]\n")
@@ -225,22 +240,11 @@ def costs(
         table.add_column("Metric", style="cyan")
         table.add_column("Value", justify="right")
 
-        table.add_row("Total Cost", f"${cost_data['total_cost_usd']:.4f}")
-        table.add_row("Total Tokens", _format_number(cost_data["total_tokens"]))
-        table.add_row("LLM Calls", str(cost_data["total_calls"]))
+        table.add_row("Total Cost", f"${total_cost:.4f}")
+        table.add_row("Total Tokens", _format_number(total_tokens))
+        table.add_row("LLM Calls", str(len(records)))
 
         console.print(table)
-
-        # Show per-model breakdown from raw records
-        records = db.get_workspace_token_usage(start_date=start_date, end_date=end_date)
-        model_costs: dict[str, dict] = {}
-        for record in records:
-            model = record["model_name"]
-            if model not in model_costs:
-                model_costs[model] = {"cost_usd": 0.0, "tokens": 0, "calls": 0}
-            model_costs[model]["cost_usd"] += record["estimated_cost_usd"]
-            model_costs[model]["tokens"] += record["input_tokens"] + record["output_tokens"]
-            model_costs[model]["calls"] += 1
 
         if model_costs:
             console.print("\n[bold]By Model:[/bold]")
@@ -290,9 +294,7 @@ def export_data(
     db = _get_db()
     try:
         if task is not None:
-            # Get records for specific task
-            records = db.get_token_usage(project_id=None, agent_id=None)
-            records = [r for r in records if r.get("task_id") == task]
+            records = db.get_batch_token_usage(task_ids=[task])
         else:
             records = db.get_workspace_token_usage()
 

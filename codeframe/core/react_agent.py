@@ -297,47 +297,61 @@ class ReactAgent:
             "input_tokens": total_in,
             "output_tokens": total_out,
             "total_tokens": total_in + total_out,
-            "estimated_cost_usd": self._estimate_cost(total_in, total_out),
+            "estimated_cost_usd": self._estimate_total_cost(),
         }
 
     # ------------------------------------------------------------------
     # Token persistence
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
-        """Estimate USD cost using Anthropic Claude Sonnet pricing.
+    def _estimate_total_cost(self) -> float:
+        """Estimate total USD cost from accumulated token records.
 
-        Uses a conservative default (Sonnet pricing) since the exact model
-        may vary across calls.  Returns 0.0 when totals are zero.
+        Delegates per-model pricing to MetricsTracker.calculate_cost to keep
+        pricing logic in a single location.  Falls back to 0.0 on any error.
         """
-        if input_tokens == 0 and output_tokens == 0:
+        try:
+            from codeframe.lib.metrics_tracker import MetricsTracker
+
+            total = 0.0
+            for record in self._token_records:
+                total += MetricsTracker.calculate_cost(
+                    record["model"],
+                    record["input_tokens"],
+                    record["output_tokens"],
+                )
+            return round(total, 6)
+        except Exception:
             return 0.0
-        # Claude Sonnet 4 pricing (per million tokens)
-        input_price = 3.00
-        output_price = 15.00
-        cost = (input_tokens * input_price + output_tokens * output_price) / 1_000_000
-        return round(cost, 6)
 
     def _persist_token_usage(self, task_id: str) -> None:
         """Persist accumulated token records to the workspace database.
 
-        Uses MetricsTracker.record_token_usage_sync (added by another agent).
+        Uses MetricsTracker.record_token_usage_sync for synchronous writes.
         Failures are logged but never propagated to the caller.
+        The database connection is always closed via try/finally.
         """
         if not self._token_records:
             return
 
+        db = None
         try:
             from codeframe.lib.metrics_tracker import MetricsTracker
             from codeframe.persistence.database import Database
 
             db = Database(str(self.workspace.db_path))
+            db.initialize()
             tracker = MetricsTracker(db=db)
+
+            # Cast task_id to int for the persistence layer (core uses str, DB uses int).
+            try:
+                task_id_int: int | None = int(task_id)
+            except (ValueError, TypeError):
+                task_id_int = None
 
             for record in self._token_records:
                 tracker.record_token_usage_sync(
-                    task_id=task_id,
+                    task_id=task_id_int,
                     agent_id="react-agent",
                     project_id=0,
                     model_name=record["model"],
@@ -349,6 +363,12 @@ class ReactAgent:
             logger.debug(
                 "Token usage persistence failed for task %s", task_id, exc_info=True,
             )
+        finally:
+            if db is not None:
+                try:
+                    db.close()
+                except Exception:
+                    pass
 
     # ------------------------------------------------------------------
     # ReAct loop

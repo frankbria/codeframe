@@ -54,7 +54,8 @@ MODEL_PRICING = {
     "claude-haiku-4": {"input": 0.80, "output": 4.00},
 }
 
-# Regex to match date suffixes like -20250514 at the end of model names
+# Regex to strip -YYYYMMDD date suffixes from Anthropic API model names
+# (e.g., "claude-sonnet-4-5-20250514" → "claude-sonnet-4-5")
 _DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
 
 
