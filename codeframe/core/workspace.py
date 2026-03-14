@@ -246,6 +246,34 @@ def _init_database(db_path: Path) -> None:
         )
     """)
 
+    # Engine performance tracking: per-run log
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS run_engine_log (
+            run_id TEXT PRIMARY KEY,
+            engine TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            workspace_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            duration_ms INTEGER,
+            tokens_used INTEGER DEFAULT 0,
+            gates_passed INTEGER,
+            self_corrections INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    # Engine performance tracking: aggregate stats
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS engine_stats (
+            workspace_id TEXT NOT NULL,
+            engine TEXT NOT NULL,
+            metric TEXT NOT NULL,
+            value REAL NOT NULL DEFAULT 0.0,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, engine, metric)
+        )
+    """)
+
     # Create indexes for common queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
@@ -261,6 +289,8 @@ def _init_database(db_path: Path) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_logs_task ON run_logs(task_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostic_reports_task ON diagnostic_reports(task_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostic_reports_run ON diagnostic_reports(run_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_engine_log_ws_engine ON run_engine_log(workspace_id, engine)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_engine_stats_ws ON engine_stats(workspace_id, engine)")
 
     conn.commit()
     conn.close()
@@ -448,6 +478,44 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostic_reports_task ON diagnostic_reports(task_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostic_reports_run ON diagnostic_reports(run_id)")
         conn.commit()
+
+    # Add run_engine_log table for engine performance tracking
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS run_engine_log (
+            run_id TEXT PRIMARY KEY,
+            engine TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            workspace_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            duration_ms INTEGER,
+            tokens_used INTEGER DEFAULT 0,
+            gates_passed INTEGER,
+            self_corrections INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_run_engine_log_ws_engine "
+        "ON run_engine_log(workspace_id, engine)"
+    )
+    conn.commit()
+
+    # Add engine_stats table for aggregate engine metrics
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS engine_stats (
+            workspace_id TEXT NOT NULL,
+            engine TEXT NOT NULL,
+            metric TEXT NOT NULL,
+            value REAL NOT NULL DEFAULT 0.0,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (workspace_id, engine, metric)
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_engine_stats_ws "
+        "ON engine_stats(workspace_id, engine)"
+    )
+    conn.commit()
 
     conn.close()
 
