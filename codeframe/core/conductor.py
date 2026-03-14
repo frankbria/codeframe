@@ -17,6 +17,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from enum import Enum
 from typing import Callable, Optional
 
@@ -533,6 +534,7 @@ class BatchRun:
     stall_timeout_s: int = 300
     stall_action: str = "blocker"
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
+    isolate: bool = True
 
 
 def start_batch(
@@ -548,6 +550,7 @@ def start_batch(
     stall_timeout_s: int = 300,
     stall_action: str = "blocker",
     concurrency_by_status: Optional[dict[str, int]] = None,
+    isolate: bool = True,
 ) -> BatchRun:
     """Start a batch execution of multiple tasks.
 
@@ -602,6 +605,7 @@ def start_batch(
         stall_timeout_s=stall_timeout_s,
         stall_action=stall_action,
         concurrency=concurrency,
+        isolate=isolate,
     )
 
     # Save to database
@@ -1882,6 +1886,7 @@ def _execute_task_subprocess(
     engine: str = "react",
     stall_timeout_s: int = 300,
     stall_action: str = "blocker",
+    worktree_path: Optional[Path] = None,
 ) -> str:
     """Execute a single task via subprocess.
 
@@ -1912,7 +1917,7 @@ def _execute_task_subprocess(
         # Use Popen instead of run for process tracking
         process = subprocess.Popen(
             cmd,
-            cwd=workspace.repo_path,
+            cwd=str(worktree_path) if worktree_path else workspace.repo_path,
             stdout=None,  # Let output flow to terminal
             stderr=None,
             text=True,
