@@ -9,6 +9,15 @@ import pytest
 pytestmark = pytest.mark.v2
 
 
+def _get_default_branch(repo_path: Path) -> str:
+    """Get the default branch name of a git repo."""
+    result = subprocess.run(
+        ["git", "-C", str(repo_path), "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True, text=True,
+    )
+    return result.stdout.strip() or "main"
+
+
 # ---------------------------------------------------------------------------
 # MergeResult tests
 # ---------------------------------------------------------------------------
@@ -92,9 +101,10 @@ class TestTaskWorktreeMergeBack:
         # Set up repo with initial commit
         subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
         subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"], capture_output=True)
+        base_branch = _get_default_branch(tmp_path)
 
         wt = TaskWorktree()
-        worktree_path = wt.create(tmp_path, "task-1")
+        worktree_path = wt.create(tmp_path, "task-1", base_branch=base_branch)
 
         # Make a change in the worktree
         (worktree_path / "new_file.txt").write_text("hello")
@@ -102,11 +112,11 @@ class TestTaskWorktreeMergeBack:
         subprocess.run(["git", "-C", str(worktree_path), "commit", "-m", "add file"], capture_output=True)
 
         # Merge back
-        result = wt.merge_back(tmp_path, "task-1")
+        result = wt.merge_back(tmp_path, "task-1", base_branch=base_branch)
 
         assert result.success is True
         assert result.merge_commit is not None
-        # File should now be in main branch
+        # File should now be in base branch
         assert (tmp_path / "new_file.txt").exists()
 
     def test_merge_conflict_returns_failure(self, tmp_path: Path) -> None:
@@ -116,21 +126,22 @@ class TestTaskWorktreeMergeBack:
         (tmp_path / "file.txt").write_text("original")
         subprocess.run(["git", "-C", str(tmp_path), "add", "file.txt"], capture_output=True)
         subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "init"], capture_output=True)
+        base_branch = _get_default_branch(tmp_path)
 
         wt = TaskWorktree()
-        worktree_path = wt.create(tmp_path, "task-1")
+        worktree_path = wt.create(tmp_path, "task-1", base_branch=base_branch)
 
         # Change in worktree
         (worktree_path / "file.txt").write_text("worktree change")
         subprocess.run(["git", "-C", str(worktree_path), "add", "file.txt"], capture_output=True)
         subprocess.run(["git", "-C", str(worktree_path), "commit", "-m", "wt change"], capture_output=True)
 
-        # Conflicting change on main
+        # Conflicting change on base branch
         (tmp_path / "file.txt").write_text("main change")
         subprocess.run(["git", "-C", str(tmp_path), "add", "file.txt"], capture_output=True)
         subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "main change"], capture_output=True)
 
-        result = wt.merge_back(tmp_path, "task-1")
+        result = wt.merge_back(tmp_path, "task-1", base_branch=base_branch)
 
         assert result.success is False
         assert result.conflict_details != ""
