@@ -59,86 +59,92 @@ def record_run(
                 now,
             ),
         )
+        # Recompute aggregates in the same connection to avoid TOCTOU issues
+        _update_aggregate_stats_conn(conn, workspace.id, engine)
         conn.commit()
     finally:
         conn.close()
-
-    _update_aggregate_stats(workspace, engine)
 
 
 def _update_aggregate_stats(workspace: Workspace, engine: str) -> None:
-    """Recompute aggregate metrics for an engine from run_engine_log.
+    """Recompute aggregate metrics for an engine (opens its own connection).
 
-    Upserts each metric into the engine_stats table.
+    Convenience wrapper for external callers (e.g., data seeding).
     """
-    now = _utc_now().isoformat()
-    ws_id = workspace.id
-
     conn = get_db_connection(workspace)
     try:
-        cur = conn.cursor()
-
-        # Compute all metrics in one pass where possible
-        row = cur.execute(
-            "SELECT "
-            "  COUNT(*), "
-            "  COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END), "
-            "  COUNT(CASE WHEN status = 'FAILED' THEN 1 END), "
-            "  COUNT(CASE WHEN gates_passed = 1 THEN 1 END), "
-            "  COUNT(CASE WHEN gates_passed IS NOT NULL THEN 1 END), "
-            "  COUNT(CASE WHEN self_corrections > 0 THEN 1 END), "
-            "  AVG(CASE WHEN duration_ms IS NOT NULL THEN duration_ms END), "
-            "  SUM(tokens_used), "
-            "  SUM(CASE WHEN status = 'COMPLETED' THEN tokens_used ELSE 0 END), "
-            "  COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) "
-            "FROM run_engine_log "
-            "WHERE engine = ? AND workspace_id = ?",
-            (engine, ws_id),
-        ).fetchone()
-
-        total = row[0]
-        completed = row[1]
-        failed = row[2]
-        gates_pass_count = row[3]
-        gates_total = row[4]
-        self_corr_count = row[5]
-        avg_duration = row[6]
-        total_tokens = row[7] or 0
-        completed_tokens = row[8] or 0
-        completed_count = row[9]
-
-        gate_pass_rate = (
-            100.0 * gates_pass_count / gates_total if gates_total > 0 else 0.0
-        )
-        self_correction_rate = (
-            100.0 * self_corr_count / total if total > 0 else 0.0
-        )
-        avg_tokens_per_task = (
-            completed_tokens / completed_count if completed_count > 0 else 0.0
-        )
-
-        metrics = {
-            "tasks_attempted": float(total),
-            "tasks_completed": float(completed),
-            "tasks_failed": float(failed),
-            "gate_pass_rate": round(gate_pass_rate, 2),
-            "self_correction_rate": round(self_correction_rate, 2),
-            "avg_duration_ms": round(avg_duration, 2) if avg_duration is not None else 0.0,
-            "total_tokens": float(total_tokens),
-            "avg_tokens_per_task": round(avg_tokens_per_task, 2),
-        }
-
-        for metric, value in metrics.items():
-            cur.execute(
-                "INSERT OR REPLACE INTO engine_stats "
-                "(workspace_id, engine, metric, value, updated_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (ws_id, engine, metric, value, now),
-            )
-
+        _update_aggregate_stats_conn(conn, workspace.id, engine)
         conn.commit()
     finally:
         conn.close()
+
+
+def _update_aggregate_stats_conn(conn, ws_id: str, engine: str) -> None:
+    """Recompute aggregate metrics using an existing connection.
+
+    Does NOT commit — caller is responsible for committing.
+    """
+    now = _utc_now().isoformat()
+
+    cur = conn.cursor()
+
+    # Compute all metrics in one pass where possible
+    row = cur.execute(
+        "SELECT "
+        "  COUNT(*), "
+        "  COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END), "
+        "  COUNT(CASE WHEN status = 'FAILED' THEN 1 END), "
+        "  COUNT(CASE WHEN gates_passed = 1 THEN 1 END), "
+        "  COUNT(CASE WHEN gates_passed IS NOT NULL THEN 1 END), "
+        "  COUNT(CASE WHEN self_corrections > 0 THEN 1 END), "
+        "  AVG(CASE WHEN duration_ms IS NOT NULL THEN duration_ms END), "
+        "  SUM(tokens_used), "
+        "  SUM(CASE WHEN status = 'COMPLETED' THEN tokens_used ELSE 0 END), "
+        "  COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) "
+        "FROM run_engine_log "
+        "WHERE engine = ? AND workspace_id = ?",
+        (engine, ws_id),
+    ).fetchone()
+
+    total = row[0]
+    completed = row[1]
+    failed = row[2]
+    gates_pass_count = row[3]
+    gates_total = row[4]
+    self_corr_count = row[5]
+    avg_duration = row[6]
+    total_tokens = row[7] or 0
+    completed_tokens = row[8] or 0
+    completed_count = row[9]
+
+    gate_pass_rate = (
+        100.0 * gates_pass_count / gates_total if gates_total > 0 else 0.0
+    )
+    self_correction_rate = (
+        100.0 * self_corr_count / total if total > 0 else 0.0
+    )
+    avg_tokens_per_task = (
+        completed_tokens / completed_count if completed_count > 0 else 0.0
+    )
+
+    metrics = {
+        "tasks_attempted": float(total),
+        "tasks_completed": float(completed),
+        "tasks_failed": float(failed),
+        "gate_pass_rate": round(gate_pass_rate, 2),
+        "self_correction_rate": round(self_correction_rate, 2),
+        "avg_duration_ms": round(avg_duration, 2) if avg_duration is not None else 0.0,
+        "total_tokens": float(total_tokens),
+        "avg_tokens_per_task": round(avg_tokens_per_task, 2),
+    }
+
+    for metric, value in metrics.items():
+        cur.execute(
+            "INSERT OR REPLACE INTO engine_stats "
+            "(workspace_id, engine, metric, value, updated_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (ws_id, engine, metric, value, now),
+        )
 
 
 def get_engine_stats(

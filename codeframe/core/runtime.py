@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
-from codeframe.core import events, tasks
+from codeframe.core import engine_stats, events, tasks
 from codeframe.core.state_machine import TaskStatus
 from codeframe.core.workspace import Workspace, get_db_connection
 
@@ -807,7 +807,6 @@ def execute_agent(
 
         # Record engine performance metrics
         try:
-            from codeframe.core import engine_stats
             _perf_duration_ms = int(_time_mod.monotonic() * 1000) - _perf_start_ms
             _perf_tokens = 0
             if hasattr(result, 'token_usage') and result.token_usage:
@@ -825,7 +824,7 @@ def execute_agent(
                 self_corrections=0,
             )
         except Exception:
-            logger.debug("Engine stats recording failed", exc_info=True)
+            logger.warning("Engine stats recording failed", exc_info=True)
 
         # Execute after_task hooks (non-blocking, after state is persisted)
         if env_config and hook_ctx:

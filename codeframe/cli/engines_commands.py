@@ -170,7 +170,7 @@ def _build_stats_table(stats: dict[str, dict[str, float]], title: str = "Engine 
 @engines_app.command("stats")
 def stats(
     engine: Optional[str] = typer.Option(None, "--engine", "-e", help="Filter by engine name"),
-    format: str = typer.Option("text", "--format", "-f", help="Output format: text or json"),
+    output_format: str = typer.Option("text", "--format", "-f", help="Output format: text or json"),
 ) -> None:
     """Show engine performance statistics."""
     workspace = _get_current_workspace()
@@ -180,7 +180,7 @@ def stats(
         console.print("[yellow]No engine stats recorded yet.[/yellow]")
         return
 
-    if format == "json":
+    if output_format == "json":
         console.print(_json.dumps(data, indent=2))
         return
 
