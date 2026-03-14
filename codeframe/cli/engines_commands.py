@@ -3,11 +3,23 @@
 Usage:
     codeframe engines list           # Show available engines
     codeframe engines check <name>   # Check engine requirements
+    codeframe engines stats          # Show engine performance stats
+    codeframe engines compare        # Compare engine performance
 """
+
+import json as _json
+import logging
+from pathlib import Path
+from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
+
+from codeframe.core import engine_stats
+from codeframe.core.workspace import get_workspace
+
+logger = logging.getLogger(__name__)
 
 console = Console()
 
@@ -82,3 +94,112 @@ def engines_check(
     else:
         console.print(f"\n[red]Engine '{name}' has unmet requirements.[/red]")
         raise typer.Exit(1)
+
+
+def _get_current_workspace():
+    """Get workspace from current working directory.
+
+    Returns:
+        Workspace object.
+
+    Raises:
+        typer.Exit: If no workspace is found.
+    """
+    try:
+        return get_workspace(Path.cwd())
+    except (FileNotFoundError, ValueError):
+        console.print("[red]Error:[/red] No workspace found. Run 'cf init' first.")
+        raise typer.Exit(1)
+
+
+def _compute_success_rate(metrics: dict[str, float]) -> float:
+    """Compute success rate from engine metrics."""
+    attempted = metrics.get("tasks_attempted", 0)
+    completed = metrics.get("tasks_completed", 0)
+    if attempted == 0:
+        return 0.0
+    return round(100.0 * completed / attempted, 1)
+
+
+def _format_duration(ms: float) -> str:
+    """Format duration in human-readable form."""
+    if ms < 1000:
+        return f"{ms:.0f}ms"
+    return f"{ms / 1000:.1f}s"
+
+
+def _build_stats_table(stats: dict[str, dict[str, float]], title: str = "Engine Stats") -> Table:
+    """Build a Rich table from engine stats."""
+    table = Table(title=title)
+    table.add_column("Engine", style="cyan")
+    table.add_column("Tasks", justify="right")
+    table.add_column("Success %", justify="right", style="green")
+    table.add_column("Gate Pass %", justify="right")
+    table.add_column("Avg Duration", justify="right")
+    table.add_column("Total Tokens", justify="right")
+    table.add_column("Avg Tokens/Task", justify="right")
+
+    # Sort by success rate descending
+    sorted_engines = sorted(
+        stats.items(),
+        key=lambda item: _compute_success_rate(item[1]),
+        reverse=True,
+    )
+
+    for eng, metrics in sorted_engines:
+        success_rate = _compute_success_rate(metrics)
+        gate_rate = metrics.get("gate_pass_rate", 0.0)
+        avg_dur = metrics.get("avg_duration_ms", 0.0)
+        total_tok = metrics.get("total_tokens", 0.0)
+        avg_tok = metrics.get("avg_tokens_per_task", 0.0)
+        attempted = int(metrics.get("tasks_attempted", 0))
+
+        table.add_row(
+            eng,
+            str(attempted),
+            f"{success_rate}%",
+            f"{gate_rate}%",
+            _format_duration(avg_dur),
+            f"{int(total_tok):,}",
+            f"{int(avg_tok):,}",
+        )
+
+    return table
+
+
+@engines_app.command("stats")
+def stats(
+    engine: Optional[str] = typer.Option(None, "--engine", "-e", help="Filter by engine name"),
+    format: str = typer.Option("text", "--format", "-f", help="Output format: text or json"),
+) -> None:
+    """Show engine performance statistics."""
+    workspace = _get_current_workspace()
+    data = engine_stats.get_engine_stats(workspace, engine=engine)
+
+    if not data:
+        console.print("[yellow]No engine stats recorded yet.[/yellow]")
+        return
+
+    if format == "json":
+        console.print(_json.dumps(data, indent=2))
+        return
+
+    table = _build_stats_table(data, title="Engine Performance Stats")
+    console.print(table)
+
+
+@engines_app.command("compare")
+def compare() -> None:
+    """Compare performance across all engines."""
+    workspace = _get_current_workspace()
+    data = engine_stats.get_engine_stats(workspace)
+
+    if not data:
+        console.print(
+            "[yellow]No engine stats recorded yet. "
+            "Run tasks with different engines to see comparison.[/yellow]"
+        )
+        return
+
+    table = _build_stats_table(data, title="Engine Comparison (sorted by success rate)")
+    console.print(table)

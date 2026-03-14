@@ -672,6 +672,9 @@ def execute_agent(
             workspace_path=str(workspace.repo_path),
         )
 
+    import time as _time_mod
+    _perf_start_ms = int(_time_mod.monotonic() * 1000)
+
     try:
         # Execute before_task hook (aborts on failure)
         if env_config and hook_ctx:
@@ -801,6 +804,28 @@ def execute_agent(
             block_run(workspace, run.id, "")
         elif state.status == AgentStatus.FAILED:
             fail_run(workspace, run.id)
+
+        # Record engine performance metrics
+        try:
+            from codeframe.core import engine_stats
+            _perf_duration_ms = int(_time_mod.monotonic() * 1000) - _perf_start_ms
+            _perf_tokens = 0
+            if hasattr(result, 'token_usage') and result.token_usage:
+                _perf_tokens = result.token_usage.total_tokens
+
+            engine_stats.record_run(
+                workspace=workspace,
+                run_id=run.id,
+                engine=engine,
+                task_id=run.task_id,
+                status=agent_status.value.upper(),
+                duration_ms=_perf_duration_ms,
+                tokens_used=_perf_tokens,
+                gates_passed=None,
+                self_corrections=0,
+            )
+        except Exception:
+            logger.debug("Engine stats recording failed", exc_info=True)
 
         # Execute after_task hooks (non-blocking, after state is persisted)
         if env_config and hook_ctx:
