@@ -142,6 +142,9 @@ class ReactAgent:
         self.fix_tracker = FixAttemptTracker()
         self.blocker_id: Optional[str] = None
 
+        # Token usage tracking: accumulate per-call records across the run.
+        self._token_records: list[dict] = []
+
         # Stall detection
         self._stall_triggered = threading.Event()
         self._stall_event: Optional[StallEvent] = None
@@ -254,6 +257,14 @@ class ReactAgent:
                 return AgentStatus.FAILED
             finally:
                 self._stall_monitor.stop()
+                try:
+                    self._persist_token_usage(task_id)
+                except Exception:
+                    logger.debug(
+                        "Failed to persist token usage for task %s",
+                        task_id,
+                        exc_info=True,
+                    )
         except StallDetectedError:
             raise  # Monitor stopped by finally above; let runtime handle retry
         except Exception:
@@ -264,6 +275,80 @@ class ReactAgent:
             })
             self._emit_stream_error(task_id, "exception")
             return AgentStatus.FAILED
+
+    def get_token_usage(self) -> list[dict]:
+        """Return the accumulated per-call token usage records.
+
+        Each record is a dict with keys: input_tokens, output_tokens, model,
+        call_type, iteration.
+        """
+        return list(self._token_records)
+
+    def get_total_tokens(self) -> dict:
+        """Return aggregated token totals and estimated cost.
+
+        Returns:
+            Dict with input_tokens, output_tokens, total_tokens,
+            and estimated_cost_usd.
+        """
+        total_in = sum(r["input_tokens"] for r in self._token_records)
+        total_out = sum(r["output_tokens"] for r in self._token_records)
+        return {
+            "input_tokens": total_in,
+            "output_tokens": total_out,
+            "total_tokens": total_in + total_out,
+            "estimated_cost_usd": self._estimate_cost(total_in, total_out),
+        }
+
+    # ------------------------------------------------------------------
+    # Token persistence
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
+        """Estimate USD cost using Anthropic Claude Sonnet pricing.
+
+        Uses a conservative default (Sonnet pricing) since the exact model
+        may vary across calls.  Returns 0.0 when totals are zero.
+        """
+        if input_tokens == 0 and output_tokens == 0:
+            return 0.0
+        # Claude Sonnet 4 pricing (per million tokens)
+        input_price = 3.00
+        output_price = 15.00
+        cost = (input_tokens * input_price + output_tokens * output_price) / 1_000_000
+        return round(cost, 6)
+
+    def _persist_token_usage(self, task_id: str) -> None:
+        """Persist accumulated token records to the workspace database.
+
+        Uses MetricsTracker.record_token_usage_sync (added by another agent).
+        Failures are logged but never propagated to the caller.
+        """
+        if not self._token_records:
+            return
+
+        try:
+            from codeframe.lib.metrics_tracker import MetricsTracker
+            from codeframe.persistence.database import Database
+
+            db = Database(str(self.workspace.db_path))
+            tracker = MetricsTracker(db=db)
+
+            for record in self._token_records:
+                tracker.record_token_usage_sync(
+                    task_id=task_id,
+                    agent_id="react-agent",
+                    project_id=0,
+                    model_name=record["model"],
+                    input_tokens=record["input_tokens"],
+                    output_tokens=record["output_tokens"],
+                    call_type=record["call_type"],
+                )
+        except Exception:
+            logger.debug(
+                "Token usage persistence failed for task %s", task_id, exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # ReAct loop
@@ -335,6 +420,15 @@ class ReactAgent:
                 system=system_prompt,
             )
             iterations += 1
+
+            # Record token usage for this LLM call.
+            self._token_records.append({
+                "input_tokens": response.input_tokens,
+                "output_tokens": response.output_tokens,
+                "model": response.model,
+                "call_type": "task_execution",
+                "iteration": iterations,
+            })
 
             if not response.has_tool_calls:
                 # Text-only response — agent thinks it's done.
@@ -564,6 +658,15 @@ class ReactAgent:
                     temperature=0.0,
                     system=system_prompt,
                 )
+
+                # Record token usage for verification fix calls.
+                self._token_records.append({
+                    "input_tokens": response.input_tokens,
+                    "output_tokens": response.output_tokens,
+                    "model": response.model,
+                    "call_type": "verification_fix",
+                    "iteration": attempt,
+                })
 
                 if not response.has_tool_calls:
                     break  # Agent done fixing → re-run gates
