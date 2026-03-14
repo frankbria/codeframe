@@ -61,7 +61,7 @@ class TaskWorktree:
         branch_name = f"cf/{task_id}"
 
         subprocess.run(
-            ["git", "worktree", "add", str(worktree_path), "-b", branch_name],
+            ["git", "worktree", "add", str(worktree_path), "-b", branch_name, base_branch],
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
