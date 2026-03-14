@@ -164,6 +164,116 @@ class TokenRepository(BaseRepository):
 
 
 
+    def get_task_token_summary(self, task_id: int) -> Dict[str, Any]:
+        """Get aggregated token usage summary for a single task.
+
+        Args:
+            task_id: Task ID to summarize
+
+        Returns:
+            Dictionary with aggregated token data:
+            {
+                "task_id": int,
+                "total_input_tokens": int,
+                "total_output_tokens": int,
+                "total_tokens": int,
+                "total_cost_usd": float,
+                "call_count": int,
+            }
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+                COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+                COALESCE(SUM(input_tokens + output_tokens), 0) as total_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as total_cost_usd,
+                COUNT(*) as call_count
+            FROM token_usage
+            WHERE task_id = ?
+            """,
+            (task_id,),
+        )
+        row = cursor.fetchone()
+
+        return {
+            "task_id": task_id,
+            "total_input_tokens": row["total_input_tokens"],
+            "total_output_tokens": row["total_output_tokens"],
+            "total_tokens": row["total_tokens"],
+            "total_cost_usd": row["total_cost_usd"],
+            "call_count": row["call_count"],
+        }
+
+    def get_batch_token_usage(
+        self,
+        task_ids: List[int],
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get token usage records filtered by a list of task IDs.
+
+        Args:
+            task_ids: List of task IDs to filter by
+            start_date: Optional start of date range (inclusive)
+            end_date: Optional end of date range (inclusive)
+
+        Returns:
+            List of token usage records as dictionaries
+        """
+        if not task_ids:
+            return []
+
+        cursor = self.conn.cursor()
+        placeholders = ",".join("?" for _ in task_ids)
+        query = f"SELECT * FROM token_usage WHERE task_id IN ({placeholders})"
+        params: list = list(task_ids)
+
+        if start_date is not None:
+            query += " AND timestamp >= ?"
+            params.append(start_date.isoformat())
+
+        if end_date is not None:
+            query += " AND timestamp <= ?"
+            params.append(end_date.isoformat())
+
+        query += " ORDER BY timestamp DESC"
+
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_workspace_token_usage(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get all token usage records across the workspace.
+
+        Args:
+            start_date: Optional start of date range (inclusive)
+            end_date: Optional end of date range (inclusive)
+
+        Returns:
+            List of token usage records as dictionaries
+        """
+        cursor = self.conn.cursor()
+        query = "SELECT * FROM token_usage WHERE 1=1"
+        params: list = []
+
+        if start_date is not None:
+            query += " AND timestamp >= ?"
+            params.append(start_date.isoformat())
+
+        if end_date is not None:
+            query += " AND timestamp <= ?"
+            params.append(end_date.isoformat())
+
+        query += " ORDER BY timestamp DESC"
+
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
     def get_project_costs_aggregate(self, project_id: int) -> Dict[str, Any]:
         """Get aggregated cost statistics for a project.
 
