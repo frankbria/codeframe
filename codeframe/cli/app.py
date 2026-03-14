@@ -28,6 +28,7 @@ from codeframe.cli.pr_commands import pr_app
 from codeframe.cli.env_commands import env_app
 from codeframe.cli.engines_commands import engines_app
 from codeframe.cli.hooks_commands import hooks_app
+from codeframe.cli.stats_commands import stats_app
 
 # Load environment variables from .env files
 # Priority: workspace .env > home .env
@@ -4870,6 +4871,7 @@ app.add_typer(env_app, name="env")
 
 app.add_typer(engines_app, name="engines")
 app.add_typer(hooks_app, name="hooks")
+app.add_typer(stats_app, name="stats")
 
 
 # =============================================================================

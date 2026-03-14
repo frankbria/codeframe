@@ -3,10 +3,11 @@
 This module provides token usage tracking and cost estimation for LLM calls
 across agents and projects. It supports:
 
-- Recording token usage per LLM call
+- Recording token usage per LLM call (async and sync)
 - Cost calculation for Claude models (Sonnet 4.5, Opus 4, Haiku 4)
-- Cost aggregation by project, agent, model, and call type
+- Cost aggregation by project, agent, model, task, and workspace
 - Timeline-based token usage statistics
+- Export to CSV and JSON
 
 Example:
     >>> from codeframe.lib.metrics_tracker import MetricsTracker
@@ -17,8 +18,8 @@ Example:
     >>> db.initialize()
     >>> tracker = MetricsTracker(db=db)
     >>>
-    >>> # Record token usage after LLM call
-    >>> usage_id = await tracker.record_token_usage(
+    >>> # Record token usage after LLM call (sync)
+    >>> usage_id = tracker.record_token_usage_sync(
     ...     task_id=27,
     ...     agent_id="backend-001",
     ...     project_id=1,
@@ -34,9 +35,12 @@ Example:
     Total: $0.01
 """
 
+import csv
+import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from codeframe.core.models import CallType, TokenUsage
 from codeframe.persistence.database import Database
 
@@ -49,6 +53,35 @@ MODEL_PRICING = {
     "claude-opus-4": {"input": 15.00, "output": 75.00},
     "claude-haiku-4": {"input": 0.80, "output": 4.00},
 }
+
+# Regex to match date suffixes like -20250514 at the end of model names
+_DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
+
+
+def normalize_model_name(raw_model: str) -> str:
+    """Normalize a model name by stripping date suffixes.
+
+    The Anthropic API returns model names like 'claude-sonnet-4-5-20250514'
+    but our pricing dict uses 'claude-sonnet-4-5'. This function strips
+    the date suffix and returns the canonical name.
+
+    Args:
+        raw_model: Raw model name from the API (e.g., 'claude-sonnet-4-5-20250514')
+
+    Returns:
+        Normalized model name (e.g., 'claude-sonnet-4-5')
+    """
+    # If it already matches a known model, return as-is
+    if raw_model in MODEL_PRICING:
+        return raw_model
+
+    # Try stripping date suffix (8 digits at the end)
+    stripped = _DATE_SUFFIX_RE.sub("", raw_model)
+    if stripped in MODEL_PRICING:
+        return stripped
+
+    # Unknown model - return as-is
+    return raw_model
 
 
 class MetricsTracker:
@@ -89,16 +122,17 @@ class MetricsTracker:
         - Claude Opus 4: $15.00 input / $75.00 output per MTok
         - Claude Haiku 4: $0.80 input / $4.00 output per MTok
 
+        Handles model names with date suffixes (e.g., 'claude-sonnet-4-5-20250514')
+        by normalizing them first. Unknown models return $0.00 cost instead of
+        raising, to avoid crashing the agent during recording.
+
         Args:
-            model_name: Model identifier (e.g., "claude-sonnet-4-5")
+            model_name: Model identifier (e.g., "claude-sonnet-4-5" or "claude-sonnet-4-5-20250514")
             input_tokens: Number of input tokens
             output_tokens: Number of output tokens
 
         Returns:
-            Estimated cost in USD (rounded to 6 decimal places)
-
-        Raises:
-            ValueError: If model_name is not recognized
+            Estimated cost in USD (rounded to 6 decimal places), or 0.0 for unknown models
 
         Example:
             >>> cost = MetricsTracker.calculate_cost(
@@ -107,13 +141,16 @@ class MetricsTracker:
             >>> print(f"${cost:.4f}")
             $0.0105
         """
-        if model_name not in MODEL_PRICING:
-            raise ValueError(
-                f"Unknown model: {model_name}. "
-                f"Supported models: {', '.join(MODEL_PRICING.keys())}"
-            )
+        normalized = normalize_model_name(model_name)
 
-        prices = MODEL_PRICING[model_name]
+        if normalized not in MODEL_PRICING:
+            logger.warning(
+                f"Unknown model '{model_name}' (normalized: '{normalized}'). "
+                f"Returning $0.00 cost. Supported: {', '.join(MODEL_PRICING.keys())}"
+            )
+            return 0.0
+
+        prices = MODEL_PRICING[normalized]
 
         # Calculate cost: (tokens * price_per_mtok) / 1,000,000
         input_cost = (input_tokens * prices["input"]) / 1_000_000
@@ -170,12 +207,8 @@ class MetricsTracker:
         if input_tokens < 0 or output_tokens < 0:
             raise ValueError("Token counts cannot be negative")
 
-        # Calculate cost
-        try:
-            estimated_cost = self.calculate_cost(model_name, input_tokens, output_tokens)
-        except ValueError as e:
-            logger.error(f"Cost calculation failed: {e}")
-            raise
+        # Calculate cost (returns 0.0 for unknown models)
+        estimated_cost = self.calculate_cost(model_name, input_tokens, output_tokens)
 
         # Create TokenUsage model
         token_usage = TokenUsage(
@@ -201,6 +234,170 @@ class MetricsTracker:
         )
 
         return usage_id
+
+    def record_token_usage_sync(
+        self,
+        task_id: Optional[int],
+        agent_id: str,
+        project_id: int,
+        model_name: str,
+        input_tokens: int,
+        output_tokens: int,
+        call_type: CallType = CallType.OTHER,
+        session_id: Optional[str] = None,
+    ) -> int:
+        """Record token usage for an LLM call (synchronous version).
+
+        Identical to record_token_usage but synchronous, for use from
+        synchronous code paths like the ReactAgent.
+
+        Args:
+            task_id: Task ID if this call is related to a task (None for non-task calls)
+            agent_id: ID of the agent making the call
+            project_id: Project ID
+            model_name: Model identifier (e.g., "claude-sonnet-4-5")
+            input_tokens: Number of input tokens
+            output_tokens: Number of output tokens
+            call_type: Type of call (TASK_EXECUTION, CODE_REVIEW, COORDINATION, OTHER)
+            session_id: Optional SDK session ID for conversation tracking
+
+        Returns:
+            Database ID of the created token usage record
+
+        Raises:
+            ValueError: If token counts are negative
+        """
+        if input_tokens < 0 or output_tokens < 0:
+            raise ValueError("Token counts cannot be negative")
+
+        estimated_cost = self.calculate_cost(model_name, input_tokens, output_tokens)
+
+        token_usage = TokenUsage(
+            task_id=task_id,
+            actual_cost_usd=None,
+            agent_id=agent_id,
+            project_id=project_id,
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            estimated_cost_usd=estimated_cost,
+            call_type=call_type,
+            session_id=session_id,
+            timestamp=datetime.now(timezone.utc),
+        )
+
+        usage_id = self.db.save_token_usage(token_usage)
+
+        logger.info(
+            f"Recorded token usage (sync): agent={agent_id}, model={model_name}, "
+            f"tokens={input_tokens + output_tokens}, cost=${estimated_cost:.6f}"
+        )
+
+        return usage_id
+
+    def get_task_token_summary(self, task_id: int) -> Dict[str, Any]:
+        """Get aggregated token usage summary for a single task.
+
+        Args:
+            task_id: Task ID to summarize
+
+        Returns:
+            Dictionary with aggregated token data:
+            {
+                "task_id": int,
+                "total_input_tokens": int,
+                "total_output_tokens": int,
+                "total_tokens": int,
+                "total_cost_usd": float,
+                "call_count": int,
+            }
+        """
+        return self.db.get_task_token_summary(task_id)
+
+    def get_workspace_costs(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """Get aggregated costs across all tasks in the workspace.
+
+        Args:
+            start_date: Optional start of date range (inclusive)
+            end_date: Optional end of date range (inclusive)
+
+        Returns:
+            Dictionary with cost breakdown:
+            {
+                "total_cost_usd": float,
+                "total_tokens": int,
+                "total_calls": int,
+            }
+        """
+        records = self.db.get_workspace_token_usage(
+            start_date=start_date, end_date=end_date
+        )
+
+        result: Dict[str, Any] = {
+            "total_cost_usd": 0.0,
+            "total_tokens": 0,
+            "total_calls": len(records),
+        }
+
+        for record in records:
+            result["total_cost_usd"] += record["estimated_cost_usd"]
+            result["total_tokens"] += record["input_tokens"] + record["output_tokens"]
+
+        result["total_cost_usd"] = round(result["total_cost_usd"], 6)
+        return result
+
+    @staticmethod
+    def export_to_csv(records: List[Dict[str, Any]], output_path: str) -> None:
+        """Export token usage records to a CSV file.
+
+        Args:
+            records: List of token usage record dictionaries
+            output_path: Path to write the CSV file
+        """
+        fieldnames = [
+            "id", "task_id", "agent_id", "project_id", "model_name",
+            "input_tokens", "output_tokens", "estimated_cost_usd",
+            "actual_cost_usd", "call_type", "session_id", "timestamp",
+        ]
+
+        with open(output_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            for record in records:
+                writer.writerow(record)
+
+    @staticmethod
+    def export_to_json(records: List[Dict[str, Any]], output_path: str) -> None:
+        """Export token usage records to a JSON file with metadata.
+
+        Args:
+            records: List of token usage record dictionaries
+            output_path: Path to write the JSON file
+        """
+        # Convert sqlite3.Row objects to plain dicts if needed
+        serializable_records = []
+        for record in records:
+            row = dict(record)
+            # Ensure all values are JSON-serializable
+            for key, value in row.items():
+                if isinstance(value, datetime):
+                    row[key] = value.isoformat()
+            serializable_records.append(row)
+
+        data = {
+            "metadata": {
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "record_count": len(serializable_records),
+            },
+            "records": serializable_records,
+        }
+
+        with open(output_path, "w") as f:
+            json.dump(data, f, indent=2, default=str)
 
     async def get_project_costs(
         self,

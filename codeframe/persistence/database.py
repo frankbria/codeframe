@@ -756,6 +756,18 @@ class Database:
         """Delegate to token_usage.get_project_costs_aggregate()."""
         return self.token_usage.get_project_costs_aggregate(*args, **kwargs)
 
+    def get_task_token_summary(self, *args, **kwargs):
+        """Delegate to token_usage.get_task_token_summary()."""
+        return self.token_usage.get_task_token_summary(*args, **kwargs)
+
+    def get_batch_token_usage(self, *args, **kwargs):
+        """Delegate to token_usage.get_batch_token_usage()."""
+        return self.token_usage.get_batch_token_usage(*args, **kwargs)
+
+    def get_workspace_token_usage(self, *args, **kwargs):
+        """Delegate to token_usage.get_workspace_token_usage()."""
+        return self.token_usage.get_workspace_token_usage(*args, **kwargs)
+
     def create_correction_attempt(self, *args, **kwargs):
         """Delegate to correction_attempts.create_correction_attempt()."""
         return self.correction_attempts.create_correction_attempt(*args, **kwargs)
