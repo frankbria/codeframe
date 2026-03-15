@@ -1547,6 +1547,18 @@ def tasks_generate(
         "--overwrite",
         help="Delete existing tasks before generating new ones",
     ),
+    recursive: bool = typer.Option(
+        False,
+        "--recursive", "-r",
+        help="Use recursive decomposition",
+    ),
+    max_depth: int = typer.Option(
+        3,
+        "--max-depth",
+        help="Maximum recursion depth (1-5)",
+        min=1,
+        max=5,
+    ),
 ) -> None:
     """Generate tasks from the PRD.
 
@@ -1555,6 +1567,7 @@ def tasks_generate(
 
     Use --overwrite to clear existing tasks first (useful for regeneration).
     Without --overwrite, new tasks are appended (useful for multi-PRD projects).
+    Use --recursive for recursive decomposition into a task tree.
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import prd, tasks
@@ -1585,13 +1598,27 @@ def tasks_generate(
             from codeframe.cli.validators import require_anthropic_api_key
             require_anthropic_api_key()
 
-        if no_llm:
+        if recursive:
+            console.print(f"[dim]Using recursive decomposition (max depth: {max_depth})...[/dim]")
+
+            from codeframe.adapters.llm import get_provider
+            from codeframe.core.task_tree import generate_task_tree, flatten_task_tree
+
+            provider = get_provider()
+            tree = generate_task_tree(
+                provider,
+                prd_record.content,
+                lineage=[],
+                depth=0,
+                max_depth=max_depth,
+            )
+            created = flatten_task_tree(tree, workspace, prd_id=prd_record.id)
+        elif no_llm:
             console.print("[dim]Using simple extraction (--no-llm)[/dim]")
+            created = tasks.generate_from_prd(workspace, prd_record, use_llm=False)
         else:
             console.print("[dim]Using LLM for task generation...[/dim]")
-
-        # Generate tasks
-        created = tasks.generate_from_prd(workspace, prd_record, use_llm=not no_llm)
+            created = tasks.generate_from_prd(workspace, prd_record, use_llm=True)
 
         # Emit event
         emit_for_workspace(
@@ -1616,6 +1643,35 @@ def tasks_generate(
         console.print("  codeframe tasks set status READY <id>   Mark task ready")
         console.print("  codeframe tasks set status READY --all  Mark all tasks ready")
 
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@tasks_app.command("tree")
+def tasks_tree(
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Display task hierarchy as tree."""
+    from codeframe.core.task_tree import display_task_tree
+    from codeframe.core.workspace import get_workspace
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+        output = display_task_tree(workspace)
+        if output:
+            typer.echo(output)
+        else:
+            typer.echo("No tasks found.")
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
