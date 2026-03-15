@@ -9,8 +9,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from codeframe.core.agents_config import (
-    AgentPreferences,
-    CodeframeConfig,
     load_preferences,
     parse_codeframe_md,
     get_codeframe_config,
