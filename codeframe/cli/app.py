@@ -82,6 +82,11 @@ def init(
         "--tech-stack-interactive", "-i",
         help="Interactively configure tech stack",
     ),
+    generate_config: bool = typer.Option(
+        False,
+        "--generate-config",
+        help="Generate starter CODEFRAME.md with project configuration",
+    ),
 ) -> None:
     """Initialize a CodeFRAME workspace for a repository.
 
@@ -99,6 +104,8 @@ def init(
         codeframe init . --tech-stack "Rust project using cargo"
         codeframe init . --tech-stack "TypeScript monorepo with pnpm, Next.js frontend, FastAPI backend"
         codeframe init . --tech-stack-interactive
+        codeframe init . --generate-config
+        codeframe init . --detect --generate-config
     """
     from codeframe.core.workspace import (
         create_or_load_workspace,
@@ -169,6 +176,15 @@ def init(
                     console.print(f"  Hook after_init: [green]OK[/green] ({hook_result.duration_ms}ms)")
                 else:
                     console.print(f"  Hook after_init: [yellow]failed[/yellow] ({hook_result.stderr[:100]})")
+
+        # Generate CODEFRAME.md if requested
+        if generate_config:
+            config_content = _generate_codeframe_md(
+                tech_stack=final_tech_stack or "",
+            )
+            config_path = repo_path / "CODEFRAME.md"
+            config_path.write_text(config_content)
+            console.print("  Generated: CODEFRAME.md")
 
         console.print()
         console.print("Next steps:")
@@ -315,6 +331,58 @@ def _interactive_tech_stack() -> str:
 
     tech_stack = typer.prompt("What's your tech stack?")
     return tech_stack
+
+
+def _generate_codeframe_md(tech_stack: str = "") -> str:
+    """Generate a starter CODEFRAME.md file with YAML front matter and body.
+
+    Args:
+        tech_stack: Natural language tech stack description.
+
+    Returns:
+        Complete CODEFRAME.md content string.
+    """
+    import yaml as _yaml
+
+    yaml_section: dict = {
+        "engine": "react",
+    }
+    if tech_stack:
+        yaml_section["tech_stack"] = tech_stack
+
+    # Detect gates from tech stack
+    gates: list[str] = []
+    if tech_stack:
+        ts_lower = tech_stack.lower()
+        if "python" in ts_lower or "pytest" in ts_lower:
+            gates.extend(["ruff", "pytest"])
+        elif "typescript" in ts_lower or "jest" in ts_lower:
+            gates.extend(["eslint", "jest"])
+    if gates:
+        yaml_section["gates"] = gates
+
+    yaml_section["batch"] = {"max_parallel": 2, "default_strategy": "auto"}
+    yaml_section["agent"] = {"max_iterations": 30, "verbose": False}
+
+    front_matter = _yaml.dump(yaml_section, default_flow_style=False, sort_keys=False)
+
+    body = """# Project Agent Instructions
+
+## Coding Standards
+- Follow existing code patterns and conventions
+- Write clear, self-documenting code
+- Include appropriate error handling
+
+## Always Do
+- Run tests before considering a task complete
+- Follow the project's existing file structure
+
+## Never Do
+- Delete or overwrite files without understanding their purpose
+- Introduce new dependencies without justification
+"""
+
+    return f"---\n{front_matter}---\n\n{body}"
 
 
 @app.command()

@@ -306,23 +306,121 @@ ENV_CONFIG_FILE = "config.yaml"
 def load_environment_config(workspace_path: Path) -> Optional[EnvironmentConfig]:
     """Load environment configuration from workspace.
 
+    Checks .codeframe/config.yaml first. If not found, falls back to
+    reading CODEFRAME.md front matter and converting it to EnvironmentConfig.
+
     Args:
         workspace_path: Path to the workspace root
 
     Returns:
-        EnvironmentConfig if file exists, None otherwise
+        EnvironmentConfig if configuration is found, None otherwise
     """
+    # Try .codeframe/config.yaml first (existing behavior)
     config_file = workspace_path / ".codeframe" / ENV_CONFIG_FILE
-    if not config_file.exists():
-        return None
+    if config_file.exists():
+        with open(config_file) as f:
+            data = yaml.safe_load(f)
 
-    with open(config_file) as f:
-        data = yaml.safe_load(f)
+        if data is None:
+            return EnvironmentConfig()  # empty file = defaults
 
-    if data is None:
-        return EnvironmentConfig()  # empty file = defaults
+        return EnvironmentConfig.from_dict(data)
 
-    return EnvironmentConfig.from_dict(data)
+    # Fallback: try CODEFRAME.md front matter
+    from codeframe.core.agents_config import get_codeframe_config
+
+    cf_config = get_codeframe_config(workspace_path)
+    if cf_config is not None and _has_meaningful_config(cf_config):
+        return _codeframe_config_to_env_config(cf_config)
+
+    return None
+
+
+def _has_meaningful_config(cf_config: Any) -> bool:
+    """Check if a CodeframeConfig has any non-default settings.
+
+    Returns False when the CODEFRAME.md exists but has no YAML front matter
+    (all fields are None or empty).
+    """
+    return bool(
+        cf_config.engine
+        or cf_config.tech_stack
+        or cf_config.gates
+        or cf_config.hooks
+        or cf_config.batch
+        or cf_config.agent
+    )
+
+
+def _codeframe_config_to_env_config(cf_config: Any) -> EnvironmentConfig:
+    """Convert CodeframeConfig (from CODEFRAME.md) to EnvironmentConfig.
+
+    Maps structured fields from CODEFRAME.md front matter into the
+    EnvironmentConfig dataclass used throughout the runtime.
+
+    Args:
+        cf_config: A CodeframeConfig instance from agents_config module.
+
+    Returns:
+        Populated EnvironmentConfig.
+    """
+    config = EnvironmentConfig()
+
+    # Map engine directly
+    if cf_config.engine:
+        config.engine = cf_config.engine
+
+    # Map tech_stack to package_manager/test_framework heuristics
+    if cf_config.tech_stack:
+        ts = cf_config.tech_stack.lower()
+        if "uv" in ts:
+            config.package_manager = "uv"
+        elif "poetry" in ts:
+            config.package_manager = "poetry"
+        elif "npm" in ts:
+            config.package_manager = "npm"
+        elif "pnpm" in ts:
+            config.package_manager = "pnpm"
+        elif "yarn" in ts:
+            config.package_manager = "yarn"
+
+        if "pytest" in ts:
+            config.test_framework = "pytest"
+        elif "jest" in ts:
+            config.test_framework = "jest"
+        elif "vitest" in ts:
+            config.test_framework = "vitest"
+
+    # Map gates to lint_tools (filter to lint-related gates only)
+    if cf_config.gates:
+        lint_gate_names = {"ruff", "pylint", "eslint", "prettier", "flake8", "mypy", "biome"}
+        config.lint_tools = [g for g in cf_config.gates if g in lint_gate_names]
+
+    # Map hooks
+    if cf_config.hooks:
+        valid_hook_fields = {f.name for f in HooksConfig.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in cf_config.hooks.items() if k in valid_hook_fields}
+        config.hooks = HooksConfig(**filtered)
+
+    # Map batch
+    if cf_config.batch:
+        batch_kwargs: dict[str, Any] = {}
+        if "max_parallel" in cf_config.batch:
+            batch_kwargs["max_parallel"] = cf_config.batch["max_parallel"]
+        if batch_kwargs:
+            config.batch = BatchConfig(**batch_kwargs)
+
+    # Map agent budget
+    if cf_config.agent:
+        budget_kwargs: dict[str, Any] = {}
+        if "max_iterations" in cf_config.agent:
+            budget_kwargs["max_iterations"] = cf_config.agent["max_iterations"]
+            # Also set base_iterations to match (they're conceptually the same)
+            budget_kwargs["base_iterations"] = cf_config.agent["max_iterations"]
+        if budget_kwargs:
+            config.agent_budget = AgentBudgetConfig(**budget_kwargs)
+
+    return config
 
 
 def save_environment_config(workspace_path: Path, config: EnvironmentConfig) -> None:
