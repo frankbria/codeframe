@@ -1,8 +1,11 @@
 """Agent preferences loader for CodeFRAME v2.
 
-Loads project-level preferences from AGENTS.md and CLAUDE.md files.
+Loads project-level preferences from CODEFRAME.md, AGENTS.md, and CLAUDE.md files.
 These preferences guide agent decision-making for tactical choices like
 tooling, file handling, and code style.
+
+CODEFRAME.md supports YAML front matter for typed configuration (engine, gates,
+batch settings, hooks) plus a Markdown body for agent instructions.
 
 Supports the AGENTS.md industry standard (OpenAI, Google, GitHub, Anthropic)
 as well as CLAUDE.md for Anthropic-specific instructions.
@@ -14,9 +17,15 @@ References:
 - https://github.blog/ai-and-ml/github-copilot/how-to-write-a-great-agents-md-lessons-from-over-2500-repositories/
 """
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
+
+import yaml
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -96,6 +105,29 @@ class AgentPreferences:
                 sections.append(f"- **{key}**: {value}")
 
         return "\n".join(sections)
+
+
+@dataclass
+class CodeframeConfig:
+    """Typed configuration from CODEFRAME.md YAML front matter.
+
+    Attributes:
+        engine: Execution engine (react, plan, claude-code, etc.)
+        tech_stack: Natural language tech stack description
+        batch: Batch execution settings (max_parallel, default_strategy)
+        gates: Verification gates to run (ruff, pytest, mypy, etc.)
+        hooks: Lifecycle hooks (before_task, after_task, on_failure, etc.)
+        agent: Agent tuning parameters (max_iterations, verbose, etc.)
+        raw: Full parsed YAML dict for extensibility
+    """
+
+    engine: Optional[str] = None
+    tech_stack: Optional[str] = None
+    batch: dict = field(default_factory=dict)
+    gates: list[str] = field(default_factory=list)
+    hooks: dict = field(default_factory=dict)
+    agent: dict = field(default_factory=dict)
+    raw: dict = field(default_factory=dict)
 
 
 # Section header patterns for parsing AGENTS.md content
@@ -270,6 +302,89 @@ def _parse_agents_md(content: str) -> AgentPreferences:
     return prefs
 
 
+def parse_codeframe_md(content: str) -> tuple[CodeframeConfig, AgentPreferences]:
+    """Parse a CODEFRAME.md file with YAML front matter + Markdown body.
+
+    The file format is:
+    ---
+    engine: react
+    tech_stack: "Python with uv"
+    batch:
+      max_parallel: 4
+    gates:
+      - ruff
+      - pytest
+    hooks:
+      before_task: "git checkout -b cf/{{task_id}}"
+    agent:
+      max_iterations: 30
+    ---
+
+    # Project Instructions
+    Markdown content here becomes the agent system prompt supplement...
+
+    Returns:
+        Tuple of (CodeframeConfig, AgentPreferences)
+        CodeframeConfig has the typed YAML settings
+        AgentPreferences has the Markdown body as raw_content + any extracted sections
+    """
+    config = CodeframeConfig()
+    prefs = AgentPreferences()
+
+    if not content or not content.strip():
+        return config, prefs
+
+    # Extract YAML front matter between --- markers
+    yaml_data = {}
+    body = content
+
+    stripped = content.strip()
+    if stripped.startswith("---"):
+        # Find the closing --- marker (skip the opening one)
+        after_opening = stripped[3:]
+        closing_idx = after_opening.find("\n---")
+        if closing_idx >= 0:
+            yaml_text = after_opening[:closing_idx].strip()
+            # Body starts after the closing ---
+            rest = after_opening[closing_idx + 4:]  # skip "\n---"
+            body = rest.strip()
+
+            # Parse YAML
+            try:
+                parsed = yaml.safe_load(yaml_text)
+                if isinstance(parsed, dict):
+                    yaml_data = parsed
+            except yaml.YAMLError:
+                logger.warning("Invalid YAML front matter in CODEFRAME.md, skipping")
+                body = content  # Treat entire content as body on YAML failure
+        else:
+            # No closing --- found, treat entire content as body
+            body = content
+
+    # Build CodeframeConfig from YAML
+    if yaml_data:
+        config = CodeframeConfig(
+            engine=yaml_data.get("engine"),
+            tech_stack=yaml_data.get("tech_stack"),
+            batch=yaml_data.get("batch") or {},
+            gates=yaml_data.get("gates") or [],
+            hooks=yaml_data.get("hooks") or {},
+            agent=yaml_data.get("agent") or {},
+            raw=yaml_data,
+        )
+
+    # Parse Markdown body for AgentPreferences
+    if body:
+        prefs = _parse_agents_md(body)
+    prefs.source_files = ["CODEFRAME.md"]
+
+    # Cross-populate tech_stack into preferences tooling
+    if config.tech_stack:
+        prefs.tooling["tech_stack"] = config.tech_stack
+
+    return config, prefs
+
+
 def _merge_preferences(
     base: AgentPreferences, override: AgentPreferences
 ) -> AgentPreferences:
@@ -295,15 +410,16 @@ def _merge_preferences(
 
 
 def load_preferences(workspace_path: Path) -> AgentPreferences:
-    """Load and merge agent preferences from AGENTS.md and CLAUDE.md files.
+    """Load and merge agent preferences from CODEFRAME.md, AGENTS.md, and CLAUDE.md.
 
     Search order (closest wins):
-    1. workspace_path/AGENTS.md
-    2. workspace_path/CLAUDE.md
-    3. Parent directories (walking up)
-    4. ~/.codeframe/AGENTS.md (global defaults)
+    1. workspace_path/CODEFRAME.md (highest priority)
+    2. workspace_path/AGENTS.md
+    3. workspace_path/CLAUDE.md (lowest priority)
+    4. Parent directories (walking up, same precedence order)
+    5. ~/.codeframe/AGENTS.md (global defaults)
 
-    AGENTS.md takes precedence over CLAUDE.md at the same directory level.
+    At each directory level, CODEFRAME.md > AGENTS.md > CLAUDE.md.
 
     Args:
         workspace_path: Path to the workspace/repository root
@@ -316,12 +432,12 @@ def load_preferences(workspace_path: Path) -> AgentPreferences:
     found_files = []
 
     # Search order: global defaults first, then walk up to workspace (closest wins)
-    search_paths = []
+    search_paths: list[tuple[Path, bool]] = []  # (path, is_codeframe_md)
 
     # 1. Global defaults (lowest priority)
     global_config = Path.home() / ".codeframe" / "AGENTS.md"
     if global_config.exists():
-        search_paths.append(global_config)
+        search_paths.append((global_config, False))
 
     # 2. Walk from root to workspace (so workspace files override parents)
     current = workspace_path
@@ -332,22 +448,31 @@ def load_preferences(workspace_path: Path) -> AgentPreferences:
 
     # Reverse so we go from ancestors to workspace (closest wins)
     for dir_path in reversed(path_chain):
-        # CLAUDE.md first (lower priority at same level)
+        # CLAUDE.md first (lowest priority at same level)
         claude_md = dir_path / "CLAUDE.md"
         if claude_md.exists():
-            search_paths.append(claude_md)
+            search_paths.append((claude_md, False))
 
-        # AGENTS.md second (higher priority at same level)
+        # AGENTS.md second (medium priority at same level)
         agents_md = dir_path / "AGENTS.md"
         if agents_md.exists():
-            search_paths.append(agents_md)
+            search_paths.append((agents_md, False))
+
+        # CODEFRAME.md third (highest priority at same level)
+        codeframe_md = dir_path / "CODEFRAME.md"
+        if codeframe_md.exists():
+            search_paths.append((codeframe_md, True))
 
     # Process all found files
-    for file_path in search_paths:
+    for file_path, is_codeframe in search_paths:
         try:
             content = file_path.read_text(encoding="utf-8")
-            file_prefs = _parse_agents_md(content)
-            file_prefs.source_files = [str(file_path)]
+            if is_codeframe:
+                _, file_prefs = parse_codeframe_md(content)
+                file_prefs.source_files = [str(file_path)]
+            else:
+                file_prefs = _parse_agents_md(content)
+                file_prefs.source_files = [str(file_path)]
             prefs = _merge_preferences(prefs, file_prefs)
             found_files.append(str(file_path))
         except (OSError, UnicodeDecodeError):
@@ -413,3 +538,32 @@ def get_default_preferences() -> AgentPreferences:
         raw_content="",
         source_files=["<defaults>"],
     )
+
+
+def get_codeframe_config(workspace_path: Path) -> Optional[CodeframeConfig]:
+    """Load CodeframeConfig from CODEFRAME.md if present.
+
+    Searches for CODEFRAME.md starting from workspace_path, walking up to root.
+    Returns None if no CODEFRAME.md is found.
+
+    Args:
+        workspace_path: Path to the workspace/repository root
+
+    Returns:
+        CodeframeConfig if CODEFRAME.md is found, None otherwise
+    """
+    workspace_path = Path(workspace_path).resolve()
+
+    current = workspace_path
+    while current != current.parent:
+        codeframe_md = current / "CODEFRAME.md"
+        if codeframe_md.exists():
+            try:
+                content = codeframe_md.read_text(encoding="utf-8")
+                config, _ = parse_codeframe_md(content)
+                return config
+            except (OSError, UnicodeDecodeError):
+                return None
+        current = current.parent
+
+    return None
