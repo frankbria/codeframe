@@ -460,3 +460,83 @@ class TestToTaskFile:
             packager.to_task_file(packaged, task_file)
 
             assert task_file.read_text(encoding="utf-8") == packaged.prompt
+
+
+class TestLineageContext:
+    """Tests for lineage inclusion in build() prompt."""
+
+    def test_context_packager_includes_lineage(self, mock_workspace):
+        """Task with lineage should have 'Task Lineage' section in prompt."""
+        ctx = MagicMock(spec=TaskContext)
+        ctx.task = MagicMock()
+        ctx.task.lineage = ["Build app", "Authentication module"]
+        ctx.to_prompt_context.return_value = (
+            "## Task\n**Title:** Implement JWT\n**Description:** Add tokens\n"
+        )
+        ctx.relevant_files = []
+
+        with patch("codeframe.core.context_packager.ContextLoader") as MockLoader:
+            MockLoader.return_value.load.return_value = ctx
+
+            packager = TaskContextPackager(mock_workspace)
+            result = packager.build("task-1")
+
+            assert "Task Lineage" in result.prompt
+            assert "Build app" in result.prompt
+            assert "Authentication module" in result.prompt
+
+    def test_context_packager_no_lineage(self, mock_workspace):
+        """Task without lineage should not have 'Task Lineage' section."""
+        ctx = MagicMock(spec=TaskContext)
+        ctx.task = MagicMock()
+        ctx.task.lineage = []
+        ctx.to_prompt_context.return_value = (
+            "## Task\n**Title:** Simple task\n**Description:** Do it\n"
+        )
+        ctx.relevant_files = []
+
+        with patch("codeframe.core.context_packager.ContextLoader") as MockLoader:
+            MockLoader.return_value.load.return_value = ctx
+
+            packager = TaskContextPackager(mock_workspace)
+            result = packager.build("task-1")
+
+            assert "Task Lineage" not in result.prompt
+
+    def test_context_packager_lineage_missing_attribute(self, mock_workspace):
+        """Task without lineage attribute should not have 'Task Lineage' section."""
+        ctx = MagicMock(spec=TaskContext)
+        ctx.task = MagicMock(spec=["title", "description", "id"])
+        # No lineage attribute on task
+        ctx.to_prompt_context.return_value = (
+            "## Task\n**Title:** Old task\n**Description:** Legacy\n"
+        )
+        ctx.relevant_files = []
+
+        with patch("codeframe.core.context_packager.ContextLoader") as MockLoader:
+            MockLoader.return_value.load.return_value = ctx
+
+            packager = TaskContextPackager(mock_workspace)
+            result = packager.build("task-1")
+
+            assert "Task Lineage" not in result.prompt
+
+    def test_lineage_appears_before_gates(self, mock_workspace):
+        """Lineage section should appear before Verification Gates."""
+        ctx = MagicMock(spec=TaskContext)
+        ctx.task = MagicMock()
+        ctx.task.lineage = ["Parent task"]
+        ctx.to_prompt_context.return_value = (
+            "## Task\n**Title:** Child task\n"
+        )
+        ctx.relevant_files = []
+
+        with patch("codeframe.core.context_packager.ContextLoader") as MockLoader:
+            MockLoader.return_value.load.return_value = ctx
+
+            packager = TaskContextPackager(mock_workspace)
+            result = packager.build("task-1")
+
+            lineage_pos = result.prompt.index("Task Lineage")
+            gates_pos = result.prompt.index("Verification Gates")
+            assert lineage_pos < gates_pos

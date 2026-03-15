@@ -56,6 +56,10 @@ class Task:
     complexity_score: Optional[int] = None
     uncertainty_level: Optional[str] = None
     github_issue_number: Optional[int] = None
+    parent_id: Optional[str] = None
+    lineage: list[str] = field(default_factory=list)
+    is_leaf: bool = True
+    hierarchical_id: Optional[str] = None
 
 
 def create(
@@ -69,6 +73,10 @@ def create(
     estimated_hours: Optional[float] = None,
     complexity_score: Optional[int] = None,
     uncertainty_level: Optional[str] = None,
+    parent_id: Optional[str] = None,
+    lineage: Optional[list[str]] = None,
+    is_leaf: bool = True,
+    hierarchical_id: Optional[str] = None,
 ) -> Task:
     """Create a new task.
 
@@ -83,6 +91,10 @@ def create(
         estimated_hours: Optional time estimate in hours
         complexity_score: Optional complexity rating 1-5
         uncertainty_level: Optional uncertainty level ('low', 'medium', 'high')
+        parent_id: Optional parent task ID for tree structure
+        lineage: Optional list of ancestor descriptions
+        is_leaf: Whether this is a leaf/executable task (default True)
+        hierarchical_id: Optional display ID like "1.2.3"
 
     Returns:
         Created Task
@@ -90,16 +102,17 @@ def create(
     task_id = str(uuid.uuid4())
     now = _utc_now().isoformat()
     depends_on_list = depends_on or []
+    lineage_list = lineage or []
 
     conn = get_db_connection(workspace)
     try:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, parent_id, lineage, is_leaf, hierarchical_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, complexity_score, uncertainty_level, now, now),
+            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, complexity_score, uncertainty_level, parent_id, json.dumps(lineage_list), 1 if is_leaf else 0, hierarchical_id, now, now),
         )
         conn.commit()
     finally:
@@ -117,6 +130,10 @@ def create(
         estimated_hours=estimated_hours,
         complexity_score=complexity_score,
         uncertainty_level=uncertainty_level,
+        parent_id=parent_id,
+        lineage=lineage_list,
+        is_leaf=is_leaf,
+        hierarchical_id=hierarchical_id,
         created_at=datetime.fromisoformat(now),
         updated_at=datetime.fromisoformat(now),
     )
@@ -137,7 +154,7 @@ def get(workspace: Workspace, task_id: str) -> Optional[Task]:
 
     cursor.execute(
         """
-        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at
+        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id
         FROM tasks
         WHERE workspace_id = ? AND id = ?
         """,
@@ -173,7 +190,7 @@ def list_tasks(
     if status:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id
             FROM tasks
             WHERE workspace_id = ? AND status = ?
             ORDER BY priority ASC, created_at ASC
@@ -184,7 +201,7 @@ def list_tasks(
     else:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id
             FROM tasks
             WHERE workspace_id = ?
             ORDER BY priority ASC, created_at ASC
@@ -539,8 +556,19 @@ def generate_from_prd(
             status=TaskStatus.BACKLOG,
             priority=i,  # Priority based on order
             prd_id=prd.id,
+            complexity_score=task_data.get("complexity"),
+            estimated_hours=task_data.get("estimated_hours"),
+            uncertainty_level=task_data.get("uncertainty"),
         )
         created_tasks.append(task)
+
+    # Resolve title-based dependencies to task IDs
+    title_to_id = {t.title: t.id for t in created_tasks}
+    for task_data, task in zip(tasks_data, created_tasks):
+        dep_titles = task_data.get("depends_on_titles", [])
+        dep_ids = [title_to_id[t] for t in dep_titles if t in title_to_id]
+        if dep_ids:
+            update_depends_on(workspace, task.id, dep_ids)
 
     return created_tasks
 
@@ -552,28 +580,30 @@ def _generate_tasks_with_llm(prd_content: str) -> list[dict]:
         prd_content: PRD text
 
     Returns:
-        List of task dicts with 'title' and 'description' keys
+        List of task dicts with rich metadata fields
     """
     # Use the LLM adapter for provider-agnostic access
     from codeframe.adapters.llm import get_provider, Purpose
 
     provider = get_provider()
 
-    prompt = f"""Analyze the following Product Requirements Document (PRD) and generate a list of actionable development tasks.
+    prompt = f"""Analyze the following PRD and generate a list of actionable development tasks.
 
-Each task should:
-1. Be specific and actionable
-2. Have a clear title (under 80 characters)
-3. Have a brief description explaining what needs to be done
-4. Be ordered by logical dependency/priority
+For each task, provide:
+1. "title": Clear, specific title (under 80 characters)
+2. "description": What needs to be done
+3. "depends_on_titles": List of other task titles this depends on (empty list if none)
+4. "complexity": Complexity score 1-5 (1=trivial, 5=very complex)
+5. "estimated_hours": Estimated hours to complete (float)
+6. "uncertainty": "low", "medium", or "high"
+7. "files_to_modify": List of file paths likely to be modified (best guess)
 
-Return the tasks as a JSON array with objects containing "title" and "description" fields.
-Return ONLY the JSON array, no other text.
+Order tasks by logical dependency/priority.
 
-PRD Content:
-{prd_content}
+Return ONLY a JSON array of objects with these fields.
 
-JSON Tasks:"""
+PRD:
+{prd_content}"""
 
     response = provider.complete(
         messages=[{"role": "user", "content": prompt}],
@@ -587,18 +617,42 @@ JSON Tasks:"""
     # Try to find JSON array in response
     json_match = re.search(r"\[[\s\S]*\]", response_text)
     if json_match:
-        tasks = json.loads(json_match.group())
+        tasks_raw = json.loads(json_match.group())
     else:
-        tasks = json.loads(response_text)
+        tasks_raw = json.loads(response_text)
 
-    # Validate structure
+    # Validate and extract rich fields
     validated = []
-    for task in tasks:
-        if isinstance(task, dict) and "title" in task:
-            validated.append({
-                "title": str(task["title"])[:200],
-                "description": str(task.get("description", ""))[:2000],
-            })
+    for task in tasks_raw:
+        if not isinstance(task, dict) or "title" not in task:
+            continue
+
+        # Extract rich fields with defaults and validation
+        complexity = task.get("complexity")
+        if complexity is not None:
+            complexity = max(1, min(5, int(complexity)))
+
+        estimated_hours = task.get("estimated_hours")
+        if estimated_hours is not None:
+            estimated_hours = max(0.1, float(estimated_hours))
+
+        uncertainty = task.get("uncertainty")
+        if uncertainty not in ("low", "medium", "high"):
+            uncertainty = None
+
+        files = task.get("files_to_modify", [])
+        desc = str(task.get("description", ""))[:2000]
+        if files:
+            desc += "\n\nFiles to modify: " + ", ".join(str(f) for f in files)
+
+        validated.append({
+            "title": str(task["title"])[:200],
+            "description": desc,
+            "depends_on_titles": task.get("depends_on_titles", []),
+            "complexity": complexity,
+            "estimated_hours": estimated_hours,
+            "uncertainty": uncertainty,
+        })
 
     return validated
 
@@ -650,11 +704,20 @@ def _row_to_task(row: tuple) -> Task:
 
     Row columns: id, workspace_id, prd_id, title, description, status, priority,
                  depends_on, estimated_hours, complexity_score, uncertainty_level,
-                 created_at, updated_at
+                 created_at, updated_at, github_issue_number, parent_id, lineage,
+                 is_leaf, hierarchical_id
     """
     # Parse depends_on from JSON string (default to empty list if null)
     depends_on_raw = row[7]
     depends_on = json.loads(depends_on_raw) if depends_on_raw else []
+
+    # Parse lineage from JSON string (default to empty list if null)
+    lineage_raw = row[15] if len(row) > 15 else None
+    lineage = json.loads(lineage_raw) if lineage_raw else []
+
+    # Parse is_leaf from integer (default to True if null)
+    is_leaf_raw = row[16] if len(row) > 16 else 1
+    is_leaf = bool(is_leaf_raw) if is_leaf_raw is not None else True
 
     return Task(
         id=row[0],
@@ -671,4 +734,8 @@ def _row_to_task(row: tuple) -> Task:
         created_at=datetime.fromisoformat(row[11]),
         updated_at=datetime.fromisoformat(row[12]),
         github_issue_number=row[13] if len(row) > 13 else None,
+        parent_id=row[14] if len(row) > 14 else None,
+        lineage=lineage,
+        is_leaf=is_leaf,
+        hierarchical_id=row[17] if len(row) > 17 else None,
     )

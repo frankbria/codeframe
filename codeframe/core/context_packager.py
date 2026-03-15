@@ -53,6 +53,18 @@ class TaskContextPackager:
 
         prompt_parts = [context.to_prompt_context()]
 
+        # Add lineage context if available
+        if (
+            hasattr(context, "task")
+            and context.task
+            and hasattr(context.task, "lineage")
+            and context.task.lineage
+        ):
+            lineage_str = " \u2192 ".join(context.task.lineage)
+            prompt_parts.append(
+                f"\n## Task Lineage\nThis task is part of: {lineage_str}\n"
+            )
+
         if attempt > 0 and previous_errors:
             prompt_parts.append(self._build_retry_section(attempt, previous_errors))
 
