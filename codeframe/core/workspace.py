@@ -113,6 +113,10 @@ def _init_database(db_path: Path) -> None:
             estimated_hours REAL,
             complexity_score INTEGER CHECK(complexity_score IS NULL OR (complexity_score BETWEEN 1 AND 5)),
             uncertainty_level TEXT CHECK(uncertainty_level IS NULL OR uncertainty_level IN ('low', 'medium', 'high')),
+            parent_id TEXT,
+            lineage TEXT DEFAULT '[]',
+            is_leaf INTEGER DEFAULT 1,
+            hierarchical_id TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
@@ -135,6 +139,14 @@ def _init_database(db_path: Path) -> None:
         cursor.execute("ALTER TABLE tasks ADD COLUMN uncertainty_level TEXT")
     if "github_issue_number" not in columns:
         cursor.execute("ALTER TABLE tasks ADD COLUMN github_issue_number INTEGER")
+    if "parent_id" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN parent_id TEXT")
+    if "lineage" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN lineage TEXT DEFAULT '[]'")
+    if "is_leaf" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN is_leaf INTEGER DEFAULT 1")
+    if "hierarchical_id" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN hierarchical_id TEXT")
 
     # Append-only event log
     cursor.execute("""
@@ -408,6 +420,18 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             conn.commit()
         if "uncertainty_level" not in task_columns:
             cursor.execute("ALTER TABLE tasks ADD COLUMN uncertainty_level TEXT")
+            conn.commit()
+        if "parent_id" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN parent_id TEXT")
+            conn.commit()
+        if "lineage" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN lineage TEXT DEFAULT '[]'")
+            conn.commit()
+        if "is_leaf" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN is_leaf INTEGER DEFAULT 1")
+            conn.commit()
+        if "hierarchical_id" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN hierarchical_id TEXT")
             conn.commit()
 
     # Ensure runs table exists before creating dependent tables (run_logs, diagnostic_reports)

@@ -56,6 +56,10 @@ class Task:
     complexity_score: Optional[int] = None
     uncertainty_level: Optional[str] = None
     github_issue_number: Optional[int] = None
+    parent_id: Optional[str] = None
+    lineage: list[str] = field(default_factory=list)
+    is_leaf: bool = True
+    hierarchical_id: Optional[str] = None
 
 
 def create(
@@ -69,6 +73,10 @@ def create(
     estimated_hours: Optional[float] = None,
     complexity_score: Optional[int] = None,
     uncertainty_level: Optional[str] = None,
+    parent_id: Optional[str] = None,
+    lineage: Optional[list[str]] = None,
+    is_leaf: bool = True,
+    hierarchical_id: Optional[str] = None,
 ) -> Task:
     """Create a new task.
 
@@ -83,6 +91,10 @@ def create(
         estimated_hours: Optional time estimate in hours
         complexity_score: Optional complexity rating 1-5
         uncertainty_level: Optional uncertainty level ('low', 'medium', 'high')
+        parent_id: Optional parent task ID for tree structure
+        lineage: Optional list of ancestor descriptions
+        is_leaf: Whether this is a leaf/executable task (default True)
+        hierarchical_id: Optional display ID like "1.2.3"
 
     Returns:
         Created Task
@@ -90,16 +102,17 @@ def create(
     task_id = str(uuid.uuid4())
     now = _utc_now().isoformat()
     depends_on_list = depends_on or []
+    lineage_list = lineage or []
 
     conn = get_db_connection(workspace)
     try:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, parent_id, lineage, is_leaf, hierarchical_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, complexity_score, uncertainty_level, now, now),
+            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, complexity_score, uncertainty_level, parent_id, json.dumps(lineage_list), 1 if is_leaf else 0, hierarchical_id, now, now),
         )
         conn.commit()
     finally:
@@ -117,6 +130,10 @@ def create(
         estimated_hours=estimated_hours,
         complexity_score=complexity_score,
         uncertainty_level=uncertainty_level,
+        parent_id=parent_id,
+        lineage=lineage_list,
+        is_leaf=is_leaf,
+        hierarchical_id=hierarchical_id,
         created_at=datetime.fromisoformat(now),
         updated_at=datetime.fromisoformat(now),
     )
@@ -137,7 +154,7 @@ def get(workspace: Workspace, task_id: str) -> Optional[Task]:
 
     cursor.execute(
         """
-        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at
+        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id
         FROM tasks
         WHERE workspace_id = ? AND id = ?
         """,
@@ -173,7 +190,7 @@ def list_tasks(
     if status:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id
             FROM tasks
             WHERE workspace_id = ? AND status = ?
             ORDER BY priority ASC, created_at ASC
@@ -184,7 +201,7 @@ def list_tasks(
     else:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id
             FROM tasks
             WHERE workspace_id = ?
             ORDER BY priority ASC, created_at ASC
@@ -650,11 +667,20 @@ def _row_to_task(row: tuple) -> Task:
 
     Row columns: id, workspace_id, prd_id, title, description, status, priority,
                  depends_on, estimated_hours, complexity_score, uncertainty_level,
-                 created_at, updated_at
+                 created_at, updated_at, github_issue_number, parent_id, lineage,
+                 is_leaf, hierarchical_id
     """
     # Parse depends_on from JSON string (default to empty list if null)
     depends_on_raw = row[7]
     depends_on = json.loads(depends_on_raw) if depends_on_raw else []
+
+    # Parse lineage from JSON string (default to empty list if null)
+    lineage_raw = row[15] if len(row) > 15 else None
+    lineage = json.loads(lineage_raw) if lineage_raw else []
+
+    # Parse is_leaf from integer (default to True if null)
+    is_leaf_raw = row[16] if len(row) > 16 else 1
+    is_leaf = bool(is_leaf_raw) if is_leaf_raw is not None else True
 
     return Task(
         id=row[0],
@@ -671,4 +697,8 @@ def _row_to_task(row: tuple) -> Task:
         created_at=datetime.fromisoformat(row[11]),
         updated_at=datetime.fromisoformat(row[12]),
         github_issue_number=row[13] if len(row) > 13 else None,
+        parent_id=row[14] if len(row) > 14 else None,
+        lineage=lineage,
+        is_leaf=is_leaf,
+        hierarchical_id=row[17] if len(row) > 17 else None,
     )
