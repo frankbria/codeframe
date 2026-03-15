@@ -9,7 +9,6 @@ import pytest
 
 from codeframe.adapters.llm.mock import MockProvider
 from codeframe.core import tasks
-from codeframe.core.prd import PrdRecord
 from codeframe.core.workspace import create_or_load_workspace
 
 pytestmark = pytest.mark.v2
