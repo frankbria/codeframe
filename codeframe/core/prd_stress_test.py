@@ -173,7 +173,12 @@ def classify_and_decompose(
         cls = Classification.ATOMIC
 
     complexity = data.get("complexity_hint", "Low")
-    children = data.get("children", []) if cls == Classification.COMPOSITE else []
+    raw_children = data.get("children", []) if cls == Classification.COMPOSITE else []
+    # Validate children are dicts with expected keys
+    children = [
+        c for c in raw_children
+        if isinstance(c, dict) and ("title" in c or "description" in c)
+    ]
 
     ambiguity = None
     if cls == Classification.AMBIGUOUS:
