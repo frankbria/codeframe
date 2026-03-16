@@ -160,6 +160,9 @@ class DashboardApp(App):
         self._update_event_log(data)
         self._update_blocker_panel(data)
 
+        if data.error:
+            self.notify(f"Data loading error: {data.error}", severity="warning")
+
     def _update_status_bar(self, data: DashboardData) -> None:
         status_bar = self.query_one("#status-bar", StatusBar)
         status_bar.update_from_data(data)
