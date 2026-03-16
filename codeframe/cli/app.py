@@ -5162,6 +5162,10 @@ from codeframe.cli.proof_commands import proof_app  # noqa: E402
 
 app.add_typer(proof_app, name="proof")
 
+from codeframe.cli.dashboard_commands import dashboard_app  # noqa: E402
+
+app.add_typer(dashboard_app, name="dashboard")
+
 
 # =============================================================================
 # Version command
