@@ -1590,6 +1590,160 @@ def prd_generate(
         raise typer.Exit(1)
 
 
+@prd_app.command("stress-test")
+def prd_stress_test(
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    prd_id: Optional[str] = typer.Option(
+        None,
+        "--prd-id",
+        help="Specific PRD ID (defaults to latest)",
+    ),
+    max_depth: int = typer.Option(
+        3,
+        "--max-depth",
+        help="Maximum recursion depth (default: 3)",
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output", "-o",
+        help="Write tech spec to this file",
+    ),
+    interactive: bool = typer.Option(
+        False,
+        "--interactive", "-i",
+        help="Resolve ambiguities inline and update PRD",
+    ),
+) -> None:
+    """Stress-test a PRD via recursive decomposition.
+
+    Recursively decomposes PRD goals using a tri-state classification
+    (atomic / composite / ambiguous) to surface requirements gaps and
+    generate a technical specification.
+
+    Produces two outputs:
+      1. Ambiguity Report — questions the PRD doesn't answer
+      2. Technical Specification — decomposition tree as markdown
+
+    Use --interactive to resolve ambiguities inline and update the PRD.
+
+    Requires ANTHROPIC_API_KEY environment variable.
+
+    Example:
+        codeframe prd stress-test
+        codeframe prd stress-test --max-depth 4
+        codeframe prd stress-test --output spec.md
+        codeframe prd stress-test --interactive
+    """
+    import os
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import prd as prd_module
+    from codeframe.adapters.llm.anthropic import AnthropicProvider
+    from codeframe.core.prd_stress_test import (
+        stress_test_prd,
+        resolve_ambiguities_into_prd,
+    )
+    from codeframe.core.events import emit_for_workspace, EventType
+    from rich.panel import Panel
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    # Load PRD
+    if prd_id:
+        record = prd_module.get_by_id(workspace, prd_id)
+    else:
+        record = prd_module.get_latest(workspace)
+
+    if not record:
+        console.print("[red]Error:[/red] No PRD found. Run 'codeframe prd generate' first.")
+        raise typer.Exit(1)
+
+    console.print(f"[dim]Stress-testing PRD: {record.title} (v{record.version})[/dim]")
+
+    # Build provider
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        console.print("[red]Error:[/red] ANTHROPIC_API_KEY environment variable required.")
+        raise typer.Exit(1)
+
+    provider = AnthropicProvider(api_key=api_key)
+
+    # Run stress test
+    console.print(f"[dim]Recursively decomposing (max depth: {max_depth})...[/dim]")
+    result = stress_test_prd(record.content, provider, max_depth=max_depth)
+
+    # Show ambiguity report
+    if result.ambiguities:
+        console.print(f"\n[bold yellow]⚠ {len(result.ambiguities)} ambiguities found[/bold yellow]\n")
+        for i, amb in enumerate(result.ambiguities, 1):
+            console.print(f"[bold yellow]{i}. {amb.label}[/bold yellow] (from \"{amb.source_node_title}\")")
+            console.print("   The PRD doesn't specify:")
+            for q in amb.questions:
+                console.print(f"   [cyan]- {q}[/cyan]")
+            console.print(f"   → {amb.recommendation}")
+            console.print()
+    else:
+        console.print("\n[green]✓ No ambiguities found — PRD is well-specified.[/green]\n")
+
+    # Interactive resolution
+    if interactive and result.ambiguities:
+        console.print("[bold]Interactive mode — resolve ambiguities:[/bold]\n")
+        for amb in result.ambiguities:
+            console.print(f"[yellow]{amb.label}[/yellow]: {', '.join(amb.questions)}")
+            answer = typer.prompt("Your answer")
+            amb.resolved_answer = answer
+            console.print("[green]✓[/green] Recorded.\n")
+
+        # Update PRD with resolved answers
+        console.print("[dim]Updating PRD with resolved ambiguities...[/dim]")
+        updated_content = resolve_ambiguities_into_prd(
+            record.content, result.ambiguities, provider,
+        )
+        new_record = prd_module.create_new_version(
+            workspace, record.id, updated_content,
+            f"Stress-test: resolved {len([a for a in result.ambiguities if a.resolved_answer])} ambiguities",
+        )
+        if new_record:
+            console.print(f"[green]✓[/green] PRD updated to version {new_record.version}")
+            emit_for_workspace(
+                workspace, EventType.PRD_UPDATED,
+                {"prd_id": new_record.id, "source": "stress_test_resolution"},
+                print_event=False,
+            )
+
+    # Show tech spec
+    console.print(Panel(result.tech_spec_markdown[:2000], title="Technical Specification", border_style="blue"))
+
+    # Write to file
+    if output:
+        output.write_text(result.tech_spec_markdown)
+        console.print(f"\n[green]✓[/green] Tech spec written to [bold]{output}[/bold]")
+
+    # Summary
+    node_count = _count_nodes(result.tree)
+    console.print(f"\n[bold]Summary:[/bold] {len(result.tree)} goals, {node_count} nodes, {len(result.ambiguities)} ambiguities")
+    if result.ambiguities and not interactive:
+        console.print("[dim]Tip: Run with --interactive to resolve ambiguities and update the PRD[/dim]")
+
+
+def _count_nodes(tree: list) -> int:
+    """Count total nodes in the decomposition tree."""
+    count = 0
+    for node in tree:
+        count += 1
+        count += _count_nodes(node.children)
+    return count
+
+
 # Tasks commands
 tasks_app = typer.Typer(
     name="tasks",
