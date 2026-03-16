@@ -252,17 +252,21 @@ def list_requirements(
 
 
 def next_req_id(workspace: Workspace) -> str:
-    """Generate the next sequential REQ-#### ID."""
+    """Generate the next sequential REQ-#### ID.
+
+    Uses MAX(id) to avoid collisions from deleted requirements.
+    """
     _ensure_tables(workspace)
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT COUNT(*) FROM proof_requirements WHERE workspace_id = ?",
+        "SELECT MAX(CAST(SUBSTR(id, 5) AS INTEGER)) FROM proof_requirements WHERE workspace_id = ?",
         (workspace.id,),
     )
-    count = cursor.fetchone()[0]
+    row = cursor.fetchone()
+    max_num = row[0] if row and row[0] is not None else 0
     conn.close()
-    return f"REQ-{count + 1:04d}"
+    return f"REQ-{max_num + 1:04d}"
 
 
 def save_evidence(workspace: Workspace, evidence: Evidence) -> None:

@@ -334,13 +334,13 @@ class TestScope:
         changed_scope = RequirementScope(files=["src/auth/login.py"])
         assert intersects(req_scope, changed_scope) is True
 
-    def test_intersects_prefix(self):
+    def test_no_directory_expansion(self):
         from codeframe.core.proof.scope import intersects
         from codeframe.core.proof.models import RequirementScope
 
         req_scope = RequirementScope(files=["src/auth/login.py"])
         changed_scope = RequirementScope(files=["src/auth/validator.py"])
-        assert intersects(req_scope, changed_scope) is True  # same dir
+        assert intersects(req_scope, changed_scope) is False  # exact match only
 
     def test_no_intersection(self):
         from codeframe.core.proof.scope import intersects

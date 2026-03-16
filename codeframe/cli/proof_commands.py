@@ -189,6 +189,7 @@ def run(
         console.print("\n[green]All obligations satisfied.[/green]")
     else:
         console.print("\n[red]Some obligations failed.[/red] Fix issues and re-run.")
+        raise typer.Exit(1)
 
 
 @proof_app.command("list")

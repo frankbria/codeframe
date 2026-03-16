@@ -14,13 +14,12 @@ from codeframe.core.workspace import Workspace
 
 
 def _sha256(file_path: str) -> str:
-    """Compute SHA-256 checksum of a file."""
-    h = hashlib.sha256()
+    """Compute SHA-256 checksum of a file. Raises if file missing."""
     path = Path(file_path)
-    if path.exists():
-        h.update(path.read_bytes())
-    else:
-        h.update(file_path.encode())
+    if not path.exists():
+        raise FileNotFoundError(f"Artifact not found: {file_path}")
+    h = hashlib.sha256()
+    h.update(path.read_bytes())
     return h.hexdigest()
 
 

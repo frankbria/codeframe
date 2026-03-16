@@ -42,22 +42,20 @@ def build_scope_from_capture(where: str) -> RequirementScope:
     return scope
 
 
-def get_changed_scope(workspace: Workspace) -> RequirementScope:
+def get_changed_scope(workspace: Workspace) -> "RequirementScope | None":
     """Detect changed files from git and build a scope.
 
     Uses gitpython via core/git.py patterns to get modified files.
     """
-    scope = RequirementScope()
-
     try:
         from codeframe.core.git import get_status
         status = get_status(workspace)
         all_files = status.modified_files + status.staged_files + status.untracked_files
-        scope.files = list(set(all_files))
+        scope = RequirementScope(files=list(set(all_files)))
+        return scope
     except Exception as exc:
-        logger.warning("Could not detect changed files: %s", exc)
-
-    return scope
+        logger.warning("Could not detect changed files: %s — failing closed (match all)", exc)
+        return None  # Caller must treat None as "match everything"
 
 
 def intersects(req_scope: RequirementScope, changed_scope: RequirementScope) -> bool:
@@ -74,15 +72,10 @@ def intersects(req_scope: RequirementScope, changed_scope: RequirementScope) -> 
         if req_items & changed_items:
             return True
 
-    # File matching with prefix support
-    for req_file in req_scope.files:
-        for changed_file in changed_scope.files:
-            if changed_file.startswith(req_file) or req_file == changed_file:
-                return True
-            # Also check if they share a directory
-            if "/" in req_file:
-                req_dir = req_file.rsplit("/", 1)[0]
-                if changed_file.startswith(req_dir + "/"):
-                    return True
+    # File matching — exact match only (no directory expansion)
+    req_files = set(req_scope.files)
+    changed_files = set(changed_scope.files)
+    if req_files & changed_files:
+        return True
 
     return False

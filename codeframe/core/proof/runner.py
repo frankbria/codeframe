@@ -33,7 +33,7 @@ def _run_gate(workspace: Workspace, gate: Gate) -> tuple[bool, str]:
     """
     core_gate_name = _GATE_TO_CORE.get(gate)
     if not core_gate_name:
-        return True, f"Gate {gate.value} has no automated runner yet — skipped"
+        return False, f"Gate {gate.value} has no automated runner — cannot verify"
 
     try:
         from codeframe.core.gates import run as run_gates
@@ -88,8 +88,9 @@ def run_proof(
     artifact_dir.mkdir(exist_ok=True)
 
     for req in reqs:
-        # Check scope intersection (unless full mode)
-        if not full and changed_scope:
+        # Check scope intersection (unless full mode or scope detection failed)
+        # None changed_scope means "failed to detect" → run everything (fail closed)
+        if not full and changed_scope is not None:
             if not intersects(req.scope, changed_scope):
                 continue
 
@@ -120,10 +121,10 @@ def run_proof(
         if req_results:
             results[req.id] = req_results
 
-            # Update requirement status if all obligations satisfied
+            # Always persist obligation status updates
             all_satisfied = all(passed for _, passed in req_results)
             if all_satisfied and len(req_results) == len(req.obligations):
                 req.status = ReqStatus.SATISFIED
-                ledger.save_requirement(workspace, req)
+            ledger.save_requirement(workspace, req)
 
     return results
