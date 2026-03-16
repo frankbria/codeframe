@@ -1605,7 +1605,9 @@ def prd_stress_test(
     max_depth: int = typer.Option(
         3,
         "--max-depth",
-        help="Maximum recursion depth (default: 3)",
+        min=1,
+        max=10,
+        help="Maximum recursion depth (default: 3, range: 1-10)",
     ),
     output: Optional[Path] = typer.Option(
         None,
@@ -1719,6 +1721,11 @@ def prd_stress_test(
                 {"prd_id": new_record.id, "source": "stress_test_resolution"},
                 print_event=False,
             )
+            # Re-run stress test on updated PRD to reflect resolved ambiguities
+            console.print("[dim]Re-analyzing updated PRD...[/dim]")
+            result = stress_test_prd(new_record.content, provider, max_depth=max_depth)
+        else:
+            console.print("[yellow]Warning:[/yellow] Failed to create new PRD version.")
 
     # Show tech spec
     console.print(Panel(result.tech_spec_markdown[:2000], title="Technical Specification", border_style="blue"))

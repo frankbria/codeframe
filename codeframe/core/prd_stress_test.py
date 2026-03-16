@@ -9,12 +9,15 @@ This module is headless — no FastAPI or HTTP dependencies.
 """
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
 from codeframe.adapters.llm.base import Purpose
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +41,7 @@ class DecompositionNode:
     lineage: list[str]
     depth: int
     complexity_hint: Optional[str] = None
+    ambiguity_id: Optional[str] = None
 
 
 @dataclass
@@ -120,8 +124,9 @@ def extract_goals(prd_content: str, provider) -> list[str]:
         goals = json.loads(response.content)
         if isinstance(goals, list):
             return [str(g) for g in goals]
-    except (json.JSONDecodeError, TypeError):
-        pass
+        logger.warning("Goal extraction returned non-list: %s", type(goals).__name__)
+    except (json.JSONDecodeError, TypeError) as exc:
+        logger.warning("Failed to parse goal extraction response: %s", exc)
     return []
 
 
@@ -157,7 +162,8 @@ def classify_and_decompose(
 
     try:
         data = json.loads(response.content)
-    except (json.JSONDecodeError, TypeError):
+    except (json.JSONDecodeError, TypeError) as exc:
+        logger.warning("Failed to parse classification for '%s': %s", title, exc)
         return Classification.ATOMIC, [], None, "Low"
 
     raw_cls = data.get("classification", "atomic").lower()
@@ -238,6 +244,7 @@ def recursive_decompose(
         lineage=lineage,
         depth=depth,
         complexity_hint=complexity,
+        ambiguity_id=ambiguity.id if ambiguity else None,
     )
 
 
@@ -250,7 +257,7 @@ def render_tech_spec(
     tree: list[DecompositionNode], ambiguities: list[Ambiguity]
 ) -> str:
     """Render the decomposition tree as a markdown technical specification."""
-    amb_map = {a.source_node_title: i + 1 for i, a in enumerate(ambiguities)}
+    amb_map = {a.id: i + 1 for i, a in enumerate(ambiguities)}
     lines = ["# Technical Specification\n"]
 
     for node in tree:
@@ -270,7 +277,7 @@ def _render_spec_node(
     lines.append(f"{prefix} {node.title}")
 
     if node.classification == Classification.AMBIGUOUS:
-        amb_num = amb_map.get(node.title, "?")
+        amb_num = amb_map.get(node.ambiguity_id, "?") if node.ambiguity_id else "?"
         lines.append(f"**[NEEDS CLARIFICATION — see ambiguity #{amb_num}]**\n")
     elif node.classification == Classification.ATOMIC:
         lines.append(f"- {node.description}")
@@ -337,7 +344,14 @@ def resolve_ambiguities_into_prd(
         max_tokens=8192,
         temperature=0.0,
     )
-    return response.content
+    updated = response.content.strip()
+    if not updated or len(updated) < len(prd_content) // 2:
+        logger.warning(
+            "PRD rewrite looks truncated (%d chars vs original %d), returning original",
+            len(updated), len(prd_content),
+        )
+        return prd_content
+    return updated
 
 
 # ---------------------------------------------------------------------------

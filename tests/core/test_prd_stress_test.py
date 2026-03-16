@@ -391,10 +391,12 @@ class TestStressTestCLI:
         assert result.exit_code == 1
 
     @patch("codeframe.adapters.llm.anthropic.AnthropicProvider")
-    def test_stress_test_with_prd(self, mock_provider_cls, workspace, sample_prd, mock_provider, tmp_path):
+    def test_stress_test_with_prd(self, mock_provider_cls, workspace, sample_prd, mock_provider, tmp_path, monkeypatch):
         """Should run stress test on existing PRD."""
         from typer.testing import CliRunner
         from codeframe.cli.app import app
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake-key")
 
         # Store a PRD first
         prd_module.store(workspace, "Test PRD", sample_prd, {})
@@ -407,10 +409,12 @@ class TestStressTestCLI:
         assert "ambiguit" in result.output.lower() or "AUTH SCOPE" in result.output
 
     @patch("codeframe.adapters.llm.anthropic.AnthropicProvider")
-    def test_stress_test_output_flag(self, mock_provider_cls, workspace, sample_prd, mock_provider, tmp_path):
+    def test_stress_test_output_flag(self, mock_provider_cls, workspace, sample_prd, mock_provider, tmp_path, monkeypatch):
         """--output should write tech spec to file."""
         from typer.testing import CliRunner
         from codeframe.cli.app import app
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake-key")
 
         prd_module.store(workspace, "Test PRD", sample_prd, {})
         mock_provider_cls.return_value = mock_provider
