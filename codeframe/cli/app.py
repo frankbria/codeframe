@@ -5158,6 +5158,10 @@ app.add_typer(engines_app, name="engines")
 app.add_typer(hooks_app, name="hooks")
 app.add_typer(stats_app, name="stats")
 
+from codeframe.cli.proof_commands import proof_app  # noqa: E402
+
+app.add_typer(proof_app, name="proof")
+
 
 # =============================================================================
 # Version command
