@@ -14,6 +14,7 @@ Examples:
     codeframe status
 """
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -3120,6 +3121,345 @@ def work_follow(
             console.print("\n[yellow]Streaming interrupted[/yellow]")
             console.print(f"[dim]Run is still active. Resume with: cf work follow {task.id[:8]}[/dim]")
             raise typer.Exit(0)
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+# =============================================================================
+# Replay / Debug commands (cf work replay, cf work diff, cf work export-trace)
+# =============================================================================
+
+
+@work_app.command("replay")
+def work_replay(
+    run_id: str = typer.Argument(..., help="Run ID to replay"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    step: Optional[int] = typer.Option(
+        None,
+        "--step",
+        "-s",
+        help="Jump to a specific step number",
+    ),
+    show_llm: bool = typer.Option(
+        False,
+        "--show-llm",
+        help="Show LLM prompts and responses",
+    ),
+    show_files: bool = typer.Option(
+        True,
+        "--show-files/--no-files",
+        help="Show file changes at each step",
+    ),
+) -> None:
+    """Replay a past execution step by step.
+
+    Shows what happened during an agent run: which tools were called,
+    what files were changed, and what the LLM produced at each step.
+
+    Example:
+        cf work replay <run-id>
+        cf work replay <run-id> --step 3
+        cf work replay <run-id> --show-llm
+    """
+    from rich.panel import Panel
+
+    from codeframe.core.replay import (
+        load_execution_trace,
+    )
+    from codeframe.core.workspace import get_workspace
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        trace = load_execution_trace(workspace, run_id)
+
+        if not trace:
+            console.print(f"[red]Error:[/red] No trace found for run '{run_id}'")
+            raise typer.Exit(1)
+
+        # Header
+        console.print(
+            Panel(
+                f"[bold]Run:[/bold] {trace.run_id}\n"
+                f"[bold]Task:[/bold] {trace.task_id}\n"
+                f"[bold]Status:[/bold] {trace.status}\n"
+                f"[bold]Steps:[/bold] {len(trace.steps)}",
+                title="Execution Replay",
+            )
+        )
+
+        # Build lookups
+        ops_by_step = {}
+        for op in trace.file_operations:
+            ops_by_step.setdefault(op.step_id, []).append(op)
+
+        llm_by_step = {}
+        for llm in trace.llm_interactions:
+            llm_by_step.setdefault(llm.step_id, []).append(llm)
+
+        # Filter to specific step if requested
+        steps_to_show = trace.steps
+        if step is not None:
+            steps_to_show = [s for s in trace.steps if s.step_number == step]
+            if not steps_to_show:
+                console.print(f"[yellow]No step {step} found (max: {len(trace.steps)})[/yellow]")
+                raise typer.Exit(1)
+
+        for s in steps_to_show:
+            status_color = {"completed": "green", "failed": "red"}.get(s.status, "yellow")
+            console.print(
+                f"\n[bold]Step {s.step_number}:[/bold] {s.description} "
+                f"[{status_color}][{s.status}][/{status_color}]"
+            )
+
+            if show_files:
+                step_ops = ops_by_step.get(s.id, [])
+                for op in step_ops:
+                    op_color = {"create": "green", "edit": "yellow", "delete": "red"}.get(
+                        op.operation_type, "white"
+                    )
+                    console.print(f"  [{op_color}]{op.operation_type}[/{op_color}] {op.file_path}")
+
+            if show_llm:
+                step_llms = llm_by_step.get(s.id, [])
+                for llm in step_llms:
+                    console.print(f"  [dim]LLM ({llm.model}, {llm.tokens_used} tokens):[/dim]")
+                    console.print(f"  [cyan]Prompt:[/cyan] {llm.prompt[:200]}")
+                    console.print(f"  [cyan]Response:[/cyan] {llm.response[:200]}")
+
+        # Summary
+        summary = trace.summary()
+        console.print(f"\n[dim]Total: {summary['total_steps']} steps, "
+                      f"{summary['llm_calls']} LLM calls, "
+                      f"{summary['total_tokens']} tokens, "
+                      f"{summary['files_modified']} files modified[/dim]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+
+
+@work_app.command("diff")
+def work_diff(
+    run_id: str = typer.Argument(..., help="Run ID to show diffs for"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    from_step: Optional[int] = typer.Option(
+        None,
+        "--from-step",
+        help="Starting step number (default: 0 = before execution)",
+    ),
+    to_step: Optional[int] = typer.Option(
+        None,
+        "--to-step",
+        help="Ending step number (default: last step)",
+    ),
+) -> None:
+    """Show file changes across an execution run.
+
+    Displays unified diffs of all files modified during the run,
+    or between specific steps.
+
+    Example:
+        cf work diff <run-id>
+        cf work diff <run-id> --from-step 1 --to-step 3
+    """
+    import difflib
+
+    from codeframe.core.replay import compare_steps, load_execution_trace
+    from codeframe.core.workspace import get_workspace
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        trace = load_execution_trace(workspace, run_id)
+
+        if not trace:
+            console.print(f"[red]Error:[/red] No trace found for run '{run_id}'")
+            raise typer.Exit(1)
+
+        step_a = from_step if from_step is not None else 0
+        step_b = to_step if to_step is not None else max(s.step_number for s in trace.steps)
+
+        changes = compare_steps(workspace, run_id, step_a, step_b)
+
+        if not changes:
+            console.print("[yellow]No file changes between these steps.[/yellow]")
+            return
+
+        console.print(
+            f"[bold]File changes:[/bold] step {step_a} → step {step_b} "
+            f"({len(changes)} file(s))\n"
+        )
+
+        for file_path, change in changes.items():
+            before = change["before"] or ""
+            after = change["after"] or ""
+
+            if change["before"] is None:
+                console.print(f"[green]+++ {file_path}[/green] (created)")
+            elif change["after"] is None:
+                console.print(f"[red]--- {file_path}[/red] (deleted)")
+            else:
+                console.print(f"[yellow]~~~ {file_path}[/yellow] (modified)")
+
+            diff_lines = list(
+                difflib.unified_diff(
+                    before.splitlines(keepends=True),
+                    after.splitlines(keepends=True),
+                    fromfile=f"a/{file_path}",
+                    tofile=f"b/{file_path}",
+                )
+            )
+            for line in diff_lines:
+                line = line.rstrip()
+                if line.startswith("+") and not line.startswith("+++"):
+                    console.print(f"[green]{line}[/green]")
+                elif line.startswith("-") and not line.startswith("---"):
+                    console.print(f"[red]{line}[/red]")
+                else:
+                    console.print(f"[dim]{line}[/dim]")
+            console.print()
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+
+
+@work_app.command("export-trace")
+def work_export_trace(
+    run_id: str = typer.Argument(..., help="Run ID to export"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    output_format: str = typer.Option(
+        "json",
+        "--format",
+        "-f",
+        help="Export format: json or markdown",
+        click_type=click.Choice(["json", "markdown"], case_sensitive=False),
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Write to file instead of stdout",
+    ),
+) -> None:
+    """Export an execution trace for analysis.
+
+    Produces a complete trace in JSON or Markdown format,
+    including all steps, LLM interactions, and file changes.
+
+    Example:
+        cf work export-trace <run-id>
+        cf work export-trace <run-id> --format markdown
+        cf work export-trace <run-id> --output trace.json
+    """
+    from codeframe.core.replay import (
+        export_trace_json,
+        export_trace_markdown,
+        load_execution_trace,
+    )
+    from codeframe.core.workspace import get_workspace
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        trace = load_execution_trace(workspace, run_id)
+
+        if not trace:
+            console.print(f"[red]Error:[/red] No trace found for run '{run_id}'")
+            raise typer.Exit(1)
+
+        if output_format == "json":
+            content = json.dumps(export_trace_json(trace), indent=2)
+        else:
+            content = export_trace_markdown(trace)
+
+        if output:
+            output.write_text(content)
+            console.print(f"[green]Trace exported to {output}[/green]")
+        else:
+            console.print(content, highlight=False)
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+
+
+@work_app.command("rerun")
+def work_rerun(
+    run_id: str = typer.Argument(..., help="Run ID to re-run from"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    from_step: int = typer.Option(
+        1,
+        "--from-step",
+        help="Step number to resume from",
+    ),
+) -> None:
+    """Prepare to re-execute a run from a specific step.
+
+    Reconstructs the file state at step N and shows what
+    would need to be re-executed. Use this to understand
+    what happened and plan a manual re-run.
+
+    Example:
+        cf work rerun <run-id> --from-step 2
+    """
+    from codeframe.core.replay import prepare_rerun
+    from codeframe.core.workspace import get_workspace
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        rerun_info = prepare_rerun(workspace, run_id, from_step)
+
+        console.print(f"[bold]Re-run preparation for run {run_id}[/bold]\n")
+        console.print(f"[bold]Resume from:[/bold] Step {from_step}")
+        console.print(f"[bold]Task:[/bold] {rerun_info['task_id']}")
+
+        file_state = rerun_info["file_state"]
+        if file_state:
+            console.print(f"\n[bold]File state at step {from_step}:[/bold]")
+            for fp in sorted(file_state.keys()):
+                console.print(f"  {fp}")
+        else:
+            console.print(f"\n[yellow]No files modified at step {from_step}[/yellow]")
+
+        remaining = rerun_info["remaining_steps"]
+        if remaining:
+            console.print(f"\n[bold]Remaining steps ({len(remaining)}):[/bold]")
+            for rs in remaining:
+                console.print(f"  Step {rs['step_number']}: {rs['description']}")
+        else:
+            console.print("\n[yellow]No remaining steps after this point[/yellow]")
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")
