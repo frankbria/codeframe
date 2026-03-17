@@ -709,3 +709,160 @@ class TestExportTraceMarkdown:
 
         assert "src/a.py" in md
         assert "src/b.py" in md
+
+
+# =============================================================================
+# Step 5: Interactive replay session tests
+# =============================================================================
+
+
+class TestReplaySession:
+    """Tests for ReplaySession interactive navigation."""
+
+    def test_initial_position(self, workspace, run_id, task_id):
+        from codeframe.core.replay import ReplaySession, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+        trace = load_execution_trace(workspace, run_id)
+
+        session = ReplaySession(trace)
+        assert session.current_position == 1
+        assert session.total_steps == 3
+        assert session.current_step.description == "Create file A"
+
+    def test_next_navigation(self, workspace, run_id, task_id):
+        from codeframe.core.replay import ReplaySession, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+        trace = load_execution_trace(workspace, run_id)
+
+        session = ReplaySession(trace)
+        session.next()
+        assert session.current_position == 2
+        assert session.current_step.description == "Edit file A"
+
+    def test_previous_navigation(self, workspace, run_id, task_id):
+        from codeframe.core.replay import ReplaySession, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+        trace = load_execution_trace(workspace, run_id)
+
+        session = ReplaySession(trace)
+        session.next()
+        session.next()
+        session.previous()
+        assert session.current_position == 2
+
+    def test_previous_at_start_stays(self, workspace, run_id, task_id):
+        from codeframe.core.replay import ReplaySession, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+        trace = load_execution_trace(workspace, run_id)
+
+        session = ReplaySession(trace)
+        session.previous()
+        assert session.current_position == 1
+
+    def test_next_at_end_stays(self, workspace, run_id, task_id):
+        from codeframe.core.replay import ReplaySession, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+        trace = load_execution_trace(workspace, run_id)
+
+        session = ReplaySession(trace)
+        session.next()
+        session.next()
+        session.next()  # Beyond end
+        assert session.current_position == 3
+
+    def test_jump_to_step(self, workspace, run_id, task_id):
+        from codeframe.core.replay import ReplaySession, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+        trace = load_execution_trace(workspace, run_id)
+
+        session = ReplaySession(trace)
+        result = session.jump(3)
+        assert result is not None
+        assert session.current_position == 3
+        assert session.current_step.description == "Create file B"
+
+    def test_jump_invalid_step_returns_none(self, workspace, run_id, task_id):
+        from codeframe.core.replay import ReplaySession, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+        trace = load_execution_trace(workspace, run_id)
+
+        session = ReplaySession(trace)
+        result = session.jump(99)
+        assert result is None
+        assert session.current_position == 1  # Unchanged
+
+    def test_get_step_file_ops(self, workspace, run_id, task_id):
+        from codeframe.core.replay import ReplaySession, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+        trace = load_execution_trace(workspace, run_id)
+
+        session = ReplaySession(trace)
+        ops = session.get_step_file_ops(session.current_step)
+        assert len(ops) == 1
+        assert ops[0].file_path == "src/a.py"
+
+    def test_get_step_llm_calls(self, workspace, run_id, task_id):
+        from codeframe.core.replay import ReplaySession, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+        trace = load_execution_trace(workspace, run_id)
+
+        session = ReplaySession(trace)
+        llms = session.get_step_llm_calls(session.current_step)
+        assert len(llms) == 1
+        assert llms[0].prompt == "Create file A"
+
+
+# =============================================================================
+# Step 6: Re-run preparation tests
+# =============================================================================
+
+
+class TestPrepareRerun:
+    """Tests for prepare_rerun state reconstruction."""
+
+    def test_prepare_rerun_from_step_1(self, workspace, run_id, task_id):
+        from codeframe.core.replay import prepare_rerun
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+
+        result = prepare_rerun(workspace, run_id, from_step=1)
+        assert result["original_run_id"] == run_id
+        assert result["from_step"] == 1
+        assert result["task_id"] == task_id
+        assert "src/a.py" in result["file_state"]
+        assert len(result["remaining_steps"]) == 2
+
+    def test_prepare_rerun_from_step_2(self, workspace, run_id, task_id):
+        from codeframe.core.replay import prepare_rerun
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+
+        result = prepare_rerun(workspace, run_id, from_step=2)
+        assert result["file_state"]["src/a.py"] == "# edited A"
+        assert len(result["remaining_steps"]) == 1
+
+    def test_prepare_rerun_nonexistent_run(self, workspace):
+        from codeframe.core.replay import prepare_rerun
+
+        with pytest.raises(ValueError, match="No trace found"):
+            prepare_rerun(workspace, "nonexistent-id", from_step=1)

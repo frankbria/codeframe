@@ -633,6 +633,114 @@ def export_trace_markdown(trace: ExecutionTrace) -> str:
 
 
 # =============================================================================
+# Interactive Replay Session
+# =============================================================================
+
+
+class ReplaySession:
+    """Manages interactive step-through of an execution trace.
+
+    Tracks the current position and provides navigation methods.
+    Display is delegated to the caller (CLI layer).
+    """
+
+    def __init__(self, trace: ExecutionTrace) -> None:
+        self.trace = trace
+        self._current_index = 0
+
+        # Build lookups
+        self.ops_by_step: dict[str, list[FileOperation]] = {}
+        for op in trace.file_operations:
+            self.ops_by_step.setdefault(op.step_id, []).append(op)
+
+        self.llm_by_step: dict[str, list[LLMInteraction]] = {}
+        for llm in trace.llm_interactions:
+            self.llm_by_step.setdefault(llm.step_id, []).append(llm)
+
+    @property
+    def current_step(self) -> Optional[ExecutionStep]:
+        if 0 <= self._current_index < len(self.trace.steps):
+            return self.trace.steps[self._current_index]
+        return None
+
+    @property
+    def current_position(self) -> int:
+        return self._current_index + 1
+
+    @property
+    def total_steps(self) -> int:
+        return len(self.trace.steps)
+
+    def next(self) -> Optional[ExecutionStep]:
+        if self._current_index < len(self.trace.steps) - 1:
+            self._current_index += 1
+        return self.current_step
+
+    def previous(self) -> Optional[ExecutionStep]:
+        if self._current_index > 0:
+            self._current_index -= 1
+        return self.current_step
+
+    def jump(self, step_number: int) -> Optional[ExecutionStep]:
+        for i, step in enumerate(self.trace.steps):
+            if step.step_number == step_number:
+                self._current_index = i
+                return step
+        return None
+
+    def get_step_file_ops(self, step: ExecutionStep) -> list[FileOperation]:
+        return self.ops_by_step.get(step.id, [])
+
+    def get_step_llm_calls(self, step: ExecutionStep) -> list[LLMInteraction]:
+        return self.llm_by_step.get(step.id, [])
+
+    def list_steps(self) -> list[ExecutionStep]:
+        return list(self.trace.steps)
+
+
+# =============================================================================
+# Re-run from Step
+# =============================================================================
+
+
+def prepare_rerun(
+    workspace: Workspace,
+    run_id: str,
+    from_step: int,
+) -> dict[str, Any]:
+    """Prepare state for re-executing from a specific step.
+
+    Reconstructs the file state at the given step and returns
+    metadata needed to create a new run starting from that point.
+
+    Returns a dict with:
+        - file_state: dict of file_path -> content at step N
+        - original_run_id: the source run
+        - from_step: the step number to resume from
+        - remaining_steps: descriptions of steps that follow
+    """
+    trace = load_execution_trace(workspace, run_id)
+    if not trace:
+        raise ValueError(f"No trace found for run '{run_id}'")
+
+    file_state = get_step_snapshot(workspace, run_id, from_step)
+
+    remaining_steps = [
+        {"step_number": s.step_number, "description": s.description}
+        for s in trace.steps
+        if s.step_number > from_step
+    ]
+
+    return {
+        "file_state": file_state,
+        "original_run_id": run_id,
+        "from_step": from_step,
+        "remaining_steps": remaining_steps,
+        "task_id": trace.task_id,
+    }
+
+
+# =============================================================================
 # Row Converters
 # =============================================================================
 

@@ -244,3 +244,45 @@ class TestWorkExportTrace:
             ],
         )
         assert result.exit_code == 1
+
+
+class TestWorkRerun:
+    """Tests for cf work rerun <run-id>."""
+
+    def test_rerun_shows_file_state(self, seeded_workspace):
+        workspace, task_id, run_id = seeded_workspace
+        result = runner.invoke(
+            app,
+            [
+                "work", "rerun", run_id,
+                "--from-step", "2",
+                "--workspace", str(workspace.repo_path),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "src/main.py" in result.output
+        assert "Step 2" in result.output or "step 2" in result.output.lower()
+
+    def test_rerun_shows_remaining_steps(self, seeded_workspace):
+        workspace, task_id, run_id = seeded_workspace
+        result = runner.invoke(
+            app,
+            [
+                "work", "rerun", run_id,
+                "--from-step", "1",
+                "--workspace", str(workspace.repo_path),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Remaining steps" in result.output
+
+    def test_rerun_nonexistent_run(self, workspace):
+        result = runner.invoke(
+            app,
+            [
+                "work", "rerun", "nonexistent-id",
+                "--from-step", "1",
+                "--workspace", str(workspace.repo_path),
+            ],
+        )
+        assert result.exit_code == 1

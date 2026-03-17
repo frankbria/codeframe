@@ -3408,6 +3408,67 @@ def work_export_trace(
         raise typer.Exit(1)
 
 
+@work_app.command("rerun")
+def work_rerun(
+    run_id: str = typer.Argument(..., help="Run ID to re-run from"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    from_step: int = typer.Option(
+        1,
+        "--from-step",
+        help="Step number to resume from",
+    ),
+) -> None:
+    """Prepare to re-execute a run from a specific step.
+
+    Reconstructs the file state at step N and shows what
+    would need to be re-executed. Use this to understand
+    what happened and plan a manual re-run.
+
+    Example:
+        cf work rerun <run-id> --from-step 2
+    """
+    from codeframe.core.replay import prepare_rerun
+    from codeframe.core.workspace import get_workspace
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        rerun_info = prepare_rerun(workspace, run_id, from_step)
+
+        console.print(f"[bold]Re-run preparation for run {run_id}[/bold]\n")
+        console.print(f"[bold]Resume from:[/bold] Step {from_step}")
+        console.print(f"[bold]Task:[/bold] {rerun_info['task_id']}")
+
+        file_state = rerun_info["file_state"]
+        if file_state:
+            console.print(f"\n[bold]File state at step {from_step}:[/bold]")
+            for fp in sorted(file_state.keys()):
+                console.print(f"  {fp}")
+        else:
+            console.print(f"\n[yellow]No files modified at step {from_step}[/yellow]")
+
+        remaining = rerun_info["remaining_steps"]
+        if remaining:
+            console.print(f"\n[bold]Remaining steps ({len(remaining)}):[/bold]")
+            for rs in remaining:
+                console.print(f"  Step {rs['step_number']}: {rs['description']}")
+        else:
+            console.print("\n[yellow]No remaining steps after this point[/yellow]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
 # =============================================================================
 # Batch execution commands (subcommand group: cf work batch <cmd>)
 # =============================================================================
