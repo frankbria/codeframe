@@ -38,6 +38,7 @@ from codeframe.core.workspace import Workspace
 
 if TYPE_CHECKING:
     from codeframe.core.conductor import GlobalFixCoordinator
+    from codeframe.core.replay import ExecutionRecorder
     from codeframe.core.streaming import EventPublisher, RunOutputLogger
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,7 @@ class ReactAgent:
         debug: bool = False,
         output_logger: Optional[RunOutputLogger] = None,
         fix_coordinator: Optional[GlobalFixCoordinator] = None,
+        execution_recorder: Optional[ExecutionRecorder] = None,
     ) -> None:
         self.workspace = workspace
         self.llm_provider = llm_provider
@@ -139,6 +141,7 @@ class ReactAgent:
         self.debug = debug
         self.output_logger = output_logger
         self.fix_coordinator = fix_coordinator
+        self.execution_recorder = execution_recorder
         self.fix_tracker = FixAttemptTracker()
         self.blocker_id: Optional[str] = None
 
@@ -265,6 +268,15 @@ class ReactAgent:
                         task_id,
                         exc_info=True,
                     )
+                if self.execution_recorder is not None:
+                    try:
+                        self.execution_recorder.flush()
+                    except Exception:
+                        logger.debug(
+                            "Failed to flush execution recorder for task %s",
+                            task_id,
+                            exc_info=True,
+                        )
         except StallDetectedError:
             raise  # Monitor stopped by finally above; let runtime handle retry
         except Exception:
@@ -450,6 +462,31 @@ class ReactAgent:
                 "iteration": iterations,
             })
 
+            # --- Execution recording: LLM call ---
+            _rec_step_id: Optional[str] = None
+            if self.execution_recorder is not None:
+                # Build condensed summaries for the trace
+                _rec_prompt = f"System: {prompt_summary} | Messages: {len(messages)}"
+                if response.has_tool_calls:
+                    _rec_response = "Tool calls: " + ", ".join(
+                        tc.name for tc in response.tool_calls
+                    )
+                else:
+                    _rec_response = (response.content or "")[:200]
+                _rec_step_id = self.execution_recorder.record_iteration(
+                    step_number=iterations,
+                    tool_names=[tc.name for tc in response.tool_calls],
+                    llm_response_summary=_rec_response,
+                )
+                self.execution_recorder.record_llm_call(
+                    step_id=_rec_step_id,
+                    prompt_summary=_rec_prompt,
+                    response_summary=_rec_response,
+                    model=response.model or "",
+                    tokens_used=response.input_tokens + response.output_tokens,
+                    purpose="execution",
+                )
+
             if not response.has_tool_calls:
                 # Text-only response — agent thinks it's done.
                 # Check for blocker patterns before accepting completion.
@@ -528,6 +565,25 @@ class ReactAgent:
                         "is_error": result.is_error,
                     }
                 )
+
+                # --- Execution recording: file operations ---
+                if (
+                    self.execution_recorder is not None
+                    and _rec_step_id is not None
+                    and tc.name in ("edit_file", "create_file")
+                    and not result.is_error
+                ):
+                    _op_type = "create" if tc.name == "create_file" else "edit"
+                    _op_path = tc.input.get("path", "")
+                    _op_after = tc.input.get("content") if tc.name == "create_file" else tc.input.get("new_text")
+                    _op_before = tc.input.get("old_text") if tc.name == "edit_file" else None
+                    self.execution_recorder.record_file_operation(
+                        step_id=_rec_step_id,
+                        op_type=_op_type,
+                        path=_op_path,
+                        before=_op_before,
+                        after=_op_after,
+                    )
 
                 # Check error tool results for immediate blocker patterns
                 if result.is_error:
