@@ -19,7 +19,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from enum import Enum
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
+
+if TYPE_CHECKING:
+    from codeframe.core.config_watcher import ConfigReloadState
 
 from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core import events, tasks, blockers
@@ -1302,6 +1305,33 @@ def _run_batch_level_validation(workspace: Workspace, batch: BatchRun) -> tuple[
         return False, failure_summary
 
 
+def _apply_pending_config_reload(
+    batch: BatchRun,
+    workspace: Workspace,
+    reload_state: "ConfigReloadState",
+    last_seen_reload: datetime,
+) -> datetime:
+    """Check for config reloads and record them in batch results.
+
+    Args:
+        batch: Current batch run.
+        workspace: Target workspace.
+        reload_state: Shared reload state from ConfigFileWatcher.
+        last_seen_reload: Timestamp of the last check.
+
+    Returns:
+        Updated last_seen_reload timestamp.
+    """
+    if reload_state.has_reloaded_since(last_seen_reload):
+        now = datetime.now(timezone.utc)
+        reloads = batch.results.setdefault("__config_reloads__", [])
+        reloads.append(now.isoformat())
+        _save_batch(workspace, batch)
+        print(f"  [config] Configuration reloaded at {now.strftime('%H:%M:%S')}")
+        return now
+    return last_seen_reload
+
+
 def _execute_serial(
     workspace: Workspace,
     batch: BatchRun,
@@ -1317,148 +1347,171 @@ def _execute_serial(
     interval = env_config.reconciliation_interval_seconds if env_config else 30
     reconcile_stop = _start_reconciliation_thread(workspace, batch, interval_seconds=interval)
 
+    # Start config file watcher (optional — failure must not break batch)
+    config_watcher = None
+    reload_state = None
+    _last_seen_reload = datetime.now(timezone.utc)
+    try:
+        from codeframe.core.config_watcher import ConfigFileWatcher
+        from codeframe.core.agents_config import load_preferences
+
+        config_watcher = ConfigFileWatcher(Path(workspace.repo_path))
+        reload_state = config_watcher.start(load_preferences(Path(workspace.repo_path)))
+    except Exception:
+        logger.debug("Config watcher failed to start in serial execution", exc_info=True)
+
     completed_count = 0
     failed_count = 0
     blocked_count = 0
 
-    for i, task_id in enumerate(batch.task_ids):
-        # Check if batch was cancelled
-        current_batch = get_batch(workspace, batch.id)
-        if current_batch and current_batch.status == BatchStatus.CANCELLED:
-            break
-
-        # Emit task queued event
-        events.emit_for_workspace(
-            workspace,
-            events.EventType.BATCH_TASK_QUEUED,
-            {"batch_id": batch.id, "task_id": task_id, "position": i + 1},
-            print_event=True,
-        )
-
-        # Get task info for display
-        task = tasks.get(workspace, task_id)
-        task_title = task.title if task else task_id
-
-        print(f"\n[{i + 1}/{len(batch.task_ids)}] Starting task {task_id}: {task_title}")
-
-        # Emit task started event
-        events.emit_for_workspace(
-            workspace,
-            events.EventType.BATCH_TASK_STARTED,
-            {"batch_id": batch.id, "task_id": task_id},
-            print_event=True,
-        )
-
-        if on_event:
-            on_event("batch_task_started", {"task_id": task_id, "position": i + 1})
-
-        # Execute task via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
-
-        # If task is BLOCKED, try supervisor resolution
-        if result_status == RunStatus.BLOCKED.value:
-            supervisor = get_supervisor(workspace)
-            if supervisor.try_resolve_blocked_task(task_id):
-                # Supervisor resolved the blocker - retry the task
-                print("      [Supervisor] Retrying task after auto-resolution...")
-                result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
-
-        # Record result
-        batch.results[task_id] = result_status
-        _save_batch(workspace, batch)
-
-        # Emit appropriate event based on result
-        if result_status == RunStatus.COMPLETED.value:
-            completed_count += 1
-            events.emit_for_workspace(
-                workspace,
-                events.EventType.BATCH_TASK_COMPLETED,
-                {"batch_id": batch.id, "task_id": task_id},
-                print_event=True,
-            )
-            print("      ✓ Completed")
-        elif result_status == RunStatus.BLOCKED.value:
-            blocked_count += 1
-            events.emit_for_workspace(
-                workspace,
-                events.EventType.BATCH_TASK_BLOCKED,
-                {"batch_id": batch.id, "task_id": task_id},
-                print_event=True,
-            )
-            print("      ⊘ Blocked (requires human input)")
-        else:
-            failed_count += 1
-            events.emit_for_workspace(
-                workspace,
-                events.EventType.BATCH_TASK_FAILED,
-                {"batch_id": batch.id, "task_id": task_id, "status": result_status},
-                print_event=True,
-            )
-            print(f"      ✗ Failed: {result_status}")
-
-            # Check on_failure behavior
-            if batch.on_failure == OnFailure.STOP:
-                print("\nStopping batch due to --on-failure=stop")
+    try:
+        for i, task_id in enumerate(batch.task_ids):
+            # Check if batch was cancelled
+            current_batch = get_batch(workspace, batch.id)
+            if current_batch and current_batch.status == BatchStatus.CANCELLED:
                 break
 
-        if on_event:
-            on_event("batch_task_completed", {"task_id": task_id, "status": result_status})
+            # Check for config reloads between tasks
+            if reload_state is not None:
+                _last_seen_reload = _apply_pending_config_reload(
+                    batch, workspace, reload_state, _last_seen_reload
+                )
 
-    # Determine final batch status
-    total = len(batch.task_ids)
-    completed_count + failed_count + blocked_count
+            # Emit task queued event
+            events.emit_for_workspace(
+                workspace,
+                events.EventType.BATCH_TASK_QUEUED,
+                {"batch_id": batch.id, "task_id": task_id, "position": i + 1},
+                print_event=True,
+            )
 
-    if completed_count == total:
-        batch.status = BatchStatus.COMPLETED
-        event_type = events.EventType.BATCH_COMPLETED
+            # Get task info for display
+            task = tasks.get(workspace, task_id)
+            task_title = task.title if task else task_id
 
-        # Run batch-level validation (full gate sweep)
-        validation_passed, validation_error = _run_batch_level_validation(workspace, batch)
+            print(f"\n[{i + 1}/{len(batch.task_ids)}] Starting task {task_id}: {task_title}")
 
-        if not validation_passed:
-            # Gates failed - change status to PARTIAL (tasks done, integration broken)
+            # Emit task started event
+            events.emit_for_workspace(
+                workspace,
+                events.EventType.BATCH_TASK_STARTED,
+                {"batch_id": batch.id, "task_id": task_id},
+                print_event=True,
+            )
+
+            if on_event:
+                on_event("batch_task_started", {"task_id": task_id, "position": i + 1})
+
+            # Execute task via subprocess
+            result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
+
+            # If task is BLOCKED, try supervisor resolution
+            if result_status == RunStatus.BLOCKED.value:
+                supervisor = get_supervisor(workspace)
+                if supervisor.try_resolve_blocked_task(task_id):
+                    # Supervisor resolved the blocker - retry the task
+                    print("      [Supervisor] Retrying task after auto-resolution...")
+                    result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
+
+            # Record result
+            batch.results[task_id] = result_status
+            _save_batch(workspace, batch)
+
+            # Emit appropriate event based on result
+            if result_status == RunStatus.COMPLETED.value:
+                completed_count += 1
+                events.emit_for_workspace(
+                    workspace,
+                    events.EventType.BATCH_TASK_COMPLETED,
+                    {"batch_id": batch.id, "task_id": task_id},
+                    print_event=True,
+                )
+                print("      ✓ Completed")
+            elif result_status == RunStatus.BLOCKED.value:
+                blocked_count += 1
+                events.emit_for_workspace(
+                    workspace,
+                    events.EventType.BATCH_TASK_BLOCKED,
+                    {"batch_id": batch.id, "task_id": task_id},
+                    print_event=True,
+                )
+                print("      ⊘ Blocked (requires human input)")
+            else:
+                failed_count += 1
+                events.emit_for_workspace(
+                    workspace,
+                    events.EventType.BATCH_TASK_FAILED,
+                    {"batch_id": batch.id, "task_id": task_id, "status": result_status},
+                    print_event=True,
+                )
+                print(f"      ✗ Failed: {result_status}")
+
+                # Check on_failure behavior
+                if batch.on_failure == OnFailure.STOP:
+                    print("\nStopping batch due to --on-failure=stop")
+                    break
+
+            if on_event:
+                on_event("batch_task_completed", {"task_id": task_id, "status": result_status})
+
+        # Determine final batch status
+        total = len(batch.task_ids)
+        completed_count + failed_count + blocked_count
+
+        if completed_count == total:
+            batch.status = BatchStatus.COMPLETED
+            event_type = events.EventType.BATCH_COMPLETED
+
+            # Run batch-level validation (full gate sweep)
+            validation_passed, validation_error = _run_batch_level_validation(workspace, batch)
+
+            if not validation_passed:
+                # Gates failed - change status to PARTIAL (tasks done, integration broken)
+                batch.status = BatchStatus.PARTIAL
+                event_type = events.EventType.BATCH_PARTIAL
+                print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
+                print(f"Validation error: {validation_error}")
+
+        elif completed_count == 0 and (failed_count > 0 or blocked_count > 0):
+            batch.status = BatchStatus.FAILED
+            event_type = events.EventType.BATCH_FAILED
+        elif completed_count > 0:
             batch.status = BatchStatus.PARTIAL
             event_type = events.EventType.BATCH_PARTIAL
-            print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
-            print(f"Validation error: {validation_error}")
+        else:
+            # Nothing executed (e.g., cancelled before start)
+            batch.status = BatchStatus.CANCELLED
+            event_type = events.EventType.BATCH_CANCELLED
 
-    elif completed_count == 0 and (failed_count > 0 or blocked_count > 0):
-        batch.status = BatchStatus.FAILED
-        event_type = events.EventType.BATCH_FAILED
-    elif completed_count > 0:
-        batch.status = BatchStatus.PARTIAL
-        event_type = events.EventType.BATCH_PARTIAL
-    else:
-        # Nothing executed (e.g., cancelled before start)
-        batch.status = BatchStatus.CANCELLED
-        event_type = events.EventType.BATCH_CANCELLED
+        batch.completed_at = _utc_now()
+        _save_batch(workspace, batch)
 
-    batch.completed_at = _utc_now()
-    _save_batch(workspace, batch)
+        # Emit batch completion event
+        events.emit_for_workspace(
+            workspace,
+            event_type,
+            {
+                "batch_id": batch.id,
+                "completed": completed_count,
+                "failed": failed_count,
+                "blocked": blocked_count,
+                "total": total,
+            },
+            print_event=True,
+        )
 
-    # Emit batch completion event
-    events.emit_for_workspace(
-        workspace,
-        event_type,
-        {
-            "batch_id": batch.id,
-            "completed": completed_count,
-            "failed": failed_count,
-            "blocked": blocked_count,
-            "total": total,
-        },
-        print_event=True,
-    )
+        # Stop reconciliation thread
+        reconcile_stop.set()
 
-    # Stop reconciliation thread
-    reconcile_stop.set()
-
-    # Print summary
-    print(f"\nBatch {batch.status.value.lower()}: {completed_count}/{total} tasks completed")
-    if failed_count > 0:
-        print(f"  Failed: {failed_count}")
-    if blocked_count > 0:
-        print(f"  Blocked: {blocked_count}")
+        # Print summary
+        print(f"\nBatch {batch.status.value.lower()}: {completed_count}/{total} tasks completed")
+        if failed_count > 0:
+            print(f"  Failed: {failed_count}")
+        if blocked_count > 0:
+            print(f"  Blocked: {blocked_count}")
+    finally:
+        if config_watcher is not None:
+            config_watcher.stop()
 
 
 def _execute_parallel(
@@ -1494,132 +1547,155 @@ def _execute_parallel(
     _interval_p = _env_config_p.reconciliation_interval_seconds if _env_config_p else 30
     _reconcile_stop_p = _start_reconciliation_thread(workspace, batch, interval_seconds=_interval_p)
 
+    # Start config file watcher (optional — failure must not break batch)
+    config_watcher_p = None
+    reload_state_p = None
+    _last_seen_reload_p = datetime.now(timezone.utc)
+    try:
+        from codeframe.core.config_watcher import ConfigFileWatcher as _CFW
+        from codeframe.core.agents_config import load_preferences as _load_prefs
+
+        config_watcher_p = _CFW(Path(workspace.repo_path))
+        reload_state_p = config_watcher_p.start(_load_prefs(Path(workspace.repo_path)))
+    except Exception:
+        logger.debug("Config watcher failed to start in parallel execution", exc_info=True)
+
     completed_count = 0
     failed_count = 0
     blocked_count = 0
     task_index = 0  # Global task counter for progress display
 
-    for group_idx, group in enumerate(plan.groups):
-        # Check if batch was cancelled
-        current_batch = get_batch(workspace, batch.id)
-        if current_batch and current_batch.status == BatchStatus.CANCELLED:
-            break
+    try:
+        for group_idx, group in enumerate(plan.groups):
+            # Check if batch was cancelled
+            current_batch = get_batch(workspace, batch.id)
+            if current_batch and current_batch.status == BatchStatus.CANCELLED:
+                break
 
-        # Check if any previous failure should stop execution
-        if batch.on_failure == OnFailure.STOP and failed_count > 0:
-            print("\nStopping batch due to --on-failure=stop")
-            break
-
-        group_size = len(group)
-        print(f"\n{'─'*60}")
-        print(f"Group {group_idx + 1}/{plan.num_groups}: {group_size} task(s)")
-
-        if group_size == 1:
-            # Single task - run directly
-            task_id = group[0]
-            task_index += 1
-            result = _execute_single_task(
-                workspace, batch, task_id, task_index, len(batch.task_ids), on_event
-            )
-            if result == RunStatus.COMPLETED.value:
-                completed_count += 1
-            elif result == RunStatus.BLOCKED.value:
-                blocked_count += 1
-            else:
-                failed_count += 1
-        else:
-            # Multiple tasks - run in parallel (use per-status limits if configured)
-            if batch.concurrency.by_status:
-                group_statuses = []
-                for tid in group:
-                    t = tasks.get(workspace, tid)
-                    if t:
-                        group_statuses.append(t.status.value)
-                effective_workers = batch.concurrency.effective_workers(
-                    statuses=group_statuses, group_size=group_size, global_running=0,
+            # Check for config reloads between groups
+            if reload_state_p is not None:
+                _last_seen_reload_p = _apply_pending_config_reload(
+                    batch, workspace, reload_state_p, _last_seen_reload_p
                 )
-            else:
-                effective_workers = min(group_size, batch.max_parallel)
-            print(f"Running {group_size} tasks with {effective_workers} workers")
 
-            # Execute group in parallel
-            results = _execute_group_parallel(
-                workspace, batch, group, task_index, len(batch.task_ids),
-                effective_workers, on_event
-            )
+            # Check if any previous failure should stop execution
+            if batch.on_failure == OnFailure.STOP and failed_count > 0:
+                print("\nStopping batch due to --on-failure=stop")
+                break
 
-            # Process results
-            for task_id, result_status in results.items():
+            group_size = len(group)
+            print(f"\n{'─'*60}")
+            print(f"Group {group_idx + 1}/{plan.num_groups}: {group_size} task(s)")
+
+            if group_size == 1:
+                # Single task - run directly
+                task_id = group[0]
                 task_index += 1
-                if result_status == RunStatus.COMPLETED.value:
+                result = _execute_single_task(
+                    workspace, batch, task_id, task_index, len(batch.task_ids), on_event
+                )
+                if result == RunStatus.COMPLETED.value:
                     completed_count += 1
-                elif result_status == RunStatus.BLOCKED.value:
+                elif result == RunStatus.BLOCKED.value:
                     blocked_count += 1
                 else:
                     failed_count += 1
+            else:
+                # Multiple tasks - run in parallel (use per-status limits if configured)
+                if batch.concurrency.by_status:
+                    group_statuses = []
+                    for tid in group:
+                        t = tasks.get(workspace, tid)
+                        if t:
+                            group_statuses.append(t.status.value)
+                    effective_workers = batch.concurrency.effective_workers(
+                        statuses=group_statuses, group_size=group_size, global_running=0,
+                    )
+                else:
+                    effective_workers = min(group_size, batch.max_parallel)
+                print(f"Running {group_size} tasks with {effective_workers} workers")
 
-                # Check stop on failure within parallel group
-                if batch.on_failure == OnFailure.STOP and failed_count > 0:
-                    # Can't stop mid-group, but will stop after group completes
-                    pass
+                # Execute group in parallel
+                results = _execute_group_parallel(
+                    workspace, batch, group, task_index, len(batch.task_ids),
+                    effective_workers, on_event
+                )
 
-    # Determine final batch status
-    total = len(batch.task_ids)
-    completed_count + failed_count + blocked_count
+                # Process results
+                for task_id, result_status in results.items():
+                    task_index += 1
+                    if result_status == RunStatus.COMPLETED.value:
+                        completed_count += 1
+                    elif result_status == RunStatus.BLOCKED.value:
+                        blocked_count += 1
+                    else:
+                        failed_count += 1
 
-    if completed_count == total:
-        batch.status = BatchStatus.COMPLETED
-        event_type = events.EventType.BATCH_COMPLETED
+                    # Check stop on failure within parallel group
+                    if batch.on_failure == OnFailure.STOP and failed_count > 0:
+                        # Can't stop mid-group, but will stop after group completes
+                        pass
 
-        # Run batch-level validation (full gate sweep)
-        validation_passed, validation_error = _run_batch_level_validation(workspace, batch)
+        # Determine final batch status
+        total = len(batch.task_ids)
+        completed_count + failed_count + blocked_count
 
-        if not validation_passed:
-            # Gates failed - change status to PARTIAL (tasks done, integration broken)
+        if completed_count == total:
+            batch.status = BatchStatus.COMPLETED
+            event_type = events.EventType.BATCH_COMPLETED
+
+            # Run batch-level validation (full gate sweep)
+            validation_passed, validation_error = _run_batch_level_validation(workspace, batch)
+
+            if not validation_passed:
+                # Gates failed - change status to PARTIAL (tasks done, integration broken)
+                batch.status = BatchStatus.PARTIAL
+                event_type = events.EventType.BATCH_PARTIAL
+                print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
+                print(f"Validation error: {validation_error}")
+
+        elif completed_count == 0 and (failed_count > 0 or blocked_count > 0):
+            batch.status = BatchStatus.FAILED
+            event_type = events.EventType.BATCH_FAILED
+        elif completed_count > 0:
             batch.status = BatchStatus.PARTIAL
             event_type = events.EventType.BATCH_PARTIAL
-            print("\n⚠️  Batch marked PARTIAL due to failed batch-level gates")
-            print(f"Validation error: {validation_error}")
+        else:
+            batch.status = BatchStatus.CANCELLED
+            event_type = events.EventType.BATCH_CANCELLED
 
-    elif completed_count == 0 and (failed_count > 0 or blocked_count > 0):
-        batch.status = BatchStatus.FAILED
-        event_type = events.EventType.BATCH_FAILED
-    elif completed_count > 0:
-        batch.status = BatchStatus.PARTIAL
-        event_type = events.EventType.BATCH_PARTIAL
-    else:
-        batch.status = BatchStatus.CANCELLED
-        event_type = events.EventType.BATCH_CANCELLED
+        batch.completed_at = _utc_now()
+        _save_batch(workspace, batch)
 
-    batch.completed_at = _utc_now()
-    _save_batch(workspace, batch)
+        # Emit batch completion event
+        events.emit_for_workspace(
+            workspace,
+            event_type,
+            {
+                "batch_id": batch.id,
+                "completed": completed_count,
+                "failed": failed_count,
+                "blocked": blocked_count,
+                "total": total,
+                "strategy": "parallel",
+                "groups": plan.num_groups,
+            },
+            print_event=True,
+        )
 
-    # Emit batch completion event
-    events.emit_for_workspace(
-        workspace,
-        event_type,
-        {
-            "batch_id": batch.id,
-            "completed": completed_count,
-            "failed": failed_count,
-            "blocked": blocked_count,
-            "total": total,
-            "strategy": "parallel",
-            "groups": plan.num_groups,
-        },
-        print_event=True,
-    )
+        # Stop reconciliation thread
+        _reconcile_stop_p.set()
 
-    # Stop reconciliation thread
-    _reconcile_stop_p.set()
-
-    # Print summary
-    print(f"\nBatch {batch.status.value.lower()}: {completed_count}/{total} tasks completed")
-    print(f"  Execution: {plan.num_groups} groups (parallel strategy)")
-    if failed_count > 0:
-        print(f"  Failed: {failed_count}")
-    if blocked_count > 0:
-        print(f"  Blocked: {blocked_count}")
+        # Print summary
+        print(f"\nBatch {batch.status.value.lower()}: {completed_count}/{total} tasks completed")
+        print(f"  Execution: {plan.num_groups} groups (parallel strategy)")
+        if failed_count > 0:
+            print(f"  Failed: {failed_count}")
+        if blocked_count > 0:
+            print(f"  Blocked: {blocked_count}")
+    finally:
+        if config_watcher_p is not None:
+            config_watcher_p.stop()
 
 
 def _start_reconciliation_thread(
