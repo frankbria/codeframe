@@ -3796,6 +3796,18 @@ def batch_status(
 
                 console.print(f"    {icon} {tid[:8]} - {title}")
 
+            # Show config reloads if any occurred during batch
+            config_reloads = batch.results.get("__config_reloads__")
+            if config_reloads:
+                console.print("\n  [bold]Config Reloads:[/bold]")
+                for ts in config_reloads:
+                    try:
+                        from datetime import datetime as _dt
+                        dt = _dt.fromisoformat(ts)
+                        console.print(f"    Config reloaded at {dt.strftime('%H:%M:%S')}")
+                    except (ValueError, TypeError):
+                        console.print(f"    Config reloaded at {ts}")
+
         else:
             # List recent batches
             batches = conductor.list_batches(workspace, limit=10)
