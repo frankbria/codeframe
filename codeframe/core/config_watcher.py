@@ -64,6 +64,8 @@ class ConfigReloadState:
             self.last_reload_at = timestamp
             self.last_error = None
             self.reload_timestamps.append(timestamp.isoformat())
+            if len(self.reload_timestamps) > 100:
+                self.reload_timestamps = self.reload_timestamps[-100:]
 
     def record_error(self, msg: str) -> None:
         with self._lock:
@@ -104,6 +106,7 @@ class ConfigFileWatcher:
         self._thread: Optional[threading.Thread] = None
         self._state: Optional[ConfigReloadState] = None
         self._watched_mtimes: dict[Path, float] = {}
+        self._workspace_ref: Optional[object] = None  # Cached workspace for event emission
 
     def start(self, initial_prefs: AgentPreferences) -> ConfigReloadState:
         """Begin watching config files.
@@ -172,9 +175,12 @@ class ConfigFileWatcher:
         # Also detect newly created config files
         for name in _CONFIG_FILES:
             path = self._workspace_path / name
-            if path.is_file() and path not in self._watched_mtimes:
-                self._watched_mtimes[path] = path.stat().st_mtime
-                changed = True
+            try:
+                if path.is_file() and path not in self._watched_mtimes:
+                    self._watched_mtimes[path] = path.stat().st_mtime
+                    changed = True
+            except OSError:
+                continue
 
         if changed:
             self._reload()
@@ -226,15 +232,20 @@ class ConfigFileWatcher:
             changes.append("code_style changed")
         return "; ".join(changes) if changes else "content changed"
 
+    def _get_workspace(self):
+        """Get cached workspace reference for event emission."""
+        if self._workspace_ref is None:
+            from codeframe.core.workspace import get_workspace
+            self._workspace_ref = get_workspace(self._workspace_path)
+        return self._workspace_ref
+
     def _emit_reload_success(self, diff_summary: str) -> None:
         """Emit CONFIG_RELOADED event (best-effort)."""
         try:
             from codeframe.core import events
-            from codeframe.core.workspace import get_workspace
 
-            workspace = get_workspace(self._workspace_path)
             events.emit_for_workspace(
-                workspace,
+                self._get_workspace(),
                 events.EventType.CONFIG_RELOADED,
                 {"diff_summary": diff_summary},
                 print_event=True,
@@ -246,11 +257,9 @@ class ConfigFileWatcher:
         """Emit CONFIG_RELOAD_FAILED event (best-effort)."""
         try:
             from codeframe.core import events
-            from codeframe.core.workspace import get_workspace
 
-            workspace = get_workspace(self._workspace_path)
             events.emit_for_workspace(
-                workspace,
+                self._get_workspace(),
                 events.EventType.CONFIG_RELOAD_FAILED,
                 {"error": error_msg},
                 print_event=True,
