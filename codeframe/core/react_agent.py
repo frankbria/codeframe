@@ -575,13 +575,24 @@ class ReactAgent:
                 ):
                     _op_type = "create" if tc.name == "create_file" else "edit"
                     _op_path = tc.input.get("path", "")
-                    _op_after = tc.input.get("content") if tc.name == "create_file" else tc.input.get("new_text")
-                    _op_before = tc.input.get("old_text") if tc.name == "edit_file" else None
+                    if tc.name == "create_file":
+                        # create_file input has the full content
+                        _op_after = tc.input.get("content", "")
+                    else:
+                        # edit_file uses search/replace snippets — read the
+                        # actual file content after the edit for accurate state.
+                        _op_after = None
+                        try:
+                            _full_path = self.workspace.repo_path / _op_path
+                            if _full_path.is_file():
+                                _op_after = _full_path.read_text(errors="replace")
+                        except OSError:
+                            pass
                     self.execution_recorder.record_file_operation(
                         step_id=_rec_step_id,
                         op_type=_op_type,
                         path=_op_path,
-                        before=_op_before,
+                        before=None,
                         after=_op_after,
                     )
 

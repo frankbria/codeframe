@@ -250,12 +250,12 @@ class ExecutionRecorder:
                 save_llm_interaction(self.workspace, interaction)
             for op in self._file_op_buffer:
                 save_file_operation(self.workspace, op)
-        except Exception:
-            logger.debug("ExecutionRecorder flush failed", exc_info=True)
-        finally:
+            # Only clear on success — retain data for retry on failure
             self._step_buffer.clear()
             self._llm_buffer.clear()
             self._file_op_buffer.clear()
+        except Exception:
+            logger.warning("ExecutionRecorder flush failed — data retained for retry", exc_info=True)
 
     def _maybe_flush(self) -> None:
         """Auto-flush when buffer reaches threshold."""

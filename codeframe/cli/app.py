@@ -3351,7 +3351,7 @@ def work_export_trace(
         "-w",
         help="Workspace path (defaults to current directory)",
     ),
-    format: str = typer.Option(
+    output_format: str = typer.Option(
         "json",
         "--format",
         "-f",
@@ -3392,7 +3392,7 @@ def work_export_trace(
             console.print(f"[red]Error:[/red] No trace found for run '{run_id}'")
             raise typer.Exit(1)
 
-        if format == "json":
+        if output_format == "json":
             content = json.dumps(export_trace_json(trace), indent=2)
         else:
             content = export_trace_markdown(trace)
