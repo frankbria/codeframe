@@ -12,10 +12,10 @@ from unittest.mock import patch
 
 import pytest
 
-from codeframe.adapters.llm.base import LLMResponse, ToolCall, ToolResult
+from codeframe.adapters.llm.base import ToolCall, ToolResult
 from codeframe.adapters.llm.mock import MockProvider
 from codeframe.core.agent import AgentStatus
-from codeframe.core.context import FileContent, TaskContext
+from codeframe.core.context import TaskContext
 from codeframe.core.gates import GateCheck, GateResult, GateStatus
 from codeframe.core.replay import (
     ExecutionRecorder,
@@ -24,7 +24,7 @@ from codeframe.core.replay import (
     get_llm_interactions,
 )
 from codeframe.core.tasks import Task, TaskStatus
-from codeframe.core.workspace import Workspace, create_or_load_workspace
+from codeframe.core.workspace import create_or_load_workspace
 
 pytestmark = pytest.mark.v2
 
