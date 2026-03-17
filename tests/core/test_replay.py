@@ -361,3 +361,351 @@ class TestFileOperationCRUD:
             )
         ops = get_file_operations(workspace, run_id)
         assert [op.file_path for op in ops] == ["file0.py", "file1.py", "file2.py"]
+
+
+# =============================================================================
+# Step 3: Trace loading and state reconstruction tests
+# =============================================================================
+
+
+def _insert_run(workspace, run_id, task_id, status="COMPLETED"):
+    """Helper to insert a run record directly into the database."""
+    conn = get_db_connection(workspace)
+    try:
+        conn.execute(
+            "INSERT INTO runs (id, workspace_id, task_id, status, started_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (run_id, workspace.id, task_id, status, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _seed_three_step_trace(workspace, run_id):
+    """Seed a 3-step trace: step1 creates A, step2 edits A, step3 creates B.
+
+    Returns the step ids as a tuple (step1_id, step2_id, step3_id).
+    """
+    from codeframe.core.replay import (
+        ExecutionStep,
+        FileOperation,
+        LLMInteraction,
+        save_execution_step,
+        save_file_operation,
+        save_llm_interaction,
+    )
+    from datetime import timedelta
+
+    base = datetime.now(timezone.utc)
+    step_ids = [str(uuid.uuid4()) for _ in range(3)]
+
+    # Step 1: create file A
+    save_execution_step(
+        workspace,
+        ExecutionStep(
+            id=step_ids[0], run_id=run_id, step_number=1, step_type="tool_call",
+            description="Create file A", started_at=base,
+            completed_at=base + timedelta(seconds=1), status="completed",
+        ),
+    )
+    save_file_operation(
+        workspace,
+        FileOperation(
+            id=str(uuid.uuid4()), run_id=run_id, step_id=step_ids[0],
+            operation_type="create", file_path="src/a.py",
+            content_before=None, content_after="# original A",
+            timestamp=base + timedelta(seconds=1),
+        ),
+    )
+    save_llm_interaction(
+        workspace,
+        LLMInteraction(
+            id=str(uuid.uuid4()), run_id=run_id, step_id=step_ids[0],
+            prompt="Create file A", response="Done",
+            model="claude-sonnet", tokens_used=500,
+            timestamp=base + timedelta(seconds=1), purpose="execution",
+        ),
+    )
+
+    # Step 2: edit file A
+    save_execution_step(
+        workspace,
+        ExecutionStep(
+            id=step_ids[1], run_id=run_id, step_number=2, step_type="tool_call",
+            description="Edit file A", started_at=base + timedelta(seconds=2),
+            completed_at=base + timedelta(seconds=3), status="completed",
+        ),
+    )
+    save_file_operation(
+        workspace,
+        FileOperation(
+            id=str(uuid.uuid4()), run_id=run_id, step_id=step_ids[1],
+            operation_type="edit", file_path="src/a.py",
+            content_before="# original A", content_after="# edited A",
+            timestamp=base + timedelta(seconds=3),
+        ),
+    )
+    save_llm_interaction(
+        workspace,
+        LLMInteraction(
+            id=str(uuid.uuid4()), run_id=run_id, step_id=step_ids[1],
+            prompt="Edit file A", response="Done",
+            model="claude-sonnet", tokens_used=300,
+            timestamp=base + timedelta(seconds=3), purpose="execution",
+        ),
+    )
+
+    # Step 3: create file B
+    save_execution_step(
+        workspace,
+        ExecutionStep(
+            id=step_ids[2], run_id=run_id, step_number=3, step_type="tool_call",
+            description="Create file B", started_at=base + timedelta(seconds=4),
+            completed_at=base + timedelta(seconds=5), status="completed",
+        ),
+    )
+    save_file_operation(
+        workspace,
+        FileOperation(
+            id=str(uuid.uuid4()), run_id=run_id, step_id=step_ids[2],
+            operation_type="create", file_path="src/b.py",
+            content_before=None, content_after="# file B",
+            timestamp=base + timedelta(seconds=5),
+        ),
+    )
+
+    return tuple(step_ids)
+
+
+class TestLoadExecutionTrace:
+    """Tests for load_execution_trace assembling a full trace."""
+
+    def test_load_trace_assembles_all_data(self, workspace, run_id, task_id):
+        from codeframe.core.replay import load_execution_trace
+
+        _insert_run(workspace, run_id, task_id, status="COMPLETED")
+        _seed_three_step_trace(workspace, run_id)
+
+        trace = load_execution_trace(workspace, run_id)
+        assert trace is not None
+        assert trace.run_id == run_id
+        assert trace.task_id == task_id
+        assert trace.status == "COMPLETED"
+        assert len(trace.steps) == 3
+        assert len(trace.llm_interactions) == 2
+        assert len(trace.file_operations) == 3
+
+    def test_load_trace_nonexistent_run_returns_none(self, workspace):
+        from codeframe.core.replay import load_execution_trace
+
+        result = load_execution_trace(workspace, "nonexistent-run-id")
+        assert result is None
+
+    def test_load_trace_without_run_record(self, workspace, run_id):
+        """Steps exist but no run record - should still return a trace."""
+        from codeframe.core.replay import load_execution_trace
+
+        _seed_three_step_trace(workspace, run_id)
+
+        trace = load_execution_trace(workspace, run_id)
+        assert trace is not None
+        assert trace.task_id == "unknown"
+        assert trace.status == "UNKNOWN"
+        assert len(trace.steps) == 3
+
+    def test_load_trace_step_order(self, workspace, run_id, task_id):
+        from codeframe.core.replay import load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+
+        trace = load_execution_trace(workspace, run_id)
+        step_numbers = [s.step_number for s in trace.steps]
+        assert step_numbers == [1, 2, 3]
+
+
+class TestGetStepSnapshot:
+    """Tests for get_step_snapshot reconstructing file state."""
+
+    def test_snapshot_at_step_1(self, workspace, run_id):
+        from codeframe.core.replay import get_step_snapshot
+
+        _seed_three_step_trace(workspace, run_id)
+
+        snapshot = get_step_snapshot(workspace, run_id, 1)
+        assert "src/a.py" in snapshot
+        assert snapshot["src/a.py"] == "# original A"
+        assert "src/b.py" not in snapshot
+
+    def test_snapshot_at_step_2(self, workspace, run_id):
+        from codeframe.core.replay import get_step_snapshot
+
+        _seed_three_step_trace(workspace, run_id)
+
+        snapshot = get_step_snapshot(workspace, run_id, 2)
+        assert snapshot["src/a.py"] == "# edited A"
+        assert "src/b.py" not in snapshot
+
+    def test_snapshot_at_step_3(self, workspace, run_id):
+        from codeframe.core.replay import get_step_snapshot
+
+        _seed_three_step_trace(workspace, run_id)
+
+        snapshot = get_step_snapshot(workspace, run_id, 3)
+        assert snapshot["src/a.py"] == "# edited A"
+        assert snapshot["src/b.py"] == "# file B"
+
+    def test_snapshot_at_step_0_empty(self, workspace, run_id):
+        from codeframe.core.replay import get_step_snapshot
+
+        _seed_three_step_trace(workspace, run_id)
+
+        snapshot = get_step_snapshot(workspace, run_id, 0)
+        assert snapshot == {}
+
+
+class TestCompareSteps:
+    """Tests for compare_steps diffing file state between steps."""
+
+    def test_compare_step_1_to_3(self, workspace, run_id):
+        from codeframe.core.replay import compare_steps
+
+        _seed_three_step_trace(workspace, run_id)
+
+        diff = compare_steps(workspace, run_id, 1, 3)
+        # A was edited
+        assert "src/a.py" in diff
+        assert diff["src/a.py"]["before"] == "# original A"
+        assert diff["src/a.py"]["after"] == "# edited A"
+        # B was created (didn't exist at step 1)
+        assert "src/b.py" in diff
+        assert diff["src/b.py"]["before"] is None
+        assert diff["src/b.py"]["after"] == "# file B"
+
+    def test_compare_same_step_no_diff(self, workspace, run_id):
+        from codeframe.core.replay import compare_steps
+
+        _seed_three_step_trace(workspace, run_id)
+
+        diff = compare_steps(workspace, run_id, 2, 2)
+        assert diff == {}
+
+    def test_compare_step_1_to_2(self, workspace, run_id):
+        from codeframe.core.replay import compare_steps
+
+        _seed_three_step_trace(workspace, run_id)
+
+        diff = compare_steps(workspace, run_id, 1, 2)
+        assert "src/a.py" in diff
+        assert diff["src/a.py"]["before"] == "# original A"
+        assert diff["src/a.py"]["after"] == "# edited A"
+        assert "src/b.py" not in diff
+
+
+class TestExportTrace:
+    """Tests for export_trace_json producing a JSON-serializable dict."""
+
+    def test_export_produces_valid_structure(self, workspace, run_id, task_id):
+        from codeframe.core.replay import export_trace_json, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id, status="COMPLETED")
+        _seed_three_step_trace(workspace, run_id)
+
+        trace = load_execution_trace(workspace, run_id)
+        result = export_trace_json(trace)
+
+        assert result["run_id"] == run_id
+        assert result["task_id"] == task_id
+        assert result["status"] == "COMPLETED"
+        assert "started_at" in result
+        assert "completed_at" in result
+        assert len(result["steps"]) == 3
+        assert result["summary"]["total_steps"] == 3
+        assert result["summary"]["llm_calls"] == 2
+        assert result["summary"]["total_tokens"] == 800
+        assert result["summary"]["files_modified"] == 2
+
+    def test_export_is_json_serializable(self, workspace, run_id, task_id):
+        from codeframe.core.replay import export_trace_json, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+
+        trace = load_execution_trace(workspace, run_id)
+        result = export_trace_json(trace)
+
+        # Must not raise
+        serialized = json.dumps(result)
+        assert isinstance(serialized, str)
+
+    def test_export_step_fields(self, workspace, run_id, task_id):
+        from codeframe.core.replay import export_trace_json, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+
+        trace = load_execution_trace(workspace, run_id)
+        result = export_trace_json(trace)
+
+        step = result["steps"][0]
+        assert step["step_number"] == 1
+        assert step["step_type"] == "tool_call"
+        assert step["description"] == "Create file A"
+        assert step["status"] == "completed"
+
+
+class TestExportTraceMarkdown:
+    """Tests for export_trace_markdown producing a Markdown report."""
+
+    def test_markdown_contains_headers(self, workspace, run_id, task_id):
+        from codeframe.core.replay import export_trace_markdown, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id, status="COMPLETED")
+        _seed_three_step_trace(workspace, run_id)
+
+        trace = load_execution_trace(workspace, run_id)
+        md = export_trace_markdown(trace)
+
+        assert "# Execution Trace" in md
+        assert run_id in md
+        assert task_id in md
+        assert "COMPLETED" in md
+
+    def test_markdown_contains_summary(self, workspace, run_id, task_id):
+        from codeframe.core.replay import export_trace_markdown, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+
+        trace = load_execution_trace(workspace, run_id)
+        md = export_trace_markdown(trace)
+
+        assert "## Summary" in md
+        assert "3" in md  # total steps
+
+    def test_markdown_contains_step_descriptions(self, workspace, run_id, task_id):
+        from codeframe.core.replay import export_trace_markdown, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+
+        trace = load_execution_trace(workspace, run_id)
+        md = export_trace_markdown(trace)
+
+        assert "## Steps" in md
+        assert "Create file A" in md
+        assert "Edit file A" in md
+        assert "Create file B" in md
+
+    def test_markdown_contains_file_changes(self, workspace, run_id, task_id):
+        from codeframe.core.replay import export_trace_markdown, load_execution_trace
+
+        _insert_run(workspace, run_id, task_id)
+        _seed_three_step_trace(workspace, run_id)
+
+        trace = load_execution_trace(workspace, run_id)
+        md = export_trace_markdown(trace)
+
+        assert "src/a.py" in md
+        assert "src/b.py" in md

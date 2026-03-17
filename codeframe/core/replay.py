@@ -8,12 +8,15 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from codeframe.core.workspace import Workspace, get_db_connection
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -96,6 +99,169 @@ class ExecutionTrace:
             "total_tokens": sum(i.tokens_used for i in self.llm_interactions),
             "files_modified": len(unique_files),
         }
+
+
+# =============================================================================
+# ExecutionRecorder — buffered recording for ReactAgent integration
+# =============================================================================
+
+
+class ExecutionRecorder:
+    """Buffered execution trace recorder for ReactAgent.
+
+    Collects execution steps, LLM interactions, and file operations
+    in memory and flushes them to the database periodically or on demand.
+
+    Args:
+        workspace: Target workspace (for DB access).
+        run_id: Run identifier to associate all records with.
+        flush_interval: Number of records to buffer before auto-flushing.
+    """
+
+    def __init__(
+        self,
+        workspace: Workspace,
+        run_id: str,
+        flush_interval: int = 10,
+    ) -> None:
+        self.workspace = workspace
+        self.run_id = run_id
+        self._flush_interval = flush_interval
+        self._step_buffer: list[ExecutionStep] = []
+        self._llm_buffer: list[LLMInteraction] = []
+        self._file_op_buffer: list[FileOperation] = []
+
+    def record_iteration(
+        self,
+        step_number: int,
+        tool_names: list[str],
+        llm_response_summary: str,
+    ) -> str:
+        """Record one iteration of the react loop as an ExecutionStep.
+
+        Args:
+            step_number: 1-based iteration number.
+            tool_names: Names of tools called in this iteration.
+            llm_response_summary: Short summary of the LLM response.
+
+        Returns:
+            The generated step ID.
+        """
+        step_id = str(uuid.uuid4())
+        now = _utc_now()
+        description = (
+            f"Tools: {', '.join(tool_names)}" if tool_names else llm_response_summary
+        )
+        step = ExecutionStep(
+            id=step_id,
+            run_id=self.run_id,
+            step_number=step_number,
+            step_type="tool_call",
+            description=description,
+            started_at=now,
+            completed_at=now,
+            status="completed",
+            output_result=llm_response_summary[:500] if llm_response_summary else None,
+            metadata={"tool_names": tool_names},
+        )
+        self._step_buffer.append(step)
+        self._maybe_flush()
+        return step_id
+
+    def record_llm_call(
+        self,
+        step_id: str,
+        prompt_summary: str,
+        response_summary: str,
+        model: str,
+        tokens_used: int,
+        purpose: str,
+    ) -> str:
+        """Record a single LLM prompt/response pair.
+
+        Args:
+            step_id: ID of the parent execution step.
+            prompt_summary: Condensed prompt (system summary + last user message).
+            response_summary: Content or tool calls summary.
+            model: Model identifier.
+            tokens_used: Total tokens consumed.
+            purpose: Purpose label (execution, planning, etc.).
+
+        Returns:
+            The generated interaction ID.
+        """
+        interaction_id = str(uuid.uuid4())
+        interaction = LLMInteraction(
+            id=interaction_id,
+            run_id=self.run_id,
+            step_id=step_id,
+            prompt=prompt_summary[:2000] if prompt_summary else "",
+            response=response_summary[:2000] if response_summary else "",
+            model=model or "",
+            tokens_used=tokens_used,
+            timestamp=_utc_now(),
+            purpose=purpose,
+        )
+        self._llm_buffer.append(interaction)
+        self._maybe_flush()
+        return interaction_id
+
+    def record_file_operation(
+        self,
+        step_id: str,
+        op_type: str,
+        path: str,
+        before: Optional[str],
+        after: Optional[str],
+    ) -> str:
+        """Record a file create/edit/delete operation.
+
+        Args:
+            step_id: ID of the parent execution step.
+            op_type: Operation type (create, edit, delete).
+            path: Relative file path.
+            before: Content before the operation (None for create).
+            after: Content after the operation (None for delete).
+
+        Returns:
+            The generated file operation ID.
+        """
+        op_id = str(uuid.uuid4())
+        op = FileOperation(
+            id=op_id,
+            run_id=self.run_id,
+            step_id=step_id,
+            operation_type=op_type,
+            file_path=path,
+            content_before=before,
+            content_after=after,
+            timestamp=_utc_now(),
+        )
+        self._file_op_buffer.append(op)
+        self._maybe_flush()
+        return op_id
+
+    def flush(self) -> None:
+        """Write all buffered records to the database."""
+        try:
+            for step in self._step_buffer:
+                save_execution_step(self.workspace, step)
+            for interaction in self._llm_buffer:
+                save_llm_interaction(self.workspace, interaction)
+            for op in self._file_op_buffer:
+                save_file_operation(self.workspace, op)
+        except Exception:
+            logger.debug("ExecutionRecorder flush failed", exc_info=True)
+        finally:
+            self._step_buffer.clear()
+            self._llm_buffer.clear()
+            self._file_op_buffer.clear()
+
+    def _maybe_flush(self) -> None:
+        """Auto-flush when buffer reaches threshold."""
+        total = len(self._step_buffer) + len(self._llm_buffer) + len(self._file_op_buffer)
+        if total >= self._flush_interval:
+            self.flush()
 
 
 # =============================================================================
@@ -363,6 +529,107 @@ def compare_steps(
         if before != after:
             changes[f] = {"before": before, "after": after}
     return changes
+
+
+# =============================================================================
+# Export Functions
+# =============================================================================
+
+
+def export_trace_json(trace: ExecutionTrace) -> dict[str, Any]:
+    """Export an ExecutionTrace as a JSON-serializable dict.
+
+    Returns a dict with run metadata, step details, and summary stats.
+    """
+    # Build a lookup of file operations by step_id
+    ops_by_step: dict[str, list[FileOperation]] = {}
+    for op in trace.file_operations:
+        ops_by_step.setdefault(op.step_id, []).append(op)
+
+    steps = []
+    for step in trace.steps:
+        step_ops = ops_by_step.get(step.id, [])
+        step_dict: dict[str, Any] = {
+            "step_number": step.step_number,
+            "step_type": step.step_type,
+            "description": step.description,
+            "status": step.status,
+            "started_at": step.started_at.isoformat(),
+            "completed_at": step.completed_at.isoformat() if step.completed_at else None,
+        }
+        if step_ops:
+            step_dict["file_changes"] = [
+                {
+                    "operation": op.operation_type,
+                    "file_path": op.file_path,
+                }
+                for op in step_ops
+            ]
+        steps.append(step_dict)
+
+    return {
+        "run_id": trace.run_id,
+        "task_id": trace.task_id,
+        "started_at": trace.started_at.isoformat(),
+        "completed_at": trace.completed_at.isoformat() if trace.completed_at else None,
+        "status": trace.status,
+        "steps": steps,
+        "summary": trace.summary(),
+    }
+
+
+def export_trace_markdown(trace: ExecutionTrace) -> str:
+    """Export an ExecutionTrace as a Markdown report.
+
+    Produces a human-readable report with header, summary stats,
+    and a step-by-step timeline including file changes.
+    """
+    summary = trace.summary()
+
+    # Build file operations lookup by step_id
+    ops_by_step: dict[str, list[FileOperation]] = {}
+    for op in trace.file_operations:
+        ops_by_step.setdefault(op.step_id, []).append(op)
+
+    lines = [
+        f"# Execution Trace: {trace.run_id}",
+        "",
+        f"- **Task**: {trace.task_id}",
+        f"- **Status**: {trace.status}",
+        f"- **Started**: {trace.started_at.isoformat()}",
+    ]
+    if trace.completed_at:
+        lines.append(f"- **Completed**: {trace.completed_at.isoformat()}")
+    lines.append("")
+
+    lines.append("## Summary")
+    lines.append("")
+    lines.append("| Metric | Value |")
+    lines.append("|--------|-------|")
+    lines.append(f"| Total steps | {summary['total_steps']} |")
+    lines.append(f"| LLM calls | {summary['llm_calls']} |")
+    lines.append(f"| Total tokens | {summary['total_tokens']} |")
+    lines.append(f"| Files modified | {summary['files_modified']} |")
+    lines.append("")
+
+    lines.append("## Steps")
+    lines.append("")
+    for step in trace.steps:
+        status_icon = {"completed": "[OK]", "failed": "[FAIL]", "started": "[...]"}.get(
+            step.status, f"[{step.status}]"
+        )
+        lines.append(f"### Step {step.step_number}: {step.description}")
+        lines.append(f"- **Type**: {step.step_type}")
+        lines.append(f"- **Status**: {status_icon} {step.status}")
+
+        step_ops = ops_by_step.get(step.id, [])
+        if step_ops:
+            lines.append("- **File changes**:")
+            for op in step_ops:
+                lines.append(f"  - {op.operation_type}: `{op.file_path}`")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 # =============================================================================
