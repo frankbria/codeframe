@@ -286,6 +286,56 @@ def _init_database(db_path: Path) -> None:
         )
     """)
 
+    # Execution trace tables (for debug/replay mode)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS execution_steps (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            step_number INTEGER NOT NULL,
+            step_type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            status TEXT NOT NULL DEFAULT 'started',
+            input_context TEXT,
+            output_result TEXT,
+            metadata TEXT,
+            FOREIGN KEY (run_id) REFERENCES runs(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS llm_interactions (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            step_id TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            response TEXT NOT NULL,
+            model TEXT NOT NULL,
+            tokens_used INTEGER NOT NULL DEFAULT 0,
+            timestamp TEXT NOT NULL,
+            purpose TEXT NOT NULL DEFAULT 'execution',
+            FOREIGN KEY (run_id) REFERENCES runs(id),
+            FOREIGN KEY (step_id) REFERENCES execution_steps(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS file_operations (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            step_id TEXT NOT NULL,
+            operation_type TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            content_before TEXT,
+            content_after TEXT,
+            timestamp TEXT NOT NULL,
+            FOREIGN KEY (run_id) REFERENCES runs(id),
+            FOREIGN KEY (step_id) REFERENCES execution_steps(id),
+            CHECK (operation_type IN ('create', 'edit', 'delete'))
+        )
+    """)
+
     # Create indexes for common queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
@@ -303,6 +353,12 @@ def _init_database(db_path: Path) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostic_reports_run ON diagnostic_reports(run_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_engine_log_ws_engine ON run_engine_log(workspace_id, engine)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_engine_stats_ws ON engine_stats(workspace_id, engine)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_execution_steps_run ON execution_steps(run_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_execution_steps_run_step ON execution_steps(run_id, step_number)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_interactions_run ON llm_interactions(run_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_interactions_step ON llm_interactions(step_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_run ON file_operations(run_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_step ON file_operations(step_id)")
 
     conn.commit()
     conn.close()
@@ -539,6 +595,61 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         "CREATE INDEX IF NOT EXISTS idx_engine_stats_ws "
         "ON engine_stats(workspace_id, engine)"
     )
+    conn.commit()
+
+    # Add execution trace tables for debug/replay mode
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS execution_steps (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            step_number INTEGER NOT NULL,
+            step_type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            status TEXT NOT NULL DEFAULT 'started',
+            input_context TEXT,
+            output_result TEXT,
+            metadata TEXT,
+            FOREIGN KEY (run_id) REFERENCES runs(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS llm_interactions (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            step_id TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            response TEXT NOT NULL,
+            model TEXT NOT NULL,
+            tokens_used INTEGER NOT NULL DEFAULT 0,
+            timestamp TEXT NOT NULL,
+            purpose TEXT NOT NULL DEFAULT 'execution',
+            FOREIGN KEY (run_id) REFERENCES runs(id),
+            FOREIGN KEY (step_id) REFERENCES execution_steps(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS file_operations (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            step_id TEXT NOT NULL,
+            operation_type TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            content_before TEXT,
+            content_after TEXT,
+            timestamp TEXT NOT NULL,
+            FOREIGN KEY (run_id) REFERENCES runs(id),
+            FOREIGN KEY (step_id) REFERENCES execution_steps(id),
+            CHECK (operation_type IN ('create', 'edit', 'delete'))
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_execution_steps_run ON execution_steps(run_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_execution_steps_run_step ON execution_steps(run_id, step_number)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_interactions_run ON llm_interactions(run_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_interactions_step ON llm_interactions(step_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_run ON file_operations(run_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_step ON file_operations(step_id)")
     conn.commit()
 
     conn.close()
