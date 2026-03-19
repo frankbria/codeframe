@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 from pathlib import Path
 
@@ -20,6 +21,11 @@ class KilocodeAdapter(SubprocessAdapter):
     non-interactive execution.  The prompt is passed as a positional argument
     (not via stdin), matching Kilocode's CLI interface.
 
+    Note on prompt length: the prompt is passed as a single positional argument.
+    Linux supports up to ~2 MB per argument, but macOS caps individual arguments
+    at 256 KB. Very large task contexts assembled by TaskContextPackager may fail
+    on macOS. If Kilocode adds stdin support in a future release, prefer that path.
+
     Exit codes:
         0   — success
         124 — timeout exceeded (mirrors the standard ``timeout(1)`` convention)
@@ -28,7 +34,7 @@ class KilocodeAdapter(SubprocessAdapter):
     Configuration via environment variables:
         KILOCODE_PATH   — path to kilo binary (default: "kilo", resolved from $PATH)
         KILOCODE_MODEL  — optional model override passed as ``--model``
-        KILOCODE_FLAGS  — optional extra CLI flags (space-separated string)
+        KILOCODE_FLAGS  — optional extra CLI flags (shell-quoted, e.g. ``--flag "val"``)
 
     Requires Kilocode to be installed:
     https://kilocode.ai/
@@ -39,18 +45,28 @@ class KilocodeAdapter(SubprocessAdapter):
         *,
         timeout_s: int | None = None,
     ) -> None:
-        binary = os.environ.get("KILOCODE_PATH") or "kilo"
-        super().__init__(binary=binary, timeout_s=timeout_s)
+        super().__init__(binary=self._resolve_binary(), timeout_s=timeout_s)
 
     @property
     def name(self) -> str:  # noqa: D102
         return "kilocode"
 
+    @staticmethod
+    def _resolve_binary() -> str:
+        """Return the kilo binary path from env or default."""
+        return os.environ.get("KILOCODE_PATH") or "kilo"
+
+    @classmethod
+    def requirements(cls) -> dict[str, str]:
+        """Return environment variables recognised by ``cf engines check``."""
+        return {
+            "KILOCODE_PATH": "Path to kilo binary (optional — defaults to 'kilo' on $PATH)",
+        }
+
     @classmethod
     def check_ready(cls) -> dict[str, bool]:
         """Check if the kilo binary is available on PATH."""
-        binary = os.environ.get("KILOCODE_PATH") or "kilo"
-        return {"kilo_binary": shutil.which(binary) is not None}
+        return {"kilo_binary": shutil.which(cls._resolve_binary()) is not None}
 
     def build_command(self, prompt: str, workspace_path: Path) -> list[str]:
         """Build the kilo CLI command.
@@ -80,7 +96,7 @@ class KilocodeAdapter(SubprocessAdapter):
 
         extra_flags_str = os.environ.get("KILOCODE_FLAGS", "").strip()
         if extra_flags_str:
-            cmd.extend(extra_flags_str.split())
+            cmd.extend(shlex.split(extra_flags_str))
 
         return cmd
 

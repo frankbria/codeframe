@@ -101,7 +101,7 @@ def get_external_adapter(engine: str, **kwargs: Any) -> AgentAdapter:
     elif engine == "kilocode":
         from codeframe.core.adapters.kilocode import KilocodeAdapter
 
-        return KilocodeAdapter()
+        return KilocodeAdapter(**kwargs)
     else:
         raise ValueError(
             f"Unknown external engine '{engine}'. "
