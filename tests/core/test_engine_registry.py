@@ -55,6 +55,9 @@ class TestIsExternalEngine:
     def test_opencode_is_external(self):
         assert is_external_engine("opencode") is True
 
+    def test_kilocode_is_external(self):
+        assert is_external_engine("kilocode") is True
+
     def test_react_is_not_external(self):
         assert is_external_engine("react") is False
 
@@ -73,6 +76,12 @@ class TestGetExternalAdapter:
         with patch("shutil.which", return_value="/usr/bin/opencode"):
             adapter = get_external_adapter("opencode")
             assert adapter.name == "opencode"
+            assert isinstance(adapter, AgentAdapter)
+
+    def test_kilocode_adapter(self):
+        with patch("shutil.which", return_value="/usr/bin/kilo"):
+            adapter = get_external_adapter("kilocode")
+            assert adapter.name == "kilocode"
             assert isinstance(adapter, AgentAdapter)
 
     def test_invalid_engine_raises(self):

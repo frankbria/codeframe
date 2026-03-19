@@ -15,6 +15,7 @@ VALID_ENGINES = frozenset({
     "claude-code",
     "codex",
     "opencode",
+    "kilocode",
     "built-in",  # Alias for "react"
 })
 
@@ -23,6 +24,7 @@ EXTERNAL_ENGINES = frozenset({
     "claude-code",
     "codex",
     "opencode",
+    "kilocode",
 })
 
 # Builtin engines that need workspace + LLM provider
@@ -96,6 +98,10 @@ def get_external_adapter(engine: str, **kwargs: Any) -> AgentAdapter:
         from codeframe.core.adapters.opencode import OpenCodeAdapter
 
         return OpenCodeAdapter()
+    elif engine == "kilocode":
+        from codeframe.core.adapters.kilocode import KilocodeAdapter
+
+        return KilocodeAdapter()
     else:
         raise ValueError(
             f"Unknown external engine '{engine}'. "
@@ -201,6 +207,9 @@ def _get_adapter_class(engine: str) -> type | None:
     elif engine == "opencode":
         from codeframe.core.adapters.opencode import OpenCodeAdapter
         return OpenCodeAdapter
+    elif engine == "kilocode":
+        from codeframe.core.adapters.kilocode import KilocodeAdapter
+        return KilocodeAdapter
     return None
 
 
