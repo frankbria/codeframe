@@ -2306,7 +2306,7 @@ def work_start(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, or built-in",
+        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
@@ -3537,7 +3537,7 @@ def batch_run(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, or built-in",
+        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
