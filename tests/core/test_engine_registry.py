@@ -5,8 +5,6 @@ import os
 import pytest
 from unittest.mock import MagicMock, patch
 
-pytestmark = pytest.mark.v2
-
 from codeframe.core.adapters.agent_adapter import AgentAdapter
 from codeframe.core.engine_registry import (
     BUILTIN_ENGINES,

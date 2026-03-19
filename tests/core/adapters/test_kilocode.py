@@ -1,6 +1,5 @@
 """Tests for Kilocode adapter."""
 
-import shlex
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
