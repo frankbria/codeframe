@@ -220,31 +220,30 @@ jobs:
           uv pip install -e .
           echo "✅ Package installed in editable mode"
 
-      - name: Run pytest with coverage
+      - name: Run pytest (v2 suite) with coverage
         timeout-minutes: 15
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           uv run pytest tests/ \
             --ignore=tests/e2e \
+            -m v2 \
+            -q \
+            --tb=short \
             --cov=codeframe \
             --cov-report=term \
             --cov-report=xml \
-            --cov-report=html \
-            -v
+            --cov-report=html
 
-      # NOTE: Threshold temporarily lowered from 65% to 60% due to v1 test skipping.
-      # v1 tests were skipped because v1 persistence layer was removed (app.state.db).
-      # TODO: Restore to 65% after removing unused v1 code paths.
-      - name: Check coverage threshold (60%)
+      - name: Check coverage threshold (85%)
         run: |
           COVERAGE=$(uv run coverage report | grep TOTAL | awk '{print $4}' | sed 's/%//')
           echo "Coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 60" | bc -l) )); then
-            echo "❌ Coverage ${COVERAGE}% is below 60% threshold"
+          if (( $(echo "$COVERAGE < 85" | bc -l) )); then
+            echo "❌ Coverage ${COVERAGE}% is below 85% threshold"
             exit 1
           else
-            echo "✅ Coverage ${COVERAGE}% meets 60% threshold"
+            echo "✅ Coverage ${COVERAGE}% meets 85% threshold"
           fi
 
       - name: Upload coverage reports
