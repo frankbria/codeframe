@@ -14,6 +14,7 @@ Routes:
 """
 
 import logging
+import uuid
 from datetime import date
 from typing import Any, Optional
 
@@ -316,19 +317,19 @@ async def run_proof_endpoint(
     changed scope.
     """
     try:
+        # Generate run_id before calling run_proof so the response ID matches evidence records
+        run_id = str(uuid.uuid4())[:8]
         results = run_proof(
             workspace,
             full=body.full,
             gate_filter=body.gate,
+            run_id=run_id,
         )
         # Serialize: dict[req_id → list[tuple[Gate, bool]]] → JSON-safe
         serialized = {
             req_id: [{"gate": gate.value, "satisfied": satisfied} for gate, satisfied in gate_results]
             for req_id, gate_results in results.items()
         }
-        # Derive a run_id from the results or generate one
-        import uuid
-        run_id = str(uuid.uuid4())[:8]
 
         return RunProofResponse(
             success=True,
