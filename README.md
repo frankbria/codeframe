@@ -23,7 +23,7 @@ CodeFRAME owns the **edges** of the pipeline -- everything that happens before a
 
 ## Think. Build. Prove. Ship.
 
-```
+```text
 THINK    What are you building? How should it be broken down?
            cf prd generate         Socratic requirements gathering
            cf prd stress-test      Recursive decomposition, surface ambiguities
@@ -90,6 +90,9 @@ cf tasks generate
 # Execute (delegates to the agent engine)
 cf work start <task-id> --execute
 
+# Prove quality gates
+cf proof run
+
 # Ship
 cf pr create
 ```
@@ -113,7 +116,7 @@ That is the entire workflow. Everything else is optional.
   +-BUILD---------------------------------------------+
   |  cf work start --engine <agent>                    |
   |                                                    |
-  |  +-- Claude Code / Codex / OpenCode / Kilocode / ReactAgent   |
+  |  +-- Claude Code / Codex / OpenCode / Kilocode / ReAct        |
   |  |                                                 |
   |  +-- Verification gates (ruff, pytest, BUILD)      |
   |  +-- Self-correction loop (up to 5 retries)        |
