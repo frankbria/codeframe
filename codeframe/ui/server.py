@@ -30,6 +30,7 @@ from codeframe.ui.routers import (
     git_v2,
     pr_v2,
     prd_v2,
+    proof_v2,
     review_v2,
     schedule_v2,
     streaming_v2,
@@ -237,6 +238,10 @@ OPENAPI_TAGS = [
     {
         "name": "auth",
         "description": "Authentication and authorization - login, logout, API keys, and session management.",
+    },
+    {
+        "name": "proof-v2",
+        "description": "PROOF9 quality system — capture requirements from glitches, run proof obligations, manage waivers, and query evidence.",
     },
 ]
 
@@ -472,6 +477,7 @@ app.include_router(gates_v2.router)         # /api/v2/gates
 app.include_router(git_v2.router)           # /api/v2/git
 app.include_router(pr_v2.router)            # /api/v2/pr
 app.include_router(prd_v2.router)           # /api/v2/prd
+app.include_router(proof_v2.router)         # /api/v2/proof
 app.include_router(review_v2.router)        # /api/v2/review
 app.include_router(schedule_v2.router)      # /api/v2/schedule
 app.include_router(streaming_v2.router)     # /api/v2/tasks/{id}/stream (SSE)
