@@ -9,6 +9,8 @@
 ![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
+> ⚠️ **Prerequisite:** CodeFRAME requires an `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com/). Get your key before running any `cf` command.
+
 > **The IDE of the future is not a better text editor with AI autocomplete. It is a project delivery system where writing code is a subprocess.**
 
 ---
@@ -69,32 +71,41 @@ THE CLOSED LOOP
 
 ## Quick Start
 
+**Step 1 — Install**
+
 ```bash
-# Install
-git clone https://github.com/frankbria/codeframe.git
-cd codeframe
+git clone https://github.com/frankbria/codeframe.git && cd codeframe
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv venv && source .venv/bin/activate && uv sync
-export ANTHROPIC_API_KEY="your-key"
+uv run cf --help   # smoke test — should print the command tree
+```
 
-# Initialize a project
-cd /path/to/your/project
-cf init . --detect
+**Step 2 — Set your API key**
 
-# Generate requirements through AI-guided discovery
-cf prd generate
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."   # get yours at https://console.anthropic.com/
+```
 
-# Decompose into atomic tasks
-cf tasks generate
+**Step 3 — Initialize your project**
 
-# Execute (delegates to the agent engine)
-cf work start <task-id> --execute
+```bash
+uv run cf init /path/to/your/project --detect
+```
 
-# Prove quality gates
-cf proof run
+**Step 4 — Think: generate a PRD and tasks**
 
-# Ship
-cf pr create
+```bash
+uv run cf prd generate          # AI-guided Socratic requirements discovery
+uv run cf tasks generate        # Decompose PRD into atomic tasks with dependencies
+uv run cf tasks list            # Review what was generated
+```
+
+**Step 5 — Build, Prove, and Ship**
+
+```bash
+uv run cf work batch run --all-ready   # Execute all READY tasks (delegates to agent)
+uv run cf proof run                    # Run PROOF9 quality gates
+uv run cf pr create                    # Open a PR with proof report attached
 ```
 
 That is the entire workflow. Everything else is optional.
@@ -147,6 +158,8 @@ The core domain is headless and runs entirely from the CLI. The FastAPI server a
 ---
 
 ## CLI Reference
+
+> All commands below assume the virtual environment is active (`source .venv/bin/activate`). If it is not active, prefix every `cf` command with `uv run` — e.g., `uv run cf init .`.
 
 ### THINK -- Requirements and Planning
 
