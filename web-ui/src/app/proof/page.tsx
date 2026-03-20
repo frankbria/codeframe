@@ -10,6 +10,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ProofStatusBadge } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
@@ -64,9 +67,9 @@ function WaiveDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium">Reason *</label>
-            <textarea
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            <label htmlFor="waive-reason" className="mb-1 block text-sm font-medium">Reason *</label>
+            <Textarea
+              id="waive-reason"
               rows={3}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
@@ -74,19 +77,19 @@ function WaiveDialog({
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Expiry date (optional)</label>
-            <input
+            <label htmlFor="waive-expires" className="mb-1 block text-sm font-medium">Expiry date (optional)</label>
+            <Input
+              id="waive-expires"
               type="date"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
               value={expires}
               onChange={(e) => setExpires(e.target.value)}
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Approved by</label>
-            <input
+            <label htmlFor="waive-approved-by" className="mb-1 block text-sm font-medium">Approved by</label>
+            <Input
+              id="waive-approved-by"
               type="text"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
               value={approvedBy}
               onChange={(e) => setApprovedBy(e.target.value)}
               placeholder="Your name or handle"
@@ -94,20 +97,12 @@ function WaiveDialog({
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
-            >
+            <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={submitting}>
               {submitting ? 'Waiving…' : 'Waive requirement'}
-            </button>
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -183,14 +178,14 @@ export default function ProofPage() {
         {data && data.total > 0 && (
           <>
             <div className="mb-4 flex gap-4 text-sm text-muted-foreground">
-              <span>{data.by_status['open'] ?? 0} open</span>
-              <span>{data.by_status['satisfied'] ?? 0} satisfied</span>
-              <span>{data.by_status['waived'] ?? 0} waived</span>
+              <span>{data.by_status?.open ?? 0} open</span>
+              <span>{data.by_status?.satisfied ?? 0} satisfied</span>
+              <span>{data.by_status?.waived ?? 0} waived</span>
               <span className="font-medium text-foreground">{data.total} total</span>
             </div>
 
-            <div className="overflow-hidden rounded-lg border">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="min-w-[800px] w-full text-sm">
                 <thead className="border-b bg-muted/50">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">ID</th>
@@ -207,7 +202,7 @@ export default function ProofPage() {
                   {data.requirements.map((req) => (
                     <tr key={req.id} className="border-b last:border-0 hover:bg-muted/30">
                       <td className="px-4 py-3 font-mono text-xs">
-                        <Link href={`/proof/${req.id}`} className="text-primary hover:underline">
+                        <Link href={`/proof/${encodeURIComponent(req.id)}`} className="text-primary hover:underline">
                           {req.id}
                         </Link>
                       </td>
@@ -229,12 +224,13 @@ export default function ProofPage() {
                       </td>
                       <td className="px-4 py-3">
                         {req.status !== 'waived' && (
-                          <button
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => setWaivedReq(req)}
-                            className="text-xs text-muted-foreground hover:text-foreground"
                           >
                             Waive
-                          </button>
+                          </Button>
                         )}
                       </td>
                     </tr>

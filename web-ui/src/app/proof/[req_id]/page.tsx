@@ -11,6 +11,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ProofStatusBadge } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
@@ -62,9 +65,9 @@ function WaiveDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium">Reason *</label>
-            <textarea
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            <label htmlFor="waive-reason" className="mb-1 block text-sm font-medium">Reason *</label>
+            <Textarea
+              id="waive-reason"
               rows={3}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
@@ -72,19 +75,19 @@ function WaiveDialog({
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Expiry date (optional)</label>
-            <input
+            <label htmlFor="waive-expires" className="mb-1 block text-sm font-medium">Expiry date (optional)</label>
+            <Input
+              id="waive-expires"
               type="date"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
               value={expires}
               onChange={(e) => setExpires(e.target.value)}
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Approved by</label>
-            <input
+            <label htmlFor="waive-approved-by" className="mb-1 block text-sm font-medium">Approved by</label>
+            <Input
+              id="waive-approved-by"
               type="text"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
               value={approvedBy}
               onChange={(e) => setApprovedBy(e.target.value)}
               placeholder="Your name or handle"
@@ -92,20 +95,12 @@ function WaiveDialog({
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
-            >
+            <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={submitting}>
               {submitting ? 'Waiving…' : 'Waive requirement'}
-            </button>
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -132,7 +127,7 @@ export default function ProofDetailPage() {
       () => proofApi.getRequirement(workspacePath!, reqId)
     );
 
-  const { data: evidence, isLoading: evidenceLoading } =
+  const { data: evidence, error: evidenceError, isLoading: evidenceLoading } =
     useSWR<ProofEvidence[]>(
       workspacePath && reqId ? `/api/v2/proof/requirements/${reqId}/evidence?path=${workspacePath}` : null,
       () => proofApi.getEvidence(workspacePath!, reqId)
@@ -194,7 +189,7 @@ export default function ProofDetailPage() {
               </div>
             </div>
 
-            {/* Scope */}
+            {/* Glitch Type */}
             {req.glitch_type && (
               <section>
                 <h2 className="mb-3 text-base font-semibold">Glitch Type</h2>
@@ -206,8 +201,8 @@ export default function ProofDetailPage() {
             {req.obligations.length > 0 && (
               <section>
                 <h2 className="mb-3 text-base font-semibold">Gate Obligations</h2>
-                <div className="overflow-hidden rounded-lg border">
-                  <table className="w-full text-sm">
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="min-w-full text-sm">
                     <thead className="border-b bg-muted/50">
                       <tr>
                         <th className="px-4 py-2 text-left font-medium">Gate</th>
@@ -233,12 +228,15 @@ export default function ProofDetailPage() {
               {evidenceLoading && (
                 <div className="h-16 animate-pulse rounded bg-muted" />
               )}
-              {!evidenceLoading && (!evidence || evidence.length === 0) && (
+              {!evidenceLoading && evidenceError && (
+                <p className="text-sm text-destructive">Failed to load evidence.</p>
+              )}
+              {!evidenceLoading && !evidenceError && (!evidence || evidence.length === 0) && (
                 <p className="text-sm text-muted-foreground">No evidence recorded yet.</p>
               )}
               {evidence && evidence.length > 0 && (
-                <div className="overflow-hidden rounded-lg border">
-                  <table className="w-full text-sm">
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="min-w-[640px] w-full text-sm">
                     <thead className="border-b bg-muted/50">
                       <tr>
                         <th className="px-4 py-2 text-left font-medium">Gate</th>
@@ -289,12 +287,14 @@ export default function ProofDetailPage() {
                 <p className="text-sm text-muted-foreground">No waiver on file.</p>
               )}
               {req.status !== 'waived' && (
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
                   onClick={() => setShowWaiveDialog(true)}
-                  className="mt-3 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                 >
                   Waive this requirement
-                </button>
+                </Button>
               )}
             </section>
           </div>

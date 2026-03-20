@@ -41,6 +41,7 @@ import type {
   ProofRequirementListResponse,
   ProofEvidence,
   ProofStatusResponse,
+  ProofReqStatus,
   WaiveRequest,
 } from '@/types';
 
@@ -572,7 +573,7 @@ export const proofApi = {
 
   listRequirements: async (
     workspacePath: string,
-    status?: string
+    status?: ProofReqStatus
   ): Promise<ProofRequirementListResponse> => {
     const response = await api.get<ProofRequirementListResponse>('/api/v2/proof/requirements', {
       params: { workspace_path: workspacePath, ...(status ? { status } : {}) },

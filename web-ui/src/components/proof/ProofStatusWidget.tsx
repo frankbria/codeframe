@@ -13,7 +13,7 @@ interface ProofStatusWidgetProps {
 }
 
 export function ProofStatusWidget({ workspacePath }: ProofStatusWidgetProps) {
-  const { data, isLoading } = useSWR<ProofStatusResponse>(
+  const { data, error, isLoading } = useSWR<ProofStatusResponse>(
     `/api/v2/proof/status?path=${workspacePath}`,
     () => proofApi.getStatus(workspacePath),
     { refreshInterval: 30000 }
@@ -26,30 +26,35 @@ export function ProofStatusWidget({ workspacePath }: ProofStatusWidgetProps) {
         <CheckmarkCircle01Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {isLoading && (
           <div className="h-6 w-32 animate-pulse rounded bg-muted" />
-        ) : !data || data.total === 0 ? (
+        )}
+        {!isLoading && error && !data && (
+          <p className="text-sm text-destructive">Failed to load proof status</p>
+        )}
+        {!isLoading && !error && (!data || data.total === 0) && (
           <p className="text-sm text-muted-foreground">No requirements captured yet</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {data.open > 0 && (
-              <Badge className="bg-red-100 text-red-900">{data.open} open</Badge>
-            )}
-            {data.satisfied > 0 && (
-              <Badge className="bg-green-100 text-green-900">{data.satisfied} satisfied</Badge>
-            )}
-            {data.waived > 0 && (
-              <Badge className="bg-gray-100 text-gray-600">{data.waived} waived</Badge>
-            )}
-          </div>
         )}
         {data && data.total > 0 && (
-          <Link
-            href="/proof"
-            className="mt-2 inline-block text-sm text-primary hover:underline"
-          >
-            View all →
-          </Link>
+          <>
+            <div className="flex flex-wrap gap-2">
+              {data.open > 0 && (
+                <Badge className="bg-red-100 text-red-900">{data.open} open</Badge>
+              )}
+              {data.satisfied > 0 && (
+                <Badge className="bg-green-100 text-green-900">{data.satisfied} satisfied</Badge>
+              )}
+              {data.waived > 0 && (
+                <Badge className="bg-gray-100 text-gray-600">{data.waived} waived</Badge>
+              )}
+            </div>
+            <Link
+              href="/proof"
+              className="mt-2 inline-block text-sm text-primary hover:underline"
+            >
+              View all →
+            </Link>
+          </>
         )}
       </CardContent>
     </Card>

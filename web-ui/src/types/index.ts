@@ -309,7 +309,7 @@ export interface ProofRequirement {
 export interface ProofRequirementListResponse {
   requirements: ProofRequirement[];
   total: number;
-  by_status: Record<string, number>;
+  by_status: Partial<Record<ProofReqStatus, number>>;
 }
 
 export interface ProofEvidence {
