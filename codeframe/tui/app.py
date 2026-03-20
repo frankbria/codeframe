@@ -50,6 +50,8 @@ class StatusBar(Static):
             parts.append(f"[red]{blocked} blocked/failed[/red]")
         if data.blocker_count > 0:
             parts.append(f"[red bold]{data.blocker_count} blockers[/red bold]")
+        if data.open_obligation_count > 0:
+            parts.append(f"[yellow bold]{data.open_obligation_count} open obligations[/yellow bold]")
 
         self.update(" | ".join(parts))
 
@@ -83,6 +85,10 @@ class DashboardApp(App):
     #blocker-panel {
         height: 1fr;
         border: solid $error;
+    }
+    #proof-panel {
+        height: 1fr;
+        border: solid $warning;
     }
     DataTable {
         height: 1fr;
@@ -133,6 +139,9 @@ class DashboardApp(App):
                 with Vertical(id="blocker-panel"):
                     yield Static("Open Blockers", classes="panel-title")
                     yield RichLog(id="blocker-log", highlight=True, markup=True)
+                with Vertical(id="proof-panel"):
+                    yield Static("PROOF9 Obligations", classes="panel-title")
+                    yield RichLog(id="proof-log", highlight=True, markup=True)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -159,6 +168,7 @@ class DashboardApp(App):
         self._update_task_table(data)
         self._update_event_log(data)
         self._update_blocker_panel(data)
+        self._update_proof_panel(data)
 
         if data.error:
             self.notify(f"Data loading error: {data.error}", severity="warning")
@@ -199,6 +209,46 @@ class DashboardApp(App):
 
         for blocker in data.blockers:
             log.write(f"[red bold]{blocker.id[:8]}[/red bold]: {blocker.question[:60]}")
+
+    _SEVERITY_COLORS: dict[str, str] = {
+        "critical": "red bold",
+        "high": "red",
+        "medium": "yellow",
+        "low": "dim",
+    }
+
+    _OBLIGATION_ICONS: dict[str, str] = {
+        "satisfied": "✅",
+        "failed": "❌",
+        "pending": "⏳",
+    }
+
+    def _update_proof_panel(self, data: DashboardData) -> None:
+        log = self.query_one("#proof-log", RichLog)
+        log.clear()
+
+        if not data.open_requirements and not data.expiring_waivers:
+            log.write("[dim]No open obligations[/dim]")
+            return
+
+        for req in data.expiring_waivers:
+            from datetime import date
+            days = (req.waiver.expires - date.today()).days
+            log.write(
+                f"[yellow bold]⚠ {req.id}[/yellow bold]: waiver expires in {days}d — {req.title[:50]}"
+            )
+
+        for req in data.open_requirements:
+            gate_parts = [
+                f"{obl.gate.value.upper()} {self._OBLIGATION_ICONS.get(obl.status, '⏳')}"
+                for obl in req.obligations
+            ]
+            gate_summary = " ".join(gate_parts)
+            sev_color = self._SEVERITY_COLORS.get(req.severity.value, "white")
+            log.write(
+                f"[red]{req.id}[/red] [{sev_color}]{req.severity.value}[/{sev_color}]"
+                f" {req.title[:45]} | {gate_summary}"
+            )
 
     def action_refresh(self) -> None:
         """Manual refresh via 'r' key."""
