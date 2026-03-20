@@ -19,23 +19,27 @@ Coding agents are getting remarkably good at writing code. But shipping software
 
 Before code gets written, someone has to figure out *what* to build, decompose it into tasks that an agent can execute, and resolve ambiguities. After code gets written, someone has to verify it actually works, catch regressions, and deploy with confidence. Today, that "someone" is still you.
 
-CodeFRAME owns the **edges** of the pipeline -- everything that happens before and after the code gets written. The actual coding is delegated to frontier agents (Claude Code, Codex, OpenCode, or CodeFRAME's built-in ReAct agent) that are better at it than any custom agent could be.
+CodeFRAME owns the **edges** of the pipeline -- everything that happens before and after the code gets written. The actual coding is delegated to frontier agents (Claude Code, Codex, OpenCode, Kilocode, or CodeFRAME's built-in ReAct agent) that are better at it than any custom agent could be.
 
 ## Think. Build. Prove. Ship.
 
 ```
 THINK    What are you building? How should it be broken down?
            cf prd generate         Socratic requirements gathering
-           cf prd stress-test      Recursive decomposition, surface ambiguities  [planned]
+           cf prd stress-test      Recursive decomposition, surface ambiguities
            cf tasks generate       Atomic tasks with dependency graphs
 
 BUILD    Delegate to the best coding agent for the job
-           cf work start --engine  Claude Code, Codex, OpenCode, or built-in
+           cf work start --engine  Claude Code, Codex, OpenCode, Kilocode, or built-in
            CodeFRAME owns: verification gates, self-correction, stall detection
 
 PROVE    Is the output any good?
-           cf proof run            9-gate evidence-based quality system           [planned]
-           cf proof capture        Glitch becomes a permanent requirement         [planned]
+           cf proof run            9-gate evidence-based quality system
+           cf proof capture        Glitch becomes a permanent requirement
+           cf proof list           All active proof obligations
+           cf proof status         Summary across all gates
+           cf proof show <id>      Requirement detail and evidence
+           cf proof waive <id>     Waive a requirement with justification
 
 SHIP     Deploy with confidence
            cf pr create            PR with proof report attached
@@ -109,7 +113,7 @@ That is the entire workflow. Everything else is optional.
   +-BUILD---------------------------------------------+
   |  cf work start --engine <agent>                    |
   |                                                    |
-  |  +-- Claude Code / Codex / OpenCode / ReactAgent   |
+  |  +-- Claude Code / Codex / OpenCode / Kilocode / ReactAgent   |
   |  |                                                 |
   |  +-- Verification gates (ruff, pytest, BUILD)      |
   |  +-- Self-correction loop (up to 5 retries)        |
@@ -118,7 +122,7 @@ That is the entire workflow. Everything else is optional.
                                |
                                v
   +-PROVE---------------------------------------------+
-  |  cf proof run       9-gate quality system [planned]|
+  |  cf proof run       9-gate quality system          |
   |  cf review          Verification gates             |
   +----------------------------+-----------------------+
                                |
@@ -203,10 +207,23 @@ cf env doctor                         # Comprehensive health check
 ### PROVE -- Verification
 
 ```bash
+# PROOF9 quality memory
+cf proof run                          # Run all 9 proof gates
+cf proof capture                      # Capture glitch as permanent requirement
+cf proof list                         # List all proof requirements
+cf proof status                       # Summary status across all gates
+cf proof show <id>                    # Detail for a specific requirement
+cf proof waive <id> --reason "..."    # Waive a requirement with justification
+
+# Checkpoints and gates
 cf review                             # Run verification gates
 cf checkpoint create "milestone"      # Snapshot project state
 cf checkpoint list                    # List checkpoints
 cf checkpoint restore <id>            # Roll back to checkpoint
+
+# Debugging
+cf work replay <id>                   # Replay and debug a past execution
+cf tui                                # Launch TUI dashboard
 ```
 
 ### SHIP -- Delivery
@@ -224,13 +241,15 @@ cf patch export                       # Export changes as patch
 
 ## What Works Today
 
-CodeFRAME v2 (Phase 2.5 complete) delivers the full Think-Build-Ship loop:
+CodeFRAME v2 (Phases 1–6 complete) delivers the full Think-Build-Prove-Ship loop:
 
-- **THINK**: Socratic PRD generation, LLM-powered task decomposition with dependency graphs, 5 PRD templates, 7 task templates, CPM-based scheduling
-- **BUILD**: ReAct agent with 7 tools, self-correction with loop prevention, verification gates (ruff/pytest/BUILD), stall detection with configurable recovery (retry/blocker/fail), batch execution (serial/parallel/auto), human-in-the-loop blockers, checkpointing, state persistence
+- **THINK**: Socratic PRD generation with recursive stress-testing, LLM-powered task decomposition with dependency graphs, 5 PRD templates, 7 task templates, CPM-based scheduling
+- **BUILD**: ReAct agent with 7 tools, self-correction with loop prevention, verification gates (ruff/pytest/BUILD), stall detection with configurable recovery (retry/blocker/fail), batch execution (serial/parallel/auto), human-in-the-loop blockers, checkpointing, state persistence, replay/debug mode (`cf work replay`), dynamic config reload, TUI dashboard (`cf tui`)
+- **PROVE**: PROOF9 quality memory system — 9-gate evidence-based verification (`cf proof run/capture/list/status/show/waive`), every glitch becomes a permanent proof obligation
 - **SHIP**: GitHub PR workflow, environment validation, task self-diagnosis
-- **Server layer** (optional): FastAPI with 15 v2 routers, API key auth, rate limiting, SSE streaming, OpenAPI docs
-- **Web UI** (Phase 3, partial): Workspace view, PRD view with discovery, Task board with Kanban and batch execution, Blocker resolution, Review and commit with diff viewer
+- **Engine adapters**: Claude Code, Codex, OpenCode, Kilocode, and built-in ReAct — all via `--engine` flag
+- **Server layer** (optional): FastAPI with 16+ v2 routers, API key auth, rate limiting, SSE streaming, OpenAPI docs
+- **Web UI**: Workspace view, PRD discovery, Task board, Blocker resolution, Review/commit, PROOF9 requirements and evidence views, TUI dashboard
 - **Test suite**: 4200+ tests, 88% coverage
 
 ---
@@ -238,31 +257,37 @@ CodeFRAME v2 (Phase 2.5 complete) delivers the full Think-Build-Ship loop:
 ## Roadmap
 
 ### THINK (upstream pipeline)
-- [ ] `cf prd stress-test` -- Recursive decomposition that surfaces ambiguities before execution
-- [ ] Multi-round PRD refinement with domain-specific probes
+- [x] `cf prd stress-test` -- Recursive decomposition that surfaces ambiguities before execution
+- [x] Multi-round PRD refinement with domain-specific probes
 - [ ] Specification-level dependency analysis
 
 ### BUILD (agent adapters)
-- [ ] Agent adapter architecture -- delegate to Claude Code, Codex, OpenCode via workspace hooks
-- [ ] Worktree isolation for parallel agent execution
+- [x] Agent adapter architecture -- delegate to Claude Code, Codex, OpenCode, Kilocode via workspace hooks
+- [x] Worktree isolation for parallel agent execution
+- [x] Reconciliation layer for multi-agent output
+- [x] Replay/debug mode (`cf work replay`)
+- [x] TUI dashboard (`cf tui`)
+- [x] Dynamic config reload during batch execution
 - [ ] Engine performance tracking and automatic routing
-- [ ] Reconciliation layer for multi-agent output
 
 ### PROVE (quality memory)
-- [ ] PROOF9 -- 9-gate evidence-based quality system
-- [ ] `cf proof capture` -- Glitch-to-requirement closed loop
-- [ ] Quality compounding: every failure becomes a permanent proof obligation
+- [x] PROOF9 -- 9-gate evidence-based quality system
+- [x] `cf proof capture` -- Glitch-to-requirement closed loop
+- [x] Quality compounding: every failure becomes a permanent proof obligation
 - [ ] Per-engine quality scoring
-
-### SHIP (delivery confidence)
 - [ ] Proof report attached to PRs
 - [ ] Merge gating on PROOF9 pass
+
+### SHIP (delivery confidence)
 - [ ] Unified configuration (`cf config`)
 - [ ] Deployment hooks
 
 ### Web UI
+- [x] Workspace and PRD views with Socratic discovery
+- [x] Task board with Kanban and batch execution
 - [x] Blocker Resolution view
 - [x] Review and Commit view with diff viewer
+- [x] PROOF9 requirements list, detail, and evidence history
 - [ ] Execution Monitor view
 
 ---
