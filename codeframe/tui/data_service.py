@@ -28,6 +28,11 @@ class DashboardData:
     # Recent events
     events: list = field(default_factory=list)
 
+    # PROOF9 obligations
+    open_requirements: list = field(default_factory=list)
+    expiring_waivers: list = field(default_factory=list)
+    open_obligation_count: int = 0
+
     # Error (if data loading failed)
     error: Optional[str] = None
 
@@ -74,5 +79,25 @@ def load_dashboard_data(
     except Exception as exc:
         if not data.error:
             data.error = f"Events: {exc}"
+
+    try:
+        from datetime import date
+        from codeframe.core.proof.ledger import list_requirements
+        from codeframe.core.proof.models import ReqStatus
+
+        open_reqs = list_requirements(workspace, status=ReqStatus.OPEN)
+        data.open_requirements = open_reqs
+        data.open_obligation_count = len(open_reqs)
+
+        waived = list_requirements(workspace, status=ReqStatus.WAIVED)
+        today = date.today()
+        data.expiring_waivers = [
+            req for req in waived
+            if req.waiver and req.waiver.expires is not None
+            and 0 <= (req.waiver.expires - today).days <= 7
+        ]
+    except Exception as exc:
+        if not data.error:
+            data.error = f"Proof: {exc}"
 
     return data

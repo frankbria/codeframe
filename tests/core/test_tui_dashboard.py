@@ -113,6 +113,188 @@ class TestDashboardApp:
             await pilot.press("q")
 
 
+# --- Proof Panel Tests ---
+
+
+class TestDataServiceProof:
+    def test_proof_fields_default(self):
+        """DashboardData has proof fields defaulting to empty."""
+        from codeframe.tui.data_service import DashboardData
+
+        data = DashboardData()
+        assert data.open_requirements == []
+        assert data.expiring_waivers == []
+        assert data.open_obligation_count == 0
+
+    def test_load_with_open_requirements(self, workspace):
+        """Open requirements appear in dashboard data."""
+        from codeframe.tui.data_service import load_dashboard_data
+        from codeframe.core.proof.ledger import init_proof_tables, save_requirement
+        from codeframe.core.proof.models import (
+            Gate, Obligation, Requirement, RequirementScope, ReqStatus, Severity, Source,
+        )
+        from datetime import datetime, timezone
+
+        init_proof_tables(workspace)
+        req = Requirement(
+            id="REQ-0001",
+            title="Auth token not validated",
+            description="Logic bug in auth",
+            severity=Severity.HIGH,
+            source=Source.PRODUCTION,
+            scope=RequirementScope(),
+            obligations=[Obligation(gate=Gate.UNIT)],
+            evidence_rules=[],
+            status=ReqStatus.OPEN,
+            created_at=datetime.now(timezone.utc),
+        )
+        save_requirement(workspace, req)
+
+        data = load_dashboard_data(workspace)
+        assert data.open_obligation_count == 1
+        assert len(data.open_requirements) == 1
+        assert data.open_requirements[0].id == "REQ-0001"
+
+    def test_load_with_expiring_waiver(self, workspace):
+        """Waived requirements expiring within 7 days appear in expiring_waivers."""
+        from codeframe.tui.data_service import load_dashboard_data
+        from codeframe.core.proof.ledger import init_proof_tables, save_requirement
+        from codeframe.core.proof.models import (
+            Gate, Obligation, Requirement, RequirementScope, ReqStatus, Severity, Source, Waiver,
+        )
+        from datetime import datetime, timezone, date, timedelta
+
+        init_proof_tables(workspace)
+        req = Requirement(
+            id="REQ-0002",
+            title="Expiring waiver req",
+            description="Will expire soon",
+            severity=Severity.LOW,
+            source=Source.QA,
+            scope=RequirementScope(),
+            obligations=[Obligation(gate=Gate.UNIT)],
+            evidence_rules=[],
+            status=ReqStatus.WAIVED,
+            created_at=datetime.now(timezone.utc),
+            waiver=Waiver(
+                reason="Short-term defer",
+                expires=date.today() + timedelta(days=3),
+            ),
+        )
+        save_requirement(workspace, req)
+
+        data = load_dashboard_data(workspace)
+        assert len(data.expiring_waivers) == 1
+        assert data.expiring_waivers[0].id == "REQ-0002"
+
+    def test_load_non_expiring_waiver_excluded(self, workspace):
+        """Waived requirements expiring far in the future are NOT in expiring_waivers."""
+        from codeframe.tui.data_service import load_dashboard_data
+        from codeframe.core.proof.ledger import init_proof_tables, save_requirement
+        from codeframe.core.proof.models import (
+            Gate, Obligation, Requirement, RequirementScope, ReqStatus, Severity, Source, Waiver,
+        )
+        from datetime import datetime, timezone, date, timedelta
+
+        init_proof_tables(workspace)
+        req = Requirement(
+            id="REQ-0003",
+            title="Far future waiver",
+            description="Expires in 30 days",
+            severity=Severity.LOW,
+            source=Source.QA,
+            scope=RequirementScope(),
+            obligations=[Obligation(gate=Gate.UNIT)],
+            evidence_rules=[],
+            status=ReqStatus.WAIVED,
+            created_at=datetime.now(timezone.utc),
+            waiver=Waiver(reason="Future", expires=date.today() + timedelta(days=30)),
+        )
+        save_requirement(workspace, req)
+
+        data = load_dashboard_data(workspace)
+        assert data.expiring_waivers == []
+
+    def test_already_expired_waiver_excluded(self, workspace):
+        """Waivers that already expired are NOT in expiring_waivers (read-only TUI)."""
+        from codeframe.tui.data_service import load_dashboard_data
+        from codeframe.core.proof.ledger import init_proof_tables, save_requirement
+        from codeframe.core.proof.models import (
+            Gate, Obligation, Requirement, RequirementScope, ReqStatus, Severity, Source, Waiver,
+        )
+        from datetime import datetime, timezone, date, timedelta
+
+        init_proof_tables(workspace)
+        req = Requirement(
+            id="REQ-0004",
+            title="Already expired waiver",
+            description="Expired yesterday",
+            severity=Severity.LOW,
+            source=Source.QA,
+            scope=RequirementScope(),
+            obligations=[Obligation(gate=Gate.UNIT)],
+            evidence_rules=[],
+            status=ReqStatus.WAIVED,
+            created_at=datetime.now(timezone.utc),
+            waiver=Waiver(reason="Past", expires=date.today() - timedelta(days=1)),
+        )
+        save_requirement(workspace, req)
+
+        data = load_dashboard_data(workspace)
+        assert data.expiring_waivers == []
+
+    def test_load_no_proof_tables_graceful(self, workspace):
+        """Fresh workspace with no proof tables returns empty lists without error."""
+        from codeframe.tui.data_service import load_dashboard_data
+
+        data = load_dashboard_data(workspace)
+        assert data.open_requirements == []
+        assert data.expiring_waivers == []
+        assert data.open_obligation_count == 0
+        # No error from proof loading (tables auto-created by _ensure_tables)
+        assert data.error is None or "proof" not in (data.error or "").lower()
+
+
+class TestDashboardAppProof:
+    @pytest.mark.asyncio
+    async def test_proof_panel_mounted(self, workspace):
+        """Proof log widget is present in the composed widget tree."""
+        from codeframe.tui.app import DashboardApp
+
+        app = DashboardApp(workspace=workspace)
+        async with app.run_test(size=(120, 40)) as pilot:
+            assert app.query_one("#proof-log") is not None
+
+    @pytest.mark.asyncio
+    async def test_proof_panel_empty_state(self, workspace):
+        """Empty proof state shows 'No open obligations'."""
+        from codeframe.tui.app import DashboardApp
+        from textual.widgets import RichLog
+
+        app = DashboardApp(workspace=workspace)
+        async with app.run_test(size=(120, 40)) as pilot:
+            log = app.query_one("#proof-log", RichLog)
+            # RichLog.lines returns Strip objects; str() gives plain text
+            content = "\n".join(str(line) for line in log.lines)
+            assert "No open obligations" in content
+
+    def test_status_bar_obligation_badge(self):
+        """StatusBar includes obligation badge when open_obligation_count > 0."""
+        from codeframe.tui.app import StatusBar
+        from codeframe.tui.data_service import DashboardData
+
+        # Capture what update() receives by mocking it
+        updates: list[str] = []
+        bar = StatusBar.__new__(StatusBar)
+        bar.update = lambda txt: updates.append(str(txt))
+
+        data = DashboardData(open_obligation_count=2)
+        StatusBar.update_from_data(bar, data)
+
+        assert updates, "update() was not called"
+        assert any("obligation" in u.lower() for u in updates)
+
+
 # --- CLI Tests ---
 
 
