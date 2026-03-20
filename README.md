@@ -9,7 +9,10 @@
 ![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
-> ⚠️ **Prerequisite:** CodeFRAME requires an `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com/). Get your key before running any `cf` command.
+> [!WARNING]
+> **Prerequisite:** CodeFRAME requires an `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com/). Get your key before running any `cf` command.
+
+---
 
 > **The IDE of the future is not a better text editor with AI autocomplete. It is a project delivery system where writing code is a subprocess.**
 
