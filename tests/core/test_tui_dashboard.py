@@ -131,7 +131,7 @@ class TestDataServiceProof:
         from codeframe.tui.data_service import load_dashboard_data
         from codeframe.core.proof.ledger import init_proof_tables, save_requirement
         from codeframe.core.proof.models import (
-            Gate, GlitchType, Obligation, Requirement, RequirementScope, ReqStatus, Severity, Source,
+            Gate, Obligation, Requirement, RequirementScope, ReqStatus, Severity, Source,
         )
         from datetime import datetime, timezone
 
