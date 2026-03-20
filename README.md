@@ -5,7 +5,7 @@
 ![Status](https://img.shields.io/badge/status-v2%20Active%20Development-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-4200%2B%20passing-brightgreen)
+[![CI](https://github.com/frankbria/codeframe/actions/workflows/test.yml/badge.svg)](https://github.com/frankbria/codeframe/actions/workflows/test.yml)
 ![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
