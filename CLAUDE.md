@@ -80,7 +80,7 @@ The next major architectural work is the **Agent Adapter Architecture** (#408):
 - **GitHub PR workflow**: `cf pr create/status/checks/merge` for PR management
 - **Task self-diagnosis**: `cf work diagnose <task-id>` analyzes failed tasks
 - **70+ integration tests**: Comprehensive CLI test coverage
-- **REST API**: Full v2 API with 15 router modules (see Phase 2 below)
+- **REST API**: Full v2 API with 16 router modules (see Phase 2 below)
 - **API authentication**: API key auth with scopes (read/write/admin)
 - **Rate limiting**: Configurable per-endpoint rate limits
 - **Real-time streaming**: SSE for task execution events
@@ -152,7 +152,7 @@ codeframe/
 │       ├── batches_v2.py   # Batch execution
 │       ├── streaming_v2.py # SSE event streaming
 │       ├── api_key_v2.py   # API key management
-│       └── ...             # 15 router modules total
+│       └── ...             # 16 router modules total
 ├── lib/                    # Shared utilities
 │   ├── rate_limiter.py     # SlowAPI rate limiting
 │   └── audit_logger.py     # Request audit logging
@@ -560,7 +560,7 @@ Default execution engine switched from plan-based to **ReAct (Reasoning + Acting
 ### Phase 2 Complete: Server Layer (2026-02-03)
 
 **Phase 2 deliverables completed:**
-- ✅ Server audit and refactor (#322) - 15 v2 routers following thin adapter pattern
+- ✅ Server audit and refactor (#322) - 16 v2 routers following thin adapter pattern
 - ✅ API key authentication (#326) - Scopes: read/write/admin
 - ✅ Rate limiting (#327) - Configurable per-endpoint with Redis support
 - ✅ Real-time SSE streaming (#328) - `/api/v2/tasks/{id}/stream`
@@ -576,7 +576,7 @@ CLI (typer) ─┬── core.* ─── adapters.*
 Server (fastapi) ─┘
 ```
 
-**V2 Router Modules** (15 total):
+**V2 Router Modules** (16 total):
 | Router | Endpoints | Purpose |
 |--------|-----------|---------|
 | `blockers_v2` | 5 | Blocker CRUD |
@@ -594,6 +594,7 @@ Server (fastapi) ─┘
 | `review_v2` | 2 | Code review |
 | `pr_v2` | 5 | GitHub PR workflow |
 | `environment_v2` | 4 | Tool detection |
+| `proof_v2` | 7 | PROOF9 quality gates + requirements |
 
 **API Authentication**:
 ```bash
