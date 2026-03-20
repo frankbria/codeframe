@@ -215,6 +215,34 @@ class TestDataServiceProof:
         data = load_dashboard_data(workspace)
         assert data.expiring_waivers == []
 
+    def test_already_expired_waiver_excluded(self, workspace):
+        """Waivers that already expired are NOT in expiring_waivers (read-only TUI)."""
+        from codeframe.tui.data_service import load_dashboard_data
+        from codeframe.core.proof.ledger import init_proof_tables, save_requirement
+        from codeframe.core.proof.models import (
+            Gate, Obligation, Requirement, RequirementScope, ReqStatus, Severity, Source, Waiver,
+        )
+        from datetime import datetime, timezone, date, timedelta
+
+        init_proof_tables(workspace)
+        req = Requirement(
+            id="REQ-0004",
+            title="Already expired waiver",
+            description="Expired yesterday",
+            severity=Severity.LOW,
+            source=Source.QA,
+            scope=RequirementScope(),
+            obligations=[Obligation(gate=Gate.UNIT)],
+            evidence_rules=[],
+            status=ReqStatus.WAIVED,
+            created_at=datetime.now(timezone.utc),
+            waiver=Waiver(reason="Past", expires=date.today() - timedelta(days=1)),
+        )
+        save_requirement(workspace, req)
+
+        data = load_dashboard_data(workspace)
+        assert data.expiring_waivers == []
+
     def test_load_no_proof_tables_graceful(self, workspace):
         """Fresh workspace with no proof tables returns empty lists without error."""
         from codeframe.tui.data_service import load_dashboard_data

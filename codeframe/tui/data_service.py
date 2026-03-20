@@ -94,7 +94,7 @@ def load_dashboard_data(
         data.expiring_waivers = [
             req for req in waived
             if req.waiver and req.waiver.expires is not None
-            and (req.waiver.expires - today).days <= 7
+            and 0 <= (req.waiver.expires - today).days <= 7
         ]
     except Exception as exc:
         if not data.error:
