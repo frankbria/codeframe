@@ -51,7 +51,8 @@ def ws(tmp_path: Path):
 def ws_with_req(ws):
     """Workspace that already has one captured requirement (REQ-0001)."""
     workspace, workspace_path = ws
-    runner.invoke(app, ["proof", "capture", "-w", str(workspace_path)] + _CAPTURE_ARGS)
+    result = runner.invoke(app, ["proof", "capture", "-w", str(workspace_path)] + _CAPTURE_ARGS)
+    assert result.exit_code == 0, f"Fixture setup failed: {result.output}"
     return workspace, workspace_path
 
 
@@ -203,7 +204,7 @@ class TestWaive:
         assert req.waiver.expires is None
 
     def test_waive_nonexistent_req_exits_nonzero(self, ws):
-        """waive on a REQ that was never captured should exit 1."""
+        """waive on a REQ that was never captured should exit 1 with not-found message."""
         _, workspace_path = ws
         result = runner.invoke(app, [
             "proof", "waive", "REQ-9999",
@@ -211,6 +212,7 @@ class TestWaive:
             "--reason", "Does not exist",
         ])
         assert result.exit_code == 1
+        assert "not found" in result.output.lower()
 
     def test_waive_invalid_date_exits_nonzero(self, ws_with_req):
         """waive with a non-ISO expires value should exit 1 and explain format."""
@@ -239,23 +241,25 @@ class TestStatus:
         assert "No proof requirements" in result.output
 
     def test_status_shows_open_count(self, ws_with_req):
-        """status after one capture should show Open: 1."""
+        """status after one capture should show Open: 1 on its summary line."""
         _, workspace_path = ws_with_req
         result = runner.invoke(app, ["proof", "status", "-w", str(workspace_path)])
         assert result.exit_code == 0, result.output
-        assert "Open" in result.output
+        assert "Open:" in result.output
         assert "1" in result.output
 
     def test_status_shows_waived_count(self, ws_with_req):
-        """status after waiving a REQ should show Waived: 1."""
+        """status after waiving a REQ should show Waived: 1 on its summary line."""
         _, workspace_path = ws_with_req
-        runner.invoke(app, [
+        waive_result = runner.invoke(app, [
             "proof", "waive", "REQ-0001", "-w", str(workspace_path),
             "--reason", "Accepted",
         ])
+        assert waive_result.exit_code == 0, waive_result.output
+
         result = runner.invoke(app, ["proof", "status", "-w", str(workspace_path)])
         assert result.exit_code == 0, result.output
-        assert "Waived" in result.output
+        assert "Waived:" in result.output
         assert "1" in result.output
 
     def test_status_expired_waiver_reverts_to_open(self, ws_with_req):
@@ -270,6 +274,7 @@ class TestStatus:
         result = runner.invoke(app, ["proof", "status", "-w", str(workspace_path)])
         assert result.exit_code == 0, result.output
         assert "Expired" in result.output
+        assert "Open:" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +314,10 @@ class TestClosedLoop:
         assert "PASS" in result.output
         assert "All obligations satisfied" in result.output
 
-        # Step 5 — verify evidence was recorded via ledger
+        # Step 5 — verify evidence was recorded and req status is satisfied
         evidence = ledger.list_evidence(workspace, "REQ-0001")
         assert len(evidence) >= 1
         assert any(ev.satisfied for ev in evidence)
+
+        req = ledger.get_requirement(workspace, "REQ-0001")
+        assert req.status == ReqStatus.SATISFIED
