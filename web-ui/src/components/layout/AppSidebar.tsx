@@ -11,6 +11,7 @@ import {
   PlayIcon,
   Alert02Icon,
   GitBranchIcon,
+  CheckmarkCircle01Icon,
 } from '@hugeicons/react';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import { blockersApi } from '@/lib/api';
@@ -30,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/execution', label: 'Execution', icon: PlayIcon, enabled: true },
   { href: '/blockers', label: 'Blockers', icon: Alert02Icon, enabled: true },
   { href: '/review', label: 'Review', icon: GitBranchIcon, enabled: true },
+  { href: '/proof', label: 'Proof', icon: CheckmarkCircle01Icon, enabled: true },
 ];
 
 export function AppSidebar() {
