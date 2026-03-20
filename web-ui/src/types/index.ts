@@ -266,3 +266,73 @@ export interface CreatePRRequest {
   body?: string;
   base?: string;
 }
+
+// PROOF9 types (mirrors proof_v2.py)
+export type ProofReqStatus = 'open' | 'satisfied' | 'waived';
+export type ProofSeverity = 'critical' | 'high' | 'medium' | 'low';
+
+export interface ProofObligation {
+  gate: string;
+  status: string;
+}
+
+export interface ProofEvidenceRule {
+  test_id: string;
+  must_pass: boolean;
+}
+
+export interface ProofWaiver {
+  reason: string;
+  expires: string | null;
+  manual_checklist: string[];
+  approved_by: string;
+}
+
+export interface ProofRequirement {
+  id: string;
+  title: string;
+  description: string;
+  severity: ProofSeverity;
+  source: string;
+  status: ProofReqStatus;
+  glitch_type: string | null;
+  obligations: ProofObligation[];
+  evidence_rules: ProofEvidenceRule[];
+  waiver: ProofWaiver | null;
+  created_at: string | null;
+  satisfied_at: string | null;
+  created_by: string;
+  source_issue: string | null;
+  related_reqs: string[];
+}
+
+export interface ProofRequirementListResponse {
+  requirements: ProofRequirement[];
+  total: number;
+  by_status: Partial<Record<ProofReqStatus, number>>;
+}
+
+export interface ProofEvidence {
+  req_id: string;
+  gate: string;
+  satisfied: boolean;
+  artifact_path: string;
+  artifact_checksum: string;
+  timestamp: string;
+  run_id: string;
+}
+
+export interface ProofStatusResponse {
+  total: number;
+  open: number;
+  satisfied: number;
+  waived: number;
+  requirements: ProofRequirement[];
+}
+
+export interface WaiveRequest {
+  reason: string;
+  expires: string | null;
+  manual_checklist: string[];
+  approved_by: string;
+}

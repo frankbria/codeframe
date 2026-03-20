@@ -8,6 +8,7 @@ import {
   QuickActions,
   RecentActivityFeed,
 } from '@/components/workspace';
+import { ProofStatusWidget } from '@/components/proof';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
 import { workspaceApi, tasksApi, eventsApi } from '@/lib/api';
 import {
@@ -256,6 +257,10 @@ export default function WorkspacePage() {
               taskCounts={tasksData?.by_status || emptyTaskCounts}
               activeRunCount={activeRunCount}
             />
+
+            <div className="mt-4">
+              <ProofStatusWidget workspacePath={workspacePath} />
+            </div>
 
             <QuickActions />
 

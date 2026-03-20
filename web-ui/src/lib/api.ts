@@ -37,6 +37,12 @@ import type {
   CommitResultResponse,
   PRResponse,
   CreatePRRequest,
+  ProofRequirement,
+  ProofRequirementListResponse,
+  ProofEvidence,
+  ProofStatusResponse,
+  ProofReqStatus,
+  WaiveRequest,
 } from '@/types';
 
 // FastAPI validation error format
@@ -550,6 +556,55 @@ export const gitApi = {
     const response = await api.post<CommitResultResponse>(
       '/api/v2/git/commit',
       { files, message },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+};
+
+// PROOF9 API methods
+export const proofApi = {
+  getStatus: async (workspacePath: string): Promise<ProofStatusResponse> => {
+    const response = await api.get<ProofStatusResponse>('/api/v2/proof/status', {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  listRequirements: async (
+    workspacePath: string,
+    status?: ProofReqStatus
+  ): Promise<ProofRequirementListResponse> => {
+    const response = await api.get<ProofRequirementListResponse>('/api/v2/proof/requirements', {
+      params: { workspace_path: workspacePath, ...(status ? { status } : {}) },
+    });
+    return response.data;
+  },
+
+  getRequirement: async (workspacePath: string, reqId: string): Promise<ProofRequirement> => {
+    const response = await api.get<ProofRequirement>(
+      `/api/v2/proof/requirements/${encodeURIComponent(reqId)}`,
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  getEvidence: async (workspacePath: string, reqId: string): Promise<ProofEvidence[]> => {
+    const response = await api.get<ProofEvidence[]>(
+      `/api/v2/proof/requirements/${encodeURIComponent(reqId)}/evidence`,
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  waive: async (
+    workspacePath: string,
+    reqId: string,
+    body: WaiveRequest
+  ): Promise<ProofRequirement> => {
+    const response = await api.post<ProofRequirement>(
+      `/api/v2/proof/requirements/${encodeURIComponent(reqId)}/waive`,
+      body,
       { params: { workspace_path: workspacePath } }
     );
     return response.data;
