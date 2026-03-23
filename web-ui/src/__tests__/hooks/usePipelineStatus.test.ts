@@ -24,12 +24,13 @@ function mockSWRCalls({
   review?: { data?: unknown; isLoading?: boolean; error?: unknown };
 }) {
   mockUseSWR.mockImplementation((key: unknown, ..._rest: unknown[]) => {
-    const keyStr = typeof key === 'string' ? key : '';
+    // Keys are now tuples: ['pipeline/prd', workspacePath] etc.
+    const keyPrefix = Array.isArray(key) ? (key[0] as string) : (typeof key === 'string' ? key : '');
     let scenario: { data?: unknown; isLoading?: boolean; error?: unknown } = {};
-    if (keyStr.includes('/pipeline/prd')) scenario = prd ?? {};
-    else if (keyStr.includes('/pipeline/tasks')) scenario = tasks ?? {};
-    else if (keyStr.includes('/pipeline/proof')) scenario = proof ?? {};
-    else if (keyStr.includes('/pipeline/review')) scenario = review ?? {};
+    if (keyPrefix.includes('pipeline/prd')) scenario = prd ?? {};
+    else if (keyPrefix.includes('pipeline/tasks')) scenario = tasks ?? {};
+    else if (keyPrefix.includes('pipeline/proof')) scenario = proof ?? {};
+    else if (keyPrefix.includes('pipeline/review')) scenario = review ?? {};
 
     return {
       data: scenario.data ?? undefined,

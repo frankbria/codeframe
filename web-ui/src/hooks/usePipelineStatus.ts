@@ -9,6 +9,7 @@ import type { PipelineStatus } from '@/types';
 /**
  * Aggregates pipeline phase completion from four existing API endpoints.
  * Returns null SWR keys when no workspace is selected, preventing fetches.
+ * Uses tuple keys so each key fully encodes the request inputs (no ! assertions).
  */
 export function usePipelineStatus(): PipelineStatus {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
@@ -26,26 +27,26 @@ export function usePipelineStatus(): PipelineStatus {
   }, []);
 
   const { data: prdData, isLoading: prdLoading, error: prdError } = useSWR(
-    workspacePath ? `/pipeline/prd?path=${workspacePath}` : null,
-    () => prdApi.getLatest(workspacePath!),
+    workspacePath ? (['pipeline/prd', workspacePath] as const) : null,
+    ([, path]) => prdApi.getLatest(path),
     { revalidateOnFocus: false }
   );
 
   const { data: tasksData, isLoading: tasksLoading, error: tasksError } = useSWR(
-    workspacePath ? `/pipeline/tasks?path=${workspacePath}` : null,
-    () => tasksApi.getAll(workspacePath!),
+    workspacePath ? (['pipeline/tasks', workspacePath] as const) : null,
+    ([, path]) => tasksApi.getAll(path),
     { revalidateOnFocus: false }
   );
 
   const { data: proofData, isLoading: proofLoading, error: proofError } = useSWR(
-    workspacePath ? `/pipeline/proof?path=${workspacePath}` : null,
-    () => proofApi.getStatus(workspacePath!),
+    workspacePath ? (['pipeline/proof', workspacePath] as const) : null,
+    ([, path]) => proofApi.getStatus(path),
     { revalidateOnFocus: false }
   );
 
   const { data: reviewData, isLoading: reviewLoading, error: reviewError } = useSWR(
-    workspacePath ? `/pipeline/review?path=${workspacePath}` : null,
-    () => reviewApi.getDiff(workspacePath!),
+    workspacePath ? (['pipeline/review', workspacePath] as const) : null,
+    ([, path]) => reviewApi.getDiff(path),
     { revalidateOnFocus: false }
   );
 
