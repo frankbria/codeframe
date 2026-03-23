@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import useSWR from 'swr';
 import { usePipelineStatus } from '@/hooks/usePipelineStatus';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
@@ -18,14 +18,14 @@ function mockSWRCalls({
   proof,
   review,
 }: {
-  prd?: { data?: unknown; isLoading?: boolean };
-  tasks?: { data?: unknown; isLoading?: boolean };
-  proof?: { data?: unknown; isLoading?: boolean };
-  review?: { data?: unknown; isLoading?: boolean };
+  prd?: { data?: unknown; isLoading?: boolean; error?: unknown };
+  tasks?: { data?: unknown; isLoading?: boolean; error?: unknown };
+  proof?: { data?: unknown; isLoading?: boolean; error?: unknown };
+  review?: { data?: unknown; isLoading?: boolean; error?: unknown };
 }) {
   mockUseSWR.mockImplementation((key: unknown, ..._rest: unknown[]) => {
     const keyStr = typeof key === 'string' ? key : '';
-    let scenario: { data?: unknown; isLoading?: boolean } = {};
+    let scenario: { data?: unknown; isLoading?: boolean; error?: unknown } = {};
     if (keyStr.includes('/pipeline/prd')) scenario = prd ?? {};
     else if (keyStr.includes('/pipeline/tasks')) scenario = tasks ?? {};
     else if (keyStr.includes('/pipeline/proof')) scenario = proof ?? {};
@@ -34,7 +34,7 @@ function mockSWRCalls({
     return {
       data: scenario.data ?? undefined,
       isLoading: scenario.isLoading ?? false,
-      error: undefined,
+      error: scenario.error ?? undefined,
       isValidating: false,
       mutate: jest.fn(),
     } as ReturnType<typeof useSWR>;
@@ -200,17 +200,34 @@ describe('usePipelineStatus', () => {
     expect(result.current.ship.isComplete).toBe(false);
   });
 
-  it('returns isLoading true while any phase is loading', () => {
+  it('reflects individual phase loading states accurately', () => {
     mockSWRCalls({
       prd: { isLoading: true },
       tasks: { isLoading: false },
-      proof: { isLoading: false },
+      proof: { isLoading: true },
       review: { isLoading: false },
     });
 
     const { result } = renderHook(() => usePipelineStatus());
     expect(result.current.think.isLoading).toBe(true);
     expect(result.current.build.isLoading).toBe(false);
+    expect(result.current.prove.isLoading).toBe(true);
+    expect(result.current.ship.isLoading).toBe(false);
+  });
+
+  it('surfaces isError when an API call fails', () => {
+    mockSWRCalls({
+      prd: { error: new Error('404') },
+      tasks: { data: { tasks: [], total: 0, by_status: { DONE: 0, MERGED: 0 } } },
+      proof: { data: { total: 0, open: 0, satisfied: 0, waived: 0 } },
+      review: { data: { files_changed: 5 } },
+    });
+
+    const { result } = renderHook(() => usePipelineStatus());
+    expect(result.current.think.isError).toBe(true);
+    expect(result.current.build.isError).toBe(false);
+    expect(result.current.prove.isError).toBe(false);
+    expect(result.current.ship.isError).toBe(false);
   });
 
   it('returns null SWR keys when no workspace selected', () => {

@@ -1,4 +1,3 @@
-import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { usePathname } from 'next/navigation';
 import { PipelineProgressBar } from '@/components/layout/PipelineProgressBar';
@@ -14,17 +13,17 @@ const mockUsePipelineStatus = usePipelineStatus as jest.MockedFunction<typeof us
 const mockUsePathname = usePathname as jest.MockedFunction<typeof usePathname>;
 
 const allIncomplete = {
-  think: { isComplete: false, isLoading: false },
-  build: { isComplete: false, isLoading: false },
-  prove: { isComplete: false, isLoading: false },
-  ship: { isComplete: false, isLoading: false },
+  think: { isComplete: false, isLoading: false, isError: false },
+  build: { isComplete: false, isLoading: false, isError: false },
+  prove: { isComplete: false, isLoading: false, isError: false },
+  ship: { isComplete: false, isLoading: false, isError: false },
 };
 
 const allComplete = {
-  think: { isComplete: true, isLoading: false },
-  build: { isComplete: true, isLoading: false },
-  prove: { isComplete: true, isLoading: false },
-  ship: { isComplete: true, isLoading: false },
+  think: { isComplete: true, isLoading: false, isError: false },
+  build: { isComplete: true, isLoading: false, isError: false },
+  prove: { isComplete: true, isLoading: false, isError: false },
+  ship: { isComplete: true, isLoading: false, isError: false },
 };
 
 describe('PipelineProgressBar', () => {
@@ -52,15 +51,23 @@ describe('PipelineProgressBar', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('highlights the Think phase when on /prd', () => {
+  it('returns null on non-pipeline path (e.g. /settings)', () => {
+    mockUsePathname.mockReturnValue('/settings');
+    mockUsePipelineStatus.mockReturnValue(allIncomplete);
+
+    const { container } = render(<PipelineProgressBar />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('highlights the Think phase when on /prd with aria-current', () => {
     mockUsePathname.mockReturnValue('/prd');
     mockUsePipelineStatus.mockReturnValue(allIncomplete);
 
     render(<PipelineProgressBar />);
 
-    // Think link should have active styling indicator
     const thinkLink = screen.getByRole('link', { name: /think/i });
     expect(thinkLink).toHaveAttribute('href', '/prd');
+    expect(thinkLink).toHaveAttribute('aria-current', 'step');
   });
 
   it('highlights the Build phase when on /tasks', () => {
@@ -71,6 +78,7 @@ describe('PipelineProgressBar', () => {
 
     const buildLink = screen.getByRole('link', { name: /build/i });
     expect(buildLink).toHaveAttribute('href', '/tasks');
+    expect(buildLink).toHaveAttribute('aria-current', 'step');
   });
 
   it('highlights the Build phase when on /execution', () => {
@@ -81,6 +89,7 @@ describe('PipelineProgressBar', () => {
 
     const buildLink = screen.getByRole('link', { name: /build/i });
     expect(buildLink).toHaveAttribute('href', '/tasks');
+    expect(buildLink).toHaveAttribute('aria-current', 'step');
   });
 
   it('highlights the Build phase when on /blockers', () => {
@@ -91,6 +100,7 @@ describe('PipelineProgressBar', () => {
 
     const buildLink = screen.getByRole('link', { name: /build/i });
     expect(buildLink).toHaveAttribute('href', '/tasks');
+    expect(buildLink).toHaveAttribute('aria-current', 'step');
   });
 
   it('highlights the Prove phase when on /proof', () => {
@@ -101,6 +111,7 @@ describe('PipelineProgressBar', () => {
 
     const proveLink = screen.getByRole('link', { name: /prove/i });
     expect(proveLink).toHaveAttribute('href', '/proof');
+    expect(proveLink).toHaveAttribute('aria-current', 'step');
   });
 
   it('highlights the Ship phase when on /review', () => {
@@ -111,18 +122,18 @@ describe('PipelineProgressBar', () => {
 
     const shipLink = screen.getByRole('link', { name: /ship/i });
     expect(shipLink).toHaveAttribute('href', '/review');
+    expect(shipLink).toHaveAttribute('aria-current', 'step');
   });
 
   it('shows checkmark icon for completed phases', () => {
     mockUsePathname.mockReturnValue('/tasks');
     mockUsePipelineStatus.mockReturnValue({
       ...allIncomplete,
-      think: { isComplete: true, isLoading: false },
+      think: { isComplete: true, isLoading: false, isError: false },
     });
 
     render(<PipelineProgressBar />);
 
-    // Completed phase should show check icon
     expect(screen.getByTestId('icon-Tick01Icon')).toBeInTheDocument();
   });
 

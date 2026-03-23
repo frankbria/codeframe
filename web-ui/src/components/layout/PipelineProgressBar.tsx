@@ -33,10 +33,11 @@ export function PipelineProgressBar() {
   const pathname = usePathname();
   const status = usePipelineStatus();
 
-  // Hide on root (workspace selector) and any path with no matching phase
+  // Hide on root (workspace selector) and any path not belonging to a pipeline phase
   if (pathname === '/') return null;
 
   const activePhase = getActivePhase(pathname);
+  if (!activePhase) return null;
 
   return (
     <nav

@@ -4,18 +4,7 @@ import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import { prdApi, tasksApi, proofApi, reviewApi } from '@/lib/api';
-
-export interface PhaseStatus {
-  isComplete: boolean;
-  isLoading: boolean;
-}
-
-export interface PipelineStatus {
-  think: PhaseStatus;
-  build: PhaseStatus;
-  prove: PhaseStatus;
-  ship: PhaseStatus;
-}
+import type { PipelineStatus } from '@/types';
 
 /**
  * Aggregates pipeline phase completion from four existing API endpoints.
@@ -36,25 +25,25 @@ export function usePipelineStatus(): PipelineStatus {
     };
   }, []);
 
-  const { data: prdData, isLoading: prdLoading } = useSWR(
+  const { data: prdData, isLoading: prdLoading, error: prdError } = useSWR(
     workspacePath ? `/pipeline/prd?path=${workspacePath}` : null,
     () => prdApi.getLatest(workspacePath!),
     { revalidateOnFocus: false }
   );
 
-  const { data: tasksData, isLoading: tasksLoading } = useSWR(
+  const { data: tasksData, isLoading: tasksLoading, error: tasksError } = useSWR(
     workspacePath ? `/pipeline/tasks?path=${workspacePath}` : null,
     () => tasksApi.getAll(workspacePath!),
     { revalidateOnFocus: false }
   );
 
-  const { data: proofData, isLoading: proofLoading } = useSWR(
+  const { data: proofData, isLoading: proofLoading, error: proofError } = useSWR(
     workspacePath ? `/pipeline/proof?path=${workspacePath}` : null,
     () => proofApi.getStatus(workspacePath!),
     { revalidateOnFocus: false }
   );
 
-  const { data: reviewData, isLoading: reviewLoading } = useSWR(
+  const { data: reviewData, isLoading: reviewLoading, error: reviewError } = useSWR(
     workspacePath ? `/pipeline/review?path=${workspacePath}` : null,
     () => reviewApi.getDiff(workspacePath!),
     { revalidateOnFocus: false }
@@ -68,18 +57,22 @@ export function usePipelineStatus(): PipelineStatus {
     think: {
       isComplete: !!prdData,
       isLoading: prdLoading,
+      isError: !!prdError,
     },
     build: {
       isComplete: doneMerged > 0,
       isLoading: tasksLoading,
+      isError: !!tasksError,
     },
     prove: {
       isComplete: !!proofData && proofData.total > 0 && proofData.open === 0,
       isLoading: proofLoading,
+      isError: !!proofError,
     },
     ship: {
       isComplete: !!reviewData && reviewData.files_changed === 0,
       isLoading: reviewLoading,
+      isError: !!reviewError,
     },
   };
 }
