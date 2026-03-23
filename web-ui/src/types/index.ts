@@ -336,3 +336,18 @@ export interface WaiveRequest {
   manual_checklist: string[];
   approved_by: string;
 }
+
+
+// Pipeline progress types
+export interface PhaseStatus {
+  isComplete: boolean;
+  isLoading: boolean;
+  isError: boolean;
+}
+
+export interface PipelineStatus {
+  think: PhaseStatus;
+  build: PhaseStatus;
+  prove: PhaseStatus;
+  ship: PhaseStatus;
+}
