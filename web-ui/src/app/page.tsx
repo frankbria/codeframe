@@ -7,6 +7,7 @@ import {
   WorkspaceStatsCards,
   QuickActions,
   RecentActivityFeed,
+  OnboardingCard,
 } from '@/components/workspace';
 import { ProofStatusWidget } from '@/components/proof';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
@@ -252,6 +253,10 @@ export default function WorkspacePage() {
 
         {!workspaceNotFound && (
           <>
+            {tasksData !== undefined && (tasksData.tasks?.length ?? 0) === 0 && (
+              <OnboardingCard workspacePath={workspacePath} />
+            )}
+
             <WorkspaceStatsCards
               techStack={workspace?.tech_stack || null}
               taskCounts={tasksData?.by_status || emptyTaskCounts}

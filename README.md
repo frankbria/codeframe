@@ -303,6 +303,7 @@ CodeFRAME v2 (Phases 1–6 complete) delivers the full Think-Build-Prove-Ship lo
 
 ### Web UI
 - [x] Workspace and PRD views with Socratic discovery
+- [x] Onboarding guidance card for new workspaces (Think→Build→Prove→Ship pipeline steps, dismissable per workspace)
 - [x] Task board with Kanban and batch execution
 - [x] Blocker Resolution view
 - [x] Review and Commit view with diff viewer
