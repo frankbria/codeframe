@@ -210,7 +210,7 @@ export function TaskDetailModal({
                         )}
                         {onOpenTask ? (
                           <button
-                            className={`truncate text-left hover:underline ${isIncomplete ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-foreground'}`}
+                            className={`truncate text-left hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring ${isIncomplete ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-foreground'}`}
                             onClick={() => { onClose(); onOpenTask(depId); }}
                           >
                             {dep?.title ?? depId.slice(0, 12)}
