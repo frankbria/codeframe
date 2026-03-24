@@ -352,6 +352,9 @@ export interface CompletionBannerProps {
   onViewChanges: () => void;
   onBackToTasks: () => void;
   onViewBlockers: () => void;
+  gateResult?: GateResult | null;
+  gateRunning?: boolean;
+  gateError?: boolean;
 }
 
 // Pipeline progress types

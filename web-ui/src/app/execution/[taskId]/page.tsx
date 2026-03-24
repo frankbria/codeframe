@@ -1,17 +1,17 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useExecutionMonitor } from '@/hooks/useExecutionMonitor';
-import { tasksApi } from '@/lib/api';
+import { tasksApi, gatesApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import { ExecutionHeader } from '@/components/execution/ExecutionHeader';
 import { ProgressIndicator } from '@/components/execution/ProgressIndicator';
 import { EventStream } from '@/components/execution/EventStream';
 import { ChangesSidebar } from '@/components/execution/ChangesSidebar';
 import { Button } from '@/components/ui/button';
-import type { Task, CompletionBannerProps } from '@/types';
+import type { Task, CompletionBannerProps, GateResult } from '@/types';
 
 export default function ExecutionPage() {
   const params = useParams<{ taskId: string }>();
@@ -22,6 +22,12 @@ export default function ExecutionPage() {
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [task, setTask] = useState<Task | null>(null);
   const [taskError, setTaskError] = useState(false);
+
+  // Gate auto-run state
+  const [gateResult, setGateResult] = useState<GateResult | null>(null);
+  const [gateRunning, setGateRunning] = useState(false);
+  const [gateError, setGateError] = useState(false);
+  const hasRunGatesRef = useRef(false);
 
   // Hydrate workspace path from localStorage
   useEffect(() => {
@@ -43,6 +49,17 @@ export default function ExecutionPage() {
     workspaceReady && taskId ? taskId : null,
     workspacePath
   );
+
+  // Auto-run gates non-blocking when execution completes
+  useEffect(() => {
+    if (monitor.completionStatus !== 'completed' || !workspacePath || hasRunGatesRef.current) return;
+    hasRunGatesRef.current = true;
+    setGateRunning(true);
+    gatesApi.run(workspacePath)
+      .then(setGateResult)
+      .catch(() => setGateError(true))
+      .finally(() => setGateRunning(false));
+  }, [monitor.completionStatus, workspacePath]);
 
   // Stop handler — may fail if run already completed or no active run
   const handleStop = useCallback(async () => {
@@ -139,6 +156,9 @@ export default function ExecutionPage() {
             onViewChanges={() => router.push('/review')}
             onBackToTasks={() => router.push('/tasks')}
             onViewBlockers={() => router.push('/blockers')}
+            gateResult={gateResult}
+            gateRunning={gateRunning}
+            gateError={gateError}
           />
         )}
 
@@ -158,6 +178,50 @@ export default function ExecutionPage() {
 
 // ── Completion Banner ─────────────────────────────────────────────────
 
+function GateSummary({
+  gateRunning,
+  gateResult,
+  gateError,
+}: {
+  gateRunning: boolean;
+  gateResult: CompletionBannerProps['gateResult'];
+  gateError: boolean;
+}) {
+  if (gateRunning) {
+    return (
+      <p className="mt-2 text-xs text-green-700 dark:text-green-300">
+        Running quality gates…
+      </p>
+    );
+  }
+  if (gateError) {
+    return (
+      <p className="mt-2 text-xs text-green-700 dark:text-green-300">
+        Gate check unavailable ·{' '}
+        <Link href="/review" className="underline hover:no-underline">View in Review →</Link>
+      </p>
+    );
+  }
+  if (gateResult) {
+    const total = gateResult.checks.length;
+    const passed = gateResult.checks.filter((c) => c.status === 'PASSED').length;
+    if (gateResult.passed) {
+      return (
+        <p className="mt-2 text-xs text-green-700 dark:text-green-300">
+          ✓ All {total} gate{total !== 1 ? 's' : ''} passed
+        </p>
+      );
+    }
+    return (
+      <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+        ⚠ {passed}/{total} gates passed ·{' '}
+        <Link href="/review" className="underline hover:no-underline">View full report →</Link>
+      </p>
+    );
+  }
+  return null;
+}
+
 function CompletionBanner({
   status,
   duration,
@@ -165,26 +229,32 @@ function CompletionBanner({
   onViewChanges,
   onBackToTasks,
   onViewBlockers,
+  gateResult,
+  gateRunning = false,
+  gateError = false,
 }: CompletionBannerProps) {
   const durationText = duration !== null ? `${Math.round(duration)}s` : '';
 
   if (status === 'completed') {
     return (
-      <div role="alert" className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-900 dark:bg-green-950/30">
-        <p className="text-sm font-medium text-green-800 dark:text-green-200">
-          Execution complete{durationText && ` in ${durationText}`}. Run PROOF9 gates to verify quality before shipping.
-        </p>
-        <div className="flex gap-2">
-          <Button onClick={onViewProof} size="sm">
-            Verify with PROOF9
-          </Button>
-          <Button onClick={onViewChanges} variant="outline" size="sm">
-            View Changes
-          </Button>
-          <Button onClick={onBackToTasks} variant="outline" size="sm">
-            Back to Tasks
-          </Button>
+      <div role="alert" className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-900 dark:bg-green-950/30">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-green-800 dark:text-green-200">
+            Execution complete{durationText && ` in ${durationText}`}. Run PROOF9 gates to verify quality before shipping.
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={onViewProof} size="sm">
+              Verify with PROOF9
+            </Button>
+            <Button onClick={onViewChanges} variant="outline" size="sm">
+              View Changes
+            </Button>
+            <Button onClick={onBackToTasks} variant="outline" size="sm">
+              Back to Tasks
+            </Button>
+          </div>
         </div>
+        <GateSummary gateRunning={gateRunning} gateResult={gateResult} gateError={gateError} />
       </div>
     );
   }
