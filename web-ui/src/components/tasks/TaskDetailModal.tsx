@@ -24,9 +24,10 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import useSWR from 'swr';
 import { tasksApi } from '@/lib/api';
 import { useRequirementsLookup } from '@/hooks/useRequirementsLookup';
-import type { Task, TaskStatus, ApiError } from '@/types';
+import type { Task, TaskStatus, ApiError, TaskListResponse } from '@/types';
 
 const STATUS_BADGE_VARIANT: Record<TaskStatus, string> = {
   BACKLOG: 'backlog',
@@ -55,6 +56,7 @@ interface TaskDetailModalProps {
   onClose: () => void;
   onExecute: (taskId: string) => void;
   onStatusChange: () => void;
+  onOpenTask?: (taskId: string) => void;
 }
 
 export function TaskDetailModal({
@@ -64,6 +66,7 @@ export function TaskDetailModal({
   onClose,
   onExecute,
   onStatusChange,
+  onOpenTask,
 }: TaskDetailModalProps) {
   const router = useRouter();
   const [task, setTask] = useState<Task | null>(null);
@@ -71,6 +74,13 @@ export function TaskDetailModal({
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const { requirementsMap, isLoading: reqsLoading } = useRequirementsLookup(workspacePath);
+
+  // Fetch all tasks (reuses TaskBoardView's SWR cache — same key, no extra network call)
+  const { data: allTasksData } = useSWR<TaskListResponse>(
+    `/api/v2/tasks?path=${workspacePath}`,
+    () => tasksApi.getAll(workspacePath)
+  );
+  const tasksById = new Map(allTasksData?.tasks.map((t) => [t.id, t]) ?? []);
 
   useEffect(() => {
     if (!open || !taskId) {
@@ -172,13 +182,6 @@ export function TaskDetailModal({
 
             {/* Metadata */}
             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-              {task.depends_on.length > 0 && (
-                <span className="flex items-center gap-1">
-                  <LinkCircleIcon className="h-3.5 w-3.5" />
-                  {task.depends_on.length} dependenc{task.depends_on.length === 1 ? 'y' : 'ies'}:
-                  {' '}{task.depends_on.map((id) => id.slice(0, 8)).join(', ')}
-                </span>
-              )}
               {task.estimated_hours != null && (
                 <span className="flex items-center gap-1">
                   <Time01Icon className="h-3.5 w-3.5" />
@@ -186,6 +189,43 @@ export function TaskDetailModal({
                 </span>
               )}
             </div>
+
+            {/* Dependencies — full list with status highlights and navigation */}
+            {task.depends_on.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <LinkCircleIcon className="h-3.5 w-3.5" />
+                  Dependencies ({task.depends_on.length})
+                </div>
+                <ul className="space-y-1">
+                  {task.depends_on.map((depId) => {
+                    const dep = tasksById.get(depId);
+                    const isIncomplete = dep && !['DONE', 'MERGED'].includes(dep.status);
+                    return (
+                      <li key={depId} className="flex items-center gap-2 text-xs">
+                        {dep && (
+                          <Badge variant={STATUS_BADGE_VARIANT[dep.status] as never} className="shrink-0 text-[10px]">
+                            {dep.status}
+                          </Badge>
+                        )}
+                        {onOpenTask ? (
+                          <button
+                            className={`truncate text-left hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring ${isIncomplete ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-foreground'}`}
+                            onClick={() => { onClose(); onOpenTask(depId); }}
+                          >
+                            {dep?.title ?? depId.slice(0, 12)}
+                          </button>
+                        ) : (
+                          <span className={`truncate ${isIncomplete ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-foreground'}`}>
+                            {dep?.title ?? depId.slice(0, 12)}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
 
             {/* Requirements */}
             {(task.requirement_ids ?? []).length > 0 && (

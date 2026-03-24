@@ -376,6 +376,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onClose={handleCloseDetail}
         onExecute={handleExecute}
         onStatusChange={handleStatusChange}
+        onOpenTask={handleTaskClick}
       />
 
       {/* Bulk action confirmation */}
