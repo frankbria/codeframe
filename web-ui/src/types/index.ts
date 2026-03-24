@@ -339,6 +339,16 @@ export interface WaiveRequest {
 }
 
 
+// Completion banner props (execution page)
+export interface CompletionBannerProps {
+  status: 'completed' | 'failed' | 'blocked' | null;
+  duration: number | null;
+  onViewProof: () => void;
+  onViewChanges: () => void;
+  onBackToTasks: () => void;
+  onViewBlockers: () => void;
+}
+
 // Pipeline progress types
 export interface PhaseStatus {
   isComplete: boolean;

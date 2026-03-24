@@ -10,7 +10,8 @@ import { ExecutionHeader } from '@/components/execution/ExecutionHeader';
 import { ProgressIndicator } from '@/components/execution/ProgressIndicator';
 import { EventStream } from '@/components/execution/EventStream';
 import { ChangesSidebar } from '@/components/execution/ChangesSidebar';
-import type { Task } from '@/types';
+import { Button } from '@/components/ui/button';
+import type { Task, CompletionBannerProps } from '@/types';
 
 export default function ExecutionPage() {
   const params = useParams<{ taskId: string }>();
@@ -164,14 +165,7 @@ function CompletionBanner({
   onViewChanges,
   onBackToTasks,
   onViewBlockers,
-}: {
-  status: 'completed' | 'failed' | 'blocked' | null;
-  duration: number | null;
-  onViewProof: () => void;
-  onViewChanges: () => void;
-  onBackToTasks: () => void;
-  onViewBlockers: () => void;
-}) {
+}: CompletionBannerProps) {
   const durationText = duration !== null ? `${Math.round(duration)}s` : '';
 
   if (status === 'completed') {
@@ -181,24 +175,15 @@ function CompletionBanner({
           Execution complete{durationText && ` in ${durationText}`}. Run PROOF9 gates to verify quality before shipping.
         </p>
         <div className="flex gap-2">
-          <button
-            onClick={onViewProof}
-            className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
-          >
+          <Button onClick={onViewProof} size="sm">
             Verify with PROOF9
-          </button>
-          <button
-            onClick={onViewChanges}
-            className="rounded-md border border-green-300 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 dark:border-green-800 dark:text-green-300 dark:hover:bg-green-900/40"
-          >
+          </Button>
+          <Button onClick={onViewChanges} variant="outline" size="sm">
             View Changes
-          </button>
-          <button
-            onClick={onBackToTasks}
-            className="rounded-md border border-green-300 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 dark:border-green-800 dark:text-green-300 dark:hover:bg-green-900/40"
-          >
+          </Button>
+          <Button onClick={onBackToTasks} variant="outline" size="sm">
             Back to Tasks
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -211,12 +196,9 @@ function CompletionBanner({
           Execution failed{durationText && ` after ${durationText}`}. Check the
           event stream for details.
         </p>
-        <button
-          onClick={onBackToTasks}
-          className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/40"
-        >
+        <Button onClick={onBackToTasks} variant="outline" size="sm">
           Back to Tasks
-        </button>
+        </Button>
       </div>
     );
   }
@@ -229,18 +211,12 @@ function CompletionBanner({
           stream below to continue.
         </p>
         <div className="flex gap-2">
-          <button
-            onClick={onViewBlockers}
-            className="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600"
-          >
+          <Button onClick={onViewBlockers} size="sm">
             View Blockers
-          </button>
-          <button
-            onClick={onBackToTasks}
-            className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-900/40"
-          >
+          </Button>
+          <Button onClick={onBackToTasks} variant="outline" size="sm">
             Back to Tasks
-          </button>
+          </Button>
         </div>
       </div>
     );
