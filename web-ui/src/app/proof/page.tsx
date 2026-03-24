@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
+import { InformationCircleIcon } from '@hugeicons/react';
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@/components/ui/tooltip';
 import { ProofStatusBadge } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
@@ -143,12 +150,14 @@ export default function ProofPage() {
   }
 
   return (
+    <TooltipProvider>
     <main className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold">PROOF9 Requirements</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Quality memory — requirements captured from glitches, proven through evidence.
+            PROOF9 tracks quality requirements with evidence. Requirements must be satisfied or waived before shipping.{' '}
+            <a href="#proof9-help" className="text-primary hover:underline">Learn more ↓</a>
           </p>
         </div>
 
@@ -184,15 +193,67 @@ export default function ProofPage() {
               <span className="font-medium text-foreground">{data.total} total</span>
             </div>
 
+            {/* Status legend */}
+            <div className="mb-4 flex flex-wrap gap-4 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                <span><span className="font-medium text-foreground">open</span> — must be satisfied before shipping</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
+                <span><span className="font-medium text-foreground">satisfied</span> — proven with collected evidence</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-gray-400" />
+                <span><span className="font-medium text-foreground">waived</span> — approved exception, no evidence required</span>
+              </span>
+            </div>
+
             <div className="overflow-x-auto rounded-lg border">
               <table className="min-w-[800px] w-full text-sm">
                 <thead className="border-b bg-muted/50">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">ID</th>
                     <th className="px-4 py-3 text-left font-medium">Title</th>
-                    <th className="px-4 py-3 text-left font-medium">Glitch Type</th>
-                    <th className="px-4 py-3 text-left font-medium">Severity</th>
-                    <th className="px-4 py-3 text-left font-medium">Gates</th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      <span className="flex items-center gap-1">
+                        Glitch Type
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-default text-muted-foreground/60 hover:text-muted-foreground">
+                              <InformationCircleIcon className="h-3.5 w-3.5" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>The category of quality issue this requirement addresses</TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      <span className="flex items-center gap-1">
+                        Severity
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-default text-muted-foreground/60 hover:text-muted-foreground">
+                              <InformationCircleIcon className="h-3.5 w-3.5" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>Impact level: critical, high, medium, or low</TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      <span className="flex items-center gap-1">
+                        Gates
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-default text-muted-foreground/60 hover:text-muted-foreground">
+                              <InformationCircleIcon className="h-3.5 w-3.5" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>Number of evidence gates that must pass to satisfy this requirement</TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </th>
                     <th className="px-4 py-3 text-left font-medium">Status</th>
                     <th className="px-4 py-3 text-left font-medium">Created</th>
                     <th className="px-4 py-3 text-left font-medium"></th>
@@ -252,7 +313,60 @@ export default function ProofPage() {
             }}
           />
         )}
+
+        {/* In-page help reference */}
+        <section id="proof9-help" className="mt-12 rounded-lg border bg-muted/30 p-6">
+          <h2 className="mb-3 text-base font-semibold">About PROOF9</h2>
+          <p className="mb-4 text-sm text-muted-foreground">
+            PROOF9 is CodeFRAME&apos;s quality memory system. It captures requirements from past glitches and failures,
+            then enforces that each requirement is <em>proven</em> through evidence before code ships. This creates a
+            self-reinforcing quality loop: every bug becomes a permanent gate.
+          </p>
+          <div className="grid gap-4 text-sm sm:grid-cols-2">
+            <div>
+              <h3 className="mb-1.5 font-medium">Key Terms</h3>
+              <dl className="space-y-2 text-muted-foreground">
+                <div>
+                  <dt className="font-medium text-foreground">Glitch Type</dt>
+                  <dd>The category of quality issue a requirement addresses (e.g., regression, security, performance).</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-foreground">Severity</dt>
+                  <dd>Impact level — <strong>critical</strong> blocks ship, <strong>high</strong> strongly recommended, <strong>medium/low</strong> advisory.</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-foreground">Gates / Obligations</dt>
+                  <dd>Evidence rules — specific tests or checks that must pass to satisfy a requirement.</dd>
+                </div>
+              </dl>
+            </div>
+            <div>
+              <h3 className="mb-1.5 font-medium">Requirement Lifecycle</h3>
+              <dl className="space-y-2 text-muted-foreground">
+                <div>
+                  <dt className="flex items-center gap-1.5 font-medium text-foreground">
+                    <span className="h-2 w-2 rounded-full bg-red-400" /> open
+                  </dt>
+                  <dd>Not yet satisfied. Must be resolved (satisfied or waived) before shipping.</dd>
+                </div>
+                <div>
+                  <dt className="flex items-center gap-1.5 font-medium text-foreground">
+                    <span className="h-2 w-2 rounded-full bg-green-400" /> satisfied
+                  </dt>
+                  <dd>Evidence collected. All obligation gates passed.</dd>
+                </div>
+                <div>
+                  <dt className="flex items-center gap-1.5 font-medium text-foreground">
+                    <span className="h-2 w-2 rounded-full bg-gray-400" /> waived
+                  </dt>
+                  <dd>Approved exception with a recorded reason. No evidence required.</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
+    </TooltipProvider>
   );
 }
