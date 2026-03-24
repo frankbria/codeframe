@@ -339,6 +339,11 @@ export interface WaiveRequest {
 }
 
 
+// Quick Actions props (dashboard)
+export interface QuickActionsProps {
+  taskCounts?: TaskStatusCounts;
+}
+
 // Completion banner props (execution page)
 export interface CompletionBannerProps {
   status: 'completed' | 'failed' | 'blocked' | null;
