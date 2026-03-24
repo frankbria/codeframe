@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { InformationCircleIcon } from '@hugeicons/react';
 import {
@@ -117,10 +118,12 @@ function WaiveDialog({
   );
 }
 
-export default function ProofPage() {
+function ProofPageContent() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [waivedReq, setWaivedReq] = useState<ProofRequirement | null>(null);
+  const searchParams = useSearchParams();
+  const gateFilter = searchParams.get('gate')?.toLowerCase() ?? null;
 
   useEffect(() => {
     setWorkspacePath(getSelectedWorkspacePath());
@@ -184,13 +187,26 @@ export default function ProofPage() {
           </div>
         )}
 
-        {data && data.total > 0 && (
+        {data && data.total > 0 && (() => {
+          const visibleReqs = gateFilter
+            ? data.requirements.filter((r) =>
+                r.obligations.some((o) => o.gate.toLowerCase() === gateFilter)
+              )
+            : data.requirements;
+
+          return (
           <>
-            <div className="mb-4 flex gap-4 text-sm text-muted-foreground">
+            <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               <span>{data.by_status?.open ?? 0} open</span>
               <span>{data.by_status?.satisfied ?? 0} satisfied</span>
               <span>{data.by_status?.waived ?? 0} waived</span>
               <span className="font-medium text-foreground">{data.total} total</span>
+              {gateFilter && (
+                <span className="flex items-center gap-1.5 rounded-full border bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground">
+                  Filtered by gate: {gateFilter}
+                  <Link href="/proof" aria-label={`Clear gate filter ${gateFilter}`} className="text-muted-foreground hover:text-foreground">✕</Link>
+                </span>
+              )}
             </div>
 
             {/* Status legend */}
@@ -260,7 +276,15 @@ export default function ProofPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.requirements.map((req) => (
+                  {visibleReqs.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        No requirements match gate &quot;{gateFilter}&quot;.{' '}
+                        <Link href="/proof" className="text-primary hover:underline">Clear filter</Link>
+                      </td>
+                    </tr>
+                  )}
+                  {visibleReqs.map((req) => (
                     <tr key={req.id} className="border-b last:border-0 hover:bg-muted/30">
                       <td className="px-4 py-3 font-mono text-xs">
                         <Link href={`/proof/${encodeURIComponent(req.id)}`} className="text-primary hover:underline">
@@ -300,7 +324,8 @@ export default function ProofPage() {
               </table>
             </div>
           </>
-        )}
+          );
+        })()}
 
         {waivedReq && (
           <WaiveDialog
@@ -368,5 +393,13 @@ export default function ProofPage() {
       </div>
     </main>
     </TooltipProvider>
+  );
+}
+
+export default function ProofPage() {
+  return (
+    <Suspense>
+      <ProofPageContent />
+    </Suspense>
   );
 }

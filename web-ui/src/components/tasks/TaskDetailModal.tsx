@@ -11,6 +11,8 @@ import {
   Time01Icon,
   ViewIcon,
   BookOpen01Icon,
+  Alert02Icon,
+  CheckListIcon,
 } from '@hugeicons/react';
 import {
   Dialog,
@@ -221,6 +223,24 @@ export function TaskDetailModal({
               </div>
             )}
 
+            {/* FAILED-state guidance panel */}
+            {task.status === 'FAILED' && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5">
+                <div className="flex items-start gap-2">
+                  <Alert02Icon className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-medium text-destructive">Task failed during execution</p>
+                    <p className="text-xs text-muted-foreground">
+                      Check PROOF9 gates to identify which quality requirements need attention.
+                      {(task.requirement_ids ?? []).length === 0 && (
+                        <> Use the button below to view all gates.</>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <DialogFooter>
               {task.status === 'BACKLOG' && (
                 <Button
@@ -258,6 +278,42 @@ export function TaskDetailModal({
                   Execute
                 </Button>
               )}
+              {task.status === 'FAILED' && (() => {
+                // Derive the best proof link from requirement obligations if available
+                let proofLink = '/proof';
+                for (const reqId of (task.requirement_ids ?? [])) {
+                  const req = requirementsMap.get(reqId);
+                  const gate = req?.obligations?.[0]?.gate?.toLowerCase();
+                  if (gate) { proofLink = `/proof?gate=${encodeURIComponent(gate)}`; break; }
+                }
+                return (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isUpdating}
+                      onClick={handleMarkReady}
+                    >
+                      {isUpdating ? (
+                        <Loading03Icon className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <CheckmarkCircle01Icon className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      Reset to Ready
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        onClose();
+                        router.push(proofLink);
+                      }}
+                    >
+                      <CheckListIcon className="mr-1.5 h-3.5 w-3.5" />
+                      View PROOF9 Gates
+                    </Button>
+                  </>
+                );
+              })()}
             </DialogFooter>
           </>
         )}
