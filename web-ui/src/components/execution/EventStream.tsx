@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { ArrowDown01Icon, ArrowRight01Icon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
+import { editGroupBadgeStyles } from '@/lib/eventStyles';
 import { EventItem } from './EventItem';
 import type { ExecutionEvent } from '@/hooks/useTaskStream';
 
@@ -122,7 +123,7 @@ function EditGroupRow({ group }: { group: Extract<EventGroup, { type: 'edit_grou
       <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
         {new Date(group.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
       </span>
-      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+      <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none ${editGroupBadgeStyles}`}>
         edit
       </span>
       <p className="text-sm">
@@ -150,8 +151,11 @@ export function EventStream({ events, workspacePath, onBlockerAnswered }: EventS
   const prevEventCountRef = useRef(events.length);
 
   // Filter out heartbeat events for display
-  const displayEvents = events.filter((e) => e.event_type !== 'heartbeat');
-  const groups = groupEvents(displayEvents);
+  const displayEvents = useMemo(
+    () => events.filter((e) => e.event_type !== 'heartbeat'),
+    [events]
+  );
+  const groups = useMemo(() => groupEvents(displayEvents), [displayEvents]);
 
   // Detect new events while scrolled up
   useEffect(() => {

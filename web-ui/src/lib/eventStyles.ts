@@ -82,6 +82,9 @@ export const agentStateBadgeStyles: Record<UIAgentState, string> = {
   DISCONNECTED: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
 };
 
+/** Badge style for the edit-group summary row in the EventStream. */
+export const editGroupBadgeStyles = 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
+
 /** Human-readable labels for each agent state. */
 export const agentStateLabels: Record<UIAgentState, string> = {
   CONNECTING: 'Connecting',
