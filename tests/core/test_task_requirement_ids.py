@@ -3,6 +3,9 @@
 Tests that tasks can be linked to PROOF9 requirement IDs for traceability.
 """
 
+import json
+import sqlite3
+
 import pytest
 
 from codeframe.core import tasks
@@ -73,10 +76,65 @@ class TestTaskRequirementIdsField:
         updated = tasks.update_requirement_ids(workspace, task.id, [])
         assert updated.requirement_ids == []
 
-    def test_task_without_requirement_ids_in_existing_db(self, workspace):
-        """Tasks created before migration (no requirement_ids column) return []."""
-        # This is tested implicitly by the migration guard in workspace init,
-        # but we verify a freshly-created task always has the field.
-        task = tasks.create(workspace, title="Legacy-style task")
-        assert hasattr(task, "requirement_ids")
-        assert task.requirement_ids == []
+    def test_task_without_requirement_ids_in_existing_db(self, tmp_path):
+        """Migration guard adds requirement_ids column to pre-migration databases.
+
+        Simulates a workspace that was created before the requirement_ids column
+        was added, then verifies that opening it triggers the migration guard
+        and tasks can be read back with requirement_ids == [].
+        """
+        # Step 1: Create a workspace and inject a "pre-migration" tasks table
+        # by directly dropping the requirement_ids column from the DB.
+        ws = create_or_load_workspace(tmp_path)
+        db_path = ws.db_path
+
+        conn = sqlite3.connect(db_path)
+        # Insert a task using the old schema (without requirement_ids)
+        import uuid
+        from datetime import datetime, timezone
+        task_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """
+            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status,
+                               priority, depends_on, created_at, updated_at)
+            VALUES (?, ?, NULL, ?, '', 'BACKLOG', 0, '[]', ?, ?)
+            """,
+            (task_id, ws.id, "Legacy task", now, now),
+        )
+        # Simulate the column not existing by removing it (SQLite workaround)
+        conn.execute("ALTER TABLE tasks RENAME TO tasks_old")
+        conn.execute("""
+            CREATE TABLE tasks (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                prd_id TEXT,
+                title TEXT NOT NULL,
+                description TEXT,
+                status TEXT NOT NULL DEFAULT 'BACKLOG',
+                priority INTEGER DEFAULT 0,
+                depends_on TEXT DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status,
+                               priority, depends_on, created_at, updated_at)
+            SELECT id, workspace_id, prd_id, title, description, status,
+                   priority, depends_on, created_at, updated_at
+            FROM tasks_old
+        """)
+        conn.execute("DROP TABLE tasks_old")
+        conn.commit()
+        conn.close()
+
+        # Step 2: Re-open workspace — this triggers _ensure_schema_upgrades()
+        # which should add the requirement_ids column.
+        ws2 = create_or_load_workspace(tmp_path)
+
+        # Step 3: Verify the legacy task reads back with requirement_ids == []
+        fetched = tasks.get(ws2, task_id)
+        assert fetched is not None
+        assert hasattr(fetched, "requirement_ids")
+        assert fetched.requirement_ids == []
