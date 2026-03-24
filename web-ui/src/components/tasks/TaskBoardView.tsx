@@ -383,16 +383,20 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
             )}
           </p>
           <div className="mt-6 flex gap-3">
-            <Button asChild>
-              <Link href="/prd">
-                Generate from PRD →
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/prd">
-                View PRD
-              </Link>
-            </Button>
+            {hasPrd ? (
+              <>
+                <Button asChild>
+                  <Link href="/prd">Generate from PRD →</Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link href="/prd">View PRD</Link>
+                </Button>
+              </>
+            ) : (
+              <Button asChild>
+                <Link href="/prd">Create PRD →</Link>
+              </Button>
+            )}
           </div>
         </div>
       )}
