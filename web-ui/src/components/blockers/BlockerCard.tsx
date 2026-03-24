@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
+import Link from 'next/link';
 import { Alert02Icon, Loading03Icon, CheckmarkCircle01Icon } from '@hugeicons/react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,16 +22,8 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isOpen = blocker.status === 'OPEN';
-
-  // Clean up timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
 
   const handleSubmit = async () => {
     if (!answer.trim() || isSubmitting) return;
@@ -39,7 +32,6 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
     try {
       await blockersApi.answer(workspacePath, blocker.id, answer.trim());
       setSubmitted(true);
-      timerRef.current = setTimeout(() => onAnswered(), 1500);
     } catch (err) {
       const apiErr = err as ApiError;
       setError(apiErr.detail || 'Failed to submit answer');
@@ -54,11 +46,16 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
         data-testid="blocker-card"
         className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30"
       >
-        <CardContent className="flex items-center gap-2 p-4">
-          <CheckmarkCircle01Icon className="h-5 w-5 text-green-600 dark:text-green-400" />
-          <p className="text-sm font-medium text-green-800 dark:text-green-300">
-            Blocker answered. Task will resume execution.
-          </p>
+        <CardContent className="flex items-center justify-between gap-4 p-4">
+          <div className="flex items-center gap-2">
+            <CheckmarkCircle01Icon className="h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
+            <p className="text-sm font-medium text-green-800 dark:text-green-300">
+              Answer recorded. Go to Tasks and restart execution to resume the agent.
+            </p>
+          </div>
+          <Button size="sm" variant="outline" asChild>
+            <Link href="/tasks" onClick={onAnswered}>Go to Tasks</Link>
+          </Button>
         </CardContent>
       </Card>
     );
@@ -70,7 +67,10 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
         {/* Task context */}
         {blocker.task_id && (
           <p className="text-xs font-medium text-muted-foreground">
-            Task {blocker.task_id}
+            Raised by{' '}
+            <Link href="/tasks" className="text-primary hover:underline">
+              Task {blocker.task_id}
+            </Link>
           </p>
         )}
 
