@@ -61,6 +61,7 @@ export interface Task {
   status: TaskStatus;
   priority: number;
   depends_on: string[];
+  requirement_ids?: string[];
   estimated_hours?: number;
   created_at?: string;
   updated_at?: string;

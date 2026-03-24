@@ -147,6 +147,8 @@ def _init_database(db_path: Path) -> None:
         cursor.execute("ALTER TABLE tasks ADD COLUMN is_leaf INTEGER DEFAULT 1")
     if "hierarchical_id" not in columns:
         cursor.execute("ALTER TABLE tasks ADD COLUMN hierarchical_id TEXT")
+    if "requirement_ids" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN requirement_ids TEXT DEFAULT '[]'")
 
     # Append-only event log
     cursor.execute("""
@@ -488,6 +490,9 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             conn.commit()
         if "hierarchical_id" not in task_columns:
             cursor.execute("ALTER TABLE tasks ADD COLUMN hierarchical_id TEXT")
+            conn.commit()
+        if "requirement_ids" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN requirement_ids TEXT DEFAULT '[]'")
             conn.commit()
         if "github_issue_number" not in task_columns:
             cursor.execute("ALTER TABLE tasks ADD COLUMN github_issue_number INTEGER")

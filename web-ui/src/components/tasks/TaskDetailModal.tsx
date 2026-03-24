@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -9,6 +10,7 @@ import {
   Loading03Icon,
   Time01Icon,
   ViewIcon,
+  BookOpen01Icon,
 } from '@hugeicons/react';
 import {
   Dialog,
@@ -21,6 +23,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { tasksApi } from '@/lib/api';
+import { useRequirementsLookup } from '@/hooks/useRequirementsLookup';
 import type { Task, TaskStatus, ApiError } from '@/types';
 
 const STATUS_BADGE_VARIANT: Record<TaskStatus, string> = {
@@ -65,6 +68,7 @@ export function TaskDetailModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const { requirementsMap, isLoading: reqsLoading } = useRequirementsLookup(workspacePath);
 
   useEffect(() => {
     if (!open || !taskId) {
@@ -180,6 +184,42 @@ export function TaskDetailModal({
                 </span>
               )}
             </div>
+
+            {/* Requirements */}
+            {(task.requirement_ids ?? []).length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <BookOpen01Icon className="h-3.5 w-3.5" />
+                  Requirements
+                </div>
+                {reqsLoading ? (
+                  <Loading03Icon className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                ) : (
+                  <ul className="space-y-1">
+                    {(task.requirement_ids ?? []).map((reqId) => {
+                      const req = requirementsMap.get(reqId);
+                      return (
+                        <li key={reqId} className="flex items-start gap-2 text-xs">
+                          <Link
+                            href={`/proof/${encodeURIComponent(reqId)}`}
+                            className="font-mono text-primary hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {reqId}
+                          </Link>
+                          {req && (
+                            <span className="text-foreground">{req.title}</span>
+                          )}
+                          {req?.glitch_type && (
+                            <span className="ml-auto text-muted-foreground">{req.glitch_type}</span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
 
             <DialogFooter>
               {task.status === 'BACKLOG' && (

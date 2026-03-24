@@ -1,4 +1,5 @@
 export { useEventSource, type SSEStatus, type UseEventSourceOptions } from './useEventSource';
+export { useRequirementsLookup } from './useRequirementsLookup';
 export {
   useTaskStream,
   type UseTaskStreamOptions,
