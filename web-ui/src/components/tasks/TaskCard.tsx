@@ -1,11 +1,12 @@
 'use client';
 
-import { PlayCircleIcon, CheckmarkCircle01Icon, LinkCircleIcon, Cancel01Icon, ArrowTurnBackwardIcon, Loading03Icon } from '@hugeicons/react';
+import Link from 'next/link';
+import { PlayCircleIcon, CheckmarkCircle01Icon, LinkCircleIcon, Cancel01Icon, ArrowTurnBackwardIcon, Loading03Icon, BookOpen01Icon } from '@hugeicons/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { Task, TaskStatus } from '@/types';
+import type { Task, TaskStatus, ProofRequirement } from '@/types';
 
 /** Map backend TaskStatus to badge variant name. */
 const STATUS_BADGE_VARIANT: Record<TaskStatus, string> = {
@@ -42,6 +43,8 @@ interface TaskCardProps {
   /** Optional — when omitted, FAILED cards silently hide the Reset button. TaskBoardView always provides this. */
   onReset?: (taskId: string) => void;
   isLoading?: boolean;
+  /** Map of requirement ID → ProofRequirement for badge lookup (shared SWR cache from parent). */
+  requirementsMap?: Map<string, ProofRequirement>;
 }
 
 export function TaskCard({
@@ -55,7 +58,11 @@ export function TaskCard({
   onStop,
   onReset,
   isLoading = false,
+  requirementsMap,
 }: TaskCardProps) {
+  const reqIds = task.requirement_ids ?? [];
+  const firstReq = reqIds.length > 0 ? requirementsMap?.get(reqIds[0]) : undefined;
+  const overflowCount = reqIds.length > 1 ? reqIds.length - 1 : 0;
   return (
     <Card
       className="cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
@@ -104,6 +111,30 @@ export function TaskCard({
           <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
             {task.description}
           </p>
+        )}
+
+        {/* Requirement badges */}
+        {reqIds.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <BookOpen01Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
+            {firstReq ? (
+              <Link href={`/proof/${encodeURIComponent(reqIds[0])}`}>
+                <Badge variant="outline" className="h-5 cursor-pointer gap-1 px-1.5 text-[10px] hover:bg-accent">
+                  <span className="font-mono">{reqIds[0].slice(0, 10)}</span>
+                  {firstReq.glitch_type && (
+                    <span className="text-muted-foreground">· {firstReq.glitch_type}</span>
+                  )}
+                </Badge>
+              </Link>
+            ) : (
+              <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono">
+                {reqIds[0].slice(0, 10)}
+              </Badge>
+            )}
+            {overflowCount > 0 && (
+              <span className="text-[10px] text-muted-foreground">+{overflowCount}</span>
+            )}
+          </div>
         )}
 
         {/* Action buttons */}

@@ -60,6 +60,7 @@ class Task:
     lineage: list[str] = field(default_factory=list)
     is_leaf: bool = True
     hierarchical_id: Optional[str] = None
+    requirement_ids: list[str] = field(default_factory=list)
 
 
 def create(
@@ -77,6 +78,7 @@ def create(
     lineage: Optional[list[str]] = None,
     is_leaf: bool = True,
     hierarchical_id: Optional[str] = None,
+    requirement_ids: Optional[list[str]] = None,
 ) -> Task:
     """Create a new task.
 
@@ -95,6 +97,7 @@ def create(
         lineage: Optional list of ancestor descriptions
         is_leaf: Whether this is a leaf/executable task (default True)
         hierarchical_id: Optional display ID like "1.2.3"
+        requirement_ids: Optional list of PROOF9 requirement IDs this task implements
 
     Returns:
         Created Task
@@ -103,16 +106,17 @@ def create(
     now = _utc_now().isoformat()
     depends_on_list = depends_on or []
     lineage_list = lineage or []
+    requirement_ids_list = requirement_ids or []
 
     conn = get_db_connection(workspace)
     try:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, parent_id, lineage, is_leaf, hierarchical_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, parent_id, lineage, is_leaf, hierarchical_id, created_at, updated_at, requirement_ids)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, complexity_score, uncertainty_level, parent_id, json.dumps(lineage_list), 1 if is_leaf else 0, hierarchical_id, now, now),
+            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, complexity_score, uncertainty_level, parent_id, json.dumps(lineage_list), 1 if is_leaf else 0, hierarchical_id, now, now, json.dumps(requirement_ids_list)),
         )
         conn.commit()
     finally:
@@ -134,6 +138,7 @@ def create(
         lineage=lineage_list,
         is_leaf=is_leaf,
         hierarchical_id=hierarchical_id,
+        requirement_ids=requirement_ids_list,
         created_at=datetime.fromisoformat(now),
         updated_at=datetime.fromisoformat(now),
     )
@@ -154,7 +159,7 @@ def get(workspace: Workspace, task_id: str) -> Optional[Task]:
 
     cursor.execute(
         """
-        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id
+        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids
         FROM tasks
         WHERE workspace_id = ? AND id = ?
         """,
@@ -190,7 +195,7 @@ def list_tasks(
     if status:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids
             FROM tasks
             WHERE workspace_id = ? AND status = ?
             ORDER BY priority ASC, created_at ASC
@@ -201,7 +206,7 @@ def list_tasks(
     else:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids
             FROM tasks
             WHERE workspace_id = ?
             ORDER BY priority ASC, created_at ASC
@@ -410,6 +415,49 @@ def update_depends_on(
     conn.close()
 
     task.depends_on = depends_on
+    task.updated_at = datetime.fromisoformat(now)
+
+    return task
+
+
+def update_requirement_ids(
+    workspace: Workspace,
+    task_id: str,
+    requirement_ids: list[str],
+) -> Task:
+    """Update a task's linked PROOF9 requirement IDs.
+
+    Args:
+        workspace: Target workspace
+        task_id: Task to update
+        requirement_ids: List of PROOF9 requirement IDs this task implements
+
+    Returns:
+        Updated Task
+
+    Raises:
+        ValueError: If task not found
+    """
+    task = get(workspace, task_id)
+    if not task:
+        raise ValueError(f"Task not found: {task_id}")
+
+    now = _utc_now().isoformat()
+
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE tasks
+        SET requirement_ids = ?, updated_at = ?
+        WHERE workspace_id = ? AND id = ?
+        """,
+        (json.dumps(requirement_ids), now, workspace.id, task_id),
+    )
+    conn.commit()
+    conn.close()
+
+    task.requirement_ids = requirement_ids
     task.updated_at = datetime.fromisoformat(now)
 
     return task
@@ -705,7 +753,7 @@ def _row_to_task(row: tuple) -> Task:
     Row columns: id, workspace_id, prd_id, title, description, status, priority,
                  depends_on, estimated_hours, complexity_score, uncertainty_level,
                  created_at, updated_at, github_issue_number, parent_id, lineage,
-                 is_leaf, hierarchical_id
+                 is_leaf, hierarchical_id, requirement_ids
     """
     # Parse depends_on from JSON string (default to empty list if null)
     depends_on_raw = row[7]
@@ -718,6 +766,10 @@ def _row_to_task(row: tuple) -> Task:
     # Parse is_leaf from integer (default to True if null)
     is_leaf_raw = row[16] if len(row) > 16 else 1
     is_leaf = bool(is_leaf_raw) if is_leaf_raw is not None else True
+
+    # Parse requirement_ids from JSON string (default to empty list if null)
+    requirement_ids_raw = row[18] if len(row) > 18 else None
+    requirement_ids = json.loads(requirement_ids_raw) if requirement_ids_raw else []
 
     return Task(
         id=row[0],
@@ -738,4 +790,5 @@ def _row_to_task(row: tuple) -> Task:
         lineage=lineage,
         is_leaf=is_leaf,
         hierarchical_id=row[17] if len(row) > 17 else None,
+        requirement_ids=requirement_ids,
     )

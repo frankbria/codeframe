@@ -10,6 +10,7 @@ import { BatchActionsBar } from './BatchActionsBar';
 import { BulkActionConfirmDialog, type BulkActionType } from './BulkActionConfirmDialog';
 import { Cancel01Icon } from '@hugeicons/react';
 import { tasksApi } from '@/lib/api';
+import { useRequirementsLookup } from '@/hooks/useRequirementsLookup';
 import type {
   TaskStatus,
   TaskListResponse,
@@ -29,6 +30,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
     `/api/v2/tasks?path=${workspacePath}`,
     () => tasksApi.getAll(workspacePath)
   );
+  const { requirementsMap } = useRequirementsLookup(workspacePath);
 
   // ─── Filter state ──────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -363,6 +365,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onSelectAll={handleSelectAll}
         onDeselectAll={handleDeselectAll}
         loadingTaskIds={loadingTaskIds}
+        requirementsMap={requirementsMap}
       />
 
       {/* Task detail modal */}

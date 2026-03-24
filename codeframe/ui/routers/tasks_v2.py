@@ -141,6 +141,7 @@ class TaskResponse(BaseModel):
     status: str
     priority: int
     depends_on: list[str] = []
+    requirement_ids: list[str] = []
     estimated_hours: Optional[float] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -216,6 +217,7 @@ async def list_tasks(
                 status=t.status.value,
                 priority=t.priority,
                 depends_on=t.depends_on,
+                requirement_ids=t.requirement_ids,
                 estimated_hours=t.estimated_hours,
                 created_at=t.created_at.isoformat() if t.created_at else None,
                 updated_at=t.updated_at.isoformat() if t.updated_at else None,
@@ -260,6 +262,7 @@ async def get_task(
         status=task.status.value,
         priority=task.priority,
         depends_on=task.depends_on,
+        requirement_ids=task.requirement_ids,
         estimated_hours=task.estimated_hours,
         created_at=task.created_at.isoformat() if task.created_at else None,
         updated_at=task.updated_at.isoformat() if task.updated_at else None,
@@ -330,6 +333,7 @@ async def update_task(
             status=task.status.value,
             priority=task.priority,
             depends_on=task.depends_on,
+            requirement_ids=task.requirement_ids,
             estimated_hours=task.estimated_hours,
             created_at=task.created_at.isoformat() if task.created_at else None,
             updated_at=task.updated_at.isoformat() if task.updated_at else None,
