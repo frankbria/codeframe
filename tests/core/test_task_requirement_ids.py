@@ -3,7 +3,6 @@
 Tests that tasks can be linked to PROOF9 requirement IDs for traceability.
 """
 
-import json
 import sqlite3
 
 import pytest
