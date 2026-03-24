@@ -1,3 +1,4 @@
+import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { OnboardingCard } from '@/components/workspace/OnboardingCard';
 import * as storage from '@/lib/workspace-storage';

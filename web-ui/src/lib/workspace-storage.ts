@@ -84,7 +84,7 @@ export function addToRecentWorkspaces(path: string): void {
  */
 export function getOnboardingDismissed(workspacePath: string): boolean {
   if (typeof window === 'undefined') return false;
-  return localStorage.getItem(`codeframe_onboarding_dismissed_${workspacePath}`) === 'true';
+  return localStorage.getItem(`codeframe_onboarding_dismissed_${encodeURIComponent(workspacePath)}`) === 'true';
 }
 
 /**
@@ -92,7 +92,7 @@ export function getOnboardingDismissed(workspacePath: string): boolean {
  */
 export function setOnboardingDismissed(workspacePath: string): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(`codeframe_onboarding_dismissed_${workspacePath}`, 'true');
+  localStorage.setItem(`codeframe_onboarding_dismissed_${encodeURIComponent(workspacePath)}`, 'true');
 }
 
 /**

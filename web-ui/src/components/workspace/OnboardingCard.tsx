@@ -31,8 +31,11 @@ interface OnboardingCardProps {
 }
 
 export function OnboardingCard({ workspacePath }: OnboardingCardProps) {
-  const [isDismissed, setIsDismissed] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(() =>
+    getOnboardingDismissed(workspacePath)
+  );
 
+  // Re-check when workspacePath changes (e.g. user switches workspace)
   useEffect(() => {
     setIsDismissed(getOnboardingDismissed(workspacePath));
   }, [workspacePath]);
