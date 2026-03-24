@@ -220,9 +220,9 @@ export default function ProofPage() {
                         Glitch Type
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className="cursor-default text-muted-foreground/60 hover:text-muted-foreground">
-                              <InformationCircleIcon className="h-3.5 w-3.5" />
-                            </span>
+                            <button type="button" aria-label="Explain Glitch Type" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                              <InformationCircleIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
                           </TooltipTrigger>
                           <TooltipContent>The category of quality issue this requirement addresses</TooltipContent>
                         </Tooltip>
@@ -233,9 +233,9 @@ export default function ProofPage() {
                         Severity
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className="cursor-default text-muted-foreground/60 hover:text-muted-foreground">
-                              <InformationCircleIcon className="h-3.5 w-3.5" />
-                            </span>
+                            <button type="button" aria-label="Explain Severity" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                              <InformationCircleIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
                           </TooltipTrigger>
                           <TooltipContent>Impact level: critical, high, medium, or low</TooltipContent>
                         </Tooltip>
@@ -246,9 +246,9 @@ export default function ProofPage() {
                         Gates
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className="cursor-default text-muted-foreground/60 hover:text-muted-foreground">
-                              <InformationCircleIcon className="h-3.5 w-3.5" />
-                            </span>
+                            <button type="button" aria-label="Explain Gates" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                              <InformationCircleIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
                           </TooltipTrigger>
                           <TooltipContent>Number of evidence gates that must pass to satisfy this requirement</TooltipContent>
                         </Tooltip>
