@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { TaskBoardContent } from './TaskBoardContent';
@@ -8,14 +9,16 @@ import { TaskDetailModal } from './TaskDetailModal';
 import { TaskFilters } from './TaskFilters';
 import { BatchActionsBar } from './BatchActionsBar';
 import { BulkActionConfirmDialog, type BulkActionType } from './BulkActionConfirmDialog';
-import { Cancel01Icon } from '@hugeicons/react';
-import { tasksApi } from '@/lib/api';
+import { Cancel01Icon, Task01Icon } from '@hugeicons/react';
+import { Button } from '@/components/ui/button';
+import { tasksApi, prdApi } from '@/lib/api';
 import { useRequirementsLookup } from '@/hooks/useRequirementsLookup';
 import type {
   TaskStatus,
   TaskListResponse,
   BatchStrategy,
   ApiError,
+  PrdListResponse,
 } from '@/types';
 
 interface TaskBoardViewProps {
@@ -31,6 +34,13 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
     () => tasksApi.getAll(workspacePath)
   );
   const { requirementsMap } = useRequirementsLookup(workspacePath);
+
+  // PRD existence check — drives empty state context message
+  const { data: prdData } = useSWR<PrdListResponse>(
+    `/api/v2/prd?path=${workspacePath}`,
+    () => prdApi.getAll(workspacePath)
+  );
+  const hasPrd = (prdData?.total ?? 0) > 0;
 
   // ─── Filter state ──────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -351,8 +361,48 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         </div>
       )}
 
-      {/* Kanban board */}
-      <TaskBoardContent
+      {/* Empty state — shown when no tasks exist after loading completes */}
+      {tasks.length === 0 && (
+        <div className="flex flex-col items-center justify-center rounded-lg border bg-muted/30 py-16 text-center">
+          <Task01Icon className="mb-4 h-10 w-10 text-muted-foreground/50" />
+          <h2 className="text-base font-semibold text-foreground">No tasks yet</h2>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            Generate tasks from your PRD or create them manually to start building.
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {hasPrd ? (
+              <span className="flex items-center gap-1 justify-center">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                PRD found — ready to generate tasks
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 justify-center">
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                No PRD yet — create one first
+              </span>
+            )}
+          </p>
+          <div className="mt-6 flex gap-3">
+            {hasPrd ? (
+              <>
+                <Button asChild>
+                  <Link href="/prd">Generate from PRD →</Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link href="/prd">View PRD</Link>
+                </Button>
+              </>
+            ) : (
+              <Button asChild>
+                <Link href="/prd">Create PRD →</Link>
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Kanban board — hidden when no tasks */}
+      {tasks.length > 0 && <TaskBoardContent
         tasks={filteredTasks}
         selectionMode={selectionMode}
         selectedTaskIds={selectedTaskIds}
@@ -366,7 +416,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onDeselectAll={handleDeselectAll}
         loadingTaskIds={loadingTaskIds}
         requirementsMap={requirementsMap}
-      />
+      />}
 
       {/* Task detail modal */}
       <TaskDetailModal
