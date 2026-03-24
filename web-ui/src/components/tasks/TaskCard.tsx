@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import type { Task, TaskStatus, ProofRequirement } from '@/types';
 
 /** Map backend TaskStatus to badge variant name. */
@@ -97,10 +98,19 @@ export function TaskCard({
             </Badge>
           </div>
           {task.depends_on.length > 0 && (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground" title={`Depends on ${task.depends_on.length} task(s)`}>
-              <LinkCircleIcon className="h-3.5 w-3.5" />
-              {task.depends_on.length}
-            </span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex cursor-default items-center gap-1 text-xs text-muted-foreground">
+                    <LinkCircleIcon className="h-3.5 w-3.5" />
+                    {task.depends_on.length}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Depends on {task.depends_on.length} task{task.depends_on.length !== 1 ? 's' : ''}. This task will become READY when all dependencies complete.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
 
