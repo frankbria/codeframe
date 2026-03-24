@@ -61,6 +61,10 @@ export default function ExecutionPage() {
       .finally(() => setGateRunning(false));
   }, [monitor.completionStatus, workspacePath]);
 
+  // Derive pending state immediately on first completed render (before effect commits)
+  const showGatePending =
+    monitor.completionStatus === 'completed' && !gateResult && !gateError;
+
   // Stop handler — may fail if run already completed or no active run
   const handleStop = useCallback(async () => {
     if (!workspacePath || !taskId) return;
@@ -157,7 +161,7 @@ export default function ExecutionPage() {
             onBackToTasks={() => router.push('/tasks')}
             onViewBlockers={() => router.push('/blockers')}
             gateResult={gateResult}
-            gateRunning={gateRunning}
+            gateRunning={gateRunning || showGatePending}
             gateError={gateError}
           />
         )}
@@ -196,7 +200,7 @@ function GateSummary({
   }
   if (gateError) {
     return (
-      <p className="mt-2 text-xs text-green-700 dark:text-green-300">
+      <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
         Gate check unavailable ·{' '}
         <Link href="/review" className="underline hover:no-underline">View in Review →</Link>
       </p>
