@@ -267,7 +267,7 @@ export default function WorkspacePage() {
               <ProofStatusWidget workspacePath={workspacePath} />
             </div>
 
-            <QuickActions />
+            <QuickActions taskCounts={tasksData?.by_status} />
 
             <RecentActivityFeed activities={activities} />
           </>
