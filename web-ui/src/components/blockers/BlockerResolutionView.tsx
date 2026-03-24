@@ -84,9 +84,9 @@ export function BlockerResolutionView({ workspacePath }: BlockerResolutionViewPr
 
       {/* Info banner — shown only when there are open blockers */}
       {openBlockers.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
-          <p className="font-medium text-amber-900 dark:text-amber-200">AI execution is paused.</p>
-          <p className="mt-0.5 text-amber-800 dark:text-amber-300">
+        <div className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm">
+          <p className="font-medium text-foreground">AI execution is paused.</p>
+          <p className="mt-0.5 text-muted-foreground">
             Blockers pause agent execution until you provide the requested information. Answer the question below, then go to Tasks to restart execution.
           </p>
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { Alert02Icon, Loading03Icon, CheckmarkCircle01Icon } from '@hugeicons/react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -22,16 +22,8 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isOpen = blocker.status === 'OPEN';
-
-  // Clean up timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
 
   const handleSubmit = async () => {
     if (!answer.trim() || isSubmitting) return;
@@ -40,7 +32,6 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
     try {
       await blockersApi.answer(workspacePath, blocker.id, answer.trim());
       setSubmitted(true);
-      timerRef.current = setTimeout(() => onAnswered(), 1500);
     } catch (err) {
       const apiErr = err as ApiError;
       setError(apiErr.detail || 'Failed to submit answer');
@@ -63,7 +54,7 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
             </p>
           </div>
           <Button size="sm" variant="outline" asChild>
-            <Link href="/tasks">Go to Tasks</Link>
+            <Link href="/tasks" onClick={onAnswered}>Go to Tasks</Link>
           </Button>
         </CardContent>
       </Card>
