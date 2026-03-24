@@ -204,7 +204,7 @@ function ProofPageContent() {
               {gateFilter && (
                 <span className="flex items-center gap-1.5 rounded-full border bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground">
                   Filtered by gate: {gateFilter}
-                  <Link href="/proof" className="text-muted-foreground hover:text-foreground">✕</Link>
+                  <Link href="/proof" aria-label={`Clear gate filter ${gateFilter}`} className="text-muted-foreground hover:text-foreground">✕</Link>
                 </span>
               )}
             </div>

@@ -278,33 +278,42 @@ export function TaskDetailModal({
                   Execute
                 </Button>
               )}
-              {task.status === 'FAILED' && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isUpdating}
-                    onClick={handleMarkReady}
-                  >
-                    {isUpdating ? (
-                      <Loading03Icon className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <CheckmarkCircle01Icon className="mr-1.5 h-3.5 w-3.5" />
-                    )}
-                    Reset to Ready
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      onClose();
-                      router.push('/proof');
-                    }}
-                  >
-                    <CheckListIcon className="mr-1.5 h-3.5 w-3.5" />
-                    View PROOF9 Gates
-                  </Button>
-                </>
-              )}
+              {task.status === 'FAILED' && (() => {
+                // Derive the best proof link from requirement obligations if available
+                let proofLink = '/proof';
+                for (const reqId of (task.requirement_ids ?? [])) {
+                  const req = requirementsMap.get(reqId);
+                  const gate = req?.obligations?.[0]?.gate?.toLowerCase();
+                  if (gate) { proofLink = `/proof?gate=${encodeURIComponent(gate)}`; break; }
+                }
+                return (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isUpdating}
+                      onClick={handleMarkReady}
+                    >
+                      {isUpdating ? (
+                        <Loading03Icon className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <CheckmarkCircle01Icon className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      Reset to Ready
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        onClose();
+                        router.push(proofLink);
+                      }}
+                    >
+                      <CheckListIcon className="mr-1.5 h-3.5 w-3.5" />
+                      View PROOF9 Gates
+                    </Button>
+                  </>
+                );
+              })()}
             </DialogFooter>
           </>
         )}
