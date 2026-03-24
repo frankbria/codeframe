@@ -489,6 +489,9 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         if "hierarchical_id" not in task_columns:
             cursor.execute("ALTER TABLE tasks ADD COLUMN hierarchical_id TEXT")
             conn.commit()
+        if "github_issue_number" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN github_issue_number INTEGER")
+            conn.commit()
 
     # Ensure runs table exists before creating dependent tables (run_logs, diagnostic_reports)
     cursor.execute(
