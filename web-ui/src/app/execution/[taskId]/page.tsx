@@ -134,8 +134,10 @@ export default function ExecutionPage() {
           <CompletionBanner
             status={monitor.completionStatus}
             duration={monitor.duration}
+            onViewProof={() => router.push('/proof')}
             onViewChanges={() => router.push('/review')}
             onBackToTasks={() => router.push('/tasks')}
+            onViewBlockers={() => router.push('/blockers')}
           />
         )}
 
@@ -158,13 +160,17 @@ export default function ExecutionPage() {
 function CompletionBanner({
   status,
   duration,
+  onViewProof,
   onViewChanges,
   onBackToTasks,
+  onViewBlockers,
 }: {
   status: 'completed' | 'failed' | 'blocked' | null;
   duration: number | null;
+  onViewProof: () => void;
   onViewChanges: () => void;
   onBackToTasks: () => void;
+  onViewBlockers: () => void;
 }) {
   const durationText = duration !== null ? `${Math.round(duration)}s` : '';
 
@@ -172,12 +178,18 @@ function CompletionBanner({
     return (
       <div role="alert" className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-900 dark:bg-green-950/30">
         <p className="text-sm font-medium text-green-800 dark:text-green-200">
-          Execution completed successfully{durationText && ` in ${durationText}`}.
+          Execution complete{durationText && ` in ${durationText}`}. Run PROOF9 gates to verify quality before shipping.
         </p>
         <div className="flex gap-2">
           <button
-            onClick={onViewChanges}
+            onClick={onViewProof}
             className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+          >
+            Verify with PROOF9
+          </button>
+          <button
+            onClick={onViewChanges}
+            className="rounded-md border border-green-300 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 dark:border-green-800 dark:text-green-300 dark:hover:bg-green-900/40"
           >
             View Changes
           </button>
@@ -216,12 +228,20 @@ function CompletionBanner({
           Execution blocked — a blocker was raised. Answer it in the event
           stream below to continue.
         </p>
-        <button
-          onClick={onBackToTasks}
-          className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-900/40"
-        >
-          Back to Tasks
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onViewBlockers}
+            className="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600"
+          >
+            View Blockers
+          </button>
+          <button
+            onClick={onBackToTasks}
+            className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-900/40"
+          >
+            Back to Tasks
+          </button>
+        </div>
       </div>
     );
   }
