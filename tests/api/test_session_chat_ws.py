@@ -152,7 +152,7 @@ class TestSessionChatWSProtocol:
         session_id = _create_session(api_client)
         token = create_test_jwt_token(user_id=1)
 
-        async def fake_adapter(session_id, user_message, token_queue, interrupt_event):
+        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path):
             await token_queue.put({"type": "text_delta", "content": "Hello"})
             await token_queue.put({"type": "text_delta", "content": " world"})
             await token_queue.put({"type": "cost_update", "cost_usd": 0.001, "input_tokens": 10, "output_tokens": 5})
@@ -189,7 +189,7 @@ class TestSessionChatWSProtocol:
         session_id = _create_session(api_client)
         token = create_test_jwt_token(user_id=1)
 
-        async def slow_adapter(session_id, user_message, token_queue, interrupt_event):
+        async def slow_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path):
             for i in range(10):
                 if interrupt_event.is_set():
                     await token_queue.put({"type": "done"})
@@ -228,7 +228,7 @@ class TestSessionChatWSProtocol:
         session_id = _create_session(api_client)
         token = create_test_jwt_token(user_id=1)
 
-        async def fake_adapter(session_id, user_message, token_queue, interrupt_event):
+        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path):
             await token_queue.put(
                 {"type": "cost_update", "cost_usd": 0.005, "input_tokens": 100, "output_tokens": 50}
             )
