@@ -370,3 +370,40 @@ export interface PipelineStatus {
   prove: PhaseStatus;
   ship: PhaseStatus;
 }
+
+// Agent chat types (useAgentChat hook — issue #504)
+export type MessageRole =
+  | 'user'
+  | 'assistant'
+  | 'tool_use'
+  | 'tool_result'
+  | 'thinking'
+  | 'system'
+  | 'error';
+
+export interface ChatMessage {
+  id: string;
+  role: MessageRole;
+  content: string;
+  toolName?: string;
+  toolInput?: unknown;
+  createdAt: string;
+}
+
+export type AgentChatStatus =
+  | 'idle'
+  | 'connecting'
+  | 'thinking'
+  | 'streaming'
+  | 'error'
+  | 'disconnected';
+
+export interface AgentChatState {
+  messages: ChatMessage[];
+  status: AgentChatStatus;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  error: string | null;
+  connected: boolean;
+}

@@ -1,3 +1,4 @@
+export { useAgentChat, type AgentChatState, type ChatMessage, type MessageRole } from './useAgentChat';
 export { useEventSource, type SSEStatus, type UseEventSourceOptions } from './useEventSource';
 export { useRequirementsLookup } from './useRequirementsLookup';
 export {
