@@ -258,8 +258,16 @@ class SessionChatManager:
             self._interrupt_events[session_id] = asyncio.Event()
             self._token_queues[session_id] = asyncio.Queue()
 
-    async def unregister(self, session_id: str) -> None:
+    async def unregister(self, session_id: str, websocket: "WebSocket" = None) -> None:
+        """Remove tracking state for session_id.
+
+        If websocket is provided, only removes state when the stored connection
+        matches — preventing a late disconnect from tearing down state belonging
+        to a newer connection for the same session_id.
+        """
         async with self._lock:
+            if websocket is not None and self._connections.get(session_id) is not websocket:
+                return
             self._connections.pop(session_id, None)
             self._interrupt_events.pop(session_id, None)
             self._token_queues.pop(session_id, None)
