@@ -8,17 +8,26 @@ Routes:
     GET    /api/v2/sessions/{id}               - Get session
     DELETE /api/v2/sessions/{id}               - End/close session
     GET    /api/v2/sessions/{id}/messages      - Get message history (?limit=&offset=)
+
+Auth note: auth is a project-wide gap tracked in #336. All other v2 routers also
+lack auth — adding it only here would be inconsistent with the rest of the API.
 """
 
 import logging
+import os
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from codeframe.lib.rate_limiter import rate_limit_standard
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/sessions", tags=["sessions-v2"])
+
+VALID_STATES = frozenset({"active", "paused", "ended"})
+VALID_ROLES = frozenset({"user", "assistant", "tool_use", "tool_result", "thinking", "system", "error"})
 
 
 # ============================================================================
@@ -36,6 +45,7 @@ class SessionCreate(BaseModel):
 class SessionResponse(BaseModel):
     id: str
     workspace_path: str
+    task_id: Optional[str]
     state: str
     agent_type: str
     model: Optional[str]
@@ -55,16 +65,39 @@ class MessageResponse(BaseModel):
     created_at: str
 
 
+class StateUpdate(BaseModel):
+    state: str
+
+    @field_validator("state")
+    @classmethod
+    def validate_state(cls, v: str) -> str:
+        if v not in VALID_STATES:
+            raise ValueError(f"state must be one of {sorted(VALID_STATES)}")
+        return v
+
+
 # ============================================================================
 # Helpers
 # ============================================================================
 
 
 def _get_repo(request: Request):
-    """Get the InteractiveSessionRepository from app state."""
+    """Get the InteractiveSessionRepository from app state.
+
+    Falls back to DATABASE_PATH env var if app.state.db is not set (matches
+    the pattern used by api_key_router.get_db for v2 server compatibility).
+    """
+    from codeframe.persistence.database import Database
+
     db = getattr(request.app.state, "db", None)
     if db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
+        db_path = os.getenv(
+            "DATABASE_PATH",
+            os.path.join(os.getcwd(), ".codeframe", "state.db"),
+        )
+        db = Database(db_path)
+        db.initialize()
+        request.app.state.db = db
     return db.interactive_sessions
 
 
@@ -72,6 +105,7 @@ def _session_to_response(row: dict) -> SessionResponse:
     return SessionResponse(
         id=row["id"],
         workspace_path=row["workspace_path"],
+        task_id=row.get("task_id"),
         state=row["state"],
         agent_type=row["agent_type"],
         model=row.get("model"),
@@ -89,6 +123,7 @@ def _session_to_response(row: dict) -> SessionResponse:
 
 
 @router.post("", status_code=201, response_model=SessionResponse)
+@rate_limit_standard()
 def create_session(body: SessionCreate, request: Request):
     """Create a new interactive agent session."""
     repo = _get_repo(request)
@@ -102,6 +137,7 @@ def create_session(body: SessionCreate, request: Request):
 
 
 @router.get("", response_model=list[SessionResponse])
+@rate_limit_standard()
 def list_sessions(
     request: Request,
     workspace_path: Optional[str] = Query(None),
@@ -115,6 +151,7 @@ def list_sessions(
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
+@rate_limit_standard()
 def get_session(session_id: str, request: Request):
     """Get a session by ID."""
     repo = _get_repo(request)
@@ -125,16 +162,20 @@ def get_session(session_id: str, request: Request):
 
 
 @router.delete("/{session_id}", response_model=SessionResponse)
+@rate_limit_standard()
 def end_session(session_id: str, request: Request):
     """End a session (sets state to 'ended')."""
     repo = _get_repo(request)
     if repo.get(session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    repo.end(session_id)
-    return _session_to_response(repo.get(session_id))
+    updated = repo.end(session_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return _session_to_response(updated)
 
 
 @router.get("/{session_id}/messages", response_model=list[MessageResponse])
+@rate_limit_standard()
 def get_messages(
     session_id: str,
     request: Request,

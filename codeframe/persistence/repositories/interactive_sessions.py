@@ -1,9 +1,11 @@
 """Repository for interactive agent session operations."""
 
+from __future__ import annotations
+
 import json
 import uuid
 from datetime import datetime, UTC
-from typing import List, Optional
+from typing import Optional
 
 from codeframe.persistence.repositories.base import BaseRepository
 
@@ -47,7 +49,7 @@ class InteractiveSessionRepository(BaseRepository):
         workspace_path: Optional[str] = None,
         state: Optional[str] = None,
         limit: int = 50,
-    ) -> List[dict]:
+    ) -> list[dict]:
         query = "SELECT * FROM interactive_sessions WHERE 1=1"
         params: list = []
         if workspace_path is not None:
@@ -84,7 +86,7 @@ class InteractiveSessionRepository(BaseRepository):
         )
         self._commit()
 
-    def end(self, session_id: str) -> None:
+    def end(self, session_id: str) -> Optional[dict]:
         now = datetime.now(UTC).isoformat()
         self._execute(
             """
@@ -95,6 +97,7 @@ class InteractiveSessionRepository(BaseRepository):
             (now, now, session_id),
         )
         self._commit()
+        return self.get(session_id)
 
     # -------------------------------------------------------------------------
     # Messages
@@ -129,7 +132,7 @@ class InteractiveSessionRepository(BaseRepository):
 
     def get_messages(
         self, session_id: str, limit: int = 100, offset: int = 0
-    ) -> List[dict]:
+    ) -> list[dict]:
         rows = self._fetchall(
             """
             SELECT * FROM session_messages

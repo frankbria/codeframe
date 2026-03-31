@@ -843,7 +843,8 @@ class SchemaManager:
                 id          TEXT PRIMARY KEY,
                 workspace_path TEXT NOT NULL,
                 task_id     TEXT,
-                state       TEXT NOT NULL DEFAULT 'active',
+                state       TEXT NOT NULL DEFAULT 'active'
+                    CHECK (state IN ('active', 'paused', 'ended')),
                 agent_type  TEXT NOT NULL DEFAULT 'claude',
                 model       TEXT,
                 cost_usd    REAL DEFAULT 0.0,
@@ -861,7 +862,8 @@ class SchemaManager:
             CREATE TABLE IF NOT EXISTS session_messages (
                 id          TEXT PRIMARY KEY,
                 session_id  TEXT NOT NULL REFERENCES interactive_sessions(id) ON DELETE CASCADE,
-                role        TEXT NOT NULL,
+                role        TEXT NOT NULL
+                    CHECK (role IN ('user', 'assistant', 'tool_use', 'tool_result', 'thinking', 'system', 'error')),
                 content     TEXT NOT NULL,
                 metadata    TEXT,
                 created_at  TEXT NOT NULL
