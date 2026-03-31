@@ -38,6 +38,7 @@ from codeframe.persistence.repositories import (
     PRRepository,
     APIKeyRepository,
 )
+from codeframe.persistence.repositories.interactive_sessions import InteractiveSessionRepository
 
 if TYPE_CHECKING:
     pass
@@ -111,6 +112,7 @@ class Database:
         self.audit_logs: Optional[AuditRepository] = None
         self.pull_requests: Optional[PRRepository] = None
         self.api_keys: Optional[APIKeyRepository] = None
+        self.interactive_sessions: Optional[InteractiveSessionRepository] = None
 
     def initialize(self) -> None:
         """Initialize database schema and repositories."""
@@ -158,6 +160,7 @@ class Database:
         self.audit_logs = AuditRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
         self.pull_requests = PRRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
         self.api_keys = APIKeyRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.interactive_sessions = InteractiveSessionRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
 
     # Backward compatibility properties (maintain old *_repository naming)
     @property
@@ -219,7 +222,7 @@ class Database:
                      self.memories, self.context_items, self.checkpoints, self.git_branches,
                      self.test_results, self.lint_results, self.code_reviews, self.quality_gates,
                      self.token_usage, self.correction_attempts, self.activities, self.audit_logs,
-                     self.pull_requests]:
+                     self.pull_requests, self.interactive_sessions]:
             if repo:
                 repo._async_conn = self._async_conn
 

@@ -28,6 +28,7 @@ from codeframe.ui.routers import (
     events_v2,
     gates_v2,
     git_v2,
+    interactive_sessions_v2,
     pr_v2,
     prd_v2,
     proof_v2,
@@ -39,6 +40,7 @@ from codeframe.ui.routers import (
     workspace_v2,
 )
 from codeframe.auth import router as auth_router
+from codeframe.persistence.database import Database
 from codeframe.lib.rate_limiter import (
     get_rate_limiter,
     rate_limit_exceeded_handler,
@@ -135,6 +137,15 @@ async def lifespan(app: FastAPI):
     )
     workspace_root = Path(workspace_root_str)
     app.state.workspace_manager = WorkspaceManager(workspace_root)
+
+    # Initialize global persistent DB (used by interactive_sessions and auth)
+    db_path = os.environ.get(
+        "DATABASE_PATH",
+        str(Path.cwd() / ".codeframe" / "state.db"),
+    )
+    db = Database(db_path)
+    db.initialize()
+    app.state.db = db
 
     # Log that authentication is now always required
     logger.info("🔒 Authentication: ENABLED (always required)")
@@ -475,6 +486,7 @@ app.include_router(environment_v2.router)   # /api/v2/env
 app.include_router(events_v2.router)        # /api/v2/events
 app.include_router(gates_v2.router)         # /api/v2/gates
 app.include_router(git_v2.router)           # /api/v2/git
+app.include_router(interactive_sessions_v2.router)  # /api/v2/sessions
 app.include_router(pr_v2.router)            # /api/v2/pr
 app.include_router(prd_v2.router)           # /api/v2/prd
 app.include_router(proof_v2.router)         # /api/v2/proof
