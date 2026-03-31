@@ -33,6 +33,7 @@ would be redundant. Revisit if multi-tenant workspace isolation is required.
 import asyncio
 import json
 import logging
+from pathlib import Path
 from typing import Optional
 
 import jwt as pyjwt
@@ -41,6 +42,7 @@ from sqlalchemy import select
 
 from codeframe.auth.manager import SECRET, JWT_ALGORITHM, JWT_AUDIENCE, get_async_session_maker
 from codeframe.auth.models import User
+from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
 from codeframe.ui.shared import session_chat_manager
 
 logger = logging.getLogger(__name__)
@@ -99,25 +101,34 @@ async def _run_streaming_adapter(
     user_message: str,
     token_queue: asyncio.Queue,
     interrupt_event: asyncio.Event,
+    db_repo,
+    workspace_path: Path,
 ) -> None:
-    """Stub for the real Anthropic streaming adapter (tracked in #503).
+    """Drive the StreamingChatAdapter and forward ChatEvents into the token queue.
 
-    Signature is the integration point — replace the body when the real adapter
-    is ready. Must push dicts matching the server→client protocol into
-    token_queue, and check interrupt_event.is_set() periodically.
+    Args:
+        session_id: ID of the interactive session.
+        user_message: The user's message content.
+        token_queue: Queue consumed by the relay task for WebSocket forwarding.
+        interrupt_event: Signals the adapter to stop mid-stream.
+        db_repo: ``InteractiveSessionRepository`` for history load/persist.
+        workspace_path: Absolute path to the workspace for file-system tools.
     """
-    words = user_message.split() or ["..."]
-    for word in words:
-        if interrupt_event.is_set():
-            await token_queue.put({"type": "done"})
-            return
-        await token_queue.put({"type": "text_delta", "content": word + " "})
-        await asyncio.sleep(0.01)
-
-    await token_queue.put(
-        {"type": "cost_update", "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
-    )
-    await token_queue.put({"type": "done"})
+    try:
+        adapter = StreamingChatAdapter(
+            session_id=session_id,
+            db_repo=db_repo,
+            workspace_path=workspace_path,
+        )
+        async for event in adapter.send_message(
+            content=user_message,
+            history=[],
+            interrupt_event=interrupt_event,
+        ):
+            await token_queue.put(event.to_dict())
+    except Exception as exc:
+        logger.error("_run_streaming_adapter error: %s", exc, exc_info=True)
+        await token_queue.put({"type": "error", "message": str(exc)})
 
 
 # ---------------------------------------------------------------------------
@@ -290,8 +301,23 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             break
 
                     interrupt_event = await session_chat_manager.get_interrupt_event(session_id)
+                    raw_workspace = session.get("workspace_path")
+                    if not raw_workspace:
+                        logger.warning(
+                            "session_id=%s has no workspace_path set; "
+                            "file tools will scope to server CWD",
+                            session_id,
+                        )
+                    workspace_path = Path(raw_workspace or ".")
                     adapter_task[0] = asyncio.create_task(
-                        _run_streaming_adapter(session_id, content, token_queue, interrupt_event)
+                        _run_streaming_adapter(
+                            session_id,
+                            content,
+                            token_queue,
+                            interrupt_event,
+                            db.interactive_sessions,
+                            workspace_path,
+                        )
                     )
 
         relay = asyncio.create_task(_relay())
