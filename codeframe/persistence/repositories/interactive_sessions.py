@@ -87,8 +87,9 @@ class InteractiveSessionRepository(BaseRepository):
         self._commit()
 
     def end(self, session_id: str) -> Optional[dict]:
+        """End a session. Returns the updated row, or None if session_id not found."""
         now = datetime.now(UTC).isoformat()
-        self._execute(
+        cursor = self._execute(
             """
             UPDATE interactive_sessions
             SET state = 'ended', ended_at = ?, updated_at = ?
@@ -97,6 +98,8 @@ class InteractiveSessionRepository(BaseRepository):
             (now, now, session_id),
         )
         self._commit()
+        if cursor.rowcount == 0:
+            return None
         return self.get(session_id)
 
     # -------------------------------------------------------------------------

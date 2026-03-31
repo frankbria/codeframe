@@ -137,6 +137,16 @@ async def lifespan(app: FastAPI):
     workspace_root = Path(workspace_root_str)
     app.state.workspace_manager = WorkspaceManager(workspace_root)
 
+    # Initialize global persistent DB (used by interactive_sessions and auth)
+    from codeframe.persistence.database import Database
+    db_path = os.environ.get(
+        "DATABASE_PATH",
+        str(Path.cwd() / ".codeframe" / "state.db"),
+    )
+    db = Database(db_path)
+    db.initialize()
+    app.state.db = db
+
     # Log that authentication is now always required
     logger.info("🔒 Authentication: ENABLED (always required)")
 

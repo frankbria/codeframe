@@ -51,6 +51,7 @@ class TestCreateSession:
         assert data["input_tokens"] == 0
         assert data["output_tokens"] == 0
         assert "id" in data
+        assert "updated_at" in data
         assert data["ended_at"] is None
 
     def test_create_session_full(self, client):
@@ -160,8 +161,17 @@ class TestDeleteSession:
         assert response.status_code == 404
 
 
+class TestListSessionsValidation:
+    """Tests for query parameter validation on GET /api/v2/sessions."""
+
+    def test_invalid_state_filter_returns_422(self, client):
+        """Invalid state value returns 422, not empty 200."""
+        response = client.get("/api/v2/sessions?state=invalid_state")
+        assert response.status_code == 422
+
+
 class TestSessionMessages:
-    """Tests for GET /api/v2/sessions/{id}/messages."""
+    """Tests for POST and GET /api/v2/sessions/{id}/messages."""
 
     def test_get_messages_empty(self, client):
         """Return empty list for session with no messages."""
@@ -174,9 +184,48 @@ class TestSessionMessages:
         assert response.status_code == 200
         assert response.json() == []
 
+    def test_add_message_and_retrieve(self, client):
+        """POST a message then GET it back."""
+        session_id = client.post(
+            "/api/v2/sessions", json={"workspace_path": "/tmp/ws-add-msg"}
+        ).json()["id"]
+
+        post_resp = client.post(
+            f"/api/v2/sessions/{session_id}/messages",
+            json={"role": "user", "content": "Hello agent"},
+        )
+        assert post_resp.status_code == 201
+        msg = post_resp.json()
+        assert msg["role"] == "user"
+        assert msg["content"] == "Hello agent"
+        assert msg["session_id"] == session_id
+
+        get_resp = client.get(f"/api/v2/sessions/{session_id}/messages")
+        assert len(get_resp.json()) == 1
+
+    def test_add_message_invalid_role_returns_422(self, client):
+        """Invalid role value returns 422."""
+        session_id = client.post(
+            "/api/v2/sessions", json={"workspace_path": "/tmp/ws-bad-role"}
+        ).json()["id"]
+
+        response = client.post(
+            f"/api/v2/sessions/{session_id}/messages",
+            json={"role": "invalid_role", "content": "test"},
+        )
+        assert response.status_code == 422
+
     def test_get_messages_nonexistent_session(self, client):
         """Return 404 for unknown session."""
         response = client.get("/api/v2/sessions/no-such-id/messages")
+        assert response.status_code == 404
+
+    def test_add_message_nonexistent_session(self, client):
+        """Return 404 when adding message to unknown session."""
+        response = client.post(
+            "/api/v2/sessions/no-such-id/messages",
+            json={"role": "user", "content": "test"},
+        )
         assert response.status_code == 404
 
 
