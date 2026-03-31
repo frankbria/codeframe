@@ -40,6 +40,7 @@ from codeframe.ui.routers import (
     workspace_v2,
 )
 from codeframe.auth import router as auth_router
+from codeframe.persistence.database import Database
 from codeframe.lib.rate_limiter import (
     get_rate_limiter,
     rate_limit_exceeded_handler,
@@ -138,7 +139,6 @@ async def lifespan(app: FastAPI):
     app.state.workspace_manager = WorkspaceManager(workspace_root)
 
     # Initialize global persistent DB (used by interactive_sessions and auth)
-    from codeframe.persistence.database import Database
     db_path = os.environ.get(
         "DATABASE_PATH",
         str(Path.cwd() / ".codeframe" / "state.db"),

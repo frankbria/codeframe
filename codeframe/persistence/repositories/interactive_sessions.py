@@ -64,6 +64,10 @@ class InteractiveSessionRepository(BaseRepository):
         return [self._row_to_dict(r) for r in rows]
 
     def update_state(self, session_id: str, state: str) -> None:
+        """Update session state. Called internally by the agent runtime, not via REST API.
+
+        Callers are responsible for validating state against VALID_STATES before calling.
+        """
         now = datetime.now(UTC).isoformat()
         self._execute(
             "UPDATE interactive_sessions SET state = ?, updated_at = ? WHERE id = ?",
@@ -74,6 +78,10 @@ class InteractiveSessionRepository(BaseRepository):
     def update_cost(
         self, session_id: str, cost_usd: float, input_tokens: int, output_tokens: int
     ) -> None:
+        """Accumulate cost and token counts. Called internally by the agent runtime, not via REST API.
+
+        The increment is applied atomically at the DB level to prevent lost-update races.
+        """
         now = datetime.now(UTC).isoformat()
         self._execute(
             """

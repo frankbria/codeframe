@@ -42,6 +42,7 @@ class SessionCreate(BaseModel):
 
     workspace_path: str
     task_id: Optional[str] = None
+    # agent_type is intentionally open-ended for extensibility (claude, codex, opencode, etc.)
     agent_type: str = "claude"
     model: Optional[str] = None
 
