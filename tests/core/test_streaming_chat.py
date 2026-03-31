@@ -185,6 +185,43 @@ class TestLoadHistory:
 
 
 # ---------------------------------------------------------------------------
+# History truncation
+# ---------------------------------------------------------------------------
+
+
+class TestTruncateHistory:
+    def _make_adapter(self, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        return StreamingChatAdapter(
+            session_id="s1", db_repo=_make_db_repo(), workspace_path=Path("/tmp")
+        )
+
+    def test_result_starts_with_user_message(self, monkeypatch):
+        adapter = self._make_adapter(monkeypatch)
+        # Simulate history that would start with assistant after truncation
+        msgs = [
+            {"role": "user", "content": "a" * 100},
+            {"role": "assistant", "content": "b" * 100},
+            {"role": "user", "content": "c"},
+        ]
+        result = adapter._truncate_history(msgs)
+        assert result[0]["role"] == "user"
+
+    def test_empty_list_unchanged(self, monkeypatch):
+        adapter = self._make_adapter(monkeypatch)
+        assert adapter._truncate_history([]) == []
+
+    def test_no_truncation_when_within_budget(self, monkeypatch):
+        adapter = self._make_adapter(monkeypatch)
+        msgs = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+        ]
+        result = adapter._truncate_history(msgs)
+        assert result == msgs
+
+
+# ---------------------------------------------------------------------------
 # send_message — text-only turn
 # ---------------------------------------------------------------------------
 

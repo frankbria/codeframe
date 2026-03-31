@@ -225,6 +225,11 @@ class StreamingChatAdapter:
                 return sum(len(m.get("content") or "") // 4 for m in msgs)
 
         while messages and _count(messages) > _MAX_HISTORY_TOKENS:
+            # Drop in pairs so we don't strand an assistant message at index 0
+            messages = messages[2:] if len(messages) >= 2 else messages[1:]
+
+        # Anthropic requires the first message to have role "user"
+        while messages and messages[0].get("role") != "user":
             messages = messages[1:]
 
         return messages
@@ -360,6 +365,12 @@ class StreamingChatAdapter:
 
             async with self._client.messages.stream(
                 model=self._model,
+                system=(
+                    f"You are a CodeFrame assistant helping the user understand and navigate "
+                    f"their codebase. You have read-only access to the workspace at "
+                    f"{self._workspace_path}. Available tools: read_file, list_files, "
+                    f"search_codebase. Do not attempt to modify files or execute shell commands."
+                ),
                 messages=current_messages,
                 tools=_TOOLS_FOR_API,
                 max_tokens=4096,
@@ -494,7 +505,9 @@ def _estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
     Uses approximate pricing for claude-sonnet-4. Returns 0.0 for unknown models
     rather than raising — cost tracking is best-effort.
     """
-    # Per-million-token pricing (approximate, as of mid-2025)
+    # Per-million-token pricing (input, output) in USD.
+    # Last verified: 2026-03-31. Anthropic pricing changes without notice —
+    # treat these as best-effort estimates, not billing-accurate figures.
     _PRICING: dict[str, tuple[float, float]] = {
         "claude-sonnet-4-20250514": (3.0, 15.0),
         "claude-opus-4-20250514": (15.0, 75.0),

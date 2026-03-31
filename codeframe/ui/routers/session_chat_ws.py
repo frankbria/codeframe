@@ -301,7 +301,14 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             break
 
                     interrupt_event = await session_chat_manager.get_interrupt_event(session_id)
-                    workspace_path = Path(session.get("workspace_path") or ".")
+                    raw_workspace = session.get("workspace_path")
+                    if not raw_workspace:
+                        logger.warning(
+                            "session_id=%s has no workspace_path set; "
+                            "file tools will scope to server CWD",
+                            session_id,
+                        )
+                    workspace_path = Path(raw_workspace or ".")
                     adapter_task[0] = asyncio.create_task(
                         _run_streaming_adapter(
                             session_id,
