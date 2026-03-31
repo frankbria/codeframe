@@ -55,4 +55,7 @@ module.exports = {
   ArrowDown01Icon: createIconMock('ArrowDown01Icon'),
   ArrowUp01Icon: createIconMock('ArrowUp01Icon'),
   StopIcon: createIconMock('StopIcon'),
+  // AgentChatPanel
+  ArrowRight01Icon: createIconMock('ArrowRight01Icon'),
+  Alert01Icon: createIconMock('Alert01Icon'),
 };
