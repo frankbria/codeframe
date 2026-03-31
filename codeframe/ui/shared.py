@@ -239,11 +239,60 @@ class SharedState:
             self._review_cache.clear()
 
 
+class SessionChatManager:
+    """Track active WebSocket connections for per-session agent chat.
+
+    Keyed by session_id (str). Provides interrupt signalling and a token
+    queue so the streaming adapter can push events to the WebSocket relay.
+    """
+
+    def __init__(self):
+        self._connections: Dict[str, "WebSocket"] = {}
+        self._interrupt_events: Dict[str, asyncio.Event] = {}
+        self._token_queues: Dict[str, asyncio.Queue] = {}
+        self._lock = asyncio.Lock()
+
+    async def register(self, session_id: str, websocket: "WebSocket") -> None:
+        async with self._lock:
+            self._connections[session_id] = websocket
+            self._interrupt_events[session_id] = asyncio.Event()
+            self._token_queues[session_id] = asyncio.Queue()
+
+    async def unregister(self, session_id: str) -> None:
+        async with self._lock:
+            self._connections.pop(session_id, None)
+            self._interrupt_events.pop(session_id, None)
+            self._token_queues.pop(session_id, None)
+
+    async def get_interrupt_event(self, session_id: str) -> Optional[asyncio.Event]:
+        async with self._lock:
+            return self._interrupt_events.get(session_id)
+
+    async def get_token_queue(self, session_id: str) -> Optional[asyncio.Queue]:
+        async with self._lock:
+            return self._token_queues.get(session_id)
+
+    async def signal_interrupt(self, session_id: str) -> None:
+        async with self._lock:
+            event = self._interrupt_events.get(session_id)
+        if event is not None:
+            event.set()
+
+    async def reset_interrupt(self, session_id: str) -> None:
+        async with self._lock:
+            event = self._interrupt_events.get(session_id)
+        if event is not None:
+            event.clear()
+
+
 # Global ConnectionManager instance
 manager = ConnectionManager()
 
 # Global SharedState instance (thread-safe)
 shared_state = SharedState()
+
+# Global SessionChatManager instance
+session_chat_manager = SessionChatManager()
 
 # DEPRECATED: Direct dictionary access (kept for backward compatibility)
 # WARNING: Direct access bypasses async locks and is NOT thread-safe!

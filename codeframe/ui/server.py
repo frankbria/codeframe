@@ -34,6 +34,7 @@ from codeframe.ui.routers import (
     proof_v2,
     review_v2,
     schedule_v2,
+    session_chat_ws,
     streaming_v2,
     tasks_v2,
     templates_v2,
@@ -487,6 +488,7 @@ app.include_router(events_v2.router)        # /api/v2/events
 app.include_router(gates_v2.router)         # /api/v2/gates
 app.include_router(git_v2.router)           # /api/v2/git
 app.include_router(interactive_sessions_v2.router)  # /api/v2/sessions
+app.include_router(session_chat_ws.router)          # /ws/sessions/{id}/chat
 app.include_router(pr_v2.router)            # /api/v2/pr
 app.include_router(prd_v2.router)           # /api/v2/prd
 app.include_router(proof_v2.router)         # /api/v2/proof
