@@ -173,6 +173,23 @@ describe('AgentChatPanel', () => {
     expect(screen.queryByTestId('streaming-cursor')).not.toBeInTheDocument();
   });
 
+  it('scrollIntoView called when last message content updates (streaming in-place)', () => {
+    const msg = makeMessage({ role: 'assistant', content: 'Hello' });
+    const { rerender } = render(
+      <AgentChatPanel sessionId="sess-1" />
+    );
+    // Initial render with one message
+    setupMock(makeState({ messages: [msg], status: 'streaming' }));
+    rerender(<AgentChatPanel sessionId="sess-1" />);
+
+    // Simulate in-place content update (same id, different content)
+    const updatedMsg = { ...msg, content: 'Hello world' };
+    setupMock(makeState({ messages: [updatedMsg], status: 'streaming' }));
+    rerender(<AgentChatPanel sessionId="sess-1" />);
+
+    expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
   // ── Input bar ────────────────────────────────────────────────────────
 
   it('input textarea is enabled when status is idle', () => {

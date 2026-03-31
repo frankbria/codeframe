@@ -205,12 +205,15 @@ export function AgentChatPanel({ sessionId, className }: AgentChatPanelProps) {
 
   const isBusy = status === 'thinking' || status === 'streaming';
 
-  // Auto-scroll on new messages
+  // Track last message so streaming content updates (same array length) also trigger scroll
+  const lastMessage = messages[messages.length - 1];
+
+  // Auto-scroll on new messages and on in-place streaming updates to the last message
   useEffect(() => {
     if (autoScroll && bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages.length, autoScroll]);
+  }, [autoScroll, lastMessage?.id, lastMessage?.content]);
 
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
