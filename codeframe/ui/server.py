@@ -28,6 +28,7 @@ from codeframe.ui.routers import (
     events_v2,
     gates_v2,
     git_v2,
+    interactive_sessions_v2,
     pr_v2,
     prd_v2,
     proof_v2,
@@ -475,6 +476,7 @@ app.include_router(environment_v2.router)   # /api/v2/env
 app.include_router(events_v2.router)        # /api/v2/events
 app.include_router(gates_v2.router)         # /api/v2/gates
 app.include_router(git_v2.router)           # /api/v2/git
+app.include_router(interactive_sessions_v2.router)  # /api/v2/sessions
 app.include_router(pr_v2.router)            # /api/v2/pr
 app.include_router(prd_v2.router)           # /api/v2/prd
 app.include_router(proof_v2.router)         # /api/v2/proof

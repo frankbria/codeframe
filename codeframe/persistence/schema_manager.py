@@ -60,6 +60,9 @@ class SchemaManager:
         # Metrics and audit tables
         self._create_metrics_audit_tables(cursor)
 
+        # Interactive session tables
+        self._create_interactive_session_tables(cursor)
+
         # Apply schema migrations for existing databases BEFORE creating indexes
         # (indexes may reference columns added by migrations)
         self._apply_migrations(cursor)
@@ -832,6 +835,40 @@ class SchemaManager:
         """
         )
 
+    def _create_interactive_session_tables(self, cursor: sqlite3.Cursor) -> None:
+        """Create interactive_sessions and session_messages tables."""
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS interactive_sessions (
+                id          TEXT PRIMARY KEY,
+                workspace_path TEXT NOT NULL,
+                task_id     TEXT,
+                state       TEXT NOT NULL DEFAULT 'active',
+                agent_type  TEXT NOT NULL DEFAULT 'claude',
+                model       TEXT,
+                cost_usd    REAL DEFAULT 0.0,
+                input_tokens  INTEGER DEFAULT 0,
+                output_tokens INTEGER DEFAULT 0,
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL,
+                ended_at    TEXT
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_messages (
+                id          TEXT PRIMARY KEY,
+                session_id  TEXT NOT NULL REFERENCES interactive_sessions(id) ON DELETE CASCADE,
+                role        TEXT NOT NULL,
+                content     TEXT NOT NULL,
+                metadata    TEXT,
+                created_at  TEXT NOT NULL
+            )
+            """
+        )
+
     def _create_indexes(self, cursor: sqlite3.Cursor) -> None:
         """Create all database indexes for performance."""
         # Issues indexes
@@ -949,6 +986,17 @@ class SchemaManager:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_pull_requests_branch ON pull_requests(project_id, branch_name)"
+        )
+
+        # Interactive session indexes
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_interactive_sessions_workspace ON interactive_sessions(workspace_path, state)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_interactive_sessions_state ON interactive_sessions(state, created_at DESC)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages(session_id, created_at)"
         )
 
         # Audit logs indexes
