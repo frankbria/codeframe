@@ -244,7 +244,81 @@ The plan-based agent had several failure modes discovered during testing:
 
 **Goal**: Realize the "FRAME" vision - specialist agents working together.
 
-### Deliverables
+Phase 4 has three parallel tracks:
+
+---
+
+### Phase 4.A: Agent Adapter Architecture
+
+**Goal**: Make any coding engine (Claude Code, Codex, OpenCode) a swappable execution backend. CodeFrame's built-in ReactAgent becomes the fallback, not the primary.
+
+**Motivation**: Teams are running multiple coding agents simultaneously. CodeFrame should orchestrate them, not compete with them. Verification gates and self-correction wrap ALL engines uniformly regardless of which one runs.
+
+#### Deliverables
+
+1. **`AgentAdapter` protocol** (codeframe-ayva)
+   - Standard interface: `execute(task, context) → AgentResult`
+   - Engine registry with fallback chain
+   - CLI: `--engine claude-code | codex | opencode | react` (react = fallback)
+
+2. **External engine adapters**
+   - `ClaudeCodeAdapter` — shells out to Claude Code CLI
+   - `CodexAdapter` — shells out to Codex CLI
+   - Verification gates and self-correction wrap each adapter uniformly
+
+3. **ReactAgent as fallback**
+   - Current ReactAgent demoted from default to fallback
+   - Used when no external engine is configured or available
+
+---
+
+### Phase 4.B: Execution Environment Layer
+
+**Goal**: Give each agent a safe, isolated execution context. Fix the current gap where parallel batch workers share a live filesystem.
+
+**Motivation**: `cf work batch run --strategy parallel` currently runs concurrent threads on the same filesystem with no isolation. Agents can corrupt each other's work, hit git index locks, or overwrite changes.
+
+**Integration strategy**: `parallel-cc` is a production-grade tool that already solves this with git worktrees + E2B cloud sandboxes. It will be consumed as a dependency initially, then absorbed into CodeFrame as the integration matures. It will not remain a separate independent project long-term.
+
+#### Absorption arc
+
+| Phase | What happens |
+|-------|-------------|
+| **Dependency** (now → Phase 4) | CodeFrame calls `parallel-cc` CLI/library for worktree + E2B management |
+| **Integration** (during Phase 4) | parallel-cc concepts formalized as CodeFrame `ExecutionContext` abstraction |
+| **Absorption** (Phase 4 complete) | parallel-cc code moves into `codeframe/core/sandbox/` and `codeframe/adapters/e2b/` |
+
+#### Deliverables
+
+1. **`ExecutionContext` abstraction** (codeframe-la86)
+   - Type: `local | worktree | e2b-sandbox`
+   - Used by `conductor.py` and all agent adapters
+   - CLI: `--isolation none | worktree | cloud`
+
+2. **Worktree isolation for parallel batch** (codeframe-c0rx)
+   - Each parallel task gets its own git worktree via `gtr` (from parallel-cc)
+   - Atomic session registration prevents race conditions
+   - Auto-cleanup on task completion
+   - Fixes the live filesystem conflict problem in `conductor.py`
+
+3. **`E2BAgentAdapter`** (codeframe-csyd)
+   - `--engine cloud` runs the agent in a full Linux VM via E2B
+   - File upload/download with credential scanning
+   - Up to 1-hour autonomous execution with timeout management
+   - Budget tracking per task/batch
+
+4. **parallel-cc absorption** (codeframe-xz0f)
+   - Port worktree coordination logic to `codeframe/core/sandbox/`
+   - Port E2B pipeline to `codeframe/adapters/e2b/`
+   - parallel-cc repo archived once absorption is complete
+
+---
+
+### Phase 4.C: Multi-Agent Coordination (original scope)
+
+**Goal**: Specialist agents working together on a single project.
+
+#### Deliverables
 
 1. **Agent roles** (#310)
    - Backend Agent, Frontend Agent, Test Agent, Review Agent
@@ -253,7 +327,7 @@ The plan-based agent had several failure modes discovered during testing:
 
 2. **Parallel multi-agent execution**
    - Multiple agents on independent tasks
-   - Worker pool management
+   - Worker pool management (builds on 4.B isolation)
 
 3. **Conflict detection & resolution** (#311)
    - Identify concurrent modifications to same files
@@ -263,6 +337,19 @@ The plan-based agent had several failure modes discovered during testing:
 4. **Handoff protocols** (#312)
    - Context passing between roles
    - Implementation → Test → Review pipeline
+
+### Phase 4 Issues
+
+| Issue | Title | Track | Priority |
+|-------|-------|-------|----------|
+| codeframe-ayva | Agent Adapter Protocol | 4.A | HIGH |
+| codeframe-la86 | ExecutionContext abstraction | 4.B | HIGH |
+| codeframe-c0rx | Worktree isolation for parallel batch | 4.B | HIGH |
+| codeframe-csyd | E2BAgentAdapter (cloud execution) | 4.B | MEDIUM |
+| codeframe-xz0f | parallel-cc absorption into CodeFrame | 4.B | MEDIUM |
+| #310 | Agent roles | 4.C | MEDIUM |
+| #311 | Conflict detection & resolution | 4.C | MEDIUM |
+| #312 | Handoff protocols | 4.C | MEDIUM |
 
 ### Related Issues
 - #68: Subagent context isolation
