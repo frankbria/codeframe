@@ -7,9 +7,7 @@ export type { AgentChatState, ChatMessage, MessageRole };
 
 // ── Constants ─────────────────────────────────────────────────────────
 
-const WS_BASE_URL =
-  (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_WS_URL) ||
-  'ws://localhost:8000';
+const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
 
 const MAX_RETRIES = 5;
 const BASE_RETRY_DELAY_MS = 1000;
