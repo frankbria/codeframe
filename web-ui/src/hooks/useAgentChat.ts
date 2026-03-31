@@ -112,7 +112,7 @@ export function useAgentChat(sessionId: string | null): UseAgentChat {
       wsRef.current.onmessage = null;
       wsRef.current.onclose = null;
       wsRef.current.onerror = null;
-      if (wsRef.current.readyState === WebSocket.OPEN) {
+      if (wsRef.current.readyState !== WebSocket.CLOSED) {
         wsRef.current.close();
       }
       wsRef.current = null;
@@ -280,7 +280,12 @@ export function useAgentChat(sessionId: string | null): UseAgentChat {
 
   // ── Effects ───────────────────────────────────────────────────────
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      disconnect();
+      stateRef.current = { ...INITIAL_STATE };
+      setState({ ...INITIAL_STATE });
+      return;
+    }
     connectRef.current();
     return () => disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
