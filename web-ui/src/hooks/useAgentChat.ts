@@ -155,7 +155,7 @@ export function useAgentChat(sessionId: string | null): UseAgentChat {
       const type = msg.type as string;
 
       if (type === 'text_delta') {
-        const delta = (msg.delta as string) ?? '';
+        const delta = (msg.content as string) ?? '';
         if (inProgressIdRef.current === null) {
           const newMsg: ChatMessage = {
             id: generateId(),
@@ -191,8 +191,8 @@ export function useAgentChat(sessionId: string | null): UseAgentChat {
           id: generateId(),
           role: 'tool_use',
           content: '',
-          toolName: msg.toolName as string | undefined,
-          toolInput: msg.toolInput,
+          toolName: msg.tool_name as string | undefined,
+          toolInput: msg.tool_input,
           createdAt: now(),
         };
         updateState({
@@ -226,9 +226,9 @@ export function useAgentChat(sessionId: string | null): UseAgentChat {
 
       if (type === 'cost_update') {
         updateState({
-          costUsd: (msg.costUsd as number) ?? stateRef.current.costUsd,
-          inputTokens: (msg.inputTokens as number) ?? stateRef.current.inputTokens,
-          outputTokens: (msg.outputTokens as number) ?? stateRef.current.outputTokens,
+          costUsd: (msg.cost_usd as number) ?? stateRef.current.costUsd,
+          inputTokens: (msg.input_tokens as number) ?? stateRef.current.inputTokens,
+          outputTokens: (msg.output_tokens as number) ?? stateRef.current.outputTokens,
         });
         return;
       }

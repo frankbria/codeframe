@@ -214,8 +214,8 @@ describe('useAgentChat', () => {
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => {
-        getLatestWs().simulateMessage({ type: 'text_delta', delta: 'Hello' });
-        getLatestWs().simulateMessage({ type: 'text_delta', delta: ' world' });
+        getLatestWs().simulateMessage({ type: 'text_delta', content: 'Hello' });
+        getLatestWs().simulateMessage({ type: 'text_delta', content: ' world' });
         flushRaf();
       });
 
@@ -231,7 +231,7 @@ describe('useAgentChat', () => {
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => {
-        getLatestWs().simulateMessage({ type: 'text_delta', delta: 'Done!' });
+        getLatestWs().simulateMessage({ type: 'text_delta', content: 'Done!' });
         flushRaf();
         getLatestWs().simulateMessage({ type: 'done' });
       });
@@ -246,8 +246,8 @@ describe('useAgentChat', () => {
       act(() => {
         getLatestWs().simulateMessage({
           type: 'tool_use_start',
-          toolName: 'read_file',
-          toolInput: { path: '/foo.ts' },
+          tool_name: 'read_file',
+          tool_input: { path: '/foo.ts' },
         });
         flushRaf();
       });
@@ -295,9 +295,9 @@ describe('useAgentChat', () => {
       act(() => {
         getLatestWs().simulateMessage({
           type: 'cost_update',
-          costUsd: 0.05,
-          inputTokens: 1000,
-          outputTokens: 500,
+          cost_usd: 0.05,
+          input_tokens: 1000,
+          output_tokens: 500,
         });
       });
 
