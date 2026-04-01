@@ -23,7 +23,10 @@ Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
 // ── matchMedia mock ──────────────────────────────────────────────────────
 
-function mockMatchMedia(matches: boolean) {
+type MatchMediaHandler = (e: { matches: boolean }) => void;
+
+function mockMatchMedia(matches: boolean): { trigger: (m: boolean) => void } {
+  const handlers: MatchMediaHandler[] = [];
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: jest.fn().mockImplementation((query: string) => ({
@@ -32,11 +35,14 @@ function mockMatchMedia(matches: boolean) {
       onchange: null,
       addListener: jest.fn(),
       removeListener: jest.fn(),
-      addEventListener: jest.fn(),
+      addEventListener: (_: string, cb: MatchMediaHandler) => handlers.push(cb),
       removeEventListener: jest.fn(),
       dispatchEvent: jest.fn(),
     })),
   });
+  return {
+    trigger: (newMatches: boolean) => handlers.forEach((h) => h({ matches: newMatches })),
+  };
 }
 
 // ── getBoundingClientRect mock ───────────────────────────────────────────
@@ -55,147 +61,262 @@ function mockContainerRect(left = 0, width = 1000) {
   });
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+/** Render SplitPane and wait for isMobile useEffect to resolve. */
+function renderSplitPane(props: Partial<Parameters<typeof SplitPane>[0]> = {}) {
+  const result = render(
+    <SplitPane
+      left={<div>Left content</div>}
+      right={<div>Right content</div>}
+      {...props}
+    />,
+  );
+  // Flush useEffect so isMobile resolves from null → false/true
+  act(() => {});
+  return result;
+}
+
+// ── Setup ────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   localStorageMock.clear();
-  mockMatchMedia(true); // desktop by default
+  mockMatchMedia(true); // desktop by default (matches = true means ≥768px)
 });
 
 afterEach(() => {
   jest.restoreAllMocks();
 });
 
+// ── Tests ────────────────────────────────────────────────────────────────
+
 describe('SplitPane', () => {
-  it('renders left and right children', () => {
-    render(<SplitPane left={<div>Left content</div>} right={<div>Right content</div>} />);
-    expect(screen.getByText('Left content')).toBeInTheDocument();
-    expect(screen.getByText('Right content')).toBeInTheDocument();
+  describe('rendering', () => {
+    it('renders left and right children', () => {
+      renderSplitPane();
+      expect(screen.getByText('Left content')).toBeInTheDocument();
+      expect(screen.getByText('Right content')).toBeInTheDocument();
+    });
+
+    it('uses defaultSplit=45 when no localStorage value exists', () => {
+      renderSplitPane({ defaultSplit: 45 });
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '45%' });
+    });
+
+    it('applies custom className to outer container', () => {
+      renderSplitPane({ className: 'my-custom-class' });
+      expect(screen.getByTestId('split-pane-container').className).toContain('my-custom-class');
+    });
   });
 
-  it('uses defaultSplit=45 when no localStorage value exists', () => {
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} defaultSplit={45} />);
-    const leftPane = screen.getByTestId('split-pane-left');
-    expect(leftPane).toHaveStyle({ width: '45%' });
+  describe('localStorage', () => {
+    it('restores split position from localStorage on mount', () => {
+      localStorageMock.setItem('split-pane-position', '60');
+      renderSplitPane();
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '60%' });
+    });
+
+    it('uses custom storageKey', () => {
+      localStorageMock.setItem('my-custom-key', '70');
+      renderSplitPane({ storageKey: 'my-custom-key' });
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '70%' });
+    });
+
+    it('ignores out-of-range localStorage values and falls back to defaultSplit', () => {
+      // 0 and 100 are collapsed positions — should not be restored
+      localStorageMock.setItem('split-pane-position', '0');
+      renderSplitPane({ defaultSplit: 45 });
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '45%' });
+    });
+
+    it('persists position to localStorage on drag end', () => {
+      mockContainerRect(0, 1000);
+      renderSplitPane({ storageKey: 'test-key' });
+      const divider = screen.getByTestId('split-pane-divider');
+
+      fireEvent.mouseDown(divider);
+      fireEvent.mouseMove(document, { clientX: 600 });
+      fireEvent.mouseUp(document);
+
+      expect(localStorageMock.getItem('test-key')).toBe('60');
+    });
+
+    it('does NOT write 0 to localStorage when left pane is collapsed', () => {
+      localStorageMock.setItem('split-pane-position', '45');
+      renderSplitPane({ storageKey: 'split-pane-position' });
+      fireEvent.click(screen.getByTestId('collapse-left'));
+      // Should still be 45, not 0
+      expect(localStorageMock.getItem('split-pane-position')).toBe('45');
+    });
+
+    it('does NOT write 100 to localStorage when right pane is collapsed', () => {
+      localStorageMock.setItem('split-pane-position', '45');
+      renderSplitPane({ storageKey: 'split-pane-position' });
+      fireEvent.click(screen.getByTestId('collapse-right'));
+      expect(localStorageMock.getItem('split-pane-position')).toBe('45');
+    });
+
+    it('renders at defaultSplit after reload when previously collapsed', () => {
+      // Simulate: user collapsed left pane, then reloaded page
+      // localStorage should still have the valid position (45), not 0
+      localStorageMock.setItem('split-pane-position', '45');
+      renderSplitPane({ defaultSplit: 45 });
+      // On reload the pane should open expanded at 45%
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '45%' });
+    });
   });
 
-  it('restores split position from localStorage on mount', () => {
-    localStorageMock.setItem('split-pane-position', '60');
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} />);
-    const leftPane = screen.getByTestId('split-pane-left');
-    expect(leftPane).toHaveStyle({ width: '60%' });
+  describe('drag', () => {
+    it('enforces minPanePercent on the left side during drag', () => {
+      mockContainerRect(0, 1000);
+      renderSplitPane({ storageKey: 'test-key' });
+      const divider = screen.getByTestId('split-pane-divider');
+
+      fireEvent.mouseDown(divider);
+      fireEvent.mouseMove(document, { clientX: 50 }); // 5% — below min
+      fireEvent.mouseUp(document);
+
+      expect(localStorageMock.getItem('test-key')).toBe('15');
+    });
+
+    it('enforces minPanePercent on the right side during drag', () => {
+      mockContainerRect(0, 1000);
+      renderSplitPane({ storageKey: 'test-key' });
+      const divider = screen.getByTestId('split-pane-divider');
+
+      fireEvent.mouseDown(divider);
+      fireEvent.mouseMove(document, { clientX: 980 }); // 98% — right pane below min
+      fireEvent.mouseUp(document);
+
+      expect(localStorageMock.getItem('test-key')).toBe('85');
+    });
+
+    it('does not move divider without mousedown first', () => {
+      localStorageMock.setItem('split-pane-position', '45');
+      mockContainerRect(0, 1000);
+      renderSplitPane({ storageKey: 'split-pane-position' });
+
+      fireEvent.mouseMove(document, { clientX: 700 });
+      fireEvent.mouseUp(document);
+
+      expect(localStorageMock.getItem('split-pane-position')).toBe('45');
+    });
   });
 
-  it('uses custom storageKey for localStorage', () => {
-    localStorageMock.setItem('my-custom-key', '70');
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} storageKey="my-custom-key" />);
-    const leftPane = screen.getByTestId('split-pane-left');
-    expect(leftPane).toHaveStyle({ width: '70%' });
+  describe('keyboard resize', () => {
+    it('moves divider left with ArrowLeft key', () => {
+      renderSplitPane({ defaultSplit: 50, storageKey: 'test-key' });
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.keyDown(divider, { key: 'ArrowLeft' });
+      expect(localStorageMock.getItem('test-key')).toBe('45');
+    });
+
+    it('moves divider right with ArrowRight key', () => {
+      renderSplitPane({ defaultSplit: 50, storageKey: 'test-key' });
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.keyDown(divider, { key: 'ArrowRight' });
+      expect(localStorageMock.getItem('test-key')).toBe('55');
+    });
+
+    it('clamps keyboard resize to minPanePercent', () => {
+      renderSplitPane({ defaultSplit: 16, minPanePercent: 15, storageKey: 'test-key' });
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.keyDown(divider, { key: 'ArrowLeft' });
+      fireEvent.keyDown(divider, { key: 'ArrowLeft' });
+      expect(localStorageMock.getItem('test-key')).toBe('15');
+    });
   });
 
-  it('persists position to localStorage on drag end', () => {
-    mockContainerRect(0, 1000);
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} storageKey="test-key" />);
-    const divider = screen.getByTestId('split-pane-divider');
+  describe('collapse/expand', () => {
+    it('collapses left pane', () => {
+      renderSplitPane();
+      fireEvent.click(screen.getByTestId('collapse-left'));
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '0%' });
+    });
 
-    fireEvent.mouseDown(divider);
-    fireEvent.mouseMove(document, { clientX: 600 });
-    fireEvent.mouseUp(document);
+    it('expands left pane to original position', () => {
+      renderSplitPane({ defaultSplit: 45 });
+      const btn = screen.getByTestId('collapse-left');
+      fireEvent.click(btn); // collapse
+      fireEvent.click(btn); // expand
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '45%' });
+    });
 
-    expect(localStorageMock.getItem('test-key')).toBe('60');
+    it('collapses right pane', () => {
+      renderSplitPane();
+      fireEvent.click(screen.getByTestId('collapse-right'));
+      expect(screen.getByTestId('split-pane-right')).toHaveStyle({ width: '0%' });
+    });
+
+    it('expands right pane to original position', () => {
+      renderSplitPane({ defaultSplit: 45 });
+      const btn = screen.getByTestId('collapse-right');
+      fireEvent.click(btn); // collapse
+      fireEvent.click(btn); // expand
+      expect(screen.getByTestId('split-pane-right')).toHaveStyle({ width: '55%' });
+    });
+
+    it('restores correct position after collapse-right → collapse-left → expand-left', () => {
+      // Regression: lastNonCollapsed must not be corrupted by cross-pane collapse
+      renderSplitPane({ defaultSplit: 45 });
+      fireEvent.click(screen.getByTestId('collapse-right')); // splitPct → 100
+      fireEvent.click(screen.getByTestId('collapse-left'));  // collapse left while right was collapsed
+      fireEvent.click(screen.getByTestId('collapse-left'));  // expand left
+      // Should restore to 45, not 100
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '45%' });
+    });
   });
 
-  it('enforces minPanePercent during drag (default 15%)', () => {
-    mockContainerRect(0, 1000);
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} storageKey="test-key" />);
-    const divider = screen.getByTestId('split-pane-divider');
+  describe('accessibility', () => {
+    it('divider has role="separator" and aria-orientation="vertical"', () => {
+      renderSplitPane();
+      const divider = screen.getByTestId('split-pane-divider');
+      expect(divider).toHaveAttribute('role', 'separator');
+      expect(divider).toHaveAttribute('aria-orientation', 'vertical');
+    });
 
-    fireEvent.mouseDown(divider);
-    fireEvent.mouseMove(document, { clientX: 50 }); // 5% — below min
-    fireEvent.mouseUp(document);
+    it('divider exposes aria-valuenow', () => {
+      renderSplitPane({ defaultSplit: 45 });
+      expect(screen.getByTestId('split-pane-divider')).toHaveAttribute('aria-valuenow', '45');
+    });
 
-    // Should be clamped to 15%
-    expect(localStorageMock.getItem('test-key')).toBe('15');
+    it('collapse buttons have type="button"', () => {
+      renderSplitPane();
+      expect(screen.getByTestId('collapse-left')).toHaveAttribute('type', 'button');
+      expect(screen.getByTestId('collapse-right')).toHaveAttribute('type', 'button');
+    });
+
+    it('collapse buttons have descriptive aria-labels', () => {
+      renderSplitPane();
+      expect(screen.getByTestId('collapse-left')).toHaveAttribute('aria-label', 'Collapse left pane');
+      expect(screen.getByTestId('collapse-right')).toHaveAttribute('aria-label', 'Collapse right pane');
+    });
+
+    it('aria-label flips when pane is collapsed', () => {
+      renderSplitPane();
+      fireEvent.click(screen.getByTestId('collapse-left'));
+      expect(screen.getByTestId('collapse-left')).toHaveAttribute('aria-label', 'Expand left pane');
+    });
   });
 
-  it('enforces minPanePercent on the right side during drag', () => {
-    mockContainerRect(0, 1000);
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} storageKey="test-key" />);
-    const divider = screen.getByTestId('split-pane-divider');
+  describe('mobile layout', () => {
+    it('stacks vertically on mobile', () => {
+      mockMatchMedia(false); // matches=false means <768px
+      renderSplitPane();
+      expect(screen.getByTestId('split-pane-container').className).toContain('flex-col');
+    });
 
-    fireEvent.mouseDown(divider);
-    fireEvent.mouseMove(document, { clientX: 980 }); // 98% — right pane below min
-    fireEvent.mouseUp(document);
+    it('hides divider on mobile', () => {
+      mockMatchMedia(false);
+      renderSplitPane();
+      expect(screen.getByTestId('split-pane-divider').className).toContain('hidden');
+    });
 
-    // Should be clamped to 85% (100 - 15)
-    expect(localStorageMock.getItem('test-key')).toBe('85');
-  });
-
-  it('collapses left pane when left collapse button is clicked', () => {
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} />);
-    const collapseLeft = screen.getByTestId('collapse-left');
-    fireEvent.click(collapseLeft);
-    const leftPane = screen.getByTestId('split-pane-left');
-    expect(leftPane).toHaveStyle({ width: '0%' });
-  });
-
-  it('expands left pane when collapse button is clicked again', () => {
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} defaultSplit={45} />);
-    const collapseLeft = screen.getByTestId('collapse-left');
-    fireEvent.click(collapseLeft); // collapse
-    fireEvent.click(collapseLeft); // expand
-    const leftPane = screen.getByTestId('split-pane-left');
-    expect(leftPane).toHaveStyle({ width: '45%' });
-  });
-
-  it('collapses right pane when right collapse button is clicked', () => {
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} />);
-    const collapseRight = screen.getByTestId('collapse-right');
-    fireEvent.click(collapseRight);
-    const rightPane = screen.getByTestId('split-pane-right');
-    expect(rightPane).toHaveStyle({ width: '0%' });
-  });
-
-  it('expands right pane when collapse button is clicked again', () => {
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} defaultSplit={45} />);
-    const collapseRight = screen.getByTestId('collapse-right');
-    fireEvent.click(collapseRight); // collapse
-    fireEvent.click(collapseRight); // expand
-    const rightPane = screen.getByTestId('split-pane-right');
-    expect(rightPane).toHaveStyle({ width: '55%' });
-  });
-
-  it('does not apply inline width styles on mobile', () => {
-    mockMatchMedia(false); // mobile
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} />);
-    const container = screen.getByTestId('split-pane-container');
-    expect(container.className).toContain('flex-col');
-  });
-
-  it('hides divider on mobile', () => {
-    mockMatchMedia(false);
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} />);
-    const divider = screen.getByTestId('split-pane-divider');
-    expect(divider.className).toContain('hidden');
-  });
-
-  it('applies custom className to outer container', () => {
-    render(
-      <SplitPane left={<div>L</div>} right={<div>R</div>} className="my-custom-class" />,
-    );
-    const container = screen.getByTestId('split-pane-container');
-    expect(container.className).toContain('my-custom-class');
-  });
-
-  it('does not move divider if mouse was not pressed (no drag started)', () => {
-    localStorageMock.setItem('split-pane-position', '45');
-    mockContainerRect(0, 1000);
-    render(<SplitPane left={<div>L</div>} right={<div>R</div>} storageKey="split-pane-position" />);
-
-    // Move without mousedown
-    fireEvent.mouseMove(document, { clientX: 700 });
-    fireEvent.mouseUp(document);
-
-    expect(localStorageMock.getItem('split-pane-position')).toBe('45');
+    it('switches to desktop layout when viewport widens', () => {
+      const mq = mockMatchMedia(false); // start mobile
+      renderSplitPane();
+      act(() => mq.trigger(true)); // simulate viewport ≥768px
+      expect(screen.getByTestId('split-pane-container').className).toContain('flex-row');
+    });
   });
 });
