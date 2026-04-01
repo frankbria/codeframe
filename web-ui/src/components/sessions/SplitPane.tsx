@@ -97,6 +97,21 @@ export function SplitPane({
     applyWidths(splitPct);
   }, [splitPct, applyWidths]);
 
+  // ── Shared commit helper (drag end + keyboard) ────────────────────────
+
+  const commitExpandedSplit = useCallback(
+    (next: number) => {
+      transitionEnabled.current = false;
+      livePercent.current = next;
+      lastNonCollapsed.current = next;
+      setIsLeftCollapsed(false);
+      setIsRightCollapsed(false);
+      setSplitPct(next);
+      writeStorage(storageKey, next);
+    },
+    [storageKey],
+  );
+
   // ── Drag logic ────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -113,10 +128,7 @@ export function SplitPane({
     const onMouseUp = () => {
       if (!isDragging.current) return;
       isDragging.current = false;
-      const committed = livePercent.current;
-      lastNonCollapsed.current = committed;
-      setSplitPct(committed);
-      writeStorage(storageKey, committed);
+      commitExpandedSplit(livePercent.current);
     };
 
     document.addEventListener('mousemove', onMouseMove);
@@ -125,7 +137,7 @@ export function SplitPane({
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
     };
-  }, [minPanePercent, storageKey]);
+  }, [minPanePercent, commitExpandedSplit]);
 
   const onDividerMouseDown = () => {
     isDragging.current = true;
@@ -142,12 +154,7 @@ export function SplitPane({
       e.preventDefault();
       const delta = e.key === 'ArrowLeft' ? -step : step;
       const next = clamp(splitPct + delta, minPanePercent, 100 - minPanePercent);
-      transitionEnabled.current = false;
-      lastNonCollapsed.current = next;
-      setIsLeftCollapsed(false);
-      setIsRightCollapsed(false);
-      setSplitPct(next);
-      writeStorage(storageKey, next);
+      commitExpandedSplit(next);
     }
   };
 
@@ -227,8 +234,8 @@ export function SplitPane({
         role="separator"
         aria-orientation="vertical"
         aria-valuenow={splitPct}
-        aria-valuemin={minPanePercent}
-        aria-valuemax={100 - minPanePercent}
+        aria-valuemin={splitPct <= minPanePercent ? 0 : minPanePercent}
+        aria-valuemax={splitPct >= 100 - minPanePercent ? 100 : 100 - minPanePercent}
         aria-label="Resize panes"
         tabIndex={0}
         className={cn(
