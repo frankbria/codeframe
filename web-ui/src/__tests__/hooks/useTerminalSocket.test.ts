@@ -32,7 +32,7 @@ class MockWebSocket {
 
   close() {
     this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.();
+    this.onclose?.({ code: 1000 } as CloseEvent);
   }
 
   // Test helpers
@@ -49,9 +49,9 @@ class MockWebSocket {
     this.onmessage?.({ data: text });
   }
 
-  simulateClose() {
+  simulateClose(code = 1000) {
     this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.();
+    this.onclose?.({ code } as CloseEvent);
   }
 }
 
@@ -200,6 +200,27 @@ describe('useTerminalSocket', () => {
     act(() => ws2.simulateClose());
 
     act(() => jest.advanceTimersByTime(200));
+    expect(result.current.status).toBe('error');
+  });
+
+  it('does not retry on auth failure close codes', () => {
+    const onData = jest.fn();
+    const { result } = renderHook(() =>
+      useTerminalSocket({
+        url: 'ws://localhost/ws/sessions/s1/terminal?token=t',
+        onData,
+        maxRetries: 3,
+        retryDelay: 100,
+      })
+    );
+    const ws = MockWebSocket.instances[0];
+    act(() => ws.simulateOpen());
+    // Simulate auth rejection (4001)
+    act(() => ws.simulateClose(4001));
+
+    // Should go straight to 'error' — no retry timers
+    act(() => jest.advanceTimersByTime(1000));
+    expect(MockWebSocket.instances).toHaveLength(1); // no new connection
     expect(result.current.status).toBe('error');
   });
 

@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 
 import jwt as pyjwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -30,6 +31,10 @@ from codeframe.auth.models import User
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
+
+# Per-user concurrent terminal connection counter (in-process; resets on restart)
+_MAX_TERMINALS_PER_USER = 3
+_user_terminal_counts: dict[int, int] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +119,13 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
         await websocket.close(code=4008, reason="Session has no workspace configured")
         return
 
+    # --- Per-user connection cap ---
+    current = _user_terminal_counts.get(user_id, 0)
+    if current >= _MAX_TERMINALS_PER_USER:
+        await websocket.close(code=4029, reason="Too many open terminals; close an existing session first")
+        return
+    _user_terminal_counts[user_id] = current + 1
+
     await websocket.accept()
 
     # --- Spawn bash with a minimal, explicit environment ---
@@ -128,13 +140,15 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
         "USER": os.environ.get("USER", ""),
     }
 
+    shell_exe = shutil.which("bash") or shutil.which("sh") or "sh"
+
     process: asyncio.subprocess.Process | None = None
     ws_to_stdin_task: asyncio.Task | None = None
     stdout_to_ws_task: asyncio.Task | None = None
 
     try:
         process = await asyncio.create_subprocess_exec(
-            "bash",
+            shell_exe,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -173,6 +187,9 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
 
                     if "text" in msg:
                         raw_text: str = msg["text"]
+                        if len(raw_text) > 65536:
+                            logger.warning("session_id=%s: dropping oversized text frame (%d bytes)", session_id, len(raw_text))
+                            continue
                         try:
                             parsed = json.loads(raw_text)
                             if isinstance(parsed, dict) and parsed.get("type") == "resize":
@@ -184,6 +201,9 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
                         await process.stdin.drain()
                     elif "bytes" in msg:
                         raw_bytes: bytes = msg["bytes"]
+                        if len(raw_bytes) > 65536:
+                            logger.warning("session_id=%s: dropping oversized binary frame (%d bytes)", session_id, len(raw_bytes))
+                            continue
                         try:
                             parsed = json.loads(raw_bytes)
                             if isinstance(parsed, dict) and parsed.get("type") == "resize":
@@ -233,6 +253,13 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
                     process.kill()
                 except ProcessLookupError:
                     pass
+
+        # Release the per-user connection slot
+        count = _user_terminal_counts.get(user_id, 0)
+        if count > 1:
+            _user_terminal_counts[user_id] = count - 1
+        else:
+            _user_terminal_counts.pop(user_id, None)
 
         try:
             await websocket.close()

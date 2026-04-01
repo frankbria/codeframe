@@ -92,9 +92,14 @@ export function useTerminalSocket({
         // onerror is always followed by onclose; handle retry there
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         wsRef.current = null;
-        if (retriesRef.current < maxRetries) {
+        // Auth/authz rejections (4001, 4003, 4004, 4008) are permanent — retrying
+        // would loop endlessly with the same credentials. Go straight to error.
+        const isPermanentFailure =
+          event.code === 4001 || event.code === 4003 ||
+          event.code === 4004 || event.code === 4008;
+        if (!isPermanentFailure && retriesRef.current < maxRetries) {
           const delay = retryDelay * 2 ** retriesRef.current;
           retriesRef.current += 1;
           setStatus('connecting');

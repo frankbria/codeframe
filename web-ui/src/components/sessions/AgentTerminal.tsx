@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useTerminalSocket, type TerminalSocketStatus } from '@/hooks/useTerminalSocket';
 
 // ---------------------------------------------------------------------------
@@ -71,15 +71,13 @@ export function AgentTerminal({ sessionId, className }: AgentTerminalProps) {
   const terminalRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fitAddonRef = useRef<any>(null);
-  const wsUrlRef = useRef<string | null>(null);
 
-  // Build the WS URL once per sessionId (requires client side)
-  if (typeof window !== 'undefined' && !wsUrlRef.current) {
-    wsUrlRef.current = buildWsUrl(sessionId);
-  }
+  // Build the WS URL once per sessionId. useMemo avoids a render-time side
+  // effect and is safe under React StrictMode's double-invoke.
+  const wsUrl = useMemo(() => buildWsUrl(sessionId), [sessionId]);
 
   const { status, sendInput, sendResize } = useTerminalSocket({
-    url: wsUrlRef.current,
+    url: wsUrl,
     onData: (data) => {
       if (terminalRef.current) {
         terminalRef.current.write(data);
@@ -98,7 +96,7 @@ export function AgentTerminal({ sessionId, className }: AgentTerminalProps) {
     let inputDisposer: { dispose: () => void } | null = null;
 
     // Dynamic import keeps xterm out of the SSR bundle
-    Promise.all([import('xterm'), import('xterm-addon-fit')]).then(([{ Terminal }, { FitAddon }]) => {
+    Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit')]).then(([{ Terminal }, { FitAddon }]) => {
       if (!containerRef.current) return;
 
       terminal = new Terminal({
