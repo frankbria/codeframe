@@ -108,13 +108,25 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
         await websocket.close(code=4003, reason="Forbidden: session belongs to another user")
         return
 
-    workspace_path = session.get("workspace_path") or "."
+    workspace_path = session.get("workspace_path")
+    if not workspace_path:
+        logger.error("session_id=%s has no workspace_path; refusing terminal spawn", session_id)
+        await websocket.close(code=4008, reason="Session has no workspace configured")
+        return
 
     await websocket.accept()
 
-    # --- Spawn bash ---
-    env = os.environ.copy()
-    env["TERM"] = "xterm-256color"
+    # --- Spawn bash with a minimal, explicit environment ---
+    # Do NOT use os.environ.copy() — it would expose server secrets (API keys, DB creds)
+    # to the subprocess. Only pass variables required for a functional terminal.
+    env = {
+        "TERM": "xterm-256color",
+        "HOME": os.environ.get("HOME", "/tmp"),
+        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+        "SHELL": "/bin/bash",
+        "LANG": os.environ.get("LANG", "en_US.UTF-8"),
+        "USER": os.environ.get("USER", ""),
+    }
 
     process: asyncio.subprocess.Process | None = None
     ws_to_stdin_task: asyncio.Task | None = None
