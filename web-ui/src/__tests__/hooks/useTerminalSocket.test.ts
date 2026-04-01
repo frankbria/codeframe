@@ -1,3 +1,4 @@
+import { TextEncoder as NodeTextEncoder } from 'util';
 import { renderHook, act } from '@testing-library/react';
 import { useTerminalSocket } from '@/hooks/useTerminalSocket';
 
@@ -59,9 +60,7 @@ beforeEach(() => {
   (global as any).WebSocket = MockWebSocket;
   // jsdom doesn't ship TextEncoder; polyfill from Node
   if (typeof (global as any).TextEncoder === 'undefined') {
-    const { TextEncoder, TextDecoder } = require('util');
-    (global as any).TextEncoder = TextEncoder;
-    (global as any).TextDecoder = TextDecoder;
+    (global as any).TextEncoder = NodeTextEncoder;
   }
   jest.useFakeTimers();
 });
@@ -97,7 +96,7 @@ describe('useTerminalSocket', () => {
 
   it('calls onData with Uint8Array for binary frames', () => {
     const onData = jest.fn();
-    const { result } = renderHook(() =>
+    renderHook(() =>
       useTerminalSocket({ url: 'ws://localhost/ws/sessions/s1/terminal?token=t', onData })
     );
     const ws = MockWebSocket.instances[0];
