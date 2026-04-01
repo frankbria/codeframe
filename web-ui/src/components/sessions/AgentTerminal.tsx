@@ -15,11 +15,10 @@ function getToken(): string | null {
 function buildWsUrl(sessionId: string): string | null {
   const token = getToken();
   if (!token) return null;
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   const base =
     process.env.NEXT_PUBLIC_WS_URL ||
-    (typeof window !== 'undefined'
-      ? window.location.origin.replace(/^http/, 'ws')
-      : 'ws://localhost:8000');
+    apiBase.replace(/^http/, 'ws');
   return `${base}/ws/sessions/${sessionId}/terminal?token=${encodeURIComponent(token)}`;
 }
 
