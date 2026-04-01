@@ -58,4 +58,6 @@ module.exports = {
   // AgentChatPanel
   ArrowRight01Icon: createIconMock('ArrowRight01Icon'),
   Alert01Icon: createIconMock('Alert01Icon'),
+  // SplitPane
+  ArrowLeft01Icon: createIconMock('ArrowLeft01Icon'),
 };
