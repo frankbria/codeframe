@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { AgentChatState, AgentChatStatus, ChatMessage, MessageRole } from '@/types';
+import type { AgentChatState, ChatMessage, MessageRole } from '@/types';
 
 export type { AgentChatState, ChatMessage, MessageRole };
 

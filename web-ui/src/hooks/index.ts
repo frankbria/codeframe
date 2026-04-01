@@ -1,4 +1,10 @@
 export { useAgentChat, type AgentChatState, type ChatMessage, type MessageRole } from './useAgentChat';
+export {
+  useTerminalSocket,
+  type TerminalSocketStatus,
+  type UseTerminalSocketOptions,
+  type UseTerminalSocketReturn,
+} from './useTerminalSocket';
 export { useEventSource, type SSEStatus, type UseEventSourceOptions } from './useEventSource';
 export { useRequirementsLookup } from './useRequirementsLookup';
 export {

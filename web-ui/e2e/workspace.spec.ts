@@ -5,7 +5,7 @@
  * activity feed, sidebar navigation, and workspace context persistence.
  */
 import { test, expect } from './fixtures/test-setup';
-import { TEST_WORKSPACE_PATH, mockWorkspace, mockTaskListResponse, mockEvents } from './fixtures/mock-data';
+import { TEST_WORKSPACE_PATH, mockWorkspace, mockTaskListResponse } from './fixtures/mock-data';
 
 // ---------------------------------------------------------------------------
 // 1. Workspace Selection

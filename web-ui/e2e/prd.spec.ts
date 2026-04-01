@@ -5,7 +5,7 @@
  * PRD generation from discovery, task generation, and version info.
  */
 import { test, expect } from './fixtures/test-setup';
-import { mockPrd, mockDiscoverySession } from './fixtures/mock-data';
+import { mockPrd } from './fixtures/mock-data';
 
 // ---------------------------------------------------------------------------
 // 1. PRD Display

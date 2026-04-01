@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import useSWR from 'swr';
 import { PRDView } from '@/components/prd';
 import { UploadPRDModal } from '@/components/prd/UploadPRDModal';
@@ -55,9 +56,9 @@ export default function PrdPage() {
           <div className="rounded-lg border bg-muted/50 p-6 text-center">
             <p className="text-muted-foreground">
               No workspace selected. Use the sidebar to return to{' '}
-              <a href="/" className="text-primary hover:underline">
+              <Link href="/" className="text-primary hover:underline">
                 Workspace
-              </a>{' '}
+              </Link>{' '}
               and select a project.
             </p>
           </div>

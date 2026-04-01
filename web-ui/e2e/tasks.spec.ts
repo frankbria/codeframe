@@ -5,7 +5,7 @@
  * status changes, batch selection, and batch execution.
  */
 import { test, expect } from './fixtures/test-setup';
-import { mockTasks, mockTaskListResponse } from './fixtures/mock-data';
+import { mockTasks } from './fixtures/mock-data';
 
 // ---------------------------------------------------------------------------
 // 1. Kanban Board Rendering

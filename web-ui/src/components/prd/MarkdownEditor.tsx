@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Loading03Icon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface MarkdownEditorProps {
   content: string;
