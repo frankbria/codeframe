@@ -8,7 +8,7 @@
  * Usage in test files:
  *   import { test, expect } from '../fixtures/test-setup';
  */
-import { test as base, expect, Page, Route } from '@playwright/test';
+import { test as base, expect, Route } from '@playwright/test';
 import {
   TEST_WORKSPACE_PATH,
   mockWorkspace,
@@ -304,6 +304,7 @@ export const test = base.extend<TestFixtures>({
       });
     };
 
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(setup);
   },
 
@@ -314,6 +315,7 @@ export const test = base.extend<TestFixtures>({
         localStorage.setItem('codeframe_workspace_path', workspacePath);
       }, path);
     };
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(setup);
   },
 });

@@ -4,7 +4,6 @@ These tests validate auth rejection, session lookup, and relay logic
 using FastAPI's TestClient with mocked subprocess and database state.
 """
 
-import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 

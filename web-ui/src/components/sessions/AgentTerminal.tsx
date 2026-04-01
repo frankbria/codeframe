@@ -20,7 +20,7 @@ function buildWsUrl(sessionId: string): string | null {
     (typeof window !== 'undefined'
       ? window.location.origin.replace(/^http/, 'ws')
       : 'ws://localhost:8000');
-  return `${base}/ws/sessions/${sessionId}/terminal?token=${token}`;
+  return `${base}/ws/sessions/${sessionId}/terminal?token=${encodeURIComponent(token)}`;
 }
 
 // ---------------------------------------------------------------------------

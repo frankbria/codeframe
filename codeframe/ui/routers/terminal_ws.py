@@ -148,31 +148,37 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
             except Exception as exc:
                 logger.debug("Terminal stdout relay error: %s", exc)
 
-        # --- Relay: WebSocket → stdin ---
+        # --- Relay: WebSocket → stdin (handles both text and binary frames) ---
         async def _stdin_relay() -> None:
             assert process is not None
             assert process.stdin is not None
             try:
                 while True:
                     try:
-                        raw = await websocket.receive_bytes()
+                        msg = await websocket.receive()
                     except WebSocketDisconnect:
                         raise
-                    except Exception:
-                        # Try text frame fallback
-                        break
 
-                    try:
-                        msg = json.loads(raw)
-                        if isinstance(msg, dict) and msg.get("type") == "resize":
-                            # Resize: nothing to do without a PTY
-                            continue
-                        # JSON but not resize → treat as text input
-                        process.stdin.write(raw)
+                    if "text" in msg:
+                        raw_text: str = msg["text"]
+                        try:
+                            parsed = json.loads(raw_text)
+                            if isinstance(parsed, dict) and parsed.get("type") == "resize":
+                                # Resize: nothing to do without a PTY
+                                continue
+                        except json.JSONDecodeError:
+                            pass
+                        process.stdin.write(raw_text.encode())
                         await process.stdin.drain()
-                    except (json.JSONDecodeError, UnicodeDecodeError):
-                        # Raw binary input → forward directly
-                        process.stdin.write(raw)
+                    elif "bytes" in msg:
+                        raw_bytes: bytes = msg["bytes"]
+                        try:
+                            parsed = json.loads(raw_bytes)
+                            if isinstance(parsed, dict) and parsed.get("type") == "resize":
+                                continue
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            pass
+                        process.stdin.write(raw_bytes)
                         await process.stdin.drain()
 
             except WebSocketDisconnect:
@@ -181,36 +187,6 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
                 pass
             except Exception as exc:
                 logger.debug("Terminal stdin relay error: %s", exc)
-
-        # Also handle text frames (some clients send text)
-        async def _text_stdin_relay() -> None:
-            assert process is not None
-            assert process.stdin is not None
-            try:
-                while True:
-                    try:
-                        raw = await websocket.receive_text()
-                    except WebSocketDisconnect:
-                        raise
-                    except Exception:
-                        break
-
-                    try:
-                        msg = json.loads(raw)
-                        if isinstance(msg, dict) and msg.get("type") == "resize":
-                            continue
-                        process.stdin.write(raw.encode())
-                        await process.stdin.drain()
-                    except (json.JSONDecodeError,):
-                        process.stdin.write(raw.encode())
-                        await process.stdin.drain()
-
-            except WebSocketDisconnect:
-                raise
-            except asyncio.CancelledError:
-                pass
-            except Exception as exc:
-                logger.debug("Terminal text relay error: %s", exc)
 
         stdout_to_ws_task = asyncio.create_task(_stdout_relay())
         ws_to_stdin_task = asyncio.create_task(_stdin_relay())

@@ -104,7 +104,8 @@ describe('useTerminalSocket', () => {
 
     const bytes = new Uint8Array([104, 101, 108, 108, 111]); // "hello"
     act(() => ws.simulateBinaryMessage(bytes));
-    expect(onData).toHaveBeenCalledWith(bytes);
+    const received = onData.mock.calls[0][0] as Uint8Array;
+    expect(Array.from(received)).toEqual(Array.from(bytes));
   });
 
   it('calls onData with encoded bytes for text frames', () => {

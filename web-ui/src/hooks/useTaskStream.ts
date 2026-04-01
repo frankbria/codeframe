@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { useEventSource, type SSEStatus } from './useEventSource';
+import { useEventSource } from './useEventSource';
 
 // ── Event types matching backend ExecutionEvent models ──────────────────
 

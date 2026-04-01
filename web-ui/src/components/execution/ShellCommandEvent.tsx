@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CommandLineIcon, CheckmarkCircle01Icon, Cancel01Icon } from '@hugeicons/react';
+import { CommandLineIcon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
 import type { OutputEvent } from '@/hooks/useTaskStream';
 

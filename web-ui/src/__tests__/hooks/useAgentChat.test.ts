@@ -5,13 +5,6 @@ import { useAgentChat } from '@/hooks/useAgentChat';
 
 // ── WebSocket mock ────────────────────────────────────────────────────
 
-type WsEventMap = {
-  open?: () => void;
-  message?: (event: { data: string }) => void;
-  close?: () => void;
-  error?: () => void;
-};
-
 class MockWebSocket {
   static OPEN = 1;
   static CLOSED = 3;
@@ -73,7 +66,6 @@ function flushRaf() {
 // ── Setup / teardown ──────────────────────────────────────────────────
 
 let originalWebSocket: typeof WebSocket;
-let originalLocalStorage: Storage;
 
 beforeAll(() => {
   originalWebSocket = global.WebSocket;

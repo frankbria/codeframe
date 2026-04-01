@@ -77,7 +77,7 @@ test.describe('Single Task Execution Page', () => {
     // Override task GET to delay indefinitely
     await mockApi({
       ...streamOverride([]),
-      'tasks/get': async (route: Route) => {
+      'tasks/get': async (_route: Route) => {
         // Never fulfill — simulates loading state
         await new Promise(() => {});
       },
