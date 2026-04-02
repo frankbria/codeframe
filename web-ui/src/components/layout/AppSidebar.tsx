@@ -9,13 +9,14 @@ import {
   FileEditIcon,
   Task01Icon,
   PlayIcon,
+  CommandLineIcon,
   Alert02Icon,
   GitBranchIcon,
   CheckmarkCircle01Icon,
 } from '@hugeicons/react';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
-import { blockersApi } from '@/lib/api';
-import type { BlockerListResponse } from '@/types';
+import { blockersApi, sessionsApi } from '@/lib/api';
+import type { BlockerListResponse, SessionListResponse } from '@/types';
 
 interface NavItem {
   href: string;
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/prd', label: 'PRD', icon: FileEditIcon, enabled: true },
   { href: '/tasks', label: 'Tasks', icon: Task01Icon, enabled: true },
   { href: '/execution', label: 'Execution', icon: PlayIcon, enabled: true },
+  { href: '/sessions', label: 'Sessions', icon: CommandLineIcon, enabled: true },
   { href: '/blockers', label: 'Blockers', icon: Alert02Icon, enabled: true },
   { href: '/review', label: 'Review', icon: GitBranchIcon, enabled: true },
   { href: '/proof', label: 'Proof', icon: CheckmarkCircle01Icon, enabled: true },
@@ -67,6 +69,14 @@ export function AppSidebar() {
     { refreshInterval: 10000 }
   );
   const openBlockerCount = blockerData?.by_status?.OPEN ?? 0;
+
+  // Fetch active session count for badge
+  const { data: sessionData } = useSWR<SessionListResponse>(
+    workspacePath ? `/api/v2/sessions/sidebar?path=${workspacePath}` : null,
+    () => sessionsApi.getAll(workspacePath!, { state: 'active' }),
+    { refreshInterval: 30000 }
+  );
+  const activeSessionCount = sessionData?.sessions?.length ?? 0;
 
   // Don't render sidebar when no workspace is selected
   if (!hasWorkspace) return null;
@@ -113,6 +123,11 @@ export function AppSidebar() {
             >
               <Icon className="h-5 w-5 shrink-0" />
               <span className="hidden lg:inline">{label}</span>
+              {label === 'Sessions' && activeSessionCount > 0 && (
+                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1.5 text-[10px] font-bold text-white">
+                  {activeSessionCount}
+                </span>
+              )}
               {label === 'Blockers' && openBlockerCount > 0 && (
                 <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
                   {openBlockerCount}
