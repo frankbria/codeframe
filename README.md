@@ -268,7 +268,7 @@ CodeFRAME v2 (Phases 1–6 complete) delivers the full Think-Build-Prove-Ship lo
 - **SHIP**: GitHub PR workflow, environment validation, task self-diagnosis
 - **Engine adapters**: Claude Code, Codex, OpenCode, Kilocode, and built-in ReAct — all via `--engine` flag
 - **Server layer** (optional): FastAPI with 16+ v2 routers, API key auth, rate limiting, SSE streaming, WebSocket endpoints (agent chat, interactive terminal), OpenAPI docs
-- **Web UI**: Workspace view, PRD discovery, Task board, Blocker resolution, Review/commit, PROOF9 requirements and evidence views, TUI dashboard, agent chat panel with streaming tool-call display, interactive terminal for session workspaces
+- **Web UI**: Workspace view, PRD discovery, Task board, Blocker resolution, Review/commit, PROOF9 requirements and evidence views, TUI dashboard, agent chat panel with streaming tool-call display, interactive terminal for session workspaces, Sessions list with active-session badge
 - **Test suite**: 4200+ tests, 88% coverage
 
 ---

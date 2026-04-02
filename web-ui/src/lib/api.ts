@@ -43,6 +43,10 @@ import type {
   ProofStatusResponse,
   ProofReqStatus,
   WaiveRequest,
+  Session,
+  SessionState,
+  SessionListResponse,
+  SessionCreateRequest,
 } from '@/types';
 
 // FastAPI validation error format
@@ -620,6 +624,40 @@ export const prApi = {
       { params: { workspace_path: workspacePath } }
     );
     return response.data;
+  },
+};
+
+// Sessions API methods
+export const sessionsApi = {
+  /**
+   * Get all sessions for a workspace
+   */
+  getAll: async (
+    workspacePath: string,
+    params?: { state?: SessionState }
+  ): Promise<SessionListResponse> => {
+    const response = await api.get<Session[]>('/api/v2/sessions', {
+      params: {
+        workspace_path: workspacePath,
+        ...(params?.state ? { state: params.state } : {}),
+      },
+    });
+    return { sessions: response.data, total: response.data.length };
+  },
+
+  /**
+   * Create a new session
+   */
+  create: async (data: SessionCreateRequest): Promise<Session> => {
+    const response = await api.post<Session>('/api/v2/sessions', data);
+    return response.data;
+  },
+
+  /**
+   * End (delete) a session
+   */
+  end: async (id: string): Promise<void> => {
+    await api.delete(`/api/v2/sessions/${encodeURIComponent(id)}`);
   },
 };
 

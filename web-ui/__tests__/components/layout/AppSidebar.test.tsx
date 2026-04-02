@@ -25,10 +25,15 @@ jest.mock('@/lib/workspace-storage', () => ({
   getSelectedWorkspacePath: jest.fn(),
 }));
 
-// Mock SWR (used for blocker badge count)
+// Mock SWR (used for blocker + session badge counts)
+const mockSWRData: Record<string, unknown> = {};
 jest.mock('swr', () => ({
   __esModule: true,
-  default: () => ({ data: undefined, isLoading: false, error: undefined }),
+  default: (key: string | null) => ({
+    data: key ? mockSWRData[key] : undefined,
+    isLoading: false,
+    error: undefined,
+  }),
 }));
 
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
@@ -48,6 +53,8 @@ describe('AppSidebar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUsePathname.mockReturnValue('/');
+    // Clear SWR mock data to prevent cross-test cache leakage
+    Object.keys(mockSWRData).forEach((k) => delete mockSWRData[k]);
   });
 
   it('renders nothing when no workspace is selected', () => {
@@ -63,7 +70,7 @@ describe('AppSidebar', () => {
     expect(screen.getByText('PRD')).toBeInTheDocument();
   });
 
-  it('renders all 6 navigation items', () => {
+  it('renders all 8 navigation items', () => {
     mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
     render(<AppSidebar />);
 
@@ -71,8 +78,10 @@ describe('AppSidebar', () => {
     expect(screen.getByText('PRD')).toBeInTheDocument();
     expect(screen.getByText('Tasks')).toBeInTheDocument();
     expect(screen.getByText('Execution')).toBeInTheDocument();
+    expect(screen.getByText('Sessions')).toBeInTheDocument();
     expect(screen.getByText('Blockers')).toBeInTheDocument();
     expect(screen.getByText('Review')).toBeInTheDocument();
+    expect(screen.getByText('Proof')).toBeInTheDocument();
   });
 
   it('renders enabled items as links', () => {
@@ -111,5 +120,39 @@ describe('AppSidebar', () => {
     const workspaceLink = screen.getByRole('link', { name: /workspace/i });
     // Active items have 'bg-accent' without 'hover:' prefix; inactive have 'hover:bg-accent/50'
     expect(workspaceLink.className).not.toMatch(/(?<!\w)bg-accent(?!\/)/);
+  });
+
+  // ─── Sessions nav entry tests ──────────────────────────────────────
+
+  it('renders Sessions nav link pointing to /sessions', () => {
+    mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
+    render(<AppSidebar />);
+    const sessionsLink = screen.getByRole('link', { name: /sessions/i });
+    expect(sessionsLink).toHaveAttribute('href', '/sessions');
+  });
+
+  it('shows active session count badge when there are active sessions', () => {
+    mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
+    mockSWRData['/api/v2/sessions?path=%2Fhome%2Fuser%2Fprojects%2Ftest&state=active'] = {
+      sessions: [
+        { id: 's1', state: 'active' },
+        { id: 's2', state: 'active' },
+      ],
+      total: 2,
+    };
+    render(<AppSidebar />);
+    expect(screen.getByText('2')).toBeInTheDocument();
+  });
+
+  it('does not show session badge when count is 0', () => {
+    mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
+    mockSWRData['/api/v2/sessions?path=%2Fhome%2Fuser%2Fprojects%2Ftest&state=active'] = {
+      sessions: [],
+      total: 0,
+    };
+    render(<AppSidebar />);
+    // With 0 sessions and no blockers, no badge spans should be present
+    const sessionsLink = screen.getByRole('link', { name: /sessions/i });
+    expect(sessionsLink.querySelector('.bg-muted')).toBeNull();
   });
 });
