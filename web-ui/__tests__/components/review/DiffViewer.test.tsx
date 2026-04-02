@@ -93,6 +93,11 @@ describe('DiffViewer', () => {
     expect(screen.getByText('REQ: REQ-42')).toBeInTheDocument();
   });
 
+  it('does not render requirement ID when task has no requirement_ids', () => {
+    render(<DiffViewer diffFiles={mockDiffFiles} selectedFile={null} tasks={mockTaskNoReqs} />);
+    expect(screen.queryByText(/REQ:/)).not.toBeInTheDocument();
+  });
+
   it('renders "View Task" link pointing to /tasks', () => {
     render(<DiffViewer diffFiles={mockDiffFiles} selectedFile={null} tasks={mockTasks} />);
     const link = screen.getByText(/View Task/);
