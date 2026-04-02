@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loading03Icon } from '@hugeicons/react';
 import {
   Dialog,
@@ -42,6 +42,14 @@ export function NewSessionModal({
   const [workspacePath, setWorkspacePath] = useState(defaultWorkspacePath);
   const [model, setModel] = useState<string>(MODEL_OPTIONS[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Reset form when modal opens (so stale workspace path from previous open is cleared)
+  useEffect(() => {
+    if (open) {
+      setWorkspacePath(defaultWorkspacePath);
+      setModel(MODEL_OPTIONS[0]);
+    }
+  }, [open, defaultWorkspacePath]);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);

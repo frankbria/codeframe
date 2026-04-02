@@ -131,7 +131,7 @@ describe('AppSidebar', () => {
 
   it('shows active session count badge when there are active sessions', () => {
     mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
-    mockSWRData['/api/v2/sessions/sidebar?path=/home/user/projects/test'] = {
+    mockSWRData['/api/v2/sessions/sidebar?path=%2Fhome%2Fuser%2Fprojects%2Ftest'] = {
       sessions: [
         { id: 's1', state: 'active' },
         { id: 's2', state: 'active' },
@@ -144,7 +144,7 @@ describe('AppSidebar', () => {
 
   it('does not show session badge when count is 0', () => {
     mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
-    mockSWRData['/api/v2/sessions/sidebar?path=/home/user/projects/test'] = {
+    mockSWRData['/api/v2/sessions/sidebar?path=%2Fhome%2Fuser%2Fprojects%2Ftest'] = {
       sessions: [],
       total: 0,
     };

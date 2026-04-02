@@ -72,7 +72,7 @@ export function AppSidebar() {
 
   // Fetch active session count for badge
   const { data: sessionData } = useSWR<SessionListResponse>(
-    workspacePath ? `/api/v2/sessions/sidebar?path=${workspacePath}` : null,
+    workspacePath ? `/api/v2/sessions/sidebar?path=${encodeURIComponent(workspacePath)}` : null,
     () => sessionsApi.getAll(workspacePath!, { state: 'active' }),
     { refreshInterval: 30000 }
   );

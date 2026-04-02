@@ -20,8 +20,10 @@ export function SessionListView({ workspacePath }: SessionListViewProps) {
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
 
+  const [endError, setEndError] = useState<string | null>(null);
+
   const { data, isLoading, error, mutate } = useSWR<SessionListResponse, ApiError>(
-    `/api/v2/sessions?path=${workspacePath}`,
+    `/api/v2/sessions?path=${encodeURIComponent(workspacePath)}`,
     () => sessionsApi.getAll(workspacePath),
     { refreshInterval: 10000 }
   );
@@ -46,12 +48,17 @@ export function SessionListView({ workspacePath }: SessionListViewProps) {
   }, [sortedSessions, search]);
 
   const handleEnd = useCallback(async (id: string) => {
-    await sessionsApi.end(id);
-    mutate();
+    try {
+      await sessionsApi.end(id);
+    } catch {
+      setEndError('Failed to end session. Please try again.');
+    } finally {
+      mutate();
+    }
   }, [mutate]);
 
-  const handleCreate = useCallback(async (data: { workspace_path: string; model: string }) => {
-    const session = await sessionsApi.create(data);
+  const handleCreate = useCallback(async (createData: { workspace_path: string; model: string }) => {
+    const session = await sessionsApi.create(createData);
     setModalOpen(false);
     mutate();
     router.push(`/sessions/${session.id}`);
@@ -143,6 +150,14 @@ export function SessionListView({ workspacePath }: SessionListViewProps) {
           className="pl-9"
         />
       </div>
+
+      {/* End error */}
+      {endError && (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          {endError}
+          <button className="ml-2 underline" onClick={() => setEndError(null)}>Dismiss</button>
+        </div>
+      )}
 
       {/* Session list */}
       <div className="space-y-3">
