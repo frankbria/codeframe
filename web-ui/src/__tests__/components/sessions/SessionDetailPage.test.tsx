@@ -1,14 +1,13 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import SessionDetailPage from '@/app/sessions/[id]/page';
+import { SessionDetailClient } from '@/app/sessions/[id]/SessionDetailClient';
 import { sessionsApi } from '@/lib/api';
 import type { Session } from '@/types';
 
 // ── Mocks ────────────────────────────────────────────────────────────────
 
 jest.mock('next/navigation', () => ({
-  useParams: jest.fn(),
   useRouter: jest.fn(),
 }));
 
@@ -63,7 +62,6 @@ jest.mock('@/components/sessions/SplitPane', () => ({
   ),
 }));
 
-const mockUseParams = useParams as jest.MockedFunction<typeof useParams>;
 const mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
 const mockUseSWR = useSWR as jest.MockedFunction<typeof useSWR>;
 const mockSessApiEnd = sessionsApi.end as jest.MockedFunction<typeof sessionsApi.end>;
@@ -115,16 +113,11 @@ function setupRouter() {
   } as ReturnType<typeof useRouter>);
 }
 
-function setupParams(id = SESSION_ID) {
-  mockUseParams.mockReturnValue({ id });
-}
-
 // ── Tests ────────────────────────────────────────────────────────────────
 
-describe('SessionDetailPage', () => {
+describe('SessionDetailClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    setupParams();
     setupRouter();
   });
 
@@ -132,7 +125,7 @@ describe('SessionDetailPage', () => {
 
   it('shows loading skeleton while session data is fetching', () => {
     mockUseSWR.mockReturnValue(swrResult({ isLoading: true }));
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByTestId('session-detail-skeleton')).toBeInTheDocument();
   });
 
@@ -141,28 +134,28 @@ describe('SessionDetailPage', () => {
   it('renders header with back link for active session', () => {
     const session = makeSession();
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByRole('link', { name: /sessions/i })).toHaveAttribute('href', '/sessions');
   });
 
   it('renders session short ID in header', () => {
     const session = makeSession();
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByText(new RegExp(SHORT_ID))).toBeInTheDocument();
   });
 
   it('renders active state badge for active session', () => {
     const session = makeSession({ state: 'active' });
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByText('active')).toBeInTheDocument();
   });
 
   it('renders SplitPane with AgentChatPanel and AgentTerminal for active session', () => {
     const session = makeSession({ state: 'active' });
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByTestId('split-pane')).toBeInTheDocument();
     expect(screen.getByTestId('agent-chat-panel')).toBeInTheDocument();
     expect(screen.getByTestId('agent-terminal')).toBeInTheDocument();
@@ -171,7 +164,7 @@ describe('SessionDetailPage', () => {
   it('passes session-specific storageKey to SplitPane', () => {
     const session = makeSession();
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByTestId('split-pane')).toHaveAttribute(
       'data-storage-key',
       `session-split-${SESSION_ID}`
@@ -181,7 +174,7 @@ describe('SessionDetailPage', () => {
   it('passes sessionId to AgentChatPanel and AgentTerminal', () => {
     const session = makeSession();
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByTestId('agent-chat-panel')).toHaveAttribute('data-session-id', SESSION_ID);
     expect(screen.getByTestId('agent-terminal')).toHaveAttribute('data-session-id', SESSION_ID);
   });
@@ -189,7 +182,7 @@ describe('SessionDetailPage', () => {
   it('renders input bar for active session (not read-only)', () => {
     const session = makeSession({ state: 'active' });
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByTestId('agent-chat-panel')).toHaveAttribute('data-read-only', 'false');
   });
 
@@ -198,7 +191,7 @@ describe('SessionDetailPage', () => {
   it('renders enabled End Session button for active session', () => {
     const session = makeSession({ state: 'active' });
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     const btn = screen.getByRole('button', { name: /end session/i });
     expect(btn).toBeEnabled();
   });
@@ -207,7 +200,7 @@ describe('SessionDetailPage', () => {
     mockSessApiEnd.mockResolvedValue(undefined);
     const session = makeSession({ state: 'active' });
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     fireEvent.click(screen.getByRole('button', { name: /end session/i }));
     await waitFor(() => {
       expect(mockSessApiEnd).toHaveBeenCalledWith(SESSION_ID);
@@ -219,7 +212,7 @@ describe('SessionDetailPage', () => {
     mockSessApiEnd.mockRejectedValue(new Error('Network error'));
     const session = makeSession({ state: 'active' });
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     fireEvent.click(screen.getByRole('button', { name: /end session/i }));
     await waitFor(() => {
       expect(mockRouterPush).not.toHaveBeenCalled();
@@ -234,7 +227,7 @@ describe('SessionDetailPage', () => {
     const session = makeSession({ state: 'ended', ended_at: '2026-04-01T11:00:00Z' });
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
     mockSessApiGetMessages.mockResolvedValue([]);
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     // The badge shows the state and the banner also mentions 'ended'
     expect(screen.getAllByText(/ended/i).length).toBeGreaterThanOrEqual(1);
   });
@@ -243,7 +236,7 @@ describe('SessionDetailPage', () => {
     const session = makeSession({ state: 'ended', ended_at: '2026-04-01T11:00:00Z' });
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
     mockSessApiGetMessages.mockResolvedValue([]);
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByText(/this session has ended/i)).toBeInTheDocument();
   });
 
@@ -251,7 +244,7 @@ describe('SessionDetailPage', () => {
     const session = makeSession({ state: 'ended', ended_at: '2026-04-01T11:00:00Z' });
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
     mockSessApiGetMessages.mockResolvedValue([]);
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.queryByTestId('agent-terminal')).not.toBeInTheDocument();
   });
 
@@ -259,7 +252,7 @@ describe('SessionDetailPage', () => {
     const session = makeSession({ state: 'ended', ended_at: '2026-04-01T11:00:00Z' });
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
     mockSessApiGetMessages.mockResolvedValue([]);
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByTestId('agent-chat-panel')).toHaveAttribute('data-read-only', 'true');
   });
 
@@ -267,7 +260,7 @@ describe('SessionDetailPage', () => {
     const session = makeSession({ state: 'ended', ended_at: '2026-04-01T11:00:00Z' });
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
     mockSessApiGetMessages.mockResolvedValue([]);
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     const btn = screen.getByRole('button', { name: /end session/i });
     expect(btn).toBeDisabled();
   });
@@ -278,7 +271,7 @@ describe('SessionDetailPage', () => {
     mockUseSWR.mockReturnValue(
       swrResult({ error: { status: 404, detail: 'Session not found' } })
     );
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByText(/session not found/i)).toBeInTheDocument();
     // Multiple back links exist (header + error body) — all point to /sessions
     const links = screen.getAllByRole('link', { name: /back to sessions/i });
@@ -290,16 +283,24 @@ describe('SessionDetailPage', () => {
     mockUseSWR.mockReturnValue(
       swrResult({ error: { status: 500, detail: 'Internal server error' } })
     );
-    render(<SessionDetailPage />);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
     expect(screen.getByText(/failed to load session/i)).toBeInTheDocument();
   });
 
   // ── Page title ───────────────────────────────────────────────────────
 
-  it('includes session short ID in document title', () => {
+  it('includes session short ID in the header', () => {
     const session = makeSession();
     mockUseSWR.mockReturnValue(swrResult({ data: session }));
-    render(<SessionDetailPage />);
-    expect(document.title).toContain(SHORT_ID);
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
+    // Short ID appears in the header "Session #<shortId>" text
+    expect(screen.getByText(new RegExp(SHORT_ID))).toBeInTheDocument();
+  });
+
+  it('generateMetadata returns title with session short ID', async () => {
+    // Import and test generateMetadata directly
+    const { generateMetadata } = await import('@/app/sessions/[id]/page');
+    const meta = await generateMetadata({ params: Promise.resolve({ id: SESSION_ID }) });
+    expect((meta as { title: string }).title).toContain(SHORT_ID);
   });
 });
