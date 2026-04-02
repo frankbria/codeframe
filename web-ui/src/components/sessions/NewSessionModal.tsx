@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Loading03Icon } from '@hugeicons/react';
+import type { SessionCreateRequest } from '@/types';
 import {
   Dialog,
   DialogContent,
@@ -30,7 +31,7 @@ interface NewSessionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultWorkspacePath: string;
-  onSubmit: (data: { workspace_path: string; model: string }) => Promise<void>;
+  onSubmit: (data: SessionCreateRequest) => Promise<void>;
 }
 
 export function NewSessionModal({
@@ -40,14 +41,15 @@ export function NewSessionModal({
   onSubmit,
 }: NewSessionModalProps) {
   const [workspacePath, setWorkspacePath] = useState(defaultWorkspacePath);
-  const [model, setModel] = useState<string>(MODEL_OPTIONS[0]);
+  const [model, setModel] = useState<typeof MODEL_OPTIONS[number]>(MODEL_OPTIONS[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Reset form when modal opens (so stale workspace path from previous open is cleared)
+  // Reset form when modal opens (so stale state from a previous open is cleared)
   useEffect(() => {
     if (open) {
       setWorkspacePath(defaultWorkspacePath);
       setModel(MODEL_OPTIONS[0]);
+      setIsSubmitting(false);
     }
   }, [open, defaultWorkspacePath]);
 

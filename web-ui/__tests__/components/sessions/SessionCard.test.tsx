@@ -58,7 +58,7 @@ describe('SessionCard', () => {
 
   it('renders cost formatted as dollar amount', () => {
     renderCard({ cost_usd: 0.012 });
-    expect(screen.getByText('$0.012')).toBeInTheDocument();
+    expect(screen.getByText('$0.0120')).toBeInTheDocument();
   });
 
   it('shows green state dot for active sessions', () => {

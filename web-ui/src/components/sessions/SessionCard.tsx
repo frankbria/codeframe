@@ -44,15 +44,15 @@ export function SessionCard({ session, onEnd }: SessionCardProps) {
         {/* Details */}
         <p className="truncate text-xs text-muted-foreground">{workspaceName}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{session.model}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">${session.cost_usd}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">${session.cost_usd.toFixed(4)}</p>
 
         {/* Action buttons */}
         <div className="mt-2 flex gap-1">
-          <Link href={`/sessions/${session.id}`}>
-            <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs">
+          <Button asChild size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs">
+            <Link href={`/sessions/${session.id}`}>
               {isActive ? 'Resume' : 'View'} &rarr;
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           {isActive && (
             <Button
               size="sm"

@@ -53,6 +53,8 @@ describe('AppSidebar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUsePathname.mockReturnValue('/');
+    // Clear SWR mock data to prevent cross-test cache leakage
+    Object.keys(mockSWRData).forEach((k) => delete mockSWRData[k]);
   });
 
   it('renders nothing when no workspace is selected', () => {
@@ -131,7 +133,7 @@ describe('AppSidebar', () => {
 
   it('shows active session count badge when there are active sessions', () => {
     mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
-    mockSWRData['/api/v2/sessions/sidebar?path=%2Fhome%2Fuser%2Fprojects%2Ftest'] = {
+    mockSWRData['/api/v2/sessions?path=%2Fhome%2Fuser%2Fprojects%2Ftest&state=active'] = {
       sessions: [
         { id: 's1', state: 'active' },
         { id: 's2', state: 'active' },
@@ -144,14 +146,13 @@ describe('AppSidebar', () => {
 
   it('does not show session badge when count is 0', () => {
     mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
-    mockSWRData['/api/v2/sessions/sidebar?path=%2Fhome%2Fuser%2Fprojects%2Ftest'] = {
+    mockSWRData['/api/v2/sessions?path=%2Fhome%2Fuser%2Fprojects%2Ftest&state=active'] = {
       sessions: [],
       total: 0,
     };
     render(<AppSidebar />);
-    // The only badge-like element with a number would be the blocker/session badges
-    // With 0 sessions and no blockers, there should be no number badges
+    // With 0 sessions and no blockers, no badge spans should be present
     const sessionsLink = screen.getByRole('link', { name: /sessions/i });
-    expect(sessionsLink.querySelector('.bg-blue-500')).toBeNull();
+    expect(sessionsLink.querySelector('.bg-muted')).toBeNull();
   });
 });

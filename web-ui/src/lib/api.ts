@@ -46,6 +46,7 @@ import type {
   Session,
   SessionState,
   SessionListResponse,
+  SessionCreateRequest,
 } from '@/types';
 
 // FastAPI validation error format
@@ -635,19 +636,19 @@ export const sessionsApi = {
     workspacePath: string,
     params?: { state?: SessionState }
   ): Promise<SessionListResponse> => {
-    const response = await api.get<SessionListResponse>('/api/v2/sessions', {
+    const response = await api.get<Session[]>('/api/v2/sessions', {
       params: {
         workspace_path: workspacePath,
         ...(params?.state ? { state: params.state } : {}),
       },
     });
-    return response.data;
+    return { sessions: response.data, total: response.data.length };
   },
 
   /**
    * Create a new session
    */
-  create: async (data: { workspace_path: string; model: string }): Promise<Session> => {
+  create: async (data: SessionCreateRequest): Promise<Session> => {
     const response = await api.post<Session>('/api/v2/sessions', data);
     return response.data;
   },

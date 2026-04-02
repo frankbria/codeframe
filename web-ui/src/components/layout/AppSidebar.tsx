@@ -72,7 +72,7 @@ export function AppSidebar() {
 
   // Fetch active session count for badge
   const { data: sessionData } = useSWR<SessionListResponse>(
-    workspacePath ? `/api/v2/sessions/sidebar?path=${encodeURIComponent(workspacePath)}` : null,
+    workspacePath ? `/api/v2/sessions?path=${encodeURIComponent(workspacePath)}&state=active` : null,
     () => sessionsApi.getAll(workspacePath!, { state: 'active' }),
     { refreshInterval: 30000 }
   );
@@ -124,7 +124,7 @@ export function AppSidebar() {
               <Icon className="h-5 w-5 shrink-0" />
               <span className="hidden lg:inline">{label}</span>
               {label === 'Sessions' && activeSessionCount > 0 && (
-                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1.5 text-[10px] font-bold text-white">
+                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-bold text-foreground">
                   {activeSessionCount}
                 </span>
               )}

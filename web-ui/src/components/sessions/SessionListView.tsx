@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { SessionCard } from './SessionCard';
 import { NewSessionModal } from './NewSessionModal';
 import { sessionsApi } from '@/lib/api';
-import type { SessionListResponse, ApiError } from '@/types';
+import type { SessionListResponse, SessionCreateRequest, ApiError } from '@/types';
 
 interface SessionListViewProps {
   workspacePath: string;
@@ -48,6 +48,7 @@ export function SessionListView({ workspacePath }: SessionListViewProps) {
   }, [sortedSessions, search]);
 
   const handleEnd = useCallback(async (id: string) => {
+    setEndError(null);
     try {
       await sessionsApi.end(id);
     } catch {
@@ -57,7 +58,7 @@ export function SessionListView({ workspacePath }: SessionListViewProps) {
     }
   }, [mutate]);
 
-  const handleCreate = useCallback(async (createData: { workspace_path: string; model: string }) => {
+  const handleCreate = useCallback(async (createData: SessionCreateRequest) => {
     const session = await sessionsApi.create(createData);
     setModalOpen(false);
     mutate();

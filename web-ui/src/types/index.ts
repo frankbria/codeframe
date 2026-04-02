@@ -391,6 +391,11 @@ export interface SessionListResponse {
   total: number;
 }
 
+export interface SessionCreateRequest {
+  workspace_path: string;
+  model: string;
+}
+
 // Agent chat types (useAgentChat hook — issue #504)
 export type MessageRole =
   | 'user'
