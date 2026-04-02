@@ -4,10 +4,12 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
-import { reviewApi, gatesApi, gitApi, prApi } from '@/lib/api';
+import { reviewApi, gatesApi, gitApi, prApi, tasksApi } from '@/lib/api';
 import { parseDiff, getFilePath } from '@/lib/diffParser';
 import type {
   DiffStatsResponse,
+  TaskListResponse,
+  Task,
   GateResult,
   ApiError,
 } from '@/types';
@@ -61,6 +63,20 @@ export default function ReviewPage() {
     workspacePath ? `/api/v2/review/diff?path=${workspacePath}` : null,
     () => reviewApi.getDiff(workspacePath!)
   );
+
+  // Fetch tasks for context (optional — errors degrade gracefully, no banner)
+  const { data: tasksData } = useSWR<TaskListResponse>(
+    workspacePath ? `/api/v2/tasks?workspace_path=${workspacePath}` : null,
+    () => tasksApi.getAll(workspacePath!),
+    { onError: () => {} }
+  );
+
+  // Auto-select single IN_PROGRESS task as context
+  const inProgressTasks = useMemo(
+    () => (tasksData?.tasks ?? []).filter((t: Task) => t.status === 'IN_PROGRESS'),
+    [tasksData?.tasks]
+  );
+  const contextTask = inProgressTasks.length === 1 ? inProgressTasks[0] : null;
 
   // Parse diff into structured files
   const diffFiles = useMemo(
@@ -280,12 +296,17 @@ export default function ReviewPage() {
           files={diffData?.changed_files ?? []}
           selectedFile={selectedFile}
           onFileSelect={handleFileSelect}
+          tasks={tasksData?.tasks ?? []}
+          contextTask={contextTask}
         />
 
         {/* Diff viewer (center) */}
         <DiffViewer
           diffFiles={diffFiles}
           selectedFile={selectedFile}
+          tasks={tasksData?.tasks ?? []}
+          contextTask={contextTask}
+          changedFiles={diffData?.changed_files ?? []}
         />
 
         {/* Commit panel (right sidebar) */}

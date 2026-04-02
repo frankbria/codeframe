@@ -6,10 +6,15 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { DiffFile, DiffHunkLine } from '@/lib/diffParser';
 import { getFilePath } from '@/lib/diffParser';
+import Link from 'next/link';
+import type { FileChange, Task } from '@/types';
 
 interface DiffViewerProps {
   diffFiles: DiffFile[];
   selectedFile: string | null;
+  tasks?: Task[];
+  contextTask?: Task | null;
+  changedFiles?: FileChange[];
 }
 
 function lineClassName(type: DiffHunkLine['type']): string {
@@ -63,7 +68,7 @@ function linePrefix(type: DiffHunkLine['type']): string {
  * hunk separators, and dual-column line numbers. When a file is
  * selected via FileTreePanel, the viewer scrolls to that section.
  */
-export function DiffViewer({ diffFiles, selectedFile }: DiffViewerProps) {
+export function DiffViewer({ diffFiles, selectedFile, tasks, contextTask, changedFiles }: DiffViewerProps) {
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
 
@@ -71,6 +76,20 @@ export function DiffViewer({ diffFiles, selectedFile }: DiffViewerProps) {
     () => diffFiles.map((f) => getFilePath(f)),
     [diffFiles]
   );
+
+  // Build a lookup map from file path to task context for per-file resolution
+  const taskMap = useMemo(() => {
+    if (!tasks?.length) return new Map<string, Task>();
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const result = new Map<string, Task>();
+    for (const f of changedFiles ?? []) {
+      if (f.task_id) {
+        const task = byId.get(f.task_id);
+        if (task) result.set(f.path, task);
+      }
+    }
+    return result;
+  }, [tasks, changedFiles]);
 
   // Scroll to selected file
   useEffect(() => {
@@ -120,6 +139,8 @@ export function DiffViewer({ diffFiles, selectedFile }: DiffViewerProps) {
           const isHighlighted =
             selectedFile !== null &&
             (key.includes(selectedFile) || selectedFile.includes(key));
+          // Resolve task context per file: explicit mapping → contextTask fallback
+          const fileTask = taskMap.get(key) ?? contextTask ?? null;
 
           return (
             <div
@@ -130,35 +151,53 @@ export function DiffViewer({ diffFiles, selectedFile }: DiffViewerProps) {
                 isHighlighted && 'ring-2 ring-ring ring-offset-1'
               )}
             >
-              {/* File header */}
-              <button
-                type="button"
-                className="sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-muted/50 px-4 py-2 text-left backdrop-blur-sm transition-all hover:bg-muted/70"
-                onClick={() => toggleFile(key)}
-                aria-expanded={!isCollapsed}
-                aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${key}`}
-              >
-                {isCollapsed ? (
-                  <ArrowRight01Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                ) : (
-                  <ArrowDown01Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {/* File header row */}
+              <div className="sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-muted/50 backdrop-blur-sm">
+                <button
+                  type="button"
+                  className="flex flex-1 items-center gap-2 px-4 py-2 text-left transition-all hover:bg-muted/70"
+                  onClick={() => toggleFile(key)}
+                  aria-expanded={!isCollapsed}
+                  aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${key}`}
+                >
+                  {isCollapsed ? (
+                    <ArrowRight01Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ArrowDown01Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  )}
+                  <span className="truncate font-mono text-sm font-medium">
+                    {key}
+                  </span>
+                  <span className="ml-auto flex shrink-0 gap-2 text-xs">
+                    {file.insertions > 0 && (
+                      <span className="font-mono text-green-600">
+                        +{file.insertions}
+                      </span>
+                    )}
+                    {file.deletions > 0 && (
+                      <span className="font-mono text-red-600">
+                        -{file.deletions}
+                      </span>
+                    )}
+                  </span>
+                </button>
+                {/* Task context - outside the toggle button, resolved per file */}
+                {fileTask && (
+                  <div className="flex shrink-0 items-center gap-2 pr-4 text-xs text-muted-foreground">
+                    {fileTask.requirement_ids?.[0] && (
+                      <span className="font-mono text-[10px]">REQ: {fileTask.requirement_ids[0]}</span>
+                    )}
+                    <span className="max-w-[120px] truncate">{fileTask.title}</span>
+                    <Link
+                      href="/tasks"
+                      className="text-primary hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      View Task →
+                    </Link>
+                  </div>
                 )}
-                <span className="truncate font-mono text-sm font-medium">
-                  {key}
-                </span>
-                <span className="ml-auto flex shrink-0 gap-2 text-xs">
-                  {file.insertions > 0 && (
-                    <span className="font-mono text-green-600">
-                      +{file.insertions}
-                    </span>
-                  )}
-                  {file.deletions > 0 && (
-                    <span className="font-mono text-red-600">
-                      -{file.deletions}
-                    </span>
-                  )}
-                </span>
-              </button>
+              </div>
 
               {/* File diff content */}
               {!isCollapsed && (
