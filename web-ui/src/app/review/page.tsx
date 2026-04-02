@@ -295,14 +295,16 @@ export default function ReviewPage() {
           files={diffData?.changed_files ?? []}
           selectedFile={selectedFile}
           onFileSelect={handleFileSelect}
-          {...{ tasks: tasksData?.tasks ?? [], contextTask } /* #480: task context props */}
+          tasks={tasksData?.tasks ?? []}
+          contextTask={contextTask}
         />
 
         {/* Diff viewer (center) */}
         <DiffViewer
           diffFiles={diffFiles}
           selectedFile={selectedFile}
-          {...{ tasks: tasksData?.tasks ?? [], contextTask } /* #480: task context props */}
+          tasks={tasksData?.tasks ?? []}
+          contextTask={contextTask}
         />
 
         {/* Commit panel (right sidebar) */}
