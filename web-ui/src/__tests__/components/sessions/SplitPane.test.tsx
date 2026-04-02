@@ -225,6 +225,40 @@ describe('SplitPane', () => {
       fireEvent.keyDown(divider, { key: 'ArrowLeft' });
       expect(localStorageMock.getItem('test-key')).toBe('15');
     });
+
+    it('ArrowLeft is a no-op when left pane is fully collapsed (splitPct=0)', () => {
+      renderSplitPane({ defaultSplit: 45, storageKey: 'test-key' });
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.click(screen.getByTestId('collapse-left')); // splitPct → 0
+      localStorageMock.clear(); // clear so we can detect any write
+      fireEvent.keyDown(divider, { key: 'ArrowLeft' });
+      expect(localStorageMock.getItem('test-key')).toBeNull();
+    });
+
+    it('ArrowRight restores left-collapsed pane to minPanePercent', () => {
+      renderSplitPane({ defaultSplit: 45, minPanePercent: 15, storageKey: 'test-key' });
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.click(screen.getByTestId('collapse-left')); // splitPct → 0
+      fireEvent.keyDown(divider, { key: 'ArrowRight' });
+      expect(localStorageMock.getItem('test-key')).toBe('15');
+    });
+
+    it('ArrowRight is a no-op when right pane is fully collapsed (splitPct=100)', () => {
+      renderSplitPane({ defaultSplit: 45, storageKey: 'test-key' });
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.click(screen.getByTestId('collapse-right')); // splitPct → 100
+      localStorageMock.clear();
+      fireEvent.keyDown(divider, { key: 'ArrowRight' });
+      expect(localStorageMock.getItem('test-key')).toBeNull();
+    });
+
+    it('ArrowLeft restores right-collapsed pane to 100-minPanePercent', () => {
+      renderSplitPane({ defaultSplit: 45, minPanePercent: 15, storageKey: 'test-key' });
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.click(screen.getByTestId('collapse-right')); // splitPct → 100
+      fireEvent.keyDown(divider, { key: 'ArrowLeft' });
+      expect(localStorageMock.getItem('test-key')).toBe('85');
+    });
   });
 
   describe('collapse/expand', () => {

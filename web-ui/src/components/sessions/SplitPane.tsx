@@ -150,12 +150,21 @@ export function SplitPane({
 
   const onDividerKeyDown = (e: React.KeyboardEvent) => {
     const step = 5;
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-      e.preventDefault();
-      const delta = e.key === 'ArrowLeft' ? -step : step;
-      const next = clamp(splitPct + delta, minPanePercent, 100 - minPanePercent);
-      commitExpandedSplit(next);
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    // At collapsed sentinels, only allow inward keypress to restore
+    if (splitPct === 0) {
+      if (e.key === 'ArrowLeft') return; // no-op: already fully left
+      commitExpandedSplit(minPanePercent);
+      return;
     }
+    if (splitPct === 100) {
+      if (e.key === 'ArrowRight') return; // no-op: already fully right
+      commitExpandedSplit(100 - minPanePercent);
+      return;
+    }
+    const delta = e.key === 'ArrowLeft' ? -step : step;
+    commitExpandedSplit(clamp(splitPct + delta, minPanePercent, 100 - minPanePercent));
   };
 
   // ── Collapse logic ────────────────────────────────────────────────────
