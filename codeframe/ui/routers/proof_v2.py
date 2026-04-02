@@ -15,7 +15,7 @@ Routes:
 
 import logging
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -100,6 +100,7 @@ class WaiverOut(BaseModel):
     expires: Optional[str]
     manual_checklist: list[str]
     approved_by: str
+    waived_at: Optional[str] = None
 
 
 class RequirementResponse(BaseModel):
@@ -195,6 +196,7 @@ def _req_to_response(req) -> RequirementResponse:
             expires=req.waiver.expires.isoformat() if req.waiver.expires else None,
             manual_checklist=req.waiver.manual_checklist,
             approved_by=req.waiver.approved_by,
+            waived_at=req.waiver.waived_at.isoformat() if req.waiver.waived_at else None,
         ) if req.waiver else None,
         created_at=req.created_at.isoformat() if req.created_at else None,
         satisfied_at=req.satisfied_at.isoformat() if req.satisfied_at else None,
@@ -370,6 +372,7 @@ async def waive_requirement_endpoint(
         expires=body.expires,
         manual_checklist=body.manual_checklist,
         approved_by=body.approved_by,
+        waived_at=datetime.now(timezone.utc),
     )
     updated = waive_requirement(workspace, req_id, waiver)
     return _req_to_response(updated)

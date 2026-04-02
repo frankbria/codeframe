@@ -1,17 +1,6 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import ProofPage from '@/app/proof/page';
-
-// Mock localStorage
-const localStorageMock = (() => {
-  let store: Record<string, string> = {};
-  return {
-    getItem: (key: string) => store[key] || null,
-    setItem: (key: string, value: string) => { store[key] = value; },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { store = {}; },
-  };
-})();
-Object.defineProperty(window, 'localStorage', { value: localStorageMock });
+import { localStorageMock } from '../../utils/test-helpers';
 
 jest.mock('@/lib/api', () => ({
   proofApi: {
@@ -216,9 +205,12 @@ describe('ProofPage', () => {
       fireEvent.click(screen.getByRole('button', { name: /confirm waive/i }));
 
       await waitFor(() => {
-        expect(mockWaive).toHaveBeenCalledWith('/test/workspace', 'REQ-001', expect.objectContaining({
+        expect(mockWaive).toHaveBeenCalledWith('/test/workspace', 'REQ-001', {
           reason: 'Risk accepted',
-        }));
+          expires: null,
+          manual_checklist: [],
+          approved_by: '',
+        });
         expect(mutate).toHaveBeenCalled();
       });
     });

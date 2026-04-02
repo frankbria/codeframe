@@ -137,6 +137,7 @@ def _waiver_to_json(waiver: Optional[Waiver]) -> Optional[str]:
         "expires": waiver.expires.isoformat() if waiver.expires else None,
         "manual_checklist": waiver.manual_checklist,
         "approved_by": waiver.approved_by,
+        "waived_at": waiver.waived_at.isoformat() if waiver.waived_at else None,
     })
 
 
@@ -144,11 +145,13 @@ def _waiver_from_json(raw: Optional[str]) -> Optional[Waiver]:
     if not raw:
         return None
     data = json.loads(raw)
+    waived_at_raw = data.get("waived_at")
     return Waiver(
         reason=data["reason"],
         expires=date.fromisoformat(data["expires"]) if data.get("expires") else None,
         manual_checklist=data.get("manual_checklist", []),
         approved_by=data.get("approved_by", ""),
+        waived_at=datetime.fromisoformat(waived_at_raw) if waived_at_raw else None,
     )
 
 
