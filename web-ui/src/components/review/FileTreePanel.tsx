@@ -55,12 +55,13 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
   }, [files]);
 
   const groupedByTask = useMemo(() => {
+    const taskTitleById = new Map(tasks?.map((t) => [t.id, t.title]) ?? []);
     const groups = new Map<string, { title: string; files: FileChange[] }>();
     for (const file of files) {
       const taskId = file.task_id ?? contextTask?.id ?? 'unassigned';
       const taskTitle =
         file.task_title ??
-        tasks?.find((t) => t.id === taskId)?.title ??
+        taskTitleById.get(taskId) ??
         contextTask?.title ??
         'Unassigned';
       const existing = groups.get(taskId);

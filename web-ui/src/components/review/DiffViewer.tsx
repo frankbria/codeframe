@@ -7,13 +7,14 @@ import { cn } from '@/lib/utils';
 import type { DiffFile, DiffHunkLine } from '@/lib/diffParser';
 import { getFilePath } from '@/lib/diffParser';
 import Link from 'next/link';
-import type { Task } from '@/types';
+import type { FileChange, Task } from '@/types';
 
 interface DiffViewerProps {
   diffFiles: DiffFile[];
   selectedFile: string | null;
   tasks?: Task[];
   contextTask?: Task | null;
+  changedFiles?: FileChange[];
 }
 
 function lineClassName(type: DiffHunkLine['type']): string {
@@ -67,7 +68,7 @@ function linePrefix(type: DiffHunkLine['type']): string {
  * hunk separators, and dual-column line numbers. When a file is
  * selected via FileTreePanel, the viewer scrolls to that section.
  */
-export function DiffViewer({ diffFiles, selectedFile, tasks, contextTask }: DiffViewerProps) {
+export function DiffViewer({ diffFiles, selectedFile, tasks, contextTask, changedFiles }: DiffViewerProps) {
   const fileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
 
@@ -76,7 +77,19 @@ export function DiffViewer({ diffFiles, selectedFile, tasks, contextTask }: Diff
     [diffFiles]
   );
 
-  const taskContext = contextTask ?? tasks?.[0] ?? null;
+  // Build a lookup map from file path to task context for per-file resolution
+  const taskMap = useMemo(() => {
+    if (!tasks?.length) return new Map<string, Task>();
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const result = new Map<string, Task>();
+    for (const f of changedFiles ?? []) {
+      if (f.task_id) {
+        const task = byId.get(f.task_id);
+        if (task) result.set(f.path, task);
+      }
+    }
+    return result;
+  }, [tasks, changedFiles]);
 
   // Scroll to selected file
   useEffect(() => {
@@ -126,6 +139,8 @@ export function DiffViewer({ diffFiles, selectedFile, tasks, contextTask }: Diff
           const isHighlighted =
             selectedFile !== null &&
             (key.includes(selectedFile) || selectedFile.includes(key));
+          // Resolve task context per file: explicit mapping → contextTask fallback
+          const fileTask = taskMap.get(key) ?? contextTask ?? null;
 
           return (
             <div
@@ -166,13 +181,13 @@ export function DiffViewer({ diffFiles, selectedFile, tasks, contextTask }: Diff
                     )}
                   </span>
                 </button>
-                {/* Task context - outside the toggle button */}
-                {tasks && tasks.length > 0 && taskContext && (
+                {/* Task context - outside the toggle button, resolved per file */}
+                {fileTask && (
                   <div className="flex shrink-0 items-center gap-2 pr-4 text-xs text-muted-foreground">
-                    {taskContext.requirement_ids?.[0] && (
-                      <span className="font-mono text-[10px]">REQ: {taskContext.requirement_ids[0]}</span>
+                    {fileTask.requirement_ids?.[0] && (
+                      <span className="font-mono text-[10px]">REQ: {fileTask.requirement_ids[0]}</span>
                     )}
-                    <span className="max-w-[120px] truncate">{taskContext.title}</span>
+                    <span className="max-w-[120px] truncate">{fileTask.title}</span>
                     <Link
                       href="/tasks"
                       className="text-primary hover:underline"

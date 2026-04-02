@@ -79,6 +79,47 @@ describe('FileTreePanel', () => {
     expect(badges.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('groups untagged files under contextTask when contextTask is provided', async () => {
+    const user = userEvent.setup();
+    const contextTask = mockTasks[0]; // 'Add login'
+    const untaggedFiles: FileChange[] = [
+      { path: 'src/untagged.ts', change_type: 'modified', insertions: 1, deletions: 0 },
+    ];
+    render(
+      <FileTreePanel
+        files={untaggedFiles}
+        selectedFile={null}
+        onFileSelect={jest.fn()}
+        tasks={mockTasks}
+        contextTask={contextTask}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: /group by task/i }));
+
+    // Untagged file should appear under the contextTask group, not 'Unassigned'
+    expect(screen.getByText('Add login')).toBeInTheDocument();
+    expect(screen.queryByText('Unassigned')).not.toBeInTheDocument();
+  });
+
+  it('shows contextTask title as badge in dir mode for files without task_title', () => {
+    const contextTask = mockTasks[0]; // 'Add login'
+    const untaggedFiles: FileChange[] = [
+      { path: 'src/untagged.ts', change_type: 'modified', insertions: 1, deletions: 0 },
+    ];
+    render(
+      <FileTreePanel
+        files={untaggedFiles}
+        selectedFile={null}
+        onFileSelect={jest.fn()}
+        tasks={mockTasks}
+        contextTask={contextTask}
+      />
+    );
+
+    expect(screen.getByText('Add login')).toBeInTheDocument();
+  });
+
   it('task groups are collapsible', async () => {
     const user = userEvent.setup();
     render(<FileTreePanel {...defaultProps} tasks={mockTasks} />);

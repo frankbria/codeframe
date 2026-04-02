@@ -64,10 +64,11 @@ export default function ReviewPage() {
     () => reviewApi.getDiff(workspacePath!)
   );
 
-  // Fetch tasks for context
+  // Fetch tasks for context (optional — errors degrade gracefully, no banner)
   const { data: tasksData } = useSWR<TaskListResponse>(
     workspacePath ? `/api/v2/tasks?workspace_path=${workspacePath}` : null,
-    () => tasksApi.getAll(workspacePath!)
+    () => tasksApi.getAll(workspacePath!),
+    { onError: () => {} }
   );
 
   // Auto-select single IN_PROGRESS task as context
@@ -305,6 +306,7 @@ export default function ReviewPage() {
           selectedFile={selectedFile}
           tasks={tasksData?.tasks ?? []}
           contextTask={contextTask}
+          changedFiles={diffData?.changed_files ?? []}
         />
 
         {/* Commit panel (right sidebar) */}
