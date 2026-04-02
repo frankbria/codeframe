@@ -1,5 +1,3 @@
-'use client';
-
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
@@ -74,11 +72,9 @@ const mockSessApiGetMessages = sessionsApi.getMessages as jest.MockedFunction<
 >;
 
 function swrResult(overrides: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data?: any;
+  data?: unknown;
   isLoading?: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  error?: any;
+  error?: unknown;
 }): ReturnType<typeof useSWR> {
   return {
     data: overrides.data ?? undefined,

@@ -305,42 +305,44 @@ export function AgentChatPanel({
       </div>
 
       {/* Input bar — hidden in read-only mode */}
-      {!readOnly && <div className="border-t bg-background px-4 py-3">
-        <div className="flex items-end gap-2">
-          {isBusy && (
+      {!readOnly && (
+        <div className="border-t bg-background px-4 py-3">
+          <div className="flex items-end gap-2">
+            {isBusy && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={interrupt}
+                aria-label="Interrupt agent"
+              >
+                <Cancel01Icon className="h-4 w-4 mr-1" />
+                Interrupt
+              </Button>
+            )}
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={handleInput}
+              onKeyDown={handleKeyDown}
+              disabled={isBusy}
+              placeholder="Message your agent... (Enter to send)"
+              rows={1}
+              aria-label="Message input"
+              style={{ maxHeight: '9rem' }}
+              className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            />
             <Button
-              variant="outline"
-              size="sm"
-              onClick={interrupt}
-              aria-label="Interrupt agent"
+              size="icon"
+              onClick={handleSend}
+              disabled={isBusy || !value.trim()}
+              aria-label="Send message"
+              className="shrink-0"
             >
-              <Cancel01Icon className="h-4 w-4 mr-1" />
-              Interrupt
+              <SentIcon className="h-4 w-4" />
             </Button>
-          )}
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            disabled={isBusy}
-            placeholder="Message your agent... (Enter to send)"
-            rows={1}
-            aria-label="Message input"
-            style={{ maxHeight: '9rem' }}
-            className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-          />
-          <Button
-            size="icon"
-            onClick={handleSend}
-            disabled={isBusy || !value.trim()}
-            aria-label="Send message"
-            className="shrink-0"
-          >
-            <SentIcon className="h-4 w-4" />
-          </Button>
+          </div>
         </div>
-      </div>}
+      )}
     </div>
   );
 }

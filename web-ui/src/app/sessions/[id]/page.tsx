@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import useSWR from 'swr';
@@ -62,6 +62,7 @@ export default function SessionDetailPage() {
   const [endingSession, setEndingSession] = useState(false);
   const [endError, setEndError] = useState<string | null>(null);
   const [historyMessages, setHistoryMessages] = useState<ChatMessage[] | undefined>(undefined);
+  const messagesFetchedRef = useRef(false);
 
   // Set page title once session is loaded
   useEffect(() => {
@@ -70,15 +71,16 @@ export default function SessionDetailPage() {
     }
   }, [session]);
 
-  // Load message history for ended sessions via REST
+  // Load message history for ended sessions via REST (once per mount)
   useEffect(() => {
-    if (session?.state === 'ended' && historyMessages === undefined) {
+    if (session?.state === 'ended' && !messagesFetchedRef.current) {
+      messagesFetchedRef.current = true;
       sessionsApi
         .getMessages(session.id)
         .then(setHistoryMessages)
         .catch(() => setHistoryMessages([]));
     }
-  }, [session, historyMessages]);
+  }, [session]);
 
   const handleEndSession = useCallback(async () => {
     if (!session || session.state !== 'active') return;
@@ -170,7 +172,7 @@ export default function SessionDetailPage() {
 
         <div className="ml-auto flex items-center gap-2">
           {endError && (
-            <span className="text-xs text-destructive">{endError}</span>
+            <span className="text-xs text-destructive" role="alert">{endError}</span>
           )}
           <Button
             variant="outline"
@@ -194,7 +196,7 @@ export default function SessionDetailPage() {
       )}
 
       {/* Body — SplitPane for active, chat-only for ended */}
-      <div className="flex-1 overflow-hidden" style={{ height: 'calc(100vh - var(--header-height, 48px))' }}>
+      <div className="flex-1 overflow-hidden">
         {isActive ? (
           <SplitPane
             left={<AgentChatPanel sessionId={session.id} className="h-full" />}
