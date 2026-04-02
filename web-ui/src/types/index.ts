@@ -371,6 +371,26 @@ export interface PipelineStatus {
   ship: PhaseStatus;
 }
 
+// Session types
+// Must match backend session model
+export type SessionState = 'active' | 'ended' | 'paused';
+
+export interface Session {
+  id: string;
+  state: SessionState;
+  workspace_path: string;
+  model: string;
+  created_at: string;
+  ended_at: string | null;
+  cost_usd: number;
+  agent_name: string | null;
+}
+
+export interface SessionListResponse {
+  sessions: Session[];
+  total: number;
+}
+
 // Agent chat types (useAgentChat hook — issue #504)
 export type MessageRole =
   | 'user'
