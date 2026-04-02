@@ -6,117 +6,15 @@ import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { InformationCircleIcon } from '@hugeicons/react';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip';
-import { ProofStatusBadge } from '@/components/proof';
-import { proofApi } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { ProofStatusBadge, WaiveDialog } from '@/components/proof';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
-import type { ProofRequirement, ProofRequirementListResponse, WaiveRequest } from '@/types';
-
-function WaiveDialog({
-  requirement,
-  workspacePath,
-  onClose,
-  onSuccess,
-}: {
-  requirement: ProofRequirement;
-  workspacePath: string;
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const [reason, setReason] = useState('');
-  const [expires, setExpires] = useState('');
-  const [approvedBy, setApprovedBy] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reason.trim()) {
-      setError('Reason is required');
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const body: WaiveRequest = {
-        reason: reason.trim(),
-        expires: expires || null,
-        manual_checklist: [],
-        approved_by: approvedBy.trim(),
-      };
-      await proofApi.waive(workspacePath, requirement.id, body);
-      onSuccess();
-    } catch {
-      setError('Failed to waive requirement');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Waive {requirement.id}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="waive-reason" className="mb-1 block text-sm font-medium">Reason *</label>
-            <Textarea
-              id="waive-reason"
-              rows={3}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Why is this requirement being waived?"
-            />
-          </div>
-          <div>
-            <label htmlFor="waive-expires" className="mb-1 block text-sm font-medium">Expiry date (optional)</label>
-            <Input
-              id="waive-expires"
-              type="date"
-              value={expires}
-              onChange={(e) => setExpires(e.target.value)}
-            />
-          </div>
-          <div>
-            <label htmlFor="waive-approved-by" className="mb-1 block text-sm font-medium">Approved by</label>
-            <Input
-              id="waive-approved-by"
-              type="text"
-              value={approvedBy}
-              onChange={(e) => setApprovedBy(e.target.value)}
-              placeholder="Your name or handle"
-            />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? 'Waiving…' : 'Waive requirement'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
+import type { ProofRequirement, ProofRequirementListResponse } from '@/types';
 
 function ProofPageContent() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
@@ -285,7 +183,7 @@ function ProofPageContent() {
                     </tr>
                   )}
                   {visibleReqs.map((req) => (
-                    <tr key={req.id} className="border-b last:border-0 hover:bg-muted/30">
+                    <tr key={req.id} className={`border-b last:border-0 hover:bg-muted/30${req.status === 'waived' ? ' opacity-60' : ''}`}>
                       <td className="px-4 py-3 font-mono text-xs">
                         <Link href={`/proof/${encodeURIComponent(req.id)}`} className="text-primary hover:underline">
                           {req.id}
@@ -329,7 +227,7 @@ function ProofPageContent() {
 
         {waivedReq && (
           <WaiveDialog
-            requirement={waivedReq}
+            reqId={waivedReq.id}
             workspacePath={workspacePath}
             onClose={() => setWaivedReq(null)}
             onSuccess={() => {

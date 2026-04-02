@@ -4,109 +4,11 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { ProofStatusBadge } from '@/components/proof';
+import { ProofStatusBadge, WaiveDialog } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
-import type { ProofRequirement, ProofEvidence, WaiveRequest } from '@/types';
-
-function WaiveDialog({
-  reqId,
-  workspacePath,
-  onClose,
-  onSuccess,
-}: {
-  reqId: string;
-  workspacePath: string;
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const [reason, setReason] = useState('');
-  const [expires, setExpires] = useState('');
-  const [approvedBy, setApprovedBy] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reason.trim()) { setError('Reason is required'); return; }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const body: WaiveRequest = {
-        reason: reason.trim(),
-        expires: expires || null,
-        manual_checklist: [],
-        approved_by: approvedBy.trim(),
-      };
-      await proofApi.waive(workspacePath, reqId, body);
-      onSuccess();
-    } catch {
-      setError('Failed to waive requirement');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Waive {reqId}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="waive-reason" className="mb-1 block text-sm font-medium">Reason *</label>
-            <Textarea
-              id="waive-reason"
-              rows={3}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Why is this requirement being waived?"
-            />
-          </div>
-          <div>
-            <label htmlFor="waive-expires" className="mb-1 block text-sm font-medium">Expiry date (optional)</label>
-            <Input
-              id="waive-expires"
-              type="date"
-              value={expires}
-              onChange={(e) => setExpires(e.target.value)}
-            />
-          </div>
-          <div>
-            <label htmlFor="waive-approved-by" className="mb-1 block text-sm font-medium">Approved by</label>
-            <Input
-              id="waive-approved-by"
-              type="text"
-              value={approvedBy}
-              onChange={(e) => setApprovedBy(e.target.value)}
-              placeholder="Your name or handle"
-            />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? 'Waiving…' : 'Waive requirement'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
+import type { ProofRequirement, ProofEvidence } from '@/types';
 
 export default function ProofDetailPage() {
   const params = useParams();
@@ -276,11 +178,14 @@ export default function ProofDetailPage() {
               {req.waiver ? (
                 <div className="rounded-lg border bg-muted/30 p-4">
                   <p className="text-sm"><span className="font-medium">Reason:</span> {req.waiver.reason}</p>
-                  {req.waiver.expires && (
-                    <p className="mt-1 text-sm text-muted-foreground">Expires: {req.waiver.expires}</p>
-                  )}
                   {req.waiver.approved_by && (
                     <p className="mt-1 text-sm text-muted-foreground">Approved by: {req.waiver.approved_by}</p>
+                  )}
+                  {req.waiver.waived_at && (
+                    <p className="mt-1 text-sm text-muted-foreground">Waived: {new Date(req.waiver.waived_at).toLocaleString()}</p>
+                  )}
+                  {req.waiver.expires && (
+                    <p className="mt-1 text-sm text-muted-foreground">Expires: {req.waiver.expires}</p>
                   )}
                 </div>
               ) : (

@@ -98,6 +98,7 @@ class Waiver:
     expires: Optional[date] = None
     manual_checklist: list[str] = field(default_factory=list)
     approved_by: str = ""
+    waived_at: Optional[datetime] = None
 
 
 @dataclass

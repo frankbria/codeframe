@@ -60,4 +60,6 @@ module.exports = {
   Alert01Icon: createIconMock('Alert01Icon'),
   // SplitPane
   ArrowLeft01Icon: createIconMock('ArrowLeft01Icon'),
+  // Proof page
+  InformationCircleIcon: createIconMock('InformationCircleIcon'),
 };
