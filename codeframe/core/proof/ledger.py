@@ -320,6 +320,14 @@ def waive_requirement(
     workspace: Workspace, req_id: str, waiver: Waiver
 ) -> Optional[Requirement]:
     """Waive a requirement with reason and optional expiry."""
+    if waiver.waived_at is None:
+        waiver = Waiver(
+            reason=waiver.reason,
+            expires=waiver.expires,
+            manual_checklist=waiver.manual_checklist,
+            approved_by=waiver.approved_by,
+            waived_at=datetime.now(timezone.utc),
+        )
     _ensure_tables(workspace)
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
