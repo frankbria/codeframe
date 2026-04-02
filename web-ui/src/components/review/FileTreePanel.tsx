@@ -57,8 +57,12 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
   const groupedByTask = useMemo(() => {
     const groups = new Map<string, { title: string; files: FileChange[] }>();
     for (const file of files) {
-      const taskId = file.task_id ?? 'unassigned';
-      const taskTitle = file.task_title ?? tasks?.find((t) => t.id === taskId)?.title ?? 'Unassigned';
+      const taskId = file.task_id ?? contextTask?.id ?? 'unassigned';
+      const taskTitle =
+        file.task_title ??
+        tasks?.find((t) => t.id === taskId)?.title ??
+        contextTask?.title ??
+        'Unassigned';
       const existing = groups.get(taskId);
       if (existing) {
         existing.files.push(file);
@@ -67,7 +71,7 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
       }
     }
     return groups;
-  }, [files, tasks]);
+  }, [files, tasks, contextTask]);
 
   function toggleDir(dir: string) {
     setCollapsedDirs((prev) => {
@@ -172,9 +176,9 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                               <span className="truncate font-mono">
                                 {getFilename(file.path)}
                               </span>
-                              {file.task_title && (
+                              {(file.task_title ?? contextTask?.title) && (
                                 <span className="mx-1 shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                                  {file.task_title}
+                                  {file.task_title ?? contextTask?.title}
                                 </span>
                               )}
                               <span className="ml-auto flex shrink-0 gap-1 font-mono text-[10px]">
