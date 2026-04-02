@@ -287,6 +287,7 @@ export interface ProofWaiver {
   expires: string | null;
   manual_checklist: string[];
   approved_by: string;
+  waived_at?: string | null;
 }
 
 export interface ProofRequirement {
