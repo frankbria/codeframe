@@ -149,7 +149,8 @@ export function SplitPane({
     };
   }, [minPanePercent, commitExpandedSplit]);
 
-  const onDividerMouseDown = () => {
+  const onDividerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
     isDragging.current = true;
     dragMoved.current = false;
     livePercent.current = splitPct; // reset so a no-move click never commits a stale value
