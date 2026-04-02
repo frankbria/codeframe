@@ -195,6 +195,8 @@ export interface FileChange {
   change_type: FileChangeType;
   insertions: number;
   deletions: number;
+  task_id?: string;      // Which task modified this file (optional, for future backend enrichment)
+  task_title?: string;   // Task title for display (optional)
 }
 
 export interface DiffStatsResponse {
