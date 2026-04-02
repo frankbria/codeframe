@@ -19,6 +19,10 @@ import type { ChatMessage, AgentChatStatus } from '@/types';
 interface AgentChatPanelProps {
   sessionId: string;
   className?: string;
+  /** When true, hides the input bar (e.g. for ended sessions). */
+  readOnly?: boolean;
+  /** Pre-loaded messages to display instead of live WebSocket messages. */
+  initialMessages?: ChatMessage[];
 }
 
 // ── Status dot ───────────────────────────────────────────────────────────
@@ -192,9 +196,17 @@ function MessageRow({
 
 // ── Main component ────────────────────────────────────────────────────────
 
-export function AgentChatPanel({ sessionId, className }: AgentChatPanelProps) {
-  const { state, sendMessage, interrupt } = useAgentChat(sessionId);
-  const { messages, status, costUsd } = state;
+export function AgentChatPanel({
+  sessionId,
+  className,
+  readOnly = false,
+  initialMessages,
+}: AgentChatPanelProps) {
+  const { state, sendMessage, interrupt } = useAgentChat(
+    readOnly ? null : sessionId
+  );
+  const { status, costUsd } = state;
+  const messages = initialMessages ?? state.messages;
 
   const [value, setValue] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -292,8 +304,8 @@ export function AgentChatPanel({ sessionId, className }: AgentChatPanelProps) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input bar */}
-      <div className="border-t bg-background px-4 py-3">
+      {/* Input bar — hidden in read-only mode */}
+      {!readOnly && <div className="border-t bg-background px-4 py-3">
         <div className="flex items-end gap-2">
           {isBusy && (
             <Button
@@ -328,7 +340,7 @@ export function AgentChatPanel({ sessionId, className }: AgentChatPanelProps) {
             <SentIcon className="h-4 w-4" />
           </Button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

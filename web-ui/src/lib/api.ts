@@ -47,6 +47,7 @@ import type {
   SessionState,
   SessionListResponse,
   SessionCreateRequest,
+  ChatMessage,
 } from '@/types';
 
 // FastAPI validation error format
@@ -651,6 +652,39 @@ export const sessionsApi = {
   create: async (data: SessionCreateRequest): Promise<Session> => {
     const response = await api.post<Session>('/api/v2/sessions', data);
     return response.data;
+  },
+
+  /**
+   * Get a single session by ID
+   */
+  getOne: async (id: string): Promise<Session> => {
+    const response = await api.get<Session>(
+      `/api/v2/sessions/${encodeURIComponent(id)}`
+    );
+    return response.data;
+  },
+
+  /**
+   * Get message history for a session (REST, for ended sessions)
+   */
+  getMessages: async (
+    id: string,
+    params?: { limit?: number; offset?: number }
+  ): Promise<ChatMessage[]> => {
+    const response = await api.get<
+      Array<{
+        id: string;
+        role: string;
+        content: string;
+        created_at: string;
+      }>
+    >(`/api/v2/sessions/${encodeURIComponent(id)}/messages`, { params });
+    return response.data.map((m) => ({
+      id: m.id,
+      role: m.role as ChatMessage['role'],
+      content: m.content,
+      createdAt: m.created_at,
+    }));
   },
 
   /**
