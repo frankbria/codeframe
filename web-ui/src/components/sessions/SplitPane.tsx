@@ -122,9 +122,13 @@ export function SplitPane({
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging.current || !containerRef.current) return;
-      dragMoved.current = true;
       const rect = containerRef.current.getBoundingClientRect();
       const rawPct = ((e.clientX - rect.left) / rect.width) * 100;
+      // No-op: pointer is moving further outward from an already-collapsed edge.
+      // Only begin tracking movement once the pointer crosses back inside.
+      if (livePercent.current === 0 && rawPct <= 0) return;
+      if (livePercent.current === 100 && rawPct >= 100) return;
+      dragMoved.current = true;
       const clamped = clamp(rawPct, minPanePercent, 100 - minPanePercent);
       livePercent.current = clamped;
       if (leftPaneRef.current) leftPaneRef.current.style.width = `${clamped}%`;

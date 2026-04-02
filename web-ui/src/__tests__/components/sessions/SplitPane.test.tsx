@@ -218,6 +218,68 @@ describe('SplitPane', () => {
       expect(localStorageMock.getItem('split-pane-position')).toBe('45');
     });
 
+    it('outward drag from left-collapsed edge is a no-op (no width change, no storage write)', () => {
+      mockContainerRect(0, 1000);
+      renderSplitPane({ defaultSplit: 45, storageKey: 'test-key' });
+      fireEvent.click(screen.getByTestId('collapse-left')); // splitPct → 0
+      localStorageMock.clear();
+
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.mouseDown(divider); // livePercent.current resets to 0
+      // clientX = -50 → rawPct = -5% (further left/outward)
+      fireEvent.mouseMove(document, { clientX: -50 });
+      fireEvent.mouseUp(document);
+
+      expect(localStorageMock.getItem('test-key')).toBeNull();
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '0%' });
+    });
+
+    it('outward drag from right-collapsed edge is a no-op (no width change, no storage write)', () => {
+      mockContainerRect(0, 1000);
+      renderSplitPane({ defaultSplit: 45, storageKey: 'test-key' });
+      fireEvent.click(screen.getByTestId('collapse-right')); // splitPct → 100
+      localStorageMock.clear();
+
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.mouseDown(divider); // livePercent.current resets to 100
+      // clientX = 1050 → rawPct = 105% (further right/outward)
+      fireEvent.mouseMove(document, { clientX: 1050 });
+      fireEvent.mouseUp(document);
+
+      expect(localStorageMock.getItem('test-key')).toBeNull();
+      expect(screen.getByTestId('split-pane-right')).toHaveStyle({ width: '0%' });
+    });
+
+    it('inward drag from left-collapsed edge exits collapsed state and commits', () => {
+      mockContainerRect(0, 1000);
+      renderSplitPane({ defaultSplit: 45, minPanePercent: 15, storageKey: 'test-key' });
+      fireEvent.click(screen.getByTestId('collapse-left')); // splitPct → 0
+
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.mouseDown(divider); // livePercent.current resets to 0
+      // clientX = 300 → rawPct = 30% (inward)
+      fireEvent.mouseMove(document, { clientX: 300 });
+      fireEvent.mouseUp(document);
+
+      expect(localStorageMock.getItem('test-key')).toBe('30');
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '30%' });
+    });
+
+    it('inward drag from right-collapsed edge exits collapsed state and commits', () => {
+      mockContainerRect(0, 1000);
+      renderSplitPane({ defaultSplit: 45, minPanePercent: 15, storageKey: 'test-key' });
+      fireEvent.click(screen.getByTestId('collapse-right')); // splitPct → 100
+
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.mouseDown(divider); // livePercent.current resets to 100
+      // clientX = 700 → rawPct = 70% (inward, right pane gets 30%)
+      fireEvent.mouseMove(document, { clientX: 700 });
+      fireEvent.mouseUp(document);
+
+      expect(localStorageMock.getItem('test-key')).toBe('70');
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '70%' });
+    });
+
     it('plain click on divider does not reopen a collapsed pane', () => {
       // mousedown + immediate mouseup (no mousemove) must not commit livePercent
       renderSplitPane({ defaultSplit: 45, storageKey: 'test-key' });
