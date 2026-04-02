@@ -22,17 +22,21 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function readStorage(key: string, fallback: number, min: number, max: number): number {
+  const normalizedFallback = clamp(fallback, min, max);
   try {
     const raw = localStorage.getItem(key);
     if (raw !== null) {
-      const parsed = parseFloat(raw);
-      // Only restore valid expanded positions; ignore collapsed values (0/100)
-      if (!isNaN(parsed) && parsed >= min && parsed <= max) return parsed;
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed)) {
+        // Reject collapsed sentinels — restore to valid expanded position
+        if (parsed === 0 || parsed === 100) return normalizedFallback;
+        return clamp(parsed, min, max);
+      }
     }
   } catch {
     // localStorage unavailable (SSR, private browsing, etc.)
   }
-  return fallback;
+  return normalizedFallback;
 }
 
 function writeStorage(key: string, value: number): void {
@@ -65,6 +69,7 @@ export function SplitPane({
   const leftPaneRef = useRef<HTMLDivElement>(null);
   const rightPaneRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
+  const dragMoved = useRef(false);
   const livePercent = useRef(splitPct);
   const lastNonCollapsed = useRef(splitPct);
   const transitionEnabled = useRef(false);
@@ -117,6 +122,7 @@ export function SplitPane({
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging.current || !containerRef.current) return;
+      dragMoved.current = true;
       const rect = containerRef.current.getBoundingClientRect();
       const rawPct = ((e.clientX - rect.left) / rect.width) * 100;
       const clamped = clamp(rawPct, minPanePercent, 100 - minPanePercent);
@@ -128,7 +134,11 @@ export function SplitPane({
     const onMouseUp = () => {
       if (!isDragging.current) return;
       isDragging.current = false;
-      commitExpandedSplit(livePercent.current);
+      // Only commit if the divider actually moved — plain clicks must not reopen collapsed panes
+      if (dragMoved.current) {
+        commitExpandedSplit(livePercent.current);
+      }
+      dragMoved.current = false;
     };
 
     document.addEventListener('mousemove', onMouseMove);
@@ -141,6 +151,8 @@ export function SplitPane({
 
   const onDividerMouseDown = () => {
     isDragging.current = true;
+    dragMoved.current = false;
+    livePercent.current = splitPct; // reset so a no-move click never commits a stale value
     transitionEnabled.current = false;
     if (leftPaneRef.current) leftPaneRef.current.style.transition = '';
     if (rightPaneRef.current) rightPaneRef.current.style.transition = '';
@@ -243,8 +255,8 @@ export function SplitPane({
         role="separator"
         aria-orientation="vertical"
         aria-valuenow={splitPct}
-        aria-valuemin={splitPct <= minPanePercent ? 0 : minPanePercent}
-        aria-valuemax={splitPct >= 100 - minPanePercent ? 100 : 100 - minPanePercent}
+        aria-valuemin={splitPct === 0 ? 0 : minPanePercent}
+        aria-valuemax={splitPct === 100 ? 100 : 100 - minPanePercent}
         aria-label="Resize panes"
         tabIndex={0}
         className={cn(

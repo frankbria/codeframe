@@ -122,11 +122,27 @@ describe('SplitPane', () => {
       expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '70%' });
     });
 
-    it('ignores out-of-range localStorage values and falls back to defaultSplit', () => {
-      // 0 and 100 are collapsed positions — should not be restored
+    it('ignores collapsed sentinels (0/100) and falls back to defaultSplit', () => {
       localStorageMock.setItem('split-pane-position', '0');
       renderSplitPane({ defaultSplit: 45 });
       expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '45%' });
+    });
+
+    it('clamps stored value below min up to minPanePercent on reload', () => {
+      localStorageMock.setItem('split-pane-position', '10');
+      renderSplitPane({ minPanePercent: 15, defaultSplit: 45 });
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '15%' });
+    });
+
+    it('clamps stored value above max down to 100-minPanePercent on reload', () => {
+      localStorageMock.setItem('split-pane-position', '90');
+      renderSplitPane({ minPanePercent: 15, defaultSplit: 45 });
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '85%' });
+    });
+
+    it('clamps an out-of-range defaultSplit into the expanded range', () => {
+      renderSplitPane({ defaultSplit: 5, minPanePercent: 15 });
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '15%' });
     });
 
     it('persists position to localStorage on drag end', () => {
@@ -200,6 +216,21 @@ describe('SplitPane', () => {
       fireEvent.mouseUp(document);
 
       expect(localStorageMock.getItem('split-pane-position')).toBe('45');
+    });
+
+    it('plain click on divider does not reopen a collapsed pane', () => {
+      // mousedown + immediate mouseup (no mousemove) must not commit livePercent
+      renderSplitPane({ defaultSplit: 45, storageKey: 'test-key' });
+      fireEvent.click(screen.getByTestId('collapse-left')); // collapse → splitPct=0
+      localStorageMock.clear();
+
+      const divider = screen.getByTestId('split-pane-divider');
+      fireEvent.mouseDown(divider);
+      fireEvent.mouseUp(document); // no mousemove in between
+
+      // Storage should remain untouched — pane stays collapsed
+      expect(localStorageMock.getItem('test-key')).toBeNull();
+      expect(screen.getByTestId('split-pane-left')).toHaveStyle({ width: '0%' });
     });
   });
 
