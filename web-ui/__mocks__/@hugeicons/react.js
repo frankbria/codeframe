@@ -62,4 +62,7 @@ module.exports = {
   ArrowLeft01Icon: createIconMock('ArrowLeft01Icon'),
   // Proof page
   InformationCircleIcon: createIconMock('InformationCircleIcon'),
+  // FileTreePanel / DiffViewer
+  FileAddIcon: createIconMock('FileAddIcon'),
+  FileRemoveIcon: createIconMock('FileRemoveIcon'),
 };
