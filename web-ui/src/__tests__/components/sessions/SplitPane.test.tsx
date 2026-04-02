@@ -433,10 +433,10 @@ describe('SplitPane', () => {
       expect(screen.getByTestId('split-pane-container').className).toContain('flex-col');
     });
 
-    it('hides divider on mobile', () => {
+    it('hides divider track on mobile', () => {
       mockMatchMedia(false);
       renderSplitPane();
-      expect(screen.getByTestId('split-pane-divider').className).toContain('hidden');
+      expect(screen.getByTestId('split-pane-divider-track').className).toContain('hidden');
     });
 
     it('switches to desktop layout when viewport widens', () => {

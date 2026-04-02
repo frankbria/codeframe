@@ -252,26 +252,38 @@ export function SplitPane({
         {left}
       </div>
 
-      {/* Divider — role="separator" exposes collapse buttons to AT */}
+      {/*
+        Divider track — positions separator and collapse buttons as siblings.
+        WAI-ARIA 1.2 §6.8: a focusable separator is a widget and must not
+        contain interactive descendants; buttons live here, not inside the
+        role="separator" element.
+      */}
       <div
-        data-testid="split-pane-divider"
-        onMouseDown={onDividerMouseDown}
-        onKeyDown={onDividerKeyDown}
-        role="separator"
-        aria-orientation="vertical"
-        aria-valuenow={splitPct}
-        aria-valuemin={splitPct === 0 ? 0 : minPanePercent}
-        aria-valuemax={splitPct === 100 ? 100 : 100 - minPanePercent}
-        aria-label="Resize panes"
-        tabIndex={0}
+        data-testid="split-pane-divider-track"
         className={cn(
-          'relative flex-shrink-0 w-1 bg-border hover:bg-primary cursor-col-resize',
-          'flex flex-col items-center justify-center',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'relative flex-shrink-0 w-1',
           isMobile && 'hidden',
         )}
       >
-        {/* Left collapse button */}
+        {/* Resize handle */}
+        <div
+          data-testid="split-pane-divider"
+          onMouseDown={onDividerMouseDown}
+          onKeyDown={onDividerKeyDown}
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuenow={splitPct}
+          aria-valuemin={splitPct === 0 ? 0 : minPanePercent}
+          aria-valuemax={splitPct === 100 ? 100 : 100 - minPanePercent}
+          aria-label="Resize panes"
+          tabIndex={0}
+          className={cn(
+            'w-full h-full bg-border hover:bg-primary cursor-col-resize',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          )}
+        />
+
+        {/* Left collapse button — sibling of separator, not child */}
         <button
           type="button"
           data-testid="collapse-left"
@@ -292,7 +304,7 @@ export function SplitPane({
           )}
         </button>
 
-        {/* Right collapse button */}
+        {/* Right collapse button — sibling of separator, not child */}
         <button
           type="button"
           data-testid="collapse-right"
