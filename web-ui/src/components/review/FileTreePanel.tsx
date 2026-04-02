@@ -177,7 +177,7 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                               <span className="truncate font-mono">
                                 {getFilename(file.path)}
                               </span>
-                              {(file.task_title ?? contextTask?.title) && (
+                              {(file.task_title ?? (!file.task_id ? contextTask?.title : undefined)) && (
                                 <span className="mx-1 shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
                                   {file.task_title ?? contextTask?.title}
                                 </span>
