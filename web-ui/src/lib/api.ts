@@ -143,6 +143,21 @@ export const workspaceApi = {
   },
 
   /**
+   * Update the tech stack for an existing workspace
+   */
+  updateTechStack: async (
+    workspacePath: string,
+    techStack: string
+  ): Promise<WorkspaceResponse> => {
+    const response = await api.patch<WorkspaceResponse>(
+      '/api/v2/workspaces/current',
+      { tech_stack: techStack },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  /**
    * Get workspace info for a specific path
    */
   getByPath: async (workspacePath: string): Promise<WorkspaceResponse> => {

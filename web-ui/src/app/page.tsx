@@ -12,6 +12,7 @@ import {
 import { ProofStatusWidget } from '@/components/proof';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
 import { workspaceApi, tasksApi, eventsApi } from '@/lib/api';
+import { TechStackConfirmDialog } from '@/components/workspace/TechStackConfirmDialog';
 import {
   getSelectedWorkspacePath,
   setSelectedWorkspacePath,
@@ -98,6 +99,12 @@ export default function WorkspacePage() {
   const [isSelectingWorkspace, setIsSelectingWorkspace] = useState(false);
   const [selectionError, setSelectionError] = useState<string | null>(null);
 
+  // Tech stack confirmation dialog state
+  const [techStackDialog, setTechStackDialog] = useState<{
+    open: boolean;
+    detectedStack: string | null;
+  }>({ open: false, detectedStack: null });
+
   // Load workspace path from localStorage on mount
   useEffect(() => {
     const stored = getSelectedWorkspacePath();
@@ -147,10 +154,11 @@ export default function WorkspacePage() {
         setSelectedWorkspacePath(path);
         setWorkspacePath(path);
       } else {
-        // Initialize new workspace
-        await workspaceApi.init(path, { detect: true });
+        // Initialize new workspace and show tech stack confirmation
+        const initialized = await workspaceApi.init(path, { detect: true });
         setSelectedWorkspacePath(path);
         setWorkspacePath(path);
+        setTechStackDialog({ open: true, detectedStack: initialized.tech_stack });
       }
     } catch (error) {
       const apiError = error as ApiError;
@@ -220,12 +228,25 @@ export default function WorkspacePage() {
   // Check if workspace needs initialization
   const workspaceNotFound = workspaceError?.status_code === 404 || !workspace;
 
+  // Handle tech stack confirmation (after init or manual edit)
+  const handleTechStackConfirm = async (stack: string) => {
+    setTechStackDialog({ open: false, detectedStack: null });
+    if (!workspacePath) return;
+    try {
+      await workspaceApi.updateTechStack(workspacePath, stack);
+      await mutateWorkspace();
+    } catch (error) {
+      console.error('Failed to update tech stack:', error);
+    }
+  };
+
   // Handle workspace initialization from the header
   const handleInitialize = async () => {
     if (!workspacePath) return;
     try {
-      await workspaceApi.init(workspacePath, { detect: true });
+      const initialized = await workspaceApi.init(workspacePath, { detect: true });
       await mutateWorkspace();
+      setTechStackDialog({ open: true, detectedStack: initialized.tech_stack });
     } catch (error) {
       console.error('Failed to initialize workspace:', error);
     }
@@ -234,6 +255,12 @@ export default function WorkspacePage() {
 
   return (
     <main className="min-h-screen bg-background">
+      <TechStackConfirmDialog
+        open={techStackDialog.open}
+        detectedStack={techStackDialog.detectedStack}
+        onConfirm={handleTechStackConfirm}
+        onCancel={() => setTechStackDialog({ open: false, detectedStack: null })}
+      />
       <div className="mx-auto max-w-7xl px-4 py-8">
         {/* Switch workspace link */}
         <div className="mb-4">
@@ -261,6 +288,12 @@ export default function WorkspacePage() {
               techStack={workspace?.tech_stack || null}
               taskCounts={tasksData?.by_status || emptyTaskCounts}
               activeRunCount={activeRunCount}
+              onEditTechStack={() =>
+                setTechStackDialog({
+                  open: true,
+                  detectedStack: workspace?.tech_stack ?? null,
+                })
+              }
             />
 
             <div className="mt-4">

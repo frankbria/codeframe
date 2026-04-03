@@ -8,6 +8,7 @@ import {
 } from '@hugeicons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TaskStatusCounts } from '@/types';
 
@@ -15,12 +16,14 @@ interface WorkspaceStatsCardsProps {
   techStack: string | null;
   taskCounts: TaskStatusCounts;
   activeRunCount: number;
+  onEditTechStack?: () => void;
 }
 
 export function WorkspaceStatsCards({
   techStack,
   taskCounts,
   activeRunCount,
+  onEditTechStack,
 }: WorkspaceStatsCardsProps) {
   const totalTasks = Object.values(taskCounts).reduce((sum, count) => sum + count, 0);
 
@@ -37,6 +40,17 @@ export function WorkspaceStatsCards({
             <p className="text-lg font-semibold">{techStack}</p>
           ) : (
             <p className="text-sm text-muted-foreground">Not detected</p>
+          )}
+          {onEditTechStack && (
+            <Button
+              variant="link"
+              size="sm"
+              onClick={onEditTechStack}
+              className="mt-2 h-auto p-0 text-xs"
+              data-testid="edit-tech-stack-btn"
+            >
+              Edit Tech Stack
+            </Button>
           )}
         </CardContent>
       </Card>
