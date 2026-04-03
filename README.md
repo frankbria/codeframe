@@ -302,12 +302,13 @@ CodeFRAME v2 (Phases 1–6 complete) delivers the full Think-Build-Prove-Ship lo
 - [ ] Deployment hooks
 
 ### Web UI
-- [x] Workspace and PRD views with Socratic discovery
-- [x] Onboarding guidance card for new workspaces (Think→Build→Prove→Ship pipeline steps, dismissable per workspace)
-- [x] Task board with Kanban and batch execution
-- [x] Blocker Resolution view
-- [x] Review and Commit view with diff viewer
-- [x] PROOF9 requirements list, detail, and evidence history
+- [x] Workspace and PRD views with Socratic discovery, version history, diff/restore
+- [x] Onboarding guidance card for new workspaces (Think→Build→Prove→Ship pipeline steps)
+- [x] Task board with Kanban, dependency graph visualization, traceability badges, batch execution
+- [x] Blocker Resolution view with lifecycle guidance
+- [x] Review and Commit view with diff viewer and file tree
+- [x] PROOF9 requirements list, detail, evidence history, sort/filter controls, waiver with audit trail
+- [x] Interactive Agent Sessions — chat panel (tool calls, thinking blocks), XTerm.js terminal, SplitPane layout
 - [ ] Execution Monitor view
 
 ---
@@ -331,10 +332,15 @@ For server configuration, rate limiting options, and API key setup, see [docs/PH
 ## Testing
 
 ```bash
+# Python / CLI
 uv run pytest                          # All tests
 uv run pytest -m v2                    # v2 tests only
 uv run pytest tests/core/             # Core module tests
 uv run pytest --cov=codeframe --cov-report=html   # With coverage
+
+# Web UI (Phase 3)
+cd web-ui && npm test                  # Jest unit tests
+cd web-ui && npm run build             # Production build verification
 ```
 
 ---

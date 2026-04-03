@@ -1,6 +1,6 @@
 # CodeFRAME Development Guidelines
 
-Last updated: 2026-03-09
+Last updated: 2026-04-03
 
 ## Product Vision
 
@@ -18,7 +18,7 @@ SHIP:   cf pr create → cf pr merge
 LOOP:   Glitch → cf proof capture → New REQ → Enforced forever
 ```
 
-**Status: Phase 1 ✅ | Phase 2 ✅ | Phase 2.5 ✅** — CLI workflow, server layer, and ReAct agent complete. Agent adapter architecture (#408) and PROOF9 quality system (#422) are next priorities. See `docs/V2_STRATEGIC_ROADMAP.md` for the full plan.
+**Status: Phase 1 ✅ | Phase 2 ✅ | Phase 2.5 ✅ | Phase 3 🔄** — CLI workflow, server layer, and ReAct agent complete. Web UI (Phase 3) is substantially built with 13+ pages and 94+ components. See `docs/V2_STRATEGIC_ROADMAP.md` for the full plan.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -53,7 +53,7 @@ The next major architectural work is the **Agent Adapter Architecture** (#408):
 
 ---
 
-## Current Reality (Phase 1, 2 & 2.5 Complete)
+## Current Reality (Phase 1, 2 & 2.5 Complete; Phase 3 In Progress)
 
 ### What's Working Now
 - **Full agent execution**: `cf work start <task-id> --execute` (uses ReAct engine by default)
@@ -86,15 +86,36 @@ The next major architectural work is the **Agent Adapter Architecture** (#408):
 - **Real-time streaming**: SSE for task execution events
 - **OpenAPI documentation**: Full Swagger/ReDoc at `/docs` and `/redoc`
 
+### Phase 3 Web UI (In Progress)
+The web UI is an active development phase, not legacy code. It is a Next.js app router application built on the v2 API layer.
+
+**Pages shipped:**
+- `/` — Workspace dashboard with pipeline progress, quick actions, onboarding card
+- `/prd` — PRD editor with Socratic discovery, version history, diff/restore
+- `/tasks` — Task board (Kanban) with dependency graph, batch actions, traceability badges
+- `/execution` / `/execution/[taskId]` — Batch execution monitor with live event stream
+- `/blockers` — Blocker resolution with lifecycle guidance
+- `/proof` — PROOF9 requirements table (sort/filter) with waiver and audit trail
+- `/proof/[req_id]` — Individual requirement detail and evidence
+- `/review` — Diff viewer with file tree, commit/export patch
+- `/sessions` / `/sessions/[id]` — Interactive agent sessions (chat panel + XTerm.js terminal, SplitPane layout)
+
+**Tech stack:** Next.js 14 App Router, TypeScript, Shadcn/UI, Tailwind CSS, Hugeicons, XTerm.js, WebSocket + SSE
+
+**Testing:** Jest unit tests in `web-ui/src/__tests__/`; Playwright E2E when server is running
+
+**Quality checks include the web UI:** When demoing or verifying features, the web UI should be tested alongside the CLI. `cd web-ui && npm test` must pass. Build must succeed with `npm run build`.
+
 ### v2 Architecture (current)
 - **Core-first**: Domain logic lives in `codeframe/core/` (headless, no FastAPI imports)
 - **CLI-first**: Golden Path works **without any running FastAPI server**
 - **Adapters**: LLM providers in `codeframe/adapters/llm/`
-- **Server/UI optional**: FastAPI and UI are thin adapters over core
+- **Server/UI optional**: FastAPI and UI are thin adapters over core; web UI connects via REST/WebSocket
 
 ### v1 Legacy
-- FastAPI server + WebSockets + React/Next.js dashboard retained for reference
-- Do not build toward v1 patterns during Golden Path work
+- The old `server/` directory contains v1 server code retained as reference only
+- Do not build toward v1 patterns
+- The `web-ui/` is **not v1** — it is the Phase 3 Next.js rebuild consuming the v2 REST/WebSocket API
 
 ---
 
@@ -161,9 +182,12 @@ codeframe/
 │   └── dependencies.py     # Auth dependencies
 ├── config/
 │   └── rate_limits.py      # Rate limit configuration
-└── server/                 # Legacy server code (reference only)
+└── server/                 # Legacy v1 server code (reference only)
 
-web-ui/                     # Frontend (legacy, reference only)
+web-ui/                     # Phase 3 Web UI (Next.js, actively developed)
+│                           # 13+ pages, 94+ components, Shadcn/UI + Tailwind
+│                           # Covers all pipeline stages: PRD, Tasks, Execution,
+│                           # Blockers, Review, PROOF9, Sessions (agent chat + terminal)
 tests/
 ├── core/                   # Core module tests
 │   ├── test_agent.py
@@ -419,12 +443,13 @@ cf work diagnose <task-id>       # AI-powered analysis of failed tasks
 
 Note: `codeframe serve` exists but Golden Path does not depend on it.
 
-### Frontend (legacy)
+### Frontend (Phase 3 — actively developed)
 ```bash
-cd web-ui && npm test
-cd web-ui && npm run build
+cd web-ui && npm test              # Jest unit tests
+cd web-ui && npm run build         # Verify production build
+cd web-ui && npm run dev           # Dev server (requires codeframe serve running)
 ```
-Do not expand frontend scope during Golden Path work.
+The web UI is Phase 3 of the roadmap. Web UI work is in scope. Do not bypass frontend testing when verifying features that have a UI surface.
 
 ---
 
@@ -460,21 +485,37 @@ These describe old server/UI-driven architecture:
 
 ## What NOT to do (common agent failure modes)
 
-- Don't add new HTTP endpoints to support the CLI
+- Don't add new HTTP endpoints to support the CLI (CLI must work without a server)
 - Don't require `codeframe serve` for CLI workflows
-- Don't implement UI concepts (tabs, panels, progress bars) inside core
-- Don't redesign auth, websockets, or UI state management
+- Don't implement UI concepts (tabs, panels, progress bars) inside `codeframe/core/` — keep core headless
 - Don't add multi-providers/model switching features before Golden Path works
-- Don't "clean up the repo" as a goal - only refactor to enable Golden Path
+- Don't "clean up the repo" as a goal - only refactor to enable the pipeline
 - Don't update task status from agent.py - let runtime handle transitions
+- Don't skip web UI testing when verifying features that have a web surface — the web UI is Phase 3, not legacy
 
 ---
 
-## Testing / Demoing CodeFRAME on Sample Projects
+## Testing / Demoing CodeFRAME
 
-When running `uv run cf` commands against a sample project (e.g., `cf-test/`) to test or demo CodeFRAME's capabilities, you are **observing the CodeFRAME agent's work, not doing the work yourself**.
+### Quality checks (when working on CodeFRAME itself)
+A complete quality check covers **both** the CLI/backend and the web UI:
 
-**Rules for testing/demo mode:**
+```bash
+# Python / CLI
+uv run pytest                     # All tests
+uv run ruff check .               # Lint
+
+# Web UI
+cd web-ui && npm test             # Jest unit tests
+cd web-ui && npm run build        # Production build
+```
+
+The web UI is Phase 3, not legacy. If a feature has a UI surface, verify both the API/CLI and the UI. Do not sign off on quality with only Python tests passing.
+
+### Demoing against a sample project
+When running `uv run cf` commands against a sample project (e.g., `cf-test/`) to test or demo CodeFRAME's agent capabilities, you are **observing the CodeFRAME agent's work, not doing the work yourself**.
+
+**Rules for agent observation mode:**
 - You are evaluating how well the CodeFRAME agent (ReAct or Plan engine) builds the project
 - **Do NOT help out, fix errors, or write code** on behalf of the CodeFRAME agent
 - **Do NOT intervene** when the agent makes mistakes — that's data
@@ -553,7 +594,7 @@ Default execution engine switched from plan-based to **ReAct (Reasoning + Acting
 | 1 | CLI Completion | Think + Build | ✅ **Complete** |
 | 2 | Server Layer | Build (API) | ✅ **Complete** |
 | 2.5 | ReAct Agent | Build (execution) | ✅ **Complete** |
-| 3 | Web UI Rebuild | All (dashboard) | In Progress |
+| 3 | Web UI Rebuild | All (dashboard) | 🔄 **In Progress** — 13+ pages, 94+ components shipped |
 | 4 | Agent Adapters + Orchestration | Build (delegate to frontier agents) | **Next** |
 | 5 | PROOF9 + Advanced | Prove + Ship (quality memory) | Planned |
 
