@@ -435,3 +435,7 @@ export interface AgentChatState {
   error: string | null;
   connected: boolean;
 }
+
+// Proof evidence table sort types
+export type ProofEvidenceSortCol = 'gate' | 'result' | 'run_id' | 'timestamp' | 'artifact';
+export type SortDir = 'asc' | 'desc';

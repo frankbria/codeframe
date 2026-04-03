@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import useSWR from 'swr';
 import ProofDetailPage from '@/app/proof/[req_id]/page';
 import * as storage from '@/lib/workspace-storage';
-import type { ProofEvidence, ProofRequirement } from '@/types';
+import type { ProofEvidence, ProofRequirement, ProofEvidenceSortCol, SortDir } from '@/types';
 
 // ── Mocks ────────────────────────────────────────────────────────────────
 
@@ -89,6 +89,12 @@ function evidenceRows() {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
+
+// Clear mocks and sessionStorage before each test to prevent filter state leaking
+beforeEach(() => {
+  jest.clearAllMocks();
+  sessionStorage.clear();
+});
 
 describe('ProofDetailPage — evidence filter controls', () => {
   beforeEach(() => jest.clearAllMocks());

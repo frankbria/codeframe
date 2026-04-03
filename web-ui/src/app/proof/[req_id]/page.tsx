@@ -5,13 +5,33 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ProofStatusBadge, WaiveDialog } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
-import type { ProofRequirement, ProofEvidence } from '@/types';
+import type { ProofRequirement, ProofEvidence, ProofEvidenceSortCol, SortDir } from '@/types';
 
-type SortCol = 'gate' | 'result' | 'run_id' | 'timestamp' | 'artifact';
-type SortDir = 'asc' | 'desc';
+function sessionKey(reqId: string) {
+  return `proof-evidence-filters:${reqId}`;
+}
+
+function loadSessionFilters(reqId: string): { gate: string; result: string; search: string } {
+  if (typeof window === 'undefined') return { gate: '', result: '', search: '' };
+  try {
+    const raw = sessionStorage.getItem(sessionKey(reqId));
+    return raw ? JSON.parse(raw) : { gate: '', result: '', search: '' };
+  } catch {
+    return { gate: '', result: '', search: '' };
+  }
+}
+
+function saveSessionFilters(reqId: string, gate: string, result: string, search: string) {
+  try {
+    sessionStorage.setItem(sessionKey(reqId), JSON.stringify({ gate, result, search }));
+  } catch {
+    // sessionStorage unavailable — ignore
+  }
+}
 
 function SortButton({
   col,
@@ -20,21 +40,23 @@ function SortButton({
   dir,
   onSort,
 }: {
-  col: SortCol;
+  col: ProofEvidenceSortCol;
   label: string;
-  current: SortCol;
+  current: ProofEvidenceSortCol;
   dir: SortDir;
-  onSort: (col: SortCol) => void;
+  onSort: (col: ProofEvidenceSortCol) => void;
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
+      size="sm"
       aria-label={`Sort by ${label}`}
       onClick={() => onSort(col)}
-      className="flex items-center gap-1 font-medium hover:text-foreground"
+      className="-mx-2 h-auto px-2 py-1 font-medium hover:bg-transparent hover:text-foreground"
     >
       {label}
-      {current === col && <span className="text-xs">{dir === 'asc' ? '↑' : '↓'}</span>}
-    </button>
+      {current === col && <span className="ml-1 text-xs">{dir === 'asc' ? '↑' : '↓'}</span>}
+    </Button>
   );
 }
 
@@ -46,18 +68,22 @@ export default function ProofDetailPage() {
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [showWaiveDialog, setShowWaiveDialog] = useState(false);
 
-  // Filter state
+  // Filter state (restored from sessionStorage on mount)
   const [filterGate, setFilterGate] = useState('');
   const [filterResult, setFilterResult] = useState('');
   const [search, setSearch] = useState('');
 
   // Sort state (default: timestamp descending)
-  const [sortCol, setSortCol] = useState<SortCol>('timestamp');
+  const [sortCol, setSortCol] = useState<ProofEvidenceSortCol>('timestamp');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   useEffect(() => {
     setWorkspacePath(getSelectedWorkspacePath());
     setWorkspaceReady(true);
+    const saved = loadSessionFilters(reqId);
+    setFilterGate(saved.gate);
+    setFilterResult(saved.result);
+    setSearch(saved.search);
   }, []);
 
   const { data: req, error: reqError, isLoading: reqLoading, mutate: mutateReq } =
@@ -110,7 +136,7 @@ export default function ProofDetailPage() {
     return rows;
   }, [evidence, filterGate, filterResult, search, sortCol, sortDir]);
 
-  function handleSort(col: SortCol) {
+  function handleSort(col: ProofEvidenceSortCol) {
     if (sortCol === col) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
@@ -119,10 +145,26 @@ export default function ProofDetailPage() {
     }
   }
 
+  function updateGate(val: string) {
+    setFilterGate(val);
+    saveSessionFilters(reqId, val, filterResult, search);
+  }
+
+  function updateResult(val: string) {
+    setFilterResult(val);
+    saveSessionFilters(reqId, filterGate, val, search);
+  }
+
+  function updateSearch(val: string) {
+    setSearch(val);
+    saveSessionFilters(reqId, filterGate, filterResult, val);
+  }
+
   function resetFilters() {
     setFilterGate('');
     setFilterResult('');
     setSearch('');
+    saveSessionFilters(reqId, '', '', '');
   }
 
   if (!workspaceReady) return null;
@@ -226,7 +268,7 @@ export default function ProofDetailPage() {
                     <select
                       aria-label="Gate"
                       value={filterGate}
-                      onChange={(e) => setFilterGate(e.target.value)}
+                      onChange={(e) => updateGate(e.target.value)}
                       className="rounded border bg-background px-2 py-1 text-sm"
                     >
                       <option value="">All</option>
@@ -241,7 +283,7 @@ export default function ProofDetailPage() {
                     <select
                       aria-label="Result"
                       value={filterResult}
-                      onChange={(e) => setFilterResult(e.target.value)}
+                      onChange={(e) => updateResult(e.target.value)}
                       className="rounded border bg-background px-2 py-1 text-sm"
                     >
                       <option value="">All</option>
@@ -250,12 +292,13 @@ export default function ProofDetailPage() {
                     </select>
                   </label>
 
-                  <input
+                  <Input
                     type="text"
                     placeholder="Search run ID or artifact…"
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="rounded border bg-background px-3 py-1 text-sm"
+                    onChange={(e) => updateSearch(e.target.value)}
+                    aria-label="Search run ID or artifact"
+                    className="h-8 w-56 text-sm"
                   />
 
                   {hasActiveFilters && (
@@ -313,8 +356,11 @@ export default function ProofDetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredEvidence.map((ev, i) => (
-                        <tr key={i} className="border-b last:border-0">
+                      {filteredEvidence.map((ev) => (
+                        <tr
+                          key={`${ev.req_id}:${ev.run_id}:${ev.timestamp}:${ev.gate}:${ev.artifact_path}`}
+                          className="border-b last:border-0"
+                        >
                           <td className="px-4 py-2 font-mono text-xs">{ev.gate}</td>
                           <td className="px-4 py-2">
                             <span className={ev.satisfied ? 'text-green-600' : 'text-red-600'}>
