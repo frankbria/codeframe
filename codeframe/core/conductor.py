@@ -538,6 +538,7 @@ class BatchRun:
     stall_action: str = "blocker"
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
     isolate: bool = True
+    isolation: str = "none"
 
 
 def start_batch(
@@ -554,6 +555,7 @@ def start_batch(
     stall_action: str = "blocker",
     concurrency_by_status: Optional[dict[str, int]] = None,
     isolate: bool = True,
+    isolation: str = "none",
 ) -> BatchRun:
     """Start a batch execution of multiple tasks.
 
@@ -609,6 +611,7 @@ def start_batch(
         stall_action=stall_action,
         concurrency=concurrency,
         isolate=isolate,
+        isolation=isolation,
     )
 
     # Save to database
@@ -1014,8 +1017,17 @@ def _execute_serial_resume(
         if on_event:
             on_event("batch_task_started", {"task_id": task_id, "position": i + 1, "is_retry": True})
 
-        # Execute task via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
+        # Execute task via subprocess (with isolation context)
+        from codeframe.core.sandbox.context import IsolationLevel, create_execution_context
+        exec_ctx = create_execution_context(task_id, IsolationLevel(batch.isolation), workspace.repo_path)
+        try:
+            result_status = _execute_task_subprocess(
+                workspace, task_id, batch.id, engine=batch.engine,
+                stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
+                worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+            )
+        finally:
+            exec_ctx.cleanup()
 
         # Record result (overwrites previous result)
         batch.results[task_id] = result_status
@@ -1182,8 +1194,17 @@ def _execute_retries(
             print(f"\n[Retry {retry_num}, {i + 1}/{len(failed_tasks)}] {task_id}: {task_title}")
             print(f"      Previous: {previous_status}")
 
-            # Execute task
-            result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
+            # Execute task (with isolation context)
+            from codeframe.core.sandbox.context import IsolationLevel, create_execution_context
+            exec_ctx = create_execution_context(task_id, IsolationLevel(batch.isolation), workspace.repo_path)
+            try:
+                result_status = _execute_task_subprocess(
+                    workspace, task_id, batch.id, engine=batch.engine,
+                    stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
+                    worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+                )
+            finally:
+                exec_ctx.cleanup()
 
             # Update result
             batch.results[task_id] = result_status
@@ -1402,16 +1423,29 @@ def _execute_serial(
             if on_event:
                 on_event("batch_task_started", {"task_id": task_id, "position": i + 1})
 
-            # Execute task via subprocess
-            result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
+            # Execute task via subprocess (with isolation context)
+            from codeframe.core.sandbox.context import IsolationLevel, create_execution_context
+            exec_ctx = create_execution_context(task_id, IsolationLevel(batch.isolation), workspace.repo_path)
+            try:
+                result_status = _execute_task_subprocess(
+                    workspace, task_id, batch.id, engine=batch.engine,
+                    stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
+                    worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+                )
 
-            # If task is BLOCKED, try supervisor resolution
-            if result_status == RunStatus.BLOCKED.value:
-                supervisor = get_supervisor(workspace)
-                if supervisor.try_resolve_blocked_task(task_id):
-                    # Supervisor resolved the blocker - retry the task
-                    print("      [Supervisor] Retrying task after auto-resolution...")
-                    result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
+                # If task is BLOCKED, try supervisor resolution
+                if result_status == RunStatus.BLOCKED.value:
+                    supervisor = get_supervisor(workspace)
+                    if supervisor.try_resolve_blocked_task(task_id):
+                        # Supervisor resolved the blocker - retry the task
+                        print("      [Supervisor] Retrying task after auto-resolution...")
+                        result_status = _execute_task_subprocess(
+                            workspace, task_id, batch.id, engine=batch.engine,
+                            stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
+                            worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+                        )
+            finally:
+                exec_ctx.cleanup()
 
             # Record result
             batch.results[task_id] = result_status
@@ -1803,16 +1837,37 @@ def _execute_single_task(
     if on_event:
         on_event("batch_task_started", {"task_id": task_id, "position": position})
 
-    # Execute task via subprocess
-    result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
+    # Create execution context (handles isolation level; NONE is a no-op)
+    from codeframe.core.sandbox.context import IsolationLevel, create_execution_context
+    exec_ctx = create_execution_context(
+        task_id, IsolationLevel(batch.isolation), workspace.repo_path
+    )
 
-    # If task is BLOCKED, try supervisor resolution
-    if result_status == RunStatus.BLOCKED.value:
-        supervisor = get_supervisor(workspace)
-        if supervisor.try_resolve_blocked_task(task_id):
-            # Supervisor resolved the blocker - retry the task
-            print("      [Supervisor] Retrying task after auto-resolution...")
-            result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
+    try:
+        # Execute task via subprocess
+        result_status = _execute_task_subprocess(
+            workspace, task_id, batch.id,
+            engine=batch.engine,
+            stall_timeout_s=batch.stall_timeout_s,
+            stall_action=batch.stall_action,
+            worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+        )
+
+        # If task is BLOCKED, try supervisor resolution
+        if result_status == RunStatus.BLOCKED.value:
+            supervisor = get_supervisor(workspace)
+            if supervisor.try_resolve_blocked_task(task_id):
+                # Supervisor resolved the blocker - retry the task
+                print("      [Supervisor] Retrying task after auto-resolution...")
+                result_status = _execute_task_subprocess(
+                    workspace, task_id, batch.id,
+                    engine=batch.engine,
+                    stall_timeout_s=batch.stall_timeout_s,
+                    stall_action=batch.stall_action,
+                    worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+                )
+    finally:
+        exec_ctx.cleanup()
 
     # Record result
     batch.results[task_id] = result_status
@@ -1902,8 +1957,23 @@ def _execute_group_parallel(
         if on_event:
             on_event("batch_task_started", {"task_id": task_id, "parallel": True})
 
-        # Execute via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine, stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action)
+        # Create execution context for this task
+        from codeframe.core.sandbox.context import IsolationLevel, create_execution_context
+        exec_ctx = create_execution_context(
+            task_id, IsolationLevel(batch.isolation), workspace.repo_path
+        )
+
+        try:
+            # Execute via subprocess
+            result_status = _execute_task_subprocess(
+                workspace, task_id, batch.id,
+                engine=batch.engine,
+                stall_timeout_s=batch.stall_timeout_s,
+                stall_action=batch.stall_action,
+                worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+            )
+        finally:
+            exec_ctx.cleanup()
 
         # Record result (thread-safe due to GIL for simple dict operations)
         batch.results[task_id] = result_status
@@ -2062,12 +2132,21 @@ def _save_batch(workspace: Workspace, batch: BatchRun) -> None:
         conn = get_db_connection(workspace)
         try:
             cursor = conn.cursor()
+            # Ensure isolation column exists (migration for existing databases)
+            try:
+                cursor.execute(
+                    "ALTER TABLE batch_runs ADD COLUMN isolation TEXT DEFAULT 'none'"
+                )
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
+
             cursor.execute(
                 """
                 INSERT OR REPLACE INTO batch_runs
                 (id, workspace_id, task_ids, status, strategy, max_parallel, on_failure,
-                 started_at, completed_at, results, engine)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 started_at, completed_at, results, engine, isolation)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     batch.id,
@@ -2081,6 +2160,7 @@ def _save_batch(workspace: Workspace, batch: BatchRun) -> None:
                     completed_at,
                     results_json,
                     batch.engine,
+                    batch.isolation,
                 ),
             )
             conn.commit()
@@ -2102,4 +2182,5 @@ def _row_to_batch(row: tuple) -> BatchRun:
         completed_at=datetime.fromisoformat(row[8]) if row[8] else None,
         results=json.loads(row[9]) if row[9] else {},
         engine=row[10] if len(row) > 10 and row[10] else "plan",
+        isolation=row[11] if len(row) > 11 and row[11] else "none",
     )

@@ -599,6 +599,7 @@ def execute_agent(
     engine: str = "react",
     stall_timeout_s: int = 300,
     stall_action: str = "blocker",
+    isolation: str = "none",
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -675,6 +676,13 @@ def execute_agent(
     import time as _time_mod
     _perf_start_ms = int(_time_mod.monotonic() * 1000)
 
+    # Create execution context (handles isolation; NONE is a no-op)
+    from codeframe.core.sandbox.context import IsolationLevel, create_execution_context
+    exec_ctx = create_execution_context(
+        run.task_id, IsolationLevel(isolation), workspace.repo_path
+    )
+    effective_repo_path = exec_ctx.workspace_path
+
     try:
         # Execute before_task hook (aborts on failure)
         if env_config and hook_ctx:
@@ -733,7 +741,7 @@ def execute_agent(
             )
 
             result = wrapper.run(
-                run.task_id, packaged.prompt, workspace.repo_path,
+                run.task_id, packaged.prompt, effective_repo_path,
                 on_event=on_adapter_event,
             )
         else:
@@ -758,7 +766,7 @@ def execute_agent(
             )
 
             result = adapter.run(
-                run.task_id, "", workspace.repo_path,
+                run.task_id, "", effective_repo_path,
                 on_event=on_adapter_event,
             )
 
@@ -866,6 +874,8 @@ def execute_agent(
     finally:
         # Always close the output logger to ensure file is properly flushed
         output_logger.close()
+        # Clean up execution context (no-op for NONE, removes worktree for WORKTREE)
+        exec_ctx.cleanup()
 
 
 def _event_type_to_category(event_type: str):

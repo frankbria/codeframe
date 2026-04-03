@@ -2319,6 +2319,12 @@ def work_start(
         help="Recovery action on stall: 'blocker' (default), 'retry', or 'fail'",
         click_type=click.Choice(["blocker", "retry", "fail"], case_sensitive=False),
     ),
+    isolation: str = typer.Option(
+        "none",
+        "--isolation",
+        help="Task execution isolation: none (default), worktree, or cloud",
+        click_type=click.Choice(["none", "worktree", "cloud"], case_sensitive=False),
+    ),
 ) -> None:
     """Start working on a task.
 
@@ -2331,6 +2337,7 @@ def work_start(
         codeframe work start abc123 --execute --engine plan
         codeframe work start abc123 --execute --dry-run
         codeframe work start abc123 --execute --verbose
+        codeframe work start abc123 --execute --isolation worktree
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks as tasks_module, runtime
@@ -2398,7 +2405,7 @@ def work_start(
                 state = runtime.execute_agent(
                     workspace, run, dry_run=dry_run, debug=debug, verbose=verbose,
                     engine=engine, stall_timeout_s=stall_timeout,
-                    stall_action=stall_action,
+                    stall_action=stall_action, isolation=isolation,
                 )
 
                 if state.status == AgentStatus.COMPLETED:
@@ -3550,6 +3557,12 @@ def batch_run(
         help="Recovery action on stall: 'blocker' (default), 'retry', or 'fail'",
         click_type=click.Choice(["blocker", "retry", "fail"], case_sensitive=False),
     ),
+    isolation: str = typer.Option(
+        "none",
+        "--isolation",
+        help="Task execution isolation: none (default), worktree, or cloud",
+        click_type=click.Choice(["none", "worktree", "cloud"], case_sensitive=False),
+    ),
 ) -> None:
     """Execute multiple tasks in batch.
 
@@ -3565,6 +3578,7 @@ def batch_run(
         codeframe work batch run --all-ready --engine plan
         codeframe work batch run task1 task2 --dry-run
         codeframe work batch run task1 task2 --retry 2
+        codeframe work batch run --all-ready --isolation worktree
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks as tasks_module, conductor
@@ -3663,6 +3677,7 @@ def batch_run(
             engine=engine,
             stall_timeout_s=stall_timeout,
             stall_action=stall_action,
+            isolation=isolation,
         )
 
         # Show summary
