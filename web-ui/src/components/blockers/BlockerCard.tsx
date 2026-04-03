@@ -27,7 +27,7 @@ const ORIGIN_CONFIG: Record<BlockerOrigin, {
     label: 'System',
     Icon: Settings01Icon,
     badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
-    guidance: 'Agent was inactive for too long. Answer to continue or retry execution.',
+    guidance: 'System-initiated pause. Review the context and answer to continue.',
   },
   agent: {
     label: 'Agent',

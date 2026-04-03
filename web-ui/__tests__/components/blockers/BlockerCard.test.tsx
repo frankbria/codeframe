@@ -259,7 +259,7 @@ describe('BlockerCard', () => {
       render(
         <BlockerCard blocker={makeBlocker({ created_by: 'system' })} workspacePath={workspacePath} onAnswered={onAnswered} />
       );
-      expect(screen.getByText('Agent was inactive for too long. Answer to continue or retry execution.')).toBeInTheDocument();
+      expect(screen.getByText('System-initiated pause. Review the context and answer to continue.')).toBeInTheDocument();
     });
   });
 });

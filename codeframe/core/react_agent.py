@@ -51,6 +51,10 @@ DEFAULT_COMPACTION_THRESHOLD = 0.85
 PRESERVE_RECENT_PAIRS = 5
 DEFAULT_CONTEXT_WINDOW = 200_000  # All Claude 4.x models
 
+# Reason string emitted when a stall timeout triggers a blocker — used to
+# set the correct BlockerOrigin ("system") vs agent-generated blockers.
+_REASON_STALL_DETECTED = "stall_detected"
+
 # Map tool names to agent phases for progress reporting.
 _TOOL_PHASE_MAP = {
     "read_file": AgentPhase.EXPLORING,
@@ -220,7 +224,7 @@ class ReactAgent:
             try:
                 status = self._react_loop(system_prompt)
                 if status == AgentStatus.FAILED:
-                    reason = "stall_detected" if self._stall_triggered.is_set() else "max_iterations_reached"
+                    reason = _REASON_STALL_DETECTED if self._stall_triggered.is_set() else "max_iterations_reached"
                     self._emit(EventType.AGENT_FAILED, {
                         "task_id": task_id,
                         "reason": reason,
@@ -244,7 +248,7 @@ class ReactAgent:
                     self._emit_stream_completion(task_id)
                     return AgentStatus.COMPLETED
 
-                if reason == "escalated_to_blocker" or reason == "stall_detected":
+                if reason == "escalated_to_blocker" or reason == _REASON_STALL_DETECTED:
                     self._emit(EventType.AGENT_FAILED, {
                         "task_id": task_id,
                         "reason": "blocked",
@@ -433,7 +437,7 @@ class ReactAgent:
                     # StallAction.BLOCKER (default)
                     self._create_text_blocker(
                         stall_ctx or "Agent stalled with no tool activity",
-                        "stall_detected",
+                        _REASON_STALL_DETECTED,
                     )
                     return AgentStatus.BLOCKED
 
@@ -689,7 +693,7 @@ class ReactAgent:
                     )
                 elif self._stall_action == StallAction.FAIL:
                     return (False, "stall_failed")
-                return (False, "stall_detected")
+                return (False, _REASON_STALL_DETECTED)
 
             self._verbose_print("[ReactAgent] Running final verification...")
             self._emit_progress(
@@ -1209,7 +1213,7 @@ class ReactAgent:
             f"Agent detected a blocker: {reason}\n\n"
             f"Context:\n{text[:500]}"
         )
-        origin = "system" if reason == "stall_detected" else "agent"
+        origin = "system" if reason == _REASON_STALL_DETECTED else "agent"
         blocker = blockers.create(
             workspace=self.workspace,
             question=question,
