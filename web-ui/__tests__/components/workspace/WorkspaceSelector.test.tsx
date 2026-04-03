@@ -265,7 +265,7 @@ describe('WorkspaceSelector', () => {
       expect(screen.getByText('/home/user/project-b')).toBeInTheDocument();
     });
 
-    it('does not show recent projects section when empty', () => {
+    it('shows empty state message when no recent workspaces', () => {
       mockGetRecentWorkspaces.mockReturnValue([]);
 
       render(
@@ -276,7 +276,8 @@ describe('WorkspaceSelector', () => {
         />
       );
 
-      expect(screen.queryByText('Recent Projects')).not.toBeInTheDocument();
+      expect(screen.getByText('Recent Projects')).toBeInTheDocument();
+      expect(screen.getByText(/no recent projects/i)).toBeInTheDocument();
     });
 
     it('selects workspace when clicking on recent item', async () => {

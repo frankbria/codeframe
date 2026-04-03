@@ -116,15 +116,19 @@ export function WorkspaceSelector({
         </Card>
 
         {/* Recent Workspaces */}
-        {recentWorkspaces.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Time01Icon className="h-5 w-5" />
-                Recent Projects
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Time01Icon className="h-5 w-5" />
+              Recent Projects
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recentWorkspaces.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No recent projects. Open a project above to get started.
+              </p>
+            ) : (
               <ul className="space-y-2">
                 {recentWorkspaces.map((workspace) => (
                   <li key={workspace.path}>
@@ -170,9 +174,9 @@ export function WorkspaceSelector({
                   </li>
                 ))}
               </ul>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
 
         {/* Help text */}
         <p className="text-center text-sm text-muted-foreground">

@@ -139,16 +139,16 @@ describe('workspace-storage', () => {
       expect(recent[1].path).toBe('/home/user/project-b');
     });
 
-    it('limits recent workspaces to 10 items', () => {
-      for (let i = 0; i < 15; i++) {
+    it('limits recent workspaces to 5 items', () => {
+      for (let i = 0; i < 8; i++) {
         addToRecentWorkspaces(`/home/user/project-${i}`);
       }
 
       const recent = getRecentWorkspaces();
-      expect(recent.length).toBe(10);
-      // Most recent should be project-14, oldest should be project-5
-      expect(recent[0].path).toBe('/home/user/project-14');
-      expect(recent[9].path).toBe('/home/user/project-5');
+      expect(recent.length).toBe(5);
+      // Most recent should be project-7, oldest should be project-3
+      expect(recent[0].path).toBe('/home/user/project-7');
+      expect(recent[4].path).toBe('/home/user/project-3');
     });
 
     it('sets lastUsed to current timestamp', () => {
