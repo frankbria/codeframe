@@ -1209,10 +1209,12 @@ class ReactAgent:
             f"Agent detected a blocker: {reason}\n\n"
             f"Context:\n{text[:500]}"
         )
+        origin = "system" if reason == "stall_detected" else "agent"
         blocker = blockers.create(
             workspace=self.workspace,
             question=question,
             task_id=self._current_task_id,
+            created_by=origin,
         )
         self.blocker_id = blocker.id
 
@@ -1232,6 +1234,7 @@ class ReactAgent:
             workspace=self.workspace,
             question=question,
             task_id=self._current_task_id,
+            created_by="agent",
         )
         self.blocker_id = blocker.id
 

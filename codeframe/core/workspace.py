@@ -173,11 +173,19 @@ def _init_database(db_path: Path) -> None:
             status TEXT NOT NULL DEFAULT 'OPEN',
             created_at TEXT NOT NULL,
             answered_at TEXT,
+            created_by TEXT NOT NULL DEFAULT 'human',
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
             FOREIGN KEY (task_id) REFERENCES tasks(id),
-            CHECK (status IN ('OPEN', 'ANSWERED', 'RESOLVED'))
+            CHECK (status IN ('OPEN', 'ANSWERED', 'RESOLVED')),
+            CHECK (created_by IN ('system', 'agent', 'human'))
         )
     """)
+
+    # Migration: Add created_by column to existing blockers table
+    cursor.execute("PRAGMA table_info(blockers)")
+    blocker_columns = {row[1] for row in cursor.fetchall()}
+    if "created_by" not in blocker_columns:
+        cursor.execute("ALTER TABLE blockers ADD COLUMN created_by TEXT NOT NULL DEFAULT 'human'")
 
     # Checkpoints (state snapshots)
     cursor.execute("""

@@ -205,6 +205,7 @@ class VerificationWrapper:
                 workspace=self._workspace,
                 question=question,
                 task_id=task_id,
+                created_by="agent",
             )
         except Exception:
             logger.warning("Failed to create escalation blocker", exc_info=True)
@@ -235,6 +236,7 @@ class VerificationWrapper:
                 workspace=self._workspace,
                 question=question,
                 task_id=task_id,
+                created_by="agent",
             )
         except Exception:
             logger.warning("Failed to create exhaustion blocker", exc_info=True)

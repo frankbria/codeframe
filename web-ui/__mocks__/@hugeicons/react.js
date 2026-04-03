@@ -65,4 +65,7 @@ module.exports = {
   // FileTreePanel / DiffViewer
   FileAddIcon: createIconMock('FileAddIcon'),
   FileRemoveIcon: createIconMock('FileRemoveIcon'),
+  // BlockerCard origin badges
+  Settings01Icon: createIconMock('Settings01Icon'),
+  UserCircle02Icon: createIconMock('UserCircle02Icon'),
 };
