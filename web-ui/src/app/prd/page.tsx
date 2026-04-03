@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import useSWR from 'swr';
 import { PRDView } from '@/components/prd';
 import { UploadPRDModal } from '@/components/prd/UploadPRDModal';
+import { PRDVersionHistoryModal } from '@/components/prd/PRDVersionHistoryModal';
 import { prdApi, tasksApi, discoveryApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import type {
@@ -21,6 +22,7 @@ export default function PrdPage() {
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingTasks, setIsGeneratingTasks] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
   useEffect(() => {
     setWorkspacePath(getSelectedWorkspacePath());
@@ -127,6 +129,11 @@ export default function PrdPage() {
     setDiscoveryOpen(false);
   };
 
+  const handleVersionRestored = (newPrd: PrdResponse) => {
+    mutatePrd(newPrd, false);
+    setVersionHistoryOpen(false);
+  };
+
   const handleGenerateTasks = async () => {
     if (!workspacePath || !prd) return;
     setIsGeneratingTasks(true);
@@ -167,6 +174,7 @@ export default function PrdPage() {
           onGenerateTasks={handleGenerateTasks}
           onSavePrd={handleSavePrd}
           onPrdGenerated={handlePrdGenerated}
+          onViewHistory={() => setVersionHistoryOpen(true)}
         />
 
         <UploadPRDModal
@@ -175,6 +183,16 @@ export default function PrdPage() {
           workspacePath={workspacePath}
           onSuccess={handleUploadSuccess}
         />
+
+        {hasPrd && prd && (
+          <PRDVersionHistoryModal
+            open={versionHistoryOpen}
+            onOpenChange={setVersionHistoryOpen}
+            prd={prd}
+            workspacePath={workspacePath}
+            onVersionRestored={handleVersionRestored}
+          />
+        )}
       </div>
     </main>
   );

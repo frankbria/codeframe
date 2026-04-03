@@ -6,6 +6,7 @@ import {
   MessageSearch01Icon,
   TaskEdit01Icon,
   Loading03Icon,
+  Time01Icon,
 } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
 import type { PrdResponse } from '@/types';
@@ -16,6 +17,7 @@ interface PRDHeaderProps {
   onUploadPrd: () => void;
   onStartDiscovery: () => void;
   onGenerateTasks: () => void;
+  onViewHistory?: () => void;
 }
 
 export function PRDHeader({
@@ -24,6 +26,7 @@ export function PRDHeader({
   onUploadPrd,
   onStartDiscovery,
   onGenerateTasks,
+  onViewHistory,
 }: PRDHeaderProps) {
   return (
     <header className="flex items-center justify-between">
@@ -43,6 +46,12 @@ export function PRDHeader({
       </div>
 
       <div className="flex gap-2">
+        {prd && onViewHistory && (
+          <Button variant="outline" size="sm" onClick={onViewHistory}>
+            <Time01Icon className="mr-1.5 h-4 w-4" />
+            History
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={onUploadPrd}>
           <Upload04Icon className="mr-1.5 h-4 w-4" />
           {prd ? 'Upload New' : 'Upload PRD'}
