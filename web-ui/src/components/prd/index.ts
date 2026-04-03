@@ -6,3 +6,4 @@ export { DiscoveryPanel } from './DiscoveryPanel';
 export { DiscoveryTranscript } from './DiscoveryTranscript';
 export { DiscoveryInput } from './DiscoveryInput';
 export { AssociatedTasksSummary } from './AssociatedTasksSummary';
+export { PRDVersionHistoryModal } from './PRDVersionHistoryModal';
