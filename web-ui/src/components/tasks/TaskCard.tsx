@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+import { STATUS_INFO } from '@/lib/taskStatusInfo';
 import type { Task, TaskStatus, ProofRequirement } from '@/types';
 
 /** Map backend TaskStatus to badge variant name. */
@@ -91,11 +92,19 @@ export function TaskCard({
                 aria-label={`Select ${task.title}`}
               />
             )}
-            <Badge
-              variant={STATUS_BADGE_VARIANT[task.status] as never}
-            >
-              {STATUS_LABEL[task.status]}
-            </Badge>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant={STATUS_BADGE_VARIANT[task.status] as never}>
+                    {STATUS_LABEL[task.status]}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[220px] space-y-1">
+                  <p className="text-xs font-medium">{STATUS_INFO[task.status].meaning}</p>
+                  <p className="text-xs text-muted-foreground">{STATUS_INFO[task.status].nextSteps}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           {task.depends_on.length > 0 && (
             <TooltipProvider>
