@@ -22,8 +22,13 @@ from codeframe.core.sandbox.context import (
 
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:
-    """Create a minimal git repo for testing."""
-    subprocess.run(["git", "init"], cwd=str(tmp_path), check=True, capture_output=True)
+    """Create a minimal git repo for testing with an explicit 'main' branch."""
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
+    )
     subprocess.run(
         ["git", "config", "user.email", "test@test.com"],
         cwd=str(tmp_path),
