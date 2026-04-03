@@ -254,6 +254,7 @@ class BuiltinPlanAdapter:
             self._workspace,
             task_id=task_id,
             question=f"Technical error: {error_msg[:500]}",
+            created_by="agent",
         )
         blockers.answer(self._workspace, blocker.id, resolution)
 

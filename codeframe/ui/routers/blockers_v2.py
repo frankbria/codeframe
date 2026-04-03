@@ -45,6 +45,7 @@ class BlockerResponse(BaseModel):
     status: str
     created_at: str
     answered_at: Optional[str]
+    created_by: str = "human"
 
 
 class BlockerListResponse(BaseModel):
@@ -84,6 +85,7 @@ def _blocker_to_response(blocker: blockers.Blocker) -> BlockerResponse:
         status=blocker.status.value,
         created_at=blocker.created_at.isoformat(),
         answered_at=blocker.answered_at.isoformat() if blocker.answered_at else None,
+        created_by=blocker.created_by.value,
     )
 
 

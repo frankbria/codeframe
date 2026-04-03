@@ -23,6 +23,7 @@ function makeBlocker(overrides: Partial<Blocker> = {}): Blocker {
     status: 'OPEN',
     created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30m ago
     answered_at: null,
+    created_by: 'human',
     ...overrides,
   };
 }
@@ -216,5 +217,49 @@ describe('BlockerCard', () => {
     );
 
     expect(screen.getByLabelText('Your answer to the blocker question')).toBeInTheDocument();
+  });
+
+  describe('origin badge', () => {
+    it('shows Manual badge for human-created blocker', () => {
+      render(
+        <BlockerCard blocker={makeBlocker({ created_by: 'human' })} workspacePath={workspacePath} onAnswered={onAnswered} />
+      );
+      expect(screen.getByTestId('origin-badge')).toHaveTextContent('Manual');
+    });
+
+    it('shows Agent badge for agent-created blocker', () => {
+      render(
+        <BlockerCard blocker={makeBlocker({ created_by: 'agent' })} workspacePath={workspacePath} onAnswered={onAnswered} />
+      );
+      expect(screen.getByTestId('origin-badge')).toHaveTextContent('Agent');
+    });
+
+    it('shows System badge for system-created blocker', () => {
+      render(
+        <BlockerCard blocker={makeBlocker({ created_by: 'system' })} workspacePath={workspacePath} onAnswered={onAnswered} />
+      );
+      expect(screen.getByTestId('origin-badge')).toHaveTextContent('System');
+    });
+
+    it('shows correct guidance for human blocker', () => {
+      render(
+        <BlockerCard blocker={makeBlocker({ created_by: 'human' })} workspacePath={workspacePath} onAnswered={onAnswered} />
+      );
+      expect(screen.getByText('Manually created blocker. Resolve and mark answered.')).toBeInTheDocument();
+    });
+
+    it('shows correct guidance for agent blocker', () => {
+      render(
+        <BlockerCard blocker={makeBlocker({ created_by: 'agent' })} workspacePath={workspacePath} onAnswered={onAnswered} />
+      );
+      expect(screen.getByText('Agent requested information. Provide the answer below.')).toBeInTheDocument();
+    });
+
+    it('shows correct guidance for system blocker', () => {
+      render(
+        <BlockerCard blocker={makeBlocker({ created_by: 'system' })} workspacePath={workspacePath} onAnswered={onAnswered} />
+      );
+      expect(screen.getByText('Agent was inactive for too long. Answer to continue or retry execution.')).toBeInTheDocument();
+    });
   });
 });

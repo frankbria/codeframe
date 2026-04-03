@@ -547,7 +547,7 @@ Be warm and encouraging. Just output the question, nothing else."""
         )
 
         blocker = blockers.create(
-            self.workspace, question=question, task_id=None
+            self.workspace, question=question, task_id=None, created_by="system"
         )
         self._blocker_id = blocker.id
         self._save_session()

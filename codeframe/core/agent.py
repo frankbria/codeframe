@@ -621,6 +621,7 @@ class Agent:
                                         workspace=self.workspace,
                                         question=f"Agent aborted: {consecutive_verification_failures} consecutive verification failures at step {step.index} ({step.description}). Last error: {error_msg[:500]}",
                                         task_id=self.state.task_id,
+                                        created_by="agent",
                                     )
                                     self.state.status = AgentStatus.BLOCKED
                                     self.state.blocker = BlockerInfo(
@@ -1797,6 +1798,7 @@ Respond with ONLY the corrected code/content, no explanation."""
             workspace=self.workspace,
             question=question,
             task_id=self.state.task_id,
+            created_by="agent",
         )
 
         self.state.status = AgentStatus.BLOCKED
@@ -1888,6 +1890,7 @@ Respond with ONLY the corrected code/content, no explanation."""
             workspace=self.workspace,
             question=question,
             task_id=self.state.task_id,
+            created_by="agent",
         )
 
         self.state.status = AgentStatus.BLOCKED

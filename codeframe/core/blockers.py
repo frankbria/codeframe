@@ -30,6 +30,14 @@ class BlockerStatus(str, Enum):
     RESOLVED = "RESOLVED"
 
 
+class BlockerOrigin(str, Enum):
+    """Who created the blocker."""
+
+    SYSTEM = "system"
+    AGENT = "agent"
+    HUMAN = "human"
+
+
 @dataclass
 class Blocker:
     """Represents a blocker (human-in-the-loop question).
@@ -43,6 +51,7 @@ class Blocker:
         status: Current blocker status
         created_at: When the blocker was created
         answered_at: When the blocker was answered (if answered)
+        created_by: Origin of the blocker (system, agent, or human)
     """
 
     id: str
@@ -53,12 +62,14 @@ class Blocker:
     status: BlockerStatus
     created_at: datetime
     answered_at: Optional[datetime]
+    created_by: BlockerOrigin = BlockerOrigin.HUMAN
 
 
 def create(
     workspace: Workspace,
     question: str,
     task_id: Optional[str] = None,
+    created_by: str = "human",
 ) -> Blocker:
     """Create a new blocker.
 
@@ -66,10 +77,12 @@ def create(
         workspace: Target workspace
         question: The question to ask
         task_id: Optional associated task ID
+        created_by: Origin of the blocker ("system", "agent", or "human")
 
     Returns:
         Created Blocker
     """
+    origin = BlockerOrigin(created_by)
     blocker_id = str(uuid.uuid4())
     now = _utc_now().isoformat()
 
@@ -78,10 +91,10 @@ def create(
 
     cursor.execute(
         """
-        INSERT INTO blockers (id, workspace_id, task_id, question, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO blockers (id, workspace_id, task_id, question, status, created_at, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (blocker_id, workspace.id, task_id, question, BlockerStatus.OPEN.value, now),
+        (blocker_id, workspace.id, task_id, question, BlockerStatus.OPEN.value, now, origin.value),
     )
     conn.commit()
     conn.close()
@@ -95,6 +108,7 @@ def create(
         status=BlockerStatus.OPEN,
         created_at=datetime.fromisoformat(now),
         answered_at=None,
+        created_by=origin,
     )
 
     # Emit blocker created event
@@ -126,7 +140,8 @@ def get(workspace: Workspace, blocker_id: str) -> Optional[Blocker]:
     # Try exact match first
     cursor.execute(
         """
-        SELECT id, workspace_id, task_id, question, answer, status, created_at, answered_at
+        SELECT id, workspace_id, task_id, question, answer, status, created_at, answered_at,
+               COALESCE(created_by, 'human') as created_by
         FROM blockers
         WHERE workspace_id = ? AND id = ?
         """,
@@ -138,7 +153,8 @@ def get(workspace: Workspace, blocker_id: str) -> Optional[Blocker]:
     if not row:
         cursor.execute(
             """
-            SELECT id, workspace_id, task_id, question, answer, status, created_at, answered_at
+            SELECT id, workspace_id, task_id, question, answer, status, created_at, answered_at,
+                   COALESCE(created_by, 'human') as created_by
             FROM blockers
             WHERE workspace_id = ? AND id LIKE ?
             """,
@@ -192,7 +208,8 @@ def list_all(
     cursor = conn.cursor()
 
     query = """
-        SELECT id, workspace_id, task_id, question, answer, status, created_at, answered_at
+        SELECT id, workspace_id, task_id, question, answer, status, created_at, answered_at,
+               COALESCE(created_by, 'human') as created_by
         FROM blockers
         WHERE workspace_id = ?
     """
@@ -383,4 +400,5 @@ def _row_to_blocker(row: tuple) -> Blocker:
         status=BlockerStatus(row[5]),
         created_at=datetime.fromisoformat(row[6]),
         answered_at=datetime.fromisoformat(row[7]) if row[7] else None,
+        created_by=BlockerOrigin(row[8]),
     )

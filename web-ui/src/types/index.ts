@@ -103,6 +103,7 @@ export interface TaskStartResponse {
 // Blocker types
 // Must match backend: codeframe/ui/routers/blockers_v2.py
 export type BlockerStatus = 'OPEN' | 'ANSWERED' | 'RESOLVED';
+export type BlockerOrigin = 'system' | 'agent' | 'human';
 
 export interface Blocker {
   id: string;
@@ -113,6 +114,7 @@ export interface Blocker {
   status: BlockerStatus;
   created_at: string;
   answered_at: string | null;
+  created_by: BlockerOrigin;
 }
 
 export interface BlockerListResponse {

@@ -2,13 +2,46 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Alert02Icon, Loading03Icon, CheckmarkCircle01Icon } from '@hugeicons/react';
+import {
+  Alert02Icon,
+  Loading03Icon,
+  CheckmarkCircle01Icon,
+  ArtificialIntelligence01Icon,
+  Settings01Icon,
+  UserCircle02Icon,
+} from '@hugeicons/react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { blockersApi } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/format';
-import type { Blocker, ApiError } from '@/types';
+import type { Blocker, BlockerOrigin, ApiError } from '@/types';
+
+const ORIGIN_CONFIG: Record<BlockerOrigin, {
+  label: string;
+  Icon: React.ComponentType<{ className?: string }>;
+  badgeClass: string;
+  guidance: string;
+}> = {
+  system: {
+    label: 'System',
+    Icon: Settings01Icon,
+    badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
+    guidance: 'Agent was inactive for too long. Answer to continue or retry execution.',
+  },
+  agent: {
+    label: 'Agent',
+    Icon: ArtificialIntelligence01Icon,
+    badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
+    guidance: 'Agent requested information. Provide the answer below.',
+  },
+  human: {
+    label: 'Manual',
+    Icon: UserCircle02Icon,
+    badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300',
+    guidance: 'Manually created blocker. Resolve and mark answered.',
+  },
+};
 
 interface BlockerCardProps {
   blocker: Blocker;
@@ -24,6 +57,7 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
   const [collapsed, setCollapsed] = useState(false);
 
   const isOpen = blocker.status === 'OPEN';
+  const origin = ORIGIN_CONFIG[blocker.created_by ?? 'human'];
 
   const handleSubmit = async () => {
     if (!answer.trim() || isSubmitting) return;
@@ -85,10 +119,20 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
         {/* Metadata row */}
         <div className="flex items-center gap-2 pt-1">
           <Badge variant="blocked">OPEN</Badge>
+          <span
+            data-testid="origin-badge"
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${origin.badgeClass}`}
+          >
+            <origin.Icon className="h-3 w-3" />
+            {origin.label}
+          </span>
           <span className="text-xs text-muted-foreground">
             {formatRelativeTime(blocker.created_at)}
           </span>
         </div>
+
+        {/* Origin-specific guidance */}
+        <p className="text-xs text-muted-foreground pt-1">{origin.guidance}</p>
       </CardHeader>
 
       <CardContent>
