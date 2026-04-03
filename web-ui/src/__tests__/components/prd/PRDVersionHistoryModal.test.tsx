@@ -14,6 +14,9 @@ global.ResizeObserver = jest.fn().mockImplementation(() => ({
 }));
 
 jest.mock('swr');
+jest.mock('sonner', () => ({
+  toast: { success: jest.fn(), error: jest.fn() },
+}));
 // Radix ScrollArea Viewport hides children in jsdom — render children directly
 jest.mock('@/components/ui/scroll-area', () => ({
   ScrollArea: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -172,6 +175,7 @@ describe('PRDVersionHistoryModal', () => {
       const user = userEvent.setup();
       render(<PRDVersionHistoryModal {...defaultProps} />);
 
+      // versions ordered newest-first; version 3 is current (no View btn), so index 0 = version 2
       const viewButtons = screen.getAllByRole('button', { name: /^view$/i });
       await user.click(viewButtons[0]); // version 2
 
@@ -190,6 +194,30 @@ describe('PRDVersionHistoryModal', () => {
       await waitFor(() => {
         expect(screen.getByText(/@@ -1 \+1 @@/)).toBeInTheDocument();
       });
+    });
+
+    it('shows error message and re-enables Compare button on diff failure', async () => {
+      mockDiff.mockRejectedValueOnce(new Error('Network error'));
+
+      const user = userEvent.setup();
+      render(<PRDVersionHistoryModal {...defaultProps} />);
+
+      const viewButtons = screen.getAllByRole('button', { name: /^view$/i });
+      await user.click(viewButtons[0]); // version 2
+
+      const compareBtn = screen.getByRole('button', { name: /compare with current/i });
+      await user.click(compareBtn);
+
+      await waitFor(() => {
+        expect(mockDiff).toHaveBeenCalled();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/failed to load diff/i)).toBeInTheDocument();
+      });
+
+      // Compare button should be re-enabled so the user can retry
+      expect(screen.getByRole('button', { name: /compare with current/i })).not.toBeDisabled();
     });
   });
 

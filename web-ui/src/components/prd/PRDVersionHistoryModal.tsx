@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
+import { toast } from 'sonner';
 import {
   ArrowLeft01Icon,
   Loading03Icon,
@@ -33,6 +34,7 @@ interface PreviewState {
   version: PrdResponse;
   diff: PrdDiffResponse | null;
   diffLoading: boolean;
+  diffError: boolean;
   confirmingRestore: boolean;
   restoring: boolean;
 }
@@ -63,6 +65,7 @@ export function PRDVersionHistoryModal({
       version,
       diff: null,
       diffLoading: false,
+      diffError: false,
       confirmingRestore: false,
       restoring: false,
     });
@@ -76,7 +79,7 @@ export function PRDVersionHistoryModal({
 
   async function handleCompare() {
     if (!preview) return;
-    setPreview((p) => p && { ...p, diffLoading: true, diff: null });
+    setPreview((p) => p && { ...p, diffLoading: true, diff: null, diffError: false });
     try {
       const result = await prdApi.diff(
         prd.id,
@@ -86,7 +89,7 @@ export function PRDVersionHistoryModal({
       );
       setPreview((p) => p && { ...p, diff: result, diffLoading: false });
     } catch {
-      setPreview((p) => p && { ...p, diffLoading: false });
+      setPreview((p) => p && { ...p, diffLoading: false, diffError: true });
     }
   }
 
@@ -102,7 +105,9 @@ export function PRDVersionHistoryModal({
       );
       onVersionRestored(restored);
       handleClose();
-    } catch {
+    } catch (err) {
+      const apiError = err as { detail?: string };
+      toast.error(apiError.detail || 'Failed to restore version. Please try again.');
       setPreview((p) => p && { ...p, restoring: false, confirmingRestore: false });
     }
   }
@@ -128,7 +133,6 @@ export function PRDVersionHistoryModal({
         ) : preview ? (
           <VersionPreview
             preview={preview}
-            currentVersion={prd.version}
             onBack={handleBackToList}
             onCompare={handleCompare}
             onStartRestore={() =>
@@ -217,7 +221,6 @@ function VersionList({ versions, currentVersion, isLoading, error, onViewVersion
 
 interface VersionPreviewProps {
   preview: PreviewState;
-  currentVersion: number;
   onBack: () => void;
   onCompare: () => void;
   onStartRestore: () => void;
@@ -233,7 +236,7 @@ function VersionPreview({
   onCancelRestore,
   onConfirmRestore,
 }: VersionPreviewProps) {
-  const { version, diff, diffLoading, confirmingRestore, restoring } = preview;
+  const { version, diff, diffLoading, diffError, confirmingRestore, restoring } = preview;
 
   return (
     <div className="space-y-4">
@@ -247,7 +250,7 @@ function VersionPreview({
             variant="outline"
             size="sm"
             onClick={onCompare}
-            disabled={diffLoading || !!diff}
+            disabled={diffLoading}
           >
             {diffLoading ? (
               <>
@@ -299,6 +302,10 @@ function VersionPreview({
               Cancel
             </Button>
           </div>
+        </div>
+      ) : diffError ? (
+        <div className="py-4 text-center text-sm text-destructive">
+          Failed to load diff. Click &ldquo;Compare with current&rdquo; to try again.
         </div>
       ) : diff ? (
         <ScrollArea className="max-h-[50vh]">
