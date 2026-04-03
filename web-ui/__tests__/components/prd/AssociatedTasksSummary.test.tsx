@@ -16,7 +16,7 @@ describe('AssociatedTasksSummary', () => {
       BACKLOG: 2, READY: 3, IN_PROGRESS: 1, DONE: 5, BLOCKED: 0, FAILED: 0, MERGED: 0,
     };
     render(<AssociatedTasksSummary taskCounts={counts} />);
-    expect(screen.getByText('Tasks (11)')).toBeInTheDocument();
+    expect(screen.getByText(/Tasks \(11\)/)).toBeInTheDocument();
   });
 
   it('renders badges only for non-zero statuses', () => {

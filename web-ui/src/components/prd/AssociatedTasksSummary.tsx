@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import type { TaskStatusCounts } from '@/types';
 import type { BadgeProps } from '@/components/ui/badge';
@@ -31,9 +32,9 @@ export function AssociatedTasksSummary({
   if (total === 0) return null;
 
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs font-medium text-muted-foreground">
-        Tasks ({total})
+    <Link href="/tasks" className="group flex items-center gap-3 transition-opacity hover:opacity-80">
+      <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground">
+        Tasks ({total}) →
       </span>
       <div className="flex flex-wrap gap-1.5">
         {STATUS_CONFIG.map(
@@ -45,6 +46,6 @@ export function AssociatedTasksSummary({
             )
         )}
       </div>
-    </div>
+    </Link>
   );
 }
