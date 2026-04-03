@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
@@ -10,6 +10,34 @@ import { proofApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import type { ProofRequirement, ProofEvidence } from '@/types';
 
+type SortCol = 'gate' | 'result' | 'run_id' | 'timestamp' | 'artifact';
+type SortDir = 'asc' | 'desc';
+
+function SortButton({
+  col,
+  label,
+  current,
+  dir,
+  onSort,
+}: {
+  col: SortCol;
+  label: string;
+  current: SortCol;
+  dir: SortDir;
+  onSort: (col: SortCol) => void;
+}) {
+  return (
+    <button
+      aria-label={`Sort by ${label}`}
+      onClick={() => onSort(col)}
+      className="flex items-center gap-1 font-medium hover:text-foreground"
+    >
+      {label}
+      {current === col && <span className="text-xs">{dir === 'asc' ? '↑' : '↓'}</span>}
+    </button>
+  );
+}
+
 export default function ProofDetailPage() {
   const params = useParams();
   const reqId = params.req_id as string;
@@ -17,6 +45,15 @@ export default function ProofDetailPage() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [showWaiveDialog, setShowWaiveDialog] = useState(false);
+
+  // Filter state
+  const [filterGate, setFilterGate] = useState('');
+  const [filterResult, setFilterResult] = useState('');
+  const [search, setSearch] = useState('');
+
+  // Sort state (default: timestamp descending)
+  const [sortCol, setSortCol] = useState<SortCol>('timestamp');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   useEffect(() => {
     setWorkspacePath(getSelectedWorkspacePath());
@@ -34,6 +71,59 @@ export default function ProofDetailPage() {
       workspacePath && reqId ? `/api/v2/proof/requirements/${reqId}/evidence?path=${workspacePath}` : null,
       () => proofApi.getEvidence(workspacePath!, reqId)
     );
+
+  const hasActiveFilters = filterGate !== '' || filterResult !== '' || search !== '';
+
+  const gateOptions = useMemo(() => {
+    if (!Array.isArray(evidence)) return [];
+    return Array.from(new Set(evidence.map((e) => e.gate))).sort();
+  }, [evidence]);
+
+  const filteredEvidence = useMemo(() => {
+    if (!Array.isArray(evidence)) return [];
+    let rows = [...evidence];
+
+    if (filterGate) rows = rows.filter((e) => e.gate === filterGate);
+    if (filterResult === 'pass') rows = rows.filter((e) => e.satisfied);
+    if (filterResult === 'fail') rows = rows.filter((e) => !e.satisfied);
+    if (search) {
+      const q = search.toLowerCase();
+      rows = rows.filter(
+        (e) =>
+          e.run_id.toLowerCase().includes(q) ||
+          (e.artifact_path ?? '').toLowerCase().includes(q)
+      );
+    }
+
+    rows.sort((a, b) => {
+      let cmp = 0;
+      switch (sortCol) {
+        case 'gate':      cmp = a.gate.localeCompare(b.gate); break;
+        case 'result':    cmp = Number(a.satisfied) - Number(b.satisfied); break;
+        case 'run_id':    cmp = a.run_id.localeCompare(b.run_id); break;
+        case 'timestamp': cmp = a.timestamp.localeCompare(b.timestamp); break;
+        case 'artifact':  cmp = (a.artifact_path ?? '').localeCompare(b.artifact_path ?? ''); break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return rows;
+  }, [evidence, filterGate, filterResult, search, sortCol, sortDir]);
+
+  function handleSort(col: SortCol) {
+    if (sortCol === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  }
+
+  function resetFilters() {
+    setFilterGate('');
+    setFilterResult('');
+    setSearch('');
+  }
 
   if (!workspaceReady) return null;
 
@@ -127,29 +217,103 @@ export default function ProofDetailPage() {
             {/* Evidence history */}
             <section>
               <h2 className="mb-3 text-base font-semibold">Evidence History</h2>
+
+              {/* Filter controls */}
+              {Array.isArray(evidence) && evidence.length > 0 && (
+                <div className="mb-4 flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Gate</span>
+                    <select
+                      aria-label="Gate"
+                      value={filterGate}
+                      onChange={(e) => setFilterGate(e.target.value)}
+                      className="rounded border bg-background px-2 py-1 text-sm"
+                    >
+                      <option value="">All</option>
+                      {gateOptions.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Result</span>
+                    <select
+                      aria-label="Result"
+                      value={filterResult}
+                      onChange={(e) => setFilterResult(e.target.value)}
+                      className="rounded border bg-background px-2 py-1 text-sm"
+                    >
+                      <option value="">All</option>
+                      <option value="pass">Pass</option>
+                      <option value="fail">Fail</option>
+                    </select>
+                  </label>
+
+                  <input
+                    type="text"
+                    placeholder="Search run ID or artifact…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="rounded border bg-background px-3 py-1 text-sm"
+                  />
+
+                  {hasActiveFilters && (
+                    <Button variant="ghost" size="sm" onClick={resetFilters}>
+                      Reset filters
+                    </Button>
+                  )}
+                </div>
+              )}
+
               {evidenceLoading && (
                 <div className="h-16 animate-pulse rounded bg-muted" />
               )}
               {!evidenceLoading && evidenceError && (
                 <p className="text-sm text-destructive">Failed to load evidence.</p>
               )}
-              {!evidenceLoading && !evidenceError && (!evidence || evidence.length === 0) && (
+              {!evidenceLoading && !evidenceError && (!evidence || !Array.isArray(evidence) || evidence.length === 0) && (
                 <p className="text-sm text-muted-foreground">No evidence recorded yet.</p>
               )}
-              {evidence && evidence.length > 0 && (
+              {Array.isArray(evidence) && evidence.length > 0 && (
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="min-w-[640px] w-full text-sm">
                     <thead className="border-b bg-muted/50">
                       <tr>
-                        <th className="px-4 py-2 text-left font-medium">Gate</th>
-                        <th className="px-4 py-2 text-left font-medium">Result</th>
-                        <th className="px-4 py-2 text-left font-medium">Run ID</th>
-                        <th className="px-4 py-2 text-left font-medium">Timestamp</th>
-                        <th className="px-4 py-2 text-left font-medium">Artifact</th>
+                        <th
+                          className="px-4 py-2 text-left"
+                          aria-sort={sortCol === 'gate' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                        >
+                          <SortButton col="gate" label="Gate" current={sortCol} dir={sortDir} onSort={handleSort} />
+                        </th>
+                        <th
+                          className="px-4 py-2 text-left"
+                          aria-sort={sortCol === 'result' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                        >
+                          <SortButton col="result" label="Result" current={sortCol} dir={sortDir} onSort={handleSort} />
+                        </th>
+                        <th
+                          className="px-4 py-2 text-left"
+                          aria-sort={sortCol === 'run_id' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                        >
+                          <SortButton col="run_id" label="Run ID" current={sortCol} dir={sortDir} onSort={handleSort} />
+                        </th>
+                        <th
+                          className="px-4 py-2 text-left"
+                          aria-sort={sortCol === 'timestamp' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                        >
+                          <SortButton col="timestamp" label="Timestamp" current={sortCol} dir={sortDir} onSort={handleSort} />
+                        </th>
+                        <th
+                          className="px-4 py-2 text-left"
+                          aria-sort={sortCol === 'artifact' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                        >
+                          <SortButton col="artifact" label="Artifact" current={sortCol} dir={sortDir} onSort={handleSort} />
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {evidence.map((ev, i) => (
+                      {filteredEvidence.map((ev, i) => (
                         <tr key={i} className="border-b last:border-0">
                           <td className="px-4 py-2 font-mono text-xs">{ev.gate}</td>
                           <td className="px-4 py-2">
