@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import useSWR from 'swr';
 import { PRDView } from '@/components/prd';
 import { UploadPRDModal } from '@/components/prd/UploadPRDModal';
@@ -130,11 +131,20 @@ export default function PrdPage() {
     if (!workspacePath || !prd) return;
     setIsGeneratingTasks(true);
     try {
-      await discoveryApi.generateTasks(workspacePath);
-      await mutateTasks();
+      const result = await discoveryApi.generateTasks(workspacePath);
+      toast.success(`Generated ${result.task_count} task${result.task_count !== 1 ? 's' : ''} from PRD`, {
+        duration: 4000,
+        action: {
+          label: 'Go to Tasks →',
+          onClick: () => { window.location.href = '/tasks'; },
+        },
+      });
+      void mutateTasks().catch((refreshError) => {
+        console.error('[PRD] Task refresh failed after successful generation:', refreshError);
+      });
     } catch (err) {
       const apiError = err as ApiError;
-      console.error('[PRD] Task generation failed:', apiError.detail);
+      toast.error(apiError.detail || 'Failed to generate tasks. Please try again.');
     } finally {
       setIsGeneratingTasks(false);
     }

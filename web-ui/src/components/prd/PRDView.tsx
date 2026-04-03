@@ -96,6 +96,10 @@ export function PRDView({
         onGenerateTasks={onGenerateTasks}
       />
 
+      {taskCounts && (
+        <AssociatedTasksSummary taskCounts={taskCounts} />
+      )}
+
       <div
         className={`grid gap-4 ${
           discoveryOpen ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'
@@ -129,10 +133,6 @@ export function PRDView({
           </div>
         )}
       </div>
-
-      {taskCounts && (
-        <AssociatedTasksSummary taskCounts={taskCounts} />
-      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Nunito_Sans } from 'next/font/google';
+import { Toaster } from 'sonner';
 import { AppLayout } from '@/components/layout';
 import './globals.css';
 
@@ -31,6 +32,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${nunitoSans.variable} font-sans antialiased`}>
         <AppLayout>{children}</AppLayout>
+        <Toaster richColors position="top-right" />
       </body>
     </html>
   );
