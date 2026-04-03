@@ -116,15 +116,19 @@ export function WorkspaceSelector({
         </Card>
 
         {/* Recent Workspaces */}
-        {recentWorkspaces.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Time01Icon className="h-5 w-5" />
-                Recent Projects
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Time01Icon className="h-5 w-5" />
+              Recent Projects
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recentWorkspaces.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No recent projects. Open a project above to get started.
+              </p>
+            ) : (
               <ul className="space-y-2">
                 {recentWorkspaces.map((workspace) => (
                   <li key={workspace.path}>
@@ -133,6 +137,7 @@ export function WorkspaceSelector({
                       tabIndex={isLoading ? -1 : 0}
                       onClick={() => !isLoading && handleSelectRecent(workspace.path)}
                       onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
                         if ((e.key === 'Enter' || e.key === ' ') && !isLoading) {
                           e.preventDefault();
                           handleSelectRecent(workspace.path);
@@ -159,6 +164,9 @@ export function WorkspaceSelector({
                         <button
                           type="button"
                           onClick={(e) => handleRemoveRecent(workspace.path, e)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+                          }}
                           className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive focus:outline-none focus:ring-2 focus:ring-ring"
                           title="Remove from recent"
                           aria-label={`Remove ${workspace.name} from recent projects`}
@@ -170,9 +178,9 @@ export function WorkspaceSelector({
                   </li>
                 ))}
               </ul>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
 
         {/* Help text */}
         <p className="text-center text-sm text-muted-foreground">

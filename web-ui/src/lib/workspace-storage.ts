@@ -8,7 +8,7 @@
 
 const STORAGE_KEY = 'codeframe_workspace_path';
 const RECENT_WORKSPACES_KEY = 'codeframe_recent_workspaces';
-const MAX_RECENT_WORKSPACES = 10;
+const MAX_RECENT_WORKSPACES = 5;
 
 export interface RecentWorkspace {
   path: string;
@@ -51,7 +51,8 @@ export function getRecentWorkspaces(): RecentWorkspace[] {
   const stored = localStorage.getItem(RECENT_WORKSPACES_KEY);
   if (!stored) return [];
   try {
-    return JSON.parse(stored);
+    const parsed: RecentWorkspace[] = JSON.parse(stored);
+    return parsed.slice(0, MAX_RECENT_WORKSPACES);
   } catch {
     return [];
   }
