@@ -126,10 +126,22 @@ describe('TaskDetailModal valid transition guidance', () => {
     expect(screen.getByTestId('status-next-step')).toHaveTextContent(STATUS_INFO.MERGED.nextSteps);
   });
 
-  it('does not show next-step guidance for statuses that have action buttons', async () => {
+  it('shows next-step guidance for FAILED status via the alert panel', async () => {
+    renderModal({ status: 'FAILED' });
+    await waitFor(() => expect(screen.getByText('Test Task')).toBeInTheDocument());
+    expect(screen.getByTestId('status-next-step')).toBeInTheDocument();
+    expect(screen.getByTestId('status-next-step')).toHaveTextContent(STATUS_INFO.FAILED.nextSteps);
+  });
+
+  it('does not show next-step guidance for BACKLOG (has action button)', async () => {
     renderModal({ status: 'BACKLOG' });
     await waitFor(() => expect(screen.getByText('Test Task')).toBeInTheDocument());
-    // BACKLOG has an action button, so the next-step guidance panel is not shown
+    expect(screen.queryByTestId('status-next-step')).not.toBeInTheDocument();
+  });
+
+  it('does not show next-step guidance for READY (has action button)', async () => {
+    renderModal({ status: 'READY' });
+    await waitFor(() => expect(screen.getByText('Test Task')).toBeInTheDocument());
     expect(screen.queryByTestId('status-next-step')).not.toBeInTheDocument();
   });
 });

@@ -164,7 +164,7 @@ export function TaskDetailModal({
                     </TooltipTrigger>
                     <TooltipContent className="max-w-[240px] space-y-1">
                       <p className="text-xs font-medium">{STATUS_INFO[task.status].meaning}</p>
-                      <p className="text-xs text-muted-foreground">{STATUS_INFO[task.status].enteredWhen}</p>
+                      <p className="text-xs text-muted-foreground">{STATUS_INFO[task.status].nextSteps}</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -204,7 +204,7 @@ export function TaskDetailModal({
               {task.updated_at && (
                 <span className="flex items-center gap-1">
                   <Time01Icon className="h-3.5 w-3.5" />
-                  Last changed: {new Date(task.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                  Last changed: {new Date(task.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               )}
             </div>
@@ -282,18 +282,15 @@ export function TaskDetailModal({
               </div>
             )}
 
-            {/* FAILED-state guidance panel */}
+            {/* FAILED-state guidance panel — testid enables status-next-step checks */}
             {task.status === 'FAILED' && (
-              <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5">
+              <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5" data-testid="status-next-step">
                 <div className="flex items-start gap-2">
                   <Alert02Icon className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                   <div className="space-y-0.5">
                     <p className="text-xs font-medium text-destructive">Task failed during execution</p>
                     <p className="text-xs text-muted-foreground">
-                      Check PROOF9 gates to identify which quality requirements need attention.
-                      {(task.requirement_ids ?? []).length === 0 && (
-                        <> Use the button below to view all gates.</>
-                      )}
+                      {STATUS_INFO.FAILED.nextSteps}
                     </p>
                   </div>
                 </div>
