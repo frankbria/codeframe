@@ -15,12 +15,14 @@ interface WorkspaceStatsCardsProps {
   techStack: string | null;
   taskCounts: TaskStatusCounts;
   activeRunCount: number;
+  onEditTechStack?: () => void;
 }
 
 export function WorkspaceStatsCards({
   techStack,
   taskCounts,
   activeRunCount,
+  onEditTechStack,
 }: WorkspaceStatsCardsProps) {
   const totalTasks = Object.values(taskCounts).reduce((sum, count) => sum + count, 0);
 
@@ -37,6 +39,15 @@ export function WorkspaceStatsCards({
             <p className="text-lg font-semibold">{techStack}</p>
           ) : (
             <p className="text-sm text-muted-foreground">Not detected</p>
+          )}
+          {onEditTechStack && (
+            <button
+              onClick={onEditTechStack}
+              className="mt-2 text-xs text-primary hover:underline"
+              data-testid="edit-tech-stack-btn"
+            >
+              Edit Tech Stack
+            </button>
           )}
         </CardContent>
       </Card>

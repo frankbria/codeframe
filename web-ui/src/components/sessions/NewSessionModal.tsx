@@ -88,7 +88,7 @@ export function NewSessionModal({
             <label htmlFor="model-select" className="mb-1 block text-sm font-medium">
               Model
             </label>
-            <Select value={model} onValueChange={setModel}>
+            <Select value={model} onValueChange={(v) => setModel(v as typeof MODEL_OPTIONS[number])}>
               <SelectTrigger id="model-select">
                 <SelectValue />
               </SelectTrigger>

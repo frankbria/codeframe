@@ -1,6 +1,6 @@
 'use client';
 
-import { Folder01Icon, Loading03Icon } from '@hugeicons/react';
+import { Folder01Icon, Loading03Icon, CheckmarkCircle01Icon, Alert01Icon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
 import type { WorkspaceResponse } from '@/types';
 
@@ -30,6 +30,23 @@ export function WorkspaceHeader({
                 <Folder01Icon className="h-5 w-5" />
                 <span className="font-medium">{repoName}</span>
               </div>
+              {workspace.tech_stack ? (
+                <div
+                  data-testid="tech-stack-detected"
+                  className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800"
+                >
+                  <CheckmarkCircle01Icon className="h-3 w-3" />
+                  Tech stack detected
+                </div>
+              ) : (
+                <div
+                  data-testid="tech-stack-missing"
+                  className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+                >
+                  <Alert01Icon className="h-3 w-3" />
+                  No tech stack
+                </div>
+              )}
             </>
           )}
         </div>
