@@ -1,8 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface TechStackConfirmDialogProps {
   open: boolean;
@@ -17,87 +25,70 @@ export function TechStackConfirmDialog({
   onConfirm,
   onCancel,
 }: TechStackConfirmDialogProps) {
-  const [isEditing, setIsEditing] = useState(!detectedStack);
-  const [editValue, setEditValue] = useState(detectedStack ?? '');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
 
-  if (!open) return null;
+  // Reset state each time the dialog opens or detected stack changes
+  useEffect(() => {
+    if (!open) return;
+    setIsEditing(!detectedStack);
+    setEditValue(detectedStack ?? '');
+  }, [open, detectedStack]);
 
-  const handleConfirm = () => {
-    onConfirm(detectedStack!);
-  };
+  const isManualMode = !detectedStack || isEditing;
 
-  const handleSave = () => {
-    onConfirm(editValue);
-  };
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {isManualMode && !detectedStack
+              ? 'Tech Stack Detection'
+              : isEditing
+              ? 'Edit Tech Stack'
+              : 'Tech Stack Detected'}
+          </DialogTitle>
+          <DialogDescription>
+            {!detectedStack
+              ? 'Could not auto-detect. Enter your stack manually.'
+              : isEditing
+              ? 'Update the detected tech stack to match your project.'
+              : 'Is this the correct tech stack for your project?'}
+          </DialogDescription>
+        </DialogHeader>
 
-  // Failure mode or edit mode: show textarea
-  if (!detectedStack || isEditing) {
-    return (
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      >
-        <div className="w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-          <h2 className="text-lg font-semibold">
-            {detectedStack ? 'Edit Tech Stack' : 'Tech Stack Detection'}
-          </h2>
-
-          {!detectedStack && (
-            <p className="mt-2 text-sm text-destructive">
-              Could not auto-detect. Enter your stack manually.
-            </p>
-          )}
-
+        {isManualMode ? (
           <Textarea
-            className="mt-4"
             placeholder="e.g. Python with uv, pytest, ruff"
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
           />
-
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline" onClick={onCancel}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={!editValue.trim()}>
-              Save
-            </Button>
+        ) : (
+          <div className="rounded-md border bg-muted/50 px-4 py-3">
+            <p className="font-medium">{detectedStack}</p>
           </div>
-        </div>
-      </div>
-    );
-  }
+        )}
 
-  // Confirm mode
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-    >
-      <div className="w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-        <h2 className="text-lg font-semibold">Tech Stack Detected</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Is this the correct tech stack for your project?
-        </p>
-
-        <div className="mt-4 rounded-md border bg-muted/50 px-4 py-3">
-          <p className="font-medium">{detectedStack}</p>
-        </div>
-
-        <div className="mt-4 flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button variant="outline" onClick={() => setIsEditing(true)}>
-            Edit
-          </Button>
-          <Button onClick={handleConfirm}>
-            Confirm
-          </Button>
-        </div>
-      </div>
-    </div>
+          {!isManualMode && (
+            <Button variant="outline" onClick={() => setIsEditing(true)}>
+              Edit
+            </Button>
+          )}
+          {isManualMode ? (
+            <Button onClick={() => onConfirm(editValue)} disabled={!editValue.trim()}>
+              Save
+            </Button>
+          ) : (
+            <Button onClick={() => onConfirm(detectedStack!)}>
+              Confirm
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

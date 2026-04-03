@@ -244,8 +244,9 @@ export default function WorkspacePage() {
   const handleInitialize = async () => {
     if (!workspacePath) return;
     try {
-      await workspaceApi.init(workspacePath, { detect: true });
+      const initialized = await workspaceApi.init(workspacePath, { detect: true });
       await mutateWorkspace();
+      setTechStackDialog({ open: true, detectedStack: initialized.tech_stack });
     } catch (error) {
       console.error('Failed to initialize workspace:', error);
     }

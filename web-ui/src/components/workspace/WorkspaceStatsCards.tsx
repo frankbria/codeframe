@@ -8,6 +8,7 @@ import {
 } from '@hugeicons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TaskStatusCounts } from '@/types';
 
@@ -41,13 +42,15 @@ export function WorkspaceStatsCards({
             <p className="text-sm text-muted-foreground">Not detected</p>
           )}
           {onEditTechStack && (
-            <button
+            <Button
+              variant="link"
+              size="sm"
               onClick={onEditTechStack}
-              className="mt-2 text-xs text-primary hover:underline"
+              className="mt-2 h-auto p-0 text-xs"
               data-testid="edit-tech-stack-btn"
             >
               Edit Tech Stack
-            </button>
+            </Button>
           )}
         </CardContent>
       </Card>
