@@ -102,6 +102,17 @@ describe('workspace-storage', () => {
 
       expect(getRecentWorkspaces()).toEqual([]);
     });
+
+    it('caps results at 5 even when localStorage has more entries (defensive)', () => {
+      const excess = Array.from({ length: 8 }, (_, i) => ({
+        path: `/home/user/project-${i}`,
+        name: `project-${i}`,
+        lastUsed: '2026-02-04T10:00:00Z',
+      }));
+      localStorageMock.setItem('codeframe_recent_workspaces', JSON.stringify(excess));
+
+      expect(getRecentWorkspaces()).toHaveLength(5);
+    });
   });
 
   describe('addToRecentWorkspaces', () => {

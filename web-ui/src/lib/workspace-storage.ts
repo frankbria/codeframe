@@ -51,7 +51,8 @@ export function getRecentWorkspaces(): RecentWorkspace[] {
   const stored = localStorage.getItem(RECENT_WORKSPACES_KEY);
   if (!stored) return [];
   try {
-    return JSON.parse(stored);
+    const parsed: RecentWorkspace[] = JSON.parse(stored);
+    return parsed.slice(0, MAX_RECENT_WORKSPACES);
   } catch {
     return [];
   }

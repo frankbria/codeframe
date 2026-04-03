@@ -370,6 +370,21 @@ describe('WorkspaceSelector', () => {
       expect(mockOnSelectWorkspace).not.toHaveBeenCalled();
     });
 
+    it('does not open workspace when Enter is pressed on the remove button', async () => {
+      render(
+        <WorkspaceSelector
+          onSelectWorkspace={mockOnSelectWorkspace}
+          isLoading={false}
+          error={null}
+        />
+      );
+
+      const removeButton = screen.getAllByTitle(/remove from recent/i)[0];
+      fireEvent.keyDown(removeButton, { key: 'Enter' });
+
+      expect(mockOnSelectWorkspace).not.toHaveBeenCalled();
+    });
+
     it('disables recent workspace selection when loading', async () => {
       render(
         <WorkspaceSelector

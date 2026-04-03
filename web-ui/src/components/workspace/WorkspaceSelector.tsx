@@ -137,6 +137,7 @@ export function WorkspaceSelector({
                       tabIndex={isLoading ? -1 : 0}
                       onClick={() => !isLoading && handleSelectRecent(workspace.path)}
                       onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
                         if ((e.key === 'Enter' || e.key === ' ') && !isLoading) {
                           e.preventDefault();
                           handleSelectRecent(workspace.path);
@@ -163,6 +164,9 @@ export function WorkspaceSelector({
                         <button
                           type="button"
                           onClick={(e) => handleRemoveRecent(workspace.path, e)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+                          }}
                           className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive focus:outline-none focus:ring-2 focus:ring-ring"
                           title="Remove from recent"
                           aria-label={`Remove ${workspace.name} from recent projects`}
