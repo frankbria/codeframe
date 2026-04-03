@@ -10,7 +10,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 
 from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core import events, runtime, tasks
@@ -69,7 +69,7 @@ def create(
     workspace: Workspace,
     question: str,
     task_id: Optional[str] = None,
-    created_by: str = "human",
+    created_by: Union[BlockerOrigin, str] = BlockerOrigin.HUMAN,
 ) -> Blocker:
     """Create a new blocker.
 

@@ -61,7 +61,7 @@ class TestBlockerListIncludesOrigin:
 
 class TestExistingBlockersMigration:
     def test_blockers_without_created_by_default_to_human(self, workspace):
-        """Simulate a pre-migration blocker row with no created_by value."""
+        """COALESCE fallback: rows inserted without created_by read back as HUMAN."""
         from codeframe.core.workspace import get_db_connection
         import uuid
         from datetime import datetime, timezone
@@ -82,3 +82,48 @@ class TestExistingBlockersMigration:
         fetched = blockers.get(workspace, old_id)
         assert fetched is not None
         assert fetched.created_by == BlockerOrigin.HUMAN
+
+    def test_alter_table_migration_adds_created_by_column(self, tmp_path: Path):
+        """ALTER TABLE migration: initializing a DB without created_by column adds it."""
+        import sqlite3
+        from codeframe.core.workspace import _init_database, CODEFRAME_DIR, STATE_DB_NAME
+
+        # Create a DB with the old blockers schema (no created_by column)
+        repo = tmp_path / "old-repo"
+        repo.mkdir()
+        codeframe_dir = repo / CODEFRAME_DIR
+        codeframe_dir.mkdir()
+        db_path = codeframe_dir / STATE_DB_NAME
+
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS blockers (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                task_id TEXT,
+                question TEXT NOT NULL,
+                answer TEXT,
+                status TEXT NOT NULL DEFAULT 'OPEN',
+                created_at TEXT NOT NULL,
+                answered_at TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+        # Confirm column is absent before migration
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.execute("PRAGMA table_info(blockers)")
+        columns_before = {row[1] for row in cursor.fetchall()}
+        conn.close()
+        assert "created_by" not in columns_before
+
+        # Run the full init (triggers the ALTER TABLE migration)
+        _init_database(db_path)
+
+        # Confirm column is present after migration
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.execute("PRAGMA table_info(blockers)")
+        columns_after = {row[1] for row in cursor.fetchall()}
+        conn.close()
+        assert "created_by" in columns_after

@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import blockers
-from codeframe.core.blockers import BlockerStatus
+from codeframe.core.blockers import BlockerStatus, BlockerOrigin
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
 
@@ -45,7 +45,7 @@ class BlockerResponse(BaseModel):
     status: str
     created_at: str
     answered_at: Optional[str]
-    created_by: str = "human"
+    created_by: BlockerOrigin = BlockerOrigin.HUMAN
 
 
 class BlockerListResponse(BaseModel):
