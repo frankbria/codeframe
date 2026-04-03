@@ -163,10 +163,11 @@ describe('ProofPage — sort by column', () => {
     expect(ids[0]).toBe('REQ-004');
   });
 
-  it('shows sort direction indicator on active column', () => {
+  it('shows aria-sort on the th element when a column is sorted', () => {
     setup();
     fireEvent.click(screen.getByRole('button', { name: /sort by id/i }));
-    expect(screen.getByRole('button', { name: /sort by id/i })).toHaveAttribute('aria-sort', 'ascending');
+    const th = screen.getByRole('button', { name: /sort by id/i }).closest('th');
+    expect(th).toHaveAttribute('aria-sort', 'ascending');
   });
 });
 

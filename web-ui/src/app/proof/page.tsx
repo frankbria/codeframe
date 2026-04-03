@@ -65,27 +65,23 @@ function SortHeader({
   activeCol,
   activeDir,
   onSort,
-  children,
 }: {
   col: SortCol;
   label: string;
   activeCol: SortCol;
   activeDir: SortDir;
   onSort: (col: SortCol) => void;
-  children?: React.ReactNode;
 }) {
   const isActive = activeCol === col;
-  const ariaSort = isActive ? (activeDir === 'asc' ? 'ascending' : 'descending') : undefined;
 
   return (
     <button
       type="button"
       aria-label={`Sort by ${label}`}
-      aria-sort={ariaSort}
       onClick={() => onSort(col)}
       className="flex items-center gap-1 font-medium hover:text-foreground"
     >
-      {children ?? label}
+      {label}
       {isActive && (
         <span aria-hidden="true" className="text-xs leading-none">
           {activeDir === 'asc' ? '▲' : '▼'}
@@ -93,6 +89,11 @@ function SortHeader({
       )}
     </button>
   );
+}
+
+function sortAriaAttribute(col: SortCol, activeCol: SortCol, activeDir: SortDir): 'ascending' | 'descending' | undefined {
+  if (col !== activeCol) return undefined;
+  return activeDir === 'asc' ? 'ascending' : 'descending';
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────
@@ -276,9 +277,7 @@ function ProofPageContent() {
                 className="h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
               >
                 <option value="">All statuses</option>
-                <option value="open">open</option>
-                <option value="satisfied">satisfied</option>
-                <option value="waived">waived</option>
+                {STATUS_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
 
               <label className="sr-only" htmlFor="filter-severity">Severity</label>
@@ -290,10 +289,7 @@ function ProofPageContent() {
                 className="h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
               >
                 <option value="">All severities</option>
-                <option value="critical">critical</option>
-                <option value="high">high</option>
-                <option value="medium">medium</option>
-                <option value="low">low</option>
+                {SEVERITY_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
 
               <label className="sr-only" htmlFor="filter-glitch">Glitch Type</label>
@@ -321,10 +317,10 @@ function ProofPageContent() {
               <table className="min-w-[800px] w-full text-sm">
                 <thead className="border-b bg-muted/50">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium">
+                    <th aria-sort={sortAriaAttribute('id', sortCol, sortDir)} className="px-4 py-3 text-left font-medium">
                       <SortHeader col="id" label="ID" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
                     </th>
-                    <th className="px-4 py-3 text-left font-medium">
+                    <th aria-sort={sortAriaAttribute('title', sortCol, sortDir)} className="px-4 py-3 text-left font-medium">
                       <SortHeader col="title" label="Title" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
                     </th>
                     <th className="px-4 py-3 text-left font-medium">
@@ -340,7 +336,7 @@ function ProofPageContent() {
                         </Tooltip>
                       </span>
                     </th>
-                    <th className="px-4 py-3 text-left font-medium">
+                    <th aria-sort={sortAriaAttribute('severity', sortCol, sortDir)} className="px-4 py-3 text-left font-medium">
                       <span className="flex items-center gap-1">
                         <SortHeader col="severity" label="Severity" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
                         <Tooltip>
@@ -366,10 +362,10 @@ function ProofPageContent() {
                         </Tooltip>
                       </span>
                     </th>
-                    <th className="px-4 py-3 text-left font-medium">
+                    <th aria-sort={sortAriaAttribute('status', sortCol, sortDir)} className="px-4 py-3 text-left font-medium">
                       <SortHeader col="status" label="Status" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
                     </th>
-                    <th className="px-4 py-3 text-left font-medium">
+                    <th aria-sort={sortAriaAttribute('created_at', sortCol, sortDir)} className="px-4 py-3 text-left font-medium">
                       <SortHeader col="created_at" label="Created" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
                     </th>
                     <th className="px-4 py-3 text-left font-medium"></th>
@@ -379,7 +375,7 @@ function ProofPageContent() {
                   {visibleReqs.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                        {gateFilter
+                        {gateFilter && !hasActiveFilters
                           ? <>No requirements match gate &quot;{gateFilter}&quot;.{' '}<Link href="/proof" className="text-primary hover:underline">Clear filter</Link></>
                           : 'No requirements match the current filters.'}
                       </td>
