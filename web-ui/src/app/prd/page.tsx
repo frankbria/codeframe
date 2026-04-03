@@ -132,13 +132,15 @@ export default function PrdPage() {
     setIsGeneratingTasks(true);
     try {
       const result = await discoveryApi.generateTasks(workspacePath);
-      await mutateTasks();
       toast.success(`Generated ${result.task_count} task${result.task_count !== 1 ? 's' : ''} from PRD`, {
         duration: 4000,
         action: {
           label: 'Go to Tasks →',
           onClick: () => { window.location.href = '/tasks'; },
         },
+      });
+      void mutateTasks().catch((refreshError) => {
+        console.error('[PRD] Task refresh failed after successful generation:', refreshError);
       });
     } catch (err) {
       const apiError = err as ApiError;
