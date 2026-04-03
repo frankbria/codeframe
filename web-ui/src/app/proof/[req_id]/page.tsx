@@ -1,14 +1,64 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ProofStatusBadge, WaiveDialog } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
-import type { ProofRequirement, ProofEvidence } from '@/types';
+import type { ProofRequirement, ProofEvidence, ProofEvidenceSortCol, SortDir } from '@/types';
+
+function sessionKey(reqId: string) {
+  return `proof-evidence-filters:${reqId}`;
+}
+
+function loadSessionFilters(reqId: string): { gate: string; result: string; search: string } {
+  if (typeof window === 'undefined') return { gate: '', result: '', search: '' };
+  try {
+    const raw = sessionStorage.getItem(sessionKey(reqId));
+    return raw ? JSON.parse(raw) : { gate: '', result: '', search: '' };
+  } catch {
+    return { gate: '', result: '', search: '' };
+  }
+}
+
+function saveSessionFilters(reqId: string, gate: string, result: string, search: string) {
+  try {
+    sessionStorage.setItem(sessionKey(reqId), JSON.stringify({ gate, result, search }));
+  } catch {
+    // sessionStorage unavailable — ignore
+  }
+}
+
+function SortButton({
+  col,
+  label,
+  current,
+  dir,
+  onSort,
+}: {
+  col: ProofEvidenceSortCol;
+  label: string;
+  current: ProofEvidenceSortCol;
+  dir: SortDir;
+  onSort: (col: ProofEvidenceSortCol) => void;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      aria-label={`Sort by ${label}`}
+      onClick={() => onSort(col)}
+      className="-mx-2 h-auto px-2 py-1 font-medium hover:bg-transparent hover:text-foreground"
+    >
+      {label}
+      {current === col && <span className="ml-1 text-xs">{dir === 'asc' ? '↑' : '↓'}</span>}
+    </Button>
+  );
+}
 
 export default function ProofDetailPage() {
   const params = useParams();
@@ -18,9 +68,22 @@ export default function ProofDetailPage() {
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [showWaiveDialog, setShowWaiveDialog] = useState(false);
 
+  // Filter state (restored from sessionStorage on mount)
+  const [filterGate, setFilterGate] = useState('');
+  const [filterResult, setFilterResult] = useState('');
+  const [search, setSearch] = useState('');
+
+  // Sort state (default: timestamp descending)
+  const [sortCol, setSortCol] = useState<ProofEvidenceSortCol>('timestamp');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
   useEffect(() => {
     setWorkspacePath(getSelectedWorkspacePath());
     setWorkspaceReady(true);
+    const saved = loadSessionFilters(reqId);
+    setFilterGate(saved.gate);
+    setFilterResult(saved.result);
+    setSearch(saved.search);
   }, []);
 
   const { data: req, error: reqError, isLoading: reqLoading, mutate: mutateReq } =
@@ -34,6 +97,75 @@ export default function ProofDetailPage() {
       workspacePath && reqId ? `/api/v2/proof/requirements/${reqId}/evidence?path=${workspacePath}` : null,
       () => proofApi.getEvidence(workspacePath!, reqId)
     );
+
+  const hasActiveFilters = filterGate !== '' || filterResult !== '' || search !== '';
+
+  const gateOptions = useMemo(() => {
+    if (!Array.isArray(evidence)) return [];
+    return Array.from(new Set(evidence.map((e) => e.gate))).sort();
+  }, [evidence]);
+
+  const filteredEvidence = useMemo(() => {
+    if (!Array.isArray(evidence)) return [];
+    let rows = [...evidence];
+
+    if (filterGate) rows = rows.filter((e) => e.gate === filterGate);
+    if (filterResult === 'pass') rows = rows.filter((e) => e.satisfied);
+    if (filterResult === 'fail') rows = rows.filter((e) => !e.satisfied);
+    if (search) {
+      const q = search.toLowerCase();
+      rows = rows.filter(
+        (e) =>
+          e.run_id.toLowerCase().includes(q) ||
+          (e.artifact_path ?? '').toLowerCase().includes(q)
+      );
+    }
+
+    rows.sort((a, b) => {
+      let cmp = 0;
+      switch (sortCol) {
+        case 'gate':      cmp = a.gate.localeCompare(b.gate); break;
+        case 'result':    cmp = Number(a.satisfied) - Number(b.satisfied); break;
+        case 'run_id':    cmp = a.run_id.localeCompare(b.run_id); break;
+        case 'timestamp': cmp = a.timestamp.localeCompare(b.timestamp); break;
+        case 'artifact':  cmp = (a.artifact_path ?? '').localeCompare(b.artifact_path ?? ''); break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return rows;
+  }, [evidence, filterGate, filterResult, search, sortCol, sortDir]);
+
+  function handleSort(col: ProofEvidenceSortCol) {
+    if (sortCol === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  }
+
+  function updateGate(val: string) {
+    setFilterGate(val);
+    saveSessionFilters(reqId, val, filterResult, search);
+  }
+
+  function updateResult(val: string) {
+    setFilterResult(val);
+    saveSessionFilters(reqId, filterGate, val, search);
+  }
+
+  function updateSearch(val: string) {
+    setSearch(val);
+    saveSessionFilters(reqId, filterGate, filterResult, val);
+  }
+
+  function resetFilters() {
+    setFilterGate('');
+    setFilterResult('');
+    setSearch('');
+    saveSessionFilters(reqId, '', '', '');
+  }
 
   if (!workspaceReady) return null;
 
@@ -127,30 +259,108 @@ export default function ProofDetailPage() {
             {/* Evidence history */}
             <section>
               <h2 className="mb-3 text-base font-semibold">Evidence History</h2>
+
+              {/* Filter controls */}
+              {Array.isArray(evidence) && evidence.length > 0 && (
+                <div className="mb-4 flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Gate</span>
+                    <select
+                      aria-label="Gate"
+                      value={filterGate}
+                      onChange={(e) => updateGate(e.target.value)}
+                      className="rounded border bg-background px-2 py-1 text-sm"
+                    >
+                      <option value="">All</option>
+                      {gateOptions.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Result</span>
+                    <select
+                      aria-label="Result"
+                      value={filterResult}
+                      onChange={(e) => updateResult(e.target.value)}
+                      className="rounded border bg-background px-2 py-1 text-sm"
+                    >
+                      <option value="">All</option>
+                      <option value="pass">Pass</option>
+                      <option value="fail">Fail</option>
+                    </select>
+                  </label>
+
+                  <Input
+                    type="text"
+                    placeholder="Search run ID or artifact…"
+                    value={search}
+                    onChange={(e) => updateSearch(e.target.value)}
+                    aria-label="Search run ID or artifact"
+                    className="h-8 w-56 text-sm"
+                  />
+
+                  {hasActiveFilters && (
+                    <Button variant="ghost" size="sm" onClick={resetFilters}>
+                      Reset filters
+                    </Button>
+                  )}
+                </div>
+              )}
+
               {evidenceLoading && (
                 <div className="h-16 animate-pulse rounded bg-muted" />
               )}
               {!evidenceLoading && evidenceError && (
                 <p className="text-sm text-destructive">Failed to load evidence.</p>
               )}
-              {!evidenceLoading && !evidenceError && (!evidence || evidence.length === 0) && (
+              {!evidenceLoading && !evidenceError && (!evidence || !Array.isArray(evidence) || evidence.length === 0) && (
                 <p className="text-sm text-muted-foreground">No evidence recorded yet.</p>
               )}
-              {evidence && evidence.length > 0 && (
+              {Array.isArray(evidence) && evidence.length > 0 && (
                 <div className="overflow-x-auto rounded-lg border">
                   <table className="min-w-[640px] w-full text-sm">
                     <thead className="border-b bg-muted/50">
                       <tr>
-                        <th className="px-4 py-2 text-left font-medium">Gate</th>
-                        <th className="px-4 py-2 text-left font-medium">Result</th>
-                        <th className="px-4 py-2 text-left font-medium">Run ID</th>
-                        <th className="px-4 py-2 text-left font-medium">Timestamp</th>
-                        <th className="px-4 py-2 text-left font-medium">Artifact</th>
+                        <th
+                          className="px-4 py-2 text-left"
+                          aria-sort={sortCol === 'gate' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                        >
+                          <SortButton col="gate" label="Gate" current={sortCol} dir={sortDir} onSort={handleSort} />
+                        </th>
+                        <th
+                          className="px-4 py-2 text-left"
+                          aria-sort={sortCol === 'result' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                        >
+                          <SortButton col="result" label="Result" current={sortCol} dir={sortDir} onSort={handleSort} />
+                        </th>
+                        <th
+                          className="px-4 py-2 text-left"
+                          aria-sort={sortCol === 'run_id' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                        >
+                          <SortButton col="run_id" label="Run ID" current={sortCol} dir={sortDir} onSort={handleSort} />
+                        </th>
+                        <th
+                          className="px-4 py-2 text-left"
+                          aria-sort={sortCol === 'timestamp' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                        >
+                          <SortButton col="timestamp" label="Timestamp" current={sortCol} dir={sortDir} onSort={handleSort} />
+                        </th>
+                        <th
+                          className="px-4 py-2 text-left"
+                          aria-sort={sortCol === 'artifact' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                        >
+                          <SortButton col="artifact" label="Artifact" current={sortCol} dir={sortDir} onSort={handleSort} />
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {evidence.map((ev, i) => (
-                        <tr key={i} className="border-b last:border-0">
+                      {filteredEvidence.map((ev) => (
+                        <tr
+                          key={`${ev.req_id}:${ev.run_id}:${ev.timestamp}:${ev.gate}:${ev.artifact_path}`}
+                          className="border-b last:border-0"
+                        >
                           <td className="px-4 py-2 font-mono text-xs">{ev.gate}</td>
                           <td className="px-4 py-2">
                             <span className={ev.satisfied ? 'text-green-600' : 'text-red-600'}>
