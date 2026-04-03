@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
@@ -13,13 +13,105 @@ import {
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { ProofStatusBadge, WaiveDialog } from '@/components/proof';
+import { proofApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
-import type { ProofRequirement, ProofRequirementListResponse } from '@/types';
+import type { ProofRequirement, ProofRequirementListResponse, ProofReqStatus, ProofSeverity } from '@/types';
+
+// ── Sort / filter types ────────────────────────────────────────────────────
+
+type SortCol = 'id' | 'title' | 'severity' | 'status' | 'created_at';
+type SortDir = 'asc' | 'desc';
+
+const SEVERITY_ORDER: ProofSeverity[] = ['critical', 'high', 'medium', 'low'];
+const STATUS_ORDER: ProofReqStatus[] = ['open', 'satisfied', 'waived'];
+
+function severityRank(s: ProofSeverity) {
+  return SEVERITY_ORDER.indexOf(s);
+}
+function statusRank(s: ProofReqStatus) {
+  return STATUS_ORDER.indexOf(s);
+}
+
+function sortReqs(reqs: ProofRequirement[], col: SortCol, dir: SortDir): ProofRequirement[] {
+  return [...reqs].sort((a, b) => {
+    let cmp = 0;
+    switch (col) {
+      case 'id':
+        cmp = a.id.localeCompare(b.id);
+        break;
+      case 'title':
+        cmp = a.title.localeCompare(b.title);
+        break;
+      case 'severity':
+        cmp = severityRank(a.severity) - severityRank(b.severity);
+        break;
+      case 'status':
+        cmp = statusRank(a.status) - statusRank(b.status);
+        if (cmp === 0) cmp = severityRank(a.severity) - severityRank(b.severity);
+        break;
+      case 'created_at':
+        cmp = (a.created_at ?? '').localeCompare(b.created_at ?? '');
+        break;
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
+}
+
+// ── Sort button component ──────────────────────────────────────────────────
+
+function SortHeader({
+  col,
+  label,
+  activeCol,
+  activeDir,
+  onSort,
+  children,
+}: {
+  col: SortCol;
+  label: string;
+  activeCol: SortCol;
+  activeDir: SortDir;
+  onSort: (col: SortCol) => void;
+  children?: React.ReactNode;
+}) {
+  const isActive = activeCol === col;
+  const ariaSort = isActive ? (activeDir === 'asc' ? 'ascending' : 'descending') : undefined;
+
+  return (
+    <button
+      type="button"
+      aria-label={`Sort by ${label}`}
+      aria-sort={ariaSort}
+      onClick={() => onSort(col)}
+      className="flex items-center gap-1 font-medium hover:text-foreground"
+    >
+      {children ?? label}
+      {isActive && (
+        <span aria-hidden="true" className="text-xs leading-none">
+          {activeDir === 'asc' ? '▲' : '▼'}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────
 
 function ProofPageContent() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [waivedReq, setWaivedReq] = useState<ProofRequirement | null>(null);
+
+  // Sort state (default: status asc → open first, then severity)
+  const [sortCol, setSortCol] = useState<SortCol>('status');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'' | ProofReqStatus>('');
+  const [filterSeverity, setFilterSeverity] = useState<'' | ProofSeverity>('');
+  const [filterGlitch, setFilterGlitch] = useState('');
+
   const searchParams = useSearchParams();
   const gateFilter = searchParams.get('gate')?.toLowerCase() ?? null;
 
@@ -32,6 +124,31 @@ function ProofPageContent() {
     workspacePath ? `/api/v2/proof/requirements?path=${workspacePath}` : null,
     () => proofApi.listRequirements(workspacePath!)
   );
+
+  // Collect unique glitch types from data for the dropdown
+  const glitchTypes = useMemo(() => {
+    if (!data) return [] as string[];
+    const types = data.requirements
+      .map((r) => r.glitch_type)
+      .filter((g): g is string => g !== null && g !== '');
+    return Array.from(new Set(types)).sort();
+  }, [data]);
+
+  function handleSort(col: SortCol) {
+    if (col === sortCol) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  }
+
+  function resetFilters() {
+    setSearchQuery('');
+    setFilterStatus('');
+    setFilterSeverity('');
+    setFilterGlitch('');
+  }
 
   if (!workspaceReady) return null;
 
@@ -86,11 +203,27 @@ function ProofPageContent() {
         )}
 
         {data && data.total > 0 && (() => {
-          const visibleReqs = gateFilter
+          // Gate filter (from URL param)
+          const gateFiltered = gateFilter
             ? data.requirements.filter((r) =>
                 r.obligations.some((o) => o.gate.toLowerCase() === gateFilter)
               )
             : data.requirements;
+
+          // Apply search + dropdowns (AND logic)
+          const q = searchQuery.toLowerCase();
+          const filtered = gateFiltered.filter((r) => {
+            if (q && !r.id.toLowerCase().includes(q) && !r.title.toLowerCase().includes(q)) return false;
+            if (filterStatus && r.status !== filterStatus) return false;
+            if (filterSeverity && r.severity !== filterSeverity) return false;
+            if (filterGlitch && r.glitch_type !== filterGlitch) return false;
+            return true;
+          });
+
+          // Sort
+          const visibleReqs = sortReqs(filtered, sortCol, sortDir);
+
+          const hasActiveFilters = q || filterStatus || filterSeverity || filterGlitch;
 
           return (
           <>
@@ -123,12 +256,77 @@ function ProofPageContent() {
               </span>
             </div>
 
+            {/* Filter controls */}
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <input
+                type="search"
+                placeholder="Search by ID or title…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="Search requirements"
+                className="h-8 rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+              />
+
+              <label className="sr-only" htmlFor="filter-status">Status</label>
+              <select
+                id="filter-status"
+                aria-label="Status"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as '' | ProofReqStatus)}
+                className="h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+              >
+                <option value="">All statuses</option>
+                <option value="open">open</option>
+                <option value="satisfied">satisfied</option>
+                <option value="waived">waived</option>
+              </select>
+
+              <label className="sr-only" htmlFor="filter-severity">Severity</label>
+              <select
+                id="filter-severity"
+                aria-label="Severity"
+                value={filterSeverity}
+                onChange={(e) => setFilterSeverity(e.target.value as '' | ProofSeverity)}
+                className="h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+              >
+                <option value="">All severities</option>
+                <option value="critical">critical</option>
+                <option value="high">high</option>
+                <option value="medium">medium</option>
+                <option value="low">low</option>
+              </select>
+
+              <label className="sr-only" htmlFor="filter-glitch">Glitch Type</label>
+              <select
+                id="filter-glitch"
+                aria-label="Glitch Type"
+                value={filterGlitch}
+                onChange={(e) => setFilterGlitch(e.target.value)}
+                className="h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+              >
+                <option value="">All glitch types</option>
+                {glitchTypes.map((g) => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={resetFilters} aria-label="Reset filters">
+                  Reset
+                </Button>
+              )}
+            </div>
+
             <div className="overflow-x-auto rounded-lg border">
               <table className="min-w-[800px] w-full text-sm">
                 <thead className="border-b bg-muted/50">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium">ID</th>
-                    <th className="px-4 py-3 text-left font-medium">Title</th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      <SortHeader col="id" label="ID" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      <SortHeader col="title" label="Title" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+                    </th>
                     <th className="px-4 py-3 text-left font-medium">
                       <span className="flex items-center gap-1">
                         Glitch Type
@@ -144,7 +342,7 @@ function ProofPageContent() {
                     </th>
                     <th className="px-4 py-3 text-left font-medium">
                       <span className="flex items-center gap-1">
-                        Severity
+                        <SortHeader col="severity" label="Severity" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button type="button" aria-label="Explain Severity" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
@@ -168,8 +366,12 @@ function ProofPageContent() {
                         </Tooltip>
                       </span>
                     </th>
-                    <th className="px-4 py-3 text-left font-medium">Status</th>
-                    <th className="px-4 py-3 text-left font-medium">Created</th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      <SortHeader col="status" label="Status" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      <SortHeader col="created_at" label="Created" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+                    </th>
                     <th className="px-4 py-3 text-left font-medium"></th>
                   </tr>
                 </thead>
@@ -177,8 +379,9 @@ function ProofPageContent() {
                   {visibleReqs.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                        No requirements match gate &quot;{gateFilter}&quot;.{' '}
-                        <Link href="/proof" className="text-primary hover:underline">Clear filter</Link>
+                        {gateFilter
+                          ? <>No requirements match gate &quot;{gateFilter}&quot;.{' '}<Link href="/proof" className="text-primary hover:underline">Clear filter</Link></>
+                          : 'No requirements match the current filters.'}
                       </td>
                     </tr>
                   )}
