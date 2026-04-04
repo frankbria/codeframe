@@ -556,6 +556,7 @@ def start_batch(
     concurrency_by_status: Optional[dict[str, int]] = None,
     isolate: bool = True,
     isolation: str = "none",
+    cloud_timeout_minutes: int = 30,
 ) -> BatchRun:
     """Start a batch execution of multiple tasks.
 
@@ -2039,6 +2040,7 @@ def _execute_task_subprocess(
     stall_timeout_s: int = 300,
     stall_action: str = "blocker",
     worktree_path: Optional[Path] = None,
+    cloud_timeout_minutes: int = 30,
 ) -> str:
     """Execute a single task via subprocess.
 
@@ -2048,9 +2050,10 @@ def _execute_task_subprocess(
         workspace: Target workspace
         task_id: Task to execute
         batch_id: Optional batch ID for process tracking (enables force stop)
-        engine: Agent engine to use ("plan" or "react")
+        engine: Agent engine to use ("plan", "react", "cloud", etc.)
         stall_timeout_s: Stall detection timeout in seconds (0 = disabled)
         stall_action: Recovery action on stall ("blocker", "retry", or "fail")
+        cloud_timeout_minutes: Sandbox timeout for cloud engine (1-60)
 
     Returns:
         RunStatus value string (COMPLETED, FAILED, BLOCKED)
@@ -2063,6 +2066,8 @@ def _execute_task_subprocess(
         "--stall-timeout", str(stall_timeout_s),
         "--stall-action", stall_action,
     ]
+    if engine == "cloud":
+        cmd += ["--cloud-timeout", str(cloud_timeout_minutes)]
 
     process = None
     try:

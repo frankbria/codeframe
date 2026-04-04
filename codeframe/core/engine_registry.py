@@ -16,6 +16,7 @@ VALID_ENGINES = frozenset({
     "codex",
     "opencode",
     "kilocode",
+    "cloud",
     "built-in",  # Alias for "react"
 })
 
@@ -25,6 +26,7 @@ EXTERNAL_ENGINES = frozenset({
     "codex",
     "opencode",
     "kilocode",
+    "cloud",
 })
 
 # Builtin engines that need workspace + LLM provider
@@ -102,6 +104,11 @@ def get_external_adapter(engine: str, **kwargs: Any) -> AgentAdapter:
         from codeframe.core.adapters.kilocode import KilocodeAdapter
 
         return KilocodeAdapter(**kwargs)
+    elif engine == "cloud":
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+
+        timeout_minutes = kwargs.get("timeout_minutes", 30)
+        return E2BAgentAdapter(timeout_minutes=timeout_minutes)
     else:
         raise ValueError(
             f"Unknown external engine '{engine}'. "
@@ -210,6 +217,9 @@ def _get_adapter_class(engine: str) -> type | None:
     elif engine == "kilocode":
         from codeframe.core.adapters.kilocode import KilocodeAdapter
         return KilocodeAdapter
+    elif engine == "cloud":
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+        return E2BAgentAdapter
     return None
 
 

@@ -67,6 +67,7 @@ class AgentResult:
     blocker_question: str | None = None
     token_usage: AdapterTokenUsage | None = None
     duration_ms: int = 0
+    cloud_metadata: dict | None = None
 
 
 @dataclass
