@@ -50,12 +50,13 @@ class OpenAIProvider(LLMProvider):
             api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
             model: Default model to use for all purposes
             base_url: Custom endpoint URL for OpenAI-compatible APIs
-            model_selector: Custom model selector (ignored — provider uses self.model)
+            model_selector: Optional model selector; when provided, defers to it for per-purpose routing
             credential_manager: Optional credential manager for secure key retrieval
 
         Raises:
             ValueError: If no API key is available
         """
+        self._has_custom_selector = model_selector is not None
         super().__init__(model_selector)
 
         self.model = model
@@ -79,12 +80,14 @@ class OpenAIProvider(LLMProvider):
         self._client = None
 
     def get_model(self, purpose: Purpose) -> str:
-        """Always returns self.model regardless of purpose.
+        """Return the model for a given purpose.
 
-        OpenAI providers manage their own model selection via the model
-        constructor parameter rather than the ModelSelector (which maps
-        to Claude model names).
+        When an explicit model_selector was provided, defers to it so callers
+        can route PLANNING/EXECUTION/GENERATION to different OpenAI models.
+        Otherwise returns self.model for all purposes (single-model mode).
         """
+        if self._has_custom_selector:
+            return self.model_selector.for_purpose(purpose)
         return self.model
 
     @property
@@ -125,10 +128,8 @@ class OpenAIProvider(LLMProvider):
             "model": self.get_model(purpose),
             "max_tokens": max_tokens,
             "messages": converted,
+            "temperature": temperature,
         }
-
-        if temperature > 0:
-            kwargs["temperature"] = temperature
 
         if tools:
             kwargs["tools"] = self._convert_tools(tools)
@@ -175,10 +176,8 @@ class OpenAIProvider(LLMProvider):
             "max_tokens": max_tokens,
             "messages": converted,
             "stream": True,
+            "temperature": temperature,
         }
-
-        if temperature > 0:
-            kwargs["temperature"] = temperature
 
         for chunk in self.client.chat.completions.create(**kwargs):
             content = chunk.choices[0].delta.content

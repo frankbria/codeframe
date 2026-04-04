@@ -315,7 +315,7 @@ class TestOpenAIProviderErrors:
                     "bad key", response=MagicMock(), body={}
                 )
 
-                with pytest.raises((ValueError, openai.AuthenticationError)):
+                with pytest.raises(ValueError, match="authentication failed"):
                     provider.complete([{"role": "user", "content": "hi"}])
 
     def test_rate_limit_error_surfaced(self):
@@ -333,7 +333,7 @@ class TestOpenAIProviderErrors:
                     "rate limit", response=MagicMock(), body={}
                 )
 
-                with pytest.raises((ValueError, openai.RateLimitError)):
+                with pytest.raises(ValueError, match="rate limit"):
                     provider.complete([{"role": "user", "content": "hi"}])
 
 
