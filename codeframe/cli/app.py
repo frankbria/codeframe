@@ -2306,7 +2306,7 @@ def work_start(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, or built-in",
+        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, cloud, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
@@ -2325,6 +2325,11 @@ def work_start(
         help="Task execution isolation: none (default), worktree, or cloud",
         click_type=click.Choice(["none", "worktree", "cloud"], case_sensitive=False),
     ),
+    cloud_timeout: int = typer.Option(
+        30,
+        "--cloud-timeout",
+        help="Sandbox timeout in minutes for --engine cloud (1-60, default: 30)",
+    ),
 ) -> None:
     """Start working on a task.
 
@@ -2338,6 +2343,7 @@ def work_start(
         codeframe work start abc123 --execute --dry-run
         codeframe work start abc123 --execute --verbose
         codeframe work start abc123 --execute --isolation worktree
+        codeframe work start abc123 --execute --engine cloud --cloud-timeout 45
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks as tasks_module, runtime
@@ -2379,6 +2385,9 @@ def work_start(
             if engine == "codex":
                 from codeframe.cli.validators import require_openai_api_key
                 require_openai_api_key()
+            elif engine == "cloud":
+                from codeframe.cli.validators import require_e2b_api_key
+                require_e2b_api_key()
             elif not is_external_engine(engine):
                 from codeframe.cli.validators import require_anthropic_api_key
                 require_anthropic_api_key()
@@ -2406,6 +2415,7 @@ def work_start(
                     workspace, run, dry_run=dry_run, debug=debug, verbose=verbose,
                     engine=engine, stall_timeout_s=stall_timeout,
                     stall_action=stall_action, isolation=isolation,
+                    cloud_timeout_minutes=cloud_timeout,
                 )
 
                 if state.status == AgentStatus.COMPLETED:
@@ -2620,6 +2630,80 @@ def work_status(
                     )
             else:
                 console.print("[dim]No active runs[/dim]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+
+
+@work_app.command("show")
+def work_show(
+    task_id: str = typer.Argument(..., help="Task ID to show run details for"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Show detailed run information for a task, including cloud execution cost.
+
+    Example:
+        codeframe work show abc123
+        codeframe work show abc123 --workspace /path/to/project
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import runtime, engine_stats
+    from rich.table import Table
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        run = runtime.get_latest_run(workspace, task_id)
+        if not run:
+            console.print(f"[dim]No run found for task {task_id}[/dim]")
+            raise typer.Exit(0)
+
+        console.print(f"\n[bold]Run Details[/bold] — {task_id[:8]}")
+        console.print(f"  Run ID:    [dim]{run.id}[/dim]")
+        console.print(f"  Status:    {run.status.value}")
+        console.print(f"  Started:   {run.started_at.strftime('%Y-%m-%d %H:%M:%S') if run.started_at else '—'}")
+        if run.completed_at:
+            duration_s = (run.completed_at - run.started_at).total_seconds()
+            console.print(f"  Duration:  {duration_s:.1f}s")
+
+        # Engine stats from run_engine_log
+        logs = engine_stats.get_run_log(workspace, limit=20)
+        run_log = next((l for l in logs if l.get("run_id") == run.id), None)
+        if run_log:
+            console.print(f"  Engine:    {run_log.get('engine', '—')}")
+            tokens = run_log.get("tokens_used", 0)
+            if tokens:
+                console.print(f"  Tokens:    {tokens:,}")
+
+        # Cloud execution cost (E2B)
+        engine_name = run_log.get("engine") if run_log else None
+        if engine_name == "cloud":
+            from codeframe.adapters.e2b.budget import get_cloud_run
+
+            cloud = get_cloud_run(workspace, run.id)
+            if cloud:
+                console.print()
+                tbl = Table(title="Cloud Execution Cost", show_header=True)
+                tbl.add_column("Metric", style="cyan")
+                tbl.add_column("Value", style="white")
+                tbl.add_row("Sandbox minutes", f"{cloud['sandbox_minutes']:.2f}")
+                tbl.add_row("Estimated cost", f"${cloud['cost_usd_estimate']:.4f}")
+                tbl.add_row("Files uploaded", str(cloud["files_uploaded"]))
+                tbl.add_row("Files downloaded", str(cloud["files_downloaded"]))
+                if cloud["credential_scan_blocked"]:
+                    tbl.add_row(
+                        "[red]Scan blocked[/red]",
+                        str(cloud["credential_scan_blocked"]),
+                    )
+                console.print(tbl)
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")
@@ -3544,7 +3628,7 @@ def batch_run(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, or built-in",
+        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, cloud, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
@@ -3562,6 +3646,11 @@ def batch_run(
         "--isolation",
         help="Task execution isolation: none (default), worktree, or cloud",
         click_type=click.Choice(["none", "worktree", "cloud"], case_sensitive=False),
+    ),
+    cloud_timeout: int = typer.Option(
+        30,
+        "--cloud-timeout",
+        help="Sandbox timeout in minutes for --engine cloud (1-60, default: 30)",
     ),
 ) -> None:
     """Execute multiple tasks in batch.
@@ -3656,6 +3745,9 @@ def batch_run(
         if engine == "codex":
             from codeframe.cli.validators import require_openai_api_key
             require_openai_api_key()
+        elif engine == "cloud":
+            from codeframe.cli.validators import require_e2b_api_key
+            require_e2b_api_key()
         elif not is_external_engine(engine):
             from codeframe.cli.validators import require_anthropic_api_key
             require_anthropic_api_key()
@@ -3678,6 +3770,7 @@ def batch_run(
             stall_timeout_s=stall_timeout,
             stall_action=stall_action,
             isolation=isolation,
+            cloud_timeout_minutes=cloud_timeout,
         )
 
         # Show summary

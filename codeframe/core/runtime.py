@@ -600,6 +600,7 @@ def execute_agent(
     stall_timeout_s: int = 300,
     stall_action: str = "blocker",
     isolation: str = "none",
+    cloud_timeout_minutes: int = 30,
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -614,9 +615,10 @@ def execute_agent(
         verbose: If True, print detailed progress to stdout
         fix_coordinator: Optional coordinator for global fixes (for parallel execution)
         event_publisher: Optional EventPublisher for SSE streaming (real-time events)
-        engine: Agent engine to use ("react", "plan", "claude-code", "opencode", "built-in")
+        engine: Agent engine to use ("react", "plan", "claude-code", "opencode", "cloud", "built-in")
         stall_timeout_s: Seconds without tool activity before stall detection (0 = disabled)
         stall_action: Recovery action on stall ("blocker", "retry", or "fail")
+        cloud_timeout_minutes: Sandbox timeout for cloud engine (1-60 minutes, default: 30)
 
     Returns:
         Final AgentState after execution
@@ -735,7 +737,10 @@ def execute_agent(
             packager = TaskContextPackager(workspace)
             packaged = packager.build(run.task_id)
 
-            adapter = get_external_adapter(engine)
+            adapter_kwargs = {}
+            if engine == "cloud":
+                adapter_kwargs["timeout_minutes"] = cloud_timeout_minutes
+            adapter = get_external_adapter(engine, **adapter_kwargs)
             wrapper = VerificationWrapper(
                 adapter, workspace, max_correction_rounds=5, verbose=verbose,
             )

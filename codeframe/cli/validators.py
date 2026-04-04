@@ -83,3 +83,41 @@ def require_openai_api_key() -> str:
         "Set it in your environment or add it to a .env file."
     )
     raise typer.Exit(1)
+
+
+def require_e2b_api_key() -> str:
+    """Ensure E2B_API_KEY is available, loading from .env if needed.
+
+    Checks os.environ first. If not found, attempts to load from .env files
+    (~/.env as base, then cwd/.env with override). If found after loading,
+    sets in os.environ so subprocesses inherit it.
+
+    Returns:
+        The API key string.
+
+    Raises:
+        typer.Exit: If the key cannot be found anywhere.
+    """
+    key = os.getenv("E2B_API_KEY")
+    if key:
+        return key
+
+    cwd_env = Path.cwd() / ".env"
+    home_env = Path.home() / ".env"
+
+    if home_env.exists():
+        load_dotenv(home_env)
+    if cwd_env.exists():
+        load_dotenv(cwd_env, override=True)
+
+    key = os.getenv("E2B_API_KEY")
+    if key:
+        os.environ["E2B_API_KEY"] = key
+        return key
+
+    console.print(
+        "[red]Error:[/red] E2B_API_KEY is not set. "
+        "Set it in your environment or add it to a .env file. "
+        "Get your key at https://e2b.dev"
+    )
+    raise typer.Exit(1)

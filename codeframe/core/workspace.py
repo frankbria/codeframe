@@ -346,6 +346,18 @@ def _init_database(db_path: Path) -> None:
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cloud_run_metadata (
+            run_id TEXT PRIMARY KEY,
+            sandbox_minutes REAL NOT NULL,
+            cost_usd_estimate REAL NOT NULL,
+            files_uploaded INTEGER NOT NULL,
+            files_downloaded INTEGER NOT NULL,
+            credential_scan_blocked INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+
     # Create indexes for common queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
@@ -666,6 +678,18 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_interactions_step ON llm_interactions(step_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_run ON file_operations(run_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_step ON file_operations(step_id)")
+    # Add cloud_run_metadata table for E2B cloud execution tracking
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cloud_run_metadata (
+            run_id TEXT PRIMARY KEY,
+            sandbox_minutes REAL NOT NULL,
+            cost_usd_estimate REAL NOT NULL,
+            files_uploaded INTEGER NOT NULL,
+            files_downloaded INTEGER NOT NULL,
+            credential_scan_blocked INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
     conn.commit()
 
     conn.close()

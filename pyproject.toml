@@ -59,6 +59,7 @@ dependencies = [
     "jinja2>=3.1.6",
     "slowapi>=0.1.9",
     "rapidfuzz>=3.0.0",
+    "e2b>=2.0.0",
 ]
 
 [project.optional-dependencies]
