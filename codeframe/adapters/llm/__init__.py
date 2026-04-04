@@ -60,7 +60,10 @@ def get_provider(provider_type: str = "anthropic", **kwargs) -> LLMProvider:
             "vllm", "compatible", or "mock"). OpenAI-compatible types are
             all routed to OpenAIProvider.
         **kwargs: Optional overrides passed to the provider constructor.
-            Supported keys: model, base_url.
+            Supported keys: api_key, model, base_url.
+            For local providers (ollama, vllm, compatible) that don't
+            require authentication, api_key defaults to "not-required"
+            if OPENAI_API_KEY is not set.
 
     Returns:
         Configured LLMProvider instance
@@ -69,7 +72,13 @@ def get_provider(provider_type: str = "anthropic", **kwargs) -> LLMProvider:
         ValueError: If provider type is unknown
     """
     if provider_type in _OPENAI_COMPATIBLE:
+        api_key = kwargs.get("api_key") or os.environ.get("OPENAI_API_KEY")
+        if not api_key and provider_type != "openai":
+            # Local providers (ollama, vllm, compatible) don't need real auth;
+            # the openai SDK still requires a non-empty api_key value.
+            api_key = "not-required"
         return OpenAIProvider(
+            api_key=api_key,
             model=kwargs.get("model", os.environ.get("CODEFRAME_LLM_MODEL", "gpt-4o")),
             base_url=kwargs.get("base_url", os.environ.get("OPENAI_BASE_URL")),
         )

@@ -248,6 +248,26 @@ class TestGetProvider:
         provider = get_provider("openai")
         assert provider.model == "gpt-4o"
 
+    def test_ollama_no_api_key_required(self, monkeypatch):
+        """ollama provider works without OPENAI_API_KEY (uses placeholder)."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        provider = get_provider("ollama")
+        assert isinstance(provider, OpenAIProvider)
+        assert provider.api_key == "not-required"
+
+    def test_vllm_no_api_key_required(self, monkeypatch):
+        """vllm provider works without OPENAI_API_KEY (uses placeholder)."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        provider = get_provider("vllm")
+        assert isinstance(provider, OpenAIProvider)
+        assert provider.api_key == "not-required"
+
+    def test_openai_still_requires_api_key(self, monkeypatch):
+        """openai provider raises if no OPENAI_API_KEY."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+            get_provider("openai")
+
 
 class TestLLMResponse:
     """Tests for LLMResponse dataclass."""

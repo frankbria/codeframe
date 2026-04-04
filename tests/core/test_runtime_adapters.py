@@ -198,8 +198,8 @@ class TestRuntimeProviderSelection:
                             execute_agent(mock_workspace, mock_run, engine="react")
                         except Exception:
                             pass
-                        if mock_get_provider.called:
-                            assert mock_get_provider.call_args[0][0] == "openai"
+                        assert mock_get_provider.called, "get_provider was not called"
+                        assert mock_get_provider.call_args[0][0] == "openai"
         finally:
             for p in patches:
                 p.stop()
