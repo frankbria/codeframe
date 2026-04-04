@@ -638,15 +638,19 @@ def execute_agent(
     # Resolve engine (handles "built-in" alias and CODEFRAME_ENGINE env var)
     engine = resolve_engine(engine)
 
+    # Determine provider type from env var (default: anthropic)
+    provider_type = os.getenv("CODEFRAME_LLM_PROVIDER", "anthropic")
+
     # External engines manage their own authentication
-    if not is_external_engine(engine) and not os.getenv("ANTHROPIC_API_KEY"):
-        raise ValueError(
-            "ANTHROPIC_API_KEY environment variable is required for agent execution. "
-            "Set it with: export ANTHROPIC_API_KEY=your-key"
-        )
+    if not is_external_engine(engine):
+        if provider_type == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
+            raise ValueError(
+                "ANTHROPIC_API_KEY environment variable is required for agent execution. "
+                "Set it with: export ANTHROPIC_API_KEY=your-key"
+            )
 
     # Only create LLM provider for builtin engines (external engines manage their own)
-    provider = get_provider("anthropic") if not is_external_engine(engine) else None
+    provider = get_provider(provider_type) if not is_external_engine(engine) else None
 
     # Create run logger for structured logging
     run_logger = RunLogger(workspace, run.id, run.task_id)

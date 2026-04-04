@@ -236,9 +236,15 @@ When unsure: simpler state, fewer dependencies, smaller surface area, core-first
 ## Environment Variables
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...          # Required for agent execution
+ANTHROPIC_API_KEY=sk-ant-...          # Required for Anthropic provider (default)
 E2B_API_KEY=e2b_...                   # Required for --engine cloud
 DATABASE_PATH=./codeframe.db          # Optional
+
+# LLM Provider selection (multi-provider support)
+CODEFRAME_LLM_PROVIDER=anthropic      # Provider: anthropic (default), openai, ollama, vllm, compatible
+CODEFRAME_LLM_MODEL=gpt-4o            # Model override (used with openai/ollama/vllm/compatible)
+OPENAI_API_KEY=sk-...                 # Required for openai provider; not needed for local providers
+OPENAI_BASE_URL=http://localhost:11434/v1  # Base URL override (for ollama, vllm, or custom endpoints)
 
 # Optional — Rate limiting
 RATE_LIMIT_ENABLED=true

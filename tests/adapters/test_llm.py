@@ -7,6 +7,7 @@ from codeframe.adapters.llm import (
     LLMResponse,
     MockProvider,
     ModelSelector,
+    OpenAIProvider,
     Purpose,
     ToolCall,
     get_provider,
@@ -201,6 +202,81 @@ class TestGetProvider:
         """Raises ValueError for unknown provider type."""
         with pytest.raises(ValueError, match="Unknown provider"):
             get_provider("unknown")
+
+    @pytest.mark.v2
+    def test_get_openai_provider(self, monkeypatch):
+        """Returns OpenAIProvider for 'openai' type."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        provider = get_provider("openai")
+        assert isinstance(provider, OpenAIProvider)
+
+    @pytest.mark.v2
+    def test_get_ollama_provider(self, monkeypatch):
+        """Returns OpenAIProvider for 'ollama' type."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        provider = get_provider("ollama")
+        assert isinstance(provider, OpenAIProvider)
+
+    @pytest.mark.v2
+    def test_get_vllm_provider(self, monkeypatch):
+        """Returns OpenAIProvider for 'vllm' type."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        provider = get_provider("vllm")
+        assert isinstance(provider, OpenAIProvider)
+
+    @pytest.mark.v2
+    def test_get_compatible_provider(self, monkeypatch):
+        """Returns OpenAIProvider for 'compatible' type."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        provider = get_provider("compatible")
+        assert isinstance(provider, OpenAIProvider)
+
+    @pytest.mark.v2
+    def test_codeframe_llm_model_sets_model(self, monkeypatch):
+        """CODEFRAME_LLM_MODEL env var sets the OpenAI provider model."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv("CODEFRAME_LLM_MODEL", "qwen2.5-coder")
+        provider = get_provider("openai")
+        assert provider.model == "qwen2.5-coder"
+
+    @pytest.mark.v2
+    def test_openai_base_url_env_var(self, monkeypatch):
+        """OPENAI_BASE_URL env var sets the base_url."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+        provider = get_provider("openai")
+        assert provider.base_url == "http://localhost:11434/v1"
+
+    @pytest.mark.v2
+    def test_openai_default_model_is_gpt4o(self, monkeypatch):
+        """Default OpenAI model is gpt-4o when CODEFRAME_LLM_MODEL not set."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.delenv("CODEFRAME_LLM_MODEL", raising=False)
+        provider = get_provider("openai")
+        assert provider.model == "gpt-4o"
+
+    @pytest.mark.v2
+    def test_ollama_no_api_key_required(self, monkeypatch):
+        """ollama provider works without OPENAI_API_KEY (uses placeholder)."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        provider = get_provider("ollama")
+        assert isinstance(provider, OpenAIProvider)
+        assert provider.api_key == "not-required"
+
+    @pytest.mark.v2
+    def test_vllm_no_api_key_required(self, monkeypatch):
+        """vllm provider works without OPENAI_API_KEY (uses placeholder)."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        provider = get_provider("vllm")
+        assert isinstance(provider, OpenAIProvider)
+        assert provider.api_key == "not-required"
+
+    @pytest.mark.v2
+    def test_openai_still_requires_api_key(self, monkeypatch):
+        """openai provider raises if no OPENAI_API_KEY."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+            get_provider("openai")
 
 
 class TestLLMResponse:

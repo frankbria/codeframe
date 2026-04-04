@@ -5,9 +5,16 @@ Get your project built with AI agents in minutes.
 ## Prerequisites
 
 1. **Python 3.11+** with `uv` package manager
-2. **Anthropic API Key** set as environment variable:
+2. **LLM Provider API Key** — Anthropic is the default:
    ```bash
    export ANTHROPIC_API_KEY=sk-ant-...
+   ```
+   To use OpenAI-compatible providers (OpenAI, Ollama, vLLM, or any compatible endpoint):
+   ```bash
+   export CODEFRAME_LLM_PROVIDER=openai      # or: ollama, vllm, compatible
+   export CODEFRAME_LLM_MODEL=gpt-4o         # model name for the chosen provider
+   export OPENAI_API_KEY=sk-...              # required for openai; not needed for local providers
+   export OPENAI_BASE_URL=http://localhost:11434/v1  # for local providers (ollama, vllm)
    ```
 
 ## The Happy Path
