@@ -96,7 +96,7 @@ describe('TaskDetailModal', () => {
     render(<TaskDetailModal {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/2 dependencies/)).toBeInTheDocument();
+      expect(screen.getByText(/Dependencies \(2\)/)).toBeInTheDocument();
     });
   });
 

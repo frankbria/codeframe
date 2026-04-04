@@ -215,8 +215,7 @@ describe('TaskBoardView', () => {
     });
     render(<TaskBoardView workspacePath="/test" />);
     expect(screen.getByText('0 tasks total')).toBeInTheDocument();
-    const emptyStates = screen.getAllByText('No tasks');
-    expect(emptyStates).toHaveLength(6);
+    expect(screen.getByText('No tasks yet')).toBeInTheDocument();
   });
 
   it('shows singular "task" for single task', () => {

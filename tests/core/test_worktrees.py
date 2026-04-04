@@ -223,3 +223,241 @@ class TestStartBatchIsolate:
                         batch = start_batch(workspace, ["t1"], isolate=False)
 
         assert batch.isolate is False
+
+
+# ---------------------------------------------------------------------------
+# get_base_branch tests
+# ---------------------------------------------------------------------------
+
+
+class TestGetBaseBranch:
+    """Test get_base_branch() helper."""
+
+    def test_returns_current_branch(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import get_base_branch
+
+        subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"], capture_output=True)
+
+        result = get_base_branch(tmp_path)
+        assert isinstance(result, str)
+        assert result  # non-empty
+
+    def test_returns_main_on_failure(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import get_base_branch
+
+        # Non-git directory → should default to "main"
+        result = get_base_branch(tmp_path)
+        assert result == "main"
+
+    def test_returns_main_in_detached_head_state(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import get_base_branch
+        from unittest.mock import patch, MagicMock
+
+        # Simulate git returning "HEAD" (detached HEAD)
+        mock_result = MagicMock(returncode=0, stdout="HEAD\n")
+        with patch("subprocess.run", return_value=mock_result):
+            result = get_base_branch(tmp_path)
+        assert result == "main"
+
+
+# ---------------------------------------------------------------------------
+# list_worktrees tests
+# ---------------------------------------------------------------------------
+
+
+class TestListWorktrees:
+    """Test list_worktrees() helper."""
+
+    def test_returns_empty_list_when_no_registry(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import list_worktrees
+
+        result = list_worktrees(tmp_path)
+        assert result == []
+
+    def test_returns_entries_from_registry(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import list_worktrees
+        import json
+
+        registry_file = tmp_path / ".codeframe" / "worktrees.json"
+        registry_file.parent.mkdir(parents=True, exist_ok=True)
+        registry_file.write_text(json.dumps([
+            {"task_id": "t1", "batch_id": "b1", "created_at": "2026-01-01T00:00:00", "pid": 12345},
+        ]))
+
+        result = list_worktrees(tmp_path)
+        assert len(result) == 1
+        assert result[0]["task_id"] == "t1"
+
+    def test_returns_empty_on_corrupt_json(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import list_worktrees
+
+        registry_file = tmp_path / ".codeframe" / "worktrees.json"
+        registry_file.parent.mkdir(parents=True, exist_ok=True)
+        registry_file.write_text("not-json{{{")
+
+        result = list_worktrees(tmp_path)
+        assert result == []
+
+    def test_returns_empty_on_non_list_json(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import list_worktrees
+        import json
+
+        registry_file = tmp_path / ".codeframe" / "worktrees.json"
+        registry_file.parent.mkdir(parents=True, exist_ok=True)
+        registry_file.write_text(json.dumps({"task_id": "t1"}))  # dict, not list
+
+        result = list_worktrees(tmp_path)
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# WorktreeRegistry tests
+# ---------------------------------------------------------------------------
+
+
+class TestWorktreeRegistry:
+    """Test WorktreeRegistry class."""
+
+    def test_register_creates_entry(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import WorktreeRegistry, list_worktrees
+
+        reg = WorktreeRegistry()
+        reg.register(tmp_path, "task-1", "batch-1")
+
+        entries = list_worktrees(tmp_path)
+        assert len(entries) == 1
+        assert entries[0]["task_id"] == "task-1"
+        assert entries[0]["batch_id"] == "batch-1"
+        assert "pid" in entries[0]
+        assert "created_at" in entries[0]
+
+    def test_unregister_removes_entry(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import WorktreeRegistry, list_worktrees
+
+        reg = WorktreeRegistry()
+        reg.register(tmp_path, "task-1", "batch-1")
+        reg.register(tmp_path, "task-2", "batch-1")
+        reg.unregister(tmp_path, "task-1")
+
+        entries = list_worktrees(tmp_path)
+        task_ids = [e["task_id"] for e in entries]
+        assert "task-1" not in task_ids
+        assert "task-2" in task_ids
+
+    def test_unregister_nonexistent_is_safe(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import WorktreeRegistry
+
+        reg = WorktreeRegistry()
+        reg.unregister(tmp_path, "nonexistent")  # should not raise
+
+    def test_list_stale_returns_dead_pid_entries(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import WorktreeRegistry
+        import json
+
+        # PID 999999999 is virtually guaranteed to not exist
+        registry_file = tmp_path / ".codeframe" / "worktrees.json"
+        registry_file.parent.mkdir(parents=True, exist_ok=True)
+        registry_file.write_text(json.dumps([
+            {"task_id": "dead-task", "batch_id": "b1", "created_at": "2026-01-01T00:00:00", "pid": 999999999},
+        ]))
+
+        reg = WorktreeRegistry()
+        stale = reg.list_stale(tmp_path)
+        assert len(stale) == 1
+        assert stale[0]["task_id"] == "dead-task"
+
+    def test_list_stale_excludes_live_pid(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import WorktreeRegistry
+        import os
+        import json
+
+        registry_file = tmp_path / ".codeframe" / "worktrees.json"
+        registry_file.parent.mkdir(parents=True, exist_ok=True)
+        registry_file.write_text(json.dumps([
+            {"task_id": "live-task", "batch_id": "b1", "created_at": "2026-01-01T00:00:00", "pid": os.getpid()},
+        ]))
+
+        reg = WorktreeRegistry()
+        stale = reg.list_stale(tmp_path)
+        assert all(e["task_id"] != "live-task" for e in stale)
+
+    def test_cleanup_stale_removes_orphaned_worktrees(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import WorktreeRegistry, list_worktrees
+        import json
+
+        # Register a stale entry (dead PID, no actual worktree directory)
+        registry_file = tmp_path / ".codeframe" / "worktrees.json"
+        registry_file.parent.mkdir(parents=True, exist_ok=True)
+        registry_file.write_text(json.dumps([
+            {"task_id": "orphan", "batch_id": "b1", "created_at": "2026-01-01T00:00:00", "pid": 999999999},
+        ]))
+
+        reg = WorktreeRegistry()
+        reg.cleanup_stale(tmp_path)
+
+        # Entry should be removed from registry
+        entries = list_worktrees(tmp_path)
+        assert all(e["task_id"] != "orphan" for e in entries)
+
+    def test_register_is_idempotent_for_same_task(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import WorktreeRegistry, list_worktrees
+
+        reg = WorktreeRegistry()
+        reg.register(tmp_path, "task-1", "batch-1")
+        reg.register(tmp_path, "task-1", "batch-1")  # duplicate
+
+        entries = list_worktrees(tmp_path)
+        task_ids = [e["task_id"] for e in entries]
+        assert task_ids.count("task-1") == 1
+
+
+# ---------------------------------------------------------------------------
+# Conductor orphan cleanup tests
+# ---------------------------------------------------------------------------
+
+
+class TestConductorOrphanCleanup:
+    """Test that _execute_parallel calls WorktreeRegistry.cleanup_stale."""
+
+    def _make_batch(self, isolation: str):
+        from codeframe.core.conductor import BatchRun, BatchStatus, OnFailure
+        from datetime import datetime, timezone
+        return BatchRun(
+            id="b1", workspace_id="w1", task_ids=[],
+            status=BatchStatus.RUNNING, strategy="parallel",
+            max_parallel=2, on_failure=OnFailure.CONTINUE,
+            started_at=datetime.now(timezone.utc), completed_at=None,
+            isolation=isolation,
+        )
+
+    def _run_parallel(self, batch, mock_cleanup):
+        from codeframe.core.conductor import _execute_parallel
+        from unittest.mock import patch, MagicMock
+
+        workspace = MagicMock()
+        workspace.repo_path = Path("/tmp/fake-repo")
+        empty_plan = MagicMock(num_groups=0, total_tasks=0, groups=[], can_run_parallel=lambda: False)
+
+        with patch("codeframe.core.conductor.create_execution_plan", return_value=empty_plan):
+            with patch("codeframe.core.conductor._start_reconciliation_thread", return_value=MagicMock()):
+                with patch("codeframe.core.conductor.events.emit_for_workspace"):
+                    with patch("codeframe.core.conductor._save_batch"):
+                        with patch("codeframe.core.worktrees.WorktreeRegistry.cleanup_stale", mock_cleanup):
+                            _execute_parallel(workspace, batch)
+        return workspace
+
+    def test_cleanup_stale_called_when_isolation_is_worktree(self) -> None:
+        """WorktreeRegistry.cleanup_stale() is called at batch start when isolation=worktree."""
+        from unittest.mock import MagicMock
+        mock_cleanup = MagicMock()
+        batch = self._make_batch("worktree")
+        workspace = self._run_parallel(batch, mock_cleanup)
+        mock_cleanup.assert_called_once_with(workspace.repo_path)
+
+    def test_cleanup_stale_not_called_when_isolation_is_none(self) -> None:
+        from unittest.mock import MagicMock
+        mock_cleanup = MagicMock()
+        batch = self._make_batch("none")
+        self._run_parallel(batch, mock_cleanup)
+        mock_cleanup.assert_not_called()

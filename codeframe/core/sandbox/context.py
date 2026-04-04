@@ -70,13 +70,17 @@ def create_execution_context(
         )
 
     if isolation == IsolationLevel.WORKTREE:
-        from codeframe.core.worktrees import TaskWorktree
+        from codeframe.core.worktrees import TaskWorktree, WorktreeRegistry, get_base_branch
 
         worktree = TaskWorktree()
-        worktree_path = worktree.create(repo_path, task_id)
+        registry = WorktreeRegistry()
+        base_branch = get_base_branch(repo_path)
+        worktree_path = worktree.create(repo_path, task_id, base_branch=base_branch)
+        registry.register(repo_path, task_id, batch_id="unknown")
 
         def cleanup() -> None:
             worktree.cleanup(repo_path, task_id)
+            registry.unregister(repo_path, task_id)
 
         return ExecutionContext(
             task_id=task_id,

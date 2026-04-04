@@ -80,7 +80,7 @@ describe('TaskCard', () => {
 
   it('shows dependency indicator when task has dependencies', () => {
     renderCard({ depends_on: ['dep-1', 'dep-2'] });
-    expect(screen.getByTitle('Depends on 2 task(s)')).toBeInTheDocument();
+    // Dependency count badge (Radix Tooltip — title attr removed, count is always visible)
     expect(screen.getByText('2')).toBeInTheDocument();
   });
 
