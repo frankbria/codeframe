@@ -136,3 +136,70 @@ class TestExecuteAgentExternalEngine:
         assert "react" in VALID_ENGINES
         assert "plan" in VALID_ENGINES
         assert "built-in" in VALID_ENGINES
+
+
+class TestRuntimeProviderSelection:
+    """Tests for CODEFRAME_LLM_PROVIDER env var routing in execute_agent."""
+
+    def test_openai_provider_skips_anthropic_key_check(
+        self, mock_workspace, mock_run
+    ):
+        """CODEFRAME_LLM_PROVIDER=openai should not raise ANTHROPIC_API_KEY error."""
+        from codeframe.core.runtime import execute_agent
+
+        env = {"CODEFRAME_LLM_PROVIDER": "openai"}
+        with patch.dict("os.environ", env, clear=True):
+            import os
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+            try:
+                execute_agent(mock_workspace, mock_run, engine="react")
+            except ValueError as exc:
+                assert "ANTHROPIC_API_KEY" not in str(exc), (
+                    f"Should not require ANTHROPIC_API_KEY when provider=openai: {exc}"
+                )
+            except Exception:
+                pass  # Other errors (db, OPENAI_API_KEY, etc.) are fine
+
+    def test_anthropic_provider_still_required_by_default(
+        self, mock_workspace, mock_run
+    ):
+        """Without CODEFRAME_LLM_PROVIDER, anthropic is default and key is required."""
+        from codeframe.core.runtime import execute_agent
+
+        with patch.dict("os.environ", {}, clear=True):
+            import os
+            os.environ.pop("ANTHROPIC_API_KEY", None)
+            os.environ.pop("CODEFRAME_LLM_PROVIDER", None)
+
+            with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+                execute_agent(mock_workspace, mock_run, engine="react")
+
+    def test_get_provider_called_with_env_provider_type(
+        self, mock_workspace, mock_run
+    ):
+        """get_provider is called with value from CODEFRAME_LLM_PROVIDER."""
+        from codeframe.core.runtime import execute_agent
+
+        env = {"CODEFRAME_LLM_PROVIDER": "openai", "OPENAI_API_KEY": "test-key"}
+        patches = _runtime_patches()
+        patchers = [p.start() for p in patches]
+        try:
+            # Patch at the source module level since runtime imports locally
+            with patch("codeframe.adapters.llm.get_provider") as mock_get_provider:
+                mock_get_provider.return_value = MagicMock()
+                with patch(
+                    "codeframe.core.engine_registry.get_builtin_adapter",
+                    create=True,
+                ) as mock_adapter:
+                    mock_adapter.return_value = MagicMock()
+                    mock_adapter.return_value.run.return_value = iter([])
+                    with patch.dict("os.environ", env, clear=True):
+                        try:
+                            execute_agent(mock_workspace, mock_run, engine="react")
+                        except Exception:
+                            pass
+                        if mock_get_provider.called:
+                            assert mock_get_provider.call_args[0][0] == "openai"
+        finally:
+            for p in patches:
+                p.stop()

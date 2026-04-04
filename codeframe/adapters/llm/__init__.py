@@ -18,6 +18,8 @@ Usage:
     )
 """
 
+import os
+
 from codeframe.adapters.llm.base import (
     LLMProvider,
     LLMResponse,
@@ -47,12 +49,18 @@ __all__ = [
     "get_provider",
 ]
 
+_OPENAI_COMPATIBLE = {"openai", "ollama", "vllm", "compatible"}
 
-def get_provider(provider_type: str = "anthropic") -> LLMProvider:
+
+def get_provider(provider_type: str = "anthropic", **kwargs) -> LLMProvider:
     """Get a configured LLM provider.
 
     Args:
-        provider_type: Provider type ("anthropic", "openai", or "mock")
+        provider_type: Provider type ("anthropic", "openai", "ollama",
+            "vllm", "compatible", or "mock"). OpenAI-compatible types are
+            all routed to OpenAIProvider.
+        **kwargs: Optional overrides passed to the provider constructor.
+            Supported keys: model, base_url.
 
     Returns:
         Configured LLMProvider instance
@@ -60,10 +68,13 @@ def get_provider(provider_type: str = "anthropic") -> LLMProvider:
     Raises:
         ValueError: If provider type is unknown
     """
-    if provider_type == "anthropic":
+    if provider_type in _OPENAI_COMPATIBLE:
+        return OpenAIProvider(
+            model=kwargs.get("model", os.environ.get("CODEFRAME_LLM_MODEL", "gpt-4o")),
+            base_url=kwargs.get("base_url", os.environ.get("OPENAI_BASE_URL")),
+        )
+    elif provider_type == "anthropic":
         return AnthropicProvider()
-    elif provider_type == "openai":
-        return OpenAIProvider()
     elif provider_type == "mock":
         return MockProvider()
     else:
