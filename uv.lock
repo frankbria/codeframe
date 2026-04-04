@@ -606,6 +606,7 @@ cloud = [
 ]
 dev = [
     { name = "black" },
+    { name = "e2b" },
     { name = "hypothesis" },
     { name = "mypy" },
     { name = "pre-commit" },
@@ -630,6 +631,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=24.1.0" },
     { name = "claude-agent-sdk", specifier = ">=0.1.10" },
     { name = "e2b", marker = "extra == 'cloud'", specifier = ">=2.0.0" },
+    { name = "e2b", marker = "extra == 'dev'", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.109.0" },
     { name = "fastapi-users", extras = ["sqlalchemy"], specifier = ">=15.0.2" },
     { name = "gitpython", specifier = ">=3.1.40" },
