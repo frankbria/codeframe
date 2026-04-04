@@ -138,6 +138,7 @@ class TestExecuteAgentExternalEngine:
         assert "built-in" in VALID_ENGINES
 
 
+@pytest.mark.v2
 class TestRuntimeProviderSelection:
     """Tests for CODEFRAME_LLM_PROVIDER env var routing in execute_agent."""
 
@@ -182,9 +183,11 @@ class TestRuntimeProviderSelection:
 
         env = {"CODEFRAME_LLM_PROVIDER": "openai", "OPENAI_API_KEY": "test-key"}
         patches = _runtime_patches()
-        patchers = [p.start() for p in patches]
+        [p.start() for p in patches]
         try:
-            # Patch at the source module level since runtime imports locally
+            # Patch at the source module level since runtime imports locally;
+            # local `from X import Y` reads from module.__dict__ at call time,
+            # so patching the source module IS correct.
             with patch("codeframe.adapters.llm.get_provider") as mock_get_provider:
                 mock_get_provider.return_value = MagicMock()
                 with patch(
