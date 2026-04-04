@@ -1567,7 +1567,8 @@ def _execute_parallel(
         CycleDetectedError: If circular dependencies are detected
     """
     # Clean up orphaned worktrees from crashed workers on previous runs
-    if batch.isolation == "worktree":
+    from codeframe.core.sandbox.context import IsolationLevel as _IL
+    if batch.isolation == _IL.WORKTREE.value:
         from codeframe.core.worktrees import WorktreeRegistry
         WorktreeRegistry().cleanup_stale(workspace.repo_path)
 

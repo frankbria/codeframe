@@ -250,6 +250,16 @@ class TestGetBaseBranch:
         result = get_base_branch(tmp_path)
         assert result == "main"
 
+    def test_returns_main_in_detached_head_state(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import get_base_branch
+        from unittest.mock import patch, MagicMock
+
+        # Simulate git returning "HEAD" (detached HEAD)
+        mock_result = MagicMock(returncode=0, stdout="HEAD\n")
+        with patch("subprocess.run", return_value=mock_result):
+            result = get_base_branch(tmp_path)
+        assert result == "main"
+
 
 # ---------------------------------------------------------------------------
 # list_worktrees tests
@@ -285,6 +295,17 @@ class TestListWorktrees:
         registry_file = tmp_path / ".codeframe" / "worktrees.json"
         registry_file.parent.mkdir(parents=True, exist_ok=True)
         registry_file.write_text("not-json{{{")
+
+        result = list_worktrees(tmp_path)
+        assert result == []
+
+    def test_returns_empty_on_non_list_json(self, tmp_path: Path) -> None:
+        from codeframe.core.worktrees import list_worktrees
+        import json
+
+        registry_file = tmp_path / ".codeframe" / "worktrees.json"
+        registry_file.parent.mkdir(parents=True, exist_ok=True)
+        registry_file.write_text(json.dumps({"task_id": "t1"}))  # dict, not list
 
         result = list_worktrees(tmp_path)
         assert result == []
@@ -399,23 +420,44 @@ class TestWorktreeRegistry:
 class TestConductorOrphanCleanup:
     """Test that _execute_parallel calls WorktreeRegistry.cleanup_stale."""
 
-    def test_cleanup_stale_called_on_parallel_with_worktree_isolation(self) -> None:
-        from codeframe.core.conductor import start_batch
+    def _make_batch(self, isolation: str):
+        from codeframe.core.conductor import BatchRun, BatchStatus, OnFailure
+        from datetime import datetime, timezone
+        return BatchRun(
+            id="b1", workspace_id="w1", task_ids=[],
+            status=BatchStatus.RUNNING, strategy="parallel",
+            max_parallel=2, on_failure=OnFailure.CONTINUE,
+            started_at=datetime.now(timezone.utc), completed_at=None,
+            isolation=isolation,
+        )
+
+    def _run_parallel(self, batch, mock_cleanup):
+        from codeframe.core.conductor import _execute_parallel
         from unittest.mock import patch, MagicMock
 
         workspace = MagicMock()
-        workspace.id = "w1"
         workspace.repo_path = Path("/tmp/fake-repo")
-        mock_task = MagicMock()
-        mock_task.id = "t1"
+        empty_plan = MagicMock(num_groups=0, total_tasks=0, groups=[], can_run_parallel=lambda: False)
 
-        with patch("codeframe.core.conductor.tasks.get", return_value=mock_task):
-            with patch("codeframe.core.conductor._save_batch"):
+        with patch("codeframe.core.conductor.create_execution_plan", return_value=empty_plan):
+            with patch("codeframe.core.conductor._start_reconciliation_thread", return_value=MagicMock()):
                 with patch("codeframe.core.conductor.events.emit_for_workspace"):
-                    with patch("codeframe.core.conductor._execute_parallel") as mock_parallel:
-                        start_batch(
-                            workspace, ["t1"],
-                            strategy="parallel",
-                            isolation="worktree",
-                        )
-                        assert mock_parallel.called
+                    with patch("codeframe.core.conductor._save_batch"):
+                        with patch("codeframe.core.worktrees.WorktreeRegistry.cleanup_stale", mock_cleanup):
+                            _execute_parallel(workspace, batch)
+        return workspace
+
+    def test_cleanup_stale_called_when_isolation_is_worktree(self) -> None:
+        """WorktreeRegistry.cleanup_stale() is called at batch start when isolation=worktree."""
+        from unittest.mock import MagicMock
+        mock_cleanup = MagicMock()
+        batch = self._make_batch("worktree")
+        workspace = self._run_parallel(batch, mock_cleanup)
+        mock_cleanup.assert_called_once_with(workspace.repo_path)
+
+    def test_cleanup_stale_not_called_when_isolation_is_none(self) -> None:
+        from unittest.mock import MagicMock
+        mock_cleanup = MagicMock()
+        batch = self._make_batch("none")
+        self._run_parallel(batch, mock_cleanup)
+        mock_cleanup.assert_not_called()

@@ -182,7 +182,11 @@ class TaskWorktree:
 
 
 def get_base_branch(workspace_path: Path) -> str:
-    """Return the current HEAD branch name, defaulting to 'main' on failure."""
+    """Return the current HEAD branch name, defaulting to 'main' on failure.
+
+    Returns 'main' when git is unavailable, the directory is not a repo,
+    or HEAD is detached (rev-parse returns 'HEAD' literally).
+    """
     result = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
         cwd=str(workspace_path),
@@ -190,16 +194,19 @@ def get_base_branch(workspace_path: Path) -> str:
         text=True,
     )
     branch = result.stdout.strip()
-    return branch if result.returncode == 0 and branch else "main"
+    if result.returncode != 0 or not branch or branch == "HEAD":
+        return "main"
+    return branch
 
 
 def list_worktrees(workspace_path: Path) -> list[dict]:
-    """Return all entries in the worktree registry, or [] if absent/corrupt."""
+    """Return all entries in the worktree registry, or [] if absent/corrupt/malformed."""
     registry_file = workspace_path / _REGISTRY_FILE
     if not registry_file.exists():
         return []
     try:
-        return json.loads(registry_file.read_text())
+        data = json.loads(registry_file.read_text())
+        return data if isinstance(data, list) else []
     except Exception:
         return []
 
@@ -242,8 +249,10 @@ class WorktreeRegistry:
                 continue
             try:
                 os.kill(pid, 0)
-            except (ProcessLookupError, OSError):
+            except ProcessLookupError:
                 stale.append(entry)
+            except PermissionError:
+                pass  # Process is alive but owned by another user — not stale
         return stale
 
     def cleanup_stale(self, workspace_path: Path) -> None:
