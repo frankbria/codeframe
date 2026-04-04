@@ -215,6 +215,29 @@ def doctor(
         for rec in result.recommendations:
             console.print(f"  • {rec}")
 
+    # Stale worktree check
+    try:
+        from codeframe.core.worktrees import WorktreeRegistry
+        stale = WorktreeRegistry().list_stale(project_path)
+        if stale:
+            console.print()
+            console.print("[bold yellow]Stale Worktrees:[/bold yellow]")
+            for entry in stale:
+                console.print(
+                    f"  [yellow]⚠[/yellow] task [cyan]{entry['task_id']}[/cyan] "
+                    f"(pid {entry.get('pid', '?')} no longer running)"
+                )
+            console.print()
+            console.print(
+                "[dim]To clean up, run:[/dim] codeframe work batch run --all-ready "
+                "[dim](auto-cleans on next run)[/dim]"
+            )
+            console.print(
+                "[dim]Or remove manually:[/dim] rm -rf .codeframe/worktrees/"
+            )
+    except Exception:
+        pass  # Worktree registry is optional; never fail doctor over it
+
     console.print()
 
     if not result.is_healthy:
