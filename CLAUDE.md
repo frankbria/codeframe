@@ -153,12 +153,21 @@ codeframe/
 │   ├── stall_detector.py   # Synchronous stall detector + StallAction enum + StallDetectedError
 │   ├── stall_monitor.py    # Thread-based stall watchdog with callback
 │   ├── streaming.py        # Real-time output streaming for cf work follow
+│   ├── worktrees.py        # TaskWorktree, WorktreeRegistry, get_base_branch
+│   ├── sandbox/            # Execution isolation abstractions
+│   │   ├── context.py      # ExecutionContext + IsolationLevel (none/worktree/cloud)
+│   │   └── worktree.py     # Re-exports worktree symbols from core/worktrees.py
 │   └── ...
 ├── adapters/
-│   └── llm/                # LLM provider adapters
-│       ├── base.py         # Protocol + ModelSelector + Purpose enum
-│       ├── anthropic.py    # Anthropic Claude provider
-│       └── mock.py         # Mock provider for testing
+│   ├── llm/                # LLM provider adapters
+│   │   ├── base.py         # Protocol + ModelSelector + Purpose enum
+│   │   ├── anthropic.py    # Anthropic Claude provider
+│   │   └── mock.py         # Mock provider for testing
+│   └── e2b/                # E2B cloud sandbox adapter (optional — requires `pip install codeframe[cloud]`)
+│       ├── __init__.py     # Exports E2BAgentAdapter
+│       ├── adapter.py      # E2BAgentAdapter (engine="cloud")
+│       ├── budget.py       # Cost tracking utilities
+│       └── credential_scanner.py  # Pre-upload secrets scanner
 ├── cli/
 │   └── app.py              # Typer CLI entry + subcommands
 ├── ui/                     # FastAPI server (Phase 2 - thin adapter over core)
@@ -883,6 +892,9 @@ uv run pytest --cov=codeframe --cov-report=html
 ```bash
 # Required for agent execution
 ANTHROPIC_API_KEY=sk-ant-...
+
+# Required for cloud sandbox execution (--engine cloud)
+E2B_API_KEY=e2b_...
 
 # Optional - Database
 DATABASE_PATH=./codeframe.db

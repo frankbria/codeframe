@@ -278,15 +278,15 @@ Phase 4 has three parallel tracks:
 
 **Motivation**: `cf work batch run --strategy parallel` currently runs concurrent threads on the same filesystem with no isolation. Agents can corrupt each other's work, hit git index locks, or overwrite changes.
 
-**Integration strategy**: `parallel-cc` is a production-grade tool that already solves this with git worktrees + E2B cloud sandboxes. It will be consumed as a dependency initially, then absorbed into CodeFrame as the integration matures. It will not remain a separate independent project long-term.
+**Status**: The execution environment layer is complete. Worktree isolation and E2B cloud execution are fully absorbed into CodeFrame's own namespace — no external dependency was ever introduced.
 
-#### Absorption arc
+#### Absorption arc (complete ✅)
 
-| Phase | What happens |
-|-------|-------------|
-| **Dependency** (now → Phase 4) | CodeFrame calls `parallel-cc` CLI/library for worktree + E2B management |
-| **Integration** (during Phase 4) | parallel-cc concepts formalized as CodeFrame `ExecutionContext` abstraction |
-| **Absorption** (Phase 4 complete) | parallel-cc code moves into `codeframe/core/sandbox/` and `codeframe/adapters/e2b/` |
+| Phase | What happened |
+|-------|--------------|
+| ~~**Dependency**~~ | Skipped — logic was ported directly (parallel-cc never added as a dep) |
+| **Integration** (Phase 4) | ✅ `ExecutionContext` abstraction formalized in `core/sandbox/context.py` |
+| **Absorption** (Phase 4.B complete) | ✅ Worktree code in `core/worktrees.py` + `core/sandbox/worktree.py`; E2B adapter in `adapters/e2b/` |
 
 #### Deliverables
 
@@ -296,9 +296,9 @@ Phase 4 has three parallel tracks:
    - CLI: `--isolation none | worktree | cloud`
 
 2. **Worktree isolation for parallel batch** (codeframe-c0rx)
-   - Each parallel task gets its own git worktree via `gtr` (from parallel-cc)
-   - Atomic session registration prevents race conditions
-   - Auto-cleanup on task completion
+   - Each parallel task gets its own git worktree via `TaskWorktree` (`core/worktrees.py`)
+   - `WorktreeRegistry` provides atomic session registration (prevents race conditions)
+   - Auto-cleanup on task completion via `ExecutionContext.cleanup()`
    - Fixes the live filesystem conflict problem in `conductor.py`
 
 3. **`E2BAgentAdapter`** (codeframe-csyd)
@@ -307,10 +307,10 @@ Phase 4 has three parallel tracks:
    - Up to 1-hour autonomous execution with timeout management
    - Budget tracking per task/batch
 
-4. **parallel-cc absorption** (codeframe-xz0f)
-   - Port worktree coordination logic to `codeframe/core/sandbox/`
-   - Port E2B pipeline to `codeframe/adapters/e2b/`
-   - parallel-cc repo archived once absorption is complete
+4. **parallel-cc absorption** (codeframe-xz0f) ✅
+   - Worktree coordination lives in `codeframe/core/worktrees.py` and `codeframe/core/sandbox/`
+   - E2B pipeline lives in `codeframe/adapters/e2b/`
+   - parallel-cc was never added as a dependency; repo archived
 
 ---
 
@@ -346,7 +346,7 @@ Phase 4 has three parallel tracks:
 | codeframe-la86 | ExecutionContext abstraction | 4.B | HIGH |
 | codeframe-c0rx | Worktree isolation for parallel batch | 4.B | HIGH |
 | codeframe-csyd | E2BAgentAdapter (cloud execution) | 4.B | MEDIUM |
-| codeframe-xz0f | parallel-cc absorption into CodeFrame | 4.B | MEDIUM |
+| codeframe-xz0f | parallel-cc absorption into CodeFrame | 4.B | MEDIUM | ✅ |
 | #310 | Agent roles | 4.C | MEDIUM |
 | #311 | Conflict detection & resolution | 4.C | MEDIUM |
 | #312 | Handoff protocols | 4.C | MEDIUM |
