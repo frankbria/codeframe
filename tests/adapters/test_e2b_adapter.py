@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 import pytest
 
 pytestmark = pytest.mark.v2
@@ -259,10 +258,11 @@ class TestE2BAgentAdapter:
         from codeframe.adapters.e2b.adapter import E2BAgentAdapter
 
         sbx = _make_mock_sandbox(exit_code=0, stdout="Task complete")
-        # Adapter runs: git-combined (1 call), pip install, cf work start, git diff
+        # Adapter runs: git-combined (1 call), pip install, cf work start, git status
         diff_result = MagicMock()
         diff_result.exit_code = 0
-        diff_result.stdout = "main.py\n"
+        # git status --porcelain format: "XY filename"
+        diff_result.stdout = " M main.py\n"
         sbx.commands.run.side_effect = [
             MagicMock(exit_code=0, stdout="", stderr=""),        # git init+add+commit
             MagicMock(exit_code=0, stdout="installed", stderr=""),  # pip install
@@ -356,6 +356,39 @@ class TestE2BAgentAdapter:
 
         event_types = [e.type for e in events]
         assert "progress" in event_types
+
+    @patch("e2b.Sandbox.create")
+    def test_new_files_downloaded_via_porcelain(self, mock_create, tmp_path):
+        """Untracked new files (porcelain '?? ...') are also downloaded."""
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+
+        sbx = _make_mock_sandbox(exit_code=0)
+        sbx.files.read.return_value = "# new file content"
+        # porcelain: modified file + untracked new file
+        status_result = MagicMock()
+        status_result.exit_code = 0
+        status_result.stdout = " M existing.py\n?? new_module.py\n"
+        sbx.commands.run.side_effect = [
+            MagicMock(exit_code=0, stdout="", stderr=""),      # git combined
+            MagicMock(exit_code=0, stdout="", stderr=""),      # pip install
+            MagicMock(exit_code=0, stdout="done", stderr=""),  # cf work start
+            status_result,                                      # git status
+        ]
+        mock_create.return_value = sbx
+
+        ws_path = self._make_workspace(tmp_path)
+        adapter = E2BAgentAdapter(timeout_minutes=5)
+
+        with patch.dict(os.environ, {"E2B_API_KEY": "test-key"}):
+            result = adapter.run(
+                task_id="task-1",
+                prompt="Create new module",
+                workspace_path=ws_path,
+            )
+
+        assert result.status == "completed"
+        assert "existing.py" in result.modified_files
+        assert "new_module.py" in result.modified_files
 
     @patch("e2b.Sandbox.create")
     def test_timeout_clamped_to_max_60(self, mock_create, tmp_path):

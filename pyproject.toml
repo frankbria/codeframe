@@ -59,10 +59,12 @@ dependencies = [
     "jinja2>=3.1.6",
     "slowapi>=0.1.9",
     "rapidfuzz>=3.0.0",
-    "e2b>=2.0.0",
 ]
 
 [project.optional-dependencies]
+cloud = [
+    "e2b>=2.0.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

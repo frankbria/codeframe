@@ -2676,7 +2676,7 @@ def work_show(
 
         # Engine stats from run_engine_log
         logs = engine_stats.get_run_log(workspace, limit=20)
-        run_log = next((l for l in logs if l.get("run_id") == run.id), None)
+        run_log = next((entry for entry in logs if entry.get("run_id") == run.id), None)
         if run_log:
             console.print(f"  Engine:    {run_log.get('engine', '—')}")
             tokens = run_log.get("tokens_used", 0)

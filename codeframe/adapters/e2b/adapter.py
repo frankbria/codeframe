@@ -112,7 +112,23 @@ class E2BAgentAdapter:
             )
 
         # Step 2: Create sandbox
-        from e2b import Sandbox
+        try:
+            from e2b import Sandbox
+        except ImportError:
+            return AgentResult(
+                status="failed",
+                error=(
+                    "The 'e2b' package is required for --engine cloud. "
+                    "Install it with: pip install 'codeframe[cloud]'"
+                ),
+                cloud_metadata={
+                    "sandbox_minutes": 0.0,
+                    "cost_usd_estimate": 0.0,
+                    "files_uploaded": 0,
+                    "files_downloaded": 0,
+                    "credential_scan_blocked": 0,
+                },
+            )
 
         api_key = os.environ.get("E2B_API_KEY")
         timeout_seconds = self._timeout_minutes * 60
@@ -161,12 +177,14 @@ class E2BAgentAdapter:
                 logger.warning("pip install warnings: %s", install_result.stderr[:500])
 
             # Step 6: Run agent
+            # Pass secrets via the SDK's envs dict — never interpolate into shell strings
             _emit("progress", f"Starting agent for task {task_id}...")
-            agent_cmd = (
-                f"cd {_SANDBOX_WORKSPACE} && "
-                f"ANTHROPIC_API_KEY={os.environ.get('ANTHROPIC_API_KEY', '')} "
-                f"cf work start {task_id} --execute"
-            )
+            agent_envs: dict[str, str] = {}
+            anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            if anthropic_key:
+                agent_envs["ANTHROPIC_API_KEY"] = anthropic_key
+
+            agent_cmd = f"cd {_SANDBOX_WORKSPACE} && cf work start {task_id} --execute"
 
             output_lines: list[str] = []
 
@@ -180,6 +198,7 @@ class E2BAgentAdapter:
 
             agent_result = sbx.commands.run(
                 agent_cmd,
+                envs=agent_envs,
                 timeout=timeout_seconds,
                 on_stdout=_on_stdout,
                 on_stderr=_on_stderr,
@@ -268,24 +287,36 @@ class E2BAgentAdapter:
         workspace_path: Path,
         emit: Callable[[str, str, dict | None], None],
     ) -> tuple[list[str], int]:
-        """Download files changed by the agent using git diff.
+        """Download files changed or created by the agent.
+
+        Uses ``git status --porcelain`` to capture both modified tracked files
+        and newly created untracked files (git diff only sees tracked changes).
 
         Returns:
             Tuple of (list of relative file paths, count downloaded).
         """
-        diff_result = sbx.commands.run(
-            f"cd {_SANDBOX_WORKSPACE} && git diff --name-only HEAD",
+        status_result = sbx.commands.run(
+            f"cd {_SANDBOX_WORKSPACE} && git status --porcelain",
             timeout=30,
         )
 
-        if diff_result.exit_code != 0 or not diff_result.stdout.strip():
+        if status_result.exit_code != 0 or not status_result.stdout.strip():
             return [], 0
 
-        changed = [
-            line.strip()
-            for line in diff_result.stdout.splitlines()
-            if line.strip()
-        ]
+        changed: list[str] = []
+        for line in status_result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            # porcelain format: XY filename (or "XY old -> new" for renames)
+            parts = line.split(None, 1)
+            if len(parts) < 2:
+                continue
+            xy, filepath = parts
+            # Handle renames: "R old -> new" — take the new name after " -> "
+            if " -> " in filepath:
+                filepath = filepath.split(" -> ", 1)[1]
+            changed.append(filepath.strip())
 
         downloaded = 0
         modified_files: list[str] = []

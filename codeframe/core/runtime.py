@@ -839,6 +839,23 @@ def execute_agent(
         except Exception:
             logger.warning("Engine stats recording failed", exc_info=True)
 
+        # Persist cloud execution metadata if the adapter returned it
+        if engine == "cloud" and hasattr(result, "cloud_metadata") and result.cloud_metadata:
+            try:
+                from codeframe.adapters.e2b.budget import record_cloud_run
+                meta = result.cloud_metadata
+                record_cloud_run(
+                    workspace=workspace,
+                    run_id=run.id,
+                    sandbox_minutes=meta.get("sandbox_minutes", 0.0),
+                    cost_usd=meta.get("cost_usd_estimate", 0.0),
+                    files_uploaded=meta.get("files_uploaded", 0),
+                    files_downloaded=meta.get("files_downloaded", 0),
+                    scan_blocked=meta.get("credential_scan_blocked", 0),
+                )
+            except Exception:
+                logger.warning("Cloud run metadata recording failed", exc_info=True)
+
         # Execute after_task hooks (non-blocking, after state is persisted)
         if env_config and hook_ctx:
             after_hook = None
