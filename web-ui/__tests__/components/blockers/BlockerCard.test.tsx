@@ -120,7 +120,7 @@ describe('BlockerCard', () => {
     await user.click(screen.getByRole('button', { name: /answer blocker/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/blocker answered/i)).toBeInTheDocument();
+      expect(screen.getByText(/answer recorded/i)).toBeInTheDocument();
     });
   });
 

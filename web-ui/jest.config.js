@@ -14,6 +14,12 @@ const customJestConfig = {
     '^@hugeicons/react$': '<rootDir>/__mocks__/@hugeicons/react.js',
   },
   testMatch: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/.next/',
+    '/e2e/',                          // Playwright tests — run via test:e2e, not Jest
+    '__tests__/utils/test-helpers',   // Shared test utilities, not a test suite
+  ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',
     '!src/**/*.d.ts',
