@@ -13,13 +13,13 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.v2
-
 from codeframe.core.sandbox.context import (
     ExecutionContext,
     IsolationLevel,
     create_execution_context,
 )
+
+pytestmark = pytest.mark.v2
 
 
 @pytest.fixture
