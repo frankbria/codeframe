@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.v2
+
 from codeframe.core.sandbox.context import (
     ExecutionContext,
     IsolationLevel,

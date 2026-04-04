@@ -346,7 +346,7 @@ Phase 4 has three parallel tracks:
 | codeframe-la86 | ExecutionContext abstraction | 4.B | HIGH |
 | codeframe-c0rx | Worktree isolation for parallel batch | 4.B | HIGH |
 | codeframe-csyd | E2BAgentAdapter (cloud execution) | 4.B | MEDIUM |
-| codeframe-xz0f | parallel-cc absorption into CodeFrame | 4.B | MEDIUM | ✅ |
+| codeframe-xz0f | parallel-cc absorption into CodeFrame ✅ | 4.B | MEDIUM |
 | #310 | Agent roles | 4.C | MEDIUM |
 | #311 | Conflict detection & resolution | 4.C | MEDIUM |
 | #312 | Handoff protocols | 4.C | MEDIUM |
