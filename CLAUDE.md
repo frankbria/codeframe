@@ -492,6 +492,7 @@ These describe old server/UI-driven architecture:
 - Don't "clean up the repo" as a goal - only refactor to enable the pipeline
 - Don't update task status from agent.py - let runtime handle transitions
 - Don't skip web UI testing when verifying features that have a web surface — the web UI is Phase 3, not legacy
+- **Don't leave a CI gate disabled when its feature area becomes active.** If a CI job has a `DISABLED:` or `# COMMENTED OUT:` block, re-enable it before the first PR lands in that area. When a phase transitions from "inactive" to "active", verify that `frontend-tests` (and any other gated jobs) are uncommented and wired into `test-summary`.
 
 ---
 
@@ -506,11 +507,11 @@ uv run pytest                     # All tests
 uv run ruff check .               # Lint
 
 # Web UI
-cd web-ui && npm test             # Jest unit tests
+cd web-ui && npm test             # Jest unit tests (also enforced by CI on every PR)
 cd web-ui && npm run build        # Production build
 ```
 
-The web UI is Phase 3, not legacy. If a feature has a UI surface, verify both the API/CLI and the UI. Do not sign off on quality with only Python tests passing.
+The web UI is Phase 3, not legacy. If a feature has a UI surface, verify both the API/CLI and the UI. Do not sign off on quality with only Python tests passing. `npm run test:coverage` in `web-ui/` is enforced by the `frontend-tests` CI job on every PR.
 
 ### Demoing against a sample project
 When running `uv run cf` commands against a sample project (e.g., `cf-test/`) to test or demo CodeFRAME's agent capabilities, you are **observing the CodeFRAME agent's work, not doing the work yourself**.
