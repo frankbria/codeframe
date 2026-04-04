@@ -30,6 +30,7 @@ from codeframe.adapters.llm.base import (
 )
 from codeframe.adapters.llm.anthropic import AnthropicProvider
 from codeframe.adapters.llm.mock import MockProvider
+from codeframe.adapters.llm.openai import OpenAIProvider
 
 __all__ = [
     "LLMProvider",
@@ -42,6 +43,7 @@ __all__ = [
     "ToolResult",
     "AnthropicProvider",
     "MockProvider",
+    "OpenAIProvider",
     "get_provider",
 ]
 
@@ -50,7 +52,7 @@ def get_provider(provider_type: str = "anthropic") -> LLMProvider:
     """Get a configured LLM provider.
 
     Args:
-        provider_type: Provider type ("anthropic" or "mock")
+        provider_type: Provider type ("anthropic", "openai", or "mock")
 
     Returns:
         Configured LLMProvider instance
@@ -60,6 +62,8 @@ def get_provider(provider_type: str = "anthropic") -> LLMProvider:
     """
     if provider_type == "anthropic":
         return AnthropicProvider()
+    elif provider_type == "openai":
+        return OpenAIProvider()
     elif provider_type == "mock":
         return MockProvider()
     else:
