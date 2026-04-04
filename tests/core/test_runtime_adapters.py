@@ -145,21 +145,34 @@ class TestRuntimeProviderSelection:
     def test_openai_provider_skips_anthropic_key_check(
         self, mock_workspace, mock_run
     ):
-        """CODEFRAME_LLM_PROVIDER=openai should not raise ANTHROPIC_API_KEY error."""
+        """CODEFRAME_LLM_PROVIDER=openai should not raise ANTHROPIC_API_KEY error.
+
+        get_provider is mocked so this test is isolated to just the auth guard
+        logic in execute_agent, independent of OPENAI_API_KEY availability.
+        """
         from codeframe.core.runtime import execute_agent
 
         env = {"CODEFRAME_LLM_PROVIDER": "openai"}
-        with patch.dict("os.environ", env, clear=True):
-            import os
-            os.environ.pop("ANTHROPIC_API_KEY", None)
-            try:
-                execute_agent(mock_workspace, mock_run, engine="react")
-            except ValueError as exc:
-                assert "ANTHROPIC_API_KEY" not in str(exc), (
-                    f"Should not require ANTHROPIC_API_KEY when provider=openai: {exc}"
-                )
-            except Exception:
-                pass  # Other errors (db, OPENAI_API_KEY, etc.) are fine
+        patches = _runtime_patches()
+        [p.start() for p in patches]
+        try:
+            with patch("codeframe.adapters.llm.get_provider") as mock_get_provider:
+                mock_get_provider.return_value = MagicMock()
+                with patch.dict("os.environ", env, clear=True):
+                    import os
+                    os.environ.pop("ANTHROPIC_API_KEY", None)
+                    # Should not raise ValueError about ANTHROPIC_API_KEY
+                    try:
+                        execute_agent(mock_workspace, mock_run, engine="react")
+                    except ValueError as exc:
+                        assert "ANTHROPIC_API_KEY" not in str(exc), (
+                            f"Should not require ANTHROPIC_API_KEY when provider=openai: {exc}"
+                        )
+                    except Exception:
+                        pass  # Non-ValueError errors are outside the scope of this test
+        finally:
+            for p in patches:
+                p.stop()
 
     def test_anthropic_provider_still_required_by_default(
         self, mock_workspace, mock_run
