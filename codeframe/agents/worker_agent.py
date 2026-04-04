@@ -30,25 +30,20 @@ from codeframe.enforcement.quality_tracker import QualityTracker, QualityMetrics
 
 logger = logging.getLogger(__name__)
 
-# Supported Claude models for execute_task
+# Supported Claude models for execute_task (stable aliases — no date suffixes)
 SUPPORTED_MODELS = [
+    "claude-haiku-4-5",
     "claude-sonnet-4-5",
+    "claude-opus-4-5",
     "claude-opus-4",
-    "claude-haiku-4",
-    "claude-3-5-haiku-20241022",  # Actual API model name for Haiku 3.5
-    "claude-3-5-sonnet-20241022",  # Actual API model name for Sonnet 3.5
-    "claude-3-opus-20240229",      # Actual API model name for Opus 3
 ]
 
-# Model pricing (USD per million tokens) - as of 2025-11
+# Model pricing (USD per million tokens) - as of 2026-04
 MODEL_PRICING = {
+    "claude-haiku-4-5": {"input": 0.0000008, "output": 0.000004},
     "claude-sonnet-4-5": {"input": 0.000003, "output": 0.000015},
+    "claude-opus-4-5": {"input": 0.000015, "output": 0.000075},
     "claude-opus-4": {"input": 0.000015, "output": 0.000075},
-    "claude-haiku-4": {"input": 0.0000008, "output": 0.000004},
-    # Versioned model names with same pricing as their friendly names
-    "claude-3-5-haiku-20241022": {"input": 0.0000008, "output": 0.000004},
-    "claude-3-5-sonnet-20241022": {"input": 0.000003, "output": 0.000015},
-    "claude-3-opus-20240229": {"input": 0.000015, "output": 0.000075},
 }
 
 
