@@ -601,6 +601,8 @@ def execute_agent(
     stall_action: str = "blocker",
     isolation: str = "none",
     cloud_timeout_minutes: int = 30,
+    llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -638,8 +640,25 @@ def execute_agent(
     # Resolve engine (handles "built-in" alias and CODEFRAME_ENGINE env var)
     engine = resolve_engine(engine)
 
-    # Determine provider type from env var (default: anthropic)
-    provider_type = os.getenv("CODEFRAME_LLM_PROVIDER", "anthropic")
+    # Resolve LLM provider: CLI flag → env var → workspace config → default "anthropic"
+    from codeframe.core.config import load_environment_config as _load_cfg
+    _env_cfg = _load_cfg(workspace.repo_path)
+    _cfg_provider = _env_cfg.llm.provider if (_env_cfg and _env_cfg.llm) else None
+    _cfg_model = _env_cfg.llm.model if (_env_cfg and _env_cfg.llm) else None
+    _cfg_base_url = _env_cfg.llm.base_url if (_env_cfg and _env_cfg.llm) else None
+
+    provider_type = (
+        llm_provider
+        or os.getenv("CODEFRAME_LLM_PROVIDER")
+        or _cfg_provider
+        or "anthropic"
+    )
+    model_override = (
+        llm_model
+        or os.getenv("CODEFRAME_LLM_MODEL")
+        or _cfg_model
+    )
+    base_url_override = _cfg_base_url or os.getenv("OPENAI_BASE_URL")
 
     # External engines manage their own authentication
     if not is_external_engine(engine):
@@ -650,7 +669,15 @@ def execute_agent(
             )
 
     # Only create LLM provider for builtin engines (external engines manage their own)
-    provider = get_provider(provider_type) if not is_external_engine(engine) else None
+    if not is_external_engine(engine):
+        provider_kwargs = {}
+        if model_override:
+            provider_kwargs["model"] = model_override
+        if base_url_override:
+            provider_kwargs["base_url"] = base_url_override
+        provider = get_provider(provider_type, **provider_kwargs)
+    else:
+        provider = None
 
     # Create run logger for structured logging
     run_logger = RunLogger(workspace, run.id, run.task_id)

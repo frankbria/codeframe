@@ -5,7 +5,6 @@ This agent specializes in generating pytest test cases,
 analyzing code for test requirements, and self-correcting failing tests.
 """
 
-import os
 import sys
 import json
 import logging
@@ -14,8 +13,8 @@ import subprocess
 import re
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
-from anthropic import AsyncAnthropic
 
+from codeframe.adapters.llm.base import Purpose
 from codeframe.core.models import Task, AgentMaturity
 from codeframe.agents.worker_agent import WorkerAgent
 
@@ -67,8 +66,8 @@ class TestWorkerAgent(WorkerAgent):
             system_prompt=self._build_system_prompt(),
             db=db,
         )
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
+        # api_key kept for backwards compatibility; LLM calls use self.llm_provider
+        self.api_key = api_key
         self.websocket_manager = websocket_manager
         self.max_correction_attempts = max_correction_attempts
         self.project_root = Path(__file__).parent.parent.parent
@@ -321,9 +320,6 @@ Output format:
         Returns:
             Generated test code
         """
-        if not self.client:
-            return self._generate_basic_test_template(spec, code_analysis)
-
         # Build context from code analysis
         context = ""
         if code_analysis.get("functions"):
@@ -351,13 +347,13 @@ Requirements:
 Provide ONLY the test code, no explanations."""
 
         try:
-            response = await self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=3000,
+            response = await self.llm_provider.async_complete(
                 messages=[{"role": "user", "content": prompt}],
+                purpose=Purpose.GENERATION,
+                max_tokens=3000,
             )
 
-            code = response.content[0].text
+            code = response.content
 
             # Remove markdown code blocks
             if "```" in code:
@@ -671,9 +667,6 @@ def {test_name}():
         Returns:
             Corrected test code or None
         """
-        if not self.client:
-            return None
-
         prompt = f"""Fix the following failing pytest tests:
 
 Original Test Code:
@@ -696,13 +689,13 @@ Requirements:
 Provide ONLY the corrected test code, no explanations."""
 
         try:
-            response = await self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=3000,
+            response = await self.llm_provider.async_complete(
                 messages=[{"role": "user", "content": prompt}],
+                purpose=Purpose.CORRECTION,
+                max_tokens=3000,
             )
 
-            code = response.content[0].text
+            code = response.content
 
             # Remove markdown code blocks
             if "```" in code:

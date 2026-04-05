@@ -5,14 +5,13 @@ This agent specializes in generating React components with TypeScript,
 following project conventions (Tailwind CSS, functional components).
 """
 
-import os
 import json
 import logging
 import asyncio
 from pathlib import Path
 from typing import Dict, Any, Optional
-from anthropic import AsyncAnthropic
 
+from codeframe.adapters.llm.base import Purpose
 from codeframe.core.models import Task, AgentMaturity
 from codeframe.agents.worker_agent import WorkerAgent
 
@@ -59,8 +58,8 @@ class FrontendWorkerAgent(WorkerAgent):
             system_prompt=self._build_system_prompt(),
             db=db,
         )
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
+        # api_key kept for backwards compatibility; LLM calls use self.llm_provider
+        self.api_key = api_key
         self.websocket_manager = websocket_manager
         self.project_root = Path(__file__).parent.parent.parent  # codeframe/
         self.web_ui_root = self.project_root / "web-ui"
@@ -293,10 +292,6 @@ Output format:
         Returns:
             Component code as string
         """
-        if not self.client:
-            # Fallback: generate basic component template
-            return self._generate_basic_component_template(spec)
-
         prompt = f"""Generate a React functional component with the following specification:
 
 Component Name: {spec['name']}
@@ -312,14 +307,14 @@ Requirements:
 Provide ONLY the component code, no explanations."""
 
         try:
-            response = await self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=2000,
+            response = await self.llm_provider.async_complete(
                 messages=[{"role": "user", "content": prompt}],
+                purpose=Purpose.GENERATION,
+                max_tokens=2000,
             )
 
             # Extract code from response
-            code = response.content[0].text
+            code = response.content
 
             # Remove markdown code blocks if present
             if "```" in code:

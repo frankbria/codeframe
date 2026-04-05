@@ -10,18 +10,20 @@ from collections import deque
 if TYPE_CHECKING:
     from codeframe.enforcement.evidence_verifier import Evidence
 
-from anthropic import (
-    AsyncAnthropic,
-    AuthenticationError,
-    RateLimitError,
-    APIConnectionError,
-)
 from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
     retry_if_exception_type,
 )
+
+from codeframe.adapters.llm.base import (
+    LLMProvider,
+    LLMAuthError,
+    LLMRateLimitError,
+    LLMConnectionError,
+)
+from codeframe.adapters.llm import get_provider
 
 from codeframe.core.models import (
     Task, TaskStatus, AgentMaturity, ContextItemType, ContextTier, CallType
@@ -61,6 +63,7 @@ class WorkerAgent:
         system_prompt: str | None = None,
         db: Optional[Any] = None,
         model_name: str = "claude-sonnet-4-5",
+        llm_provider: Optional[LLMProvider] = None,
     ):
         """Initialize Worker Agent.
 
@@ -86,6 +89,8 @@ class WorkerAgent:
         self.current_task: Task | None = None
         self.db = db
         self.model_name = model_name
+        # LLM provider abstraction (lazy-initialised if not supplied)
+        self._llm_provider: Optional[LLMProvider] = llm_provider
 
         # Rate limiting (MEDIUM-1 fix)
         self._api_calls: deque = deque(maxlen=100)  # Track last 100 calls
@@ -95,6 +100,15 @@ class WorkerAgent:
         # Quality tracking integration
         self.response_count: int = 0  # Track AI conversation length
         self.quality_tracker: Optional[QualityTracker] = None  # Lazy-initialized
+
+    @property
+    def llm_provider(self) -> LLMProvider:
+        """Return the LLM provider, initialising from env vars if not supplied."""
+        if self._llm_provider is None:
+            import os
+            provider_type = os.getenv("CODEFRAME_LLM_PROVIDER", "anthropic")
+            self._llm_provider = get_provider(provider_type)
+        return self._llm_provider
 
     def _get_project_id(self) -> int:
         """Get project ID from current task.
@@ -232,49 +246,41 @@ class WorkerAgent:
         return sanitized
 
     @retry(
-        retry=retry_if_exception_type((RateLimitError, APIConnectionError, TimeoutError)),
+        retry=retry_if_exception_type((LLMRateLimitError, LLMConnectionError, TimeoutError)),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
     async def _call_llm_with_retry(
         self,
-        client: AsyncAnthropic,
-        model_name: str,
         max_tokens: int,
         system: str,
         messages: List[Dict[str, str]],
-        timeout: float,
     ):
-        """Call LLM with automatic retry for transient failures.
+        """Call LLM via provider with automatic retry for transient failures.
 
-        Retries up to 3 times with exponential backoff:
-        - Attempt 1: immediate
-        - Attempt 2: wait 2s
-        - Attempt 3: wait 4-10s
+        Retries up to 3 times with exponential backoff on rate-limit and
+        connection errors.
 
         Args:
-            client: Anthropic client
-            model_name: Model identifier
             max_tokens: Maximum output tokens
             system: System prompt
             messages: Conversation messages
-            timeout: Request timeout in seconds
 
         Returns:
-            API response
+            LLMResponse
 
         Raises:
-            RateLimitError: After retry exhaustion
-            APIConnectionError: After retry exhaustion
-            TimeoutError: After retry exhaustion
+            LLMRateLimitError: After retry exhaustion
+            LLMConnectionError: After retry exhaustion
         """
-        return await client.messages.create(
-            model=model_name,
+        from codeframe.adapters.llm.base import Purpose
+
+        return await self.llm_provider.async_complete(
+            messages=messages,
+            purpose=Purpose.EXECUTION,
             max_tokens=max_tokens,
             system=system,
-            messages=messages,
-            timeout=timeout,
         )
 
     async def execute_task(
@@ -367,31 +373,6 @@ class WorkerAgent:
             model_name = self.model_name
 
         # Validate model name
-        if model_name not in SUPPORTED_MODELS:
-            raise ValueError(
-                f"Unsupported model: {model_name}. "
-                f"Supported models: {', '.join(SUPPORTED_MODELS)}"
-            )
-
-        # CRITICAL-2 FIX: Get and validate API key
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY environment variable is required. "
-                "See .env.example for configuration."
-            )
-
-        # Validate Anthropic key format
-        if not api_key.startswith("sk-ant-"):
-            logger.error("Invalid ANTHROPIC_API_KEY format (must start with 'sk-ant-')")
-            raise ValueError("Invalid ANTHROPIC_API_KEY format. Expected format: sk-ant-xxxxx")
-
-        # CRITICAL-2 FIX: Never log the actual key - only masked version
-        logger.debug(f"API key loaded: sk-ant-***{api_key[-4:]}")
-
-        # Initialize AsyncAnthropic client
-        client = AsyncAnthropic(api_key=api_key)
-
         # Build prompt from task
         prompt = self._build_task_prompt(task)
 
@@ -435,31 +416,21 @@ class WorkerAgent:
             }
         )
 
-        # CRITICAL-1 FIX: Calculate timeout based on max_tokens
-        base_timeout = 30.0  # seconds
-        timeout_per_1k_tokens = 15.0  # seconds per 1000 tokens
-        timeout = base_timeout + (max_tokens / 1000.0) * timeout_per_1k_tokens
-
         try:
-            # HIGH-1 & CRITICAL-1 FIX: Make API call with retry and timeout
+            # Make API call via provider abstraction with retry
             response = await self._call_llm_with_retry(
-                client,
-                model_name,
                 max_tokens,
                 self.system_prompt or "You are a helpful software development assistant.",
                 [{"role": "user", "content": prompt}],
-                timeout,
             )
 
-            # Extract response content and token usage
-            if not response.content:
+            # Extract response content and token usage (LLMResponse fields)
+            content = response.content
+            if not content:
                 logger.warning(f"Empty response from LLM for task {task_id}")
-                content = ""
-            else:
-                content = response.content[0].text
 
-            input_tokens = response.usage.input_tokens
-            output_tokens = response.usage.output_tokens
+            input_tokens = response.input_tokens
+            output_tokens = response.output_tokens
 
             # Calculate actual cost
             actual_cost = self._estimate_cost(model_name, input_tokens, output_tokens)
@@ -506,8 +477,7 @@ class WorkerAgent:
                 "token_tracking_failed": token_tracking_failed,
             }
 
-        except AuthenticationError as e:
-            # HIGH-2 FIX: Enhanced error logging
+        except LLMAuthError as e:
             logger.error(
                 "LLM API call failed - authentication",
                 extra={
@@ -516,19 +486,19 @@ class WorkerAgent:
                     "task_id": task_id,
                     "project_id": project_id,
                     "model": model_name,
-                    "error_type": "AuthenticationError",
+                    "error_type": "LLMAuthError",
                     "error_message": str(e),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             )
             return {
                 "status": "failed",
-                "output": "API authentication failed. Check your ANTHROPIC_API_KEY.",
+                "output": "API authentication failed. Check your LLM provider API key.",
                 "error": str(e),
             }
 
-        except (RateLimitError, APIConnectionError, TimeoutError) as e:
-            # HIGH-1 FIX: These errors trigger retry, so if we're here, retry exhausted
+        except (LLMRateLimitError, LLMConnectionError, TimeoutError) as e:
+            # These errors trigger retry, so if we're here, retry exhausted
             logger.error(
                 "LLM API call failed after 3 retries",
                 extra={
