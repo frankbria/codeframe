@@ -64,6 +64,7 @@ class AnthropicProvider(LLMProvider):
                 "or configure via 'codeframe auth setup --provider anthropic'."
             )
         self._client = None
+        self._async_client = None
 
     @property
     def client(self):
@@ -145,7 +146,7 @@ class AnthropicProvider(LLMProvider):
             LLMConnectionError,
         )
 
-        if not hasattr(self, "_async_client") or self._async_client is None:
+        if self._async_client is None:
             self._async_client = AsyncAnthropic(api_key=self.api_key)
 
         model = self.get_model(purpose)

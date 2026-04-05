@@ -78,6 +78,7 @@ class OpenAIProvider(LLMProvider):
             )
 
         self._client = None
+        self._async_client = None
 
     def get_model(self, purpose: Purpose) -> str:
         """Return the model for a given purpose.
@@ -166,7 +167,7 @@ class OpenAIProvider(LLMProvider):
             LLMConnectionError,
         )
 
-        if not hasattr(self, "_async_client") or self._async_client is None:
+        if self._async_client is None:
             self._async_client = _openai.AsyncOpenAI(
                 api_key=self.api_key, base_url=self.base_url
             )

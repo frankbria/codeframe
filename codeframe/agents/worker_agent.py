@@ -274,13 +274,25 @@ class WorkerAgent:
             LLMRateLimitError: After retry exhaustion
             LLMConnectionError: After retry exhaustion
         """
+        import asyncio
         from codeframe.adapters.llm.base import Purpose
 
-        return await self.llm_provider.async_complete(
-            messages=messages,
-            purpose=Purpose.EXECUTION,
-            max_tokens=max_tokens,
-            system=system,
+        # CRITICAL-1: Adaptive timeout proportional to max_tokens.
+        # The original Anthropic-specific timeout was removed during the provider
+        # abstraction refactor (PR #552). Restored here via asyncio.wait_for so
+        # calls through any provider are bounded.  Follow-up: add timeout_s param
+        # to LLMProvider.async_complete() so providers can manage it natively.
+        base_timeout = 30.0
+        timeout = base_timeout + (max_tokens / 1000.0) * 15.0
+
+        return await asyncio.wait_for(
+            self.llm_provider.async_complete(
+                messages=messages,
+                purpose=Purpose.EXECUTION,
+                max_tokens=max_tokens,
+                system=system,
+            ),
+            timeout=timeout,
         )
 
     async def execute_task(
@@ -425,7 +437,7 @@ class WorkerAgent:
             )
 
             # Extract response content and token usage (LLMResponse fields)
-            content = response.content
+            content = response.content or ""
             if not content:
                 logger.warning(f"Empty response from LLM for task {task_id}")
 

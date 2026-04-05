@@ -32,14 +32,16 @@ def db():
 class ErrorMockProvider(MockProvider):
     """MockProvider subclass that raises LLMConnectionError on every call."""
 
-    async def async_complete(self, **kwargs):
+    async def async_complete(self, messages, purpose=None, tools=None,
+                             max_tokens=4096, temperature=0.0, system=None):
         raise LLMConnectionError("Connection failed")
 
 
 class RateLimitMockProvider(MockProvider):
     """MockProvider subclass that raises LLMRateLimitError on every call."""
 
-    async def async_complete(self, **kwargs):
+    async def async_complete(self, messages, purpose=None, tools=None,
+                             max_tokens=4096, temperature=0.0, system=None):
         raise LLMRateLimitError("Rate limit exceeded")
 
 
@@ -51,11 +53,15 @@ class FailThenSucceedMockProvider(MockProvider):
         self.fail_count = fail_count
         self._call_count = 0
 
-    async def async_complete(self, **kwargs):
+    async def async_complete(self, messages, purpose=None, tools=None,
+                             max_tokens=4096, temperature=0.0, system=None):
         self._call_count += 1
         if self._call_count <= self.fail_count:
             raise LLMConnectionError("Connection failed")
-        return await super().async_complete(**kwargs)
+        return await super().async_complete(
+            messages, purpose=purpose, tools=tools,
+            max_tokens=max_tokens, temperature=temperature, system=system,
+        )
 
 
 class TestWorkerAgentInitialization:
@@ -420,11 +426,12 @@ class TestWorkerAgentSecurityAndReliability:
     """Test security and reliability features (Sprint 10 code review fixes)."""
 
     @pytest.mark.asyncio
-    async def test_api_key_validation_rejects_invalid_format(self, db):
-        """Test that when MockProvider is injected, no API key validation occurs.
+    async def test_injected_provider_bypasses_key_validation(self, db):
+        """Test that an injected MockProvider bypasses all API key checks.
 
-        The Anthropic-specific key format validation was removed from execute_task.
-        When an llm_provider is supplied directly, key format is irrelevant.
+        The Anthropic-specific sk-ant- format validation was removed from
+        execute_task in the provider abstraction refactor. Callers that supply
+        llm_provider directly are not gated on environment variables.
         """
         # Setup
         project_id = db.create_project(

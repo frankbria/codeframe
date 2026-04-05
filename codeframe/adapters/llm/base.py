@@ -4,6 +4,7 @@ Defines the protocol that all LLM providers must implement,
 along with shared data structures for requests and responses.
 """
 
+import asyncio
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -325,9 +326,7 @@ class LLMProvider(ABC):
         Returns:
             LLMResponse with content and/or tool calls
         """
-        import asyncio
-
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
             lambda: self.complete(messages, purpose, tools, max_tokens, temperature, system),
