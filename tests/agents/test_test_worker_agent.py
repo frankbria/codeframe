@@ -3,8 +3,8 @@ Tests for Test Worker Agent (Sprint 4: cf-49).
 """
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
-from anthropic.types import Message, TextBlock
+from unittest.mock import Mock, patch
+from codeframe.adapters.llm import MockProvider
 
 from codeframe.agents.test_worker_agent import TestWorkerAgent
 
@@ -173,15 +173,10 @@ class TestTestGeneration:
         assert "import pytest" in code
         assert "def test_calculator" in code
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_generate_tests_with_api_success(self, mock_anthropic_class, test_agent):
-        """Test generating tests using Claude API."""
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-
-        mock_text_block = Mock(spec=TextBlock)
-        mock_text_block.text = """import pytest
+    async def test_generate_tests_with_api_success(self, test_agent):
+        """Test generating tests using LLM provider."""
+        test_code = """import pytest
 
 def test_add():
     from calculator import add
@@ -191,12 +186,7 @@ def test_subtract():
     from calculator import subtract
     assert subtract(5, 3) == 2
 """
-
-        mock_message = Mock(spec=Message)
-        mock_message.content = [mock_text_block]
-        mock_client.messages.create.return_value = mock_message
-
-        test_agent.client = mock_client
+        test_agent._llm_provider = MockProvider(default_response=test_code)
 
         spec = {"test_name": "test_calculator", "target_file": "calculator.py"}
         code_analysis = {"functions": ["add", "subtract"], "classes": []}
@@ -290,25 +280,15 @@ def test_failing():
 class TestSelfCorrection:
     """Test self-correction loop."""
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_correct_failing_tests(self, mock_anthropic_class, test_agent):
-        """Test correcting failing tests using Claude API."""
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-
-        mock_text_block = Mock(spec=TextBlock)
-        mock_text_block.text = """import pytest
+    async def test_correct_failing_tests(self, test_agent):
+        """Test correcting failing tests using LLM provider."""
+        corrected_code = """import pytest
 
 def test_corrected():
     assert 2 + 2 == 4
 """
-
-        mock_message = Mock(spec=Message)
-        mock_message.content = [mock_text_block]
-        mock_client.messages.create.return_value = mock_message
-
-        test_agent.client = mock_client
+        test_agent._llm_provider = MockProvider(default_response=corrected_code)
 
         original_code = "def test_failing():\n    assert False"
         error_output = "AssertionError: assert False"
