@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# lifecycle — Run CodeFRAME full lifecycle tests (real LLM calls)
+#
+# Usage:
+#   scripts/lifecycle [options]
+#
+# Options:
+#   --mode cli|api|web|all   Which test mode (default: cli)
+#   --model haiku|sonnet     LLM model to use (default: haiku, cheaper)
+#   --verbose / -v           Pass -s to pytest (show live output)
+#   --no-cleanup             Keep temp directories after test (for inspection)
+#   --dry-run                Show what would run without running it
+#   -h, --help               Show this help
+
+set -euo pipefail
+
+# ── Defaults ────────────────────────────────────────────────────────────────
+MODE="cli"
+MODEL="haiku"
+VERBOSE=""
+NO_CLEANUP=""
+DRY_RUN=""
+
+# ── Argument parsing ─────────────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode)      MODE="$2";  shift 2 ;;
+    --model)     MODEL="$2"; shift 2 ;;
+    --verbose|-v) VERBOSE="-s"; shift ;;
+    --no-cleanup) NO_CLEANUP="1"; shift ;;
+    --dry-run)   DRY_RUN="1"; shift ;;
+    -h|--help)
+      sed -n '2,16p' "$0"   # print the header comment block
+      exit 0
+      ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+
+# ── Validate args ────────────────────────────────────────────────────────────
+case "$MODE" in
+  cli|api|web|all) ;;
+  *) echo "Error: --mode must be cli, api, web, or all" >&2; exit 1 ;;
+esac
+
+case "$MODEL" in
+  haiku|sonnet) ;;
+  *) echo "Error: --model must be haiku or sonnet" >&2; exit 1 ;;
+esac
+
+# ── Check API key ────────────────────────────────────────────────────────────
+if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+  echo "Error: ANTHROPIC_API_KEY is not set." >&2
+  echo "" >&2
+  echo "Export it first:" >&2
+  echo "  export ANTHROPIC_API_KEY=sk-ant-..." >&2
+  echo "" >&2
+  echo "Note: These tests make real API calls and cost money." >&2
+  echo "Use --model haiku to minimize cost (~\$0.50–1.00 per full run)." >&2
+  exit 1
+fi
+
+# ── Resolve test path ────────────────────────────────────────────────────────
+case "$MODE" in
+  cli) TEST_PATH="tests/lifecycle/test_cli_lifecycle.py" ;;
+  api) TEST_PATH="tests/lifecycle/test_api_lifecycle.py" ;;
+  web) TEST_PATH="tests/lifecycle/test_web_lifecycle.py" ;;
+  all) TEST_PATH="tests/lifecycle/" ;;
+esac
+
+# ── Cost warning ─────────────────────────────────────────────────────────────
+COST_HINT="~\$0.50–1.00"
+if [[ "$MODEL" == "sonnet" ]]; then
+  COST_HINT="~\$1.00–3.00"
+fi
+if [[ "$MODE" == "all" ]]; then
+  COST_HINT="~\$1.50–5.00"
+fi
+
+# ── Summary ──────────────────────────────────────────────────────────────────
+echo ""
+echo "  CodeFRAME Lifecycle Test"
+echo "  ─────────────────────────────"
+echo "  Mode:    $MODE"
+echo "  Model:   $MODEL (set via CODEFRAME_LIFECYCLE_MODEL)"
+echo "  Path:    $TEST_PATH"
+echo "  Cost:    $COST_HINT (real API calls)"
+echo ""
+
+if [[ -n "$DRY_RUN" ]]; then
+  echo "[dry-run] Would run:"
+  echo "  CODEFRAME_LIFECYCLE_MODEL=$MODEL uv run pytest $TEST_PATH -m lifecycle -v $VERBOSE"
+  echo ""
+  exit 0
+fi
+
+# ── Confirm (skip if non-interactive / piped) ─────────────────────────────────
+if [[ -t 0 && -z "${LIFECYCLE_NO_CONFIRM:-}" ]]; then
+  read -rp "  Proceed? [y/N] " confirm
+  echo ""
+  if [[ "$confirm" != [yY] && "$confirm" != [yY][eE][sS] ]]; then
+    echo "Aborted."
+    exit 0
+  fi
+fi
+
+# ── Build pytest args ─────────────────────────────────────────────────────────
+PYTEST_ARGS=(
+  "$TEST_PATH"
+  -m lifecycle
+  -v
+  --tb=long
+  --no-header
+  --timeout=1800
+)
+
+if [[ -n "$VERBOSE" ]]; then
+  PYTEST_ARGS+=(-s)
+fi
+
+if [[ -n "$NO_CLEANUP" ]]; then
+  PYTEST_ARGS+=(--basetemp=/tmp/lifecycle-keep)
+fi
+
+# ── Run ───────────────────────────────────────────────────────────────────────
+echo "  Starting... (this may take 10–30 minutes)"
+echo ""
+
+export CODEFRAME_LIFECYCLE_MODEL="$MODEL"
+
+uv run pytest "${PYTEST_ARGS[@]}"

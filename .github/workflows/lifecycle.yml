@@ -1,0 +1,91 @@
+name: Full Lifecycle Tests
+
+# Expensive — makes real LLM API calls.
+# NOT triggered by push or PR. Manual dispatch or weekly schedule only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Test mode'
+        required: false
+        default: 'cli'
+        type: choice
+        options: [cli, api, web, all]
+      model:
+        description: 'LLM model (haiku = cheaper, sonnet = stronger)'
+        required: false
+        default: 'haiku'
+        type: choice
+        options: [haiku, sonnet]
+  schedule:
+    # Weekly — Sunday 3am UTC
+    - cron: '0 3 * * 0'
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  lifecycle:
+    name: Lifecycle (${{ inputs.mode || 'cli' }} / ${{ inputs.model || 'haiku' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv sync --extra dev
+          uv pip install -e .
+
+      - name: Configure git
+        run: |
+          git config --global user.name "Lifecycle Test"
+          git config --global user.email "lifecycle@codeframe.test"
+
+      - name: Resolve test selection
+        id: tests
+        run: |
+          MODE="${{ inputs.mode || 'cli' }}"
+          case "$MODE" in
+            cli)  echo "path=tests/lifecycle/test_cli_lifecycle.py" >> "$GITHUB_OUTPUT" ;;
+            api)  echo "path=tests/lifecycle/test_api_lifecycle.py" >> "$GITHUB_OUTPUT" ;;
+            web)  echo "path=tests/lifecycle/test_web_lifecycle.py" >> "$GITHUB_OUTPUT" ;;
+            all)  echo "path=tests/lifecycle/" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Run lifecycle tests
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CODEFRAME_LIFECYCLE_MODEL: ${{ inputs.model || 'haiku' }}
+        run: |
+          uv run pytest ${{ steps.tests.outputs.path }} \
+            -m lifecycle \
+            -v \
+            --tb=long \
+            --no-header \
+            -p no:warnings \
+            --timeout=1800
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-failure-${{ github.run_id }}
+          path: |
+            /tmp/pytest-*/
+          retention-days: 7
