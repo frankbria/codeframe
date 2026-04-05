@@ -1,9 +1,8 @@
 """Tests for WorkerAgent with LLMProvider abstraction."""
 import pytest
-from unittest.mock import MagicMock, patch
 from codeframe.adapters.llm import MockProvider
 from codeframe.agents.worker_agent import WorkerAgent
-from codeframe.core.models import Task, AgentMaturity
+from codeframe.core.models import Task
 
 pytestmark = pytest.mark.v2
 

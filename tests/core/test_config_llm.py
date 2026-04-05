@@ -1,7 +1,5 @@
 """Tests for LLM config block in .codeframe/config.yaml."""
 import pytest
-import tempfile
-from pathlib import Path
 from codeframe.core.config import EnvironmentConfig, load_environment_config
 
 pytestmark = pytest.mark.v2

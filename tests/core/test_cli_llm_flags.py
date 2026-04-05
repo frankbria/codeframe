@@ -1,7 +1,6 @@
 """Tests for --llm-provider and --llm-model CLI flags."""
 import pytest
 from typer.testing import CliRunner
-from unittest.mock import patch, MagicMock
 from codeframe.cli.app import app
 
 pytestmark = pytest.mark.v2
