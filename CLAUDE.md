@@ -158,6 +158,7 @@ cf tasks show <id>
 # Work — single task
 cf work start <task-id> [--execute] [--engine react|plan] [--verbose] [--dry-run]
 cf work start <task-id> --execute --stall-timeout 120 --stall-action retry|blocker|fail
+cf work start <task-id> --execute --llm-provider openai --llm-model gpt-4o
 cf work stop <task-id>
 cf work resume <task-id>
 cf work follow <task-id> [--tail 50]
@@ -166,6 +167,7 @@ cf work diagnose <task-id>
 # Work — batch
 cf work batch run [<id>...] [--all-ready] [--engine react|plan]
 cf work batch run --strategy serial|parallel|auto [--max-parallel 4] [--retry 3]
+cf work batch run --all-ready --llm-provider openai --llm-model qwen2.5-coder:7b
 cf work batch status|cancel|resume [batch_id]
 
 # Blockers
@@ -241,10 +243,16 @@ E2B_API_KEY=e2b_...                   # Required for --engine cloud
 DATABASE_PATH=./codeframe.db          # Optional
 
 # LLM Provider selection (multi-provider support)
+# Priority: CLI flag > env var > .codeframe/config.yaml > default (anthropic)
 CODEFRAME_LLM_PROVIDER=anthropic      # Provider: anthropic (default), openai, ollama, vllm, compatible
 CODEFRAME_LLM_MODEL=gpt-4o            # Model override (used with openai/ollama/vllm/compatible)
 OPENAI_API_KEY=sk-...                 # Required for openai provider; not needed for local providers
 OPENAI_BASE_URL=http://localhost:11434/v1  # Base URL override (for ollama, vllm, or custom endpoints)
+# Per-workspace config: .codeframe/config.yaml supports llm: block
+# llm:
+#   provider: openai
+#   model: qwen2.5-coder:7b
+#   base_url: http://localhost:11434/v1   # optional, for local models
 
 # Optional — Rate limiting
 RATE_LIMIT_ENABLED=true
