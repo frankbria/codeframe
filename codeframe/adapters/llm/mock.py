@@ -4,13 +4,15 @@ Provides predictable responses without making API calls.
 Supports configurable responses and call tracking.
 """
 
-from typing import Callable, Iterator, Optional
+import asyncio
+from typing import AsyncIterator, Callable, Iterator, Optional
 
 from codeframe.adapters.llm.base import (
     LLMProvider,
     LLMResponse,
     ModelSelector,
     Purpose,
+    StreamChunk,
     Tool,
     ToolCall,
 )
@@ -40,6 +42,8 @@ class MockProvider(LLMProvider):
         self.responses: list[LLMResponse] = []
         self.response_index = 0
         self.response_handler: Optional[Callable[[list[dict]], LLMResponse]] = None
+        self.stream_chunks: list[list[StreamChunk]] = []
+        self.stream_index = 0
 
     def add_response(self, response: LLMResponse) -> None:
         """Add a canned response to the queue.
@@ -175,12 +179,56 @@ class MockProvider(LLMProvider):
         for word in response.content.split():
             yield word + " "
 
+    def add_stream_chunks(self, chunks: list[StreamChunk]) -> None:
+        """Add a sequence of StreamChunks for the next async_stream() call.
+
+        Args:
+            chunks: Ordered list of StreamChunk objects to yield.
+        """
+        self.stream_chunks.append(chunks)
+
+    async def async_stream(
+        self,
+        messages: list[dict],
+        system: str,
+        tools: list[dict],
+        model: str,
+        max_tokens: int,
+        interrupt_event: Optional[asyncio.Event] = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """Yield pre-configured StreamChunk sequences for testing.
+
+        Falls back to a minimal text_delta + message_stop pair when no
+        stream chunks have been configured via add_stream_chunks().
+        """
+        if self.stream_index < len(self.stream_chunks):
+            chunks = self.stream_chunks[self.stream_index]
+            self.stream_index += 1
+        else:
+            # Default: simple text response followed by message_stop
+            chunks = [
+                StreamChunk(type="text_delta", text=self.default_response),
+                StreamChunk(
+                    type="message_stop",
+                    stop_reason="end_turn",
+                    input_tokens=len(str(messages)),
+                    output_tokens=len(self.default_response),
+                    tool_inputs_by_id={},
+                ),
+            ]
+        for chunk in chunks:
+            if interrupt_event and interrupt_event.is_set():
+                return
+            yield chunk
+
     def reset(self) -> None:
         """Reset call tracking and response queue."""
         self.calls.clear()
         self.responses.clear()
         self.response_index = 0
         self.response_handler = None
+        self.stream_chunks.clear()
+        self.stream_index = 0
 
     @property
     def call_count(self) -> int:

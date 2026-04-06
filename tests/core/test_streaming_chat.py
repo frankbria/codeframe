@@ -1,8 +1,8 @@
 """Unit tests for StreamingChatAdapter.
 
-Uses mocked AsyncAnthropic client to avoid real API calls.
-All streaming events are exercised: TEXT_DELTA, THINKING, TOOL_USE_START,
-TOOL_RESULT, COST_UPDATE, DONE, ERROR.
+Uses MockProvider with async_stream() to drive streaming scenarios without
+real API calls.  All streaming events are exercised: TEXT_DELTA, THINKING,
+TOOL_USE_START, TOOL_RESULT, COST_UPDATE, DONE, ERROR.
 """
 
 from __future__ import annotations
@@ -10,11 +10,12 @@ from __future__ import annotations
 import asyncio
 import uuid
 from pathlib import Path
-from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from codeframe.adapters.llm.base import StreamChunk
+from codeframe.adapters.llm.mock import MockProvider
 from codeframe.core.adapters.streaming_chat import (
     ChatEventType,
     StreamingChatAdapter,
@@ -34,78 +35,35 @@ def _make_db_repo(messages: list[dict] | None = None):
     return repo
 
 
-def _make_stream_events(events: list[dict]) -> AsyncIterator:
-    """Async iterator of mock SDK events for use in stream context manager."""
-
-    class _MockStreamCM:
-        def __init__(self, evts):
-            self._events = evts
-            self._final_message = MagicMock()
-            self._final_message.usage.input_tokens = 10
-            self._final_message.usage.output_tokens = 20
-            self._final_message.stop_reason = "end_turn"
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_):
-            pass
-
-        def __aiter__(self):
-            return self._iter()
-
-        async def _iter(self):
-            for evt in self._events:
-                yield evt
-
-        def get_final_message(self):
-            return self._final_message
-
-    return _MockStreamCM(events)
+def _stop_chunk(
+    stop_reason: str = "end_turn",
+    input_tokens: int = 10,
+    output_tokens: int = 20,
+    tool_inputs_by_id: dict | None = None,
+) -> StreamChunk:
+    return StreamChunk(
+        type="message_stop",
+        stop_reason=stop_reason,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        tool_inputs_by_id=tool_inputs_by_id or {},
+    )
 
 
-def _text_event(text: str):
-    evt = MagicMock()
-    evt.type = "content_block_delta"
-    evt.delta = MagicMock()
-    evt.delta.type = "text_delta"
-    evt.delta.text = text
-    return evt
-
-
-def _thinking_event(text: str):
-    evt = MagicMock()
-    evt.type = "content_block_delta"
-    evt.delta = MagicMock()
-    evt.delta.type = "thinking_delta"
-    evt.delta.thinking = text
-    return evt
-
-
-def _tool_start_event(tool_name: str, tool_id: str, tool_input: dict):
-    evt = MagicMock()
-    evt.type = "content_block_start"
-    evt.content_block = MagicMock()
-    evt.content_block.type = "tool_use"
-    evt.content_block.name = tool_name
-    evt.content_block.id = tool_id
-    evt.content_block.input = tool_input
-    return evt
-
-
-def _tool_stop_event(tool_id: str):
-    evt = MagicMock()
-    evt.type = "content_block_stop"
-    evt.index = 0
-    # Signal that this stop corresponds to a tool_use block
-    evt._tool_id = tool_id
-    return evt
-
-
-def _message_stop_event():
-    evt = MagicMock()
-    evt.type = "message_stop"
-    return evt
+def _make_adapter(
+    session_id: str = "s1",
+    db_repo=None,
+    workspace_path: Path | None = None,
+    provider: MockProvider | None = None,
+    model: str = "claude-sonnet-4-20250514",
+) -> StreamingChatAdapter:
+    return StreamingChatAdapter(
+        session_id=session_id,
+        db_repo=db_repo or _make_db_repo(),
+        workspace_path=workspace_path or Path("/tmp"),
+        model=model,
+        provider=provider or MockProvider(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +73,7 @@ def _message_stop_event():
 
 class TestStreamingChatAdapterInit:
     def test_raises_if_no_api_key(self, monkeypatch):
+        """When no provider is supplied, the default AnthropicProvider raises."""
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
             StreamingChatAdapter(
@@ -123,7 +82,21 @@ class TestStreamingChatAdapterInit:
                 workspace_path=Path("/tmp"),
             )
 
+    def test_accepts_explicit_provider(self):
+        adapter = _make_adapter()
+        assert adapter._session_id == "s1"
+        assert isinstance(adapter._provider, MockProvider)
+
+    def test_default_model(self):
+        adapter = _make_adapter()
+        assert adapter._model == "claude-sonnet-4-20250514"
+
+    def test_custom_model(self):
+        adapter = _make_adapter(model="claude-opus-4-20250514")
+        assert adapter._model == "claude-opus-4-20250514"
+
     def test_accepts_api_key_from_env(self, monkeypatch):
+        """Legacy path: no provider given but ANTHROPIC_API_KEY set."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
         adapter = StreamingChatAdapter(
             session_id="s1",
@@ -132,25 +105,6 @@ class TestStreamingChatAdapterInit:
         )
         assert adapter._session_id == "s1"
 
-    def test_default_model(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        adapter = StreamingChatAdapter(
-            session_id="s1",
-            db_repo=_make_db_repo(),
-            workspace_path=Path("/tmp"),
-        )
-        assert adapter._model == "claude-sonnet-4-20250514"
-
-    def test_custom_model(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        adapter = StreamingChatAdapter(
-            session_id="s1",
-            db_repo=_make_db_repo(),
-            workspace_path=Path("/tmp"),
-            model="claude-opus-4-20250514",
-        )
-        assert adapter._model == "claude-opus-4-20250514"
-
 
 # ---------------------------------------------------------------------------
 # History loading
@@ -158,25 +112,19 @@ class TestStreamingChatAdapterInit:
 
 
 class TestLoadHistory:
-    def test_empty_history(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    def test_empty_history(self):
         repo = _make_db_repo([])
-        adapter = StreamingChatAdapter(
-            session_id="s1", db_repo=repo, workspace_path=Path("/tmp")
-        )
+        adapter = _make_adapter(db_repo=repo)
         history = adapter._load_history()
         assert history == []
 
-    def test_converts_messages_to_anthropic_format(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    def test_converts_messages(self):
         stored = [
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there"},
         ]
         repo = _make_db_repo(stored)
-        adapter = StreamingChatAdapter(
-            session_id="s1", db_repo=repo, workspace_path=Path("/tmp")
-        )
+        adapter = _make_adapter(db_repo=repo)
         history = adapter._load_history()
         assert history == [
             {"role": "user", "content": "Hello"},
@@ -190,15 +138,8 @@ class TestLoadHistory:
 
 
 class TestTruncateHistory:
-    def _make_adapter(self, monkeypatch):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        return StreamingChatAdapter(
-            session_id="s1", db_repo=_make_db_repo(), workspace_path=Path("/tmp")
-        )
-
-    def test_result_starts_with_user_message(self, monkeypatch):
-        adapter = self._make_adapter(monkeypatch)
-        # Simulate history that would start with assistant after truncation
+    def test_result_starts_with_user_message(self):
+        adapter = _make_adapter()
         msgs = [
             {"role": "user", "content": "a" * 100},
             {"role": "assistant", "content": "b" * 100},
@@ -207,12 +148,12 @@ class TestTruncateHistory:
         result = adapter._truncate_history(msgs)
         assert result[0]["role"] == "user"
 
-    def test_empty_list_unchanged(self, monkeypatch):
-        adapter = self._make_adapter(monkeypatch)
+    def test_empty_list_unchanged(self):
+        adapter = _make_adapter()
         assert adapter._truncate_history([]) == []
 
-    def test_no_truncation_when_within_budget(self, monkeypatch):
-        adapter = self._make_adapter(monkeypatch)
+    def test_no_truncation_when_within_budget(self):
+        adapter = _make_adapter()
         msgs = [
             {"role": "user", "content": "hello"},
             {"role": "assistant", "content": "hi"},
@@ -228,91 +169,62 @@ class TestTruncateHistory:
 
 @pytest.mark.asyncio
 class TestSendMessageTextOnly:
-    async def test_yields_text_delta_events(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        repo = _make_db_repo()
-        adapter = StreamingChatAdapter(
-            session_id="s1", db_repo=repo, workspace_path=tmp_path
-        )
+    async def test_yields_text_delta_events(self, tmp_path):
+        provider = MockProvider()
+        provider.add_stream_chunks([
+            StreamChunk(type="text_delta", text="Hello"),
+            StreamChunk(type="text_delta", text=" world"),
+            _stop_chunk(),
+        ])
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
 
-        sdk_events = [
-            _text_event("Hello"),
-            _text_event(" world"),
-            _message_stop_event(),
-        ]
-
-        with patch.object(adapter, "_async_client") as mock_client:
-            mock_client.messages.stream.return_value = _make_stream_events(sdk_events)
-
-            collected = []
-            async for event in adapter.send_message("hi", []):
-                collected.append(event)
-
+        collected = [e async for e in adapter.send_message("hi", [])]
         types = [e.type for e in collected]
         assert ChatEventType.TEXT_DELTA in types
         assert ChatEventType.COST_UPDATE in types
         assert ChatEventType.DONE in types
 
-    async def test_text_delta_content(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        repo = _make_db_repo()
-        adapter = StreamingChatAdapter(
-            session_id="s1", db_repo=repo, workspace_path=tmp_path
-        )
+    async def test_text_delta_content(self, tmp_path):
+        provider = MockProvider()
+        provider.add_stream_chunks([
+            StreamChunk(type="text_delta", text="Hello"),
+            StreamChunk(type="text_delta", text=" world"),
+            _stop_chunk(),
+        ])
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
 
-        sdk_events = [
-            _text_event("Hello"),
-            _text_event(" world"),
-            _message_stop_event(),
+        deltas = [
+            e.content
+            async for e in adapter.send_message("hi", [])
+            if e.type == ChatEventType.TEXT_DELTA
         ]
-
-        with patch.object(adapter, "_async_client") as mock_client:
-            mock_client.messages.stream.return_value = _make_stream_events(sdk_events)
-
-            deltas = [
-                e.content
-                async for e in adapter.send_message("hi", [])
-                if e.type == ChatEventType.TEXT_DELTA
-            ]
-
         assert deltas == ["Hello", " world"]
 
-    async def test_cost_update_has_token_counts(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        repo = _make_db_repo()
-        adapter = StreamingChatAdapter(
-            session_id="s1", db_repo=repo, workspace_path=tmp_path
-        )
+    async def test_cost_update_has_token_counts(self, tmp_path):
+        provider = MockProvider()
+        provider.add_stream_chunks([
+            StreamChunk(type="text_delta", text="ok"),
+            _stop_chunk(input_tokens=10, output_tokens=20),
+        ])
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
 
-        sdk_events = [_text_event("ok"), _message_stop_event()]
-
-        with patch.object(adapter, "_async_client") as mock_client:
-            mock_client.messages.stream.return_value = _make_stream_events(sdk_events)
-
-            cost_events = [
-                e
-                async for e in adapter.send_message("hi", [])
-                if e.type == ChatEventType.COST_UPDATE
-            ]
-
+        cost_events = [
+            e
+            async for e in adapter.send_message("hi", [])
+            if e.type == ChatEventType.COST_UPDATE
+        ]
         assert len(cost_events) == 1
         assert cost_events[0].input_tokens == 10
         assert cost_events[0].output_tokens == 20
 
-    async def test_done_is_last_event(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        repo = _make_db_repo()
-        adapter = StreamingChatAdapter(
-            session_id="s1", db_repo=repo, workspace_path=tmp_path
-        )
-
-        sdk_events = [_text_event("hi"), _message_stop_event()]
-
-        with patch.object(adapter, "_async_client") as mock_client:
-            mock_client.messages.stream.return_value = _make_stream_events(sdk_events)
-
-            collected = [e async for e in adapter.send_message("hi", [])]
-
+    async def test_done_is_last_event(self, tmp_path):
+        provider = MockProvider()
+        provider.add_stream_chunks([
+            StreamChunk(type="text_delta", text="hi"),
+            _stop_chunk(),
+        ])
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
+        collected = [e async for e in adapter.send_message("hi", [])]
         assert collected[-1].type == ChatEventType.DONE
 
 
@@ -323,30 +235,38 @@ class TestSendMessageTextOnly:
 
 @pytest.mark.asyncio
 class TestThinkingEvents:
-    async def test_yields_thinking_events(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        repo = _make_db_repo()
-        adapter = StreamingChatAdapter(
-            session_id="s1", db_repo=repo, workspace_path=tmp_path
-        )
+    async def test_yields_thinking_events(self, tmp_path):
+        provider = MockProvider()
+        provider.add_stream_chunks([
+            StreamChunk(type="thinking_delta", text="Let me think..."),
+            StreamChunk(type="text_delta", text="Answer"),
+            _stop_chunk(),
+        ])
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
 
-        sdk_events = [
-            _thinking_event("Let me think..."),
-            _text_event("Answer"),
-            _message_stop_event(),
+        thinking_events = [
+            e
+            async for e in adapter.send_message("hi", [])
+            if e.type == ChatEventType.THINKING
         ]
-
-        with patch.object(adapter, "_async_client") as mock_client:
-            mock_client.messages.stream.return_value = _make_stream_events(sdk_events)
-
-            thinking_events = [
-                e
-                async for e in adapter.send_message("hi", [])
-                if e.type == ChatEventType.THINKING
-            ]
-
         assert len(thinking_events) == 1
         assert thinking_events[0].content == "Let me think..."
+
+    async def test_non_anthropic_provider_no_thinking(self, tmp_path):
+        """Providers that don't emit thinking_delta produce no THINKING events."""
+        provider = MockProvider()
+        provider.add_stream_chunks([
+            StreamChunk(type="text_delta", text="Answer"),
+            _stop_chunk(),
+        ])
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
+
+        thinking_events = [
+            e
+            async for e in adapter.send_message("hi", [])
+            if e.type == ChatEventType.THINKING
+        ]
+        assert thinking_events == []
 
 
 # ---------------------------------------------------------------------------
@@ -356,43 +276,36 @@ class TestThinkingEvents:
 
 @pytest.mark.asyncio
 class TestToolCallEvents:
-    async def test_yields_tool_use_start_and_result(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        repo = _make_db_repo()
-        adapter = StreamingChatAdapter(
-            session_id="s1", db_repo=repo, workspace_path=tmp_path
-        )
-
+    async def test_yields_tool_use_start_and_result(self, tmp_path):
         tool_id = "tool_abc"
         tool_input = {"path": "README.md"}
 
-        # First turn: tool_use stop_reason, second turn: end_turn
-        first_stream = _make_stream_events([
-            _tool_start_event("read_file", tool_id, tool_input),
-            _message_stop_event(),
+        provider = MockProvider()
+        # First turn: tool_use with stop_reason="tool_use"
+        provider.add_stream_chunks([
+            StreamChunk(
+                type="tool_use_start",
+                tool_id=tool_id,
+                tool_name="read_file",
+                tool_input=tool_input,
+            ),
+            StreamChunk(type="tool_use_stop"),
+            _stop_chunk(
+                stop_reason="tool_use",
+                tool_inputs_by_id={tool_id: tool_input},
+            ),
         ])
-        # Override stop_reason on first stream's final message
-        first_stream._final_message.stop_reason = "tool_use"
-
-        second_stream = _make_stream_events([
-            _text_event("Here is the file content."),
-            _message_stop_event(),
+        # Second turn: text response
+        provider.add_stream_chunks([
+            StreamChunk(type="text_delta", text="Here is the file content."),
+            _stop_chunk(),
         ])
 
-        call_count = 0
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
 
-        def _fake_stream(**kwargs):
-            nonlocal call_count
-            call_count += 1
-            return first_stream if call_count == 1 else second_stream
-
-        with patch.object(adapter, "_async_client") as mock_client:
-            mock_client.messages.stream.side_effect = _fake_stream
-
-            with patch.object(adapter, "_execute_tool", new_callable=AsyncMock) as mock_tool:
-                mock_tool.return_value = "file contents here"
-
-                collected = [e async for e in adapter.send_message("read README", [])]
+        with patch.object(adapter, "_execute_tool", new_callable=AsyncMock) as mock_tool:
+            mock_tool.return_value = "file contents here"
+            collected = [e async for e in adapter.send_message("read README", [])]
 
         types = [e.type for e in collected]
         assert ChatEventType.TOOL_USE_START in types
@@ -413,54 +326,29 @@ class TestToolCallEvents:
 
 @pytest.mark.asyncio
 class TestInterrupt:
-    async def test_interrupt_event_stops_stream(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        repo = _make_db_repo()
-        adapter = StreamingChatAdapter(
-            session_id="s1", db_repo=repo, workspace_path=tmp_path
-        )
-
+    async def test_interrupt_event_stops_stream(self, tmp_path):
         interrupt = asyncio.Event()
 
-        class _SlowStream:
-            def __init__(self):
-                self._final_message = MagicMock()
-                self._final_message.usage.input_tokens = 0
-                self._final_message.usage.output_tokens = 0
-                self._final_message.stop_reason = "end_turn"
+        # Build a lot of chunks so interrupt has time to fire
+        chunks = [StreamChunk(type="text_delta", text=f"chunk{i}") for i in range(100)]
+        # Inject message_stop at the end
+        chunks.append(_stop_chunk())
 
-            async def __aenter__(self):
-                return self
+        provider = MockProvider()
 
-            async def __aexit__(self, *_):
-                pass
+        async def _slow_stream(*args, **kwargs):
+            for i, chunk in enumerate(chunks):
+                if interrupt.is_set():
+                    return
+                yield chunk
+                if i == 2:
+                    interrupt.set()
 
-            def __aiter__(self):
-                return self._iter()
+        provider.async_stream = _slow_stream
 
-            async def _iter(self):
-                for i in range(100):
-                    if interrupt.is_set():
-                        return
-                    evt = MagicMock()
-                    evt.type = "content_block_delta"
-                    evt.delta = MagicMock()
-                    evt.delta.type = "text_delta"
-                    evt.delta.text = f"chunk{i}"
-                    yield evt
-                    # Set interrupt mid-stream
-                    if i == 2:
-                        interrupt.set()
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
+        collected = [e async for e in adapter.send_message("hi", [], interrupt)]
 
-            def get_final_message(self):
-                return self._final_message
-
-        with patch.object(adapter, "_async_client") as mock_client:
-            mock_client.messages.stream.return_value = _SlowStream()
-
-            collected = [e async for e in adapter.send_message("hi", [], interrupt)]
-
-        # Should stop well before 100 chunks
         text_deltas = [e for e in collected if e.type == ChatEventType.TEXT_DELTA]
         assert len(text_deltas) < 20
 
@@ -472,19 +360,15 @@ class TestInterrupt:
 
 @pytest.mark.asyncio
 class TestPersistence:
-    async def test_messages_persisted_after_turn(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    async def test_messages_persisted_after_turn(self, tmp_path):
         repo = _make_db_repo()
-        adapter = StreamingChatAdapter(
-            session_id="s1", db_repo=repo, workspace_path=tmp_path
-        )
-
-        sdk_events = [_text_event("response text"), _message_stop_event()]
-
-        with patch.object(adapter, "_async_client") as mock_client:
-            mock_client.messages.stream.return_value = _make_stream_events(sdk_events)
-
-            _ = [e async for e in adapter.send_message("user input", [])]
+        provider = MockProvider()
+        provider.add_stream_chunks([
+            StreamChunk(type="text_delta", text="response text"),
+            _stop_chunk(),
+        ])
+        adapter = _make_adapter(db_repo=repo, workspace_path=tmp_path, provider=provider)
+        _ = [e async for e in adapter.send_message("user input", [])]
 
         # Two calls: one for user message, one for assistant message
         assert repo.add_message.call_count == 2
@@ -501,31 +385,18 @@ class TestPersistence:
 
 @pytest.mark.asyncio
 class TestErrorHandling:
-    async def test_yields_error_event_on_api_failure(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        repo = _make_db_repo()
-        adapter = StreamingChatAdapter(
-            session_id="s1", db_repo=repo, workspace_path=tmp_path
-        )
+    async def test_yields_error_event_on_api_failure(self, tmp_path):
+        provider = MockProvider()
 
-        class _ErrorStream:
-            async def __aenter__(self):
-                return self
+        async def _error_stream(*args, **kwargs):
+            raise RuntimeError("API failure")
+            if False:
+                yield  # make it an async generator
 
-            async def __aexit__(self, *_):
-                pass
+        provider.async_stream = _error_stream
 
-            def __aiter__(self):
-                return self._iter()
-
-            async def _iter(self):
-                raise RuntimeError("API failure")
-                yield  # make it a generator
-
-        with patch.object(adapter, "_async_client") as mock_client:
-            mock_client.messages.stream.return_value = _ErrorStream()
-
-            collected = [e async for e in adapter.send_message("hi", [])]
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
+        collected = [e async for e in adapter.send_message("hi", [])]
 
         error_events = [e for e in collected if e.type == ChatEventType.ERROR]
         assert len(error_events) == 1

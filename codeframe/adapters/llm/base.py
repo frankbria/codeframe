@@ -9,7 +9,7 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterator, Optional
+from typing import AsyncIterator, Iterator, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +118,40 @@ class ModelSelector:
             return self.supervision_model
         else:
             return self.execution_model  # Default fallback
+
+
+@dataclass
+class StreamChunk:
+    """A normalized chunk from a streaming LLM response.
+
+    Provider-specific streaming formats are translated into this common type
+    by each :class:`LLMProvider` implementation.
+
+    Attributes:
+        type: Event type — one of ``"text_delta"``, ``"thinking_delta"``,
+            ``"tool_use_start"``, ``"tool_use_stop"``, ``"message_stop"``.
+        text: Text content for ``text_delta`` and ``thinking_delta`` types.
+        tool_id: Tool call ID for ``tool_use_start``.
+        tool_name: Tool name for ``tool_use_start``.
+        tool_input: Tool input dict for ``tool_use_start`` (may be empty;
+            final inputs are provided in the ``message_stop`` chunk).
+        input_tokens: Input token count, populated for ``message_stop``.
+        output_tokens: Output token count, populated for ``message_stop``.
+        stop_reason: Why the model stopped, populated for ``message_stop``.
+        tool_inputs_by_id: Mapping of tool_id → final input dict, populated
+            for ``message_stop``.  More reliable than streaming incremental
+            input deltas.
+    """
+
+    type: str
+    text: Optional[str] = None
+    tool_id: Optional[str] = None
+    tool_name: Optional[str] = None
+    tool_input: Optional[dict] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    stop_reason: Optional[str] = None
+    tool_inputs_by_id: Optional[dict] = None
 
 
 @dataclass
@@ -331,6 +365,50 @@ class LLMProvider(ABC):
             None,
             lambda: self.complete(messages, purpose, tools, max_tokens, temperature, system),
         )
+
+    def supports(self, capability: str) -> bool:
+        """Check whether this provider supports an optional capability.
+
+        Args:
+            capability: Capability name, e.g. ``"extended_thinking"``.
+
+        Returns:
+            ``True`` if the capability is supported, ``False`` otherwise.
+        """
+        return False
+
+    async def async_stream(
+        self,
+        messages: list[dict],
+        system: str,
+        tools: list[dict],
+        model: str,
+        max_tokens: int,
+        interrupt_event: Optional[asyncio.Event] = None,
+    ) -> AsyncIterator["StreamChunk"]:
+        """Stream a completion as normalized :class:`StreamChunk` objects.
+
+        Subclasses should override this with a provider-specific implementation.
+        The default raises :exc:`NotImplementedError`.
+
+        Args:
+            messages: Conversation messages in the provider's expected format.
+            system: System prompt string.
+            tools: Already-serialized tool definitions (list of dicts).
+            model: Model identifier to use for this call.
+            max_tokens: Maximum output tokens.
+            interrupt_event: When set, the stream should stop at the next
+                opportunity.
+
+        Yields:
+            :class:`StreamChunk` objects in order of generation.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement async_stream(). "
+            "Override this method in your provider subclass."
+        )
+        if False:  # pragma: no cover  # makes this an async generator
+            yield  # type: ignore[misc]
 
     def get_model(self, purpose: Purpose) -> str:
         """Get the model for a given purpose.

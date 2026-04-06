@@ -6,6 +6,7 @@ All tests are marked v2 (headless, CLI-first).
 
 from __future__ import annotations
 
+import importlib
 import os
 import sqlite3
 from pathlib import Path
@@ -13,6 +14,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 pytestmark = pytest.mark.v2
+
+# E2B is an optional cloud extra; skip adapter tests when the package is absent
+_e2b_available = importlib.util.find_spec("e2b") is not None
+_skip_if_no_e2b = pytest.mark.skipif(
+    not _e2b_available, reason="e2b package not installed (pip install codeframe[cloud])"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +251,7 @@ def _make_mock_sandbox(exit_code: int = 0, stdout: str = "", stderr: str = ""):
     return sbx
 
 
+@_skip_if_no_e2b
 class TestE2BAgentAdapter:
     """Tests for E2BAgentAdapter."""
 

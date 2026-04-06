@@ -115,10 +115,13 @@ async def _run_streaming_adapter(
         workspace_path: Absolute path to the workspace for file-system tools.
     """
     try:
+        from codeframe.adapters.llm.anthropic import AnthropicProvider
+        provider = AnthropicProvider()
         adapter = StreamingChatAdapter(
             session_id=session_id,
             db_repo=db_repo,
             workspace_path=workspace_path,
+            provider=provider,
         )
         async for event in adapter.send_message(
             content=user_message,
