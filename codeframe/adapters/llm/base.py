@@ -141,6 +141,19 @@ class StreamChunk:
         tool_inputs_by_id: Mapping of tool_id → final input dict, populated
             for ``message_stop``.  More reliable than streaming incremental
             input deltas.
+
+    .. note:: ``tool_use_stop`` ordering differs by provider:
+
+        - **Anthropic**: emitted immediately when each tool call's content
+          block ends (``content_block_stop`` event), so consumers see
+          ``tool_use_start → [deltas] → tool_use_stop`` interleaved.
+        - **OpenAI-compatible**: emitted after the full stream ends (before
+          ``message_stop``), because the SSE protocol has no per-tool stop
+          marker.  All ``tool_use_stop`` chunks arrive together at the end.
+
+        Consumers MUST use ``tool_inputs_by_id`` from the ``message_stop``
+        chunk for final tool inputs rather than relying on ``tool_use_stop``
+        ordering.
     """
 
     type: str
@@ -377,6 +390,10 @@ class LLMProvider(ABC):
         """
         return False
 
+    # Not decorated with @abstractmethod intentionally: providers that only
+    # support synchronous completion (e.g. thin wrappers) don't need to
+    # implement streaming.  Calling async_stream() on such a provider raises
+    # NotImplementedError at call time rather than at instantiation.
     async def async_stream(
         self,
         messages: list[dict],
@@ -385,6 +402,7 @@ class LLMProvider(ABC):
         model: str,
         max_tokens: int,
         interrupt_event: Optional[asyncio.Event] = None,
+        extended_thinking: bool = False,
     ) -> AsyncIterator["StreamChunk"]:
         """Stream a completion as normalized :class:`StreamChunk` objects.
 
@@ -399,6 +417,10 @@ class LLMProvider(ABC):
             max_tokens: Maximum output tokens.
             interrupt_event: When set, the stream should stop at the next
                 opportunity.
+            extended_thinking: When ``True``, request extended thinking tokens
+                from providers that support them (see :meth:`supports`).
+                Providers that do not support this capability should silently
+                ignore the flag.
 
         Yields:
             :class:`StreamChunk` objects in order of generation.

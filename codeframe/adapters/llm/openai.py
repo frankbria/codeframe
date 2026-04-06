@@ -6,6 +6,7 @@ Provides access to OpenAI and any OpenAI-compatible endpoint
 
 import asyncio
 import json
+import logging
 import os
 from typing import TYPE_CHECKING, AsyncIterator, Iterator, Optional
 
@@ -23,6 +24,8 @@ from codeframe.adapters.llm.base import (
 
 if TYPE_CHECKING:
     from codeframe.core.credentials import CredentialManager
+
+logger = logging.getLogger(__name__)
 
 _STOP_REASON_MAP = {
     "stop": "end_turn",
@@ -206,14 +209,24 @@ class OpenAIProvider(LLMProvider):
         model: str,
         max_tokens: int,
         interrupt_event: Optional[asyncio.Event] = None,
+        extended_thinking: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         """Stream using OpenAI async client, yielding StreamChunk objects.
 
         Translates OpenAI SSE chunks into the normalized StreamChunk format.
-        Tool calls are emitted as tool_use_start chunks; final inputs are
-        collected and emitted in the message_stop chunk via tool_inputs_by_id.
+        Tool calls are emitted as tool_use_start chunks (deferred until both
+        id and name are known); final inputs are collected and emitted in the
+        message_stop chunk via tool_inputs_by_id.
+
+        ``extended_thinking`` is silently ignored — OpenAI-compatible endpoints
+        do not support Anthropic extended thinking.
         """
         import openai as _openai
+        from codeframe.adapters.llm.base import (
+            LLMAuthError,
+            LLMConnectionError,
+            LLMRateLimitError,
+        )
 
         if self._async_client is None:
             self._async_client = _openai.AsyncOpenAI(
@@ -232,84 +245,92 @@ class OpenAIProvider(LLMProvider):
             "stream_options": {"include_usage": True},
         }
 
-        # Convert tools from Anthropic-style (input_schema) to OpenAI format
         if tools:
-            kwargs["tools"] = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": t["name"],
-                        "description": t.get("description", ""),
-                        "parameters": t.get("input_schema", {}),
-                    },
-                }
-                for t in tools
-            ]
+            kwargs["tools"] = self._convert_raw_tools(tools)
             kwargs["tool_choice"] = "auto"
 
-        # Track partial tool calls across chunks (OpenAI streams them incrementally)
-        # key: index → {id, name, arguments_parts}
+        # Track partial tool calls across chunks (OpenAI streams them incrementally).
+        # key: index → {id, name, arguments_parts, emitted_start}
         partial_tool_calls: dict[int, dict] = {}
         usage_input: int = 0
         usage_output: int = 0
         stop_reason: str = "end_turn"
 
-        async for chunk in await self._async_client.chat.completions.create(**kwargs):
-            if interrupt_event and interrupt_event.is_set():
-                return
+        try:
+            async for chunk in await self._async_client.chat.completions.create(**kwargs):
+                if interrupt_event and interrupt_event.is_set():
+                    return
 
-            # Usage is in the final chunk when stream_options.include_usage is set
-            if chunk.usage is not None:
-                usage_input = chunk.usage.prompt_tokens or 0
-                usage_output = chunk.usage.completion_tokens or 0
+                # Usage is in the final chunk when stream_options.include_usage is set
+                if chunk.usage is not None:
+                    usage_input = chunk.usage.prompt_tokens or 0
+                    usage_output = chunk.usage.completion_tokens or 0
 
-            if not chunk.choices:
-                continue
+                if not chunk.choices:
+                    continue
 
-            choice = chunk.choices[0]
-            delta = choice.delta
+                choice = chunk.choices[0]
+                delta = choice.delta
 
-            if choice.finish_reason:
-                stop_reason = _STOP_REASON_MAP.get(choice.finish_reason, choice.finish_reason)
+                if choice.finish_reason:
+                    stop_reason = _STOP_REASON_MAP.get(choice.finish_reason, choice.finish_reason)
 
-            if delta.content:
-                yield StreamChunk(type="text_delta", text=delta.content)
+                if delta.content:
+                    yield StreamChunk(type="text_delta", text=delta.content)
 
-            if delta.tool_calls:
-                for tc_delta in delta.tool_calls:
-                    idx = tc_delta.index
-                    if idx not in partial_tool_calls:
-                        partial_tool_calls[idx] = {
-                            "id": tc_delta.id or "",
-                            "name": tc_delta.function.name if tc_delta.function else "",
-                            "arguments_parts": [],
-                        }
-                        # Emit start immediately when we first see the tool call
-                        yield StreamChunk(
-                            type="tool_use_start",
-                            tool_id=tc_delta.id or "",
-                            tool_name=(tc_delta.function.name if tc_delta.function else ""),
-                            tool_input={},
-                        )
-                    else:
-                        # Accumulate id/name updates
-                        if tc_delta.id:
-                            partial_tool_calls[idx]["id"] = tc_delta.id
-                        if tc_delta.function and tc_delta.function.name:
-                            partial_tool_calls[idx]["name"] = tc_delta.function.name
-                    if tc_delta.function and tc_delta.function.arguments:
-                        partial_tool_calls[idx]["arguments_parts"].append(
-                            tc_delta.function.arguments
-                        )
+                if delta.tool_calls:
+                    for tc_delta in delta.tool_calls:
+                        idx = tc_delta.index
+                        if idx not in partial_tool_calls:
+                            partial_tool_calls[idx] = {
+                                "id": tc_delta.id or "",
+                                "name": (tc_delta.function.name if tc_delta.function else ""),
+                                "arguments_parts": [],
+                                "emitted_start": False,
+                            }
+                        else:
+                            # Accumulate id/name as they arrive across deltas
+                            if tc_delta.id:
+                                partial_tool_calls[idx]["id"] = tc_delta.id
+                            if tc_delta.function and tc_delta.function.name:
+                                partial_tool_calls[idx]["name"] = tc_delta.function.name
+
+                        if tc_delta.function and tc_delta.function.arguments:
+                            partial_tool_calls[idx]["arguments_parts"].append(
+                                tc_delta.function.arguments
+                            )
+
+                        # Defer tool_use_start until both id and name are known
+                        tc_info = partial_tool_calls[idx]
+                        if not tc_info["emitted_start"] and tc_info["id"] and tc_info["name"]:
+                            yield StreamChunk(
+                                type="tool_use_start",
+                                tool_id=tc_info["id"],
+                                tool_name=tc_info["name"],
+                                tool_input={},
+                            )
+                            tc_info["emitted_start"] = True
+
+        except _openai.AuthenticationError as exc:
+            raise LLMAuthError(str(exc)) from exc
+        except _openai.RateLimitError as exc:
+            raise LLMRateLimitError(str(exc)) from exc
+        except _openai.APIConnectionError as exc:
+            raise LLMConnectionError(str(exc)) from exc
 
         # Build tool_inputs_by_id from accumulated partial tool calls
         tool_inputs_by_id: dict = {}
         for tc in partial_tool_calls.values():
+            raw_args = "".join(tc["arguments_parts"]) or "{}"
             try:
-                tool_inputs_by_id[tc["id"]] = json.loads(
-                    "".join(tc["arguments_parts"]) or "{}"
-                )
+                tool_inputs_by_id[tc["id"]] = json.loads(raw_args)
             except json.JSONDecodeError:
+                logger.warning(
+                    "Failed to parse tool arguments for tool '%s' (id=%s): %r",
+                    tc["name"],
+                    tc["id"],
+                    raw_args,
+                )
                 tool_inputs_by_id[tc["id"]] = {}
             # Emit tool_use_stop for each completed tool call
             yield StreamChunk(type="tool_use_stop")
@@ -410,6 +431,26 @@ class OpenAIProvider(LLMProvider):
                 },
             }
             for tool in tools
+        ]
+
+    def _convert_raw_tools(self, tools: list[dict]) -> list[dict]:
+        """Convert already-serialized tool dicts (Anthropic-style) to OpenAI format.
+
+        The ``async_stream()`` interface receives tools as ``list[dict]`` with an
+        ``input_schema`` key (Anthropic API format).  This helper converts them to
+        the OpenAI ``function`` calling format, mirroring :meth:`_convert_tools`
+        for raw dicts instead of :class:`Tool` objects.
+        """
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t.get("description", ""),
+                    "parameters": t.get("input_schema", {}),
+                },
+            }
+            for t in tools
         ]
 
     def _parse_response(self, response) -> LLMResponse:

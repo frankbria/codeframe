@@ -169,6 +169,11 @@ class StreamingChatAdapter:
                 available.
         """
         if provider is None:
+            # Backward-compatibility fallback: callers that haven't been
+            # updated to pass an explicit provider (e.g. tests using the old
+            # api_key= constructor argument) still get an AnthropicProvider.
+            # New callers should construct the provider themselves and pass it
+            # in — see session_chat_ws.py for the recommended pattern.
             from codeframe.adapters.llm.anthropic import AnthropicProvider
             provider = AnthropicProvider(api_key=api_key)
 
@@ -350,11 +355,13 @@ class StreamingChatAdapter:
         current_messages = list(messages)
 
         system_prompt = (
-            f"You are a CodeFrame assistant helping the user understand and navigate "
-            f"their codebase. You have read-only access to the workspace at "
-            f"{self._workspace_path}. Available tools: read_file, list_files, "
-            f"search_codebase. Do not attempt to modify files or execute shell commands."
+            "You are a CodeFrame assistant helping the user understand and navigate "
+            "their codebase. You have read-only access to the current workspace. "
+            "Available tools: read_file, list_files, search_codebase. "
+            "Do not attempt to modify files or execute shell commands."
         )
+
+        use_extended_thinking = self._provider.supports("extended_thinking")
 
         while True:
             pending_tool_calls: list[dict] = []  # {id, name, input}
@@ -367,6 +374,7 @@ class StreamingChatAdapter:
                 model=self._model,
                 max_tokens=4096,
                 interrupt_event=interrupt_event,
+                extended_thinking=use_extended_thinking,
             ):
                 if interrupt_event and interrupt_event.is_set():
                     return

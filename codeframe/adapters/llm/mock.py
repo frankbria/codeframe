@@ -195,6 +195,7 @@ class MockProvider(LLMProvider):
         model: str,
         max_tokens: int,
         interrupt_event: Optional[asyncio.Event] = None,
+        extended_thinking: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         """Yield pre-configured StreamChunk sequences for testing.
 

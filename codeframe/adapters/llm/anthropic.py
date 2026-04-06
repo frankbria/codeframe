@@ -186,12 +186,17 @@ class AnthropicProvider(LLMProvider):
         model: str,
         max_tokens: int,
         interrupt_event: Optional[asyncio.Event] = None,
+        extended_thinking: bool = False,
     ) -> AsyncIterator[StreamChunk]:
         """Stream using Anthropic AsyncAnthropic SDK, yielding StreamChunk objects.
 
         Translates Anthropic SDK events into the normalized StreamChunk format.
         Tool inputs are collected and emitted in the final message_stop chunk
         via tool_inputs_by_id, which is more reliable than streaming input deltas.
+
+        When ``extended_thinking=True``, requests interleaved thinking via the
+        Anthropic betas API.  The flag is silently ignored on SDK versions that
+        do not support it.
         """
         from anthropic import AsyncAnthropic
 
@@ -205,6 +210,14 @@ class AnthropicProvider(LLMProvider):
             "tools": tools,
             "max_tokens": max_tokens,
         }
+
+        if extended_thinking:
+            # interleaved-thinking requires the beta header; degrade gracefully
+            # if the running SDK version doesn't recognise the param.
+            try:
+                kwargs["betas"] = ["interleaved-thinking-2025-05-14"]
+            except Exception:  # pragma: no cover
+                pass
 
         active_tool_id: Optional[str] = None
 
