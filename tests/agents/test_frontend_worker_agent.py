@@ -4,8 +4,7 @@ Tests for Frontend Worker Agent (Sprint 4: cf-48).
 
 import pytest
 import json
-from unittest.mock import Mock, patch, AsyncMock
-from anthropic.types import Message, TextBlock
+from unittest.mock import Mock, AsyncMock
 
 from codeframe.agents.frontend_worker_agent import FrontendWorkerAgent
 from codeframe.core.models import AgentMaturity
@@ -83,11 +82,11 @@ class TestFrontendWorkerAgentInitialization:
         assert agent.maturity == AgentMaturity.D3
 
     def test_initialization_with_api_key(self):
-        """Test agent initializes with provided API key."""
+        """Test agent initializes with provided API key (stored for backwards compat)."""
         agent = FrontendWorkerAgent(agent_id="frontend-003", api_key="test-api-key-123")
 
         assert agent.api_key == "test-api-key-123"
-        assert agent.client is not None
+        # LLM calls now use self.llm_provider (lazy-initialized) — no Anthropic client attr
 
     def test_initialization_sets_project_paths(self, frontend_agent, temp_web_ui_dir):
         """Test agent sets correct project directory paths."""
@@ -155,17 +154,12 @@ class TestComponentGeneration:
         assert "className=" in code  # Tailwind CSS
         assert "import React from 'react'" in code
 
-    @patch("codeframe.agents.frontend_worker_agent.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_generate_component_with_api_success(self, mock_anthropic_class, frontend_agent):
-        """Test generating component using Claude API successfully."""
-        # Setup mock
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
+    async def test_generate_component_with_api_success(self, frontend_agent):
+        """Test generating component using LLM provider successfully."""
+        from codeframe.adapters.llm import MockProvider
 
-        # Create proper mock response structure
-        mock_text_block = Mock(spec=TextBlock)
-        mock_text_block.text = """import React from 'react';
+        component_code = """import React from 'react';
 
 interface ButtonProps {
   label: string;
@@ -176,13 +170,8 @@ export const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
   return <button onClick={onClick}>{label}</button>;
 };"""
 
-        mock_message = Mock(spec=Message)
-        mock_message.content = [mock_text_block]
-
-        mock_client.messages.create.return_value = mock_message
-
-        # Update agent's client
-        frontend_agent.client = mock_client
+        mock_provider = MockProvider(default_response=component_code)
+        frontend_agent._llm_provider = mock_provider
 
         spec = {"name": "Button", "description": "A button component"}
 
@@ -191,7 +180,7 @@ export const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
         assert "Button" in code
         assert "ButtonProps" in code
         assert "React.FC" in code
-        mock_client.messages.create.assert_called_once()
+        assert mock_provider.call_count == 1
 
     @pytest.mark.asyncio
     async def test_generate_component_api_fallback(self, frontend_agent):
@@ -466,15 +455,14 @@ class TestErrorHandling:
 
     @pytest.mark.asyncio
     async def test_handle_missing_api_key(self, monkeypatch):
-        """Test agent works without API key (using fallback templates)."""
+        """Test agent falls back to template when no API key is available."""
         # Ensure environment variable is not used
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("CODEFRAME_LLM_PROVIDER", raising=False)
 
         agent = FrontendWorkerAgent(agent_id="frontend-no-key", api_key=None)
 
-        assert agent.client is None
-
-        # Should still be able to generate basic components
+        # Should still be able to generate basic components via exception fallback
         spec = {"name": "Test", "description": "Test component"}
         code = await agent._generate_react_component(spec)
 

@@ -9,7 +9,6 @@ Runtime: 10–30 minutes. Cost: ~$0.50–2.00 per run (haiku/sonnet).
 
 import json
 import pytest
-from pathlib import Path
 
 from tests.lifecycle.sample_project.acceptance import run_acceptance_checks
 

@@ -78,6 +78,7 @@ class OpenAIProvider(LLMProvider):
             )
 
         self._client = None
+        self._async_client = None
 
     def get_model(self, purpose: Purpose) -> str:
         """Return the model for a given purpose.
@@ -145,6 +146,55 @@ class OpenAIProvider(LLMProvider):
             raise ValueError(f"OpenAI model not found: {exc}") from exc
 
         return self._parse_response(response)
+
+    async def async_complete(
+        self,
+        messages: list[dict],
+        purpose: Purpose = Purpose.EXECUTION,
+        tools: Optional[list[Tool]] = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.0,
+        system: Optional[str] = None,
+    ) -> LLMResponse:
+        """True async completion via openai.AsyncOpenAI.
+
+        Raises LLMAuthError / LLMRateLimitError / LLMConnectionError on failure.
+        """
+        import openai as _openai
+        from codeframe.adapters.llm.base import (
+            LLMAuthError,
+            LLMRateLimitError,
+            LLMConnectionError,
+        )
+
+        if self._async_client is None:
+            self._async_client = _openai.AsyncOpenAI(
+                api_key=self.api_key, base_url=self.base_url
+            )
+
+        converted = self._convert_messages(messages)
+        if system:
+            converted = [{"role": "system", "content": system}] + converted
+
+        kwargs: dict = {
+            "model": self.get_model(purpose),
+            "max_tokens": max_tokens,
+            "messages": converted,
+            "temperature": temperature,
+        }
+        if tools:
+            kwargs["tools"] = self._convert_tools(tools)
+            kwargs["tool_choice"] = "auto"
+
+        try:
+            response = await self._async_client.chat.completions.create(**kwargs)
+            return self._parse_response(response)
+        except _openai.AuthenticationError as exc:
+            raise LLMAuthError(str(exc)) from exc
+        except _openai.RateLimitError as exc:
+            raise LLMRateLimitError(str(exc)) from exc
+        except _openai.APIConnectionError as exc:
+            raise LLMConnectionError(str(exc)) from exc
 
     def stream(
         self,

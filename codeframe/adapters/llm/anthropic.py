@@ -64,6 +64,7 @@ class AnthropicProvider(LLMProvider):
                 "or configure via 'codeframe auth setup --provider anthropic'."
             )
         self._client = None
+        self._async_client = None
 
     @property
     def client(self):
@@ -119,6 +120,57 @@ class AnthropicProvider(LLMProvider):
 
         # Parse response
         return self._parse_response(response)
+
+    async def async_complete(
+        self,
+        messages: list[dict],
+        purpose: Purpose = Purpose.EXECUTION,
+        tools: Optional[list[Tool]] = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.0,
+        system: Optional[str] = None,
+    ) -> LLMResponse:
+        """True async completion via AsyncAnthropic.
+
+        Raises LLMAuthError / LLMRateLimitError / LLMConnectionError on failure.
+        """
+        from anthropic import AsyncAnthropic
+        from anthropic import (
+            AuthenticationError,
+            RateLimitError,
+            APIConnectionError,
+        )
+        from codeframe.adapters.llm.base import (
+            LLMAuthError,
+            LLMRateLimitError,
+            LLMConnectionError,
+        )
+
+        if self._async_client is None:
+            self._async_client = AsyncAnthropic(api_key=self.api_key)
+
+        model = self.get_model(purpose)
+        kwargs: dict = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": self._convert_messages(messages),
+        }
+        if temperature > 0:
+            kwargs["temperature"] = temperature
+        if system:
+            kwargs["system"] = system
+        if tools:
+            kwargs["tools"] = self._convert_tools(tools)
+
+        try:
+            response = await self._async_client.messages.create(**kwargs)
+            return self._parse_response(response)
+        except AuthenticationError as exc:
+            raise LLMAuthError(str(exc)) from exc
+        except RateLimitError as exc:
+            raise LLMRateLimitError(str(exc)) from exc
+        except APIConnectionError as exc:
+            raise LLMConnectionError(str(exc)) from exc
 
     def stream(
         self,

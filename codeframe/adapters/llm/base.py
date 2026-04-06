@@ -4,11 +4,33 @@ Defines the protocol that all LLM providers must implement,
 along with shared data structures for requests and responses.
 """
 
+import asyncio
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterator, Optional
+
+
+# ---------------------------------------------------------------------------
+# Common exception hierarchy
+# ---------------------------------------------------------------------------
+
+
+class LLMError(Exception):
+    """Base exception for LLM provider errors."""
+
+
+class LLMAuthError(LLMError):
+    """Authentication failure (bad key, expired token, etc.)."""
+
+
+class LLMRateLimitError(LLMError):
+    """Rate limit exceeded — caller may retry after a backoff."""
+
+
+class LLMConnectionError(LLMError):
+    """Network or connection error."""
 
 
 class Purpose(str, Enum):
@@ -276,6 +298,39 @@ class LLMProvider(ABC):
             system=system,
         )
         yield response.content
+
+    async def async_complete(
+        self,
+        messages: list[dict],
+        purpose: Purpose = Purpose.EXECUTION,
+        tools: Optional[list["Tool"]] = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.0,
+        system: Optional[str] = None,
+    ) -> "LLMResponse":
+        """Async completion.
+
+        Default implementation wraps the synchronous :meth:`complete` in a
+        thread-pool executor so it never blocks the event loop.  Subclasses
+        should override this with a truly async implementation when the
+        underlying SDK supports it.
+
+        Args:
+            messages: Conversation messages
+            purpose: Purpose of call (for model selection)
+            tools: Available tools for the model to use
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            system: System prompt
+
+        Returns:
+            LLMResponse with content and/or tool calls
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.complete(messages, purpose, tools, max_tokens, temperature, system),
+        )
 
     def get_model(self, purpose: Purpose) -> str:
         """Get the model for a given purpose.

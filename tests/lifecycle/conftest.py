@@ -12,7 +12,6 @@ They are excluded from normal pytest runs and must be invoked explicitly:
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest

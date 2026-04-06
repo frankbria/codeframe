@@ -16,6 +16,8 @@ from unittest.mock import Mock, AsyncMock, patch
 from codeframe.agents.worker_agent import WorkerAgent
 from codeframe.core.models import Task, AgentMaturity, CallType, TaskStatus
 from codeframe.persistence.database import Database
+from codeframe.adapters.llm import MockProvider
+from codeframe.adapters.llm.base import LLMRateLimitError, LLMConnectionError
 
 
 @pytest.fixture
@@ -25,6 +27,41 @@ def db():
     database.initialize()
 
     return database
+
+
+class ErrorMockProvider(MockProvider):
+    """MockProvider subclass that raises LLMConnectionError on every call."""
+
+    async def async_complete(self, messages, purpose=None, tools=None,
+                             max_tokens=4096, temperature=0.0, system=None):
+        raise LLMConnectionError("Connection failed")
+
+
+class RateLimitMockProvider(MockProvider):
+    """MockProvider subclass that raises LLMRateLimitError on every call."""
+
+    async def async_complete(self, messages, purpose=None, tools=None,
+                             max_tokens=4096, temperature=0.0, system=None):
+        raise LLMRateLimitError("Rate limit exceeded")
+
+
+class FailThenSucceedMockProvider(MockProvider):
+    """MockProvider that fails N times then succeeds."""
+
+    def __init__(self, fail_count: int, default_response: str = "Task completed"):
+        super().__init__(default_response=default_response)
+        self.fail_count = fail_count
+        self._call_count = 0
+
+    async def async_complete(self, messages, purpose=None, tools=None,
+                             max_tokens=4096, temperature=0.0, system=None):
+        self._call_count += 1
+        if self._call_count <= self.fail_count:
+            raise LLMConnectionError("Connection failed")
+        return await super().async_complete(
+            messages, purpose=purpose, tools=tools,
+            max_tokens=max_tokens, temperature=temperature, system=system,
+        )
 
 
 class TestWorkerAgentInitialization:
@@ -325,26 +362,17 @@ class TestWorkerAgentExecuteTask:
             provider="anthropic",
             db=db,
         )
+        agent._llm_provider = MockProvider(default_response="Task completed")
 
-        # Mock environment and API
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test-key"}):
-            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
-                # Mock API response
-                mock_response = Mock()
-                mock_response.content = [Mock(text="Task completed")]
-                mock_response.usage.input_tokens = 1000
-                mock_response.usage.output_tokens = 500
-                mock_client.return_value.messages.create = AsyncMock(return_value=mock_response)
-                
-                # Mock _record_token_usage to verify it's called
-                with patch.object(
-                    agent, "_record_token_usage", new_callable=AsyncMock, return_value=False
-                ) as mock_record:
-                    # Execute
-                    result = await agent.execute_task(task)
+        # Mock _record_token_usage to verify it's called
+        with patch.object(
+            agent, "_record_token_usage", new_callable=AsyncMock, return_value=False
+        ) as mock_record:
+            # Execute
+            result = await agent.execute_task(task)
 
-                    # Verify _record_token_usage was called
-                    mock_record.assert_called_once()
+            # Verify _record_token_usage was called
+            mock_record.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_execute_task_sets_current_task(self, db):
@@ -384,31 +412,27 @@ class TestWorkerAgentExecuteTask:
             provider="anthropic",
             db=db,
         )
+        agent._llm_provider = MockProvider(default_response="Task completed")
 
-        # Mock environment and API
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test-key"}):
-            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
-                # Mock API response
-                mock_response = Mock()
-                mock_response.content = [Mock(text="Task completed")]
-                mock_response.usage.input_tokens = 100
-                mock_response.usage.output_tokens = 50
-                mock_client.return_value.messages.create = AsyncMock(return_value=mock_response)
-                
-                # Execute
-                await agent.execute_task(task)
+        # Execute
+        await agent.execute_task(task)
 
-                # Verify current_task is set
-                # Note: current_task will be dict since db.get_task returns dict
-                assert agent.current_task is not None
+        # Verify current_task is set
+        # Note: current_task will be dict since db.get_task returns dict
+        assert agent.current_task is not None
 
 
 class TestWorkerAgentSecurityAndReliability:
     """Test security and reliability features (Sprint 10 code review fixes)."""
 
     @pytest.mark.asyncio
-    async def test_api_key_validation_rejects_invalid_format(self, db):
-        """Test CRITICAL-2: Invalid API key format is rejected."""
+    async def test_injected_provider_bypasses_key_validation(self, db):
+        """Test that an injected MockProvider bypasses all API key checks.
+
+        The Anthropic-specific sk-ant- format validation was removed from
+        execute_task in the provider abstraction refactor. Callers that supply
+        llm_provider directly are not gated on environment variables.
+        """
         # Setup
         project_id = db.create_project(
             name="test",
@@ -444,15 +468,17 @@ class TestWorkerAgentSecurityAndReliability:
             provider="anthropic",
             db=db,
         )
+        agent._llm_provider = MockProvider(default_response="Task completed")
 
-        # Execute with invalid API key
+        # With MockProvider injected, no API key validation is performed
+        # Even with an "invalid" key in env, execute_task should succeed
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "invalid-key-format"}):
-            with pytest.raises(ValueError, match="Invalid ANTHROPIC_API_KEY format"):
-                await agent.execute_task(task)
+            result = await agent.execute_task(task)
+            assert result["status"] == "completed"
 
     @pytest.mark.asyncio
     async def test_api_key_validation_accepts_valid_format(self, db):
-        """Test CRITICAL-2: Valid API key format is accepted."""
+        """Test that execute_task succeeds when MockProvider is injected."""
         # Setup
         project_id = db.create_project(
             name="test",
@@ -488,20 +514,11 @@ class TestWorkerAgentSecurityAndReliability:
             provider="anthropic",
             db=db,
         )
+        agent._llm_provider = MockProvider(default_response="Task completed")
 
-        # Execute with valid API key format
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}):
-            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
-                # Mock API response
-                mock_response = Mock()
-                mock_response.content = [Mock(text="Task completed")]
-                mock_response.usage.input_tokens = 100
-                mock_response.usage.output_tokens = 50
-                mock_client.return_value.messages.create = AsyncMock(return_value=mock_response)
-
-                # Should not raise
-                result = await agent.execute_task(task)
-                assert result["status"] == "completed"
+        # Should not raise
+        result = await agent.execute_task(task)
+        assert result["status"] == "completed"
 
     @pytest.mark.asyncio
     async def test_rate_limiting_prevents_excessive_calls(self, db):
@@ -536,34 +553,27 @@ class TestWorkerAgentSecurityAndReliability:
         task = db.get_task(task_id)
 
         # Set low rate limit for testing
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123", "AGENT_RATE_LIMIT": "2"}):
+        with patch.dict(os.environ, {"AGENT_RATE_LIMIT": "2"}):
             agent = WorkerAgent(
                 agent_id="test-001",
                 agent_type="backend",
                 provider="anthropic",
                 db=db,
             )
+            agent._llm_provider = MockProvider(default_response="Task completed")
 
-            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
-                # Mock API response
-                mock_response = Mock()
-                mock_response.content = [Mock(text="Task completed")]
-                mock_response.usage.input_tokens = 100
-                mock_response.usage.output_tokens = 50
-                mock_client.return_value.messages.create = AsyncMock(return_value=mock_response)
+            # First 2 calls should succeed
+            result1 = await agent.execute_task(task)
+            assert result1["status"] == "completed"
 
-                # First 2 calls should succeed
-                result1 = await agent.execute_task(task)
-                assert result1["status"] == "completed"
+            result2 = await agent.execute_task(task)
+            assert result2["status"] == "completed"
 
-                result2 = await agent.execute_task(task)
-                assert result2["status"] == "completed"
-
-                # Third call should hit rate limit
-                result3 = await agent.execute_task(task)
-                assert result3["status"] == "failed"
-                assert "rate limit exceeded" in result3["output"].lower()
-                assert result3["error"] == "AGENT_RATE_LIMIT_EXCEEDED"
+            # Third call should hit rate limit
+            result3 = await agent.execute_task(task)
+            assert result3["status"] == "failed"
+            assert "rate limit exceeded" in result3["output"].lower()
+            assert result3["error"] == "AGENT_RATE_LIMIT_EXCEEDED"
 
     @pytest.mark.asyncio
     async def test_cost_guardrails_prevent_expensive_tasks(self, db):
@@ -601,13 +611,14 @@ class TestWorkerAgentSecurityAndReliability:
         task = db.get_task(task_id)
 
         # Set low cost limit for testing
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123", "MAX_COST_PER_TASK": "0.01"}):
+        with patch.dict(os.environ, {"MAX_COST_PER_TASK": "0.01"}):
             agent = WorkerAgent(
                 agent_id="test-001",
                 agent_type="backend",
                 provider="anthropic",
                 db=db,
             )
+            agent._llm_provider = MockProvider(default_response="Task completed")
 
             # Execute should fail due to cost limit
             result = await agent.execute_task(task)
@@ -656,29 +667,21 @@ class TestWorkerAgentSecurityAndReliability:
             provider="anthropic",
             db=db,
         )
+        agent._llm_provider = MockProvider(default_response="Task completed")
 
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}):
-            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
-                # Mock API response
-                mock_response = Mock()
-                mock_response.content = [Mock(text="Task completed")]
-                mock_response.usage.input_tokens = 100
-                mock_response.usage.output_tokens = 50
-                mock_client.return_value.messages.create = AsyncMock(return_value=mock_response)
+        # Should log warning but still execute (sanitization is defensive, not blocking)
+        with patch("codeframe.agents.worker_agent.logger") as mock_logger:
+            result = await agent.execute_task(task)
 
-                # Should log warning but still execute (sanitization is defensive, not blocking)
-                with patch("codeframe.agents.worker_agent.logger") as mock_logger:
-                    result = await agent.execute_task(task)
-
-                    # Check that warning was logged
-                    mock_logger.warning.assert_any_call(
-                        "Potential prompt injection detected",
-                        extra={
-                            "event": "prompt_injection_attempt",
-                            "phrase": "ignore all previous instructions",
-                            "agent_id": "test-001"
-                        }
-                    )
+            # Check that warning was logged
+            mock_logger.warning.assert_any_call(
+                "Potential prompt injection detected",
+                extra={
+                    "event": "prompt_injection_attempt",
+                    "phrase": "ignore all previous instructions",
+                    "agent_id": "test-001"
+                }
+            )
 
     @pytest.mark.asyncio
     async def test_retry_logic_handles_transient_failures(self, db):
@@ -718,36 +721,17 @@ class TestWorkerAgentSecurityAndReliability:
             provider="anthropic",
             db=db,
         )
+        # First 2 calls fail with connection error, third succeeds
+        agent._llm_provider = FailThenSucceedMockProvider(
+            fail_count=2, default_response="Task completed"
+        )
 
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}):
-            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
-                # Create a mock exception that behaves like APIConnectionError
-                from anthropic import APIConnectionError
+        # Should succeed after retries
+        result = await agent.execute_task(task)
+        assert result["status"] == "completed"
 
-                # Mock the exception properly
-                mock_error = Mock(spec=APIConnectionError)
-                mock_error.__class__ = APIConnectionError
-
-                # First 2 calls fail, third succeeds
-                mock_response = Mock()
-                mock_response.content = [Mock(text="Task completed")]
-                mock_response.usage.input_tokens = 100
-                mock_response.usage.output_tokens = 50
-
-                mock_client.return_value.messages.create = AsyncMock(
-                    side_effect=[
-                        APIConnectionError(request=Mock()),
-                        APIConnectionError(request=Mock()),
-                        mock_response,  # Third attempt succeeds
-                    ]
-                )
-
-                # Should succeed after retries
-                result = await agent.execute_task(task)
-                assert result["status"] == "completed"
-
-                # Verify retry happened (3 total calls)
-                assert mock_client.return_value.messages.create.call_count == 3
+        # Verify retry happened (3 total calls: 2 failures + 1 success)
+        assert agent._llm_provider._call_count == 3
 
     @pytest.mark.asyncio
     async def test_retry_exhaustion_returns_failure(self, db):
@@ -787,23 +771,13 @@ class TestWorkerAgentSecurityAndReliability:
             provider="anthropic",
             db=db,
         )
+        # All calls fail with connection error
+        agent._llm_provider = ErrorMockProvider(default_response="Task completed")
 
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}):
-            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
-                from anthropic import APIConnectionError
-
-                # All 3 calls fail
-                mock_client.return_value.messages.create = AsyncMock(
-                    side_effect=APIConnectionError(request=Mock())
-                )
-
-                # Should fail after 3 retries
-                result = await agent.execute_task(task)
-                assert result["status"] == "failed"
-                assert "Failed after 3 retry attempts" in result["output"]
-
-                # Verify 3 retry attempts
-                assert mock_client.return_value.messages.create.call_count == 3
+        # Should fail after 3 retries
+        result = await agent.execute_task(task)
+        assert result["status"] == "failed"
+        assert "Failed after 3 retry attempts" in result["output"]
 
 
 class TestWorkerAgentModelNameResolution:

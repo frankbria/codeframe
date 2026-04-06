@@ -539,6 +539,8 @@ class BatchRun:
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
     isolate: bool = True
     isolation: str = "none"
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
 
 
 def start_batch(
@@ -557,6 +559,8 @@ def start_batch(
     isolate: bool = True,
     isolation: str = "none",
     cloud_timeout_minutes: int = 30,
+    llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
 ) -> BatchRun:
     """Start a batch execution of multiple tasks.
 
@@ -613,6 +617,8 @@ def start_batch(
         concurrency=concurrency,
         isolate=isolate,
         isolation=isolation,
+        llm_provider=llm_provider,
+        llm_model=llm_model,
     )
 
     # Save to database
@@ -1026,6 +1032,7 @@ def _execute_serial_resume(
                 workspace, task_id, batch.id, engine=batch.engine,
                 stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                 worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+                llm_provider=batch.llm_provider, llm_model=batch.llm_model,
             )
         finally:
             exec_ctx.cleanup()
@@ -1203,6 +1210,7 @@ def _execute_retries(
                     workspace, task_id, batch.id, engine=batch.engine,
                     stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                     worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+                    llm_provider=batch.llm_provider, llm_model=batch.llm_model,
                 )
             finally:
                 exec_ctx.cleanup()
@@ -1432,6 +1440,7 @@ def _execute_serial(
                     workspace, task_id, batch.id, engine=batch.engine,
                     stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                     worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+                    llm_provider=batch.llm_provider, llm_model=batch.llm_model,
                 )
 
                 # If task is BLOCKED, try supervisor resolution
@@ -1444,6 +1453,7 @@ def _execute_serial(
                             workspace, task_id, batch.id, engine=batch.engine,
                             stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                             worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+                            llm_provider=batch.llm_provider, llm_model=batch.llm_model,
                         )
             finally:
                 exec_ctx.cleanup()
@@ -1858,6 +1868,7 @@ def _execute_single_task(
             stall_timeout_s=batch.stall_timeout_s,
             stall_action=batch.stall_action,
             worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+            llm_provider=batch.llm_provider, llm_model=batch.llm_model,
         )
 
         # If task is BLOCKED, try supervisor resolution
@@ -1872,6 +1883,7 @@ def _execute_single_task(
                     stall_timeout_s=batch.stall_timeout_s,
                     stall_action=batch.stall_action,
                     worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+                    llm_provider=batch.llm_provider, llm_model=batch.llm_model,
                 )
     finally:
         exec_ctx.cleanup()
@@ -1978,6 +1990,7 @@ def _execute_group_parallel(
                 stall_timeout_s=batch.stall_timeout_s,
                 stall_action=batch.stall_action,
                 worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
+                llm_provider=batch.llm_provider, llm_model=batch.llm_model,
             )
         finally:
             exec_ctx.cleanup()
@@ -2041,6 +2054,8 @@ def _execute_task_subprocess(
     stall_action: str = "blocker",
     worktree_path: Optional[Path] = None,
     cloud_timeout_minutes: int = 30,
+    llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
 ) -> str:
     """Execute a single task via subprocess.
 
@@ -2068,6 +2083,10 @@ def _execute_task_subprocess(
     ]
     if engine == "cloud":
         cmd += ["--cloud-timeout", str(cloud_timeout_minutes)]
+    if llm_provider:
+        cmd += ["--llm-provider", llm_provider]
+    if llm_model:
+        cmd += ["--llm-model", llm_model]
 
     process = None
     try:

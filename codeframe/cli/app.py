@@ -2330,6 +2330,16 @@ def work_start(
         "--cloud-timeout",
         help="Sandbox timeout in minutes for --engine cloud (1-60, default: 30)",
     ),
+    llm_provider: Optional[str] = typer.Option(
+        None,
+        "--llm-provider",
+        help="LLM provider: anthropic, openai (default: anthropic or $CODEFRAME_LLM_PROVIDER)",
+    ),
+    llm_model: Optional[str] = typer.Option(
+        None,
+        "--llm-model",
+        help="Model name for the chosen provider (e.g. gpt-4o, qwen2.5-coder:7b, claude-sonnet-4-5)",
+    ),
 ) -> None:
     """Start working on a task.
 
@@ -2344,6 +2354,7 @@ def work_start(
         codeframe work start abc123 --execute --verbose
         codeframe work start abc123 --execute --isolation worktree
         codeframe work start abc123 --execute --engine cloud --cloud-timeout 45
+        codeframe work start abc123 --execute --llm-provider openai --llm-model gpt-4o
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks as tasks_module, runtime
@@ -2416,6 +2427,7 @@ def work_start(
                     engine=engine, stall_timeout_s=stall_timeout,
                     stall_action=stall_action, isolation=isolation,
                     cloud_timeout_minutes=cloud_timeout,
+                    llm_provider=llm_provider, llm_model=llm_model,
                 )
 
                 if state.status == AgentStatus.COMPLETED:
@@ -3652,6 +3664,16 @@ def batch_run(
         "--cloud-timeout",
         help="Sandbox timeout in minutes for --engine cloud (1-60, default: 30)",
     ),
+    llm_provider: Optional[str] = typer.Option(
+        None,
+        "--llm-provider",
+        help="LLM provider: anthropic, openai (default: anthropic or $CODEFRAME_LLM_PROVIDER)",
+    ),
+    llm_model: Optional[str] = typer.Option(
+        None,
+        "--llm-model",
+        help="Model name for the chosen provider (e.g. gpt-4o, qwen2.5-coder:7b)",
+    ),
 ) -> None:
     """Execute multiple tasks in batch.
 
@@ -3771,6 +3793,8 @@ def batch_run(
             stall_action=stall_action,
             isolation=isolation,
             cloud_timeout_minutes=cloud_timeout,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
         )
 
         # Show summary

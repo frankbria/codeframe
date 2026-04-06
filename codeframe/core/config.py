@@ -62,6 +62,19 @@ class LintTool(str, Enum):
 
 
 @dataclass
+class LLMConfig:
+    """Per-workspace LLM provider configuration.
+
+    Stored under the ``llm:`` key in ``.codeframe/config.yaml``.
+    Priority (lowest → highest): config file → env var → CLI flag.
+    """
+
+    provider: Optional[str] = None  # e.g. "anthropic", "openai", "ollama"
+    model: Optional[str] = None     # e.g. "gpt-4o", "qwen2.5-coder:7b"
+    base_url: Optional[str] = None  # e.g. "http://localhost:11434/v1"
+
+
+@dataclass
 class ContextConfig:
     """Context loading configuration."""
 
@@ -146,6 +159,9 @@ class EnvironmentConfig:
 
     # Custom command overrides
     custom_commands: dict[str, str] = dataclass_field(default_factory=dict)
+
+    # LLM provider config (workspace-level default; overridden by env vars and CLI flags)
+    llm: Optional[LLMConfig] = None
 
     def validate(self) -> list[str]:
         """Validate configuration values.
@@ -296,6 +312,8 @@ class EnvironmentConfig:
             data["batch"] = BatchConfig(**data["batch"])
         if "hooks" in data and isinstance(data["hooks"], dict):
             data["hooks"] = HooksConfig(**data["hooks"])
+        if "llm" in data and isinstance(data["llm"], dict):
+            data["llm"] = LLMConfig(**data["llm"])
         return cls(**data)
 
 
