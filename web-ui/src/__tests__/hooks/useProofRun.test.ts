@@ -54,7 +54,41 @@ describe('useProofRun', () => {
     expect(result.current.runState).toBe('idle');
     expect(result.current.gateEntries).toHaveLength(0);
     expect(result.current.passed).toBeNull();
+    expect(result.current.runMessage).toBeNull();
     expect(result.current.errorMessage).toBeNull();
+  });
+
+  it('deduplicates gate entries when the same gate appears under multiple requirements', async () => {
+    mockStartRun.mockResolvedValue({
+      success: true,
+      run_id: 'dup-test',
+      results: {
+        'req-1': [{ gate: 'unit', satisfied: true }],
+        'req-2': [{ gate: 'unit', satisfied: false }], // same gate, different req
+      },
+      message: 'done',
+    });
+    mockGetRun.mockResolvedValue({
+      run_id: 'dup-test',
+      status: 'complete' as const,
+      results: {
+        'req-1': [{ gate: 'unit', satisfied: true }],
+        'req-2': [{ gate: 'unit', satisfied: false }],
+      },
+      passed: false,
+      message: 'done',
+    });
+
+    const { result } = renderHook(() => useProofRun());
+    act(() => { result.current.startRun(WORKSPACE); });
+    await waitFor(() => expect(result.current.runState).toBe('polling'));
+    // Optimistic entries: deduplicated to 1
+    expect(result.current.gateEntries).toHaveLength(1);
+
+    await act(async () => { jest.advanceTimersByTime(2000); });
+    await waitFor(() => expect(result.current.runState).toBe('complete'));
+    // Final entries: still deduplicated to 1
+    expect(result.current.gateEntries).toHaveLength(1);
   });
 
   it('transitions to starting then polling on successful POST', async () => {
@@ -95,6 +129,7 @@ describe('useProofRun', () => {
     await waitFor(() => expect(result.current.runState).toBe('complete'));
     expect(result.current.passed).toBe(true);
     expect(result.current.gateEntries.some((e) => e.status === 'passed')).toBe(true);
+    expect(result.current.runMessage).toBe('Proof run complete: 1 requirement(s) evaluated.');
   });
 
   it('sets passed=false when gates fail', async () => {
@@ -167,5 +202,6 @@ describe('useProofRun', () => {
 
     expect(result.current.runState).toBe('idle');
     expect(result.current.errorMessage).toBeNull();
+    expect(result.current.runMessage).toBeNull();
   });
 });

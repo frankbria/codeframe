@@ -104,7 +104,7 @@ function ProofPageContent() {
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [waivedReq, setWaivedReq] = useState<ProofRequirement | null>(null);
 
-  const { runState, gateEntries, passed, errorMessage, startRun, retry } = useProofRun();
+  const { runState, gateEntries, passed, runMessage, errorMessage, startRun, retry } = useProofRun();
 
   // Sort state (default: status asc → open first, then severity)
   const [sortCol, setSortCol] = useState<SortCol>('status');
@@ -260,7 +260,7 @@ function ProofPageContent() {
               <GateRunPanel gateEntries={gateEntries} />
             )}
             {runState === 'complete' && passed !== null && (
-              <GateRunBanner passed={passed} message="" onRetry={retry} />
+              <GateRunBanner passed={passed} message={runMessage ?? ''} onRetry={retry} />
             )}
             {runState === 'error' && errorMessage && (
               <div

@@ -329,6 +329,11 @@ class TestRunProof:
 class TestGetRunStatus:
     """Tests for GET /api/v2/proof/runs/{run_id}."""
 
+    def setup_method(self):
+        """Reset the run cache so tests don't share state."""
+        from codeframe.ui.routers import proof_v2
+        proof_v2._run_cache.clear()
+
     def test_get_run_after_post_returns_200(self, test_client):
         """GET /runs/{run_id} returns 200 after a completed POST /run."""
         post_resp = test_client.post("/api/v2/proof/run", json={})

@@ -14,6 +14,7 @@ Routes:
 """
 
 import logging
+import time
 import uuid
 from datetime import date
 from typing import Any, Optional
@@ -45,8 +46,25 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/proof", tags=["proof-v2"])
 
-# Module-level cache: (workspace_path, run_id) → serialized RunProofResponse dict
+# Module-level cache: (workspace_path, run_id) → {results, passed, message, _ts}
+# Bounded to _CACHE_MAX_SIZE entries; entries expire after _CACHE_TTL_SECONDS.
+# NOTE: in-memory only — a process running multiple uvicorn workers will have
+# separate caches per worker. Suitable for single-worker dev/demo deployments.
 _run_cache: dict[tuple[str, str], dict] = {}
+_CACHE_MAX_SIZE = 100
+_CACHE_TTL_SECONDS = 300  # 5 minutes
+
+
+def _evict_run_cache() -> None:
+    """Remove expired entries and trim to max size (oldest first)."""
+    now = time.time()
+    expired = [k for k, v in _run_cache.items() if now - v["_ts"] > _CACHE_TTL_SECONDS]
+    for k in expired:
+        del _run_cache[k]
+    if len(_run_cache) > _CACHE_MAX_SIZE:
+        oldest = sorted(_run_cache, key=lambda k: _run_cache[k]["_ts"])
+        for k in oldest[: len(_run_cache) - _CACHE_MAX_SIZE]:
+            del _run_cache[k]
 
 
 # ============================================================================
@@ -150,10 +168,15 @@ class RunProofResponse(BaseModel):
 
 
 class RunStatusResponse(BaseModel):
-    """Response for GET /runs/{run_id} — poll a completed run."""
+    """Response for GET /runs/{run_id} — poll a completed run.
+
+    status is currently always "complete" because POST /run executes
+    synchronously before returning run_id. The "running" value is reserved
+    for a future async execution model.
+    """
 
     run_id: str
-    status: str  # "running" | "complete"
+    status: str  # "complete" (currently); "running" reserved for future async
     results: dict[str, list[dict[str, Any]]]
     passed: bool
     message: str
@@ -357,10 +380,12 @@ async def run_proof_endpoint(
             results=serialized,
             message=f"Proof run complete: {len(results)} requirement(s) evaluated.",
         )
+        _evict_run_cache()
         _run_cache[(str(workspace.repo_path), run_id)] = {
             "results": serialized,
             "passed": passed,
             "message": response.message,
+            "_ts": time.time(),
         }
         return response
     except Exception as e:

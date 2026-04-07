@@ -10,9 +10,20 @@ export interface UseProofRunReturn {
   runState: ProofRunState;
   gateEntries: GateRunEntry[];
   passed: boolean | null;
+  runMessage: string | null;
   errorMessage: string | null;
   startRun: (workspacePath: string) => void;
   retry: () => void;
+}
+
+/** Deduplicate gate entries by gate name, keeping first occurrence. */
+function dedupeByGate(entries: GateRunEntry[]): GateRunEntry[] {
+  const seen = new Set<string>();
+  return entries.filter(({ gate }) => {
+    if (seen.has(gate)) return false;
+    seen.add(gate);
+    return true;
+  });
 }
 
 /**
@@ -28,6 +39,7 @@ export function useProofRun(): UseProofRunReturn {
   const [runState, setRunState] = useState<ProofRunState>('idle');
   const [gateEntries, setGateEntries] = useState<GateRunEntry[]>([]);
   const [passed, setPassed] = useState<boolean | null>(null);
+  const [runMessage, setRunMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -52,6 +64,7 @@ export function useProofRun(): UseProofRunReturn {
       setRunState('starting');
       setGateEntries([]);
       setPassed(null);
+      setRunMessage(null);
       setErrorMessage(null);
 
       try {
@@ -60,18 +73,13 @@ export function useProofRun(): UseProofRunReturn {
         runIdRef.current = response.run_id;
 
         // Build optimistic "running" entries from returned results
-        const entries: GateRunEntry[] = Object.values(response.results)
-          .flat()
-          .map((item) => ({ gate: item.gate, status: 'running' as GateRunStatus }));
-        // Deduplicate gate names
-        const seen = new Set<string>();
-        const uniqueEntries = entries.filter(({ gate }) => {
-          if (seen.has(gate)) return false;
-          seen.add(gate);
-          return true;
-        });
+        const optimisticEntries = dedupeByGate(
+          Object.values(response.results)
+            .flat()
+            .map((item) => ({ gate: item.gate, status: 'running' as GateRunStatus }))
+        );
 
-        setGateEntries(uniqueEntries.length > 0 ? uniqueEntries : []);
+        setGateEntries(optimisticEntries);
         setRunState('polling');
 
         // Poll every 2s until complete
@@ -81,22 +89,18 @@ export function useProofRun(): UseProofRunReturn {
             if (status.status === 'complete') {
               clearPollInterval();
 
-              // Build final gate entries with pass/fail status
-              const finalEntries: GateRunEntry[] = Object.values(status.results)
-                .flat()
-                .map((item) => ({
-                  gate: item.gate,
-                  status: item.satisfied ? ('passed' as GateRunStatus) : ('failed' as GateRunStatus),
-                }));
-              const seenFinal = new Set<string>();
-              const uniqueFinal = finalEntries.filter(({ gate }) => {
-                if (seenFinal.has(gate)) return false;
-                seenFinal.add(gate);
-                return true;
-              });
+              const finalEntries = dedupeByGate(
+                Object.values(status.results)
+                  .flat()
+                  .map((item) => ({
+                    gate: item.gate,
+                    status: item.satisfied ? ('passed' as GateRunStatus) : ('failed' as GateRunStatus),
+                  }))
+              );
 
-              setGateEntries(uniqueFinal);
+              setGateEntries(finalEntries);
               setPassed(status.passed);
+              setRunMessage(status.message);
               setRunState('complete');
             }
           } catch {
@@ -125,8 +129,9 @@ export function useProofRun(): UseProofRunReturn {
     setRunState('idle');
     setGateEntries([]);
     setPassed(null);
+    setRunMessage(null);
     setErrorMessage(null);
   }, [clearPollInterval]);
 
-  return { runState, gateEntries, passed, errorMessage, startRun, retry };
+  return { runState, gateEntries, passed, runMessage, errorMessage, startRun, retry };
 }
