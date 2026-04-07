@@ -45,6 +45,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/proof", tags=["proof-v2"])
 
+# Module-level cache: (workspace_path, run_id) → serialized RunProofResponse dict
+_run_cache: dict[tuple[str, str], dict] = {}
+
 
 # ============================================================================
 # Request / Response Models
@@ -143,6 +146,16 @@ class RunProofResponse(BaseModel):
     success: bool
     run_id: str
     results: dict[str, list[dict[str, Any]]]
+    message: str
+
+
+class RunStatusResponse(BaseModel):
+    """Response for GET /runs/{run_id} — poll a completed run."""
+
+    run_id: str
+    status: str  # "running" | "complete"
+    results: dict[str, list[dict[str, Any]]]
+    passed: bool
     message: str
 
 
@@ -333,18 +346,60 @@ async def run_proof_endpoint(
             for req_id, gate_results in results.items()
         }
 
-        return RunProofResponse(
+        passed = all(
+            satisfied
+            for gate_results in results.values()
+            for _, satisfied in gate_results
+        )
+        response = RunProofResponse(
             success=True,
             run_id=run_id,
             results=serialized,
             message=f"Proof run complete: {len(results)} requirement(s) evaluated.",
         )
+        _run_cache[(str(workspace.repo_path), run_id)] = {
+            "results": serialized,
+            "passed": passed,
+            "message": response.message,
+        }
+        return response
     except Exception as e:
         logger.error("Proof run failed: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=api_error("Proof run failed", ErrorCodes.EXECUTION_FAILED, str(e)),
         )
+
+
+@router.get("/runs/{run_id}", response_model=RunStatusResponse)
+@rate_limit_standard()
+async def get_run_status_endpoint(
+    request: Request,
+    run_id: str,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> RunStatusResponse:
+    """Get the status of a completed proof run by run_id.
+
+    Since POST /run is synchronous, a run is always complete immediately after
+    the POST returns. Returns 404 if run_id is unknown.
+    """
+    cached = _run_cache.get((str(workspace.repo_path), run_id))
+    if cached is None:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error(
+                f"Run not found: {run_id}",
+                ErrorCodes.NOT_FOUND,
+                f"No proof run with id {run_id}",
+            ),
+        )
+    return RunStatusResponse(
+        run_id=run_id,
+        status="complete",
+        results=cached["results"],
+        passed=cached["passed"],
+        message=cached["message"],
+    )
 
 
 @router.post("/requirements/{req_id}/waive", response_model=RequirementResponse)

@@ -343,6 +343,34 @@ export interface WaiveRequest {
   approved_by: string;
 }
 
+// Proof run types (mirrors proof_v2.py RunProofResponse + RunStatusResponse)
+export interface RunProofRequest {
+  full: boolean;
+}
+
+export interface RunProofResponse {
+  success: boolean;
+  run_id: string;
+  results: Record<string, Array<{ gate: string; satisfied: boolean }>>;
+  message: string;
+}
+
+export interface RunStatusResponse {
+  run_id: string;
+  status: 'running' | 'complete';
+  results: Record<string, Array<{ gate: string; satisfied: boolean }>>;
+  passed: boolean;
+  message: string;
+}
+
+// UI-only types for per-gate display in the Run Gates panel
+export type GateRunStatus = 'pending' | 'running' | 'passed' | 'failed';
+
+export interface GateRunEntry {
+  gate: string;
+  status: GateRunStatus;
+}
+
 
 // Quick Actions props (dashboard)
 export interface QuickActionsProps {
