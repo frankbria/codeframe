@@ -1,6 +1,6 @@
 # CodeFRAME Development Guidelines
 
-Last updated: 2026-04-03
+Last updated: 2026-04-06
 
 ## Product Vision
 
@@ -18,7 +18,7 @@ SHIP:   cf pr create → cf pr merge
 LOOP:   Glitch → cf proof capture → New REQ → Enforced forever
 ```
 
-**Status: Phase 1 ✅ | Phase 2 ✅ | Phase 2.5 ✅ | Phase 3 🔄** — See `docs/V2_STRATEGIC_ROADMAP.md`.
+**Status: CLI ✅ | Server ✅ | ReAct agent ✅ | Web UI ✅ | Agent adapters ✅ | Multi-provider LLM ✅ | Next: Phase 3.5B** — See `docs/PRODUCT_ROADMAP.md`.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -90,7 +90,7 @@ Shipped pages: `/`, `/prd`, `/tasks`, `/execution`, `/execution/[taskId]`, `/blo
 Testing: `cd web-ui && npm test` must pass; `npm run build` must succeed. The `frontend-tests` CI job enforces this on every PR.
 
 ### What's implemented
-Full feature list in `docs/V2_STRATEGIC_ROADMAP.md`. Key capabilities: ReAct agent execution, batch execution (serial/parallel/auto), task dependencies, stall detection, self-correction, GitHub PR workflow, SSE streaming, API auth, rate limiting, OpenAPI docs, 70+ integration tests.
+Full feature list in `docs/PRODUCT_ROADMAP.md`. Key capabilities: ReAct agent execution, batch execution (serial/parallel/auto), task dependencies, stall detection, self-correction, GitHub PR workflow, SSE streaming, API auth, rate limiting, OpenAPI docs, multi-provider LLM (Anthropic/OpenAI-compatible), agent adapters (ClaudeCode/Codex/OpenCode/Kilocode), worktree isolation, E2B cloud execution, interactive agent sessions (WebSocket chat + XTerm.js terminal), PROOF9 quality system.
 
 ---
 
@@ -112,7 +112,7 @@ codeframe/
 │   ├── credentials.py, agents_config.py
 │   └── sandbox/context.py, sandbox/worktree.py   # Isolation abstractions
 ├── adapters/
-│   ├── llm/base.py, llm/anthropic.py, llm/mock.py
+│   ├── llm/base.py, llm/anthropic.py, llm/openai.py, llm/mock.py
 │   └── e2b/        # Cloud sandbox (optional: pip install codeframe[cloud])
 ├── cli/app.py      # Typer CLI entry + subcommands
 ├── ui/             # FastAPI server (thin adapter over core)
@@ -125,7 +125,11 @@ codeframe/
 web-ui/             # Phase 3 Web UI (Next.js, actively developed)
 tests/
 ├── core/           # Core module tests (auto-marked v2)
-└── adapters/
+├── adapters/       # LLM + E2B adapter tests
+├── agents/         # Worker agent tests
+├── integration/    # Cross-module integration tests
+├── lifecycle/      # End-to-end lifecycle tests (CLI + API + web, uses MockProvider)
+└── ui/             # FastAPI router tests
 ```
 
 ---
@@ -137,6 +141,7 @@ tests/
 uv run pytest                     # All tests
 uv run pytest -m v2               # v2 tests only
 uv run pytest tests/core/         # Core module tests
+uv run pytest tests/lifecycle/    # Lifecycle tests (no live API calls — uses MockProvider)
 uv run ruff check .
 
 # Web UI
@@ -200,7 +205,6 @@ Note: `codeframe serve` exists but Golden Path does not depend on it.
 - Don't add HTTP endpoints to support CLI commands (CLI must work without a server)
 - Don't require `codeframe serve` for CLI workflows
 - Don't implement UI concepts (tabs, panels, progress bars) inside `codeframe/core/`
-- Don't add multi-provider/model switching features before Golden Path works
 - Don't "clean up the repo" as a goal — only refactor to enable the pipeline
 - Don't update task status from `agent.py` — let `runtime.py` handle transitions
 - Don't skip web UI testing when verifying features that have a web surface
