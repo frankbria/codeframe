@@ -27,20 +27,21 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 ## Primary Contract (MUST FOLLOW)
 
 1) **Golden Path**: `docs/GOLDEN_PATH.md` — the only workflow we build until it works end-to-end
-2) **Refactor Plan**: `docs/REFACTOR_PLAN_FOR_AGENT.md` — step-by-step refactor instructions
-3) **Command Tree + Module Mapping**: `docs/CLI_WIREFRAME.md` — CLI commands → core modules
-4) **Agent Implementation**: `docs/AGENT_IMPLEMENTATION_TASKS.md` — agent system components
-5) **Strategic Roadmap**: `docs/V2_STRATEGIC_ROADMAP.md` — 5-phase plan
+2) **Command Tree + Module Mapping**: `docs/CLI_WIREFRAME.md` — CLI commands → core modules
+3) **Product Roadmap**: `docs/PRODUCT_ROADMAP.md` — current phase plan (Phase 3.5/4/5)
+4) **Vision**: `docs/VISION.md` — north star for all decisions
+5) **Agent System Reference**: `docs/AGENT_SYSTEM_REFERENCE.md` — agent components, execution flows
 
 **Rule 0:** If a change does not directly support the Think → Build → Prove → Ship pipeline, do not implement it.
 
-### Strategic Priority (Phase 4)
+### Strategic Priority (Phase 5)
 
-The next major architectural work is the **Agent Adapter Architecture** (#408):
-- Define `AgentAdapter` protocol so any coding agent can be an execution engine
-- CodeFrame's built-in ReactAgent becomes the fallback, not the primary
-- Verification gates and self-correction wrap ALL engines uniformly
-- See issues #408–#417 for the full breakdown
+The next work is **Platform Completeness** — see `docs/PRODUCT_ROADMAP.md` Phase 5:
+- Settings page (onboarding blocker — #554–#556)
+- Cost analytics (#557–#558)
+- Async notifications (#559–#560)
+- PRD stress-test web UI (#561–#562)
+- GitHub Issues import (#563–#565)
 
 ---
 
@@ -270,14 +271,17 @@ CODEFRAME_API_KEY_SECRET=<secret>     # API key hashing
 
 | Doc | Purpose |
 |-----|---------|
+| `docs/VISION.md` | North star: Think → Build → Prove → Ship thesis |
+| `docs/PRODUCT_ROADMAP.md` | **Current roadmap** — Phase 3.5/4/5 web product completeness |
 | `docs/GOLDEN_PATH.md` | CLI-first workflow contract |
-| `docs/REFACTOR_PLAN_FOR_AGENT.md` | Step-by-step refactor instructions |
 | `docs/CLI_WIREFRAME.md` | Command → module mapping |
-| `docs/AGENT_IMPLEMENTATION_TASKS.md` | Agent system components (all complete) |
-| `docs/V2_STRATEGIC_ROADMAP.md` | 5-phase plan + feature status |
 | `docs/AGENT_SYSTEM_REFERENCE.md` | Component table, model selection, execution flows, self-correction |
 | `docs/REACT_AGENT_ARCHITECTURE.md` | ReAct deep-dive: tools, editor, token management |
-| `docs/PHASE_2_DEVELOPER_GUIDE.md` | Server layer + v2 router details |
+| `docs/PHASE_3_UI_ARCHITECTURE.md` | Web UI architecture (Next.js, pages, components) |
+| `docs/PHASE_2_DEVELOPER_GUIDE.md` | Server layer + v2 router patterns |
 | `docs/PHASE_2_CLI_API_MAPPING.md` | CLI to API endpoint mapping |
+| `docs/QUICKSTART.md` | User-facing quickstart guide |
+
+Archived (completed plans, old gap analyses): `docs/archive/`
 
 Legacy (v1 reference only): `SPRINTS.md`, `sprints/`, `specs/`, `CODEFRAME_SPEC.md`
