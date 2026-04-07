@@ -3,14 +3,16 @@
 Provides Claude model access via the Anthropic API.
 """
 
+import asyncio
 import os
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Iterator, Optional
 
 from codeframe.adapters.llm.base import (
     LLMProvider,
     LLMResponse,
     ModelSelector,
     Purpose,
+    StreamChunk,
     Tool,
     ToolCall,
 )
@@ -171,6 +173,117 @@ class AnthropicProvider(LLMProvider):
             raise LLMRateLimitError(str(exc)) from exc
         except APIConnectionError as exc:
             raise LLMConnectionError(str(exc)) from exc
+
+    def supports(self, capability: str) -> bool:
+        """Return True for capabilities this provider supports."""
+        return capability == "extended_thinking"
+
+    async def async_stream(
+        self,
+        messages: list[dict],
+        system: str,
+        tools: list[dict],
+        model: str,
+        max_tokens: int,
+        interrupt_event: Optional[asyncio.Event] = None,
+        extended_thinking: bool = False,
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream using Anthropic AsyncAnthropic SDK, yielding StreamChunk objects.
+
+        Translates Anthropic SDK events into the normalized StreamChunk format.
+        Tool inputs are collected and emitted in the final message_stop chunk
+        via tool_inputs_by_id, which is more reliable than streaming input deltas.
+
+        When ``extended_thinking=True``, requests interleaved thinking via the
+        Anthropic betas API.  The flag is silently ignored on SDK versions that
+        do not support it.
+        """
+        from anthropic import AsyncAnthropic
+
+        if self._async_client is None:
+            self._async_client = AsyncAnthropic(api_key=self.api_key)
+
+        # Convert messages to Anthropic API format (handles tool_calls/tool_results)
+        converted = self._convert_messages(messages)
+
+        kwargs: dict = {
+            "model": model,
+            "system": system,
+            "messages": converted,
+            "tools": tools,
+            "max_tokens": max_tokens,
+        }
+
+        if extended_thinking:
+            kwargs["betas"] = ["interleaved-thinking-2025-05-14"]
+
+        active_tool_id: Optional[str] = None
+
+        # When extended_thinking is set, the beta header may be unsupported on
+        # older SDK versions.  Retry without it rather than hard-failing.
+        try:
+            stream_ctx = self._async_client.messages.stream(**kwargs)
+        except Exception:  # pragma: no cover
+            if extended_thinking:
+                kwargs.pop("betas", None)
+                stream_ctx = self._async_client.messages.stream(**kwargs)
+            else:
+                raise
+
+        async with stream_ctx as stream:
+            async for sdk_event in stream:
+                if interrupt_event and interrupt_event.is_set():
+                    return
+
+                event_type = sdk_event.type
+
+                if event_type == "content_block_start":
+                    block = sdk_event.content_block
+                    if block.type == "tool_use":
+                        active_tool_id = block.id
+                        yield StreamChunk(
+                            type="tool_use_start",
+                            tool_id=block.id,
+                            tool_name=block.name,
+                            tool_input=getattr(block, "input", {}),
+                        )
+
+                elif event_type == "content_block_delta":
+                    delta = sdk_event.delta
+                    if delta.type == "text_delta":
+                        yield StreamChunk(type="text_delta", text=delta.text)
+                    elif delta.type == "thinking_delta":
+                        yield StreamChunk(type="thinking_delta", text=delta.thinking)
+                    # input_json_delta: final inputs are rebuilt from message_stop
+
+                elif event_type == "content_block_stop":
+                    if active_tool_id is not None:
+                        yield StreamChunk(type="tool_use_stop")
+                        active_tool_id = None
+
+                elif event_type == "message_stop":
+                    # Flush any open tool block
+                    if active_tool_id is not None:
+                        yield StreamChunk(type="tool_use_stop")
+                        active_tool_id = None
+
+                    final_msg = await stream.get_final_message()
+                    stop_reason = final_msg.stop_reason or "end_turn"
+
+                    # Build tool_inputs_by_id from final content blocks
+                    tool_inputs_by_id: dict = {}
+                    if hasattr(final_msg, "content"):
+                        for block in final_msg.content:
+                            if getattr(block, "type", None) == "tool_use" and hasattr(block, "id"):
+                                tool_inputs_by_id[block.id] = getattr(block, "input", {})
+
+                    yield StreamChunk(
+                        type="message_stop",
+                        stop_reason=stop_reason,
+                        input_tokens=final_msg.usage.input_tokens,
+                        output_tokens=final_msg.usage.output_tokens,
+                        tool_inputs_by_id=tool_inputs_by_id,
+                    )
 
     def stream(
         self,

@@ -1,11 +1,11 @@
-"""Streaming chat adapter for Anthropic SDK.
+"""Streaming chat adapter — provider-agnostic.
 
-Wraps ``anthropic.AsyncAnthropic().messages.stream()`` and emits typed
-``ChatEvent`` objects for consumption by the WebSocket relay layer.
+Wraps any :class:`LLMProvider` that implements ``async_stream()`` and emits
+typed ``ChatEvent`` objects for consumption by the WebSocket relay layer.
 
 Supports:
 - Token-by-token text streaming (TEXT_DELTA)
-- Extended thinking tokens (THINKING)
+- Extended thinking tokens (THINKING) on providers that support it
 - Safe read-only tool calls: read_file, list_files, search_codebase
 - Interrupt via asyncio.Event
 - Message persistence to session_messages after each complete turn
@@ -16,13 +16,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import AsyncIterator, Optional
 
-from codeframe.adapters.llm.base import Tool, ToolCall, ToolResult
+from codeframe.adapters.llm.base import LLMProvider, Tool, ToolCall, ToolResult
 from codeframe.core.tools import (
     execute_tool,
     _READ_FILE_SCHEMA,
@@ -132,7 +131,7 @@ _TOOLS_FOR_API: list[dict] = [
 
 
 class StreamingChatAdapter:
-    """Async streaming adapter over ``anthropic.AsyncAnthropic().messages.stream()``.
+    """Async streaming adapter over any :class:`LLMProvider` with ``async_stream()``.
 
     Each call to :meth:`send_message` is a single conversational turn.
     History is loaded from the DB at call time and persisted after the turn
@@ -150,6 +149,7 @@ class StreamingChatAdapter:
         workspace_path: Path,
         model: str = _DEFAULT_MODEL,
         api_key: Optional[str] = None,
+        provider: Optional[LLMProvider] = None,
     ) -> None:
         """Initialise the adapter.
 
@@ -157,34 +157,31 @@ class StreamingChatAdapter:
             session_id: ID of the interactive session (used for DB access).
             db_repo: ``InteractiveSessionRepository`` instance.
             workspace_path: Absolute path used to scope file-system tool calls.
-            model: Anthropic model identifier.
-            api_key: Override API key (falls back to ``ANTHROPIC_API_KEY`` env var).
+            model: Model identifier passed to the provider's ``async_stream()``.
+            api_key: API key used when constructing the default
+                ``AnthropicProvider`` (when ``provider`` is ``None``).
+            provider: LLM provider to use for streaming.  When ``None``,
+                an ``AnthropicProvider`` is constructed automatically using
+                ``api_key`` or the ``ANTHROPIC_API_KEY`` environment variable.
 
         Raises:
-            ValueError: If no Anthropic API key is available.
+            ValueError: If no provider is given and no Anthropic API key is
+                available.
         """
-        resolved_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not resolved_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY not set. "
-                "Set the environment variable or pass api_key to StreamingChatAdapter."
-            )
+        if provider is None:
+            # Backward-compatibility fallback: callers that haven't been
+            # updated to pass an explicit provider (e.g. tests using the old
+            # api_key= constructor argument) still get an AnthropicProvider.
+            # New callers should construct the provider themselves and pass it
+            # in — see session_chat_ws.py for the recommended pattern.
+            from codeframe.adapters.llm.anthropic import AnthropicProvider
+            provider = AnthropicProvider(api_key=api_key)
 
         self._session_id = session_id
         self._db_repo = db_repo
         self._workspace_path = workspace_path
         self._model = model
-
-        # Lazily initialised — avoids importing anthropic at module import time
-        self._async_client = None
-        self._api_key = resolved_key
-
-    @property
-    def _client(self):
-        if self._async_client is None:
-            from anthropic import AsyncAnthropic
-            self._async_client = AsyncAnthropic(api_key=self._api_key)
-        return self._async_client
+        self._provider = provider
 
     # ------------------------------------------------------------------
     # History helpers
@@ -228,7 +225,7 @@ class StreamingChatAdapter:
             # Drop in pairs so we don't strand an assistant message at index 0
             messages = messages[2:] if len(messages) >= 2 else messages[1:]
 
-        # Anthropic requires the first message to have role "user"
+        # First message must have role "user"
         while messages and messages[0].get("role") != "user":
             messages = messages[1:]
 
@@ -357,90 +354,70 @@ class StreamingChatAdapter:
         """
         current_messages = list(messages)
 
+        system_prompt = (
+            "You are a CodeFrame assistant helping the user understand and navigate "
+            "their codebase. You have read-only access to the current workspace. "
+            "Available tools: read_file, list_files, search_codebase. "
+            "Do not attempt to modify files or execute shell commands."
+        )
+
+        use_extended_thinking = self._provider.supports("extended_thinking")
+
         while True:
-            # Track tool calls seen in this API turn for the follow-up message
-            pending_tool_calls: list[dict] = []  # {id, name, input, result}
-            active_tool: dict | None = None  # buffering the current tool_use block
+            pending_tool_calls: list[dict] = []  # {id, name, input}
             stop_reason = "end_turn"
 
-            async with self._client.messages.stream(
-                model=self._model,
-                system=(
-                    f"You are a CodeFrame assistant helping the user understand and navigate "
-                    f"their codebase. You have read-only access to the workspace at "
-                    f"{self._workspace_path}. Available tools: read_file, list_files, "
-                    f"search_codebase. Do not attempt to modify files or execute shell commands."
-                ),
+            async for chunk in self._provider.async_stream(
                 messages=current_messages,
+                system=system_prompt,
                 tools=_TOOLS_FOR_API,
+                model=self._model,
                 max_tokens=4096,
-            ) as stream:
-                async for sdk_event in stream:
-                    # Honour interrupt between chunks
-                    if interrupt_event and interrupt_event.is_set():
-                        return
+                interrupt_event=interrupt_event,
+                extended_thinking=use_extended_thinking,
+            ):
+                if interrupt_event and interrupt_event.is_set():
+                    return
 
-                    event_type = sdk_event.type
+                if chunk.type == "text_delta":
+                    yield ChatEvent(type=ChatEventType.TEXT_DELTA, content=chunk.text)
 
-                    if event_type == "content_block_start":
-                        block = sdk_event.content_block
-                        if block.type == "tool_use":
-                            active_tool = {
-                                "id": block.id,
-                                "name": block.name,
-                                "input": getattr(block, "input", {}),
-                            }
-                            yield ChatEvent(
-                                type=ChatEventType.TOOL_USE_START,
-                                tool_name=block.name,
-                                tool_input=getattr(block, "input", {}),
-                            )
+                elif chunk.type == "thinking_delta":
+                    yield ChatEvent(type=ChatEventType.THINKING, content=chunk.text)
 
-                    elif event_type == "content_block_delta":
-                        delta = sdk_event.delta
-                        if delta.type == "text_delta":
-                            yield ChatEvent(
-                                type=ChatEventType.TEXT_DELTA,
-                                content=delta.text,
-                            )
-                        elif delta.type == "thinking_delta":
-                            yield ChatEvent(
-                                type=ChatEventType.THINKING,
-                                content=delta.thinking,
-                            )
-                        elif delta.type == "input_json_delta" and active_tool is not None:
-                            # The SDK may stream tool input as JSON deltas; accumulate
-                            pass  # Full input is available on content_block_stop via final msg
+                elif chunk.type == "tool_use_start":
+                    pending_tool_calls.append({
+                        "id": chunk.tool_id,
+                        "name": chunk.tool_name,
+                        "input": chunk.tool_input or {},
+                    })
+                    yield ChatEvent(
+                        type=ChatEventType.TOOL_USE_START,
+                        tool_name=chunk.tool_name,
+                        tool_input=chunk.tool_input or {},
+                    )
 
-                    elif event_type == "content_block_stop":
-                        if active_tool is not None:
-                            pending_tool_calls.append(active_tool)
-                            active_tool = None
+                elif chunk.type == "message_stop":
+                    stop_reason = chunk.stop_reason or "end_turn"
 
-                    elif event_type == "message_stop":
-                        # Flush any tool block that didn't get a content_block_stop
-                        if active_tool is not None:
-                            pending_tool_calls.append(active_tool)
-                            active_tool = None
+                    # Back-fill tool inputs from final message (more reliable)
+                    if chunk.tool_inputs_by_id and pending_tool_calls:
+                        for tc in pending_tool_calls:
+                            if tc["id"] in chunk.tool_inputs_by_id:
+                                tc["input"] = chunk.tool_inputs_by_id[tc["id"]]
 
-                        # Collect final usage stats
-                        final_msg = stream.get_final_message()
-                        stop_reason = final_msg.stop_reason or "end_turn"
+                    yield ChatEvent(
+                        type=ChatEventType.COST_UPDATE,
+                        input_tokens=chunk.input_tokens,
+                        output_tokens=chunk.output_tokens,
+                        cost_usd=_estimate_cost(
+                            chunk.input_tokens or 0,
+                            chunk.output_tokens or 0,
+                            self._model,
+                        ),
+                    )
 
-                        # Rebuild tool inputs from final message (more reliable than streaming)
-                        if pending_tool_calls and hasattr(final_msg, "content"):
-                            _rebuild_tool_inputs(final_msg.content, pending_tool_calls)
-
-                        yield ChatEvent(
-                            type=ChatEventType.COST_UPDATE,
-                            input_tokens=final_msg.usage.input_tokens,
-                            output_tokens=final_msg.usage.output_tokens,
-                            cost_usd=_estimate_cost(
-                                final_msg.usage.input_tokens,
-                                final_msg.usage.output_tokens,
-                                self._model,
-                            ),
-                        )
+                # tool_use_stop is informational only — no ChatEvent needed
 
             if stop_reason == "end_turn" or not pending_tool_calls:
                 yield ChatEvent(type=ChatEventType.DONE)
@@ -483,20 +460,6 @@ class StreamingChatAdapter:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _rebuild_tool_inputs(content_blocks, pending_tool_calls: list[dict]) -> None:
-    """Back-fill tool inputs from the final message content blocks.
-
-    The streaming API may emit input_json_delta events that are tricky to
-    reconstruct incrementally. Reading inputs off the final message is simpler
-    and more reliable.
-    """
-    by_id = {tc["id"]: tc for tc in pending_tool_calls}
-    for block in content_blocks:
-        block_id = getattr(block, "id", None)
-        if block_id and block_id in by_id and getattr(block, "type", None) == "tool_use":
-            by_id[block_id]["input"] = getattr(block, "input", {})
 
 
 def _estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
