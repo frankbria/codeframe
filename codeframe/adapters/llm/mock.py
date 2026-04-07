@@ -199,24 +199,50 @@ class MockProvider(LLMProvider):
     ) -> AsyncIterator[StreamChunk]:
         """Yield pre-configured StreamChunk sequences for testing.
 
-        Falls back to a minimal text_delta + message_stop pair when no
-        stream chunks have been configured via add_stream_chunks().
+        Tracks each call in :attr:`calls` (same metadata as :meth:`complete`).
+        When pre-configured ``stream_chunks`` are available, yields them in
+        order.  Otherwise falls back to a minimal ``text_delta`` +
+        ``message_stop`` pair derived from the normal response queue
+        (``responses`` / ``response_handler`` / ``default_response``).
         """
+        # Track the call so tests can assert on it
+        self.calls.append(
+            {
+                "messages": messages,
+                "system": system,
+                "tools": tools,
+                "model": model,
+                "max_tokens": max_tokens,
+                "extended_thinking": extended_thinking,
+            }
+        )
+
         if self.stream_index < len(self.stream_chunks):
             chunks = self.stream_chunks[self.stream_index]
             self.stream_index += 1
         else:
-            # Default: simple text response followed by message_stop
+            # Derive response text from the normal queue / handler
+            if self.response_handler:
+                resp = self.response_handler(messages)
+                text = resp.content
+            elif self.response_index < len(self.responses):
+                resp = self.responses[self.response_index]
+                self.response_index += 1
+                text = resp.content
+            else:
+                text = self.default_response
+
             chunks = [
-                StreamChunk(type="text_delta", text=self.default_response),
+                StreamChunk(type="text_delta", text=text),
                 StreamChunk(
                     type="message_stop",
                     stop_reason="end_turn",
                     input_tokens=len(str(messages)),
-                    output_tokens=len(self.default_response),
+                    output_tokens=len(text),
                     tool_inputs_by_id={},
                 ),
             ]
+
         for chunk in chunks:
             if interrupt_event and interrupt_event.is_set():
                 return

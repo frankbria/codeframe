@@ -203,25 +203,34 @@ class AnthropicProvider(LLMProvider):
         if self._async_client is None:
             self._async_client = AsyncAnthropic(api_key=self.api_key)
 
+        # Convert messages to Anthropic API format (handles tool_calls/tool_results)
+        converted = self._convert_messages(messages)
+
         kwargs: dict = {
             "model": model,
             "system": system,
-            "messages": messages,
+            "messages": converted,
             "tools": tools,
             "max_tokens": max_tokens,
         }
 
         if extended_thinking:
-            # interleaved-thinking requires the beta header; degrade gracefully
-            # if the running SDK version doesn't recognise the param.
-            try:
-                kwargs["betas"] = ["interleaved-thinking-2025-05-14"]
-            except Exception:  # pragma: no cover
-                pass
+            kwargs["betas"] = ["interleaved-thinking-2025-05-14"]
 
         active_tool_id: Optional[str] = None
 
-        async with self._async_client.messages.stream(**kwargs) as stream:
+        # When extended_thinking is set, the beta header may be unsupported on
+        # older SDK versions.  Retry without it rather than hard-failing.
+        try:
+            stream_ctx = self._async_client.messages.stream(**kwargs)
+        except Exception:  # pragma: no cover
+            if extended_thinking:
+                kwargs.pop("betas", None)
+                stream_ctx = self._async_client.messages.stream(**kwargs)
+            else:
+                raise
+
+        async with stream_ctx as stream:
             async for sdk_event in stream:
                 if interrupt_event and interrupt_event.is_set():
                     return
@@ -258,7 +267,7 @@ class AnthropicProvider(LLMProvider):
                         yield StreamChunk(type="tool_use_stop")
                         active_tool_id = None
 
-                    final_msg = stream.get_final_message()
+                    final_msg = await stream.get_final_message()
                     stop_reason = final_msg.stop_reason or "end_turn"
 
                     # Build tool_inputs_by_id from final content blocks
