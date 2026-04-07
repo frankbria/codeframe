@@ -27,6 +27,7 @@ from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
 from codeframe.core.models import TaskStatus
 from codeframe.providers.sdk_client import SDKClientWrapper
+from codeframe.adapters.llm import LLMProvider, Purpose, get_provider
 
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ class BackendWorkerAgent:
         project_root: str = ".",
         ws_manager=None,
         use_sdk: bool = True,
+        llm_provider: Optional[LLMProvider] = None,
     ):
         """
         Initialize Backend Worker Agent.
@@ -74,6 +76,7 @@ class BackendWorkerAgent:
             project_root: Project root directory for file operations (string path)
             ws_manager: Optional WebSocket ConnectionManager for real-time updates (cf-45)
             use_sdk: Whether to use Claude Agent SDK (default: True)
+            llm_provider: LLMProvider instance for non-SDK fallback path (default: anthropic)
 
         Raises:
             ValueError: If database not initialized
@@ -85,6 +88,7 @@ class BackendWorkerAgent:
         self.project_root = project_root  # String path for SDK compatibility
         self.ws_manager = ws_manager
         self.use_sdk = use_sdk
+        self._llm_provider = llm_provider
 
         # Initialize SDK client if enabled
         if self.use_sdk:
@@ -114,6 +118,13 @@ class BackendWorkerAgent:
             f"Initialized BackendWorkerAgent: provider={provider}, project_root={project_root}, "
             f"ws_enabled={ws_manager is not None}, use_sdk={use_sdk}"
         )
+
+    @property
+    def llm_provider(self) -> LLMProvider:
+        """Lazily initialize the LLM provider for the non-SDK fallback path."""
+        if self._llm_provider is None:
+            self._llm_provider = get_provider("anthropic")
+        return self._llm_provider
 
     def _build_system_prompt(self) -> str:
         """Build system prompt for backend agent."""
@@ -353,21 +364,18 @@ Guidelines:
                     "explanation": "SDK execution completed but no structured output returned",
                 }
         else:
-            # Fallback to direct Anthropic API
-            from anthropic import AsyncAnthropic
-
-            client = AsyncAnthropic(api_key=self.api_key)
-
-            response = await client.messages.create(
-                model="claude-sonnet-4-20250514",
+            # Fallback path using LLMProvider abstraction
+            system_prompt = self._build_system_prompt()
+            messages = [
+                {"role": "user", "content": f"{system_prompt}\n\n{user_prompt}"},
+            ]
+            response = await asyncio.to_thread(
+                self.llm_provider.complete,
+                messages=messages,
+                purpose=Purpose.EXECUTION,
                 max_tokens=4096,
-                system=self._build_system_prompt(),
-                messages=[{"role": "user", "content": user_prompt}],
             )
-
-            # Parse response
-            response_text = response.content[0].text
-            result = json.loads(response_text)
+            result = json.loads(response.content)
 
         logger.info(
             f"Generated {len(result.get('files', []))} file changes for task {task.get('id', 'unknown')}"

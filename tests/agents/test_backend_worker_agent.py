@@ -13,10 +13,11 @@ Following strict TDD methodology (RED-GREEN-REFACTOR).
 """
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 import json
 
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
+from codeframe.adapters.llm import LLMResponse
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
 from codeframe.core.models import TaskStatus, Task
@@ -609,42 +610,34 @@ class TestBackendWorkerAgentContextBuilding:
 class TestBackendWorkerAgentCodeGeneration:
     """Test code generation using LLM API."""
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_generate_code_creates_single_file(self, mock_anthropic_class, tmp_path):
+    async def test_generate_code_creates_single_file(self, tmp_path):
         """Test generate_code returns single file creation."""
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        # Mock Anthropic API response
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.content = [
-            Mock(
-                text=json.dumps(
-                    {
-                        "files": [
-                            {
-                                "path": "codeframe/models/user.py",
-                                "action": "create",
-                                "content": "class User:\n    pass",
-                            }
-                        ],
-                        "explanation": "Created User model",
-                    }
-                )
+        mock_provider = Mock()
+        mock_provider.complete.return_value = LLMResponse(
+            content=json.dumps(
+                {
+                    "files": [
+                        {
+                            "path": "codeframe/models/user.py",
+                            "action": "create",
+                            "content": "class User:\n    pass",
+                        }
+                    ],
+                    "explanation": "Created User model",
+                }
             )
-        ]
-        mock_client.messages.create.return_value = mock_response
+        )
 
         agent = BackendWorkerAgent(
             db=db,
             codebase_index=index,
-            api_key="test-key",
             project_root=tmp_path,
             use_sdk=False,
+            llm_provider=mock_provider,
         )
 
         context = {
@@ -664,46 +657,39 @@ class TestBackendWorkerAgentCodeGeneration:
         assert "class User" in result["files"][0]["content"]
         assert result["explanation"] == "Created User model"
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_generate_code_modifies_multiple_files(self, mock_anthropic_class, tmp_path):
+    async def test_generate_code_modifies_multiple_files(self, tmp_path):
         """Test generate_code returns multiple file modifications."""
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.content = [
-            Mock(
-                text=json.dumps(
-                    {
-                        "files": [
-                            {
-                                "path": "codeframe/models/user.py",
-                                "action": "modify",
-                                "content": "# Updated User model",
-                            },
-                            {
-                                "path": "tests/test_user.py",
-                                "action": "create",
-                                "content": "# User tests",
-                            },
-                        ],
-                        "explanation": "Updated User model and added tests",
-                    }
-                )
+        mock_provider = Mock()
+        mock_provider.complete.return_value = LLMResponse(
+            content=json.dumps(
+                {
+                    "files": [
+                        {
+                            "path": "codeframe/models/user.py",
+                            "action": "modify",
+                            "content": "# Updated User model",
+                        },
+                        {
+                            "path": "tests/test_user.py",
+                            "action": "create",
+                            "content": "# User tests",
+                        },
+                    ],
+                    "explanation": "Updated User model and added tests",
+                }
             )
-        ]
-        mock_client.messages.create.return_value = mock_response
+        )
 
         agent = BackendWorkerAgent(
             db=db,
             codebase_index=index,
-            api_key="test-key",
             project_root=tmp_path,
             use_sdk=False,
+            llm_provider=mock_provider,
         )
 
         context = {
@@ -719,25 +705,21 @@ class TestBackendWorkerAgentCodeGeneration:
         assert result["files"][0]["action"] == "modify"
         assert result["files"][1]["action"] == "create"
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_generate_code_handles_api_error(self, mock_anthropic_class, tmp_path):
+    async def test_generate_code_handles_api_error(self, tmp_path):
         """Test generate_code handles API errors gracefully."""
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-
-        # Simulate API error
-        mock_client.messages.create.side_effect = Exception("API timeout")
+        mock_provider = Mock()
+        mock_provider.complete.side_effect = Exception("API timeout")
 
         agent = BackendWorkerAgent(
             db=db,
             codebase_index=index,
-            api_key="test-key",
             project_root=tmp_path,
             use_sdk=False,
+            llm_provider=mock_provider,
         )
 
         context = {
@@ -752,26 +734,21 @@ class TestBackendWorkerAgentCodeGeneration:
 
         assert "API timeout" in str(exc_info.value)
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_generate_code_handles_malformed_response(self, mock_anthropic_class, tmp_path):
+    async def test_generate_code_handles_malformed_response(self, tmp_path):
         """Test generate_code handles invalid JSON response."""
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-
-        mock_response = Mock()
-        mock_response.content = [Mock(text="Invalid JSON {malformed")]
-        mock_client.messages.create.return_value = mock_response
+        mock_provider = Mock()
+        mock_provider.complete.return_value = LLMResponse(content="Invalid JSON {malformed")
 
         agent = BackendWorkerAgent(
             db=db,
             codebase_index=index,
-            api_key="test-key",
             project_root=tmp_path,
             use_sdk=False,
+            llm_provider=mock_provider,
         )
 
         context = {
@@ -1127,9 +1104,8 @@ class TestBackendWorkerAgentTaskStatus:
 class TestBackendWorkerAgentExecution:
     """Test end-to-end task execution orchestration."""
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_execute_task_success(self, mock_anthropic_class, tmp_path):
+    async def test_execute_task_success(self, tmp_path):
         """Test execute_task completes successfully."""
         from codeframe.testing.test_runner import TestRunner
         from codeframe.testing.models import TestResult
@@ -1165,34 +1141,28 @@ class TestBackendWorkerAgentExecution:
         index = Mock(spec=CodebaseIndex)
         index.search_pattern.return_value = []
 
-        # Mock Anthropic API
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-        mock_response = Mock()
-        mock_response.content = [
-            Mock(
-                text=json.dumps(
-                    {
-                        "files": [
-                            {
-                                "path": "codeframe/models/user.py",
-                                "action": "create",
-                                "content": "class User:\n    pass\n",
-                            }
-                        ],
-                        "explanation": "Created User model",
-                    }
-                )
+        mock_provider = Mock()
+        mock_provider.complete.return_value = LLMResponse(
+            content=json.dumps(
+                {
+                    "files": [
+                        {
+                            "path": "codeframe/models/user.py",
+                            "action": "create",
+                            "content": "class User:\n    pass\n",
+                        }
+                    ],
+                    "explanation": "Created User model",
+                }
             )
-        ]
-        mock_client.messages.create.return_value = mock_response
+        )
 
         agent = BackendWorkerAgent(
             db=db,
             codebase_index=index,
-            api_key="test-key",
             project_root=tmp_path,
             use_sdk=False,
+            llm_provider=mock_provider,
         )
 
         # Mock test runner to return passing tests (cf-43: prevents self-correction loop)
@@ -1223,9 +1193,8 @@ class TestBackendWorkerAgentExecution:
             updated_task = cursor.fetchone()
             assert updated_task["status"] == "completed"
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_execute_task_handles_api_failure(self, mock_anthropic_class, tmp_path):
+    async def test_execute_task_handles_api_failure(self, tmp_path):
         """Test execute_task handles API failures."""
         db = Database(":memory:")
         db.initialize()
@@ -1258,17 +1227,15 @@ class TestBackendWorkerAgentExecution:
         index = Mock(spec=CodebaseIndex)
         index.search_pattern.return_value = []
 
-        # Mock API failure
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-        mock_client.messages.create.side_effect = Exception("API timeout")
+        mock_provider = Mock()
+        mock_provider.complete.side_effect = Exception("API timeout")
 
         agent = BackendWorkerAgent(
             db=db,
             codebase_index=index,
-            api_key="test-key",
             project_root=tmp_path,
             use_sdk=False,
+            llm_provider=mock_provider,
         )
 
         # Get task from database
@@ -1288,11 +1255,8 @@ class TestBackendWorkerAgentExecution:
         updated_task = cursor.fetchone()
         assert updated_task["status"] == "failed"
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_execute_task_handles_file_operation_failure(
-        self, mock_anthropic_class, tmp_path
-    ):
+    async def test_execute_task_handles_file_operation_failure(self, tmp_path):
         """Test execute_task handles file operation failures."""
         db = Database(":memory:")
         db.initialize()
@@ -1325,34 +1289,29 @@ class TestBackendWorkerAgentExecution:
         index = Mock(spec=CodebaseIndex)
         index.search_pattern.return_value = []
 
-        # Mock Anthropic API - returns modify action on non-existent file
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-        mock_response = Mock()
-        mock_response.content = [
-            Mock(
-                text=json.dumps(
-                    {
-                        "files": [
-                            {
-                                "path": "codeframe/models/user.py",
-                                "action": "modify",
-                                "content": "class User:\n    def __init__(self):\n        pass\n",
-                            }
-                        ],
-                        "explanation": "Updated User model",
-                    }
-                )
+        # Returns modify action on non-existent file to trigger file failure
+        mock_provider = Mock()
+        mock_provider.complete.return_value = LLMResponse(
+            content=json.dumps(
+                {
+                    "files": [
+                        {
+                            "path": "codeframe/models/user.py",
+                            "action": "modify",
+                            "content": "class User:\n    def __init__(self):\n        pass\n",
+                        }
+                    ],
+                    "explanation": "Updated User model",
+                }
             )
-        ]
-        mock_client.messages.create.return_value = mock_response
+        )
 
         agent = BackendWorkerAgent(
             db=db,
             codebase_index=index,
-            api_key="test-key",
             project_root=tmp_path,
             use_sdk=False,
+            llm_provider=mock_provider,
         )
 
         # Get task from database
@@ -1376,11 +1335,8 @@ class TestBackendWorkerAgentExecution:
 class TestBackendWorkerAgentTestRunnerIntegration:
     """Test integration with TestRunner (cf-42 Phase 3)."""
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_execute_task_runs_tests_after_code_generation(
-        self, mock_anthropic_class, tmp_path
-    ):
+    async def test_execute_task_runs_tests_after_code_generation(self, tmp_path):
         """Test execute_task runs tests after generating code (Phase 3)."""
         from codeframe.testing.test_runner import TestRunner
         from codeframe.testing.models import TestResult
@@ -1416,34 +1372,28 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         index = Mock(spec=CodebaseIndex)
         index.search_pattern.return_value = []
 
-        # Mock Anthropic API
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-        mock_response = Mock()
-        mock_response.content = [
-            Mock(
-                text=json.dumps(
-                    {
-                        "files": [
-                            {
-                                "path": "codeframe/models/user.py",
-                                "action": "create",
-                                "content": "class User:\n    pass\n",
-                            }
-                        ],
-                        "explanation": "Created User model",
-                    }
-                )
+        mock_provider = Mock()
+        mock_provider.complete.return_value = LLMResponse(
+            content=json.dumps(
+                {
+                    "files": [
+                        {
+                            "path": "codeframe/models/user.py",
+                            "action": "create",
+                            "content": "class User:\n    pass\n",
+                        }
+                    ],
+                    "explanation": "Created User model",
+                }
             )
-        ]
-        mock_client.messages.create.return_value = mock_response
+        )
 
         agent = BackendWorkerAgent(
             db=db,
             codebase_index=index,
-            api_key="test-key",
             project_root=tmp_path,
             use_sdk=False,
+            llm_provider=mock_provider,
         )
 
         # Mock test runner
@@ -1474,9 +1424,8 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             assert test_results[0]["failed"] == 0
             assert test_results[0]["errors"] == 0
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_execute_task_handles_test_failures(self, mock_anthropic_class, tmp_path):
+    async def test_execute_task_handles_test_failures(self, tmp_path):
         """Test execute_task handles test failures (Phase 3)."""
         from codeframe.testing.test_runner import TestRunner
         from codeframe.testing.models import TestResult
@@ -1512,39 +1461,50 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         index = Mock(spec=CodebaseIndex)
         index.search_pattern.return_value = []
 
-        # Mock Anthropic API
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-        mock_response = Mock()
-        mock_response.content = [
-            Mock(
-                text=json.dumps(
+        initial_content = json.dumps(
+            {
+                "files": [
+                    {
+                        "path": "codeframe/models/user.py",
+                        "action": "create",
+                        "content": "class User:\n    pass\n",
+                    },
+                    {
+                        "path": "tests/test_user.py",
+                        "action": "create",
+                        "content": "def test_user():\n    assert False  # Failing test\n",
+                    },
+                ],
+                "explanation": "Created User model with tests",
+            }
+        )
+        correction_contents = [
+            LLMResponse(
+                content=json.dumps(
                     {
                         "files": [
                             {
                                 "path": "codeframe/models/user.py",
-                                "action": "create",
-                                "content": "class User:\n    pass\n",
-                            },
-                            {
-                                "path": "tests/test_user.py",
-                                "action": "create",
-                                "content": "def test_user():\n    assert False  # Failing test\n",
-                            },
+                                "action": "modify",
+                                "content": f"# Correction attempt {i+1}\nclass User:\n    pass\n",
+                            }
                         ],
-                        "explanation": "Created User model with tests",
+                        "explanation": f"Correction attempt {i+1}",
                     }
                 )
             )
+            for i in range(3)
         ]
-        mock_client.messages.create.return_value = mock_response
+
+        mock_provider = Mock()
+        mock_provider.complete.side_effect = [LLMResponse(content=initial_content)] + correction_contents
 
         agent = BackendWorkerAgent(
             db=db,
             codebase_index=index,
-            api_key="test-key",
             project_root=tmp_path,
             use_sdk=False,
+            llm_provider=mock_provider,
         )
 
         # Mock test runner with failures (always returns failed)
@@ -1553,30 +1513,6 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             mock_run_tests.return_value = TestResult(
                 status="failed", total=5, passed=3, failed=2, errors=0, skipped=0, duration=1.5
             )
-
-            # Need to mock multiple API calls for correction attempts
-            correction_responses = []
-            for i in range(3):  # 3 correction attempts
-                response = Mock()
-                response.content = [
-                    Mock(
-                        text=json.dumps(
-                            {
-                                "files": [
-                                    {
-                                        "path": "codeframe/models/user.py",
-                                        "action": "modify",
-                                        "content": f"# Correction attempt {i+1}\nclass User:\n    pass\n",
-                                    }
-                                ],
-                                "explanation": f"Correction attempt {i+1}",
-                            }
-                        )
-                    )
-                ]
-                correction_responses.append(response)
-
-            mock_client.messages.create.side_effect = [mock_response] + correction_responses
 
             # Get task from database
             cursor = db.conn.cursor()
@@ -1605,9 +1541,8 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             assert blocker is not None
             assert blocker["blocker_type"] == "SYNC"
 
-    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_execute_task_handles_test_runner_errors(self, mock_anthropic_class, tmp_path):
+    async def test_execute_task_handles_test_runner_errors(self, tmp_path):
         """Test execute_task handles test runner errors gracefully (Phase 3)."""
         from codeframe.testing.test_runner import TestRunner
         from codeframe.testing.models import TestResult
@@ -1643,34 +1578,45 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         index = Mock(spec=CodebaseIndex)
         index.search_pattern.return_value = []
 
-        # Mock Anthropic API
-        mock_client = AsyncMock()
-        mock_anthropic_class.return_value = mock_client
-        mock_response = Mock()
-        mock_response.content = [
-            Mock(
-                text=json.dumps(
+        initial_content = json.dumps(
+            {
+                "files": [
+                    {
+                        "path": "codeframe/models/user.py",
+                        "action": "create",
+                        "content": "class User:\n    pass\n",
+                    }
+                ],
+                "explanation": "Created User model",
+            }
+        )
+        correction_contents = [
+            LLMResponse(
+                content=json.dumps(
                     {
                         "files": [
                             {
                                 "path": "codeframe/models/user.py",
-                                "action": "create",
-                                "content": "class User:\n    pass\n",
+                                "action": "modify",
+                                "content": f"# Error correction attempt {i+1}\nclass User:\n    pass\n",
                             }
                         ],
-                        "explanation": "Created User model",
+                        "explanation": f"Error correction attempt {i+1}",
                     }
                 )
             )
+            for i in range(3)
         ]
-        mock_client.messages.create.return_value = mock_response
+
+        mock_provider = Mock()
+        mock_provider.complete.side_effect = [LLMResponse(content=initial_content)] + correction_contents
 
         agent = BackendWorkerAgent(
             db=db,
             codebase_index=index,
-            api_key="test-key",
             project_root=tmp_path,
             use_sdk=False,
+            llm_provider=mock_provider,
         )
 
         # Mock test runner with error (always returns error)
@@ -1686,30 +1632,6 @@ class TestBackendWorkerAgentTestRunnerIntegration:
                 duration=0.1,
                 output="pytest not found",
             )
-
-            # Need to mock multiple API calls for correction attempts
-            correction_responses = []
-            for i in range(3):  # 3 correction attempts
-                response = Mock()
-                response.content = [
-                    Mock(
-                        text=json.dumps(
-                            {
-                                "files": [
-                                    {
-                                        "path": "codeframe/models/user.py",
-                                        "action": "modify",
-                                        "content": f"# Error correction attempt {i+1}\nclass User:\n    pass\n",
-                                    }
-                                ],
-                                "explanation": f"Error correction attempt {i+1}",
-                            }
-                        )
-                    )
-                ]
-                correction_responses.append(response)
-
-            mock_client.messages.create.side_effect = [mock_response] + correction_responses
 
             # Get task from database
             cursor = db.conn.cursor()
