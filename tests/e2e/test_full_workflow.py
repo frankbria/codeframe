@@ -9,9 +9,11 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+
 
 import pytest
+from codeframe.adapters.llm import MockProvider
+from codeframe.adapters.llm.base import LLMResponse
 from codeframe.core.models import TaskStatus, Task
 from codeframe.agents.worker_agent import WorkerAgent
 from codeframe.persistence.database import Database
@@ -173,9 +175,23 @@ async def test_worker_agent_initialization(test_database):
         status="active",
     )
 
-    # Create worker agent
+    # Use MockProvider so no real API calls are made
+    mock_llm = MockProvider(default_response="Task completed successfully")
+    mock_llm.add_response(
+        LLMResponse(
+            content="Task completed successfully",
+            input_tokens=100,
+            output_tokens=50,
+        )
+    )
+
+    # Create worker agent with injected mock provider
     agent = WorkerAgent(
-        agent_id="backend-001", agent_type="backend", provider="anthropic", db=test_database
+        agent_id="backend-001",
+        agent_type="backend",
+        provider="anthropic",
+        db=test_database,
+        llm_provider=mock_llm,
     )
 
     # Assert agent properties
@@ -198,18 +214,8 @@ async def test_worker_agent_initialization(test_database):
     task_id = test_database.create_task(task)
     task.id = task_id
 
-    # Mock the AsyncAnthropic client for testing without real API calls
-    mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="Task completed successfully")]
-    mock_response.usage.input_tokens = 100
-    mock_response.usage.output_tokens = 50
-
-    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test-key"}):
-        with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
-            mock_client.return_value.messages.create = AsyncMock(return_value=mock_response)
-
-            # Execute task with mocked LLM
-            result = await agent.execute_task(task)
+    # Execute task with mocked LLM (no API key needed — provider is injected)
+    result = await agent.execute_task(task)
 
     assert result is not None
     assert result["status"] == "completed"
