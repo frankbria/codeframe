@@ -1,37 +1,38 @@
 # CodeFRAME Product Roadmap
 
-**Updated**: 2026-03-26
+**Updated**: 2026-04-06
 **Vision**: *CodeFRAME is the project delivery system that turns ideas into verified, deployed code — AI agents write the code, CodeFRAME owns everything before and after.*
 
-This document focuses on gaps in the web product that block the end-to-end vision. It is not a comprehensive feature list. Items included here were selected because they are load-bearing for the Think → Build → Prove → Ship pipeline or because their absence creates a significant hole in the user experience. Items that are nice-to-have, purely polish, or already well-served by the CLI are excluded.
+This is the **single source of truth** for CodeFRAME's product roadmap. All prior planning documents (V2_STRATEGIC_ROADMAP, FEATURE_ROADMAP, IMPLEMENTATION_ROADMAP, etc.) are archived in `docs/archive/`.
 
-The phase numbering continues from the existing V2 Strategic Roadmap (Phases 1–2.5 complete, Phase 3 web UI substantially complete).
+This document focuses on gaps in the web product that block the end-to-end vision. It is not a comprehensive feature list. Items included here were selected because they are load-bearing for the Think → Build → Prove → Ship pipeline or because their absence creates a significant hole in the user experience.
 
----
-
-## Current State
-
-Phase 3 web UI delivered the core screens for all four pipeline stages: PRD editor, task board, execution monitor, blocker resolution, diff reviewer, and PROOF9 requirements table. The golden path works end-to-end in the browser for a single developer on a single project.
-
-What is missing is not *breadth* — it is *depth* in the places the vision depends on most.
+### Completed foundation (prior phases)
+- **Phases 1–2.5**: CLI foundation, FastAPI server layer, ReAct agent — all complete
+- **Phase 3**: Web UI core screens — PRD editor, task board, execution monitor, blocker resolution, diff reviewer, PROOF9 requirements table, interactive agent sessions (`/sessions`) — all complete
+- **Phase 4.A–4.D**: Agent adapter protocol (ClaudeCode/Codex/OpenCode/Kilocode), execution environment (worktree isolation, E2B cloud), multi-provider LLM (OpenAI-compatible adapter) — all complete
 
 ---
 
-## Phase 3.5 — Close the Interaction Gap
+## Current State (verified 2026-04-06)
 
-**The issue**: The web UI is read-heavy. Users watch agents run, view requirements, inspect diffs. But they cannot steer an agent in real-time, cannot run quality gates from the browser, and cannot capture a glitch and watch it become a permanent proof obligation. The pipeline runs but the human is a spectator, not a participant.
-
-### Milestone A: Bidirectional Agent Chat (already tracked #500–509)
-
-Interactive sessions where the user sends messages to a coding agent and receives streaming token-by-token responses. The full scope, backend and frontend, is documented in GitHub issues #500–509. This is the highest-priority item in this phase.
-
-**Why it matters for the vision**: The BUILD phase owns "blocker escalation when the agent is genuinely stuck." Right now that is a pause-and-ask mechanism. Real-time chat is the upgrade path — the agent asks, the user answers, the agent continues. It also enables the session model that the PROVE and SHIP phases depend on for cost attribution and audit.
+The golden path works end-to-end in the browser for a single developer on a single project. All core screens exist. What is missing is not *breadth* — it is *depth* in the places the vision depends on most.
 
 ---
 
-### Milestone B: Run Quality Gates from the Web UI
+## Phase 3.5 — Close the Interaction Gap ✅ PARTIAL
 
-**Current state**: The PROOF9 page lists requirements and lets users waive them. It does not let users trigger a gate run.
+**The issue**: The web UI is read-heavy. Users watch agents run, view requirements, inspect diffs. But they cannot run quality gates from the browser or capture a glitch and watch it become a permanent proof obligation.
+
+### Milestone A: Bidirectional Agent Chat ✅ COMPLETE (#500–509)
+
+Fully shipped: `/sessions` page, `/sessions/[id]` detail with `SplitPane`, `AgentChatPanel`, `AgentTerminal`, `useAgentChat` WebSocket hook, `session_chat_ws.py` router, `terminal_ws.py` router, `session_manager.py` core module, `interactive_sessions_v2.py` REST API.
+
+---
+
+### Milestone B: Run Quality Gates from the Web UI ❌ NOT STARTED
+
+**Current state**: The PROOF9 page lists requirements and lets users waive them. It does not let users trigger a gate run. The backend endpoint `POST /api/v2/proof/run` exists and is ready. The frontend has zero run-gate UI (verified 2026-04-06).
 
 **What to build**:
 
@@ -44,9 +45,9 @@ Interactive sessions where the user sends messages to a coding agent and receive
 
 ---
 
-### Milestone C: Glitch Capture UI
+### Milestone C: Glitch Capture UI ❌ NOT STARTED
 
-**Current state**: The CLI has `cf proof capture` for converting a production glitch into a permanent PROOF9 requirement. There is no web equivalent.
+**Current state**: The CLI has `cf proof capture` for converting a production glitch into a permanent PROOF9 requirement. The proof page has a glitch_type *filter* for reading existing requirements but no capture form (verified 2026-04-06).
 
 **What to build**:
 
@@ -64,11 +65,11 @@ Interactive sessions where the user sends messages to a coding agent and receive
 
 ---
 
-## Phase 4 — Complete the SHIP Phase
+## Phase 4 — Complete the SHIP Phase ❌ NOT STARTED
 
 **The issue**: The Review page creates a PR. After that, the user has no feedback from CodeFRAME. They must go to GitHub to check CI, check reviews, and merge. The SHIP phase currently ends at PR creation.
 
-### Milestone A: PR Status Tracking
+### Milestone A: PR Status Tracking ❌ NOT STARTED
 
 After a PR is created from the Review page, show its live status in the web UI.
 
@@ -89,7 +90,7 @@ After a PR is created from the Review page, show its live status in the web UI.
 
 ---
 
-### Milestone B: Post-Merge Glitch Capture Loop
+### Milestone B: Post-Merge Glitch Capture Loop ❌ NOT STARTED
 
 When a merged PR leads to a production glitch, the system should make it easy to feed that back into PROOF9 as a permanent requirement.
 
@@ -103,7 +104,9 @@ When a merged PR leads to a production glitch, the system should make it easy to
 
 ---
 
-## Phase 5 — Platform Completeness
+## Phase 5 — Platform Completeness ❌ NOT STARTED
+
+Issues created: #554–#565 (2026-04-06)
 
 These items are not part of a specific pipeline stage but are prerequisites for real-world adoption. They are ordered by the degree to which their absence blocks a new user from completing the pipeline.
 
@@ -203,17 +206,19 @@ These are items that were considered and excluded because they do not serve the 
 
 ## Summary
 
-| Phase | Focus | Key Outcome |
-|---|---|---|
-| 3.5A | Bidirectional agent chat (#500–509) | Users can steer agents in real-time |
-| 3.5B | Run gates from the web UI | PROVE phase becomes active, not passive |
-| 3.5C | Glitch capture UI | The defining closed loop is accessible to web users |
-| 4A | PR status + PROOF9 merge gate | SHIP phase is complete in the browser |
-| 4B | Post-merge glitch capture loop | System learns from production failures |
-| 5.1 | Settings page | New users can onboard without env vars |
-| 5.2 | Cost analytics | Users understand what they are spending |
-| 5.3 | Async notifications | Batch workflows work without babysitting |
-| 5.4 | PRD stress-test web UI | THINK phase fully accessible to web users |
-| 5.5 | GitHub Issues import | Existing backlogs can enter the pipeline |
+| Phase | Focus | Status | Issues |
+|---|---|---|---|
+| 3.5A | Bidirectional agent chat | ✅ Complete | #500–509 |
+| 3.5B | Run gates from the web UI | ❌ Not started | — |
+| 3.5C | Glitch capture UI | ❌ Not started | — |
+| 4A | PR status + PROOF9 merge gate | ❌ Not started | — |
+| 4B | Post-merge glitch capture loop | ❌ Not started | — |
+| 5.1 | Settings page | ❌ Not started | #554–556 |
+| 5.2 | Cost analytics | ❌ Not started | #557–558 |
+| 5.3 | Async notifications | ❌ Not started | #559–560 |
+| 5.4 | PRD stress-test web UI | ❌ Not started | #561–562 |
+| 5.5 | GitHub Issues import | ❌ Not started | #563–565 |
 
-The ordering within Phase 5 is by onboarding impact. Settings (5.1) and cost (5.2) block new users earliest. Notifications (5.3), stress-test (5.4), and issue import (5.5) complete the product for users who are already working in it.
+**Current focus**: Phase 3.5B — Run quality gates from the web UI (backend ready, frontend missing).
+
+The ordering within Phase 5 is by onboarding impact. Settings (5.1) and cost (5.2) block new users earliest.

@@ -34,14 +34,17 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 **Rule 0:** If a change does not directly support the Think → Build → Prove → Ship pipeline, do not implement it.
 
-### Strategic Priority (Phase 5)
+### Current Focus: Phase 3.5B
 
-The next work is **Platform Completeness** — see `docs/PRODUCT_ROADMAP.md` Phase 5:
-- Settings page (onboarding blocker — #554–#556)
-- Cost analytics (#557–#558)
-- Async notifications (#559–#560)
-- PRD stress-test web UI (#561–#562)
-- GitHub Issues import (#563–#565)
+**Run quality gates from the web UI** — `POST /api/v2/proof/run` backend is ready; the proof page needs a [Run Gates] button, gate progress view, per-gate evidence display, and run history panel.
+
+After that, in order:
+- **3.5C**: Glitch capture web UI
+- **4A**: PR status tracking + PROOF9 merge gate
+- **4B**: Post-merge glitch capture loop
+- **5.1–5.5**: Platform completeness (#554–#565)
+
+See `docs/PRODUCT_ROADMAP.md` for full specs and issue links.
 
 ---
 
