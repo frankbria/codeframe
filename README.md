@@ -200,6 +200,8 @@ cf work start <id> --execute --verbose       # Detailed progress output
 cf work start <id> --execute --dry-run       # Preview without applying
 cf work start <id> --execute --stall-timeout 120   # Custom stall timeout (seconds)
 cf work start <id> --execute --stall-action retry  # Auto-retry on stall (blocker|retry|fail)
+cf work start <id> --execute --llm-provider openai --llm-model gpt-4o  # Use OpenAI
+cf work start <id> --execute --llm-provider openai --llm-model qwen2.5-coder:7b  # Use Ollama
 cf work follow <id>                   # Stream live output
 cf work stop <id>                     # Cancel a run
 cf work resume <id>                   # Resume after answering blockers
@@ -260,13 +262,14 @@ cf patch export                       # Export changes as patch
 
 ## What Works Today
 
-CodeFRAME v2 (Phases 1–6 complete) delivers the full Think-Build-Prove-Ship loop:
+CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser:
 
 - **THINK**: Socratic PRD generation with recursive stress-testing, LLM-powered task decomposition with dependency graphs, 5 PRD templates, 7 task templates, CPM-based scheduling
 - **BUILD**: ReAct agent with 7 tools, self-correction with loop prevention, verification gates (ruff/pytest/BUILD), stall detection with configurable recovery (retry/blocker/fail), batch execution (serial/parallel/auto), human-in-the-loop blockers, checkpointing, state persistence, replay/debug mode (`cf work replay`), dynamic config reload, TUI dashboard (`cf tui`)
 - **PROVE**: PROOF9 quality memory system — 9-gate evidence-based verification (`cf proof run/capture/list/status/show/waive`), every glitch becomes a permanent proof obligation
 - **SHIP**: GitHub PR workflow, environment validation, task self-diagnosis
 - **Engine adapters**: Claude Code, Codex, OpenCode, Kilocode, and built-in ReAct — all via `--engine` flag
+- **Multi-provider LLM**: Anthropic (default) or any OpenAI-compatible endpoint (OpenAI, Ollama, vLLM, LM Studio, Qwen, Deepseek) via `--llm-provider` / `--llm-model` or env vars
 - **Server layer** (optional): FastAPI with 16+ v2 routers, API key auth, rate limiting, SSE streaming, WebSocket endpoints (agent chat, interactive terminal), OpenAPI docs
 - **Web UI**: Workspace view, PRD discovery, Task board, Blocker resolution, Review/commit, PROOF9 requirements and evidence views, TUI dashboard, agent chat panel with streaming tool-call display, interactive terminal for session workspaces, Sessions list with active-session badge
 - **Test suite**: 4200+ tests, 88% coverage
@@ -287,19 +290,20 @@ CodeFRAME v2 (Phases 1–6 complete) delivers the full Think-Build-Prove-Ship lo
 - [x] Replay/debug mode (`cf work replay`)
 - [x] TUI dashboard (`cf tui`)
 - [x] Dynamic config reload during batch execution
+- [x] Multi-provider LLM -- Anthropic, OpenAI, or any OpenAI-compatible endpoint
 - [ ] Engine performance tracking and automatic routing
 
 ### PROVE (quality memory)
 - [x] PROOF9 -- 9-gate evidence-based quality system
 - [x] `cf proof capture` -- Glitch-to-requirement closed loop
 - [x] Quality compounding: every failure becomes a permanent proof obligation
-- [ ] Per-engine quality scoring
-- [ ] Proof report attached to PRs
-- [ ] Merge gating on PROOF9 pass
+- [ ] Run gates from the web UI (backend ready, frontend pending)
+- [ ] Glitch capture web UI
+- [ ] Merge gating on PROOF9 pass (web UI)
 
 ### SHIP (delivery confidence)
-- [ ] Unified configuration (`cf config`)
-- [ ] Deployment hooks
+- [ ] PR status tracking + CI check display in web UI
+- [ ] Post-merge glitch capture loop
 
 ### Web UI
 - [x] Workspace and PRD views with Socratic discovery, version history, diff/restore
@@ -309,15 +313,24 @@ CodeFRAME v2 (Phases 1–6 complete) delivers the full Think-Build-Prove-Ship lo
 - [x] Review and Commit view with diff viewer and file tree
 - [x] PROOF9 requirements list, detail, evidence history, sort/filter controls, waiver with audit trail
 - [x] Interactive Agent Sessions — chat panel (tool calls, thinking blocks), XTerm.js terminal, SplitPane layout
-- [ ] Execution Monitor view
+- [ ] Run gates button + evidence display on PROOF9 page
+- [ ] Glitch capture form and REQ detail view
+- [ ] PR status panel with PROOF9-gated merge button
 
 ---
 
 ## Configuration
 
 ```bash
-# Required
+# Required (Anthropic is the default provider)
 export ANTHROPIC_API_KEY=sk-ant-...
+
+# Multi-provider LLM (optional — override default Anthropic provider)
+export CODEFRAME_LLM_PROVIDER=openai        # anthropic | openai (OpenAI-compatible)
+export CODEFRAME_LLM_MODEL=gpt-4o           # model name for the chosen provider
+export OPENAI_API_KEY=sk-...                # required when provider=openai
+export OPENAI_BASE_URL=http://localhost:11434/v1  # for Ollama, vLLM, LM Studio, etc.
+# Per-workspace: .codeframe/config.yaml supports an `llm:` block for the same options
 
 # Optional
 export DATABASE_PATH=./codeframe.db         # Default: in-memory SQLite
@@ -347,9 +360,11 @@ cd web-ui && npm run build             # Production build verification
 
 ## Documentation
 
+- [Product Roadmap](docs/PRODUCT_ROADMAP.md) -- Current phase plan and feature status
+- [Vision](docs/VISION.md) -- Think → Build → Prove → Ship thesis
 - [Golden Path](docs/GOLDEN_PATH.md) -- The CLI-first workflow contract
-- [Strategic Roadmap](docs/V2_STRATEGIC_ROADMAP.md) -- 5-phase development plan
 - [CLI Wireframe](docs/CLI_WIREFRAME.md) -- Command-to-module mapping
+- [Agent System Reference](docs/AGENT_SYSTEM_REFERENCE.md) -- Agent components, execution flows
 - [ReAct Agent Architecture](docs/REACT_AGENT_ARCHITECTURE.md) -- Tools, editor, token management
 - [Phase 2 Developer Guide](docs/PHASE_2_DEVELOPER_GUIDE.md) -- Server layer patterns
 - [Phase 3 UI Architecture](docs/PHASE_3_UI_ARCHITECTURE.md) -- Web UI information design
