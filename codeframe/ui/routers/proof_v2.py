@@ -45,8 +45,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/proof", tags=["proof-v2"])
 
-# Module-level cache: run_id → serialized RunProofResponse dict
-_run_cache: dict[str, dict] = {}
+# Module-level cache: (workspace_path, run_id) → serialized RunProofResponse dict
+_run_cache: dict[tuple[str, str], dict] = {}
 
 
 # ============================================================================
@@ -357,7 +357,7 @@ async def run_proof_endpoint(
             results=serialized,
             message=f"Proof run complete: {len(results)} requirement(s) evaluated.",
         )
-        _run_cache[run_id] = {
+        _run_cache[(str(workspace.repo_path), run_id)] = {
             "results": serialized,
             "passed": passed,
             "message": response.message,
@@ -383,7 +383,7 @@ async def get_run_status_endpoint(
     Since POST /run is synchronous, a run is always complete immediately after
     the POST returns. Returns 404 if run_id is unknown.
     """
-    cached = _run_cache.get(run_id)
+    cached = _run_cache.get((str(workspace.repo_path), run_id))
     if cached is None:
         raise HTTPException(
             status_code=404,

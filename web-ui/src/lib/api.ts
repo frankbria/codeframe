@@ -43,6 +43,7 @@ import type {
   ProofStatusResponse,
   ProofReqStatus,
   WaiveRequest,
+  RunProofRequest,
   RunProofResponse,
   RunStatusResponse,
   Session,
@@ -634,7 +635,7 @@ export const proofApi = {
 
   startRun: async (
     workspacePath: string,
-    body: { full: boolean }
+    body: RunProofRequest
   ): Promise<RunProofResponse> => {
     const response = await api.post<RunProofResponse>(
       '/api/v2/proof/run',

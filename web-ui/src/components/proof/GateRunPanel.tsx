@@ -7,18 +7,12 @@ interface GateRunPanelProps {
   gateEntries: GateRunEntry[];
 }
 
-const STATUS_LABEL: Record<GateRunStatus, string> = {
-  pending: 'pending',
-  running: 'running',
-  passed: 'passed',
+// Map GateRunStatus to Badge variant names from the shared design system
+const STATUS_VARIANT: Record<GateRunStatus, 'backlog' | 'in-progress' | 'done' | 'failed'> = {
+  pending: 'backlog',
+  running: 'in-progress',
+  passed: 'done',
   failed: 'failed',
-};
-
-const STATUS_CLASSES: Record<GateRunStatus, string> = {
-  pending: 'bg-gray-100 text-gray-600',
-  running: 'bg-blue-100 text-blue-800 animate-pulse',
-  passed: 'bg-green-100 text-green-900',
-  failed: 'bg-red-100 text-red-900',
 };
 
 export function GateRunPanel({ gateEntries }: GateRunPanelProps) {
@@ -35,8 +29,11 @@ export function GateRunPanel({ gateEntries }: GateRunPanelProps) {
         {gateEntries.map(({ gate, status }) => (
           <li key={gate} className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground capitalize">{gate}</span>
-            <Badge className={STATUS_CLASSES[status]}>
-              {STATUS_LABEL[status]}
+            <Badge
+              variant={STATUS_VARIANT[status]}
+              className={status === 'running' ? 'animate-pulse' : undefined}
+            >
+              {status}
             </Badge>
           </li>
         ))}

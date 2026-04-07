@@ -344,6 +344,10 @@ export interface WaiveRequest {
 }
 
 // Proof run types (mirrors proof_v2.py RunProofResponse + RunStatusResponse)
+export interface RunProofRequest {
+  full: boolean;
+}
+
 export interface RunProofResponse {
   success: boolean;
   run_id: string;

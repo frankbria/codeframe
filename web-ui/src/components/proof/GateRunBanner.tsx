@@ -14,11 +14,11 @@ export function GateRunBanner({ passed, message, onRetry }: GateRunBannerProps) 
       <div
         role="status"
         aria-live="polite"
-        className="mb-4 flex items-center gap-3 rounded-lg border border-green-300 bg-green-50 px-4 py-3"
+        className="mb-4 flex items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3"
       >
-        <span className="h-2.5 w-2.5 rounded-full bg-green-500" aria-hidden="true" />
-        <p className="text-sm font-medium text-green-900">All gates passed</p>
-        <span className="text-xs text-green-700 ml-1">{message}</span>
+        <span className="h-2.5 w-2.5 rounded-full bg-green-400" aria-hidden="true" />
+        <p className="text-sm font-medium">All gates passed</p>
+        {message && <span className="text-xs text-muted-foreground ml-1">{message}</span>}
       </div>
     );
   }
@@ -27,12 +27,12 @@ export function GateRunBanner({ passed, message, onRetry }: GateRunBannerProps) 
     <div
       role="alert"
       aria-live="assertive"
-      className="mb-4 flex items-center gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3"
+      className="mb-4 flex items-center gap-3 rounded-lg border border-destructive bg-destructive/10 px-4 py-3"
     >
-      <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-hidden="true" />
-      <p className="text-sm font-medium text-red-900">Some gates failed</p>
-      <span className="text-xs text-red-700 ml-1 flex-1">{message}</span>
-      <Button variant="ghost" size="sm" onClick={onRetry} className="text-red-800 hover:text-red-900">
+      <span className="h-2.5 w-2.5 rounded-full bg-red-400" aria-hidden="true" />
+      <p className="text-sm font-medium text-destructive">Some gates failed</p>
+      {message && <span className="text-xs text-destructive/80 ml-1 flex-1">{message}</span>}
+      <Button variant="ghost" size="sm" onClick={onRetry} className="text-destructive hover:text-destructive/80">
         Retry
       </Button>
     </div>

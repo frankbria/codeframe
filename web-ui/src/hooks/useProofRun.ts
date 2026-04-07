@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { proofApi } from '@/lib/api';
-import type { GateRunEntry, GateRunStatus } from '@/types';
+import type { GateRunEntry, GateRunStatus, RunProofRequest } from '@/types';
 
 export type ProofRunState = 'idle' | 'starting' | 'polling' | 'complete' | 'error';
 
@@ -55,7 +55,8 @@ export function useProofRun(): UseProofRunReturn {
       setErrorMessage(null);
 
       try {
-        const response = await proofApi.startRun(workspacePath, { full: true });
+        const runRequest: RunProofRequest = { full: true };
+        const response = await proofApi.startRun(workspacePath, runRequest);
         runIdRef.current = response.run_id;
 
         // Build optimistic "running" entries from returned results
