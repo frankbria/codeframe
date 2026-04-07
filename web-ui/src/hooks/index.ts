@@ -7,6 +7,7 @@ export {
 } from './useTerminalSocket';
 export { useEventSource, type SSEStatus, type UseEventSourceOptions } from './useEventSource';
 export { useRequirementsLookup } from './useRequirementsLookup';
+export { useProofRun, type UseProofRunReturn, type ProofRunState } from './useProofRun';
 export {
   useTaskStream,
   type UseTaskStreamOptions,

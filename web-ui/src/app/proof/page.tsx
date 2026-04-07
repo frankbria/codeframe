@@ -12,8 +12,9 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
-import { ProofStatusBadge, WaiveDialog } from '@/components/proof';
+import { ProofStatusBadge, WaiveDialog, GateRunPanel, GateRunBanner } from '@/components/proof';
 import { proofApi } from '@/lib/api';
+import { useProofRun } from '@/hooks/useProofRun';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import type { ProofRequirement, ProofRequirementListResponse, ProofReqStatus, ProofSeverity } from '@/types';
 
@@ -103,6 +104,8 @@ function ProofPageContent() {
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [waivedReq, setWaivedReq] = useState<ProofRequirement | null>(null);
 
+  const { runState, gateEntries, passed, errorMessage, startRun, retry } = useProofRun();
+
   // Sort state (default: status asc → open first, then severity)
   const [sortCol, setSortCol] = useState<SortCol>('status');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -125,6 +128,13 @@ function ProofPageContent() {
     workspacePath ? `/api/v2/proof/requirements?path=${workspacePath}` : null,
     () => proofApi.listRequirements(workspacePath!)
   );
+
+  // Refresh requirements table after a run completes
+  useEffect(() => {
+    if (runState === 'complete') {
+      mutate();
+    }
+  }, [runState, mutate]);
 
   // Collect unique glitch types from data for the dropdown
   const glitchTypes = useMemo(() => {
@@ -172,12 +182,29 @@ function ProofPageContent() {
     <TooltipProvider>
     <main className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold">PROOF9 Requirements</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            PROOF9 tracks quality requirements with evidence. Requirements must be satisfied or waived before shipping.{' '}
-            <a href="#proof9-help" className="text-primary hover:underline">Learn more ↓</a>
-          </p>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">PROOF9 Requirements</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              PROOF9 tracks quality requirements with evidence. Requirements must be satisfied or waived before shipping.{' '}
+              <a href="#proof9-help" className="text-primary hover:underline">Learn more ↓</a>
+            </p>
+          </div>
+          <Button
+            onClick={() => workspacePath && startRun(workspacePath)}
+            disabled={!workspacePath || runState === 'starting' || runState === 'polling'}
+            aria-label="Run all proof gates"
+            className="shrink-0"
+          >
+            {(runState === 'starting' || runState === 'polling') ? (
+              <span className="flex items-center gap-2">
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+                Running…
+              </span>
+            ) : (
+              'Run Gates'
+            )}
+          </Button>
         </div>
 
         {isLoading && (
@@ -228,6 +255,25 @@ function ProofPageContent() {
 
           return (
           <>
+            {/* Gate run progress and result */}
+            {(runState === 'starting' || runState === 'polling' || runState === 'complete' || runState === 'error') && gateEntries.length > 0 && (
+              <GateRunPanel gateEntries={gateEntries} />
+            )}
+            {runState === 'complete' && passed !== null && (
+              <GateRunBanner passed={passed} message="" onRetry={retry} />
+            )}
+            {runState === 'error' && errorMessage && (
+              <div
+                role="alert"
+                className="mb-4 flex items-center gap-3 rounded-lg border border-destructive bg-destructive/10 px-4 py-3"
+              >
+                <p className="text-sm text-destructive flex-1">{errorMessage}</p>
+                <Button variant="ghost" size="sm" onClick={retry} className="text-destructive hover:text-destructive">
+                  Retry
+                </Button>
+              </div>
+            )}
+
             <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               <span>{data.by_status?.open ?? 0} open</span>
               <span>{data.by_status?.satisfied ?? 0} satisfied</span>

@@ -322,6 +322,50 @@ class TestRunProof:
 
 
 # ============================================================================
+# GET /api/v2/proof/runs/{run_id} — poll run status
+# ============================================================================
+
+
+class TestGetRunStatus:
+    """Tests for GET /api/v2/proof/runs/{run_id}."""
+
+    def test_get_run_after_post_returns_200(self, test_client):
+        """GET /runs/{run_id} returns 200 after a completed POST /run."""
+        post_resp = test_client.post("/api/v2/proof/run", json={})
+        assert post_resp.status_code == 200
+        run_id = post_resp.json()["run_id"]
+
+        response = test_client.get(f"/api/v2/proof/runs/{run_id}")
+        assert response.status_code == 200
+
+    def test_get_run_response_shape(self, test_client):
+        """RunStatusResponse has required fields."""
+        post_resp = test_client.post("/api/v2/proof/run", json={})
+        run_id = post_resp.json()["run_id"]
+
+        data = test_client.get(f"/api/v2/proof/runs/{run_id}").json()
+        assert data["run_id"] == run_id
+        assert data["status"] == "complete"
+        assert isinstance(data["results"], dict)
+        assert isinstance(data["passed"], bool)
+        assert isinstance(data["message"], str)
+
+    def test_get_unknown_run_returns_404(self, test_client):
+        """Unknown run_id returns 404."""
+        response = test_client.get("/api/v2/proof/runs/does-not-exist")
+        assert response.status_code == 404
+
+    def test_get_run_results_match_post(self, test_client):
+        """GET run results match the original POST results."""
+        post_resp = test_client.post("/api/v2/proof/run", json={"full": True})
+        post_data = post_resp.json()
+        run_id = post_data["run_id"]
+
+        get_data = test_client.get(f"/api/v2/proof/runs/{run_id}").json()
+        assert get_data["results"] == post_data["results"]
+
+
+# ============================================================================
 # POST /api/v2/proof/requirements/{req_id}/waive — waive requirement
 # ============================================================================
 

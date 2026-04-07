@@ -43,6 +43,8 @@ import type {
   ProofStatusResponse,
   ProofReqStatus,
   WaiveRequest,
+  RunProofResponse,
+  RunStatusResponse,
   Session,
   SessionState,
   SessionListResponse,
@@ -625,6 +627,26 @@ export const proofApi = {
     const response = await api.post<ProofRequirement>(
       `/api/v2/proof/requirements/${encodeURIComponent(reqId)}/waive`,
       body,
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  startRun: async (
+    workspacePath: string,
+    body: { full: boolean }
+  ): Promise<RunProofResponse> => {
+    const response = await api.post<RunProofResponse>(
+      '/api/v2/proof/run',
+      body,
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  getRun: async (workspacePath: string, runId: string): Promise<RunStatusResponse> => {
+    const response = await api.get<RunStatusResponse>(
+      `/api/v2/proof/runs/${encodeURIComponent(runId)}`,
       { params: { workspace_path: workspacePath } }
     );
     return response.data;
