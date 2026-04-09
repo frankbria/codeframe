@@ -46,6 +46,8 @@ import type {
   RunProofRequest,
   RunProofResponse,
   RunStatusResponse,
+  ProofRunSummary,
+  ProofRunDetail,
   Session,
   SessionState,
   SessionListResponse,
@@ -648,6 +650,21 @@ export const proofApi = {
   getRun: async (workspacePath: string, runId: string): Promise<RunStatusResponse> => {
     const response = await api.get<RunStatusResponse>(
       `/api/v2/proof/runs/${encodeURIComponent(runId)}`,
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  listRuns: async (workspacePath: string, limit = 5): Promise<ProofRunSummary[]> => {
+    const response = await api.get<ProofRunSummary[]>('/api/v2/proof/runs', {
+      params: { workspace_path: workspacePath, limit },
+    });
+    return response.data;
+  },
+
+  getRunDetail: async (workspacePath: string, runId: string): Promise<ProofRunDetail> => {
+    const response = await api.get<ProofRunDetail>(
+      `/api/v2/proof/runs/${encodeURIComponent(runId)}/evidence`,
       { params: { workspace_path: workspacePath } }
     );
     return response.data;

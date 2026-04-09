@@ -115,6 +115,19 @@ class Evidence:
 
 
 @dataclass
+class ProofRun:
+    """A single proof gate run record."""
+
+    run_id: str
+    workspace_id: str
+    started_at: datetime
+    completed_at: Optional[datetime]
+    triggered_by: str  # 'human' | 'auto'
+    overall_passed: bool
+    duration_ms: Optional[int]
+
+
+@dataclass
 class Requirement:
     """A proof obligation born from a glitch.
 

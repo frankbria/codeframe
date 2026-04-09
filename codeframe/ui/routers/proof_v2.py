@@ -25,8 +25,11 @@ from pydantic import BaseModel, Field
 from codeframe.core.proof.capture import capture_requirement
 from codeframe.core.proof.ledger import (
     get_requirement,
+    get_run,
+    get_run_evidence,
     list_evidence,
     list_requirements,
+    list_runs,
     waive_requirement,
 )
 from codeframe.core.proof.models import (
@@ -202,6 +205,29 @@ class EvidenceResponse(BaseModel):
     artifact_checksum: str
     timestamp: str
     run_id: str
+
+
+class EvidenceWithContentResponse(EvidenceResponse):
+    """Evidence record including artifact file contents."""
+
+    artifact_text: Optional[str] = None
+
+
+class ProofRunSummaryResponse(BaseModel):
+    """Summary of a single proof gate run."""
+
+    run_id: str
+    started_at: str
+    completed_at: Optional[str]
+    triggered_by: str
+    overall_passed: bool
+    duration_ms: Optional[int]
+
+
+class ProofRunDetailResponse(ProofRunSummaryResponse):
+    """Proof run detail including per-gate evidence with artifact content."""
+
+    evidence: list[EvidenceWithContentResponse]
 
 
 # ============================================================================
@@ -473,6 +499,120 @@ async def proof_status_endpoint(
         satisfied=counts.get("satisfied", 0),
         waived=counts.get("waived", 0),
         requirements=[_req_to_response(r) for r in reqs],
+    )
+
+
+@router.get("/runs", response_model=list[ProofRunSummaryResponse])
+@rate_limit_standard()
+async def list_runs_endpoint(
+    request: Request,
+    limit: int = Query(default=5, ge=1, le=50, description="Maximum number of runs to return"),
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> list[ProofRunSummaryResponse]:
+    """List the most recent proof gate runs for this workspace."""
+    runs = list_runs(workspace, limit=limit)
+    return [
+        ProofRunSummaryResponse(
+            run_id=r.run_id,
+            started_at=r.started_at.isoformat(),
+            completed_at=r.completed_at.isoformat() if r.completed_at else None,
+            triggered_by=r.triggered_by,
+            overall_passed=r.overall_passed,
+            duration_ms=r.duration_ms,
+        )
+        for r in runs
+    ]
+
+
+_ARTIFACT_LINE_LIMIT = 200
+
+
+def _read_artifact_text(artifact_path: str, max_lines: int = _ARTIFACT_LINE_LIMIT) -> Optional[str]:
+    """Read artifact file content up to max_lines, returning None if the file is missing."""
+    from pathlib import Path
+    try:
+        p = Path(artifact_path)
+        if not p.exists():
+            return None
+        lines = p.read_text(errors="replace").splitlines(keepends=True)
+        return "".join(lines[:max_lines])
+    except Exception:
+        return None
+
+
+@router.get("/runs/{run_id}/evidence", response_model=ProofRunDetailResponse)
+@rate_limit_standard()
+async def get_run_evidence_endpoint(
+    request: Request,
+    run_id: str,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> ProofRunDetailResponse:
+    """Get per-gate evidence with artifact content for a completed proof run."""
+    # Try to get run metadata from DB first; fall back to in-memory cache
+    run = get_run(workspace, run_id)
+
+    if run is None:
+        # Fall back to cache for very recent runs not yet in DB
+        cached = _run_cache.get((str(workspace.repo_path), run_id))
+        if cached is None:
+            raise HTTPException(
+                status_code=404,
+                detail=api_error(
+                    f"Run not found: {run_id}",
+                    ErrorCodes.NOT_FOUND,
+                    f"No proof run with id {run_id}",
+                ),
+            )
+        # Build a minimal response from cache
+        evidence_list: list[EvidenceWithContentResponse] = []
+        for req_id, gate_results in cached["results"].items():
+            for gate_result in gate_results:
+                evidence_list.append(EvidenceWithContentResponse(
+                    req_id=req_id,
+                    gate=gate_result["gate"],
+                    satisfied=gate_result["satisfied"],
+                    artifact_path="",
+                    artifact_checksum="",
+                    timestamp="",
+                    run_id=run_id,
+                    artifact_text=None,
+                ))
+        import time as _time
+        ts = cached.get("_ts", _time.time())
+        from datetime import datetime as _dt, timezone as _tz
+        ts_str = _dt.fromtimestamp(ts, tz=_tz.utc).isoformat()
+        return ProofRunDetailResponse(
+            run_id=run_id,
+            started_at=ts_str,
+            completed_at=ts_str,
+            triggered_by="human",
+            overall_passed=cached["passed"],
+            duration_ms=None,
+            evidence=evidence_list,
+        )
+
+    evidence_records = get_run_evidence(workspace, run_id)
+    evidence_out = [
+        EvidenceWithContentResponse(
+            req_id=e.req_id,
+            gate=e.gate.value,
+            satisfied=e.satisfied,
+            artifact_path=e.artifact_path,
+            artifact_checksum=e.artifact_checksum,
+            timestamp=e.timestamp.isoformat(),
+            run_id=e.run_id,
+            artifact_text=_read_artifact_text(e.artifact_path),
+        )
+        for e in evidence_records
+    ]
+    return ProofRunDetailResponse(
+        run_id=run.run_id,
+        started_at=run.started_at.isoformat(),
+        completed_at=run.completed_at.isoformat() if run.completed_at else None,
+        triggered_by=run.triggered_by,
+        overall_passed=run.overall_passed,
+        duration_ms=run.duration_ms,
+        evidence=evidence_out,
     )
 
 

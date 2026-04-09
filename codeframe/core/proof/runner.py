@@ -7,11 +7,12 @@ and attaches evidence artifacts.
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from codeframe.core.proof import ledger
 from codeframe.core.proof.evidence import attach_evidence
-from codeframe.core.proof.models import Gate, ReqStatus
+from codeframe.core.proof.models import Gate, ProofRun, ReqStatus
 from codeframe.core.proof.scope import get_changed_scope, intersects
 from codeframe.core.workspace import Workspace
 
@@ -68,6 +69,8 @@ def run_proof(
     if not run_id:
         run_id = str(uuid.uuid4())[:8]
 
+    started_at = datetime.now(timezone.utc)
+
     # Expire any stale waivers
     expired = ledger.check_expired_waivers(workspace)
     if expired:
@@ -76,6 +79,19 @@ def run_proof(
     # Get all open requirements
     reqs = ledger.list_requirements(workspace, status=ReqStatus.OPEN)
     if not reqs:
+        completed_at = datetime.now(timezone.utc)
+        ledger.save_run(
+            workspace,
+            ProofRun(
+                run_id=run_id,
+                workspace_id=workspace.id,
+                started_at=started_at,
+                completed_at=completed_at,
+                triggered_by="human",
+                overall_passed=True,
+                duration_ms=int((completed_at - started_at).total_seconds() * 1000),
+            ),
+        )
         return {}
 
     # Get changed scope (skip if running full)
@@ -126,5 +142,22 @@ def run_proof(
             if all_satisfied and len(req_results) == len(req.obligations):
                 req.status = ReqStatus.SATISFIED
             ledger.save_requirement(workspace, req)
+
+    completed_at = datetime.now(timezone.utc)
+    duration_ms = int((completed_at - started_at).total_seconds() * 1000)
+    executed = [passed for gate_results in results.values() for _, passed in gate_results]
+    overall_passed = all(executed) if executed else True
+    ledger.save_run(
+        workspace,
+        ProofRun(
+            run_id=run_id,
+            workspace_id=workspace.id,
+            started_at=started_at,
+            completed_at=completed_at,
+            triggered_by="human",
+            overall_passed=overall_passed,
+            duration_ms=duration_ms,
+        ),
+    )
 
     return results
