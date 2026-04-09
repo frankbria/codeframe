@@ -110,8 +110,8 @@ export default function ProofDetailPage() {
   );
 
   const latestEvidence: ProofEvidenceWithContent[] = useMemo(
-    () => latestRunDetail?.evidence ?? [],
-    [latestRunDetail]
+    () => (latestRunDetail?.evidence ?? []).filter((ev) => ev.req_id === reqId),
+    [latestRunDetail, reqId]
   );
 
   const hasActiveFilters = filterGate !== '' || filterResult !== '' || search !== '';

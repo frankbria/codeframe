@@ -12,11 +12,11 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
-import { ProofStatusBadge, WaiveDialog, GateRunPanel, GateRunBanner, RunHistoryPanel } from '@/components/proof';
+import { ProofStatusBadge, WaiveDialog, GateRunPanel, GateRunBanner, RunHistoryPanel, GateEvidencePanel } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { useProofRun } from '@/hooks/useProofRun';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
-import type { ProofRequirement, ProofRequirementListResponse, ProofReqStatus, ProofSeverity } from '@/types';
+import type { ProofRequirement, ProofRequirementListResponse, ProofReqStatus, ProofSeverity, ProofRunDetail } from '@/types';
 
 // ── Sort / filter types ────────────────────────────────────────────────────
 
@@ -136,6 +136,14 @@ function ProofPageContent() {
       mutate();
     }
   }, [runState, mutate]);
+
+  // Fetch evidence for a selected historical run
+  const { data: selectedRunDetail } = useSWR<ProofRunDetail>(
+    workspacePath && selectedRunId
+      ? `/api/v2/proof/runs/${selectedRunId}/evidence?path=${workspacePath}`
+      : null,
+    () => proofApi.getRunDetail(workspacePath!, selectedRunId!)
+  );
 
   // Collect unique glitch types from data for the dropdown
   const glitchTypes = useMemo(() => {
@@ -272,6 +280,21 @@ function ProofPageContent() {
                 <Button variant="ghost" size="sm" onClick={retry} className="text-destructive hover:text-destructive">
                   Retry
                 </Button>
+              </div>
+            )}
+
+            {/* Selected historical run evidence */}
+            {selectedRunId && selectedRunDetail && selectedRunDetail.evidence.length > 0 && (
+              <div className="mb-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Showing evidence for run <span className="font-mono text-xs">{selectedRunId}</span>
+                  </p>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedRunId(null)} aria-label="Clear selected run">
+                    ✕ Clear
+                  </Button>
+                </div>
+                <GateEvidencePanel evidence={selectedRunDetail.evidence} />
               </div>
             )}
 

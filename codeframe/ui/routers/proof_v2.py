@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from codeframe.core.proof.capture import capture_requirement
 from codeframe.core.proof.ledger import (
     get_requirement,
+    get_run,
     get_run_evidence,
     list_evidence,
     list_requirements,
@@ -523,14 +524,18 @@ async def list_runs_endpoint(
     ]
 
 
-def _read_artifact_text(artifact_path: str) -> Optional[str]:
-    """Read artifact file content, returning None if the file is missing."""
+_ARTIFACT_LINE_LIMIT = 200
+
+
+def _read_artifact_text(artifact_path: str, max_lines: int = _ARTIFACT_LINE_LIMIT) -> Optional[str]:
+    """Read artifact file content up to max_lines, returning None if the file is missing."""
     from pathlib import Path
     try:
         p = Path(artifact_path)
-        if p.exists():
-            return p.read_text(errors="replace")
-        return None
+        if not p.exists():
+            return None
+        lines = p.read_text(errors="replace").splitlines(keepends=True)
+        return "".join(lines[:max_lines])
     except Exception:
         return None
 
@@ -544,8 +549,7 @@ async def get_run_evidence_endpoint(
 ) -> ProofRunDetailResponse:
     """Get per-gate evidence with artifact content for a completed proof run."""
     # Try to get run metadata from DB first; fall back to in-memory cache
-    runs = list_runs(workspace, limit=100)
-    run = next((r for r in runs if r.run_id == run_id), None)
+    run = get_run(workspace, run_id)
 
     if run is None:
         # Fall back to cache for very recent runs not yet in DB

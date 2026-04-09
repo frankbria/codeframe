@@ -79,6 +79,19 @@ def run_proof(
     # Get all open requirements
     reqs = ledger.list_requirements(workspace, status=ReqStatus.OPEN)
     if not reqs:
+        completed_at = datetime.now(timezone.utc)
+        ledger.save_run(
+            workspace,
+            ProofRun(
+                run_id=run_id,
+                workspace_id=workspace.id,
+                started_at=started_at,
+                completed_at=completed_at,
+                triggered_by="human",
+                overall_passed=True,
+                duration_ms=int((completed_at - started_at).total_seconds() * 1000),
+            ),
+        )
         return {}
 
     # Get changed scope (skip if running full)
@@ -132,9 +145,8 @@ def run_proof(
 
     completed_at = datetime.now(timezone.utc)
     duration_ms = int((completed_at - started_at).total_seconds() * 1000)
-    overall_passed = bool(results) and all(
-        passed for gate_results in results.values() for _, passed in gate_results
-    )
+    executed = [passed for gate_results in results.values() for _, passed in gate_results]
+    overall_passed = all(executed) if executed else True
     ledger.save_run(
         workspace,
         ProofRun(

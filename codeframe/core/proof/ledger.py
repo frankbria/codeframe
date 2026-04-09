@@ -382,6 +382,32 @@ def save_run(workspace: Workspace, run: ProofRun) -> None:
     conn.close()
 
 
+def get_run(workspace: Workspace, run_id: str) -> Optional[ProofRun]:
+    """Fetch a single proof run by run_id."""
+    _ensure_tables(workspace)
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+    cursor.execute(
+        """SELECT run_id, workspace_id, started_at, completed_at, triggered_by,
+                  overall_passed, duration_ms
+           FROM proof_runs WHERE run_id = ? AND workspace_id = ?""",
+        (run_id, workspace.id),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return ProofRun(
+        run_id=row[0],
+        workspace_id=row[1],
+        started_at=datetime.fromisoformat(row[2]),
+        completed_at=datetime.fromisoformat(row[3]) if row[3] else None,
+        triggered_by=row[4],
+        overall_passed=bool(row[5]),
+        duration_ms=row[6],
+    )
+
+
 def list_runs(workspace: Workspace, limit: int = 5) -> list[ProofRun]:
     """List the most recent proof runs for this workspace."""
     _ensure_tables(workspace)
