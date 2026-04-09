@@ -23,6 +23,9 @@ jest.mock('@/lib/api', () => ({
 jest.mock('@/components/proof', () => ({
   ProofStatusBadge: ({ status }: { status: string }) => <span data-testid="status-badge">{status}</span>,
   WaiveDialog: () => null,
+  GateRunPanel: () => null,
+  GateRunBanner: () => null,
+  RunHistoryPanel: () => null,
 }));
 jest.mock('next/link', () => {
   const MockLink = ({ href, children }: { href: string; children: React.ReactNode }) => (

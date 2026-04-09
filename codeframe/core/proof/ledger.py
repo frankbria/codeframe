@@ -14,6 +14,7 @@ from codeframe.core.proof.models import (
     Gate,
     GlitchType,
     Obligation,
+    ProofRun,
     ReqStatus,
     Requirement,
     RequirementScope,
@@ -70,6 +71,19 @@ def init_proof_tables(workspace: Workspace) -> None:
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS proof_runs (
+            run_id TEXT NOT NULL,
+            workspace_id TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            triggered_by TEXT NOT NULL DEFAULT 'human',
+            overall_passed INTEGER NOT NULL DEFAULT 0,
+            duration_ms INTEGER,
+            PRIMARY KEY (run_id, workspace_id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -81,11 +95,15 @@ def _ensure_tables(workspace: Workspace) -> None:
     cursor.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='proof_requirements'"
     )
-    if not cursor.fetchone():
-        conn.close()
+    missing = not cursor.fetchone()
+    if not missing:
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='proof_runs'"
+        )
+        missing = not cursor.fetchone()
+    conn.close()
+    if missing:
         init_proof_tables(workspace)
-    else:
-        conn.close()
 
 
 # --- Serialization helpers ---
@@ -339,6 +357,81 @@ def waive_requirement(
     conn.commit()
     conn.close()
     return get_requirement(workspace, req_id)
+
+
+def save_run(workspace: Workspace, run: ProofRun) -> None:
+    """Insert or replace a proof run record."""
+    _ensure_tables(workspace)
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+    cursor.execute(
+        """INSERT OR REPLACE INTO proof_runs
+           (run_id, workspace_id, started_at, completed_at, triggered_by,
+            overall_passed, duration_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            run.run_id, workspace.id,
+            run.started_at.isoformat(),
+            run.completed_at.isoformat() if run.completed_at else None,
+            run.triggered_by,
+            int(run.overall_passed),
+            run.duration_ms,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_runs(workspace: Workspace, limit: int = 5) -> list[ProofRun]:
+    """List the most recent proof runs for this workspace."""
+    _ensure_tables(workspace)
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+    cursor.execute(
+        """SELECT run_id, workspace_id, started_at, completed_at, triggered_by,
+                  overall_passed, duration_ms
+           FROM proof_runs WHERE workspace_id = ?
+           ORDER BY started_at DESC LIMIT ?""",
+        (workspace.id, limit),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        ProofRun(
+            run_id=r[0],
+            workspace_id=r[1],
+            started_at=datetime.fromisoformat(r[2]),
+            completed_at=datetime.fromisoformat(r[3]) if r[3] else None,
+            triggered_by=r[4],
+            overall_passed=bool(r[5]),
+            duration_ms=r[6],
+        )
+        for r in rows
+    ]
+
+
+def get_run_evidence(workspace: Workspace, run_id: str) -> list[Evidence]:
+    """List all evidence records for a specific run_id."""
+    _ensure_tables(workspace)
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+    cursor.execute(
+        """SELECT req_id, gate, satisfied, artifact_path, artifact_checksum,
+                  timestamp, run_id
+           FROM proof_evidence WHERE run_id = ? AND workspace_id = ?
+           ORDER BY timestamp ASC""",
+        (run_id, workspace.id),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        Evidence(
+            req_id=r[0], gate=Gate(r[1]), satisfied=bool(r[2]),
+            artifact_path=r[3], artifact_checksum=r[4],
+            timestamp=datetime.fromisoformat(r[5]), run_id=r[6],
+        )
+        for r in rows
+    ]
 
 
 def check_expired_waivers(workspace: Workspace) -> list[Requirement]:

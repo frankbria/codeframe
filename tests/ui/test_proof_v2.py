@@ -539,3 +539,117 @@ class TestErrorResponses:
         detail = response.json()["detail"]
         assert "error" in detail
         assert "code" in detail
+
+
+# ============================================================================
+# GET /api/v2/proof/runs — list run history
+# ============================================================================
+
+
+class TestListRuns:
+    """Tests for GET /api/v2/proof/runs."""
+
+    def _capture_req(self, test_client):
+        return test_client.post(
+            "/api/v2/proof/requirements",
+            json={
+                "title": "Run history test req",
+                "description": "A requirement for run history testing",
+                "where": "core/tasks.py",
+                "severity": "low",
+                "source": "qa",
+            },
+        ).json()["id"]
+
+    def test_list_runs_empty_initially(self, test_client):
+        """No runs recorded before any proof run is triggered."""
+        response = test_client.get("/api/v2/proof/runs")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_list_runs_after_run(self, test_client):
+        """A completed run appears in the list."""
+        self._capture_req(test_client)
+        test_client.post("/api/v2/proof/run", json={"full": True})
+        response = test_client.get("/api/v2/proof/runs")
+        assert response.status_code == 200
+        runs = response.json()
+        assert len(runs) >= 1
+
+    def test_list_runs_response_shape(self, test_client):
+        """Each run summary has the expected fields."""
+        self._capture_req(test_client)
+        test_client.post("/api/v2/proof/run", json={"full": True})
+        runs = test_client.get("/api/v2/proof/runs").json()
+        assert len(runs) >= 1
+        run = runs[0]
+        for field in ["run_id", "started_at", "completed_at", "triggered_by",
+                      "overall_passed", "duration_ms"]:
+            assert field in run, f"Missing field: {field}"
+
+    def test_list_runs_limit(self, test_client):
+        """Limit parameter is respected."""
+        self._capture_req(test_client)
+        for _ in range(3):
+            test_client.post("/api/v2/proof/run", json={"full": True})
+        runs_limited = test_client.get("/api/v2/proof/runs?limit=2").json()
+        assert len(runs_limited) <= 2
+
+    def test_list_runs_ordered_newest_first(self, test_client):
+        """Runs are returned newest-first."""
+        self._capture_req(test_client)
+        for _ in range(2):
+            test_client.post("/api/v2/proof/run", json={"full": True})
+        runs = test_client.get("/api/v2/proof/runs").json()
+        if len(runs) >= 2:
+            assert runs[0]["started_at"] >= runs[1]["started_at"]
+
+
+# ============================================================================
+# GET /api/v2/proof/runs/{run_id}/evidence — run evidence detail
+# ============================================================================
+
+
+class TestGetRunEvidence:
+    """Tests for GET /api/v2/proof/runs/{run_id}/evidence."""
+
+    def _capture_req(self, test_client):
+        return test_client.post(
+            "/api/v2/proof/requirements",
+            json={
+                "title": "Run evidence test req",
+                "description": "A requirement for run evidence testing",
+                "where": "core/tasks.py",
+                "severity": "low",
+                "source": "qa",
+            },
+        ).json()["id"]
+
+    def test_get_run_evidence_shape(self, test_client):
+        """Run evidence response has expected fields including evidence list."""
+        self._capture_req(test_client)
+        run_resp = test_client.post("/api/v2/proof/run", json={"full": True}).json()
+        run_id = run_resp["run_id"]
+
+        response = test_client.get(f"/api/v2/proof/runs/{run_id}/evidence")
+        assert response.status_code == 200
+        data = response.json()
+        for field in ["run_id", "started_at", "completed_at", "triggered_by",
+                      "overall_passed", "duration_ms", "evidence"]:
+            assert field in data, f"Missing field: {field}"
+        assert isinstance(data["evidence"], list)
+
+    def test_get_run_evidence_unknown_returns_404(self, test_client):
+        """Unknown run_id returns 404."""
+        response = test_client.get("/api/v2/proof/runs/nonexistent-run/evidence")
+        assert response.status_code == 404
+
+    def test_get_run_evidence_each_item_has_artifact_text(self, test_client):
+        """Each evidence item has an artifact_text field."""
+        self._capture_req(test_client)
+        run_resp = test_client.post("/api/v2/proof/run", json={"full": True}).json()
+        run_id = run_resp["run_id"]
+
+        data = test_client.get(f"/api/v2/proof/runs/{run_id}/evidence").json()
+        for ev in data["evidence"]:
+            assert "artifact_text" in ev, "Evidence item missing artifact_text"

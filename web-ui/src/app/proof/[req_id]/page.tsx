@@ -6,10 +6,10 @@ import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ProofStatusBadge, WaiveDialog } from '@/components/proof';
+import { ProofStatusBadge, WaiveDialog, GateEvidencePanel } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
-import type { ProofRequirement, ProofEvidence, ProofEvidenceSortCol, SortDir } from '@/types';
+import type { ProofRequirement, ProofEvidence, ProofEvidenceSortCol, SortDir, ProofEvidenceWithContent } from '@/types';
 
 function sessionKey(reqId: string) {
   return `proof-evidence-filters:${reqId}`;
@@ -97,6 +97,22 @@ export default function ProofDetailPage() {
       workspacePath && reqId ? `/api/v2/proof/requirements/${reqId}/evidence?path=${workspacePath}` : null,
       () => proofApi.getEvidence(workspacePath!, reqId)
     );
+
+  // Get the most recent run_id from evidence to show artifact content
+  const latestRunId = useMemo(() => {
+    if (!Array.isArray(evidence) || evidence.length === 0) return null;
+    return [...evidence].sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0]?.run_id ?? null;
+  }, [evidence]);
+
+  const { data: latestRunDetail } = useSWR<import('@/types').ProofRunDetail>(
+    workspacePath && latestRunId ? `/api/v2/proof/runs/${latestRunId}/evidence?path=${workspacePath}` : null,
+    () => proofApi.getRunDetail(workspacePath!, latestRunId!)
+  );
+
+  const latestEvidence: ProofEvidenceWithContent[] = useMemo(
+    () => latestRunDetail?.evidence ?? [],
+    [latestRunDetail]
+  );
 
   const hasActiveFilters = filterGate !== '' || filterResult !== '' || search !== '';
 
@@ -253,6 +269,14 @@ export default function ProofDetailPage() {
                     </tbody>
                   </table>
                 </div>
+              </section>
+            )}
+
+            {/* Latest run gate evidence */}
+            {latestEvidence.length > 0 && (
+              <section>
+                <h2 className="mb-3 text-base font-semibold">Latest Run Evidence</h2>
+                <GateEvidencePanel evidence={latestEvidence} />
               </section>
             )}
 

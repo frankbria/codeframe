@@ -363,6 +363,24 @@ export interface RunStatusResponse {
   message: string;
 }
 
+// Proof run history types (mirrors proof_v2.py ProofRunSummaryResponse / ProofRunDetailResponse)
+export interface ProofRunSummary {
+  run_id: string;
+  started_at: string;
+  completed_at: string | null;
+  triggered_by: string;
+  overall_passed: boolean;
+  duration_ms: number | null;
+}
+
+export interface ProofEvidenceWithContent extends ProofEvidence {
+  artifact_text: string | null;
+}
+
+export interface ProofRunDetail extends ProofRunSummary {
+  evidence: ProofEvidenceWithContent[];
+}
+
 // UI-only types for per-gate display in the Run Gates panel
 export type GateRunStatus = 'pending' | 'running' | 'passed' | 'failed';
 

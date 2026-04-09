@@ -12,7 +12,7 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
-import { ProofStatusBadge, WaiveDialog, GateRunPanel, GateRunBanner } from '@/components/proof';
+import { ProofStatusBadge, WaiveDialog, GateRunPanel, GateRunBanner, RunHistoryPanel } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { useProofRun } from '@/hooks/useProofRun';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
@@ -103,6 +103,7 @@ function ProofPageContent() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [waivedReq, setWaivedReq] = useState<ProofRequirement | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   const { runState, gateEntries, passed, runMessage, errorMessage, startRun, retry } = useProofRun();
 
@@ -466,6 +467,11 @@ function ProofPageContent() {
                 </tbody>
               </table>
             </div>
+          <RunHistoryPanel
+            workspacePath={workspacePath}
+            onSelectRun={setSelectedRunId}
+            selectedRunId={selectedRunId}
+          />
           </>
           );
         })()}
