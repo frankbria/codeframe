@@ -18,7 +18,7 @@ SHIP:   cf pr create → cf pr merge
 LOOP:   Glitch → cf proof capture → New REQ → Enforced forever
 ```
 
-**Status: CLI ✅ | Server ✅ | ReAct agent ✅ | Web UI ✅ | Agent adapters ✅ | Multi-provider LLM ✅ | Next: Phase 3.5B** — See `docs/PRODUCT_ROADMAP.md`.
+**Status: CLI ✅ | Server ✅ | ReAct agent ✅ | Web UI ✅ | Agent adapters ✅ | Multi-provider LLM ✅ | Next: Phase 3.5C** — See `docs/PRODUCT_ROADMAP.md`.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -34,11 +34,11 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 **Rule 0:** If a change does not directly support the Think → Build → Prove → Ship pipeline, do not implement it.
 
-### Current Focus: Phase 3.5B
+### Current Focus: Phase 3.5C
 
-**Run quality gates from the web UI** — `POST /api/v2/proof/run` backend is ready; the proof page needs a [Run Gates] button, gate progress view, per-gate evidence display, and run history panel.
+**Phase 3.5B is complete** — `[Run Gates]` button, live gate progress, per-gate evidence display (`GateEvidencePanel`), and run history panel (`RunHistoryPanel`) are all shipped. New backend endpoints: `GET /api/v2/proof/runs` and `GET /api/v2/proof/runs/{run_id}/evidence`.
 
-After that, in order:
+Next, in order:
 - **3.5C**: Glitch capture web UI
 - **4A**: PR status tracking + PROOF9 merge gate
 - **4B**: Post-merge glitch capture loop
@@ -90,7 +90,7 @@ Shipped pages: `/`, `/prd`, `/tasks`, `/execution`, `/execution/[taskId]`, `/blo
 Testing: `cd web-ui && npm test` must pass; `npm run build` must succeed. The `frontend-tests` CI job enforces this on every PR.
 
 ### What's implemented
-Full feature list in `docs/PRODUCT_ROADMAP.md`. Key capabilities: ReAct agent execution, batch execution (serial/parallel/auto), task dependencies, stall detection, self-correction, GitHub PR workflow, SSE streaming, API auth, rate limiting, OpenAPI docs, multi-provider LLM (Anthropic/OpenAI-compatible), agent adapters (ClaudeCode/Codex/OpenCode/Kilocode), worktree isolation, E2B cloud execution, interactive agent sessions (WebSocket chat + XTerm.js terminal), PROOF9 quality system.
+Full feature list in `docs/PRODUCT_ROADMAP.md`. Key capabilities: ReAct agent execution, batch execution (serial/parallel/auto), task dependencies, stall detection, self-correction, GitHub PR workflow, SSE streaming, API auth, rate limiting, OpenAPI docs, multi-provider LLM (Anthropic/OpenAI-compatible), agent adapters (ClaudeCode/Codex/OpenCode/Kilocode), worktree isolation, E2B cloud execution, interactive agent sessions (WebSocket chat + XTerm.js terminal), PROOF9 quality system (gate runs, per-gate evidence, run history).
 
 ---
 

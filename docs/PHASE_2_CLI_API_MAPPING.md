@@ -154,6 +154,20 @@ These support the Golden Path but aren't in the critical path.
 |-------------|-------------|---------------|----------|--------|--------|
 | `cf gates run` | `core.gates` | `run_gate()` | `/api/v2/gates/run` | POST | ⚠️ Missing |
 
+### PROOF9 Commands
+
+| CLI Command | Core Module | Core Function | V2 Route | Method | Status |
+|-------------|-------------|---------------|----------|--------|--------|
+| `cf proof run` | `core.proof.runner` | `run_proof()` | `/api/v2/proof/run` | POST | ✅ Present |
+| `cf proof capture` | `core.proof.capture` | `capture_requirement()` | `/api/v2/proof/requirements` | POST | ✅ Present |
+| `cf proof list` | `core.proof.ledger` | `list_requirements()` | `/api/v2/proof/requirements` | GET | ✅ Present |
+| `cf proof show <id>` | `core.proof.ledger` | `get_requirement()` | `/api/v2/proof/requirements/{req_id}` | GET | ✅ Present |
+| `cf proof waive <id>` | `core.proof.ledger` | `waive_requirement()` | `/api/v2/proof/requirements/{req_id}/waive` | POST | ✅ Present |
+| `cf proof status` | `core.proof.ledger` | `list_requirements()` | `/api/v2/proof/status` | GET | ✅ Present |
+| (evidence for req) | `core.proof.ledger` | `list_evidence()` | `/api/v2/proof/requirements/{req_id}/evidence` | GET | ✅ Present |
+| (run history) | `core.proof.ledger` | `list_runs()` | `/api/v2/proof/runs` | GET | ✅ Present |
+| (run evidence) | `core.proof.ledger` | `get_run_evidence()` | `/api/v2/proof/runs/{run_id}/evidence` | GET | ✅ Present |
+
 ---
 
 ## 3. Gap Summary

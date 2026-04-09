@@ -20,7 +20,7 @@ The golden path works end-to-end in the browser for a single developer on a sing
 
 ---
 
-## Phase 3.5 — Close the Interaction Gap ✅ PARTIAL
+## Phase 3.5 — Close the Interaction Gap ✅ PARTIAL (A+B complete, C pending)
 
 **The issue**: The web UI is read-heavy. Users watch agents run, view requirements, inspect diffs. But they cannot run quality gates from the browser or capture a glitch and watch it become a permanent proof obligation.
 
@@ -30,18 +30,9 @@ Fully shipped: `/sessions` page, `/sessions/[id]` detail with `SplitPane`, `Agen
 
 ---
 
-### Milestone B: Run Quality Gates from the Web UI ❌ NOT STARTED
+### Milestone B: Run Quality Gates from the Web UI ✅ COMPLETE (#566, #567, #574, #575)
 
-**Current state**: The PROOF9 page lists requirements and lets users waive them. It does not let users trigger a gate run. The backend endpoint `POST /api/v2/proof/run` exists and is ready. The frontend has zero run-gate UI (verified 2026-04-06).
-
-**What to build**:
-
-- A **[Run Gates]** button on the PROOF9 page (and optionally on the task detail modal) that calls the existing `POST /api/v2/proof/run` endpoint
-- A **gate run progress view** showing each gate as it executes: pending → running → passed / failed
-- Per-gate **evidence display**: show the artifact (test output, coverage report, lighthouse score, etc.) that was produced as evidence
-- A **run history** panel showing the last 5 gate runs with their outcomes
-
-**Why it matters for the vision**: PROOF9 is described as "nine categories of evidence that code must produce." Without the ability to produce that evidence from the UI, the PROVE phase is inspection-only. Gate runs are the core action of the PROVE phase.
+Fully shipped: `[Run Gates]` button on the PROOF9 page, live gate progress view (pending → running → passed/failed), per-gate evidence display (`GateEvidencePanel`), and run history panel (`RunHistoryPanel`) showing the last 5 gate runs. Backend endpoints `GET /api/v2/proof/runs` and `GET /api/v2/proof/runs/{run_id}/evidence` added. Core: `proof_runs` table in `ledger.py`, `ProofRun` dataclass in `models.py`, `runner.py` populates runs on every execution.
 
 ---
 
@@ -209,7 +200,7 @@ These are items that were considered and excluded because they do not serve the 
 | Phase | Focus | Status | Issues |
 |---|---|---|---|
 | 3.5A | Bidirectional agent chat | ✅ Complete | #500–509 |
-| 3.5B | Run gates from the web UI | ❌ Not started | — |
+| 3.5B | Run gates from the web UI | ✅ Complete | #566, #567, #574, #575 |
 | 3.5C | Glitch capture UI | ❌ Not started | — |
 | 4A | PR status + PROOF9 merge gate | ❌ Not started | — |
 | 4B | Post-merge glitch capture loop | ❌ Not started | — |
@@ -219,6 +210,6 @@ These are items that were considered and excluded because they do not serve the 
 | 5.4 | PRD stress-test web UI | ❌ Not started | #561–562 |
 | 5.5 | GitHub Issues import | ❌ Not started | #563–565 |
 
-**Current focus**: Phase 3.5B — Run quality gates from the web UI (backend ready, frontend missing).
+**Current focus**: Phase 3.5C — Glitch capture web UI.
 
 The ordering within Phase 5 is by onboarding impact. Settings (5.1) and cost (5.2) block new users earliest.

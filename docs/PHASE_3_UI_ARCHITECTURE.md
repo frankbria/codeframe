@@ -333,6 +333,60 @@ ReviewCommitView
 
 ---
 
+### 3.7 PROOF9 View
+**Purpose:** Trigger gate runs, inspect per-gate evidence, and review run history.
+
+**Key Actions:**
+- Run quality gates via `[Run Gates]` button (calls `POST /api/v2/proof/run`)
+- View live gate progress (pending → running → passed/failed) per gate
+- Inspect per-gate evidence artifacts (test output, coverage report, etc.)
+- Browse run history for the last 5 gate runs
+- Waive requirements with a reason and optional expiry
+
+**Data Displayed:**
+- Requirements table with status badges (open / satisfied / waived)
+- Gate run progress (per-gate status, triggered after [Run Gates] click)
+- Evidence artifacts for each gate in a run
+- Run history panel with outcome and duration
+
+**Component Hierarchy:**
+```
+ProofPage (/proof)
+├── ProofHeader
+│   ├── RunGatesButton → POST /api/v2/proof/run
+│   └── ProofStatusSummary (open / satisfied / waived counts)
+├── RequirementsTable
+│   └── RequirementRow[]
+│       ├── StatusBadge
+│       └── WaiveButton
+├── GateEvidencePanel          ← new (Phase 3.5B)
+│   ├── GateProgressRow[] (pending → running → passed/failed)
+│   └── EvidenceArtifactDisplay (artifact text, scrollable)
+└── RunHistoryPanel            ← new (Phase 3.5B)
+    └── RunSummaryRow[]        (run_id, started_at, duration, overall_passed)
+        └── (click → loads GateEvidencePanel for that run)
+
+ProofRequirementPage (/proof/[req_id])
+├── RequirementDetail
+│   ├── ObligationsList
+│   └── EvidenceHistory
+└── WaiveForm
+```
+
+**API Endpoints Used:**
+- `POST /api/v2/proof/run` — trigger gate run
+- `GET /api/v2/proof/runs` — list run history (limit=5)
+- `GET /api/v2/proof/runs/{run_id}/evidence` — per-gate evidence with artifact text
+- `GET /api/v2/proof/requirements` — list requirements
+- `GET /api/v2/proof/status` — aggregated counts
+
+**Modals:** None
+**Panels:**
+- `GateEvidencePanel` (replaces main content area after run starts)
+- `RunHistoryPanel` (bottom panel, always visible on `/proof` page)
+
+---
+
 ## 4. Real-time Patterns
 
 ### SSE Event Handling Strategy
@@ -559,7 +613,7 @@ ReviewCommitView
 
 ## 7. Summary
 
-### The 6 Core Views
+### The 7 Core Views
 
 | View | Purpose | Key Component | Real-time? |
 |------|---------|---------------|------------|
@@ -569,6 +623,7 @@ ReviewCommitView
 | **Execution** | Monitor AI agent work | EventStream | SSE (execution events) |
 | **Blockers** | Answer agent questions | BlockerCard with inline form | Poll on nav |
 | **Review** | Inspect & commit changes | DiffViewer + CommitPanel | Static |
+| **PROOF9** | Run gates, view evidence, run history | GateEvidencePanel + RunHistoryPanel | Poll after run |
 
 ### Design Philosophy
 - **Navigation:** Left sidebar (persistent), URL-driven, auto-navigate on execution start
