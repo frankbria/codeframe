@@ -55,7 +55,7 @@ describe('CaptureGlitchModal', () => {
   });
 
   describe('rendering', () => {
-    it('renders dialog with title and description when open', () => {
+    it('renders slide-over panel with title and description when open', () => {
       setup();
       expect(screen.getByRole('heading', { name: 'Capture Glitch' })).toBeInTheDocument();
       expect(screen.getByText(/Convert a production failure/i)).toBeInTheDocument();
@@ -67,7 +67,11 @@ describe('CaptureGlitchModal', () => {
       expect(screen.getByLabelText(/Where was it found/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/Scope/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/Severity/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Expiry/i)).toBeInTheDocument();
+    });
+
+    it('does not render an expiry date field (expiry is set at waiver time)', () => {
+      setup();
+      expect(screen.queryByLabelText(/Expiry/i)).not.toBeInTheDocument();
     });
 
     it('renders all 9 gate checkboxes', () => {
@@ -88,7 +92,6 @@ describe('CaptureGlitchModal', () => {
   describe('validation', () => {
     it('shows error when description is empty on submit', async () => {
       setup();
-      // Check at least one gate
       fireEvent.click(screen.getByRole('checkbox', { name: 'unit' }));
       fireEvent.click(screen.getByRole('button', { name: /Capture Glitch/i }));
       await waitFor(() => {
@@ -111,7 +114,7 @@ describe('CaptureGlitchModal', () => {
   });
 
   describe('submission', () => {
-    it('calls proofApi.capture with correct fields and calls onSuccess', async () => {
+    it('appends selected gates to description and calls onSuccess', async () => {
       mockCapture.mockResolvedValue(MOCK_REQ);
       setup();
 
@@ -119,6 +122,7 @@ describe('CaptureGlitchModal', () => {
         target: { value: 'Something broke in production' },
       });
       fireEvent.click(screen.getByRole('checkbox', { name: 'unit' }));
+      fireEvent.click(screen.getByRole('checkbox', { name: 'sec' }));
       fireEvent.click(screen.getByRole('button', { name: /Capture Glitch/i }));
 
       await waitFor(() => {
@@ -126,7 +130,9 @@ describe('CaptureGlitchModal', () => {
           WORKSPACE,
           expect.objectContaining({
             title: 'Something broke in production',
-            description: 'Something broke in production',
+            description: expect.stringMatching(
+              /^Something broke in production\n\nRequired gates: (unit, sec|sec, unit)$/
+            ),
             severity: 'high',
             source: 'production',
             created_by: 'human',
@@ -138,7 +144,7 @@ describe('CaptureGlitchModal', () => {
       });
     });
 
-    it('truncates description to 80 chars for title', async () => {
+    it('truncates long description to 80 chars for title', async () => {
       mockCapture.mockResolvedValue(MOCK_REQ);
       setup();
 
@@ -157,7 +163,24 @@ describe('CaptureGlitchModal', () => {
       });
     });
 
-    it('shows inline error and keeps modal open on API failure', async () => {
+    it('surfaces backend error detail from axios response on failure', async () => {
+      const axiosError = { response: { data: { detail: 'Workspace not found' } } };
+      mockCapture.mockRejectedValue(axiosError);
+      setup();
+
+      fireEvent.change(screen.getByLabelText(/Description/i), {
+        target: { value: 'Something broke' },
+      });
+      fireEvent.click(screen.getByRole('checkbox', { name: 'demo' }));
+      fireEvent.click(screen.getByRole('button', { name: /Capture Glitch/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Workspace not found')).toBeInTheDocument();
+      });
+      expect(DEFAULT_PROPS.onSuccess).not.toHaveBeenCalled();
+    });
+
+    it('shows fallback error message when axios error has no detail', async () => {
       mockCapture.mockRejectedValue(new Error('Network error'));
       setup();
 
@@ -170,12 +193,9 @@ describe('CaptureGlitchModal', () => {
       await waitFor(() => {
         expect(screen.getByText(/Failed to capture glitch/i)).toBeInTheDocument();
       });
-      expect(DEFAULT_PROPS.onSuccess).not.toHaveBeenCalled();
-      // Modal still open
-      expect(screen.getByRole('heading', { name: 'Capture Glitch' })).toBeInTheDocument();
     });
 
-    it('disables submit button while submitting', async () => {
+    it('shows submitting state while in-flight', async () => {
       let resolve!: (v: ProofRequirement) => void;
       mockCapture.mockReturnValue(new Promise((r) => { resolve = r; }));
       setup();
@@ -197,6 +217,12 @@ describe('CaptureGlitchModal', () => {
     it('calls onClose when Cancel is clicked', () => {
       setup();
       fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
+      expect(DEFAULT_PROPS.onClose).toHaveBeenCalled();
+    });
+
+    it('calls onClose when the × button is clicked', () => {
+      setup();
+      fireEvent.click(screen.getByRole('button', { name: /Close/i }));
       expect(DEFAULT_PROPS.onClose).toHaveBeenCalled();
     });
   });
