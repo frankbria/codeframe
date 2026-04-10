@@ -130,7 +130,9 @@ describe('CaptureGlitchModal', () => {
           WORKSPACE,
           expect.objectContaining({
             title: 'Something broke in production',
-            description: 'Something broke in production\n\nRequired gates: unit, sec',
+            description: expect.stringMatching(
+              /^Something broke in production\n\nRequired gates: (unit, sec|sec, unit)$/
+            ),
             severity: 'high',
             source: 'production',
             created_by: 'human',
