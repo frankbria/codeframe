@@ -43,6 +43,7 @@ import type {
   ProofStatusResponse,
   ProofReqStatus,
   WaiveRequest,
+  CaptureGlitchRequest,
   RunProofRequest,
   RunProofResponse,
   RunStatusResponse,
@@ -617,6 +618,18 @@ export const proofApi = {
   getEvidence: async (workspacePath: string, reqId: string): Promise<ProofEvidence[]> => {
     const response = await api.get<ProofEvidence[]>(
       `/api/v2/proof/requirements/${encodeURIComponent(reqId)}/evidence`,
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  capture: async (
+    workspacePath: string,
+    body: CaptureGlitchRequest
+  ): Promise<ProofRequirement> => {
+    const response = await api.post<ProofRequirement>(
+      '/api/v2/proof/requirements',
+      body,
       { params: { workspace_path: workspacePath } }
     );
     return response.data;

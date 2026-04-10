@@ -5,3 +5,4 @@ export { GateRunPanel } from './GateRunPanel';
 export { GateRunBanner } from './GateRunBanner';
 export { GateEvidencePanel } from './GateEvidencePanel';
 export { RunHistoryPanel } from './RunHistoryPanel';
+export { CaptureGlitchModal } from './CaptureGlitchModal';

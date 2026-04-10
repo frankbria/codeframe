@@ -343,6 +343,15 @@ export interface WaiveRequest {
   approved_by: string;
 }
 
+export interface CaptureGlitchRequest {
+  title: string;
+  description: string;
+  where: string;
+  severity: ProofSeverity;
+  source: 'production' | 'qa' | 'dogfooding' | 'monitoring' | 'user_report';
+  created_by: string;
+}
+
 // Proof run types (mirrors proof_v2.py RunProofResponse + RunStatusResponse)
 export interface RunProofRequest {
   full: boolean;

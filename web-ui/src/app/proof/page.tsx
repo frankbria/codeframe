@@ -12,7 +12,7 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
-import { ProofStatusBadge, WaiveDialog, GateRunPanel, GateRunBanner, RunHistoryPanel, GateEvidencePanel } from '@/components/proof';
+import { ProofStatusBadge, WaiveDialog, GateRunPanel, GateRunBanner, RunHistoryPanel, GateEvidencePanel, CaptureGlitchModal } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { useProofRun } from '@/hooks/useProofRun';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
@@ -103,6 +103,7 @@ function ProofPageContent() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [waivedReq, setWaivedReq] = useState<ProofRequirement | null>(null);
+  const [captureOpen, setCaptureOpen] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   const { runState, gateEntries, passed, runMessage, errorMessage, startRun, retry } = useProofRun();
@@ -199,21 +200,30 @@ function ProofPageContent() {
               <a href="#proof9-help" className="text-primary hover:underline">Learn more ↓</a>
             </p>
           </div>
-          <Button
-            onClick={() => workspacePath && startRun(workspacePath)}
-            disabled={!workspacePath || runState === 'starting' || runState === 'polling'}
-            aria-label="Run all proof gates"
-            className="shrink-0"
-          >
-            {(runState === 'starting' || runState === 'polling') ? (
-              <span className="flex items-center gap-2">
-                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
-                Running…
-              </span>
-            ) : (
-              'Run Gates'
-            )}
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setCaptureOpen(true)}
+              disabled={!workspacePath}
+              aria-label="Capture a glitch as a new PROOF9 requirement"
+            >
+              Capture Glitch
+            </Button>
+            <Button
+              onClick={() => workspacePath && startRun(workspacePath)}
+              disabled={!workspacePath || runState === 'starting' || runState === 'polling'}
+              aria-label="Run all proof gates"
+            >
+              {(runState === 'starting' || runState === 'polling') ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+                  Running…
+                </span>
+              ) : (
+                'Run Gates'
+              )}
+            </Button>
+          </div>
         </div>
 
         {isLoading && (
@@ -506,6 +516,18 @@ function ProofPageContent() {
             onClose={() => setWaivedReq(null)}
             onSuccess={() => {
               setWaivedReq(null);
+              mutate();
+            }}
+          />
+        )}
+
+        {workspacePath && (
+          <CaptureGlitchModal
+            open={captureOpen}
+            workspacePath={workspacePath}
+            onClose={() => setCaptureOpen(false)}
+            onSuccess={() => {
+              setCaptureOpen(false);
               mutate();
             }}
           />
