@@ -1,6 +1,6 @@
 # CodeFRAME Development Guidelines
 
-Last updated: 2026-04-06
+Last updated: 2026-04-09
 
 ## Product Vision
 
@@ -83,7 +83,7 @@ At all times: `codeframe --help` works, Golden Path stubs can run, no breaking r
 - `server/` contains v1 code retained as reference only; do not build toward v1 patterns
 
 ### Phase 3 Web UI (actively developed — not legacy)
-Next.js 14 App Router, TypeScript, Shadcn/UI, Tailwind CSS, Hugeicons, XTerm.js, WebSocket + SSE.
+Next.js 16 App Router, TypeScript, Shadcn/UI, Tailwind CSS, Hugeicons, XTerm.js, WebSocket + SSE.
 
 Shipped pages: `/`, `/prd`, `/tasks`, `/execution`, `/execution/[taskId]`, `/blockers`, `/proof`, `/proof/[req_id]`, `/review`, `/sessions`, `/sessions/[id]`.
 

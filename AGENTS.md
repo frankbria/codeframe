@@ -1,47 +1,39 @@
 # CodeFRAME Development Guidelines (v2)
 
-Last updated: 2026-02-19
+Last updated: 2026-04-09
 
-**Status: Phase 1 ✅ | Phase 2 ✅ | Phase 2.5 ✅ | Phase 3 In Progress**
+**Status: CLI ✅ | Server ✅ | ReAct agent ✅ | Web UI ✅ | Agent adapters ✅ | Multi-provider LLM ✅ | Phase 3.5B ✅ | Next: Phase 3.5C**
 
-This repo completed an **in-place v2 refactor** ("strangler rewrite"). The result is a **headless, CLI-first Golden Path** with all UI/server layers as optional adapters.
+CodeFRAME is a **project delivery system**: Think → Build → Prove → Ship. It owns the edges of the AI coding pipeline — everything before code gets written (PRD, specification, task decomposition) and everything after (verification gates, quality memory, deployment). The actual coding is delegated to frontier agents.
+
+**CodeFRAME does not compete with coding agents. It orchestrates them.**
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
 ---
 
-## 🚦Primary Contract (MUST FOLLOW)
+## 🚦 Primary Contract (MUST FOLLOW)
 
-1) **Golden Path**: `docs/GOLDEN_PATH.md`
-   The only workflow we build until it works end-to-end.
+1. **Golden Path**: `docs/GOLDEN_PATH.md` — the only workflow we build until it works end-to-end
+2. **Command Tree + Module Mapping**: `docs/CLI_WIREFRAME.md` — CLI commands → core modules
+3. **Product Roadmap**: `docs/PRODUCT_ROADMAP.md` — current phase plan (Phase 3.5/4/5)
+4. **Vision**: `docs/VISION.md` — north star for all decisions
+5. **Agent System Reference**: `docs/AGENT_SYSTEM_REFERENCE.md` — agent components, execution flows
 
-2) **Refactor Plan**: `docs/REFACTOR_PLAN_FOR_AGENT.md`
-   Step-by-step refactor instructions.
-
-3) **Command Tree + Module Mapping**: `docs/CLI_WIREFRAME.md`
-   The authoritative map from CLI commands → core modules/functions.
-
-4) **Agent Implementation**: `docs/AGENT_IMPLEMENTATION_TASKS.md`
-   Tracks the agent system components (all complete).
-
-5) **Strategic Roadmap**: `docs/V2_STRATEGIC_ROADMAP.md`
-   5-phase plan: CLI completion → Server layer → Web UI → Multi-agent → Advanced features.
-
-**Rule 0:** If a change does not directly support Golden Path, do not implement it.
+**Rule 0:** If a change does not directly support the Think → Build → Prove → Ship pipeline, do not implement it.
 
 ---
 
 ## Current Architecture (v2)
 
-- **Core-first**: Domain logic lives in `codeframe/core/` (headless, no FastAPI imports)
+- **Core-first**: Domain logic lives in `codeframe/core/` — headless, no FastAPI imports
 - **CLI-first**: Golden Path works **without any running FastAPI server**
+- **Server optional**: FastAPI (`codeframe/ui/`) is a thin adapter over core, started explicitly via `codeframe serve`
+- **Web UI optional**: Next.js frontend (`web-ui/`) connects to the server via REST and WebSocket
 - **Adapters**: LLM providers in `codeframe/adapters/llm/`
-- **Server/UI optional**: FastAPI and UI are thin adapters over core
 - **Default engine**: ReAct (observe → think → act loop) — legacy plan engine available via `--engine plan`
 
-### v1 Legacy
-- FastAPI server + WebSockets + React/Next.js dashboard retained for reference
-- Do not build toward v1 patterns
+The architecture is layered — CLI and server call the same core modules. The web UI calls the server. No layer bypasses its boundary.
 
 ---
 
@@ -50,56 +42,59 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 ```
 codeframe/
 ├── core/                    # Headless domain + orchestration (NO FastAPI imports)
-│   ├── react_agent.py      # ReAct agent (default engine) - observe-think-act loop
-│   ├── tools.py            # Tool definitions for ReAct agent (7 tools)
+│   ├── react_agent.py      # ReAct agent (default engine)
+│   ├── tools.py            # Tool definitions (7 tools)
 │   ├── editor.py           # Search-replace file editor with fuzzy matching
-│   ├── agent.py            # Legacy plan-based agent (--engine plan)
-│   ├── planner.py          # LLM-powered implementation planning (plan engine)
-│   ├── executor.py         # Code execution engine with rollback (plan engine)
-│   ├── context.py          # Task context loader with relevance scoring
-│   ├── tasks.py            # Task management with depends_on field
-│   ├── blockers.py         # Human-in-the-loop blocker system
-│   ├── runtime.py          # Run lifecycle management
-│   ├── conductor.py        # Batch orchestration with worker pool
-│   ├── dependency_graph.py # DAG operations and execution planning
-│   ├── gates.py            # Verification gates (ruff, pytest, BUILD)
-│   ├── state_machine.py    # Task status transitions
-│   └── ...
+│   ├── agent.py            # Legacy plan engine (--engine plan)
+│   ├── planner.py, executor.py   # Plan engine internals
+│   ├── runtime.py          # Run lifecycle + engine selection
+│   ├── conductor.py        # Batch orchestration + worker pool
+│   ├── tasks.py, blockers.py, prd.py, workspace.py
+│   ├── gates.py, fix_tracker.py, quick_fixes.py  # Verification + self-correction
+│   ├── stall_detector.py, stall_monitor.py
+│   ├── dependency_graph.py, dependency_analyzer.py
+│   ├── context.py, state_machine.py, events.py, streaming.py
+│   ├── environment.py, installer.py, diagnostics.py
+│   ├── credentials.py, agents_config.py
+│   └── sandbox/            # Worktree + E2B isolation abstractions
 ├── adapters/
-│   └── llm/                # LLM provider adapters
-│       ├── base.py         # Protocol + ModelSelector + Purpose enum
-│       ├── anthropic.py    # Anthropic Claude provider
-│       └── mock.py         # Mock provider for testing
-├── cli/
-│   └── app.py              # Typer CLI entry + subcommands
-├── ui/                     # FastAPI server (Phase 2 - thin adapter over core)
-│   ├── server.py           # FastAPI app with OpenAPI configuration
-│   ├── models.py           # Pydantic request/response models
-│   ├── dependencies.py     # Shared dependencies (workspace, auth)
-│   └── routers/            # API route handlers (15 modules)
-├── lib/                    # Shared utilities
-├── auth/                   # Authentication
-├── config/                 # Configuration
-└── server/                 # Legacy server code (reference only)
+│   ├── llm/                # LLM provider adapters (anthropic, openai-compatible, mock)
+│   └── e2b/                # Cloud sandbox (optional)
+├── cli/app.py              # Typer CLI entry + subcommands
+├── ui/                     # FastAPI server (thin adapter over core)
+│   ├── server.py, models.py, dependencies.py
+│   └── routers/            # 16 v2 router modules
+├── auth/                   # API key service + auth dependencies
+├── lib/                    # rate_limiter.py, audit_logger.py
+└── server/                 # Legacy v1 (reference only — do not import)
 
-web-ui/                     # Next.js frontend (Phase 3)
+web-ui/                     # Next.js 16 frontend (actively developed)
 ├── src/
-│   ├── app/                # Next.js App Router pages
-│   ├── components/         # React components
+│   ├── app/                # App Router pages (/, /prd, /tasks, /execution, /blockers,
+│   │                       #   /proof, /proof/[req_id], /review, /sessions, /sessions/[id])
+│   ├── components/
 │   │   ├── ui/             # Shadcn/UI base components
+│   │   ├── layout/         # AppLayout, AppSidebar, PipelineProgressBar
 │   │   ├── workspace/      # Workspace view components
-│   │   ├── prd/            # PRD view components
-│   │   ├── tasks/          # Task board components
-│   │   └── execution/      # Execution monitor components
-│   ├── hooks/              # Custom React hooks (SSE, task streams)
-│   ├── lib/                # API client, utilities
+│   │   ├── prd/            # PRD discovery, upload, version history
+│   │   ├── tasks/          # Kanban board, task detail, batch actions
+│   │   ├── execution/      # EventStream, SSE monitor
+│   │   ├── blockers/       # Blocker resolution
+│   │   ├── review/         # Diff viewer, commit panel, file tree
+│   │   ├── proof/          # Gate run panel, evidence panel, run history
+│   │   └── sessions/       # Agent chat, XTerm.js terminal, SplitPane
+│   ├── hooks/              # useEventSource, useTaskStream, useProofRun, useAgentChat, useTerminalSocket
+│   ├── lib/                # api.ts, diffParser.ts, utils.ts, workspace-storage.ts
 │   └── types/              # TypeScript type definitions
-├── __tests__/              # Jest unit tests
-└── __mocks__/              # Test mocks
+└── src/__tests__/          # Jest unit tests
 
-tests/                      # Python tests
-├── core/                   # Core module tests
-└── adapters/               # Adapter tests
+tests/
+├── core/                   # Core module tests (auto-marked v2)
+├── adapters/               # LLM + E2B adapter tests
+├── agents/                 # Worker agent tests
+├── integration/            # Cross-module integration tests
+├── lifecycle/              # End-to-end lifecycle tests (uses MockProvider)
+└── ui/                     # FastAPI router tests
 ```
 
 ---
@@ -110,18 +105,18 @@ tests/                      # Python tests
 `codeframe/core/**` must NOT import FastAPI, WebSocket frameworks, HTTP request/response objects, or UI modules.
 
 ### 2) CLI must not require a server
-Golden Path commands must work from the CLI with **no server running**.
+Golden Path commands must work from the CLI with **no server running**. FastAPI is optional.
 
 ### 3) Agent state transitions flow through runtime
 - Agent manages its own `AgentState` (IDLE, PLANNING, EXECUTING, BLOCKED, COMPLETED, FAILED)
-- Runtime handles all `TaskStatus` transitions (BACKLOG, READY, IN_PROGRESS, DONE, BLOCKED, FAILED)
+- Runtime handles all `TaskStatus` transitions (BACKLOG, READY, IN_PROGRESS, DONE, BLOCKED)
 - Agent does NOT call `tasks.update_status()` — runtime does this based on agent state
 
 ### 4) Legacy can be read, not depended on
-Do NOT import legacy UI/server modules into core. Do NOT "fix the UI" during Golden Path work.
+Do NOT import `server/` (v1) modules into core. `server/` is reference only.
 
 ### 5) Keep commits runnable
-`codeframe --help` must work at all times. Avoid breaking the repo with large renames/moves.
+`codeframe --help` must work at all times. No breaking renames or moves without keeping the path runnable.
 
 ---
 
@@ -133,6 +128,7 @@ Do NOT import legacy UI/server modules into core. Do NOT "fix the UI" during Gol
 |--------|------|---------|----------|
 | **ReAct** (default) | `--engine react` | Observe → Think → Act loop | Most tasks, adaptive execution |
 | **Plan** (legacy) | `--engine plan` | Plan all steps → Execute sequentially | Well-defined, predictable tasks |
+| **External adapters** | `--engine claude-code` etc. | Delegate to external agent | When a frontier agent is preferred |
 
 ### ReAct Agent Tools (7)
 `read_file`, `edit_file`, `create_file`, `run_command`, `run_tests`, `search_codebase`, `list_files`
@@ -140,183 +136,113 @@ Do NOT import legacy UI/server modules into core. Do NOT "fix the UI" during Gol
 ### Stall Detection
 If the agent makes no tool calls for a configurable duration, the stall monitor kills execution and creates a blocker.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `--stall-timeout` CLI flag | 300s | Seconds without a tool call before agent is considered stalled (0 = disabled) |
-| `agent_budget.stall_timeout_s` in `.codeframe/config.yaml` | 300 | Same, configured via project config |
-
-On stall: a blocker is created with context about the stall, and the task transitions to BLOCKED.
+| Setting | Default |
+|---------|---------|
+| `--stall-timeout` CLI flag | 300s |
+| `agent_budget.stall_timeout_s` in `.codeframe/config.yaml` | 300s |
 
 ### Model Selection
-- **PLANNING** → claude-sonnet-4-20250514 (complex reasoning)
-- **EXECUTION** → claude-sonnet-4-20250514 (balanced)
-- **GENERATION** → claude-haiku-4-20250514 (fast/cheap)
+- **PLANNING** → `claude-sonnet-4-20250514` (complex reasoning)
+- **EXECUTION** → `claude-sonnet-4-20250514` (balanced)
+- **GENERATION** → `claude-haiku-4-20250514` (fast)
 
 ---
 
-## Commands (v2 CLI)
+## Commands
 
-### Python
+### Quality checks
 ```bash
-uv run pytest                    # Run all tests
-uv run pytest tests/core/        # Core module tests only
+uv run pytest                    # All Python tests
+uv run pytest -m v2              # v2 tests only
+uv run pytest tests/core/        # Core module tests
 uv run ruff check .              # Linting
+
+cd web-ui && npm test            # Frontend Jest tests
+cd web-ui && npm run build       # Production build verification
 ```
 
-### CLI (Golden Path)
+### Golden Path CLI
 ```bash
-# Workspace
-cf init <repo> --detect          # Initialize + auto-detect tech stack
+cf init <repo> [--detect]        # Initialize workspace
 cf status
 
-# PRD
 cf prd add <file.md>
-cf prd generate                  # Interactive AI-guided PRD creation
+cf prd show
 
-# Tasks
-cf tasks generate                # Generate from PRD via LLM
+cf tasks generate
 cf tasks list [--status READY]
+cf tasks show <id>
 
-# Work execution
-cf work start <task-id> --execute                # ReAct engine (default)
-cf work start <task-id> --execute --engine plan  # Legacy plan engine
-cf work start <task-id> --execute --verbose      # With detailed output
-cf work follow <task-id>                         # Stream real-time output
-cf work stop <task-id>                           # Cancel stale run
-cf work resume <task-id>                         # Resume blocked work
-cf work diagnose <task-id>                       # AI-powered diagnosis
+cf work start <task-id> [--execute] [--engine react|plan] [--verbose]
+cf work start <task-id> --execute --llm-provider openai --llm-model gpt-4o
+cf work batch run [--all-ready] [--strategy serial|parallel|auto] [--retry 3]
+cf work follow <task-id>
+cf work stop <task-id>
+cf work resume <task-id>
 
-# Batch execution
-cf work batch run --all-ready --strategy parallel
-cf work batch run --strategy auto --retry 3
+cf blocker list
+cf blocker answer <id> "answer"
 
-# Blockers, review, checkpoints
-cf blocker list / answer <id> "..."
-cf review
-cf checkpoint create "name"
+cf proof run
+cf proof capture
+cf proof list / status / show <id> / waive <id>
 
-# Environment & PR
-cf env check / doctor
-cf pr create / status / merge
-```
-
-### Frontend
-```bash
-cd web-ui && npm test            # Jest unit tests
-cd web-ui && npm run dev         # Dev server at http://localhost:3000
+cf pr create / status / checks / merge
 ```
 
 ---
 
-## Web UI (Phase 3)
+## Web UI
 
-### Tech Stack
-- **Next.js 16** with App Router
-- **Shadcn/UI** (Nova preset) with gray color scheme
-- **Hugeicons** (`@hugeicons/react`) — never use lucide-react
-- **Tailwind CSS** for styling
-- **SSE hooks** (`useEventSource`, `useTaskStream`) for real-time streaming
+The web UI is built on top of the v2 CLI and API — it does not contain independent business logic. All data flows through the FastAPI server, which wraps core.
 
-### Views
+**Stack**: Next.js 16, TypeScript, Shadcn/UI (Nova preset, gray palette), Hugeicons (`@hugeicons/react`), Tailwind CSS, XTerm.js, WebSocket + SSE
 
-| View | Route | Status |
-|------|-------|--------|
-| Workspace | `/` | ✅ Complete (#335) |
-| PRD | `/prd` | ✅ Complete (#330) |
-| Task Board | `/tasks` | ✅ Complete (#331, #340) |
-| Execution Monitor | `/execution/[taskId]` | In Progress |
-| Blockers | — | Planned |
-| Review & Commit | — | Planned |
+**Never use lucide-react** — all icons via `@hugeicons/react`.
 
-### Task Board Features (#331, #340)
-- 6-column Kanban: Backlog → Ready → In Progress → Blocked → Failed → Done
-- Search & filter with debounced input and status pill toggles
-- Batch execution: select tasks, choose strategy, execute
-- Bulk stop: stop selected IN_PROGRESS tasks with confirmation dialog
-- Bulk reset: reset FAILED/DONE tasks back to READY with confirmation dialog
-- Task detail modal: metadata, dependencies, estimated hours, action buttons
-- View Execution: IN_PROGRESS tasks navigate to `/execution/{taskId}`
-- Per-task loading states during stop/reset operations
-- WCAG 2.1 keyboard navigation
+### Shipped pages
+| Route | Feature |
+|-------|---------|
+| `/` | Workspace dashboard, onboarding, pipeline status |
+| `/prd` | PRD editor with Socratic discovery, version history, diff/restore |
+| `/tasks` | Kanban board, batch execution, bulk stop/reset, task detail modal |
+| `/execution/[taskId]` | Live SSE event stream, execution monitor |
+| `/blockers` | Blocker resolution with lifecycle guidance |
+| `/review` | Diff viewer, file tree, commit panel, PR creation |
+| `/proof` | PROOF9 gate list, evidence display, run history, waiver with audit trail |
+| `/proof/[req_id]` | Requirement detail, evidence history |
+| `/sessions` | Agent sessions list |
+| `/sessions/[id]` | Agent chat panel (tool calls, thinking blocks) + XTerm.js terminal |
 
-### Key Frontend Patterns
+### Key patterns
 - All API endpoints require `workspace_path` query parameter
 - Types in `web-ui/src/types/index.ts`, API client in `web-ui/src/lib/api.ts`
 - SSE hooks: `useEventSource.ts` (generic) + `useTaskStream.ts` (typed execution events)
 - Test mocks for `@hugeicons/react` in `web-ui/__mocks__/@hugeicons/react.js`
+- `npm test` and `npm run build` must pass before any web-facing PR
 
 ---
 
-## Server Layer (Phase 2)
+## What NOT to do
 
-**Pattern**: Thin adapter over core — server routes delegate to `core.*` modules.
-
-```
-CLI (typer) ─┬── core.* ─── adapters.*
-             │
-Server (fastapi) ─┘
-```
-
-- **15 v2 router modules** covering tasks, PRD, blockers, workspace, batches, streaming, auth, and more
-- **API key auth** with scopes (read/write/admin)
-- **Rate limiting** configurable per-endpoint
-- **SSE streaming** at `/api/v2/tasks/{id}/stream`
-- **OpenAPI docs** at `/docs` (Swagger) and `/redoc`
-
----
-
-## Documentation Navigation
-
-### Authoritative (v2)
-- `docs/GOLDEN_PATH.md` — CLI-first workflow contract
-- `docs/REFACTOR_PLAN_FOR_AGENT.md` — Step-by-step refactor instructions
-- `docs/CLI_WIREFRAME.md` — Command → module mapping
-- `docs/AGENT_IMPLEMENTATION_TASKS.md` — Agent system components
-- `docs/V2_STRATEGIC_ROADMAP.md` — 5-phase plan
-- `docs/REACT_AGENT_ARCHITECTURE.md` — ReAct agent deep-dive
-
-### Legacy (v1 reference only)
-- `SPRINTS.md`, `sprints/`, `specs/`, `CODEFRAME_SPEC.md`
-- v1 feature docs (context/session/auth/UI state management)
-
----
-
-## What NOT to do (common agent failure modes)
-
-- Don't add new HTTP endpoints to support the CLI
+- Don't add HTTP endpoints to support CLI commands — CLI must work without a server
 - Don't require `codeframe serve` for CLI workflows
-- Don't implement UI concepts (tabs, panels, progress bars) inside core
-- Don't redesign auth, websockets, or UI state management
-- Don't add multi-providers/model switching features before Golden Path works
-- Don't "clean up the repo" as a goal — only refactor to enable Golden Path
-- Don't update task status from agent.py — let runtime handle transitions
+- Don't implement UI concepts (tabs, panels, progress bars) inside `codeframe/core/`
+- Don't update task status from `agent.py` — let `runtime.py` handle transitions
+- Don't import from `server/` (v1) into core or ui
+- Don't leave a CI gate disabled when its feature area becomes active
+- Don't "clean up the repo" as a goal — only refactor to enable the pipeline
+- Don't skip web UI testing (`npm test`, `npm run build`) when changing web-facing code
 
 ---
 
-## Practical Working Mode for Agents
+## Practical Working Mode
 
-When implementing anything, do this loop:
-1. Read `docs/GOLDEN_PATH.md` and confirm the change is required
+1. Read `docs/GOLDEN_PATH.md` — confirm the change is required
 2. Find the command in `docs/CLI_WIREFRAME.md`
 3. Implement core functionality in `codeframe/core/`
 4. Call it from Typer command in `codeframe/cli/`
 5. Emit events + persist state
 6. Keep it runnable. Commit.
 
-If you are unsure which direction to take, default to:
-- simpler state
-- fewer dependencies
-- smaller surface area
-- core-first, CLI-first
-
----
-
-## Testing
-
-```bash
-uv run pytest                    # All Python tests
-uv run pytest -m v2              # v2 tests only
-cd web-ui && npm test            # Frontend Jest tests
-```
-
-Convention: Mark new v2 tests with `@pytest.mark.v2` or `pytestmark = pytest.mark.v2`.
+When unsure: simpler state, fewer dependencies, smaller surface area, core-first, CLI-first.

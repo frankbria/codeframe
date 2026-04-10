@@ -271,7 +271,7 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - **Engine adapters**: Claude Code, Codex, OpenCode, Kilocode, and built-in ReAct — all via `--engine` flag
 - **Multi-provider LLM**: Anthropic (default) or any OpenAI-compatible endpoint (OpenAI, Ollama, vLLM, LM Studio, Qwen, Deepseek) via `--llm-provider` / `--llm-model` or env vars
 - **Server layer** (optional): FastAPI with 16+ v2 routers, API key auth, rate limiting, SSE streaming, WebSocket endpoints (agent chat, interactive terminal), OpenAPI docs
-- **Web UI**: Workspace view, PRD discovery, Task board, Blocker resolution, Review/commit, PROOF9 requirements and evidence views, TUI dashboard, agent chat panel with streaming tool-call display, interactive terminal for session workspaces, Sessions list with active-session badge
+- **Web UI**: Workspace view, PRD discovery, Task board, Blocker resolution, Review/commit, PROOF9 requirements list + per-gate evidence display + run history panel + waiver audit trail, agent chat panel with streaming tool-call display, interactive terminal for session workspaces, Sessions list with active-session badge
 - **Test suite**: 4200+ tests, 88% coverage
 
 ---
@@ -313,7 +313,7 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - [x] Review and Commit view with diff viewer and file tree
 - [x] PROOF9 requirements list, detail, evidence history, sort/filter controls, waiver with audit trail
 - [x] Interactive Agent Sessions — chat panel (tool calls, thinking blocks), XTerm.js terminal, SplitPane layout
-- [ ] Run gates button + evidence display on PROOF9 page
+- [x] Run gates button, live gate progress, per-gate evidence display, run history panel (PROOF9 page)
 - [ ] Glitch capture form and REQ detail view
 - [ ] PR status panel with PROOF9-gated merge button
 
