@@ -25,7 +25,9 @@ jest.mock('@/components/proof', () => ({
   WaiveDialog: () => null,
   GateRunPanel: () => null,
   GateRunBanner: () => null,
+  GateEvidencePanel: () => null,
   RunHistoryPanel: () => null,
+  CaptureGlitchModal: () => null,
 }));
 jest.mock('next/link', () => {
   const MockLink = ({ href, children }: { href: string; children: React.ReactNode }) => (
