@@ -121,7 +121,7 @@ export default function ProofDetailPage() {
     const map: Record<string, ProofEvidence> = {};
     for (const ev of evidence) {
       const existing = map[ev.gate];
-      if (!existing || ev.timestamp > existing.timestamp) {
+      if (!existing || Date.parse(ev.timestamp) > Date.parse(existing.timestamp)) {
         map[ev.gate] = ev;
       }
     }
@@ -252,7 +252,9 @@ export default function ProofDetailPage() {
               </div>
               {req.description && (
                 <div className="prose prose-sm mt-3 max-w-none text-muted-foreground">
-                  <ReactMarkdown>{req.description}</ReactMarkdown>
+                  <ReactMarkdown disallowedElements={['img']} unwrapDisallowed>
+                    {req.description}
+                  </ReactMarkdown>
                 </div>
               )}
               <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
