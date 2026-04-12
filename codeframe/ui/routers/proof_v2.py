@@ -103,6 +103,16 @@ class RunProofRequest(BaseModel):
     gate: Optional[Gate] = Field(default=None, description="Run only this gate (unit, sec, contract, etc.)")
 
 
+class ScopeOut(BaseModel):
+    """Serialized requirement scope."""
+
+    routes: list[str] = []
+    components: list[str] = []
+    apis: list[str] = []
+    files: list[str] = []
+    tags: list[str] = []
+
+
 class ObligationOut(BaseModel):
     """Serialized proof obligation."""
 
@@ -145,6 +155,7 @@ class RequirementResponse(BaseModel):
     created_by: str
     source_issue: Optional[str]
     related_reqs: list[str]
+    scope: Optional[ScopeOut] = None
 
 
 class CaptureRequirementResponse(RequirementResponse):
@@ -265,6 +276,13 @@ def _req_to_response(req) -> RequirementResponse:
         created_by=req.created_by,
         source_issue=req.source_issue,
         related_reqs=req.related_reqs,
+        scope=ScopeOut(
+            routes=req.scope.routes,
+            components=req.scope.components,
+            apis=req.scope.apis,
+            files=req.scope.files,
+            tags=req.scope.tags,
+        ) if req.scope else None,
     )
 
 

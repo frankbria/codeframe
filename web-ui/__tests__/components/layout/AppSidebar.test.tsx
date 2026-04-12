@@ -25,6 +25,12 @@ jest.mock('@/lib/workspace-storage', () => ({
   getSelectedWorkspacePath: jest.fn(),
 }));
 
+// Mock CaptureGlitchModal to avoid Radix UI portal issues in jsdom
+jest.mock('@/components/proof', () => ({
+  CaptureGlitchModal: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="capture-modal">CaptureGlitchModal</div> : null,
+}));
+
 // Mock SWR (used for blocker + session badge counts)
 const mockSWRData: Record<string, unknown> = {};
 jest.mock('swr', () => ({
@@ -154,5 +160,20 @@ describe('AppSidebar', () => {
     // With 0 sessions and no blockers, no badge spans should be present
     const sessionsLink = screen.getByRole('link', { name: /sessions/i });
     expect(sessionsLink.querySelector('.bg-muted')).toBeNull();
+  });
+
+  // ─── Capture Glitch entry point tests ─────────────────────────────────────
+
+  it('renders "Capture Glitch" button when workspace is selected', () => {
+    mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
+    render(<AppSidebar />);
+    expect(screen.getByRole('button', { name: /capture glitch/i })).toBeInTheDocument();
+  });
+
+  it('does not render "Capture Glitch" button when no workspace is selected', () => {
+    mockGetWorkspacePath.mockReturnValue(null);
+    const { container } = render(<AppSidebar />);
+    // Sidebar itself is not rendered
+    expect(container.firstChild).toBeNull();
   });
 });

@@ -276,6 +276,14 @@ export interface CreatePRRequest {
 export type ProofReqStatus = 'open' | 'satisfied' | 'waived';
 export type ProofSeverity = 'critical' | 'high' | 'medium' | 'low';
 
+export interface ProofScope {
+  routes: string[];
+  components: string[];
+  apis: string[];
+  files: string[];
+  tags: string[];
+}
+
 export interface ProofObligation {
   gate: string;
   status: string;
@@ -310,6 +318,7 @@ export interface ProofRequirement {
   created_by: string;
   source_issue: string | null;
   related_reqs: string[];
+  scope: ProofScope | null;
 }
 
 export interface ProofRequirementListResponse {

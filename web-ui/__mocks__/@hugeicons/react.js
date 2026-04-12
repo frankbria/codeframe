@@ -37,6 +37,7 @@ module.exports = {
   SentIcon: createIconMock('SentIcon'),
   // AppSidebar
   Home01Icon: createIconMock('Home01Icon'),
+  Add01Icon: createIconMock('Add01Icon'),
   // PipelineProgressBar
   Tick01Icon: createIconMock('Tick01Icon'),
   // Task Board components

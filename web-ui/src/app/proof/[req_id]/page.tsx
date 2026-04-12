@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
 import useSWR from 'swr';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -113,6 +114,19 @@ export default function ProofDetailPage() {
     () => (latestRunDetail?.evidence ?? []).filter((ev) => ev.req_id === reqId),
     [latestRunDetail, reqId]
   );
+
+  // Map gate name → most-recent evidence entry for that gate
+  const latestRunByGate = useMemo<Record<string, ProofEvidence>>(() => {
+    if (!Array.isArray(evidence) || evidence.length === 0) return {};
+    const map: Record<string, ProofEvidence> = {};
+    for (const ev of evidence) {
+      const existing = map[ev.gate];
+      if (!existing || ev.timestamp > existing.timestamp) {
+        map[ev.gate] = ev;
+      }
+    }
+    return map;
+  }, [evidence]);
 
   const hasActiveFilters = filterGate !== '' || filterResult !== '' || search !== '';
 
@@ -230,13 +244,31 @@ export default function ProofDetailPage() {
                 </div>
               </div>
               {req.description && (
-                <p className="mt-3 text-sm text-muted-foreground">{req.description}</p>
+                <div className="prose prose-sm mt-3 max-w-none text-muted-foreground">
+                  <ReactMarkdown>{req.description}</ReactMarkdown>
+                </div>
               )}
-              <div className="mt-3 flex gap-4 text-xs text-muted-foreground">
+              <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
                 {req.created_at && <span>Created {new Date(req.created_at).toLocaleDateString()}</span>}
-                {req.source_issue && <span>Source: {req.source_issue}</span>}
+                {req.source && <span>Source: {req.source}</span>}
+                {req.source_issue && <span>Issue: {req.source_issue}</span>}
                 {req.created_by && <span>By: {req.created_by}</span>}
+                {req.waiver?.expires && <span>Waiver expires: {req.waiver.expires}</span>}
               </div>
+              {req.scope && (() => {
+                const parts = [
+                  ...req.scope.routes,
+                  ...req.scope.components,
+                  ...req.scope.apis,
+                  ...req.scope.files,
+                  ...req.scope.tags,
+                ].filter(Boolean);
+                return parts.length > 0 ? (
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    <span className="font-medium">Where found:</span> {parts.join(', ')}
+                  </div>
+                ) : null;
+              })()}
             </div>
 
             {/* Glitch Type */}
@@ -257,15 +289,39 @@ export default function ProofDetailPage() {
                       <tr>
                         <th className="px-4 py-2 text-left font-medium">Gate</th>
                         <th className="px-4 py-2 text-left font-medium">Status</th>
+                        <th className="px-4 py-2 text-left font-medium">Latest Run</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {req.obligations.map((ob, i) => (
-                        <tr key={i} className="border-b last:border-0">
-                          <td className="px-4 py-2 font-mono text-xs">{ob.gate}</td>
-                          <td className="px-4 py-2 capitalize text-muted-foreground">{ob.status}</td>
-                        </tr>
-                      ))}
+                      {req.obligations.map((ob, i) => {
+                        const latestEv = latestRunByGate[ob.gate];
+                        const effectiveStatus = latestEv
+                          ? latestEv.satisfied ? 'satisfied' : 'failed'
+                          : ob.status;
+                        return (
+                          <tr key={i} className="border-b last:border-0">
+                            <td className="px-4 py-2 font-mono text-xs">{ob.gate}</td>
+                            <td className="px-4 py-2 capitalize">
+                              <span className={
+                                effectiveStatus === 'satisfied'
+                                  ? 'text-green-600'
+                                  : effectiveStatus === 'failed'
+                                  ? 'text-red-600'
+                                  : 'text-muted-foreground'
+                              }>
+                                {effectiveStatus}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
+                              {latestEv ? (
+                                <span className={latestEv.satisfied ? 'text-green-600' : 'text-red-600'}>
+                                  {latestEv.run_id}
+                                </span>
+                              ) : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -340,7 +396,12 @@ export default function ProofDetailPage() {
                 <p className="text-sm text-destructive">Failed to load evidence.</p>
               )}
               {!evidenceLoading && !evidenceError && (!evidence || !Array.isArray(evidence) || evidence.length === 0) && (
-                <p className="text-sm text-muted-foreground">No evidence recorded yet.</p>
+                <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                  <p>No gate runs yet for this requirement.</p>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href="/review">Run Gates →</Link>
+                  </Button>
+                </div>
               )}
               {Array.isArray(evidence) && evidence.length > 0 && (
                 <div className="overflow-x-auto rounded-lg border">
