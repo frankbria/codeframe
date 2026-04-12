@@ -190,6 +190,13 @@ export default function ProofDetailPage() {
     saveSessionFilters(reqId, filterGate, filterResult, val);
   }
 
+  function focusRun(runId: string) {
+    setFilterGate('');
+    setFilterResult('');
+    setSearch(runId);
+    saveSessionFilters(reqId, '', '', runId);
+  }
+
   function resetFilters() {
     setFilterGate('');
     setFilterResult('');
@@ -317,7 +324,7 @@ export default function ProofDetailPage() {
                                 <button
                                   type="button"
                                   title="Filter evidence history to this run"
-                                  onClick={() => updateSearch(latestEv.run_id)}
+                                  onClick={() => focusRun(latestEv.run_id)}
                                   className={`cursor-pointer underline-offset-2 hover:underline ${latestEv.satisfied ? 'text-green-600' : 'text-red-600'}`}
                                 >
                                   {latestEv.run_id}
