@@ -146,11 +146,12 @@ export function AppSidebar() {
       <div className="mt-auto border-t px-2 pt-3 pb-2">
         <button
           type="button"
+          aria-label="Capture Glitch"
           onClick={() => setShowCaptureModal(true)}
           className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground lg:px-3"
         >
-          <Add01Icon className="h-5 w-5 shrink-0" />
-          <span className="hidden lg:inline">Capture Glitch</span>
+          <Add01Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <span className="hidden lg:inline" aria-hidden="true">Capture Glitch</span>
         </button>
       </div>
 

@@ -314,9 +314,14 @@ export default function ProofDetailPage() {
                             </td>
                             <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
                               {latestEv ? (
-                                <span className={latestEv.satisfied ? 'text-green-600' : 'text-red-600'}>
+                                <button
+                                  type="button"
+                                  title="Filter evidence history to this run"
+                                  onClick={() => updateSearch(latestEv.run_id)}
+                                  className={`cursor-pointer underline-offset-2 hover:underline ${latestEv.satisfied ? 'text-green-600' : 'text-red-600'}`}
+                                >
                                   {latestEv.run_id}
-                                </span>
+                                </button>
                               ) : '—'}
                             </td>
                           </tr>

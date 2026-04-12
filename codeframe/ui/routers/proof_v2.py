@@ -106,11 +106,11 @@ class RunProofRequest(BaseModel):
 class ScopeOut(BaseModel):
     """Serialized requirement scope."""
 
-    routes: list[str] = []
-    components: list[str] = []
-    apis: list[str] = []
-    files: list[str] = []
-    tags: list[str] = []
+    routes: list[str] = Field(default_factory=list)
+    components: list[str] = Field(default_factory=list)
+    apis: list[str] = Field(default_factory=list)
+    files: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
 
 class ObligationOut(BaseModel):
