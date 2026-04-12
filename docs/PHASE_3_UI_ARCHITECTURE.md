@@ -134,6 +134,10 @@ Persistent left sidebar with icon + label navigation:
 4. **Execution** (play/monitor icon) - only visible when runs are active
 5. **Blockers** (alert icon) - badge count for open blockers
 6. **Review** (git branch icon)
+7. **PROOF9** (checkmark icon)
+8. **Sessions** (command-line icon) - badge count for active sessions
+
+**Sidebar action button**: A **"Capture Glitch"** button (Add01Icon) is always visible at the bottom of the sidebar. Clicking it opens `CaptureGlitchModal` without navigating away from the current page. This is the primary entry point for the glitch capture closed loop from anywhere in the app.
 
 ### Secondary Navigation
 - **Workspace breadcrumb** at top: shows current repo path, links to workspace root
@@ -367,10 +371,21 @@ ProofPage (/proof)
         └── (click → loads GateEvidencePanel for that run)
 
 ProofRequirementPage (/proof/[req_id])
-├── RequirementDetail
-│   ├── ObligationsList
-│   └── EvidenceHistory
-└── WaiveForm
+├── RequirementHeader
+│   ├── Title, severity badge, ProofStatusBadge
+│   ├── MarkdownDescription (ReactMarkdown, images disallowed)
+│   ├── MetadataRow (created_at, source, source_issue, created_by, waiver expiry)
+│   └── ScopeChips (files, routes, components, APIs, tags from ProofScope)
+├── ObligationsTable      ← new (Phase 3.5C)
+│   └── ObligationRow[]   (gate name, Latest Run pass/fail badge, link to evidence)
+│       └── Latest Run column: shows most-recent run result per gate
+├── EvidenceHistory
+│   ├── FilterBar (gate select, result select, search input, Reset Filters)
+│   ├── EvidenceTable (sortable: gate, result, run_id, timestamp, artifact)
+│   │   └── EvidenceRow[] (click run_id → focusRun filter)
+│   └── EmptyState CTA: "Capture a Glitch" link when no evidence exists
+├── GateEvidencePanel (loads artifact content for latest run)
+└── WaiveDialog (modal, opens via Waive button in header)
 ```
 
 **API Endpoints Used:**

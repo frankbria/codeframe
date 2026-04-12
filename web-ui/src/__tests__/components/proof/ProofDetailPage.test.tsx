@@ -7,6 +7,11 @@ import type { ProofEvidence, ProofRequirement, ProofEvidenceSortCol, SortDir } f
 
 // ── Mocks ────────────────────────────────────────────────────────────────
 
+jest.mock('react-markdown', () => ({
+  __esModule: true,
+  default: ({ children }: { children: string }) => <p data-testid="markdown">{children}</p>,
+}));
+
 jest.mock('swr');
 jest.mock('next/navigation', () => ({
   useParams: () => ({ req_id: 'REQ-001' }),
@@ -65,6 +70,7 @@ const REQ: ProofRequirement = {
   created_by: 'user',
   source_issue: null,
   related_reqs: [],
+  scope: null,
 };
 
 function setup(evidence: ProofEvidence[] = EVIDENCE) {

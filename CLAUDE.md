@@ -18,7 +18,7 @@ SHIP:   cf pr create → cf pr merge
 LOOP:   Glitch → cf proof capture → New REQ → Enforced forever
 ```
 
-**Status: CLI ✅ | Server ✅ | ReAct agent ✅ | Web UI ✅ | Agent adapters ✅ | Multi-provider LLM ✅ | Next: Phase 3.5C** — See `docs/PRODUCT_ROADMAP.md`.
+**Status: CLI ✅ | Server ✅ | ReAct agent ✅ | Web UI ✅ | Agent adapters ✅ | Multi-provider LLM ✅ | Next: Phase 4A** — See `docs/PRODUCT_ROADMAP.md`.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -34,12 +34,11 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 **Rule 0:** If a change does not directly support the Think → Build → Prove → Ship pipeline, do not implement it.
 
-### Current Focus: Phase 3.5C
+### Current Focus: Phase 4A
 
-**Phase 3.5B is complete** — `[Run Gates]` button, live gate progress, per-gate evidence display (`GateEvidencePanel`), and run history panel (`RunHistoryPanel`) are all shipped. New backend endpoints: `GET /api/v2/proof/runs` and `GET /api/v2/proof/runs/{run_id}/evidence`.
+**Phase 3.5C is complete** — `CaptureGlitchModal` form (description/markdown, source, scope, gate obligations, severity, expiry) reachable from the PROOF9 page and the persistent sidebar "Capture Glitch" button. REQ detail view (`/proof/[req_id]`) ships markdown description rendering, `ProofScope` metadata display, obligations table with `Latest Run` column, sortable/filterable evidence history, and empty-state CTA. Backend: `ScopeOut` model on `RequirementResponse`. Issues #568, #569.
 
 Next, in order:
-- **3.5C**: Glitch capture web UI
 - **4A**: PR status tracking + PROOF9 merge gate
 - **4B**: Post-merge glitch capture loop
 - **5.1–5.5**: Platform completeness (#554–#565)

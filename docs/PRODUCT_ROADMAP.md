@@ -36,23 +36,11 @@ Fully shipped: `[Run Gates]` button on the PROOF9 page, live gate progress view 
 
 ---
 
-### Milestone C: Glitch Capture UI ❌ NOT STARTED
+### Milestone C: Glitch Capture UI ✅ COMPLETE (#568, #569)
 
-**Current state**: The CLI has `cf proof capture` for converting a production glitch into a permanent PROOF9 requirement. The proof page has a glitch_type *filter* for reading existing requirements but no capture form (verified 2026-04-06).
+Fully shipped: `CaptureGlitchModal` form reachable from the PROOF9 page header and the sidebar "Capture Glitch" button. Form collects description (markdown), source (production/QA/dogfooding/monitoring), scope (files/routes/components, stored as `ScopeOut` on the backend and `ProofScope` in the frontend types), gate obligations (multi-select), severity, and optional expiry. On submit, creates a new REQ in the requirements ledger immediately.
 
-**What to build**:
-
-- A **"Capture Glitch"** entry point reachable from the PROOF9 page and the sidebar
-- A structured form collecting:
-  - Description of the failure (free text, supports markdown)
-  - Where it was found (production / QA / dogfooding / monitoring)
-  - Scope selector: which files, routes, or components are affected
-  - Which PROOF9 gates should be required as proof obligations (multi-select)
-  - Severity and optional expiry (for time-bounded obligations)
-- On submit: creates a new REQ in the requirements ledger, associates obligations, and shows the new requirement in the PROOF9 table immediately
-- A **REQ detail view** that shows the glitch description, its obligations, and the evidence history across all gate runs
-
-**Why it matters for the vision**: The glitch capture closed loop — *Ship → Discover glitch → Capture → Enforce forever → Ship with higher confidence* — is described as "the defining feature of the system." Without a web UI for capture, this loop requires CLI access and will be skipped by most users. This is the most differentiated feature in CodeFRAME and it is currently invisible to web users.
+REQ detail view (`/proof/[req_id]`): markdown-rendered description, scope metadata display, obligations table with a `Latest Run` column showing pass/fail per gate from the most recent run, sortable/filterable evidence history, and a "Capture Glitch" empty-state CTA when no evidence exists yet.
 
 ---
 
@@ -201,7 +189,7 @@ These are items that were considered and excluded because they do not serve the 
 |---|---|---|---|
 | 3.5A | Bidirectional agent chat | ✅ Complete | #500–509 |
 | 3.5B | Run gates from the web UI | ✅ Complete | #566, #567, #574, #575 |
-| 3.5C | Glitch capture UI | ❌ Not started | — |
+| 3.5C | Glitch capture UI | ✅ Complete | #568, #569 |
 | 4A | PR status + PROOF9 merge gate | ❌ Not started | — |
 | 4B | Post-merge glitch capture loop | ❌ Not started | — |
 | 5.1 | Settings page | ❌ Not started | #554–556 |
@@ -210,6 +198,6 @@ These are items that were considered and excluded because they do not serve the 
 | 5.4 | PRD stress-test web UI | ❌ Not started | #561–562 |
 | 5.5 | GitHub Issues import | ❌ Not started | #563–565 |
 
-**Current focus**: Phase 3.5C — Glitch capture web UI.
+**Current focus**: Phase 4A — PR status tracking + PROOF9 merge gate.
 
 The ordering within Phase 5 is by onboarding impact. Settings (5.1) and cost (5.2) block new users earliest.

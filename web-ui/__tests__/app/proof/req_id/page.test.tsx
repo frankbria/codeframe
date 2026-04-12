@@ -6,8 +6,14 @@ jest.mock('@/lib/api', () => ({
   proofApi: {
     getRequirement: jest.fn(),
     getEvidence: jest.fn(),
+    getRunDetail: jest.fn(),
     waive: jest.fn(),
   },
+}));
+
+jest.mock('react-markdown', () => ({
+  __esModule: true,
+  default: ({ children }: { children: string }) => <p data-testid="markdown">{children}</p>,
 }));
 
 jest.mock('@/lib/workspace-storage', () => ({
@@ -45,6 +51,7 @@ const baseReq = {
   source_issue: null,
   related_reqs: [],
   source: 'manual',
+  scope: null,
 };
 
 const waivedReq = {
@@ -67,14 +74,115 @@ describe('ProofDetailPage', () => {
     localStorageMock.clear();
   });
 
-  const setupSWR = (req: typeof baseReq) => {
+  const setupSWR = (req: typeof baseReq, evidence: unknown[] = []) => {
     mockUseSWR.mockImplementation((key: any) => {
+      if (typeof key === 'string' && key.includes('/runs/') && key.includes('/evidence')) {
+        // Run detail endpoint
+        return { data: { evidence: [] }, error: undefined, isLoading: false, mutate: jest.fn() } as any;
+      }
       if (typeof key === 'string' && key.includes('/evidence')) {
-        return { data: mockEvidenceResponse, error: undefined, isLoading: false, mutate: jest.fn() } as any;
+        return { data: evidence, error: undefined, isLoading: false, mutate: jest.fn() } as any;
       }
       return { data: req, error: undefined, isLoading: false, mutate: jest.fn() } as any;
     });
   };
+
+  describe('description rendering', () => {
+    it('renders description via ReactMarkdown', async () => {
+      setupSWR(baseReq);
+      render(<ProofDetailPage />);
+      await waitFor(() => {
+        expect(screen.getByTestId('markdown')).toBeInTheDocument();
+        expect(screen.getByTestId('markdown')).toHaveTextContent('Ensure MFA flow is tested');
+      });
+    });
+  });
+
+  describe('where found / scope', () => {
+    it('shows "Where found" when scope has non-empty fields', async () => {
+      const reqWithScope = {
+        ...baseReq,
+        scope: { routes: ['/login'], components: ['MFAForm'], apis: [], files: [], tags: [] },
+      };
+      setupSWR(reqWithScope as any);
+      render(<ProofDetailPage />);
+      await waitFor(() => {
+        expect(screen.getByText(/where found:/i)).toBeInTheDocument();
+        expect(screen.getByText(/\/login/i)).toBeInTheDocument();
+      });
+    });
+
+    it('does not show "Where found" when scope is null', async () => {
+      setupSWR(baseReq);
+      render(<ProofDetailPage />);
+      await waitFor(() => screen.getByText('Login must work with MFA'));
+      expect(screen.queryByText(/where found:/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('obligations with latest run', () => {
+    it('shows Latest Run column header when obligations exist', async () => {
+      const reqWithObs = {
+        ...baseReq,
+        obligations: [{ gate: 'unit', status: 'pending' }],
+      };
+      setupSWR(reqWithObs as any);
+      render(<ProofDetailPage />);
+      await waitFor(() => {
+        expect(screen.getByText('Latest Run')).toBeInTheDocument();
+      });
+    });
+
+    it('reflects latest gate run result in obligation status', async () => {
+      const reqWithObs = {
+        ...baseReq,
+        obligations: [{ gate: 'unit', status: 'pending' }],
+      };
+      const evidence = [
+        { req_id: 'REQ-001', gate: 'unit', satisfied: true, run_id: 'run-abc', artifact_path: '', artifact_checksum: '', timestamp: '2026-01-15T12:00:00Z' },
+      ];
+      setupSWR(reqWithObs as any, evidence);
+      render(<ProofDetailPage />);
+      await waitFor(() => {
+        // Obligation status should show 'satisfied' (derived from latest run, not ob.status)
+        expect(screen.getByText('satisfied')).toBeInTheDocument();
+        // run-abc appears in obligations Latest Run column AND evidence history — both tables should show it
+        expect(screen.getAllByText('run-abc').length).toBeGreaterThanOrEqual(2);
+      });
+    });
+
+    it('shows — for Latest Run when no evidence exists for that gate', async () => {
+      const reqWithObs = {
+        ...baseReq,
+        obligations: [{ gate: 'sec', status: 'pending' }],
+      };
+      setupSWR(reqWithObs as any, []);
+      render(<ProofDetailPage />);
+      await waitFor(() => {
+        expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+      });
+    });
+  });
+
+  describe('evidence empty state CTA', () => {
+    it('renders "Run Gates" link when there is no evidence', async () => {
+      setupSWR(baseReq, []);
+      render(<ProofDetailPage />);
+      await waitFor(() => {
+        expect(screen.getByText(/no gate runs yet/i)).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: /run gates/i })).toBeInTheDocument();
+      });
+    });
+
+    it('links to /review from the empty state CTA', async () => {
+      setupSWR(baseReq, []);
+      render(<ProofDetailPage />);
+      await waitFor(() => {
+        const link = screen.getByRole('link', { name: /run gates/i });
+        expect(link).toHaveAttribute('href', '/review');
+      });
+    });
+  });
 
   describe('waiver audit trail', () => {
     it('shows waiver reason in the waiver section', async () => {
