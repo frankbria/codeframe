@@ -173,9 +173,22 @@ async def get_pr_status(
             f"/repos/{client.owner}/{client.repo_name}/pulls/{pr_number}",
         )
 
+        # Validate payload shape: non-dict responses (e.g. a list) or a dict with
+        # a non-dict "head" field would blow up before reaching the field checks.
+        if not isinstance(pr_raw, dict):
+            raise HTTPException(
+                status_code=502,
+                detail=api_error(
+                    "Invalid GitHub response",
+                    ErrorCodes.EXECUTION_FAILED,
+                    "PR payload was not an object",
+                ),
+            )
+
         # Use safe access; raise 502 if required fields are absent rather than
         # letting a KeyError bubble into an unhandled 500.
-        head_sha: str | None = pr_raw.get("head", {}).get("sha")
+        head = pr_raw.get("head")
+        head_sha: str | None = head.get("sha") if isinstance(head, dict) else None
         pr_url: str | None = pr_raw.get("html_url")
         state: str | None = pr_raw.get("state")
 

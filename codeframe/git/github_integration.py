@@ -437,10 +437,24 @@ class GitHubIntegration:
 
         # Only count actionable states — exclude DISMISSED, COMMENTED, and non-dicts.
         ACTIONABLE = {"APPROVED", "CHANGES_REQUESTED"}
-        active = [
-            r for r in reviews
-            if isinstance(r, dict) and r.get("state") in ACTIONABLE
-        ]
+
+        # Collapse per-reviewer: keep only each reviewer's latest actionable review.
+        # A reviewer who requested changes and later approved should be counted as
+        # approved, not as both.
+        latest_per_reviewer: dict[str, dict] = {}
+        for r in reviews:
+            if not isinstance(r, dict):
+                continue
+            if r.get("state") not in ACTIONABLE:
+                continue
+            reviewer = r.get("user", {}).get("login") if isinstance(r.get("user"), dict) else None
+            if reviewer is None:
+                reviewer = str(r.get("id", id(r)))
+            existing = latest_per_reviewer.get(reviewer)
+            if existing is None or (r.get("submitted_at") or "") >= (existing.get("submitted_at") or ""):
+                latest_per_reviewer[reviewer] = r
+
+        active = list(latest_per_reviewer.values())
 
         has_changes_requested = any(r.get("state") == "CHANGES_REQUESTED" for r in active)
         has_approved = any(r.get("state") == "APPROVED" for r in active)

@@ -242,6 +242,25 @@ class TestGetPrStatusErrors:
 
         assert resp.status_code == 502
 
+    def test_non_dict_pr_raw_returns_502(self, test_client):
+        """A non-dict GitHub response (e.g. a list) returns 502 rather than crashing."""
+        mock_client = _make_mock_client(pr_raw=[])  # list instead of dict
+
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock_client):
+            resp = test_client.get("/api/v2/pr/status?workspace_path=/tmp&pr_number=42")
+
+        assert resp.status_code == 502
+
+    def test_non_dict_head_field_returns_502(self, test_client):
+        """A dict pr_raw with a non-dict 'head' field returns 502 instead of AttributeError."""
+        pr_raw = {"head": "not-a-dict", "html_url": "https://github.com/p/r/pull/1", "state": "open"}
+        mock_client = _make_mock_client(pr_raw=pr_raw)
+
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock_client):
+            resp = test_client.get("/api/v2/pr/status?workspace_path=/tmp&pr_number=42")
+
+        assert resp.status_code == 502
+
     def test_generic_exception_returns_500(self, test_client):
         """An unexpected exception (e.g. ValueError) results in HTTP 500."""
         mock_client = _make_mock_client(raise_error=ValueError("unexpected"))
@@ -348,3 +367,49 @@ class TestGetPrReviewStatus:
         )
         result = await GitHubIntegration.get_pr_review_status(gh, 1)
         assert result == "approved"
+
+    @pytest.mark.asyncio
+    async def test_same_reviewer_changes_then_approved(self):
+        """Reviewer who first requested changes and later approved counts as approved."""
+        from codeframe.git.github_integration import GitHubIntegration
+
+        gh = self._make_integration()
+        gh._make_request = AsyncMock(
+            return_value=[
+                {
+                    "state": "CHANGES_REQUESTED",
+                    "user": {"login": "alice"},
+                    "submitted_at": "2024-01-01T10:00:00Z",
+                },
+                {
+                    "state": "APPROVED",
+                    "user": {"login": "alice"},
+                    "submitted_at": "2024-01-01T12:00:00Z",
+                },
+            ]
+        )
+        result = await GitHubIntegration.get_pr_review_status(gh, 1)
+        assert result == "approved"
+
+    @pytest.mark.asyncio
+    async def test_same_reviewer_approved_then_changes(self):
+        """Reviewer who approved and later requested changes counts as changes_requested."""
+        from codeframe.git.github_integration import GitHubIntegration
+
+        gh = self._make_integration()
+        gh._make_request = AsyncMock(
+            return_value=[
+                {
+                    "state": "APPROVED",
+                    "user": {"login": "bob"},
+                    "submitted_at": "2024-01-01T10:00:00Z",
+                },
+                {
+                    "state": "CHANGES_REQUESTED",
+                    "user": {"login": "bob"},
+                    "submitted_at": "2024-01-01T12:00:00Z",
+                },
+            ]
+        )
+        result = await GitHubIntegration.get_pr_review_status(gh, 1)
+        assert result == "changes_requested"
