@@ -399,14 +399,19 @@ class GitHubIntegration:
             f"/repos/{self.owner}/{self.repo_name}/commits/{head_sha}/check-runs",
         )
         check_runs = data.get("check_runs", []) if isinstance(data, dict) else []
-        return [
-            CICheck(
-                name=run["name"],
-                status=run["status"],
-                conclusion=run.get("conclusion"),
+        normalized: list[CICheck] = []
+        for run in check_runs:
+            if not isinstance(run, dict):
+                continue
+            name = run.get("name")
+            status = run.get("status")
+            if not name or not status:
+                logger.warning("Skipping malformed check-run entry: %s", run)
+                continue
+            normalized.append(
+                CICheck(name=name, status=status, conclusion=run.get("conclusion"))
             )
-            for run in check_runs
-        ]
+        return normalized
 
     async def get_pr_review_status(self, pr_number: int) -> str:
         """Get the aggregate review status for a pull request.
