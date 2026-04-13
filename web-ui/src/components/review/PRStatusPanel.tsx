@@ -63,7 +63,7 @@ export interface PRStatusPanelProps {
 }
 
 export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
-  const swrKey = `/api/v2/pr/status?workspace_path=${workspacePath}&pr_number=${prNumber}`;
+  const swrKey = `/api/v2/pr/status?workspace_path=${encodeURIComponent(workspacePath)}&pr_number=${prNumber}`;
 
   const { data, error } = useSWR<PRStatusResponse>(
     swrKey,

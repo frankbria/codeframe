@@ -274,14 +274,14 @@ export interface CreatePRRequest {
 
 export interface CICheck {
   name: string;
-  status: string;      // "queued" | "in_progress" | "completed"
-  conclusion: string | null;  // "success" | "failure" | "neutral" | "cancelled" | etc.
+  status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending';
+  conclusion: 'success' | 'failure' | 'neutral' | 'cancelled' | 'timed_out' | 'action_required' | 'skipped' | 'stale' | null;
 }
 
 export interface PRStatusResponse {
   ci_checks: CICheck[];
-  review_status: string;  // "approved" | "changes_requested" | "pending"
-  merge_state: string;    // "open" | "merged" | "closed"
+  review_status: 'approved' | 'changes_requested' | 'pending';
+  merge_state: 'open' | 'merged' | 'closed';
   pr_url: string;
   pr_number: number;
 }

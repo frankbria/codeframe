@@ -173,7 +173,7 @@ describe('PRStatusPanel', () => {
 
       const [key] = mockUseSWR.mock.calls[0];
       expect(key).toContain(`pr_number=${PR_NUMBER}`);
-      expect(key).toContain(`workspace_path=${WORKSPACE}`);
+      expect(key).toContain(`workspace_path=${encodeURIComponent(WORKSPACE)}`);
     });
 
     it('passes a refreshInterval function to SWR config', () => {
