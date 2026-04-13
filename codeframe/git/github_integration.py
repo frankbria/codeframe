@@ -33,6 +33,15 @@ class GitHubAPIError(Exception):
 
 
 @dataclass
+class CICheck:
+    """A single CI check run result."""
+
+    name: str
+    status: str  # "queued" | "in_progress" | "completed"
+    conclusion: Optional[str]  # "success" | "failure" | "neutral" | "cancelled" | etc.
+
+
+@dataclass
 class PRDetails:
     """Pull Request details from GitHub API."""
 
@@ -363,6 +372,69 @@ class GitHubIntegration:
 
         logger.info(f"Closed PR #{pr_number}")
         return data.get("state") == "closed"
+
+    async def get_pr_ci_checks(
+        self,
+        pr_number: int,
+        head_sha: Optional[str] = None,
+    ) -> List[CICheck]:
+        """Get CI check runs for a pull request.
+
+        Args:
+            pr_number: PR number
+            head_sha: Head commit SHA (fetched from the PR if not provided)
+
+        Returns:
+            List of CICheck results
+        """
+        if head_sha is None:
+            pr_data = await self._make_request(
+                "GET",
+                f"/repos/{self.owner}/{self.repo_name}/pulls/{pr_number}",
+            )
+            head_sha = pr_data["head"]["sha"]
+
+        data = await self._make_request(
+            "GET",
+            f"/repos/{self.owner}/{self.repo_name}/commits/{head_sha}/check-runs",
+        )
+        check_runs = data.get("check_runs", []) if isinstance(data, dict) else []
+        return [
+            CICheck(
+                name=run["name"],
+                status=run["status"],
+                conclusion=run.get("conclusion"),
+            )
+            for run in check_runs
+        ]
+
+    async def get_pr_review_status(self, pr_number: int) -> str:
+        """Get the aggregate review status for a pull request.
+
+        Returns "changes_requested" if any reviewer requested changes,
+        "approved" if any reviewer approved (and none requested changes),
+        or "pending" if there are no actionable reviews.
+
+        Args:
+            pr_number: PR number
+
+        Returns:
+            "approved" | "changes_requested" | "pending"
+        """
+        reviews = await self._make_request(
+            "GET",
+            f"/repos/{self.owner}/{self.repo_name}/pulls/{pr_number}/reviews",
+        )
+        reviews = reviews or []
+
+        has_changes_requested = any(r.get("state") == "CHANGES_REQUESTED" for r in reviews)
+        has_approved = any(r.get("state") == "APPROVED" for r in reviews)
+
+        if has_changes_requested:
+            return "changes_requested"
+        if has_approved:
+            return "approved"
+        return "pending"
 
     async def close(self) -> None:
         """Close the HTTP client."""

@@ -11,6 +11,7 @@ Routes:
     POST /api/v2/pr/{number}/close - Close a PR without merging
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -77,6 +78,24 @@ class MergeResponse(BaseModel):
     message: str
 
 
+class CICheckResponse(BaseModel):
+    """A single CI check run result."""
+
+    name: str
+    status: str
+    conclusion: Optional[str]
+
+
+class PRStatusResponse(BaseModel):
+    """Live PR status: CI checks, review status, and merge state."""
+
+    ci_checks: list[CICheckResponse]
+    review_status: str   # "approved" | "changes_requested" | "pending"
+    merge_state: str     # "open" | "merged" | "closed"
+    pr_url: str
+    pr_number: int
+
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -122,6 +141,75 @@ def _get_github_client() -> GitHubIntegration:
 # ============================================================================
 # Endpoints
 # ============================================================================
+
+
+@router.get("/status", response_model=PRStatusResponse)
+@rate_limit_standard()
+async def get_pr_status(
+    request: Request,
+    pr_number: int = Query(..., description="PR number to poll"),
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> PRStatusResponse:
+    """Get live PR status: CI checks, review status, and merge state.
+
+    Polls the GitHub API for the given PR number and returns a snapshot
+    of all three status dimensions. The frontend polls this every 30 s
+    and stops when merge_state is merged or closed.
+
+    Args:
+        pr_number: PR number to inspect
+        workspace: v2 Workspace (for context)
+
+    Returns:
+        PRStatusResponse with CI checks, review status, and merge state
+    """
+    try:
+        client = _get_github_client()
+
+        # Single call to get PR state, URL, and head SHA.
+        pr_raw = await client._make_request(
+            "GET",
+            f"/repos/{client.owner}/{client.repo_name}/pulls/{pr_number}",
+        )
+        head_sha: str = pr_raw["head"]["sha"]
+        pr_url: str = pr_raw["html_url"]
+        merge_state: str = "merged" if pr_raw.get("merged_at") else pr_raw["state"]
+
+        # Fetch CI checks and reviews in parallel (2 more GitHub API calls).
+        ci_checks, review_status = await asyncio.gather(
+            client.get_pr_ci_checks(pr_number, head_sha=head_sha),
+            client.get_pr_review_status(pr_number),
+        )
+
+        return PRStatusResponse(
+            ci_checks=[
+                CICheckResponse(name=c.name, status=c.status, conclusion=c.conclusion)
+                for c in ci_checks
+            ],
+            review_status=review_status,
+            merge_state=merge_state,
+            pr_url=pr_url,
+            pr_number=pr_number,
+        )
+
+    except GitHubAPIError as e:
+        if e.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail=api_error("PR not found", ErrorCodes.NOT_FOUND, f"No PR #{pr_number}"),
+            )
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get PR #{pr_number} status: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=api_error("Failed to get PR status", ErrorCodes.EXECUTION_FAILED, str(e)),
+        )
 
 
 @router.get("", response_model=PRListResponse)

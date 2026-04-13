@@ -272,6 +272,20 @@ export interface CreatePRRequest {
   base?: string;
 }
 
+export interface CICheck {
+  name: string;
+  status: string;      // "queued" | "in_progress" | "completed"
+  conclusion: string | null;  // "success" | "failure" | "neutral" | "cancelled" | etc.
+}
+
+export interface PRStatusResponse {
+  ci_checks: CICheck[];
+  review_status: string;  // "approved" | "changes_requested" | "pending"
+  merge_state: string;    // "open" | "merged" | "closed"
+  pr_url: string;
+  pr_number: number;
+}
+
 // PROOF9 types (mirrors proof_v2.py)
 export type ProofReqStatus = 'open' | 'satisfied' | 'waived';
 export type ProofSeverity = 'critical' | 'high' | 'medium' | 'low';

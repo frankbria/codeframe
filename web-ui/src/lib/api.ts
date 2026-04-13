@@ -36,6 +36,7 @@ import type {
   GitStatusResponse,
   CommitResultResponse,
   PRResponse,
+  PRStatusResponse,
   CreatePRRequest,
   ProofRequirement,
   ProofRequirementListResponse,
@@ -692,6 +693,13 @@ export const prApi = {
       request,
       { params: { workspace_path: workspacePath } }
     );
+    return response.data;
+  },
+
+  getStatus: async (workspacePath: string, prNumber: number): Promise<PRStatusResponse> => {
+    const response = await api.get<PRStatusResponse>('/api/v2/pr/status', {
+      params: { workspace_path: workspacePath, pr_number: prNumber },
+    });
     return response.data;
   },
 };
