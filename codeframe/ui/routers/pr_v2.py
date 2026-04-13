@@ -163,17 +163,33 @@ async def get_pr_status(
     Returns:
         PRStatusResponse with CI checks, review status, and merge state
     """
+    # _get_github_client() raises HTTPException if GitHub isn't configured —
+    # no client to close in that case, so call it before the try/finally.
+    client = _get_github_client()
     try:
-        client = _get_github_client()
-
         # Single call to get PR state, URL, and head SHA.
         pr_raw = await client._make_request(
             "GET",
             f"/repos/{client.owner}/{client.repo_name}/pulls/{pr_number}",
         )
-        head_sha: str = pr_raw["head"]["sha"]
-        pr_url: str = pr_raw["html_url"]
-        merge_state: str = "merged" if pr_raw.get("merged_at") else pr_raw["state"]
+
+        # Use safe access; raise 502 if required fields are absent rather than
+        # letting a KeyError bubble into an unhandled 500.
+        head_sha: str | None = pr_raw.get("head", {}).get("sha")
+        pr_url: str | None = pr_raw.get("html_url")
+        state: str | None = pr_raw.get("state")
+
+        if not head_sha or not pr_url or not state:
+            raise HTTPException(
+                status_code=502,
+                detail=api_error(
+                    "Invalid GitHub response",
+                    ErrorCodes.EXECUTION_FAILED,
+                    "Missing required fields (head.sha / html_url / state) in PR payload",
+                ),
+            )
+
+        merge_state: str = "merged" if pr_raw.get("merged_at") else state
 
         # Fetch CI checks and reviews in parallel (2 more GitHub API calls).
         ci_checks, review_status = await asyncio.gather(
@@ -210,6 +226,8 @@ async def get_pr_status(
             status_code=500,
             detail=api_error("Failed to get PR status", ErrorCodes.EXECUTION_FAILED, str(e)),
         )
+    finally:
+        await client.close()
 
 
 @router.get("", response_model=PRListResponse)

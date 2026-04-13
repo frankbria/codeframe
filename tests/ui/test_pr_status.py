@@ -78,6 +78,7 @@ def _make_mock_client(
         return_value=ci_checks if ci_checks is not None else []
     )
     client.get_pr_review_status = AsyncMock(return_value=review_status)
+    client.close = AsyncMock()  # always present — called in finally block
     client.owner = "owner"
     client.repo_name = "repo"
     return client
@@ -229,3 +230,121 @@ class TestGetPrStatusErrors:
             resp = test_client.get("/api/v2/pr/status?workspace_path=/tmp&pr_number=42")
 
         assert resp.status_code == 503
+
+    def test_missing_required_fields_returns_502(self, test_client):
+        """PR payload missing head.sha / html_url / state returns 502."""
+        # Simulate a partial/unexpected GitHub response.
+        pr_raw = {"merged_at": None}  # no "head", "html_url", or "state"
+        mock_client = _make_mock_client(pr_raw=pr_raw)
+
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock_client):
+            resp = test_client.get("/api/v2/pr/status?workspace_path=/tmp&pr_number=42")
+
+        assert resp.status_code == 502
+
+    def test_generic_exception_returns_500(self, test_client):
+        """An unexpected exception (e.g. ValueError) results in HTTP 500."""
+        mock_client = _make_mock_client(raise_error=ValueError("unexpected"))
+
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock_client):
+            resp = test_client.get("/api/v2/pr/status?workspace_path=/tmp&pr_number=42")
+
+        assert resp.status_code == 500
+
+    def test_client_close_called_on_success(self, test_client):
+        """Client.close() is always called, even on success."""
+        mock_client = _make_mock_client()
+
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock_client):
+            test_client.get("/api/v2/pr/status?workspace_path=/tmp&pr_number=42")
+
+        mock_client.close.assert_awaited_once()
+
+    def test_client_close_called_on_github_error(self, test_client):
+        """Client.close() is always called, even when GitHub returns an error."""
+        from codeframe.git.github_integration import GitHubAPIError
+
+        mock_client = _make_mock_client(raise_error=GitHubAPIError(503, "Service Unavailable"))
+
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock_client):
+            test_client.get("/api/v2/pr/status?workspace_path=/tmp&pr_number=42")
+
+        mock_client.close.assert_awaited_once()
+
+
+class TestGetPrReviewStatus:
+    """Unit tests for GitHubIntegration.get_pr_review_status()."""
+
+    def _make_integration(self) -> object:
+        """Return a GitHubIntegration instance with a mocked _make_request."""
+        from codeframe.git.github_integration import GitHubIntegration
+
+        with patch.object(GitHubIntegration, "__init__", lambda self, **kw: None):
+            gh = object.__new__(GitHubIntegration)
+        gh.owner = "owner"
+        gh.repo_name = "repo"
+        return gh
+
+    @pytest.mark.asyncio
+    async def test_approved_review(self):
+        """Single APPROVED review → approved."""
+        from codeframe.git.github_integration import GitHubIntegration
+
+        gh = self._make_integration()
+        gh._make_request = AsyncMock(return_value=[{"state": "APPROVED"}])
+        result = await GitHubIntegration.get_pr_review_status(gh, 1)
+        assert result == "approved"
+
+    @pytest.mark.asyncio
+    async def test_changes_requested_beats_approved(self):
+        """CHANGES_REQUESTED takes priority over APPROVED."""
+        from codeframe.git.github_integration import GitHubIntegration
+
+        gh = self._make_integration()
+        gh._make_request = AsyncMock(
+            return_value=[{"state": "APPROVED"}, {"state": "CHANGES_REQUESTED"}]
+        )
+        result = await GitHubIntegration.get_pr_review_status(gh, 1)
+        assert result == "changes_requested"
+
+    @pytest.mark.asyncio
+    async def test_dismissed_review_ignored(self):
+        """DISMISSED review is not counted — falls back to pending."""
+        from codeframe.git.github_integration import GitHubIntegration
+
+        gh = self._make_integration()
+        gh._make_request = AsyncMock(return_value=[{"state": "DISMISSED"}])
+        result = await GitHubIntegration.get_pr_review_status(gh, 1)
+        assert result == "pending"
+
+    @pytest.mark.asyncio
+    async def test_commented_review_ignored(self):
+        """COMMENTED review is not counted — falls back to pending."""
+        from codeframe.git.github_integration import GitHubIntegration
+
+        gh = self._make_integration()
+        gh._make_request = AsyncMock(return_value=[{"state": "COMMENTED"}])
+        result = await GitHubIntegration.get_pr_review_status(gh, 1)
+        assert result == "pending"
+
+    @pytest.mark.asyncio
+    async def test_non_list_response_returns_pending(self):
+        """A non-list response from GitHub is treated as no reviews → pending."""
+        from codeframe.git.github_integration import GitHubIntegration
+
+        gh = self._make_integration()
+        gh._make_request = AsyncMock(return_value={"unexpected": "dict"})
+        result = await GitHubIntegration.get_pr_review_status(gh, 1)
+        assert result == "pending"
+
+    @pytest.mark.asyncio
+    async def test_non_dict_items_in_list_ignored(self):
+        """Non-dict items in the reviews list are silently skipped."""
+        from codeframe.git.github_integration import GitHubIntegration
+
+        gh = self._make_integration()
+        gh._make_request = AsyncMock(
+            return_value=["not-a-dict", None, {"state": "APPROVED"}]
+        )
+        result = await GitHubIntegration.get_pr_review_status(gh, 1)
+        assert result == "approved"

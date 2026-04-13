@@ -430,10 +430,20 @@ class GitHubIntegration:
             "GET",
             f"/repos/{self.owner}/{self.repo_name}/pulls/{pr_number}/reviews",
         )
-        reviews = reviews or []
 
-        has_changes_requested = any(r.get("state") == "CHANGES_REQUESTED" for r in reviews)
-        has_approved = any(r.get("state") == "APPROVED" for r in reviews)
+        # Guard against unexpected response shapes.
+        if not isinstance(reviews, list):
+            reviews = []
+
+        # Only count actionable states — exclude DISMISSED, COMMENTED, and non-dicts.
+        ACTIONABLE = {"APPROVED", "CHANGES_REQUESTED"}
+        active = [
+            r for r in reviews
+            if isinstance(r, dict) and r.get("state") in ACTIONABLE
+        ]
+
+        has_changes_requested = any(r.get("state") == "CHANGES_REQUESTED" for r in active)
+        has_approved = any(r.get("state") == "APPROVED" for r in active)
 
         if has_changes_requested:
             return "changes_requested"
