@@ -21,6 +21,7 @@ import { ReviewHeader } from '@/components/review/ReviewHeader';
 import { CommitPanel } from '@/components/review/CommitPanel';
 import { ExportPatchModal } from '@/components/review/ExportPatchModal';
 import { PRCreatedModal } from '@/components/review/PRCreatedModal';
+import { PRStatusPanel } from '@/components/review/PRStatusPanel';
 
 export default function ReviewPage() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
@@ -309,18 +310,23 @@ export default function ReviewPage() {
           changedFiles={diffData?.changed_files ?? []}
         />
 
-        {/* Commit panel (right sidebar) */}
-        <CommitPanel
-          commitMessage={commitMessage}
-          onCommitMessageChange={setCommitMessage}
-          onGenerateMessage={handleGenerateMessage}
-          onCommit={handleCommit}
-          isGenerating={isGenerating}
-          isCommitting={isCommitting}
-          isCreatingPR={isCreatingPR}
-          changedFiles={diffData?.changed_files.map((f) => f.path) ?? []}
-          onCreatePR={handleCreatePR}
-        />
+        {/* Right sidebar: commit panel + PR status (when a PR has been created) */}
+        <div className="flex flex-col">
+          <CommitPanel
+            commitMessage={commitMessage}
+            onCommitMessageChange={setCommitMessage}
+            onGenerateMessage={handleGenerateMessage}
+            onCommit={handleCommit}
+            isGenerating={isGenerating}
+            isCommitting={isCommitting}
+            isCreatingPR={isCreatingPR}
+            changedFiles={diffData?.changed_files.map((f) => f.path) ?? []}
+            onCreatePR={handleCreatePR}
+          />
+          {prNumber > 0 && workspacePath && (
+            <PRStatusPanel prNumber={prNumber} workspacePath={workspacePath} />
+          )}
+        </div>
       </div>
 
       {/* Error state */}
