@@ -97,7 +97,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
     }
   );
 
-  const { data: proofData } = useSWR<ProofStatusResponse>(
+  const { data: proofData, error: proofError, isLoading: proofLoading } = useSWR<ProofStatusResponse>(
     proofKey,
     () => proofApi.getStatus(workspacePath),
     { refreshInterval: merged ? 0 : 15_000 }
@@ -121,6 +121,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
   );
 
   const ciPassing = !ciFailing && !ciPending;
+  const alreadyMerged = merged || data?.merge_state === 'merged';
   const canMerge = !!data && !!proofData && openRequirements.length === 0 && ciPassing;
 
   // ── Merge handler ─────────────────────────────────────────────────────────
@@ -204,7 +205,13 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
           {/* PROOF9 gate section */}
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">PROOF9</span>
-            {openRequirements.length === 0 ? (
+            {proofLoading ? (
+              <div className="h-4 animate-pulse rounded bg-muted" />
+            ) : proofError && !proofData ? (
+              <p className="text-xs text-muted-foreground">
+                Unable to load PROOF9 status — merge blocked until resolved.
+              </p>
+            ) : openRequirements.length === 0 ? (
               <p className="flex items-center gap-1 text-xs text-muted-foreground">
                 <CheckmarkCircle01Icon className="h-3 w-3 text-green-600" />
                 All clear
@@ -233,7 +240,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
       )}
 
       {/* Blocking messages */}
-      {data && (ciFailing || ciPending) && !merged && (
+      {data && (ciFailing || ciPending) && !alreadyMerged && (
         <p className="text-xs text-amber-600">
           {ciFailing ? 'CI checks failing' : 'Waiting for CI checks'}
         </p>
@@ -247,7 +254,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
       )}
 
       {/* Success banner or Merge button */}
-      {merged ? (
+      {alreadyMerged ? (
         <div className="flex items-center gap-1 rounded bg-green-50 px-3 py-2 text-xs text-green-700">
           <CheckmarkCircle01Icon className="h-3 w-3" />
           PR #{prNumber} merged successfully

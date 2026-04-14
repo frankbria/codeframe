@@ -34,6 +34,10 @@ const failingCIChecks = [
   { name: 'tests', status: 'completed', conclusion: 'failure' },
 ];
 
+const pendingCIChecks = [
+  { name: 'tests', status: 'in_progress', conclusion: null },
+];
+
 const basePRStatus = {
   ci_checks: successfulCIChecks,
   review_status: 'approved',
@@ -79,11 +83,20 @@ const proofStatusWithOpenReqs = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const setupSWRMock = (prStatus: object, proofStatus: object) => {
+const setupSWRMock = (
+  prStatus: object | undefined,
+  proofStatus: object | undefined,
+  options?: { proofLoading?: boolean; proofError?: unknown }
+) => {
   mockUseSWR.mockImplementation((key: unknown) => {
     const keyStr = typeof key === 'string' ? key : '';
     if (keyStr.includes('/api/v2/proof/status')) {
-      return { data: proofStatus, error: undefined, isLoading: false, mutate: jest.fn() } as any;
+      return {
+        data: proofStatus,
+        error: options?.proofError,
+        isLoading: options?.proofLoading ?? false,
+        mutate: jest.fn(),
+      } as any;
     }
     return { data: prStatus, error: undefined, isLoading: false, mutate: jest.fn() } as any;
   });
@@ -184,5 +197,33 @@ describe('PRStatusPanel — PROOF9-gated merge button', () => {
     render(<PRStatusPanel {...defaultProps} />);
     expect(screen.getByText(/ci checks failing/i)).toBeInTheDocument();
     expect(screen.getByText('Fix critical bug')).toBeInTheDocument();
+  });
+
+  it('shows "Waiting for CI checks" when CI checks are pending', () => {
+    setupSWRMock({ ...basePRStatus, ci_checks: pendingCIChecks }, cleanProofStatus);
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByText(/waiting for ci checks/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^merge$/i })).toBeDisabled();
+  });
+
+  it('shows PROOF9 loading skeleton instead of "All clear" while proof data loads', () => {
+    setupSWRMock(basePRStatus, undefined, { proofLoading: true });
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.queryByText(/all clear/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^merge$/i })).toBeDisabled();
+  });
+
+  it('shows PROOF9 error message when proof API fails', () => {
+    setupSWRMock(basePRStatus, undefined, { proofError: new Error('Network error') });
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByText(/unable to load proof9 status/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^merge$/i })).toBeDisabled();
+  });
+
+  it('shows success banner when PR was merged externally', () => {
+    setupSWRMock({ ...basePRStatus, merge_state: 'merged' }, cleanProofStatus);
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByText(/merged successfully/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /merge/i })).not.toBeInTheDocument();
   });
 });
