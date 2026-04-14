@@ -80,7 +80,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
   const swrKey = `/api/v2/pr/status?workspace_path=${encodeURIComponent(workspacePath)}&pr_number=${prNumber}`;
   const proofKey = `/api/v2/proof/status?workspace_path=${encodeURIComponent(workspacePath)}`;
 
-  const { data, error } = useSWR<PRStatusResponse>(
+  const { data, error, mutate: mutatePRStatus } = useSWR<PRStatusResponse>(
     swrKey,
     () => prApi.getStatus(workspacePath, prNumber),
     {
@@ -131,6 +131,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
     try {
       await prApi.merge(workspacePath, prNumber, { method: 'squash' });
       setMerged(true);
+      mutatePRStatus((prev) => prev ? { ...prev, merge_state: 'merged' } : prev, false);
     } catch (err: unknown) {
       const apiErr = err as { detail?: string };
       setMergeError(apiErr?.detail ?? 'Merge failed. Please try again.');

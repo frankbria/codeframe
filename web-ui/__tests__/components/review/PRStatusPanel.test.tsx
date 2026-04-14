@@ -167,6 +167,10 @@ describe('PRStatusPanel — PROOF9-gated merge button', () => {
     });
 
     resolveMerge({ sha: 'abc', merged: true, message: 'ok' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/merged successfully/i)).toBeInTheDocument();
+    });
   });
 
   it('shows CI blocking message when CI checks are failing', () => {
