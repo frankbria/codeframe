@@ -121,7 +121,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
   );
 
   const ciPassing = !ciFailing && !ciPending;
-  const canMerge = openRequirements.length === 0 && ciPassing;
+  const canMerge = !!data && !!proofData && openRequirements.length === 0 && ciPassing;
 
   // ── Merge handler ─────────────────────────────────────────────────────────
 
