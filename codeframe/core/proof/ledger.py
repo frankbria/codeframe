@@ -84,6 +84,18 @@ def init_proof_tables(workspace: Workspace) -> None:
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pr_proof_snapshots (
+            pr_number INTEGER NOT NULL,
+            workspace_id TEXT NOT NULL,
+            gates_passed INTEGER NOT NULL,
+            gates_total INTEGER NOT NULL,
+            gate_breakdown TEXT NOT NULL,
+            snapshotted_at TEXT NOT NULL,
+            PRIMARY KEY (pr_number, workspace_id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -99,6 +111,11 @@ def _ensure_tables(workspace: Workspace) -> None:
     if not missing:
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='proof_runs'"
+        )
+        missing = not cursor.fetchone()
+    if not missing:
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='pr_proof_snapshots'"
         )
         missing = not cursor.fetchone()
     conn.close()
@@ -493,3 +510,65 @@ def check_expired_waivers(workspace: Workspace) -> list[Requirement]:
         conn.commit()
     conn.close()
     return expired
+
+
+# --- PR Proof Snapshots ---
+
+
+def save_pr_proof_snapshot(
+    workspace: Workspace,
+    pr_number: int,
+    gates_passed: int,
+    gates_total: int,
+    gate_breakdown: list[dict],
+) -> None:
+    """Save a proof snapshot for a PR at creation time."""
+    _ensure_tables(workspace)
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+    cursor.execute(
+        """INSERT OR REPLACE INTO pr_proof_snapshots
+           (pr_number, workspace_id, gates_passed, gates_total,
+            gate_breakdown, snapshotted_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (
+            pr_number,
+            workspace.id,
+            gates_passed,
+            gates_total,
+            json.dumps(gate_breakdown),
+            _utc_now().isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_pr_proof_snapshot(
+    workspace: Workspace, pr_number: int
+) -> Optional[dict]:
+    """Fetch a proof snapshot for a PR.
+
+    Returns:
+        Dict with pr_number, gates_passed, gates_total, gate_breakdown,
+        snapshotted_at — or None if not found.
+    """
+    _ensure_tables(workspace)
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+    cursor.execute(
+        """SELECT pr_number, gates_passed, gates_total, gate_breakdown, snapshotted_at
+           FROM pr_proof_snapshots WHERE pr_number = ? AND workspace_id = ?""",
+        (pr_number, workspace.id),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "pr_number": row[0],
+        "gates_passed": row[1],
+        "gates_total": row[2],
+        "gate_breakdown": json.loads(row[3]),
+        "snapshotted_at": row[4],
+    }

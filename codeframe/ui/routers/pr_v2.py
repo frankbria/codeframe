@@ -96,6 +96,39 @@ class PRStatusResponse(BaseModel):
     pr_number: int
 
 
+class GateBreakdownItem(BaseModel):
+    """A single gate pass/fail entry in a proof snapshot."""
+
+    gate: str
+    status: str
+
+
+class ProofSnapshotOut(BaseModel):
+    """Proof snapshot at time of PR creation."""
+
+    gates_passed: int
+    gates_total: int
+    gate_breakdown: list[GateBreakdownItem]
+
+
+class PRHistoryItem(BaseModel):
+    """A single merged PR with optional proof snapshot."""
+
+    number: int
+    title: str
+    merged_at: str
+    author: Optional[str]
+    url: str
+    proof_snapshot: Optional[ProofSnapshotOut]
+
+
+class PRHistoryResponse(BaseModel):
+    """Response for PR history list."""
+
+    pull_requests: list[PRHistoryItem]
+    total: int
+
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -285,6 +318,78 @@ async def list_pull_requests(
         await client.close()
 
 
+@router.get("/history", response_model=PRHistoryResponse)
+@rate_limit_standard()
+async def get_pr_history(
+    request: Request,
+    limit: int = Query(10, ge=1, le=50),
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> PRHistoryResponse:
+    """List recently merged PRs with proof snapshots.
+
+    Returns merged PRs sorted by merged_at descending, each with an
+    optional proof snapshot showing gate pass/fail at PR creation time.
+
+    Args:
+        limit: Maximum number of PRs to return (1-50, default 10)
+        workspace: v2 Workspace
+
+    Returns:
+        PRHistoryResponse with merged PRs and proof snapshots
+    """
+    from codeframe.core.proof.ledger import get_pr_proof_snapshot
+
+    client = _get_github_client()
+    try:
+        prs = await client.list_pull_requests(state="closed")
+
+        # Filter to only merged PRs and sort newest first.
+        merged = [pr for pr in prs if pr.merged_at is not None]
+        merged.sort(key=lambda pr: pr.merged_at, reverse=True)
+        merged = merged[:limit]
+
+        items: list[PRHistoryItem] = []
+        for pr in merged:
+            snapshot = get_pr_proof_snapshot(workspace, pr.number)
+            proof_snapshot = None
+            if snapshot:
+                proof_snapshot = ProofSnapshotOut(
+                    gates_passed=snapshot["gates_passed"],
+                    gates_total=snapshot["gates_total"],
+                    gate_breakdown=[
+                        GateBreakdownItem(**g) for g in snapshot["gate_breakdown"]
+                    ],
+                )
+            items.append(
+                PRHistoryItem(
+                    number=pr.number,
+                    title=pr.title,
+                    merged_at=pr.merged_at.isoformat(),
+                    author=pr.author,
+                    url=pr.url,
+                    proof_snapshot=proof_snapshot,
+                )
+            )
+
+        return PRHistoryResponse(pull_requests=items, total=len(items))
+
+    except GitHubAPIError as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get PR history: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=api_error("Failed to get PR history", ErrorCodes.EXECUTION_FAILED, str(e)),
+        )
+    finally:
+        await client.close()
+
+
 @router.get("/{pr_number}", response_model=PRResponse)
 @rate_limit_standard()
 async def get_pull_request(
@@ -354,6 +459,41 @@ async def create_pull_request(
             body=body.body,
             base=body.base,
         )
+
+        # Capture proof snapshot at PR creation time.
+        try:
+            from codeframe.core.proof.ledger import (
+                init_proof_tables,
+                list_requirements,
+                save_pr_proof_snapshot,
+            )
+
+            init_proof_tables(workspace)
+            reqs = list_requirements(workspace)
+
+            gates_total = 0
+            gates_passed = 0
+            gate_breakdown: list[dict] = []
+            for req in reqs:
+                for ob in req.obligations:
+                    gates_total += 1
+                    passed = ob.status == "passed"
+                    if passed:
+                        gates_passed += 1
+                    gate_breakdown.append({
+                        "gate": ob.gate.value,
+                        "status": ob.status,
+                    })
+
+            save_pr_proof_snapshot(
+                workspace,
+                pr_number=pr.number,
+                gates_passed=gates_passed,
+                gates_total=gates_total,
+                gate_breakdown=gate_breakdown,
+            )
+        except Exception as snap_err:
+            logger.warning(f"Failed to save proof snapshot for PR #{pr.number}: {snap_err}")
 
         return _pr_to_response(pr)
 
