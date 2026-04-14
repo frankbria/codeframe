@@ -38,6 +38,8 @@ import type {
   PRResponse,
   PRStatusResponse,
   CreatePRRequest,
+  MergePRRequest,
+  MergeResponse,
   ProofRequirement,
   ProofRequirementListResponse,
   ProofEvidence,
@@ -700,6 +702,19 @@ export const prApi = {
     const response = await api.get<PRStatusResponse>('/api/v2/pr/status', {
       params: { workspace_path: workspacePath, pr_number: prNumber },
     });
+    return response.data;
+  },
+
+  merge: async (
+    workspacePath: string,
+    prNumber: number,
+    request: MergePRRequest = {}
+  ): Promise<MergeResponse> => {
+    const response = await api.post<MergeResponse>(
+      `/api/v2/pr/${prNumber}/merge`,
+      { method: request.method ?? 'squash' },
+      { params: { workspace_path: workspacePath } }
+    );
     return response.data;
   },
 };
