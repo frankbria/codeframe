@@ -272,6 +272,16 @@ export interface CreatePRRequest {
   base?: string;
 }
 
+export interface MergePRRequest {
+  method?: 'squash' | 'merge' | 'rebase';
+}
+
+export interface MergeResponse {
+  sha: string | null;
+  merged: boolean;
+  message: string;
+}
+
 export interface CICheck {
   name: string;
   status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending';
