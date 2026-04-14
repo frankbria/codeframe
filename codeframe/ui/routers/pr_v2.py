@@ -259,8 +259,8 @@ async def list_pull_requests(
     Returns:
         List of pull requests
     """
+    client = _get_github_client()
     try:
-        client = _get_github_client()
         prs = await client.list_pull_requests(state=state)
 
         return PRListResponse(
@@ -281,6 +281,8 @@ async def list_pull_requests(
             status_code=500,
             detail=api_error("Failed to list PRs", ErrorCodes.EXECUTION_FAILED, str(e)),
         )
+    finally:
+        await client.close()
 
 
 @router.get("/{pr_number}", response_model=PRResponse)
@@ -299,8 +301,8 @@ async def get_pull_request(
     Returns:
         PR details
     """
+    client = _get_github_client()
     try:
-        client = _get_github_client()
         pr = await client.get_pull_request(pr_number)
 
         return _pr_to_response(pr)
@@ -323,6 +325,8 @@ async def get_pull_request(
             status_code=500,
             detail=api_error("Failed to get PR", ErrorCodes.EXECUTION_FAILED, str(e)),
         )
+    finally:
+        await client.close()
 
 
 @router.post("", response_model=PRResponse, status_code=201)
@@ -342,8 +346,8 @@ async def create_pull_request(
     Returns:
         Created PR details
     """
+    client = _get_github_client()
     try:
-        client = _get_github_client()
         pr = await client.create_pull_request(
             branch=body.branch,
             title=body.title,
@@ -366,6 +370,8 @@ async def create_pull_request(
             status_code=500,
             detail=api_error("Failed to create PR", ErrorCodes.EXECUTION_FAILED, str(e)),
         )
+    finally:
+        await client.close()
 
 
 @router.post("/{pr_number}/merge", response_model=MergeResponse)
@@ -389,8 +395,8 @@ async def merge_pull_request(
     """
     method = body.method if body else "squash"
 
+    client = _get_github_client()
     try:
-        client = _get_github_client()
         result = await client.merge_pull_request(pr_number, method=method)
 
         return MergeResponse(
@@ -422,6 +428,8 @@ async def merge_pull_request(
             status_code=500,
             detail=api_error("Failed to merge PR", ErrorCodes.EXECUTION_FAILED, str(e)),
         )
+    finally:
+        await client.close()
 
 
 @router.post("/{pr_number}/close")
@@ -440,8 +448,8 @@ async def close_pull_request(
     Returns:
         Close confirmation
     """
+    client = _get_github_client()
     try:
-        client = _get_github_client()
         closed = await client.close_pull_request(pr_number)
 
         return {
@@ -467,3 +475,5 @@ async def close_pull_request(
             status_code=500,
             detail=api_error("Failed to close PR", ErrorCodes.EXECUTION_FAILED, str(e)),
         )
+    finally:
+        await client.close()
