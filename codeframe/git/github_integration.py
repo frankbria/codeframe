@@ -381,6 +381,8 @@ class GitHubIntegration:
     async def get_pr_files(self, pr_number: int) -> List[str]:
         """Get the list of files changed in a pull request.
 
+        Paginates through all pages (100 per page) to ensure completeness.
+
         Args:
             pr_number: PR number
 
@@ -390,9 +392,21 @@ class GitHubIntegration:
         Raises:
             GitHubAPIError: If API error occurs
         """
-        endpoint = f"/repos/{self.owner}/{self.repo_name}/pulls/{pr_number}/files?per_page=100"
-        data = await self._make_request(method="GET", endpoint=endpoint)
-        return [f["filename"] for f in data]
+        files: List[str] = []
+        page = 1
+        while True:
+            endpoint = (
+                f"/repos/{self.owner}/{self.repo_name}/pulls/{pr_number}/files"
+                f"?per_page=100&page={page}"
+            )
+            data = await self._make_request(method="GET", endpoint=endpoint)
+            if not isinstance(data, list) or not data:
+                break
+            files.extend(f["filename"] for f in data)
+            if len(data) < 100:
+                break
+            page += 1
+        return files
 
     async def get_pr_ci_checks(
         self,

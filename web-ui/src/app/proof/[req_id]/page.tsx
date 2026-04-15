@@ -260,8 +260,13 @@ export default function ProofDetailPage() {
               <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
                 {req.created_at && <span>Created {new Date(req.created_at).toLocaleDateString()}</span>}
                 {req.source && <span>Source: {req.source}</span>}
-                {req.source_issue && (
-                  req.source_issue.startsWith('https://github.com') ? (
+                {req.source_issue && (() => {
+                  let isGitHubPr = false;
+                  try {
+                    const u = new URL(req.source_issue);
+                    isGitHubPr = u.protocol === 'https:' && u.hostname === 'github.com';
+                  } catch { /* not a valid URL */ }
+                  return isGitHubPr ? (
                     <span>
                       Source PR:{' '}
                       <a
@@ -275,8 +280,8 @@ export default function ProofDetailPage() {
                     </span>
                   ) : (
                     <span>Issue: {req.source_issue}</span>
-                  )
-                )}
+                  );
+                })()}
                 {req.created_by && <span>By: {req.created_by}</span>}
                 {req.waiver?.expires && <span>Waiver expires: {req.waiver.expires}</span>}
               </div>

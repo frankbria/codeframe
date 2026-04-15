@@ -299,6 +299,7 @@ class TestGitHubIntegration:
             assert exc_info.value.status_code == 403
 
 
+@pytest.mark.v2
 class TestGetPrFiles:
     """Tests for GitHubIntegration.get_pr_files."""
 

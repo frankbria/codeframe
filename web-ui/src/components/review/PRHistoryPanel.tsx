@@ -145,7 +145,7 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
                   variant="ghost"
                   size="sm"
                   className="shrink-0 gap-1.5 text-xs"
-                  disabled={loadingFiles === pr.number}
+                  disabled={loadingFiles !== null}
                   onClick={() => handleReportGlitch(pr)}
                 >
                   {loadingFiles === pr.number ? (
