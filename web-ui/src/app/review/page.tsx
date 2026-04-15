@@ -22,6 +22,7 @@ import { CommitPanel } from '@/components/review/CommitPanel';
 import { ExportPatchModal } from '@/components/review/ExportPatchModal';
 import { PRCreatedModal } from '@/components/review/PRCreatedModal';
 import { PRStatusPanel } from '@/components/review/PRStatusPanel';
+import { PRHistoryPanel } from '@/components/review/PRHistoryPanel';
 
 export default function ReviewPage() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
@@ -328,6 +329,13 @@ export default function ReviewPage() {
           )}
         </div>
       </div>
+
+      {/* PR History */}
+      {workspacePath && (
+        <div className="shrink-0 px-4 pb-4">
+          <PRHistoryPanel workspacePath={workspacePath} />
+        </div>
+      )}
 
       {/* Error state */}
       {diffError && (
