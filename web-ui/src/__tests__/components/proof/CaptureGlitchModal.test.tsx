@@ -234,4 +234,60 @@ describe('CaptureGlitchModal', () => {
       expect((screen.getByLabelText(/Description/i) as HTMLTextAreaElement).value).toBe('');
     });
   });
+
+  describe('pre-population from PR', () => {
+    const PR_PROPS = {
+      ...DEFAULT_PROPS,
+      prNumber: 42,
+      prTitle: 'Fix login timeout',
+      prUrl: 'https://github.com/owner/repo/pull/42',
+      initialScope: 'src/auth.py\nsrc/utils.py',
+    };
+
+    it('pre-fills description with PR reference when prNumber is provided', () => {
+      setup(PR_PROPS);
+      const textarea = screen.getByLabelText(/Description/i) as HTMLTextAreaElement;
+      expect(textarea.value).toBe('Reported from PR #42: Fix login timeout');
+    });
+
+    it('pre-fills scope with initialScope', () => {
+      setup(PR_PROPS);
+      const textarea = screen.getByLabelText(/Scope/i) as HTMLTextAreaElement;
+      expect(textarea.value).toBe('src/auth.py\nsrc/utils.py');
+    });
+
+    it('includes source_issue in submission payload', async () => {
+      mockCapture.mockResolvedValue(MOCK_REQ);
+      setup(PR_PROPS);
+
+      // Fill required fields
+      fireEvent.click(screen.getByRole('checkbox', { name: 'unit' }));
+      fireEvent.click(screen.getByRole('button', { name: /Capture Glitch/i }));
+
+      await waitFor(() => {
+        expect(mockCapture).toHaveBeenCalledWith(
+          WORKSPACE,
+          expect.objectContaining({
+            source_issue: 'https://github.com/owner/repo/pull/42',
+          })
+        );
+      });
+    });
+
+    it('does not include source_issue when prUrl is not provided', async () => {
+      mockCapture.mockResolvedValue(MOCK_REQ);
+      setup();
+
+      fireEvent.change(screen.getByLabelText(/Description/i), {
+        target: { value: 'Something broke' },
+      });
+      fireEvent.click(screen.getByRole('checkbox', { name: 'unit' }));
+      fireEvent.click(screen.getByRole('button', { name: /Capture Glitch/i }));
+
+      await waitFor(() => {
+        const callArgs = mockCapture.mock.calls[0][1];
+        expect(callArgs.source_issue).toBeUndefined();
+      });
+    });
+  });
 });

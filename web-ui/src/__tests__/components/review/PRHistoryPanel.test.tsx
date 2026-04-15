@@ -1,15 +1,19 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import useSWR from 'swr';
 import { PRHistoryPanel } from '@/components/review/PRHistoryPanel';
+import { prApi } from '@/lib/api';
 import type { PRHistoryResponse } from '@/types';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────
 
 jest.mock('swr');
 jest.mock('@/lib/api', () => ({
-  prApi: { getHistory: jest.fn() },
+  prApi: { getHistory: jest.fn(), getFiles: jest.fn() },
+  proofApi: { capture: jest.fn() },
 }));
+
+const mockGetFiles = prApi.getFiles as jest.MockedFunction<typeof prApi.getFiles>;
 
 const mockUseSWR = useSWR as jest.MockedFunction<typeof useSWR>;
 
@@ -231,6 +235,42 @@ describe('PRHistoryPanel', () => {
 
       const [key] = mockUseSWR.mock.calls[0];
       expect(key).toBeNull();
+    });
+  });
+
+  describe('Report Glitch button', () => {
+    it('renders a Report Glitch button for each PR row', () => {
+      withData(SAMPLE_HISTORY);
+      render(<PRHistoryPanel workspacePath={WORKSPACE} />);
+
+      const buttons = screen.getAllByRole('button', { name: /Report Glitch/i });
+      expect(buttons).toHaveLength(2);
+    });
+
+    it('fetches PR files when Report Glitch is clicked', async () => {
+      mockGetFiles.mockResolvedValue(['src/auth.py', 'tests/test_auth.py']);
+      withData(SAMPLE_HISTORY);
+      render(<PRHistoryPanel workspacePath={WORKSPACE} />);
+
+      const buttons = screen.getAllByRole('button', { name: /Report Glitch/i });
+      fireEvent.click(buttons[0]);
+
+      await waitFor(() => {
+        expect(mockGetFiles).toHaveBeenCalledWith(WORKSPACE, 10);
+      });
+    });
+
+    it('opens the capture modal after files are fetched', async () => {
+      mockGetFiles.mockResolvedValue(['src/auth.py']);
+      withData(SAMPLE_HISTORY);
+      render(<PRHistoryPanel workspacePath={WORKSPACE} />);
+
+      const buttons = screen.getAllByRole('button', { name: /Report Glitch/i });
+      fireEvent.click(buttons[0]);
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Capture Glitch' })).toBeInTheDocument();
+      });
     });
   });
 });

@@ -260,7 +260,23 @@ export default function ProofDetailPage() {
               <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
                 {req.created_at && <span>Created {new Date(req.created_at).toLocaleDateString()}</span>}
                 {req.source && <span>Source: {req.source}</span>}
-                {req.source_issue && <span>Issue: {req.source_issue}</span>}
+                {req.source_issue && (
+                  req.source_issue.startsWith('https://github.com') ? (
+                    <span>
+                      Source PR:{' '}
+                      <a
+                        href={req.source_issue}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        {req.source_issue}
+                      </a>
+                    </span>
+                  ) : (
+                    <span>Issue: {req.source_issue}</span>
+                  )
+                )}
                 {req.created_by && <span>By: {req.created_by}</span>}
                 {req.waiver?.expires && <span>Waiver expires: {req.waiver.expires}</span>}
               </div>

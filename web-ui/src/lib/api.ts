@@ -53,6 +53,7 @@ import type {
   ProofRunSummary,
   ProofRunDetail,
   PRHistoryResponse,
+  PRFilesResponse,
   Session,
   SessionState,
   SessionListResponse,
@@ -724,6 +725,13 @@ export const prApi = {
       params: { workspace_path: workspacePath, ...(limit ? { limit } : {}) },
     });
     return response.data;
+  },
+
+  getFiles: async (workspacePath: string, prNumber: number): Promise<string[]> => {
+    const response = await api.get<PRFilesResponse>(`/api/v2/pr/${prNumber}/files`, {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data.files;
   },
 };
 

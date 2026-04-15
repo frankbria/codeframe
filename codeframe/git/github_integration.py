@@ -378,6 +378,22 @@ class GitHubIntegration:
         logger.info(f"Closed PR #{pr_number}")
         return data.get("state") == "closed"
 
+    async def get_pr_files(self, pr_number: int) -> List[str]:
+        """Get the list of files changed in a pull request.
+
+        Args:
+            pr_number: PR number
+
+        Returns:
+            List of filenames changed in the PR
+
+        Raises:
+            GitHubAPIError: If API error occurs
+        """
+        endpoint = f"/repos/{self.owner}/{self.repo_name}/pulls/{pr_number}/files"
+        data = await self._make_request(method="GET", endpoint=endpoint)
+        return [f["filename"] for f in data]
+
     async def get_pr_ci_checks(
         self,
         pr_number: int,

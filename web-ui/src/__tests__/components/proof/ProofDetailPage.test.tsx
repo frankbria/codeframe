@@ -282,3 +282,42 @@ describe('ProofDetailPage — combined filters', () => {
     expect(evidenceRows()).toHaveLength(1);
   });
 });
+
+describe('ProofDetailPage — source_issue rendering', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  function setupWithReq(reqOverrides: Partial<ProofRequirement>) {
+    const req = { ...REQ, ...reqOverrides };
+    mockGetWorkspace.mockReturnValue(WORKSPACE);
+    mockUseSWR.mockImplementation((key: unknown) => {
+      if (!key) {
+        return { data: undefined, error: undefined, isLoading: false, mutate: jest.fn() } as unknown as ReturnType<typeof useSWR>;
+      }
+      const k = String(key);
+      if (k.includes('/evidence')) {
+        return { data: [], error: undefined, isLoading: false, mutate: jest.fn() } as unknown as ReturnType<typeof useSWR>;
+      }
+      return { data: req, error: undefined, isLoading: false, mutate: jest.fn() } as unknown as ReturnType<typeof useSWR>;
+    });
+    render(<ProofDetailPage />);
+  }
+
+  it('renders source_issue as a clickable link when it is a GitHub URL', () => {
+    setupWithReq({ source_issue: 'https://github.com/owner/repo/pull/42' });
+    const link = screen.getByRole('link', { name: /github\.com/i });
+    expect(link).toHaveAttribute('href', 'https://github.com/owner/repo/pull/42');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('renders source_issue as plain text when it is not a URL', () => {
+    setupWithReq({ source_issue: 'JIRA-123' });
+    expect(screen.getByText(/JIRA-123/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /JIRA-123/ })).not.toBeInTheDocument();
+  });
+
+  it('does not render source_issue when it is null', () => {
+    setupWithReq({ source_issue: null });
+    expect(screen.queryByText(/Source PR/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Issue:/)).not.toBeInTheDocument();
+  });
+});
