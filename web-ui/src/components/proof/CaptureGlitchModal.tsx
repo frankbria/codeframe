@@ -40,9 +40,26 @@ export interface CaptureGlitchModalProps {
   workspacePath: string;
   onClose: () => void;
   onSuccess: (req: ProofRequirement) => void;
+  /** Pre-populate from a PR: PR number */
+  prNumber?: number;
+  /** Pre-populate from a PR: PR title */
+  prTitle?: string;
+  /** Pre-populate from a PR: GitHub PR URL (stored as source_issue) */
+  prUrl?: string;
+  /** Pre-populate scope with changed files (newline-joined) */
+  initialScope?: string;
 }
 
-export function CaptureGlitchModal({ open, workspacePath, onClose, onSuccess }: CaptureGlitchModalProps) {
+export function CaptureGlitchModal({
+  open,
+  workspacePath,
+  onClose,
+  onSuccess,
+  prNumber,
+  prTitle,
+  prUrl,
+  initialScope,
+}: CaptureGlitchModalProps) {
   const [description, setDescription] = useState('');
   const [source, setSource] = useState<CaptureGlitchRequest['source']>('production');
   const [scopeText, setScopeText] = useState('');
@@ -51,18 +68,20 @@ export function CaptureGlitchModal({ open, workspacePath, onClose, onSuccess }: 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset all state when the modal opens
+  // Reset all state when the modal opens, pre-filling from PR props if provided
   useEffect(() => {
     if (open) {
-      setDescription('');
+      setDescription(
+        prNumber ? `Reported from PR #${prNumber}: ${prTitle ?? ''}` : ''
+      );
       setSource('production');
-      setScopeText('');
+      setScopeText(initialScope ?? '');
       setSelectedGates(new Set());
       setSeverity('high');
       setSubmitting(false);
       setError(null);
     }
-  }, [open]);
+  }, [open, prNumber, prTitle, initialScope]);
 
   function toggleGate(gate: string) {
     setSelectedGates((prev) => {
@@ -110,6 +129,7 @@ export function CaptureGlitchModal({ open, workspacePath, onClose, onSuccess }: 
       severity,
       source,
       created_by: 'human',
+      ...(prUrl ? { source_issue: prUrl } : {}),
     };
 
     try {

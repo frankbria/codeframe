@@ -299,6 +299,55 @@ class TestGitHubIntegration:
             assert exc_info.value.status_code == 403
 
 
+@pytest.mark.v2
+class TestGetPrFiles:
+    """Tests for GitHubIntegration.get_pr_files."""
+
+    @pytest.fixture
+    def github(self):
+        return GitHubIntegration(
+            token="ghp_test_token_12345",
+            repo="owner/test-repo",
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_list_of_filenames(self, github):
+        """get_pr_files returns a list of filename strings."""
+        mock_response = [
+            {"filename": "src/app.py", "status": "modified"},
+            {"filename": "tests/test_app.py", "status": "added"},
+        ]
+
+        with patch.object(github, "_make_request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = mock_response
+            files = await github.get_pr_files(42)
+
+        assert files == ["src/app.py", "tests/test_app.py"]
+        mock_request.assert_called_once()
+        call_kwargs = mock_request.call_args.kwargs
+        assert call_kwargs["method"] == "GET"
+        assert "/pulls/42/files" in call_kwargs["endpoint"]
+        assert "per_page=100" in call_kwargs["endpoint"]
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_for_no_files(self, github):
+        """get_pr_files returns empty list when PR has no file changes."""
+        with patch.object(github, "_make_request", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = []
+            files = await github.get_pr_files(1)
+
+        assert files == []
+
+    @pytest.mark.asyncio
+    async def test_propagates_api_error(self, github):
+        """get_pr_files propagates GitHubAPIError."""
+        with patch.object(github, "_make_request", new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = GitHubAPIError(404, "Not Found")
+            with pytest.raises(GitHubAPIError) as exc_info:
+                await github.get_pr_files(99999)
+        assert exc_info.value.status_code == 404
+
+
 class TestGitHubAPIError:
     """Tests for GitHubAPIError exception."""
 

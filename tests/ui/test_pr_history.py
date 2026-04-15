@@ -1,7 +1,7 @@
-"""Tests for GET /api/v2/pr/history endpoint (pr_v2 router).
+"""Tests for PR v2 router endpoints: history and files.
 
-These tests verify the PR history endpoint by mocking GitHubIntegration
-so no real GitHub API calls are made.
+These tests verify the PR history and PR files endpoints by mocking
+GitHubIntegration so no real GitHub API calls are made.
 """
 
 import shutil
@@ -254,3 +254,54 @@ class TestGetPrHistory:
 
         assert resp.status_code == 200
         assert resp.json()["pull_requests"][0]["author"] == "bob"
+
+
+class TestGetPrFiles:
+    """Tests for GET /api/v2/pr/{pr_number}/files."""
+
+    def test_returns_file_list(self, test_client):
+        """Endpoint returns the list of changed files for a PR."""
+        mock_client = _make_mock_client()
+        mock_client.get_pr_files = AsyncMock(return_value=["src/app.py", "tests/test_app.py"])
+
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock_client):
+            resp = test_client.get("/api/v2/pr/42/files?workspace_path=/tmp")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["files"] == ["src/app.py", "tests/test_app.py"]
+
+    def test_returns_empty_list(self, test_client):
+        """Endpoint returns empty list when PR has no file changes."""
+        mock_client = _make_mock_client()
+        mock_client.get_pr_files = AsyncMock(return_value=[])
+
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock_client):
+            resp = test_client.get("/api/v2/pr/1/files?workspace_path=/tmp")
+
+        assert resp.status_code == 200
+        assert resp.json()["files"] == []
+
+    def test_pr_not_found(self, test_client):
+        """Endpoint returns 404 when PR does not exist."""
+        from codeframe.git.github_integration import GitHubAPIError
+
+        mock_client = _make_mock_client()
+        mock_client.get_pr_files = AsyncMock(
+            side_effect=GitHubAPIError(404, "Not Found"),
+        )
+
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock_client):
+            resp = test_client.get("/api/v2/pr/99999/files?workspace_path=/tmp")
+
+        assert resp.status_code == 404
+
+    def test_client_close_called(self, test_client):
+        """Client.close() is always called."""
+        mock_client = _make_mock_client()
+        mock_client.get_pr_files = AsyncMock(return_value=[])
+
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock_client):
+            test_client.get("/api/v2/pr/1/files?workspace_path=/tmp")
+
+        mock_client.close.assert_awaited_once()

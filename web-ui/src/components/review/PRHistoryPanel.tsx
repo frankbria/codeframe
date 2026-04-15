@@ -8,10 +8,13 @@ import {
   ArrowUpRight01Icon,
   CheckmarkCircle01Icon,
   Cancel01Icon,
+  Alert02Icon,
 } from '@hugeicons/react';
 import { prApi } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { CaptureGlitchModal } from '@/components/proof';
 import type {
   PRHistoryResponse,
   PRHistoryItem,
@@ -42,6 +45,11 @@ export interface PRHistoryPanelProps {
 
 export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
   const [expandedPR, setExpandedPR] = useState<number | null>(null);
+  const [loadingFiles, setLoadingFiles] = useState<number | null>(null);
+  const [glitchTarget, setGlitchTarget] = useState<{
+    pr: PRHistoryItem;
+    files: string[];
+  } | null>(null);
 
   const swrKey = workspacePath
     ? `/api/v2/pr/history?workspace_path=${encodeURIComponent(workspacePath)}`
@@ -54,6 +62,19 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
 
   const toggleExpand = (prNumber: number) => {
     setExpandedPR((prev) => (prev === prNumber ? null : prNumber));
+  };
+
+  const handleReportGlitch = async (pr: PRHistoryItem) => {
+    setLoadingFiles(pr.number);
+    try {
+      const files = await prApi.getFiles(workspacePath, pr.number);
+      setGlitchTarget({ pr, files });
+    } catch {
+      // Open the modal with a note so the user knows scope couldn't be loaded
+      setGlitchTarget({ pr, files: ['# Could not load changed files — enter scope manually'] });
+    } finally {
+      setLoadingFiles(null);
+    }
   };
 
   return (
@@ -120,6 +141,20 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
                     )}
                   </div>
                 </button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 gap-1.5 text-xs"
+                  disabled={loadingFiles !== null}
+                  onClick={() => handleReportGlitch(pr)}
+                >
+                  {loadingFiles === pr.number ? (
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+                  ) : (
+                    <Alert02Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
+                  Report Glitch
+                </Button>
                 <a
                   href={pr.url}
                   target="_blank"
@@ -165,6 +200,18 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
             </div>
           ))}
         </div>
+      )}
+      {glitchTarget && (
+        <CaptureGlitchModal
+          open
+          workspacePath={workspacePath}
+          prNumber={glitchTarget.pr.number}
+          prTitle={glitchTarget.pr.title}
+          prUrl={glitchTarget.pr.url}
+          initialScope={glitchTarget.files.join('\n')}
+          onClose={() => setGlitchTarget(null)}
+          onSuccess={() => setGlitchTarget(null)}
+        />
       )}
     </Card>
   );

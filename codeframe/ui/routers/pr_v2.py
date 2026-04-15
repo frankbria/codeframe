@@ -122,6 +122,12 @@ class PRHistoryItem(BaseModel):
     proof_snapshot: Optional[ProofSnapshotOut]
 
 
+class PRFilesResponse(BaseModel):
+    """Response for PR changed files."""
+
+    files: list[str]
+
+
 class PRHistoryResponse(BaseModel):
     """Response for PR history list."""
 
@@ -385,6 +391,48 @@ async def get_pr_history(
         raise HTTPException(
             status_code=500,
             detail=api_error("Failed to get PR history", ErrorCodes.EXECUTION_FAILED, str(e)),
+        )
+    finally:
+        await client.close()
+
+
+@router.get("/{pr_number}/files", response_model=PRFilesResponse)
+@rate_limit_standard()
+async def get_pr_files(
+    request: Request,
+    pr_number: int,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> PRFilesResponse:
+    """Get the list of files changed in a pull request.
+
+    Args:
+        pr_number: PR number
+        workspace: v2 Workspace (for context)
+
+    Returns:
+        List of changed filenames
+    """
+    client = _get_github_client()
+    try:
+        files = await client.get_pr_files(pr_number)
+        return PRFilesResponse(files=files)
+    except GitHubAPIError as e:
+        if e.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail=api_error("PR not found", ErrorCodes.NOT_FOUND, f"No PR #{pr_number}"),
+            )
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get files for PR #{pr_number}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=api_error("Failed to get PR files", ErrorCodes.EXECUTION_FAILED, str(e)),
         )
     finally:
         await client.close()

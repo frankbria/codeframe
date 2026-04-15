@@ -383,6 +383,11 @@ export interface CaptureGlitchRequest {
   severity: ProofSeverity;
   source: 'production' | 'qa' | 'dogfooding' | 'monitoring' | 'user_report';
   created_by: string;
+  source_issue?: string;
+}
+
+export interface PRFilesResponse {
+  files: string[];
 }
 
 // Proof run types (mirrors proof_v2.py RunProofResponse + RunStatusResponse)
