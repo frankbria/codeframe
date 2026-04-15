@@ -69,4 +69,6 @@ module.exports = {
   // BlockerCard origin badges
   Settings01Icon: createIconMock('Settings01Icon'),
   UserCircle02Icon: createIconMock('UserCircle02Icon'),
+  // PRHistoryPanel
+  ArrowUpRight01Icon: createIconMock('ArrowUpRight01Icon'),
 };

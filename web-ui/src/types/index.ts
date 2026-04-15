@@ -432,6 +432,32 @@ export interface GateRunEntry {
 }
 
 
+// PR History types (mirrors pr_v2.py PRHistoryResponse)
+export interface GateBreakdownItem {
+  gate: string;
+  status: string;
+}
+
+export interface ProofSnapshot {
+  gates_passed: number;
+  gates_total: number;
+  gate_breakdown: GateBreakdownItem[];
+}
+
+export interface PRHistoryItem {
+  number: number;
+  title: string;
+  merged_at: string;
+  author: string | null;
+  url: string;
+  proof_snapshot: ProofSnapshot | null;
+}
+
+export interface PRHistoryResponse {
+  pull_requests: PRHistoryItem[];
+  total: number;
+}
+
 // Quick Actions props (dashboard)
 export interface QuickActionsProps {
   taskCounts?: TaskStatusCounts;

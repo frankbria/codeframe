@@ -54,6 +54,7 @@ class PRDetails:
     merged_at: Optional[datetime]
     head_branch: str
     base_branch: str
+    author: Optional[str] = None
 
 
 @dataclass
@@ -220,6 +221,9 @@ class GitHubIntegration:
                 data["merged_at"].replace("Z", "+00:00")
             )
 
+        user = data.get("user")
+        author = user.get("login") if isinstance(user, dict) else None
+
         return PRDetails(
             number=data["number"],
             url=data["html_url"],
@@ -230,6 +234,7 @@ class GitHubIntegration:
             merged_at=merged_at,
             head_branch=data["head"]["ref"],
             base_branch=data["base"]["ref"],
+            author=author,
         )
 
     async def create_pull_request(

@@ -52,6 +52,7 @@ import type {
   RunStatusResponse,
   ProofRunSummary,
   ProofRunDetail,
+  PRHistoryResponse,
   Session,
   SessionState,
   SessionListResponse,
@@ -715,6 +716,13 @@ export const prApi = {
       { method: request.method ?? 'squash' },
       { params: { workspace_path: workspacePath } }
     );
+    return response.data;
+  },
+
+  getHistory: async (workspacePath: string, limit?: number): Promise<PRHistoryResponse> => {
+    const response = await api.get<PRHistoryResponse>('/api/v2/pr/history', {
+      params: { workspace_path: workspacePath, ...(limit ? { limit } : {}) },
+    });
     return response.data;
   },
 };
