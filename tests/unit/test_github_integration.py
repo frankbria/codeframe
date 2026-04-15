@@ -326,6 +326,7 @@ class TestGetPrFiles:
         call_kwargs = mock_request.call_args.kwargs
         assert call_kwargs["method"] == "GET"
         assert "/pulls/42/files" in call_kwargs["endpoint"]
+        assert "per_page=100" in call_kwargs["endpoint"]
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_for_no_files(self, github):

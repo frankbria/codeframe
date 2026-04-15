@@ -390,7 +390,7 @@ class GitHubIntegration:
         Raises:
             GitHubAPIError: If API error occurs
         """
-        endpoint = f"/repos/{self.owner}/{self.repo_name}/pulls/{pr_number}/files"
+        endpoint = f"/repos/{self.owner}/{self.repo_name}/pulls/{pr_number}/files?per_page=100"
         data = await self._make_request(method="GET", endpoint=endpoint)
         return [f["filename"] for f in data]
 

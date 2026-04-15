@@ -18,7 +18,6 @@ import { CaptureGlitchModal } from '@/components/proof';
 import type {
   PRHistoryResponse,
   PRHistoryItem,
-  ProofRequirement,
   ProofSnapshot,
   GateBreakdownItem,
 } from '@/types';
@@ -71,7 +70,8 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
       const files = await prApi.getFiles(workspacePath, pr.number);
       setGlitchTarget({ pr, files });
     } catch {
-      setGlitchTarget({ pr, files: [] });
+      // Open the modal with a note so the user knows scope couldn't be loaded
+      setGlitchTarget({ pr, files: ['# Could not load changed files — enter scope manually'] });
     } finally {
       setLoadingFiles(null);
     }
@@ -203,7 +203,7 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
       )}
       {glitchTarget && (
         <CaptureGlitchModal
-          open={!!glitchTarget}
+          open
           workspacePath={workspacePath}
           prNumber={glitchTarget.pr.number}
           prTitle={glitchTarget.pr.title}
