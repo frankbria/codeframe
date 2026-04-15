@@ -42,7 +42,7 @@ class TestPrProofSnapshot:
         init_proof_tables(test_workspace)
 
         gate_breakdown = [
-            {"gate": "unit_test", "status": "passed"},
+            {"gate": "unit_test", "status": "satisfied"},
             {"gate": "lint", "status": "failed"},
         ]
         save_pr_proof_snapshot(
@@ -89,7 +89,7 @@ class TestPrProofSnapshot:
             pr_number=10,
             gates_passed=3,
             gates_total=5,
-            gate_breakdown=[{"gate": "unit_test", "status": "passed"}],
+            gate_breakdown=[{"gate": "unit_test", "status": "satisfied"}],
         )
 
         save_pr_proof_snapshot(
@@ -98,8 +98,8 @@ class TestPrProofSnapshot:
             gates_passed=5,
             gates_total=5,
             gate_breakdown=[
-                {"gate": "unit_test", "status": "passed"},
-                {"gate": "lint", "status": "passed"},
+                {"gate": "unit_test", "status": "satisfied"},
+                {"gate": "lint", "status": "satisfied"},
             ],
         )
 

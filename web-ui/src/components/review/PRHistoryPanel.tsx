@@ -23,7 +23,7 @@ import type {
 
 function proofBadgeClasses(snapshot: ProofSnapshot | null): string {
   if (!snapshot) return 'text-muted-foreground bg-muted';
-  if (snapshot.gates_passed === snapshot.gates_total) {
+  if (snapshot.gates_total > 0 && snapshot.gates_passed === snapshot.gates_total) {
     return 'text-green-600 bg-green-50';
   }
   return 'text-yellow-600 bg-yellow-50';
@@ -87,48 +87,49 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
           {data.pull_requests.map((pr: PRHistoryItem) => (
             <div key={pr.number} className="flex flex-col rounded-md border">
               {/* Row header */}
-              <button
-                type="button"
-                onClick={() => toggleExpand(pr.number)}
-                className="flex items-center justify-between gap-2 p-3 text-left transition-all hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring rounded-md"
-                aria-expanded={expandedPR === pr.number}
-              >
-                {/* Left side */}
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate text-sm font-medium">
-                    {pr.title}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(pr.merged_at).toLocaleDateString()}
-                    {pr.author && ` by ${pr.author}`}
-                  </span>
-                </div>
+              <div className="flex items-center gap-2 p-3">
+                <button
+                  type="button"
+                  onClick={() => toggleExpand(pr.number)}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left transition-all rounded-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+                  aria-expanded={expandedPR === pr.number}
+                >
+                  {/* Left side */}
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="truncate text-sm font-medium">
+                      {pr.title}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(pr.merged_at).toLocaleDateString()}
+                      {pr.author && ` by ${pr.author}`}
+                    </span>
+                  </div>
 
-                {/* Right side */}
-                <div className="flex shrink-0 items-center gap-2">
-                  <Badge
-                    variant="secondary"
-                    className={proofBadgeClasses(pr.proof_snapshot)}
-                  >
-                    {proofBadgeText(pr.proof_snapshot)}
-                  </Badge>
-                  <a
-                    href={pr.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-muted-foreground transition-all hover:text-foreground"
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label={`Open PR #${pr.number} on GitHub`}
-                  >
-                    <ArrowUpRight01Icon className="h-4 w-4" />
-                  </a>
-                  {expandedPR === pr.number ? (
-                    <ArrowUp01Icon className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <ArrowDown01Icon className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </div>
-              </button>
+                  {/* Proof badge + chevron */}
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge
+                      variant="secondary"
+                      className={proofBadgeClasses(pr.proof_snapshot)}
+                    >
+                      {proofBadgeText(pr.proof_snapshot)}
+                    </Badge>
+                    {expandedPR === pr.number ? (
+                      <ArrowUp01Icon className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ArrowDown01Icon className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                </button>
+                <a
+                  href={pr.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 text-muted-foreground transition-all hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring rounded"
+                  aria-label={`Open PR #${pr.number} on GitHub`}
+                >
+                  <ArrowUpRight01Icon className="h-4 w-4" />
+                </a>
+              </div>
 
               {/* Expanded gate breakdown */}
               {expandedPR === pr.number && pr.proof_snapshot && (

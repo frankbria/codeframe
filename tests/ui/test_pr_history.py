@@ -122,7 +122,7 @@ class TestGetPrHistory:
             gates_passed=7,
             gates_total=9,
             gate_breakdown=[
-                {"gate": "unit_test", "status": "passed"},
+                {"gate": "unit_test", "status": "satisfied"},
                 {"gate": "lint", "status": "failed"},
             ],
         )

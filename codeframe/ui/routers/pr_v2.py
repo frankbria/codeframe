@@ -477,7 +477,7 @@ async def create_pull_request(
             for req in reqs:
                 for ob in req.obligations:
                     gates_total += 1
-                    passed = ob.status == "passed"
+                    passed = ob.status == "satisfied"
                     if passed:
                         gates_passed += 1
                     gate_breakdown.append({
