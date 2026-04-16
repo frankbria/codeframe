@@ -59,6 +59,7 @@ import type {
   SessionListResponse,
   SessionCreateRequest,
   ChatMessage,
+  AgentSettings,
 } from '@/types';
 
 // FastAPI validation error format
@@ -799,6 +800,26 @@ export const sessionsApi = {
    */
   end: async (id: string): Promise<void> => {
     await api.delete(`/api/v2/sessions/${encodeURIComponent(id)}`);
+  },
+};
+
+// Settings API methods (issue #554)
+export const settingsApi = {
+  get: async (workspacePath: string): Promise<AgentSettings> => {
+    const response = await api.get<AgentSettings>('/api/v2/settings', {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  update: async (
+    workspacePath: string,
+    body: AgentSettings
+  ): Promise<AgentSettings> => {
+    const response = await api.put<AgentSettings>('/api/v2/settings', body, {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
   },
 };
 

@@ -163,6 +163,10 @@ class EnvironmentConfig:
     # LLM provider config (workspace-level default; overridden by env vars and CLI flags)
     llm: Optional[LLMConfig] = None
 
+    # Settings page (issue #554) — UI-managed agent settings
+    max_cost_usd: Optional[float] = None
+    agent_type_models: dict[str, str] = dataclass_field(default_factory=dict)
+
     def validate(self) -> list[str]:
         """Validate configuration values.
 
@@ -216,6 +220,17 @@ class EnvironmentConfig:
             )
         if budget.stall_timeout_s < 0:
             errors.append("agent_budget.stall_timeout_s must be >= 0 (0 = disabled)")
+
+        if self.max_cost_usd is not None and self.max_cost_usd < 0:
+            errors.append("max_cost_usd must be >= 0")
+
+        valid_agent_types = {"claude_code", "codex", "opencode", "react"}
+        invalid_agent_types = sorted(set(self.agent_type_models) - valid_agent_types)
+        if invalid_agent_types:
+            errors.append(
+                "agent_type_models contains unsupported agent types: "
+                + ", ".join(invalid_agent_types)
+            )
 
         return errors
 

@@ -108,6 +108,20 @@ class TestEnvironmentConfigValidation:
         errors = config.validate()
         assert len(errors) == 3
 
+    def test_invalid_max_cost_usd(self):
+        """Negative max_cost_usd is rejected."""
+        config = EnvironmentConfig(max_cost_usd=-1.0)
+        errors = config.validate()
+        assert any("max_cost_usd" in e for e in errors)
+
+    def test_invalid_agent_type_in_models(self):
+        """Unknown agent_type keys in agent_type_models are rejected."""
+        config = EnvironmentConfig(
+            agent_type_models={"claude_code": "claude-opus-4", "evil_bot": "x"}
+        )
+        errors = config.validate()
+        assert any("evil_bot" in e for e in errors)
+
 
 class TestEnvironmentConfigCommands:
     """Tests for command generation."""
