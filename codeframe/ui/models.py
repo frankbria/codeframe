@@ -901,3 +901,45 @@ class ErrorResponse(BaseModel):
     )
 
     detail: str = Field(..., description="Error message describing what went wrong")
+
+
+# ============================================================================
+# Settings (issue #554)
+# ============================================================================
+
+
+AGENT_TYPES = ("claude_code", "codex", "opencode", "react")
+
+
+class AgentTypeModelConfig(BaseModel):
+    """Default model for a single agent type."""
+
+    agent_type: str = Field(
+        ..., description="One of: claude_code, codex, opencode, react"
+    )
+    default_model: str = Field(
+        default="",
+        description="Model identifier (e.g. 'claude-opus-4', 'gpt-4o'); empty string means unset",
+    )
+
+
+class AgentSettings(BaseModel):
+    """Agent settings shared by GET response and PUT request."""
+
+    agent_models: List[AgentTypeModelConfig] = Field(
+        ..., description="Default model per agent type"
+    )
+    max_turns: int = Field(
+        default=20, gt=0, description="Maximum turns per task (must be > 0)"
+    )
+    max_cost_usd: Optional[float] = Field(
+        default=None, ge=0, description="Maximum cost per task in USD"
+    )
+
+
+class AgentSettingsResponse(AgentSettings):
+    """Response shape for GET /api/v2/settings."""
+
+
+class UpdateAgentSettingsRequest(AgentSettings):
+    """Request shape for PUT /api/v2/settings."""

@@ -163,6 +163,10 @@ class EnvironmentConfig:
     # LLM provider config (workspace-level default; overridden by env vars and CLI flags)
     llm: Optional[LLMConfig] = None
 
+    # Settings page (issue #554) — UI-managed agent settings
+    max_cost_usd: Optional[float] = None
+    agent_type_models: dict[str, str] = dataclass_field(default_factory=dict)
+
     def validate(self) -> list[str]:
         """Validate configuration values.
 

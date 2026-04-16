@@ -35,6 +35,7 @@ from codeframe.ui.routers import (
     review_v2,
     schedule_v2,
     session_chat_ws,
+    settings_v2,
     terminal_ws,
     streaming_v2,
     tasks_v2,
@@ -496,6 +497,7 @@ app.include_router(prd_v2.router)           # /api/v2/prd
 app.include_router(proof_v2.router)         # /api/v2/proof
 app.include_router(review_v2.router)        # /api/v2/review
 app.include_router(schedule_v2.router)      # /api/v2/schedule
+app.include_router(settings_v2.router)      # /api/v2/settings
 app.include_router(streaming_v2.router)     # /api/v2/tasks/{id}/stream (SSE)
 app.include_router(tasks_v2.router)         # /api/v2/tasks
 app.include_router(templates_v2.router)     # /api/v2/templates
