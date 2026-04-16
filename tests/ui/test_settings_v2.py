@@ -199,3 +199,59 @@ class TestSettingsV2Put:
         }
         response = test_client.put("/api/v2/settings", json=body)
         assert response.status_code == 422
+
+    def test_put_rejects_unknown_agent_type(self, test_client):
+        """Pydantic Literal rejects agent_types outside the supported set."""
+        body = {
+            "agent_models": [
+                {"agent_type": "evil_bot", "default_model": "anything"},
+            ],
+            "max_turns": 20,
+            "max_cost_usd": None,
+        }
+        response = test_client.put("/api/v2/settings", json=body)
+        assert response.status_code == 422
+
+    def test_put_skips_empty_model_strings(self, test_client, test_workspace):
+        """PUT does not persist empty default_model entries to the YAML."""
+        body = {
+            "agent_models": [
+                {"agent_type": "claude_code", "default_model": "claude-opus-4"},
+                {"agent_type": "codex", "default_model": ""},
+                {"agent_type": "opencode", "default_model": ""},
+                {"agent_type": "react", "default_model": ""},
+            ],
+            "max_turns": 20,
+            "max_cost_usd": None,
+        }
+        response = test_client.put("/api/v2/settings", json=body)
+        assert response.status_code == 200
+
+        from codeframe.core.config import load_environment_config
+
+        loaded = load_environment_config(test_workspace.repo_path)
+        # Only the non-empty entry is persisted.
+        assert loaded.agent_type_models == {"claude_code": "claude-opus-4"}
+
+    def test_get_handles_null_agent_budget(self, test_client, test_workspace):
+        """GET tolerates legacy YAML that drops or nulls agent_budget."""
+        from codeframe.core.config import (
+            EnvironmentConfig,
+            save_environment_config,
+        )
+
+        config = EnvironmentConfig()
+        save_environment_config(test_workspace.repo_path, config)
+        # Manually break agent_budget to simulate a hand-edited legacy file.
+        import yaml
+
+        config_path = test_workspace.repo_path / ".codeframe" / "config.yaml"
+        with open(config_path) as f:
+            data = yaml.safe_load(f)
+        data["agent_budget"] = None
+        with open(config_path, "w") as f:
+            yaml.dump(data, f)
+
+        response = test_client.get("/api/v2/settings")
+        assert response.status_code == 200
+        assert response.json()["max_turns"] == 100  # AgentBudgetConfig default

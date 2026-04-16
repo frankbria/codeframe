@@ -13,6 +13,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from codeframe.core.config import (
+    AgentBudgetConfig,
     EnvironmentConfig,
     load_environment_config,
     save_environment_config,
@@ -43,9 +44,11 @@ def _config_to_response(config: EnvironmentConfig) -> AgentSettingsResponse:
         )
         for agent_type in AGENT_TYPES
     ]
+    # Guard against legacy YAML where agent_budget may have been removed/nulled.
+    budget = config.agent_budget or AgentBudgetConfig()
     return AgentSettingsResponse(
         agent_models=agent_models,
-        max_turns=config.agent_budget.max_iterations,
+        max_turns=budget.max_iterations,
         max_cost_usd=config.max_cost_usd,
     )
 
@@ -87,11 +90,18 @@ async def update_settings(
     """
     try:
         config = load_environment_config(workspace.repo_path) or EnvironmentConfig()
+        if config.agent_budget is None:
+            config.agent_budget = AgentBudgetConfig()
 
         config.agent_budget.max_iterations = body.max_turns
         config.max_cost_usd = body.max_cost_usd
+        # Skip empty model strings — they're equivalent to "key not present"
+        # in _config_to_response, so persisting them just adds yaml noise.
+        # AgentType Literal in the model already rejects unknown agent_type values.
         config.agent_type_models = {
-            entry.agent_type: entry.default_model for entry in body.agent_models
+            entry.agent_type: entry.default_model
+            for entry in body.agent_models
+            if entry.default_model
         }
 
         save_environment_config(workspace.repo_path, config)

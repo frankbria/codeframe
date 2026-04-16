@@ -221,6 +221,17 @@ class EnvironmentConfig:
         if budget.stall_timeout_s < 0:
             errors.append("agent_budget.stall_timeout_s must be >= 0 (0 = disabled)")
 
+        if self.max_cost_usd is not None and self.max_cost_usd < 0:
+            errors.append("max_cost_usd must be >= 0")
+
+        valid_agent_types = {"claude_code", "codex", "opencode", "react"}
+        invalid_agent_types = sorted(set(self.agent_type_models) - valid_agent_types)
+        if invalid_agent_types:
+            errors.append(
+                "agent_type_models contains unsupported agent types: "
+                + ", ".join(invalid_agent_types)
+            )
+
         return errors
 
     def get_install_command(self, package: str) -> str:
