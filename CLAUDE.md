@@ -84,7 +84,7 @@ At all times: `codeframe --help` works, Golden Path stubs can run, no breaking r
 ### Phase 3 Web UI (actively developed — not legacy)
 Next.js 16 App Router, TypeScript, Shadcn/UI, Tailwind CSS, Hugeicons, XTerm.js, WebSocket + SSE.
 
-Shipped pages: `/`, `/prd`, `/tasks`, `/execution`, `/execution/[taskId]`, `/blockers`, `/proof`, `/proof/[req_id]`, `/review`, `/sessions`, `/sessions/[id]`.
+Shipped pages: `/`, `/prd`, `/tasks`, `/execution`, `/execution/[taskId]`, `/blockers`, `/proof`, `/proof/[req_id]`, `/review`, `/sessions`, `/sessions/[id]`, `/settings`.
 
 Testing: `cd web-ui && npm test` must pass; `npm run build` must succeed. The `frontend-tests` CI job enforces this on every PR.
 
