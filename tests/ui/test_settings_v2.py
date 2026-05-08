@@ -434,15 +434,20 @@ class TestSettingsV2VerifyKey:
         assert data["valid"] is False
         assert "no" in data["message"].lower() or "missing" in data["message"].lower()
 
-    def test_verify_anthropic_calls_models_list(self, keys_client, monkeypatch):
+    def test_verify_anthropic_calls_messages_create(self, keys_client, monkeypatch):
         from codeframe.ui.routers import settings_v2
 
         called_with = {}
 
+        class FakeMessages:
+            def create(self_, **kwargs):
+                called_with["kwargs"] = kwargs
+                return {"id": "msg_test"}
+
         class FakeAnthropicClient:
             def __init__(self, api_key):
                 called_with["key"] = api_key
-                self.models = type("M", (), {"list": lambda self_: ["model-a"]})()
+                self.messages = FakeMessages()
 
         monkeypatch.setattr(settings_v2, "_AnthropicClient", FakeAnthropicClient)
 
@@ -454,17 +459,24 @@ class TestSettingsV2VerifyKey:
         data = response.json()
         assert data["valid"] is True
         assert called_with["key"] == VALID_ANTHROPIC
+        assert called_with["kwargs"]["max_tokens"] == 1
 
     def test_verify_anthropic_handles_auth_error(self, keys_client, monkeypatch):
+        from anthropic import AuthenticationError
+
         from codeframe.ui.routers import settings_v2
+
+        class FakeMessages:
+            def create(self_, **kwargs):
+                # Construct the AuthenticationError without going through the
+                # SDK's response machinery; only the message is asserted on.
+                err = AuthenticationError.__new__(AuthenticationError)
+                Exception.__init__(err, "401 unauthorized")
+                raise err
 
         class FakeAnthropicClient:
             def __init__(self, api_key):
-                self.models = type(
-                    "M",
-                    (),
-                    {"list": lambda self_: (_ for _ in ()).throw(Exception("401 unauthorized"))},
-                )()
+                self.messages = FakeMessages()
 
         monkeypatch.setattr(settings_v2, "_AnthropicClient", FakeAnthropicClient)
 
@@ -475,17 +487,21 @@ class TestSettingsV2VerifyKey:
         assert response.status_code == 200
         data = response.json()
         assert data["valid"] is False
-        assert data["message"]
+        assert "rejected" in data["message"].lower() or "401" in data["message"]
 
     def test_verify_uses_stored_when_value_omitted(self, keys_client, monkeypatch):
         from codeframe.ui.routers import settings_v2
 
         captured = {}
 
+        class FakeMessages:
+            def create(self_, **kwargs):
+                return {"id": "msg_ok"}
+
         class FakeAnthropicClient:
             def __init__(self, api_key):
                 captured["key"] = api_key
-                self.models = type("M", (), {"list": lambda self_: []})()
+                self.messages = FakeMessages()
 
         monkeypatch.setattr(settings_v2, "_AnthropicClient", FakeAnthropicClient)
 

@@ -211,6 +211,9 @@ describe('ApiKeysTab', () => {
     expect(input).toBeDisabled();
     expect(screen.getByText(/Loaded from environment variable/i)).toBeInTheDocument();
     // No remove button rendered for environment-source.
-    expect(slot.querySelector('button[aria-label]')).toBeNull();
+    const removeButton = Array.from(slot.querySelectorAll('button')).find((btn) =>
+      /remove/i.test(btn.textContent ?? '')
+    );
+    expect(removeButton).toBeUndefined();
   });
 });

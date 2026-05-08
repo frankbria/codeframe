@@ -15,6 +15,7 @@ require a workspace. Env vars take precedence at read time.
 import logging
 
 from anthropic import Anthropic as _AnthropicClient
+from anthropic import AuthenticationError as _AnthropicAuthError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from openai import OpenAI as _OpenAIClient
@@ -305,10 +306,22 @@ async def _check_github_token(token: str) -> tuple[bool, str]:
 
 
 def _verify_anthropic_sync(key: str) -> tuple[bool, str]:
+    """Verify an Anthropic key by issuing a minimal messages.create() call.
+
+    Uses messages.create rather than models.list because messages is the
+    stable, always-present API surface across all supported SDK versions
+    (>=0.18). max_tokens=1 keeps the cost trivial.
+    """
     try:
         client = _AnthropicClient(api_key=key)
-        client.models.list()
+        client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=1,
+            messages=[{"role": "user", "content": "ping"}],
+        )
         return True, "Anthropic key accepted"
+    except _AnthropicAuthError as e:
+        return False, f"Anthropic key rejected: {e}"
     except Exception as e:
         return False, f"Anthropic verification failed: {e}"
 
