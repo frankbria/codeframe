@@ -574,3 +574,21 @@ export interface AgentSettings {
   max_turns: number;
   max_cost_usd: number | null;
 }
+
+// API key types — mirrors codeframe/ui/models.py KeyProvider et al.
+export type KeyProvider = 'LLM_ANTHROPIC' | 'LLM_OPENAI' | 'GIT_GITHUB';
+
+export type KeySource = 'environment' | 'stored' | 'none';
+
+export interface KeyStatusResponse {
+  provider: KeyProvider;
+  stored: boolean;
+  source: KeySource;
+  last_four: string | null;
+}
+
+export interface VerifyKeyResponse {
+  provider: KeyProvider;
+  valid: boolean;
+  message: string;
+}

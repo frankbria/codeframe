@@ -53,6 +53,43 @@ def test_client(test_workspace):
     yield client
 
 
+@pytest.fixture
+def temp_credentials_dir(tmp_path, monkeypatch):
+    """Provide an isolated CredentialManager backed by a temp dir.
+
+    Patches the settings_v2 dependency so endpoints use a clean store
+    that does not touch the developer's real keyring or ~/.codeframe.
+    Also clears the three target env vars so source detection is deterministic.
+    """
+    from codeframe.core.credentials import CredentialManager, CredentialStore
+
+    # Force file-backed store so tests are independent of any system keyring.
+    store = CredentialStore(storage_dir=tmp_path)
+    store._keyring_available = False
+    manager = CredentialManager.__new__(CredentialManager)
+    manager._store = store
+
+    # Clear env vars so stored/none sources are detected reliably.
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+
+    yield manager
+
+
+@pytest.fixture
+def keys_client(temp_credentials_dir):
+    """TestClient where the credential manager dependency is overridden."""
+    from codeframe.ui.routers import settings_v2
+
+    app = FastAPI()
+    app.include_router(settings_v2.router)
+
+    app.dependency_overrides[settings_v2.get_credential_manager] = (
+        lambda: temp_credentials_dir
+    )
+    yield TestClient(app)
+
+
 class TestSettingsV2Get:
     """Tests for GET /api/v2/settings."""
 
@@ -255,3 +292,266 @@ class TestSettingsV2Put:
         response = test_client.get("/api/v2/settings")
         assert response.status_code == 200
         assert response.json()["max_turns"] == 100  # AgentBudgetConfig default
+
+
+# ============================================================================
+# API Key Management (issue #555)
+# ============================================================================
+
+
+VALID_ANTHROPIC = "sk-ant-api03-" + "x" * 32
+VALID_OPENAI = "sk-proj-" + "x" * 32
+VALID_GITHUB = "ghp_" + "x" * 36
+
+
+class TestSettingsV2KeysStatus:
+    """Tests for GET /api/v2/settings/keys."""
+
+    def test_returns_three_providers_when_empty(self, keys_client):
+        response = keys_client.get("/api/v2/settings/keys")
+        assert response.status_code == 200
+        data = response.json()
+        providers = {entry["provider"] for entry in data}
+        assert providers == {"LLM_ANTHROPIC", "LLM_OPENAI", "GIT_GITHUB"}
+        for entry in data:
+            assert entry["stored"] is False
+            assert entry["source"] == "none"
+            assert entry["last_four"] is None
+
+    def test_status_reports_stored_source(self, keys_client):
+        keys_client.put(
+            "/api/v2/settings/keys/LLM_ANTHROPIC", json={"value": VALID_ANTHROPIC}
+        )
+        response = keys_client.get("/api/v2/settings/keys")
+        anth = next(e for e in response.json() if e["provider"] == "LLM_ANTHROPIC")
+        assert anth["stored"] is True
+        assert anth["source"] == "stored"
+        assert anth["last_four"] == VALID_ANTHROPIC[-4:]
+
+    def test_status_reports_environment_source(self, keys_client, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-from-env-12345678")
+        response = keys_client.get("/api/v2/settings/keys")
+        anth = next(e for e in response.json() if e["provider"] == "LLM_ANTHROPIC")
+        assert anth["stored"] is True
+        assert anth["source"] == "environment"
+        assert anth["last_four"] == "5678"
+
+    def test_status_never_returns_plaintext(self, keys_client):
+        keys_client.put(
+            "/api/v2/settings/keys/LLM_OPENAI", json={"value": VALID_OPENAI}
+        )
+        response = keys_client.get("/api/v2/settings/keys")
+        body_text = response.text
+        assert VALID_OPENAI not in body_text
+        assert VALID_OPENAI[5:] not in body_text
+
+
+class TestSettingsV2KeysStore:
+    """Tests for PUT /api/v2/settings/keys/{provider}."""
+
+    def test_store_persists_credential(self, keys_client, temp_credentials_dir):
+        response = keys_client.put(
+            "/api/v2/settings/keys/LLM_ANTHROPIC", json={"value": VALID_ANTHROPIC}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["stored"] is True
+        assert data["source"] == "stored"
+        assert data["last_four"] == VALID_ANTHROPIC[-4:]
+
+        from codeframe.core.credentials import CredentialProvider
+
+        assert (
+            temp_credentials_dir.get_credential(CredentialProvider.LLM_ANTHROPIC)
+            == VALID_ANTHROPIC
+        )
+
+    def test_store_rejects_invalid_format(self, keys_client):
+        response = keys_client.put(
+            "/api/v2/settings/keys/LLM_ANTHROPIC", json={"value": "not-a-real-key"}
+        )
+        assert response.status_code == 400
+
+    def test_store_rejects_unknown_provider(self, keys_client):
+        response = keys_client.put(
+            "/api/v2/settings/keys/EVIL_PROVIDER", json={"value": "x" * 30}
+        )
+        assert response.status_code in (400, 422)
+
+    def test_store_rejects_empty_value(self, keys_client):
+        response = keys_client.put(
+            "/api/v2/settings/keys/LLM_ANTHROPIC", json={"value": ""}
+        )
+        assert response.status_code == 422
+
+    def test_store_response_excludes_plaintext(self, keys_client):
+        response = keys_client.put(
+            "/api/v2/settings/keys/GIT_GITHUB", json={"value": VALID_GITHUB}
+        )
+        assert VALID_GITHUB not in response.text
+
+
+class TestSettingsV2KeysDelete:
+    """Tests for DELETE /api/v2/settings/keys/{provider}."""
+
+    def test_delete_removes_credential(self, keys_client, temp_credentials_dir):
+        keys_client.put(
+            "/api/v2/settings/keys/LLM_OPENAI", json={"value": VALID_OPENAI}
+        )
+        response = keys_client.delete("/api/v2/settings/keys/LLM_OPENAI")
+        assert response.status_code == 204
+
+        from codeframe.core.credentials import CredentialProvider
+
+        assert (
+            temp_credentials_dir.get_credential(CredentialProvider.LLM_OPENAI) is None
+        )
+
+    def test_delete_is_idempotent(self, keys_client):
+        # Deleting a non-existent credential should not raise.
+        response = keys_client.delete("/api/v2/settings/keys/LLM_ANTHROPIC")
+        assert response.status_code == 204
+
+    def test_delete_rejects_unknown_provider(self, keys_client):
+        response = keys_client.delete("/api/v2/settings/keys/EVIL_PROVIDER")
+        assert response.status_code in (400, 422)
+
+
+class TestSettingsV2VerifyKey:
+    """Tests for POST /api/v2/settings/verify-key.
+
+    Verification calls patch the underlying SDK / HTTP client so tests
+    don't make real network requests.
+    """
+
+    def test_verify_returns_invalid_for_missing_key(self, keys_client):
+        response = keys_client.post(
+            "/api/v2/settings/verify-key",
+            json={"provider": "LLM_ANTHROPIC", "value": None},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["valid"] is False
+        assert "no" in data["message"].lower() or "missing" in data["message"].lower()
+
+    def test_verify_anthropic_calls_models_list(self, keys_client, monkeypatch):
+        from codeframe.ui.routers import settings_v2
+
+        called_with = {}
+
+        class FakeAnthropicClient:
+            def __init__(self, api_key):
+                called_with["key"] = api_key
+                self.models = type("M", (), {"list": lambda self_: ["model-a"]})()
+
+        monkeypatch.setattr(settings_v2, "_AnthropicClient", FakeAnthropicClient)
+
+        response = keys_client.post(
+            "/api/v2/settings/verify-key",
+            json={"provider": "LLM_ANTHROPIC", "value": VALID_ANTHROPIC},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["valid"] is True
+        assert called_with["key"] == VALID_ANTHROPIC
+
+    def test_verify_anthropic_handles_auth_error(self, keys_client, monkeypatch):
+        from codeframe.ui.routers import settings_v2
+
+        class FakeAnthropicClient:
+            def __init__(self, api_key):
+                self.models = type(
+                    "M",
+                    (),
+                    {"list": lambda self_: (_ for _ in ()).throw(Exception("401 unauthorized"))},
+                )()
+
+        monkeypatch.setattr(settings_v2, "_AnthropicClient", FakeAnthropicClient)
+
+        response = keys_client.post(
+            "/api/v2/settings/verify-key",
+            json={"provider": "LLM_ANTHROPIC", "value": "sk-ant-bad-key-1234567890"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["valid"] is False
+        assert data["message"]
+
+    def test_verify_uses_stored_when_value_omitted(self, keys_client, monkeypatch):
+        from codeframe.ui.routers import settings_v2
+
+        captured = {}
+
+        class FakeAnthropicClient:
+            def __init__(self, api_key):
+                captured["key"] = api_key
+                self.models = type("M", (), {"list": lambda self_: []})()
+
+        monkeypatch.setattr(settings_v2, "_AnthropicClient", FakeAnthropicClient)
+
+        keys_client.put(
+            "/api/v2/settings/keys/LLM_ANTHROPIC", json={"value": VALID_ANTHROPIC}
+        )
+        response = keys_client.post(
+            "/api/v2/settings/verify-key",
+            json={"provider": "LLM_ANTHROPIC", "value": None},
+        )
+        assert response.status_code == 200
+        assert response.json()["valid"] is True
+        assert captured["key"] == VALID_ANTHROPIC
+
+    def test_verify_openai_calls_models_list(self, keys_client, monkeypatch):
+        from codeframe.ui.routers import settings_v2
+
+        class FakeOpenAIClient:
+            def __init__(self, api_key):
+                self.models = type("M", (), {"list": lambda self_: ["gpt-4"]})()
+
+        monkeypatch.setattr(settings_v2, "_OpenAIClient", FakeOpenAIClient)
+
+        response = keys_client.post(
+            "/api/v2/settings/verify-key",
+            json={"provider": "LLM_OPENAI", "value": VALID_OPENAI},
+        )
+        assert response.status_code == 200
+        assert response.json()["valid"] is True
+
+    def test_verify_github_uses_http(self, keys_client, monkeypatch):
+        from codeframe.ui.routers import settings_v2
+
+        async def fake_check_github(token: str) -> tuple[bool, str]:
+            assert token == VALID_GITHUB
+            return True, "ok"
+
+        monkeypatch.setattr(settings_v2, "_check_github_token", fake_check_github)
+
+        response = keys_client.post(
+            "/api/v2/settings/verify-key",
+            json={"provider": "GIT_GITHUB", "value": VALID_GITHUB},
+        )
+        assert response.status_code == 200
+        assert response.json()["valid"] is True
+
+    def test_verify_github_handles_failure(self, keys_client, monkeypatch):
+        from codeframe.ui.routers import settings_v2
+
+        async def fake_check_github(token: str) -> tuple[bool, str]:
+            return False, "401 Unauthorized"
+
+        monkeypatch.setattr(settings_v2, "_check_github_token", fake_check_github)
+
+        response = keys_client.post(
+            "/api/v2/settings/verify-key",
+            json={"provider": "GIT_GITHUB", "value": VALID_GITHUB},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["valid"] is False
+        assert "401" in data["message"]
+
+    def test_verify_rejects_unknown_provider(self, keys_client):
+        response = keys_client.post(
+            "/api/v2/settings/verify-key",
+            json={"provider": "EVIL", "value": "x"},
+        )
+        assert response.status_code == 422

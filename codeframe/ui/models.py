@@ -948,3 +948,52 @@ class AgentSettingsResponse(AgentSettings):
 
 class UpdateAgentSettingsRequest(AgentSettings):
     """Request shape for PUT /api/v2/settings."""
+
+
+# ============================================================================
+# API Key Management (issue #555)
+# ============================================================================
+
+
+KeyProvider = Literal["LLM_ANTHROPIC", "LLM_OPENAI", "GIT_GITHUB"]
+KEY_PROVIDERS: tuple[KeyProvider, ...] = ("LLM_ANTHROPIC", "LLM_OPENAI", "GIT_GITHUB")
+
+KeySource = Literal["environment", "stored", "none"]
+
+
+class StoreKeyRequest(BaseModel):
+    """Request shape for PUT /api/v2/settings/keys/{provider}."""
+
+    value: str = Field(..., min_length=1, description="The credential value to store")
+
+
+class KeyStatusResponse(BaseModel):
+    """Status of a single API key. Never includes the plaintext value."""
+
+    provider: KeyProvider = Field(..., description="One of: LLM_ANTHROPIC, LLM_OPENAI, GIT_GITHUB")
+    stored: bool = Field(..., description="True if a key is available (env or storage)")
+    source: KeySource = Field(
+        ..., description="Where the key comes from: environment, stored, or none"
+    )
+    last_four: Optional[str] = Field(
+        default=None,
+        description="Last 4 characters of the key for display (None if no key available)",
+    )
+
+
+class VerifyKeyRequest(BaseModel):
+    """Request shape for POST /api/v2/settings/verify-key."""
+
+    provider: KeyProvider = Field(..., description="Which provider's key to verify")
+    value: Optional[str] = Field(
+        default=None,
+        description="The key value to verify; if None, the stored/env key is used",
+    )
+
+
+class VerifyKeyResponse(BaseModel):
+    """Result of a live verification attempt against a provider."""
+
+    provider: KeyProvider
+    valid: bool = Field(..., description="True if the provider accepted the key")
+    message: str = Field(..., description="Human-readable result message")
