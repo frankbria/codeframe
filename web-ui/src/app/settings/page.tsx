@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { settingsApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import type { AgentSettings, AgentTypeKey, ApiError } from '@/types';
+import { ApiKeysTab } from '@/components/settings/ApiKeysTab';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -69,25 +70,6 @@ export default function SettingsPage() {
 
   if (!workspaceReady) return null;
 
-  if (!workspacePath) {
-    return (
-      <main className="min-h-screen bg-background">
-        <div className="mx-auto max-w-5xl px-4 py-8">
-          <h1 className="mb-4 text-2xl font-bold">Settings</h1>
-          <div className="rounded-lg border bg-muted/50 p-6 text-center">
-            <p className="text-muted-foreground">
-              No workspace selected. Use the sidebar to return to{' '}
-              <Link href="/" className="text-primary hover:underline">
-                Workspace
-              </Link>{' '}
-              and select a project.
-            </p>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
   const updateAgentModel = (agentType: AgentTypeKey, model: string) => {
     if (!draft) return;
     setDraft({
@@ -144,7 +126,9 @@ export default function SettingsPage() {
                 Default model per agent type, plus per-task limits.
               </p>
 
-              {isLoading && !draft ? (
+              {!workspacePath ? (
+                <NoWorkspaceMessage />
+              ) : isLoading && !draft ? (
                 <p className="text-sm text-muted-foreground">Loading…</p>
               ) : error ? (
                 <p className="text-sm text-destructive">
@@ -173,7 +157,7 @@ export default function SettingsPage() {
           <TabsContent value="api-keys">
             <section className="rounded-lg border bg-card p-6">
               <h2 className="mb-1 text-lg font-semibold">API Keys</h2>
-              <ComingSoon />
+              <ApiKeysTab />
             </section>
           </TabsContent>
 
@@ -198,6 +182,20 @@ export default function SettingsPage() {
 
 function ComingSoon() {
   return <p className="text-sm text-muted-foreground">Coming soon</p>;
+}
+
+function NoWorkspaceMessage() {
+  return (
+    <div className="rounded-lg border bg-muted/50 p-6 text-center">
+      <p className="text-sm text-muted-foreground">
+        No workspace selected. Use the sidebar to return to{' '}
+        <Link href="/" className="text-primary hover:underline">
+          Workspace
+        </Link>{' '}
+        and select a project to manage agent settings.
+      </p>
+    </div>
+  );
 }
 
 interface AgentSettingsFormProps {

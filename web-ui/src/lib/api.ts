@@ -60,6 +60,9 @@ import type {
   SessionCreateRequest,
   ChatMessage,
   AgentSettings,
+  KeyProvider,
+  KeyStatusResponse,
+  VerifyKeyResponse,
 } from '@/types';
 
 // FastAPI validation error format
@@ -819,6 +822,38 @@ export const settingsApi = {
     const response = await api.put<AgentSettings>('/api/v2/settings', body, {
       params: { workspace_path: workspacePath },
     });
+    return response.data;
+  },
+
+  // API key management (issue #555). Machine-wide — no workspace_path needed.
+  getKeys: async (): Promise<KeyStatusResponse[]> => {
+    const response = await api.get<KeyStatusResponse[]>('/api/v2/settings/keys');
+    return response.data;
+  },
+
+  storeKey: async (
+    provider: KeyProvider,
+    value: string
+  ): Promise<KeyStatusResponse> => {
+    const response = await api.put<KeyStatusResponse>(
+      `/api/v2/settings/keys/${provider}`,
+      { value }
+    );
+    return response.data;
+  },
+
+  removeKey: async (provider: KeyProvider): Promise<void> => {
+    await api.delete(`/api/v2/settings/keys/${provider}`);
+  },
+
+  verifyKey: async (
+    provider: KeyProvider,
+    value?: string
+  ): Promise<VerifyKeyResponse> => {
+    const response = await api.post<VerifyKeyResponse>(
+      '/api/v2/settings/verify-key',
+      { provider, value: value ?? null }
+    );
     return response.data;
   },
 };
