@@ -18,10 +18,6 @@ export function ApiKeysTab() {
     () => settingsApi.getKeys()
   );
 
-  const refresh = async () => {
-    await mutate();
-  };
-
   if (isLoading && !data) {
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
@@ -58,7 +54,7 @@ export function ApiKeysTab() {
               provider={provider}
               displayName={displayName}
               status={status}
-              onChanged={refresh}
+              onChanged={() => mutate().then(() => undefined)}
             />
           );
         })}

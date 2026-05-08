@@ -487,7 +487,9 @@ class TestSettingsV2VerifyKey:
         assert response.status_code == 200
         data = response.json()
         assert data["valid"] is False
-        assert "rejected" in data["message"].lower() or "401" in data["message"]
+        # Sanitised message: never echoes the raw exception detail.
+        assert "rejected" in data["message"].lower()
+        assert "sk-ant-bad-key" not in data["message"]
 
     def test_verify_uses_stored_when_value_omitted(self, keys_client, monkeypatch):
         from codeframe.ui.routers import settings_v2

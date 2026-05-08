@@ -14,10 +14,13 @@ require a workspace. Env vars take precedence at read time.
 
 import logging
 
+from typing import cast
+
 from anthropic import Anthropic as _AnthropicClient
 from anthropic import AuthenticationError as _AnthropicAuthError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
+from openai import AuthenticationError as _OpenAIAuthError
 from openai import OpenAI as _OpenAIClient
 
 from codeframe.core.config import (
@@ -33,7 +36,7 @@ from codeframe.core.credentials import (
     validate_credential_format,
 )
 from codeframe.core.workspace import Workspace
-from codeframe.lib.rate_limiter import rate_limit_standard
+from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.models import (
     AGENT_TYPES,
@@ -175,10 +178,14 @@ def _resolve_provider(provider: str) -> CredentialProvider:
 
 
 def _last_four(value: str | None) -> str | None:
-    """Return the last 4 chars of a key, or None if no value."""
+    """Return the last 4 chars of a key, or None if no value.
+
+    For values shorter than 4 chars (which format validation should
+    already reject), returns the full value.
+    """
     if not value:
         return None
-    return value[-4:]
+    return value[-4:] if len(value) >= 4 else value
 
 
 def _build_status(
@@ -240,8 +247,9 @@ async def store_key(
                 "Failed to store credential", ErrorCodes.EXECUTION_FAILED, str(e)
             ),
         )
-    # Cast str -> KeyProvider literal is safe because _resolve_provider validated it.
-    return _build_status(provider, manager)  # type: ignore[arg-type]
+    # _resolve_provider validated `provider` against KEY_PROVIDERS, so the
+    # cast is safe — clearer than a type: ignore.
+    return _build_status(cast(KeyProvider, provider), manager)
 
 
 @router.delete("/keys/{provider}", status_code=204)
@@ -280,7 +288,12 @@ async def delete_key(
 
 
 async def _check_github_token(token: str) -> tuple[bool, str]:
-    """Validate a GitHub token via GET https://api.github.com/user."""
+    """Validate a GitHub token via GET https://api.github.com/user.
+
+    Exception messages are NOT echoed back to the client because aiohttp
+    errors can include the request URL or headers (which carry the token).
+    The detailed error is logged server-side instead.
+    """
     import aiohttp
 
     headers = {
@@ -302,7 +315,8 @@ async def _check_github_token(token: str) -> tuple[bool, str]:
                     return False, "401 Unauthorized: invalid GitHub token"
                 return False, f"GitHub API returned status {resp.status}"
     except Exception as e:
-        return False, f"GitHub verification failed: {e}"
+        logger.warning(f"GitHub token verification raised: {e}", exc_info=True)
+        return False, "GitHub verification failed: network or server error"
 
 
 def _verify_anthropic_sync(key: str) -> tuple[bool, str]:
@@ -310,33 +324,40 @@ def _verify_anthropic_sync(key: str) -> tuple[bool, str]:
 
     Uses messages.create rather than models.list because messages is the
     stable, always-present API surface across all supported SDK versions
-    (>=0.18). max_tokens=1 keeps the cost trivial.
+    (>=0.18). max_tokens=1 keeps the cost trivial. Non-auth exceptions
+    are logged but not echoed to the client to avoid leaking provider
+    internals.
     """
     try:
         client = _AnthropicClient(api_key=key)
         client.messages.create(
-            model="claude-haiku-4-5",
+            model="claude-haiku-4-5-20251001",
             max_tokens=1,
             messages=[{"role": "user", "content": "ping"}],
         )
         return True, "Anthropic key accepted"
-    except _AnthropicAuthError as e:
-        return False, f"Anthropic key rejected: {e}"
+    except _AnthropicAuthError:
+        return False, "Anthropic key rejected: authentication failed"
     except Exception as e:
-        return False, f"Anthropic verification failed: {e}"
+        logger.warning(f"Anthropic verification raised: {e}", exc_info=True)
+        return False, "Anthropic verification failed: network or server error"
 
 
 def _verify_openai_sync(key: str) -> tuple[bool, str]:
+    """Verify an OpenAI key via models.list (small, cheap, auth-required)."""
     try:
         client = _OpenAIClient(api_key=key)
         client.models.list()
         return True, "OpenAI key accepted"
+    except _OpenAIAuthError:
+        return False, "OpenAI key rejected: authentication failed"
     except Exception as e:
-        return False, f"OpenAI verification failed: {e}"
+        logger.warning(f"OpenAI verification raised: {e}", exc_info=True)
+        return False, "OpenAI verification failed: network or server error"
 
 
 @router.post("/verify-key", response_model=VerifyKeyResponse)
-@rate_limit_standard()
+@rate_limit_ai()
 async def verify_key(
     body: VerifyKeyRequest,
     request: Request,

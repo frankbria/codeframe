@@ -116,7 +116,7 @@ export function KeySlot({
           autoComplete="off"
           spellCheck={false}
           className="min-w-0 flex-1"
-          aria-label={`${displayName} API key`}
+          aria-label={displayName}
         />
         <Button
           type="button"
