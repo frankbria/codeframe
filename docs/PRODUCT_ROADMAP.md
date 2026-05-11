@@ -65,6 +65,8 @@ After a PR is created from the Review page, show its live status in the web UI.
   2. PROOF9 has no open (non-waived) requirements for the changed scope
 - If PROOF9 has open requirements: show a gating message listing which requirements are blocking merge and linking to the PROOF9 page
 
+**Known follow-up** (from #556): `RunProofResponse` does not distinguish "all gates passed" from "vacuous pass because all gates were disabled in `proof_config.json`". The runner already emits a server-side warning and the Settings page shows a UI banner; the merge gate in this milestone should surface that distinction (e.g., a `vacuous_pass` flag on `RunProofResponse` or `ProofRun`) so a workspace with zero enabled gates can't auto-merge.
+
 **Why it matters for the vision**: "Merge is gated on PROOF9 pass." That sentence is in the vision doc. Without CI tracking and a merge gate in the UI, this is a CLI-only guarantee. The SHIP phase is only complete when the user can go from "PR opened" to "merged" without leaving CodeFRAME.
 
 ---

@@ -131,7 +131,11 @@ class TestPutWorkspaceConfig:
         config_path = test_workspace.state_dir / "workspace_config.json"
         assert config_path.exists()
         saved = json.loads(config_path.read_text())
-        assert saved == body
+        # workspace_root in the request is dropped; the live path is stored
+        assert saved["workspace_root"] == str(test_workspace.repo_path)
+        assert saved["default_branch"] == body["default_branch"]
+        assert saved["auto_detect_tech_stack"] == body["auto_detect_tech_stack"]
+        assert saved["tech_stack_override"] == body["tech_stack_override"]
 
     def test_put_round_trip(self, test_client, test_workspace):
         body = {
@@ -152,6 +156,24 @@ class TestPutWorkspaceConfig:
         assert data["default_branch"] == body["default_branch"]
         assert data["auto_detect_tech_stack"] == body["auto_detect_tech_stack"]
         assert data["tech_stack_override"] == body["tech_stack_override"]
+
+    def test_put_ignores_client_workspace_root(self, test_client, test_workspace):
+        """A client cannot relocate the workspace via PUT: workspace_root in
+        the request is dropped, and the stored value is always the live
+        workspace.repo_path. PUT and GET stay consistent."""
+        body = {
+            "workspace_root": "/attacker-controlled/path",
+            "default_branch": "main",
+            "auto_detect_tech_stack": True,
+            "tech_stack_override": None,
+        }
+        put_resp = test_client.put("/api/v2/workspaces/config", json=body)
+        assert put_resp.status_code == 200
+        assert put_resp.json()["workspace_root"] == str(test_workspace.repo_path)
+
+        # Persisted file reflects the live path, not the client-sent one
+        saved = json.loads((test_workspace.state_dir / "workspace_config.json").read_text())
+        assert saved["workspace_root"] == str(test_workspace.repo_path)
 
     def test_put_empty_default_branch_rejected(self, test_client):
         body = {

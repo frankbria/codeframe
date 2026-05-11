@@ -340,9 +340,11 @@ async def update_workspace_config(
 
     Note: `workspace_root` is informational/display-only. The server resolves
     the active workspace path from the `workspace_path` query parameter or
-    its default — editing this field does not relocate the workspace.
+    its default — editing this field does not relocate the workspace. The
+    value is replaced on write so PUT/GET stay consistent.
     """
-    payload = body.model_dump()
+    payload = body.model_dump(exclude={"workspace_root"})
+    payload["workspace_root"] = str(workspace.repo_path)
     atomic_write_json(_workspace_config_path(workspace), payload)
     return WorkspaceConfigResponse(**payload)
 
