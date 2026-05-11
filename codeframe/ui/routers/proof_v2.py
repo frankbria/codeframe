@@ -419,11 +419,13 @@ async def run_proof_endpoint(
 
         # Use the strictness-aware overall_passed that run_proof() persisted,
         # so warn-mode does not surface as failure via the cached run status.
+        # Fallback note: if save_run() ever silently failed, the raw `all(...)`
+        # below ignores strictness — accepted because that path indicates a
+        # deeper persistence bug we'd want to surface as a hard failure anyway.
         persisted_run = get_run(workspace, run_id)
         if persisted_run is not None:
             passed = persisted_run.overall_passed
         else:
-            # Fallback only if persistence unexpectedly failed
             passed = all(
                 satisfied
                 for gate_results in results.values()
@@ -679,7 +681,7 @@ class UpdateProofConfigRequest(BaseModel):
         unknown = [g for g in v if g not in _VALID_GATES]
         if unknown:
             raise ValueError(
-                f"Unknown gate(s): {unknown}. Valid: {sorted(_VALID_GATES)}"
+                f"Unknown gate(s): {unknown}. Valid: {list(PROOF9_GATE_ORDER)}"
             )
         return v
 

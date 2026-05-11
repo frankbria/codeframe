@@ -56,6 +56,7 @@ def _load_proof_config(workspace: Workspace) -> tuple[Optional[set[Gate]], str]:
         strictness = "strict"
     return enabled, strictness
 
+
 # Map PROOF9 gates to existing core/gates.py gate names
 _GATE_TO_CORE: dict[Gate, str] = {
     Gate.UNIT: "pytest",
