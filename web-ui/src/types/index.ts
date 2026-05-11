@@ -592,3 +592,30 @@ export interface VerifyKeyResponse {
   valid: boolean;
   message: string;
 }
+
+// PROOF9 + Workspace config (issue #556)
+export type ProofStrictness = 'strict' | 'warn';
+
+export interface ProofConfigResponse {
+  enabled_gates: string[];
+  strictness: ProofStrictness;
+}
+
+export interface UpdateProofConfigRequest {
+  enabled_gates: string[];
+  strictness: ProofStrictness;
+}
+
+export interface WorkspaceConfigResponse {
+  workspace_root: string;
+  default_branch: string;
+  auto_detect_tech_stack: boolean;
+  tech_stack_override: string | null;
+}
+
+export interface UpdateWorkspaceConfigRequest {
+  workspace_root: string;
+  default_branch: string;
+  auto_detect_tech_stack: boolean;
+  tech_stack_override: string | null;
+}

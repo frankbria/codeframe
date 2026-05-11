@@ -9,6 +9,7 @@ Routes:
     PATCH /api/v2/workspaces/current - Update workspace (e.g., tech stack)
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import Optional
@@ -258,6 +259,82 @@ async def update_current_workspace(
             status_code=500,
             detail=api_error("Update failed", ErrorCodes.EXECUTION_FAILED, str(e)),
         )
+
+
+# ============================================================================
+# Workspace Config (issue #556)
+#
+# Persists per-workspace UI-configurable settings (root path display, default
+# branch, tech-stack auto-detect toggle + manual override) to
+# .codeframe/workspace_config.json.
+# ============================================================================
+
+
+_WORKSPACE_CONFIG_FILENAME = "workspace_config.json"
+
+
+class WorkspaceConfigResponse(BaseModel):
+    workspace_root: str
+    default_branch: str
+    auto_detect_tech_stack: bool
+    tech_stack_override: Optional[str] = None
+
+
+class UpdateWorkspaceConfigRequest(BaseModel):
+    workspace_root: str = Field(..., min_length=1)
+    default_branch: str = Field(..., min_length=1)
+    auto_detect_tech_stack: bool
+    tech_stack_override: Optional[str] = None
+
+
+def _workspace_config_path(workspace: Workspace) -> Path:
+    return workspace.state_dir / _WORKSPACE_CONFIG_FILENAME
+
+
+def _default_workspace_config(workspace: Workspace) -> dict:
+    return {
+        "workspace_root": str(workspace.repo_path),
+        "default_branch": "main",
+        "auto_detect_tech_stack": True,
+        "tech_stack_override": None,
+    }
+
+
+@router.get("/config", response_model=WorkspaceConfigResponse)
+@rate_limit_standard()
+async def get_workspace_config(
+    request: Request,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> WorkspaceConfigResponse:
+    """Load workspace configuration for this workspace.
+
+    Returns defaults sourced from the Workspace itself if no config file exists.
+    """
+    path = _workspace_config_path(workspace)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text())
+            return WorkspaceConfigResponse(**data)
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(
+                "Invalid workspace_config.json — falling back to defaults: %s", e
+            )
+    return WorkspaceConfigResponse(**_default_workspace_config(workspace))
+
+
+@router.put("/config", response_model=WorkspaceConfigResponse)
+@rate_limit_standard()
+async def update_workspace_config(
+    request: Request,
+    body: UpdateWorkspaceConfigRequest,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> WorkspaceConfigResponse:
+    """Persist workspace configuration to .codeframe/workspace_config.json."""
+    path = _workspace_config_path(workspace)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = body.model_dump()
+    path.write_text(json.dumps(payload, indent=2))
+    return WorkspaceConfigResponse(**payload)
 
 
 @router.get("/exists")

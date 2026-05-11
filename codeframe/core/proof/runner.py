@@ -5,6 +5,7 @@ runs their obligations via the existing gates infrastructure,
 and attaches evidence artifacts.
 """
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -17,6 +18,41 @@ from codeframe.core.proof.scope import get_changed_scope, intersects
 from codeframe.core.workspace import Workspace
 
 logger = logging.getLogger(__name__)
+
+
+_PROOF_CONFIG_FILENAME = "proof_config.json"
+
+
+def _load_proof_config(workspace: Workspace) -> tuple[Optional[set[Gate]], str]:
+    """Load (enabled_gates, strictness) from .codeframe/proof_config.json.
+
+    Returns:
+        (enabled_gates, strictness). enabled_gates is None when no config file
+        exists (meaning "all gates allowed"); a set of Gate enums otherwise.
+        strictness defaults to 'strict' when missing or invalid.
+    """
+    path = workspace.state_dir / _PROOF_CONFIG_FILENAME
+    if not path.exists():
+        return None, "strict"
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Invalid %s — using defaults: %s", _PROOF_CONFIG_FILENAME, exc)
+        return None, "strict"
+
+    enabled: Optional[set[Gate]] = None
+    gates_raw = data.get("enabled_gates")
+    if isinstance(gates_raw, list):
+        enabled = set()
+        valid_values = {g.value for g in Gate}
+        for name in gates_raw:
+            if name in valid_values:
+                enabled.add(Gate(name))
+
+    strictness = data.get("strictness", "strict")
+    if strictness not in ("strict", "warn"):
+        strictness = "strict"
+    return enabled, strictness
 
 # Map PROOF9 gates to existing core/gates.py gate names
 _GATE_TO_CORE: dict[Gate, str] = {
@@ -71,6 +107,9 @@ def run_proof(
 
     started_at = datetime.now(timezone.utc)
 
+    # Load PROOF9 config (enabled gates + strictness)
+    enabled_gates, strictness = _load_proof_config(workspace)
+
     # Expire any stale waivers
     expired = ledger.check_expired_waivers(workspace)
     if expired:
@@ -117,6 +156,10 @@ def run_proof(
             if gate_filter and obl.gate != gate_filter:
                 continue
 
+            # Apply config-driven gate filter (None means "all allowed")
+            if enabled_gates is not None and obl.gate not in enabled_gates:
+                continue
+
             # Run the gate
             passed, output = _run_gate(workspace, obl.gate)
 
@@ -146,7 +189,15 @@ def run_proof(
     completed_at = datetime.now(timezone.utc)
     duration_ms = int((completed_at - started_at).total_seconds() * 1000)
     executed = [passed for gate_results in results.values() for _, passed in gate_results]
-    overall_passed = all(executed) if executed else True
+    all_passed = all(executed) if executed else True
+    if not all_passed and strictness == "warn":
+        logger.warning(
+            "Proof run %s had gate failures but strictness='warn' — overall_passed=True",
+            run_id,
+        )
+        overall_passed = True
+    else:
+        overall_passed = all_passed
     ledger.save_run(
         workspace,
         ProofRun(
