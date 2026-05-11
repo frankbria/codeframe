@@ -89,6 +89,38 @@ class TestRunnerEnabledGatesFilter:
         assert Gate.SEC in invoked_gates
 
 
+class TestEmptyEnabledGates:
+    """Documents the empty-gates behavior: nothing runs, overall_passed=True,
+    and a warning is logged."""
+
+    def test_empty_enabled_gates_vacuous_pass(self, workspace, caplog):
+        save_requirement(workspace, _make_req("REQ-EMPTY", [Gate.UNIT, Gate.SEC]))
+        (workspace.state_dir / "proof_config.json").write_text(
+            json.dumps({"enabled_gates": [], "strictness": "strict"})
+        )
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="codeframe.core.proof.runner"), patch(
+            "codeframe.core.proof.runner._run_gate",
+            return_value=(True, ""),
+        ) as mock_gate:
+            run_proof(workspace, full=True, run_id="empty-gates")
+
+        # Nothing executed
+        mock_gate.assert_not_called()
+
+        # Run records as passing (vacuously)
+        from codeframe.core.proof.ledger import get_run
+
+        run = get_run(workspace, "empty-gates")
+        assert run is not None
+        assert run.overall_passed is True
+
+        # Warning was emitted
+        assert any("vacuously" in r.message for r in caplog.records)
+
+
 class TestRunnerStrictness:
     """In 'warn' mode the run's overall_passed must remain True on failure."""
 

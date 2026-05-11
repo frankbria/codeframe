@@ -103,12 +103,12 @@ export function WorkspaceConfigTab({ workspacePath }: WorkspaceConfigTabProps) {
           id="workspace-root"
           type="text"
           value={draft.workspace_root}
-          onChange={(e) =>
-            setDraft({ ...draft, workspace_root: e.target.value })
-          }
+          readOnly
+          disabled
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          Absolute path on the host where this workspace lives.
+          Display only — workspace path is fixed at init time. Use{' '}
+          <code>cf init</code> to create a workspace at a different path.
         </p>
       </div>
 

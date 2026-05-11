@@ -135,6 +135,15 @@ def run_proof(
         )
         return {}
 
+    # Warn loudly when config disables every gate — a "vacuous pass" is
+    # easy to overlook: nothing runs, overall_passed=True, no evidence.
+    if enabled_gates is not None and not enabled_gates:
+        logger.warning(
+            "Proof run %s: all 9 gates are disabled by proof_config.json — "
+            "no obligations will run and the run will pass vacuously",
+            run_id,
+        )
+
     # Get changed scope (skip if running full)
     changed_scope = None
     if not full:
