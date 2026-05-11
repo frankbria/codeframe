@@ -105,6 +105,18 @@ describe('Proof9DefaultsTab', () => {
     expect(mutate).toHaveBeenCalled();
   });
 
+  it('shows a warning banner when no gates are enabled', () => {
+    mockSWR({ enabled_gates: [], strictness: 'strict' });
+    render(<Proof9DefaultsTab workspacePath="/ws" />);
+    expect(screen.getByRole('alert')).toHaveTextContent(/all gates disabled/i);
+  });
+
+  it('hides the banner once at least one gate is selected', () => {
+    mockSWR(ALL_ENABLED_STRICT);
+    render(<Proof9DefaultsTab workspacePath="/ws" />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('Discard resets the draft to fetched data', () => {
     mockSWR(ALL_ENABLED_STRICT);
     render(<Proof9DefaultsTab workspacePath="/ws" />);

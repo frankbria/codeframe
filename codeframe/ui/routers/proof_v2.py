@@ -683,7 +683,9 @@ class UpdateProofConfigRequest(BaseModel):
             raise ValueError(
                 f"Unknown gate(s): {unknown}. Valid: {list(PROOF9_GATE_ORDER)}"
             )
-        return v
+        # De-dupe while preserving submission order so the stored file never
+        # carries the same gate twice.
+        return list(dict.fromkeys(v))
 
 
 @router.get("/config", response_model=ProofConfigResponse)

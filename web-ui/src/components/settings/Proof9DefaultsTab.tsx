@@ -113,6 +113,16 @@ export function Proof9DefaultsTab({ workspacePath }: Proof9DefaultsTabProps) {
 
       <div>
         <h3 className="mb-3 text-sm font-medium">Gates enabled for new projects</h3>
+        {draft.enabled_gates.length === 0 && (
+          <div
+            role="alert"
+            className="mb-3 rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-xs text-yellow-700 dark:text-yellow-300"
+          >
+            <strong>All gates disabled.</strong> Proof runs will pass with no
+            evidence — every requirement is silently green. Re-enable at least
+            one gate to keep PROOF9 enforcing quality.
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {PROOF9_GATES.map((gate) => {
             const id = `proof9-gate-${gate}`;

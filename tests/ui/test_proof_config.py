@@ -10,11 +10,24 @@ Covers:
 import json
 import shutil
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+from codeframe.core.proof.ledger import save_requirement
+from codeframe.core.proof.models import (
+    Gate,
+    Obligation,
+    Requirement,
+    RequirementScope,
+    ReqStatus,
+    Severity,
+    Source,
+)
 
 pytestmark = pytest.mark.v2
 
@@ -141,6 +154,20 @@ class TestPutProofConfig:
         data = response.json()
         assert data["enabled_gates"] == []
 
+    def test_put_dedupes_gates(self, test_client, test_workspace):
+        """Duplicate gate names are silently collapsed, preserving order."""
+        body = {
+            "enabled_gates": ["unit", "sec", "unit", "e2e", "sec"],
+            "strictness": "strict",
+        }
+        response = test_client.put("/api/v2/proof/config", json=body)
+        assert response.status_code == 200
+        assert response.json()["enabled_gates"] == ["unit", "sec", "e2e"]
+
+        # Persisted file also contains no duplicates
+        saved = json.loads((test_workspace.state_dir / "proof_config.json").read_text())
+        assert saved["enabled_gates"] == ["unit", "sec", "e2e"]
+
 
 class TestRunCachePassedSemantics:
     """Regression: cached 'passed' must mirror the run's strictness-aware
@@ -148,14 +175,6 @@ class TestRunCachePassedSemantics:
 
     def test_warn_mode_run_cache_passed_is_true(self, test_client, test_workspace):
         """In warn mode, cache must record passed=True even on gate failures."""
-        from datetime import datetime, timezone
-        from unittest.mock import patch
-
-        from codeframe.core.proof.ledger import save_requirement
-        from codeframe.core.proof.models import (
-            Gate, Obligation, Requirement, RequirementScope, ReqStatus, Severity, Source,
-        )
-
         save_requirement(
             test_workspace,
             Requirement(

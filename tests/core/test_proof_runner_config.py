@@ -8,13 +8,14 @@ The runner must:
 """
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from codeframe.core.proof.ledger import init_proof_tables, save_requirement
+from codeframe.core.proof.ledger import get_run, init_proof_tables, save_requirement
 from codeframe.core.proof.models import (
     PROOF_CONFIG_FILENAME,
     Gate,
@@ -100,8 +101,6 @@ class TestEmptyEnabledGates:
             json.dumps({"enabled_gates": [], "strictness": "strict"})
         )
 
-        import logging
-
         with caplog.at_level(logging.WARNING, logger="codeframe.core.proof.runner"), patch(
             "codeframe.core.proof.runner._run_gate",
             return_value=(True, ""),
@@ -112,8 +111,6 @@ class TestEmptyEnabledGates:
         mock_gate.assert_not_called()
 
         # Run records as passing (vacuously)
-        from codeframe.core.proof.ledger import get_run
-
         run = get_run(workspace, "empty-gates")
         assert run is not None
         assert run.overall_passed is True
@@ -139,8 +136,6 @@ class TestRunnerStrictness:
             run_proof(workspace, full=True, run_id="strict-run")
 
         # Inspect the persisted run record
-        from codeframe.core.proof.ledger import get_run
-
         run = get_run(workspace, "strict-run")
         assert run is not None
         assert run.overall_passed is False
@@ -157,8 +152,6 @@ class TestRunnerStrictness:
             return_value=(False, "boom"),
         ):
             run_proof(workspace, full=True, run_id="warn-run")
-
-        from codeframe.core.proof.ledger import get_run
 
         run = get_run(workspace, "warn-run")
         assert run is not None
