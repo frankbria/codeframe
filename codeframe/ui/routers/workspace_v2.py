@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from codeframe.core import workspace as ws
 from codeframe.lib.rate_limiter import rate_limit_standard
@@ -322,7 +322,7 @@ async def get_workspace_config(
             # workspace so a stored value can't drift from reality.
             data["workspace_root"] = str(workspace.repo_path)
             return WorkspaceConfigResponse(**data)
-        except (OSError, json.JSONDecodeError, ValueError) as e:
+        except (OSError, json.JSONDecodeError, ValueError, ValidationError) as e:
             logger.warning(
                 "Invalid workspace_config.json — falling back to defaults: %s", e
             )

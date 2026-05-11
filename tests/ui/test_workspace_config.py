@@ -75,6 +75,24 @@ class TestGetWorkspaceConfig:
         assert data["default_branch"] == "main"
         assert data["auto_detect_tech_stack"] is True
 
+    def test_invalid_field_type_falls_back_to_defaults(self, test_client, test_workspace):
+        """Valid JSON with the wrong field type (caught by Pydantic) should
+        also fall back to defaults rather than 500."""
+        config_path = test_workspace.state_dir / "workspace_config.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "workspace_root": "/x",
+                    "default_branch": 123,  # wrong type
+                    "auto_detect_tech_stack": True,
+                    "tech_stack_override": None,
+                }
+            )
+        )
+        response = test_client.get("/api/v2/workspaces/config")
+        assert response.status_code == 200
+        assert response.json()["default_branch"] == "main"
+
     def test_returns_persisted_config(self, test_client, test_workspace):
         config_path = test_workspace.state_dir / "workspace_config.json"
         config_path.write_text(

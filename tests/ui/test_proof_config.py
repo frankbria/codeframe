@@ -110,6 +110,17 @@ class TestGetProofConfig:
         assert data["strictness"] == "strict"
         assert len(data["enabled_gates"]) == 9
 
+    def test_invalid_field_value_falls_back_to_defaults(self, test_client, test_workspace):
+        """Valid JSON with invalid field values (caught by Pydantic) should
+        also fall back to defaults rather than 500."""
+        config_path = test_workspace.state_dir / "proof_config.json"
+        config_path.write_text(
+            json.dumps({"enabled_gates": ["unit"], "strictness": "bogus"})
+        )
+        response = test_client.get("/api/v2/proof/config")
+        assert response.status_code == 200
+        assert response.json()["strictness"] == "strict"
+
 
 class TestPutProofConfig:
     """Tests for PUT /api/v2/proof/config."""

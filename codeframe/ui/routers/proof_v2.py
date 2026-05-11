@@ -21,7 +21,7 @@ from datetime import date
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from codeframe.core.proof.capture import capture_requirement
 from codeframe.core.proof.ledger import (
@@ -703,7 +703,7 @@ async def get_proof_config(
         try:
             data = json.loads(path.read_text())
             return ProofConfigResponse(**data)
-        except (OSError, json.JSONDecodeError, ValueError) as e:
+        except (OSError, json.JSONDecodeError, ValueError, ValidationError) as e:
             logger.warning("Invalid proof_config.json — falling back to defaults: %s", e)
     return ProofConfigResponse(**_default_proof_config())
 
