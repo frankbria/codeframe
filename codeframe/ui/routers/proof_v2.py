@@ -13,14 +13,15 @@ Routes:
     GET    /api/v2/proof/requirements/{req_id}/evidence  list_evidence()
 """
 
+import json
 import logging
 import time
 import uuid
 from datetime import date
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from codeframe.core.proof.capture import capture_requirement
 from codeframe.core.proof.ledger import (
@@ -33,6 +34,8 @@ from codeframe.core.proof.ledger import (
     waive_requirement,
 )
 from codeframe.core.proof.models import (
+    PROOF9_GATE_ORDER,
+    PROOF_CONFIG_FILENAME,
     Gate,
     ReqStatus,
     Severity,
@@ -44,6 +47,7 @@ from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import ErrorCodes, api_error
+from codeframe.ui.routers._helpers import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -413,11 +417,20 @@ async def run_proof_endpoint(
             for req_id, gate_results in results.items()
         }
 
-        passed = all(
-            satisfied
-            for gate_results in results.values()
-            for _, satisfied in gate_results
-        )
+        # Use the strictness-aware overall_passed that run_proof() persisted,
+        # so warn-mode does not surface as failure via the cached run status.
+        # Fallback note: if save_run() ever silently failed, the raw `all(...)`
+        # below ignores strictness — accepted because that path indicates a
+        # deeper persistence bug we'd want to surface as a hard failure anyway.
+        persisted_run = get_run(workspace, run_id)
+        if persisted_run is not None:
+            passed = persisted_run.overall_passed
+        else:
+            passed = all(
+                satisfied
+                for gate_results in results.values()
+                for _, satisfied in gate_results
+            )
         response = RunProofResponse(
             success=True,
             run_id=run_id,
@@ -632,6 +645,80 @@ async def get_run_evidence_endpoint(
         duration_ms=run.duration_ms,
         evidence=evidence_out,
     )
+
+
+# ============================================================================
+# PROOF9 Config (issue #556)
+#
+# Persists which gates are enabled by default and the strictness setting
+# (strict vs warn) to .codeframe/proof_config.json.
+# ============================================================================
+
+
+_VALID_GATES = {g.value for g in Gate}
+
+
+def _proof_config_path(workspace: Workspace):
+    return workspace.state_dir / PROOF_CONFIG_FILENAME
+
+
+def _default_proof_config() -> dict:
+    return {"enabled_gates": list(PROOF9_GATE_ORDER), "strictness": "strict"}
+
+
+class ProofConfigResponse(BaseModel):
+    enabled_gates: list[str]
+    strictness: Literal["strict", "warn"]
+
+
+class UpdateProofConfigRequest(BaseModel):
+    enabled_gates: list[str]
+    strictness: Literal["strict", "warn"]
+
+    @field_validator("enabled_gates")
+    @classmethod
+    def _validate_gates(cls, v: list[str]) -> list[str]:
+        unknown = [g for g in v if g not in _VALID_GATES]
+        if unknown:
+            raise ValueError(
+                f"Unknown gate(s): {unknown}. Valid: {list(PROOF9_GATE_ORDER)}"
+            )
+        # De-dupe while preserving submission order so the stored file never
+        # carries the same gate twice.
+        return list(dict.fromkeys(v))
+
+
+@router.get("/config", response_model=ProofConfigResponse)
+@rate_limit_standard()
+async def get_proof_config(
+    request: Request,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> ProofConfigResponse:
+    """Load PROOF9 defaults for this workspace.
+
+    Returns the all-gates-enabled + strict defaults if no config file exists.
+    """
+    path = _proof_config_path(workspace)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text())
+            return ProofConfigResponse(**data)
+        except (OSError, json.JSONDecodeError, ValueError, ValidationError) as e:
+            logger.warning("Invalid proof_config.json — falling back to defaults: %s", e)
+    return ProofConfigResponse(**_default_proof_config())
+
+
+@router.put("/config", response_model=ProofConfigResponse)
+@rate_limit_standard()
+async def update_proof_config(
+    request: Request,
+    body: UpdateProofConfigRequest,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> ProofConfigResponse:
+    """Persist PROOF9 defaults to .codeframe/proof_config.json."""
+    payload = {"enabled_gates": body.enabled_gates, "strictness": body.strictness}
+    atomic_write_json(_proof_config_path(workspace), payload)
+    return ProofConfigResponse(**payload)
 
 
 @router.get("/requirements/{req_id}/evidence", response_model=list[EvidenceResponse])

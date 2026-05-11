@@ -63,6 +63,10 @@ import type {
   KeyProvider,
   KeyStatusResponse,
   VerifyKeyResponse,
+  ProofConfigResponse,
+  UpdateProofConfigRequest,
+  WorkspaceConfigResponse,
+  UpdateWorkspaceConfigRequest,
 } from '@/types';
 
 // FastAPI validation error format
@@ -853,6 +857,53 @@ export const settingsApi = {
     const response = await api.post<VerifyKeyResponse>(
       '/api/v2/settings/verify-key',
       { provider, value: value ?? null }
+    );
+    return response.data;
+  },
+};
+
+// PROOF9 config API (issue #556)
+export const proofConfigApi = {
+  getConfig: async (workspacePath: string): Promise<ProofConfigResponse> => {
+    const response = await api.get<ProofConfigResponse>('/api/v2/proof/config', {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  updateConfig: async (
+    workspacePath: string,
+    body: UpdateProofConfigRequest
+  ): Promise<ProofConfigResponse> => {
+    const response = await api.put<ProofConfigResponse>(
+      '/api/v2/proof/config',
+      body,
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+};
+
+// Workspace config API (issue #556)
+export const workspaceConfigApi = {
+  getConfig: async (
+    workspacePath: string
+  ): Promise<WorkspaceConfigResponse> => {
+    const response = await api.get<WorkspaceConfigResponse>(
+      '/api/v2/workspaces/config',
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  updateConfig: async (
+    workspacePath: string,
+    body: UpdateWorkspaceConfigRequest
+  ): Promise<WorkspaceConfigResponse> => {
+    const response = await api.put<WorkspaceConfigResponse>(
+      '/api/v2/workspaces/config',
+      body,
+      { params: { workspace_path: workspacePath } }
     );
     return response.data;
   },

@@ -10,6 +10,11 @@ from enum import Enum
 from typing import Optional
 
 
+# Shared filename for the per-workspace PROOF9 config (issue #556).
+# Lives under workspace.state_dir.
+PROOF_CONFIG_FILENAME = "proof_config.json"
+
+
 class Gate(str, Enum):
     """The 9 proof gates."""
 
@@ -22,6 +27,10 @@ class Gate(str, Enum):
     SEC = "sec"
     DEMO = "demo"
     MANUAL = "manual"
+
+
+# Canonical PROOF9 gate order (matches the Gate enum declaration).
+PROOF9_GATE_ORDER: tuple[str, ...] = tuple(g.value for g in Gate)
 
 
 class GlitchType(str, Enum):

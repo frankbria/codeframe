@@ -9,18 +9,20 @@ Routes:
     PATCH /api/v2/workspaces/current - Update workspace (e.g., tech stack)
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from codeframe.core import workspace as ws
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.ui.dependencies import get_v2_workspace
-from codeframe.core.workspace import Workspace
+from codeframe.core.workspace import WORKSPACE_CONFIG_FILENAME, Workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
+from codeframe.ui.routers._helpers import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +260,93 @@ async def update_current_workspace(
             status_code=500,
             detail=api_error("Update failed", ErrorCodes.EXECUTION_FAILED, str(e)),
         )
+
+
+# ============================================================================
+# Workspace Config (issue #556)
+#
+# Persists per-workspace UI-configurable settings (root path display, default
+# branch, tech-stack auto-detect toggle + manual override) to
+# .codeframe/workspace_config.json.
+# ============================================================================
+
+
+class WorkspaceConfigResponse(BaseModel):
+    workspace_root: str = Field(
+        ..., description="Display-only. The server resolves the active workspace from the workspace_path query parameter."
+    )
+    default_branch: str
+    auto_detect_tech_stack: bool
+    tech_stack_override: Optional[str] = None
+
+
+class UpdateWorkspaceConfigRequest(BaseModel):
+    workspace_root: str = Field(
+        ...,
+        min_length=1,
+        description="Display-only — editing does not relocate the workspace.",
+    )
+    default_branch: str = Field(..., min_length=1)
+    auto_detect_tech_stack: bool
+    tech_stack_override: Optional[str] = None
+
+
+def _workspace_config_path(workspace: Workspace) -> Path:
+    return workspace.state_dir / WORKSPACE_CONFIG_FILENAME
+
+
+def _default_workspace_config(workspace: Workspace) -> dict:
+    return {
+        "workspace_root": str(workspace.repo_path),
+        "default_branch": "main",
+        "auto_detect_tech_stack": True,
+        "tech_stack_override": None,
+    }
+
+
+@router.get("/config", response_model=WorkspaceConfigResponse)
+@rate_limit_standard()
+async def get_workspace_config(
+    request: Request,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> WorkspaceConfigResponse:
+    """Load workspace configuration for this workspace.
+
+    Returns defaults sourced from the Workspace itself if no config file exists.
+    """
+    path = _workspace_config_path(workspace)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text())
+            # workspace_root is display-only — always source it from the live
+            # workspace so a stored value can't drift from reality.
+            data["workspace_root"] = str(workspace.repo_path)
+            return WorkspaceConfigResponse(**data)
+        except (OSError, json.JSONDecodeError, ValueError, ValidationError) as e:
+            logger.warning(
+                "Invalid workspace_config.json — falling back to defaults: %s", e
+            )
+    return WorkspaceConfigResponse(**_default_workspace_config(workspace))
+
+
+@router.put("/config", response_model=WorkspaceConfigResponse)
+@rate_limit_standard()
+async def update_workspace_config(
+    request: Request,
+    body: UpdateWorkspaceConfigRequest,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> WorkspaceConfigResponse:
+    """Persist workspace configuration to .codeframe/workspace_config.json.
+
+    Note: `workspace_root` is informational/display-only. The server resolves
+    the active workspace path from the `workspace_path` query parameter or
+    its default — editing this field does not relocate the workspace. The
+    value is replaced on write so PUT/GET stay consistent.
+    """
+    payload = body.model_dump(exclude={"workspace_root"})
+    payload["workspace_root"] = str(workspace.repo_path)
+    atomic_write_json(_workspace_config_path(workspace), payload)
+    return WorkspaceConfigResponse(**payload)
 
 
 @router.get("/exists")

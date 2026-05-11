@@ -24,6 +24,11 @@ def _utc_now() -> datetime:
 CODEFRAME_DIR = ".codeframe"
 STATE_DB_NAME = "state.db"
 
+# Per-workspace config file written by the Settings page (issue #556).
+# Owned by the UI layer today; kept here so a future core consumer can
+# read it without importing from codeframe/ui/.
+WORKSPACE_CONFIG_FILENAME = "workspace_config.json"
+
 
 @dataclass
 class Workspace:

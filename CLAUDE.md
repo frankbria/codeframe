@@ -1,6 +1,6 @@
 # CodeFRAME Development Guidelines
 
-Last updated: 2026-04-09
+Last updated: 2026-05-11
 
 ## Product Vision
 
@@ -36,12 +36,14 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 ### Current Focus: Phase 4A
 
+**Phase 5.1 is complete** — Settings page now ships three working tabs: Agent (#554), API Keys (#555), and PROOF9 Defaults + Workspace Config (#556). Backend: `GET/PUT /api/v2/proof/config` and `/api/v2/workspaces/config`, plus `run_proof()` now honors `enabled_gates` filtering and `strictness` (`strict` vs `warn`). Atomic JSON writes via `codeframe/ui/routers/_helpers.atomic_write_json`. The 9-gate canonical order and `proof_config.json` filename live in `codeframe/core/proof/models.py`.
+
 **Phase 3.5C is complete** — `CaptureGlitchModal` form (description/markdown, source, scope, gate obligations, severity, expiry) reachable from the PROOF9 page and the persistent sidebar "Capture Glitch" button. REQ detail view (`/proof/[req_id]`) ships markdown description rendering, `ProofScope` metadata display, obligations table with `Latest Run` column, sortable/filterable evidence history, and empty-state CTA. Backend: `ScopeOut` model on `RequirementResponse`. Issues #568, #569.
 
 Next, in order:
 - **4A**: PR status tracking + PROOF9 merge gate
 - **4B**: Post-merge glitch capture loop
-- **5.1–5.5**: Platform completeness (#554–#565)
+- **5.2–5.5**: Platform completeness (#557–#565)
 
 See `docs/PRODUCT_ROADMAP.md` for full specs and issue links.
 

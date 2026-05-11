@@ -9,6 +9,8 @@ import { settingsApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import type { AgentSettings, AgentTypeKey, ApiError } from '@/types';
 import { ApiKeysTab } from '@/components/settings/ApiKeysTab';
+import { Proof9DefaultsTab } from '@/components/settings/Proof9DefaultsTab';
+import { WorkspaceConfigTab } from '@/components/settings/WorkspaceConfigTab';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -163,15 +165,21 @@ export default function SettingsPage() {
 
           <TabsContent value="proof9">
             <section className="rounded-lg border bg-card p-6">
-              <h2 className="mb-1 text-lg font-semibold">PROOF9</h2>
-              <ComingSoon />
+              <h2 className="mb-1 text-lg font-semibold">PROOF9 Defaults</h2>
+              <p className="mb-6 text-sm text-muted-foreground">
+                Gate enablement and strictness for this workspace.
+              </p>
+              <Proof9DefaultsTab workspacePath={workspacePath} />
             </section>
           </TabsContent>
 
           <TabsContent value="workspace">
             <section className="rounded-lg border bg-card p-6">
-              <h2 className="mb-1 text-lg font-semibold">Workspace</h2>
-              <ComingSoon />
+              <h2 className="mb-1 text-lg font-semibold">Workspace Configuration</h2>
+              <p className="mb-6 text-sm text-muted-foreground">
+                Root path, default branch, and tech-stack auto-detection.
+              </p>
+              <WorkspaceConfigTab workspacePath={workspacePath} />
             </section>
           </TabsContent>
         </Tabs>
