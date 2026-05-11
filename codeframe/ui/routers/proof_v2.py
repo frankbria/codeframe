@@ -34,6 +34,8 @@ from codeframe.core.proof.ledger import (
     waive_requirement,
 )
 from codeframe.core.proof.models import (
+    PROOF9_GATE_ORDER,
+    PROOF_CONFIG_FILENAME,
     Gate,
     ReqStatus,
     Severity,
@@ -644,15 +646,25 @@ async def get_run_evidence_endpoint(
 
 
 _VALID_GATES = {g.value for g in Gate}
-_PROOF_CONFIG_FILENAME = "proof_config.json"
 
 
 def _proof_config_path(workspace: Workspace):
-    return workspace.state_dir / _PROOF_CONFIG_FILENAME
+    return workspace.state_dir / PROOF_CONFIG_FILENAME
 
 
 def _default_proof_config() -> dict:
-    return {"enabled_gates": sorted(_VALID_GATES), "strictness": "strict"}
+    return {"enabled_gates": list(PROOF9_GATE_ORDER), "strictness": "strict"}
+
+
+def _atomic_write_json(path, payload: dict) -> None:
+    """Write JSON via temp-file + os.replace so a crash mid-write cannot
+    leave a truncated file."""
+    import os
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2))
+    os.replace(tmp, path)
 
 
 class ProofConfigResponse(BaseModel):
@@ -690,7 +702,7 @@ async def get_proof_config(
         try:
             data = json.loads(path.read_text())
             return ProofConfigResponse(**data)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (OSError, json.JSONDecodeError, ValueError) as e:
             logger.warning("Invalid proof_config.json — falling back to defaults: %s", e)
     return ProofConfigResponse(**_default_proof_config())
 
@@ -703,10 +715,8 @@ async def update_proof_config(
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> ProofConfigResponse:
     """Persist PROOF9 defaults to .codeframe/proof_config.json."""
-    path = _proof_config_path(workspace)
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"enabled_gates": body.enabled_gates, "strictness": body.strictness}
-    path.write_text(json.dumps(payload, indent=2))
+    _atomic_write_json(_proof_config_path(workspace), payload)
     return ProofConfigResponse(**payload)
 
 

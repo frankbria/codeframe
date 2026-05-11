@@ -137,8 +137,9 @@ export function Proof9DefaultsTab({ workspacePath }: Proof9DefaultsTabProps) {
       <div>
         <h3 className="mb-2 text-sm font-medium">Strictness</h3>
         <p className="mb-3 text-xs text-muted-foreground">
-          <strong>strict</strong> fails proof runs on any open non-waived REQ.{' '}
-          <strong>warn</strong> allows merge with warnings.
+          <strong>strict</strong> — any gate failure fails the proof run.{' '}
+          <strong>warn</strong> — gate failures are recorded but overall_passed
+          stays True.
         </p>
         <Select
           value={draft.strictness}

@@ -273,6 +273,17 @@ async def update_current_workspace(
 _WORKSPACE_CONFIG_FILENAME = "workspace_config.json"
 
 
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    """Write JSON via temp-file + os.replace so a crash mid-write cannot
+    leave a truncated file."""
+    import os
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2))
+    os.replace(tmp, path)
+
+
 class WorkspaceConfigResponse(BaseModel):
     workspace_root: str
     default_branch: str
@@ -315,7 +326,7 @@ async def get_workspace_config(
         try:
             data = json.loads(path.read_text())
             return WorkspaceConfigResponse(**data)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (OSError, json.JSONDecodeError, ValueError) as e:
             logger.warning(
                 "Invalid workspace_config.json — falling back to defaults: %s", e
             )
@@ -329,11 +340,14 @@ async def update_workspace_config(
     body: UpdateWorkspaceConfigRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> WorkspaceConfigResponse:
-    """Persist workspace configuration to .codeframe/workspace_config.json."""
-    path = _workspace_config_path(workspace)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Persist workspace configuration to .codeframe/workspace_config.json.
+
+    Note: `workspace_root` is informational/display-only. The server resolves
+    the active workspace path from the `workspace_path` query parameter or
+    its default — editing this field does not relocate the workspace.
+    """
     payload = body.model_dump()
-    path.write_text(json.dumps(payload, indent=2))
+    _atomic_write_json(_workspace_config_path(workspace), payload)
     return WorkspaceConfigResponse(**payload)
 
 

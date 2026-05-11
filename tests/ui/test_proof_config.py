@@ -84,7 +84,7 @@ class TestGetProofConfig:
         response = test_client.get("/api/v2/proof/config")
         assert response.status_code == 200
         data = response.json()
-        assert data["enabled_gates"] == ["unit", "sec"]
+        assert set(data["enabled_gates"]) == {"unit", "sec"}
         assert data["strictness"] == "warn"
 
 

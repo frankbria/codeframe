@@ -13,14 +13,16 @@ from typing import Optional
 
 from codeframe.core.proof import ledger
 from codeframe.core.proof.evidence import attach_evidence
-from codeframe.core.proof.models import Gate, ProofRun, ReqStatus
+from codeframe.core.proof.models import (
+    PROOF_CONFIG_FILENAME,
+    Gate,
+    ProofRun,
+    ReqStatus,
+)
 from codeframe.core.proof.scope import get_changed_scope, intersects
 from codeframe.core.workspace import Workspace
 
 logger = logging.getLogger(__name__)
-
-
-_PROOF_CONFIG_FILENAME = "proof_config.json"
 
 
 def _load_proof_config(workspace: Workspace) -> tuple[Optional[set[Gate]], str]:
@@ -31,13 +33,13 @@ def _load_proof_config(workspace: Workspace) -> tuple[Optional[set[Gate]], str]:
         exists (meaning "all gates allowed"); a set of Gate enums otherwise.
         strictness defaults to 'strict' when missing or invalid.
     """
-    path = workspace.state_dir / _PROOF_CONFIG_FILENAME
+    path = workspace.state_dir / PROOF_CONFIG_FILENAME
     if not path.exists():
         return None, "strict"
     try:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("Invalid %s — using defaults: %s", _PROOF_CONFIG_FILENAME, exc)
+        logger.warning("Invalid %s — using defaults: %s", PROOF_CONFIG_FILENAME, exc)
         return None, "strict"
 
     enabled: Optional[set[Gate]] = None
