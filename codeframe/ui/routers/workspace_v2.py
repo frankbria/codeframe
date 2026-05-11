@@ -318,6 +318,9 @@ async def get_workspace_config(
     if path.exists():
         try:
             data = json.loads(path.read_text())
+            # workspace_root is display-only — always source it from the live
+            # workspace so a stored value can't drift from reality.
+            data["workspace_root"] = str(workspace.repo_path)
             return WorkspaceConfigResponse(**data)
         except (OSError, json.JSONDecodeError, ValueError) as e:
             logger.warning(

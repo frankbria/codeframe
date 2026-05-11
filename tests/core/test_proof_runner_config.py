@@ -16,6 +16,7 @@ import pytest
 
 from codeframe.core.proof.ledger import init_proof_tables, save_requirement
 from codeframe.core.proof.models import (
+    PROOF_CONFIG_FILENAME,
     Gate,
     Obligation,
     Requirement,
@@ -59,7 +60,7 @@ class TestRunnerEnabledGatesFilter:
         """A gate disabled in proof_config.json must not run."""
         save_requirement(workspace, _make_req("REQ-0001", [Gate.UNIT, Gate.SEC]))
 
-        (workspace.state_dir / "proof_config.json").write_text(
+        (workspace.state_dir / PROOF_CONFIG_FILENAME).write_text(
             json.dumps({"enabled_gates": ["unit"], "strictness": "strict"})
         )
 
@@ -95,7 +96,7 @@ class TestEmptyEnabledGates:
 
     def test_empty_enabled_gates_vacuous_pass(self, workspace, caplog):
         save_requirement(workspace, _make_req("REQ-EMPTY", [Gate.UNIT, Gate.SEC]))
-        (workspace.state_dir / "proof_config.json").write_text(
+        (workspace.state_dir / PROOF_CONFIG_FILENAME).write_text(
             json.dumps({"enabled_gates": [], "strictness": "strict"})
         )
 
@@ -127,7 +128,7 @@ class TestRunnerStrictness:
     def test_strict_mode_propagates_failure(self, workspace):
         """In strict mode (default), a failing gate flips overall_passed to False."""
         save_requirement(workspace, _make_req("REQ-0003", [Gate.UNIT]))
-        (workspace.state_dir / "proof_config.json").write_text(
+        (workspace.state_dir / PROOF_CONFIG_FILENAME).write_text(
             json.dumps({"enabled_gates": ["unit"], "strictness": "strict"})
         )
 
@@ -147,7 +148,7 @@ class TestRunnerStrictness:
     def test_warn_mode_keeps_overall_passed(self, workspace):
         """In warn mode, a failing gate does NOT flip overall_passed."""
         save_requirement(workspace, _make_req("REQ-0004", [Gate.UNIT]))
-        (workspace.state_dir / "proof_config.json").write_text(
+        (workspace.state_dir / PROOF_CONFIG_FILENAME).write_text(
             json.dumps({"enabled_gates": ["unit"], "strictness": "warn"})
         )
 

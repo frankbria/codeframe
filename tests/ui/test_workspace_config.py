@@ -90,10 +90,29 @@ class TestGetWorkspaceConfig:
         response = test_client.get("/api/v2/workspaces/config")
         assert response.status_code == 200
         data = response.json()
-        assert data["workspace_root"] == "/tmp/elsewhere"
+        # workspace_root is display-only — server overrides any stored value
+        # with the live workspace path so it can never drift.
+        assert data["workspace_root"] == str(test_workspace.repo_path)
         assert data["default_branch"] == "develop"
         assert data["auto_detect_tech_stack"] is False
         assert data["tech_stack_override"] == "Python with uv, FastAPI"
+
+    def test_workspace_root_always_reflects_live_path(self, test_client, test_workspace):
+        """Regression: stored workspace_root must never be returned to the
+        client — the live workspace.repo_path always wins."""
+        config_path = test_workspace.state_dir / "workspace_config.json"
+        config_path.write_text(
+            json.dumps(
+                {
+                    "workspace_root": "/stale/path/that/does/not/exist",
+                    "default_branch": "main",
+                    "auto_detect_tech_stack": True,
+                    "tech_stack_override": None,
+                }
+            )
+        )
+        data = test_client.get("/api/v2/workspaces/config").json()
+        assert data["workspace_root"] == str(test_workspace.repo_path)
 
 
 class TestPutWorkspaceConfig:
@@ -114,7 +133,7 @@ class TestPutWorkspaceConfig:
         saved = json.loads(config_path.read_text())
         assert saved == body
 
-    def test_put_round_trip(self, test_client):
+    def test_put_round_trip(self, test_client, test_workspace):
         body = {
             "workspace_root": "/tmp/proj",
             "default_branch": "main",
@@ -126,7 +145,13 @@ class TestPutWorkspaceConfig:
 
         get_resp = test_client.get("/api/v2/workspaces/config")
         assert get_resp.status_code == 200
-        assert get_resp.json() == body
+        data = get_resp.json()
+        # workspace_root is display-only: any stored value is overridden by
+        # the live workspace path on GET.
+        assert data["workspace_root"] == str(test_workspace.repo_path)
+        assert data["default_branch"] == body["default_branch"]
+        assert data["auto_detect_tech_stack"] == body["auto_detect_tech_stack"]
+        assert data["tech_stack_override"] == body["tech_stack_override"]
 
     def test_put_empty_default_branch_rejected(self, test_client):
         body = {
