@@ -87,6 +87,16 @@ class TestGetProofConfig:
         assert set(data["enabled_gates"]) == {"unit", "sec"}
         assert data["strictness"] == "warn"
 
+    def test_corrupted_json_falls_back_to_defaults(self, test_client, test_workspace):
+        """Truncated/invalid JSON should not 500 — falls back to defaults."""
+        config_path = test_workspace.state_dir / "proof_config.json"
+        config_path.write_text("{ not valid json")
+        response = test_client.get("/api/v2/proof/config")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["strictness"] == "strict"
+        assert len(data["enabled_gates"]) == 9
+
 
 class TestPutProofConfig:
     """Tests for PUT /api/v2/proof/config."""
@@ -130,3 +140,53 @@ class TestPutProofConfig:
         assert response.status_code == 200
         data = response.json()
         assert data["enabled_gates"] == []
+
+
+class TestRunCachePassedSemantics:
+    """Regression: cached 'passed' must mirror the run's strictness-aware
+    overall_passed, not a raw recomputation from gate results."""
+
+    def test_warn_mode_run_cache_passed_is_true(self, test_client, test_workspace):
+        """In warn mode, cache must record passed=True even on gate failures."""
+        from datetime import datetime, timezone
+        from unittest.mock import patch
+
+        from codeframe.core.proof.ledger import save_requirement
+        from codeframe.core.proof.models import (
+            Gate, Obligation, Requirement, RequirementScope, ReqStatus, Severity, Source,
+        )
+
+        save_requirement(
+            test_workspace,
+            Requirement(
+                id="REQ-CACHE-1",
+                title="t",
+                description="d",
+                severity=Severity.LOW,
+                source=Source.QA,
+                scope=RequirementScope(files=["x.py"]),
+                obligations=[Obligation(gate=Gate.UNIT)],
+                evidence_rules=[],
+                status=ReqStatus.OPEN,
+                created_at=datetime.now(timezone.utc),
+            ),
+        )
+        # warn strictness
+        test_client.put(
+            "/api/v2/proof/config",
+            json={"enabled_gates": ["unit"], "strictness": "warn"},
+        )
+
+        with patch(
+            "codeframe.core.proof.runner._run_gate",
+            return_value=(False, "boom"),
+        ):
+            run_resp = test_client.post("/api/v2/proof/run", json={"full": True})
+
+        assert run_resp.status_code == 200
+        run_id = run_resp.json()["run_id"]
+
+        status = test_client.get(f"/api/v2/proof/runs/{run_id}")
+        assert status.status_code == 200
+        # In warn mode the gate failed, but overall passed must remain True.
+        assert status.json()["passed"] is True

@@ -47,6 +47,7 @@ from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import ErrorCodes, api_error
+from codeframe.ui.routers._helpers import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -416,11 +417,18 @@ async def run_proof_endpoint(
             for req_id, gate_results in results.items()
         }
 
-        passed = all(
-            satisfied
-            for gate_results in results.values()
-            for _, satisfied in gate_results
-        )
+        # Use the strictness-aware overall_passed that run_proof() persisted,
+        # so warn-mode does not surface as failure via the cached run status.
+        persisted_run = get_run(workspace, run_id)
+        if persisted_run is not None:
+            passed = persisted_run.overall_passed
+        else:
+            # Fallback only if persistence unexpectedly failed
+            passed = all(
+                satisfied
+                for gate_results in results.values()
+                for _, satisfied in gate_results
+            )
         response = RunProofResponse(
             success=True,
             run_id=run_id,
@@ -656,17 +664,6 @@ def _default_proof_config() -> dict:
     return {"enabled_gates": list(PROOF9_GATE_ORDER), "strictness": "strict"}
 
 
-def _atomic_write_json(path, payload: dict) -> None:
-    """Write JSON via temp-file + os.replace so a crash mid-write cannot
-    leave a truncated file."""
-    import os
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2))
-    os.replace(tmp, path)
-
-
 class ProofConfigResponse(BaseModel):
     enabled_gates: list[str]
     strictness: Literal["strict", "warn"]
@@ -716,7 +713,7 @@ async def update_proof_config(
 ) -> ProofConfigResponse:
     """Persist PROOF9 defaults to .codeframe/proof_config.json."""
     payload = {"enabled_gates": body.enabled_gates, "strictness": body.strictness}
-    _atomic_write_json(_proof_config_path(workspace), payload)
+    atomic_write_json(_proof_config_path(workspace), payload)
     return ProofConfigResponse(**payload)
 
 

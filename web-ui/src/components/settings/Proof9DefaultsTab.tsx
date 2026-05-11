@@ -55,15 +55,15 @@ export function Proof9DefaultsTab({ workspacePath }: Proof9DefaultsTabProps) {
       </p>
     );
   }
-  if (isLoading && !draft) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
-  }
-  if (error || !draft || !data) {
+  if (error) {
     return (
       <p className="text-sm text-destructive">
         Failed to load PROOF9 config. Check the server logs.
       </p>
     );
+  }
+  if (!data || !draft) {
+    return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
 
   const dirty = isDirty(data, draft);

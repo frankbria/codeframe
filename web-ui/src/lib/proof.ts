@@ -4,6 +4,9 @@
  * The 9 gate names mirror the `Gate` enum in
  * `codeframe/core/proof/models.py` and are the canonical wire values
  * accepted by the backend's `enabled_gates` field.
+ *
+ * SYNC: if a gate is added/removed in `codeframe/core/proof/models.py::Gate`,
+ * mirror the change here AND in `GATE_LABELS` below.
  */
 
 export const PROOF9_GATES = [

@@ -65,6 +65,16 @@ class TestGetWorkspaceConfig:
         assert data["auto_detect_tech_stack"] is True
         assert data["tech_stack_override"] is None
 
+    def test_corrupted_json_falls_back_to_defaults(self, test_client, test_workspace):
+        """Truncated/invalid JSON should not 500 — falls back to defaults."""
+        config_path = test_workspace.state_dir / "workspace_config.json"
+        config_path.write_text("{ not valid json")
+        response = test_client.get("/api/v2/workspaces/config")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["default_branch"] == "main"
+        assert data["auto_detect_tech_stack"] is True
+
     def test_returns_persisted_config(self, test_client, test_workspace):
         config_path = test_workspace.state_dir / "workspace_config.json"
         config_path.write_text(

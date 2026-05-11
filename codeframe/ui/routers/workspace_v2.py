@@ -22,6 +22,7 @@ from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.core.workspace import Workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
+from codeframe.ui.routers._helpers import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -273,26 +274,21 @@ async def update_current_workspace(
 _WORKSPACE_CONFIG_FILENAME = "workspace_config.json"
 
 
-def _atomic_write_json(path: Path, payload: dict) -> None:
-    """Write JSON via temp-file + os.replace so a crash mid-write cannot
-    leave a truncated file."""
-    import os
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2))
-    os.replace(tmp, path)
-
-
 class WorkspaceConfigResponse(BaseModel):
-    workspace_root: str
+    workspace_root: str = Field(
+        ..., description="Display-only. The server resolves the active workspace from the workspace_path query parameter."
+    )
     default_branch: str
     auto_detect_tech_stack: bool
     tech_stack_override: Optional[str] = None
 
 
 class UpdateWorkspaceConfigRequest(BaseModel):
-    workspace_root: str = Field(..., min_length=1)
+    workspace_root: str = Field(
+        ...,
+        min_length=1,
+        description="Display-only — editing does not relocate the workspace.",
+    )
     default_branch: str = Field(..., min_length=1)
     auto_detect_tech_stack: bool
     tech_stack_override: Optional[str] = None
@@ -347,7 +343,7 @@ async def update_workspace_config(
     its default — editing this field does not relocate the workspace.
     """
     payload = body.model_dump()
-    _atomic_write_json(_workspace_config_path(workspace), payload)
+    atomic_write_json(_workspace_config_path(workspace), payload)
     return WorkspaceConfigResponse(**payload)
 
 

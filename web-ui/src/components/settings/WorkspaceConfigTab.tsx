@@ -52,15 +52,15 @@ export function WorkspaceConfigTab({ workspacePath }: WorkspaceConfigTabProps) {
       </p>
     );
   }
-  if (isLoading && !draft) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
-  }
-  if (error || !draft || !data) {
+  if (error) {
     return (
       <p className="text-sm text-destructive">
         Failed to load workspace config. Check the server logs.
       </p>
     );
+  }
+  if (!data || !draft) {
+    return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
 
   const dirty = isDirty(data, draft);
