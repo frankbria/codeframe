@@ -34,7 +34,7 @@ function isDirty(a: ProofConfigResponse, b: ProofConfigResponse): boolean {
 
 export function Proof9DefaultsTab({ workspacePath }: Proof9DefaultsTabProps) {
   const swrKey = workspacePath ? ['proof-config', workspacePath] : null;
-  const { data, error, isLoading, mutate } = useSWR<ProofConfigResponse>(
+  const { data, error, mutate } = useSWR<ProofConfigResponse>(
     swrKey,
     () => proofConfigApi.getConfig(workspacePath!)
   );

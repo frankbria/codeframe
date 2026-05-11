@@ -31,7 +31,7 @@ function isDirty(
 
 export function WorkspaceConfigTab({ workspacePath }: WorkspaceConfigTabProps) {
   const swrKey = workspacePath ? ['workspace-config', workspacePath] : null;
-  const { data, error, isLoading, mutate } = useSWR<WorkspaceConfigResponse>(
+  const { data, error, mutate } = useSWR<WorkspaceConfigResponse>(
     swrKey,
     () => workspaceConfigApi.getConfig(workspacePath!)
   );
