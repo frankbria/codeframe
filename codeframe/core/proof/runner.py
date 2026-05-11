@@ -50,6 +50,13 @@ def _load_proof_config(workspace: Workspace) -> tuple[Optional[set[Gate]], str]:
         for name in gates_raw:
             if name in valid_values:
                 enabled.add(Gate(name))
+            else:
+                logger.warning(
+                    "Unknown gate name '%s' in %s — skipped (valid: %s)",
+                    name,
+                    PROOF_CONFIG_FILENAME,
+                    valid_values,
+                )
 
     strictness = data.get("strictness", "strict")
     if strictness not in ("strict", "warn"):

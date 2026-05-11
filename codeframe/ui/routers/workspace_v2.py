@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from codeframe.core import workspace as ws
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.ui.dependencies import get_v2_workspace
-from codeframe.core.workspace import Workspace
+from codeframe.core.workspace import WORKSPACE_CONFIG_FILENAME, Workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
 from codeframe.ui.routers._helpers import atomic_write_json
 
@@ -271,9 +271,6 @@ async def update_current_workspace(
 # ============================================================================
 
 
-_WORKSPACE_CONFIG_FILENAME = "workspace_config.json"
-
-
 class WorkspaceConfigResponse(BaseModel):
     workspace_root: str = Field(
         ..., description="Display-only. The server resolves the active workspace from the workspace_path query parameter."
@@ -295,7 +292,7 @@ class UpdateWorkspaceConfigRequest(BaseModel):
 
 
 def _workspace_config_path(workspace: Workspace) -> Path:
-    return workspace.state_dir / _WORKSPACE_CONFIG_FILENAME
+    return workspace.state_dir / WORKSPACE_CONFIG_FILENAME
 
 
 def _default_workspace_config(workspace: Workspace) -> dict:
