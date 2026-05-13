@@ -74,15 +74,20 @@ def _query_costs(db_path: str, days: int) -> Dict:
         return _empty_summary(days)
 
     try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'"
-        )
-        if cursor.fetchone() is None:
-            return _empty_summary(days)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'"
+            )
+            if cursor.fetchone() is None:
+                return _empty_summary(days)
 
-        repo = TokenRepository(sync_conn=conn)
-        return repo.get_costs_summary(days)
+            repo = TokenRepository(sync_conn=conn)
+            return repo.get_costs_summary(days)
+        except sqlite3.Error:
+            # Locked DB, corrupted schema, etc. — fall back to empty state
+            # rather than 500'ing the dashboard.
+            return _empty_summary(days)
     finally:
         conn.close()
 
