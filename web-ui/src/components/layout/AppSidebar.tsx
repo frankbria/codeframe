@@ -15,6 +15,7 @@ import {
   CheckmarkCircle01Icon,
   Add01Icon,
   Settings01Icon,
+  ChartLineData01Icon,
 } from '@hugeicons/react';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import { blockersApi, sessionsApi } from '@/lib/api';
@@ -37,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/blockers', label: 'Blockers', icon: Alert02Icon, enabled: true },
   { href: '/review', label: 'Review', icon: GitBranchIcon, enabled: true },
   { href: '/proof', label: 'Proof', icon: CheckmarkCircle01Icon, enabled: true },
+  { href: '/costs', label: 'Costs', icon: ChartLineData01Icon, enabled: true },
   { href: '/settings', label: 'Settings', icon: Settings01Icon, enabled: true },
 ];
 

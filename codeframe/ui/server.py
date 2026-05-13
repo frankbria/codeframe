@@ -22,6 +22,7 @@ from codeframe.ui.routers import (
     batches_v2,
     blockers_v2,
     checkpoints_v2,
+    costs_v2,
     diagnose_v2,
     discovery_v2,
     environment_v2,
@@ -483,6 +484,7 @@ app.include_router(auth_router.router)
 app.include_router(batches_v2.router)       # /api/v2/batches
 app.include_router(blockers_v2.router)      # /api/v2/blockers
 app.include_router(checkpoints_v2.router)   # /api/v2/checkpoints
+app.include_router(costs_v2.router)         # /api/v2/costs
 app.include_router(diagnose_v2.router)      # /api/v2/tasks/{id}/diagnose
 app.include_router(discovery_v2.router)     # /api/v2/discovery
 app.include_router(environment_v2.router)   # /api/v2/env

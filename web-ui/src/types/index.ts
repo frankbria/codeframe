@@ -619,3 +619,16 @@ export interface UpdateWorkspaceConfigRequest {
   auto_detect_tech_stack: boolean;
   tech_stack_override: string | null;
 }
+
+// Cost analytics types (issue #557)
+export interface DailyCostPoint {
+  date: string; // ISO YYYY-MM-DD
+  cost_usd: number;
+}
+
+export interface CostSummaryResponse {
+  total_spend_usd: number;
+  total_tasks: number;
+  avg_cost_per_task: number;
+  daily: DailyCostPoint[];
+}

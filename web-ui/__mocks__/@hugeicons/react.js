@@ -71,4 +71,8 @@ module.exports = {
   UserCircle02Icon: createIconMock('UserCircle02Icon'),
   // PRHistoryPanel
   ArrowUpRight01Icon: createIconMock('ArrowUpRight01Icon'),
+  // Costs page
+  MoneyBag02Icon: createIconMock('MoneyBag02Icon'),
+  Analytics01Icon: createIconMock('Analytics01Icon'),
+  ChartLineData01Icon: createIconMock('ChartLineData01Icon'),
 };
