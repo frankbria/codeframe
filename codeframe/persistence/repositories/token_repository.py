@@ -3,7 +3,7 @@
 Extracted from monolithic Database class for better maintainability.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 import logging
 
@@ -273,6 +273,83 @@ class TokenRepository(BaseRepository):
 
         cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
+
+    def get_costs_summary(self, days: int) -> Dict[str, Any]:
+        """Aggregate token_usage costs into daily buckets for analytics.
+
+        Args:
+            days: Number of trailing days to include in the summary.
+
+        Returns:
+            Dictionary with keys:
+                total_spend_usd: float — sum of estimated_cost_usd in window
+                total_tasks: int — distinct task_id count (excludes NULL)
+                avg_cost_per_task: float — total_spend_usd / total_tasks (0 if no tasks)
+                daily: list of {"date": "YYYY-MM-DD", "cost_usd": float}
+                       — one entry per day in the window, oldest first,
+                         zero-filled for days with no spend.
+        """
+        if days <= 0:
+            raise ValueError("days must be a positive integer")
+
+        now_utc = datetime.now(timezone.utc)
+        # Inclusive window starting at midnight UTC, `days` calendar days back.
+        # Use a space-separated, offset-free format so lexicographic comparison
+        # works against both `CURRENT_TIMESTAMP` defaults ("YYYY-MM-DD HH:MM:SS")
+        # and Python `.isoformat()` outputs ("YYYY-MM-DDTHH:MM:SS+00:00").
+        end_date = now_utc.date()
+        start_date = end_date - timedelta(days=days - 1)
+        start_iso = start_date.strftime("%Y-%m-%d %H:%M:%S")
+        # Exclusive upper bound = midnight after today, so the daily chart and
+        # the KPI cards always cover the same set of rows even if some records
+        # are future-dated (clock skew, bad seed data).
+        end_iso = (end_date + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+        cursor = self.conn.cursor()
+
+        # Totals over the window. total_spend includes NULL-task records so it
+        # matches the chart; total_tasks only counts records linked to a task.
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(SUM(estimated_cost_usd), 0.0) AS total_spend,
+                COUNT(DISTINCT CASE WHEN task_id IS NOT NULL THEN task_id END) AS task_count
+            FROM token_usage
+            WHERE timestamp >= ? AND timestamp < ?
+            """,
+            (start_iso, end_iso),
+        )
+        totals = cursor.fetchone()
+        total_spend = float(totals["total_spend"] or 0.0)
+        total_tasks = int(totals["task_count"] or 0)
+        avg_cost = (total_spend / total_tasks) if total_tasks > 0 else 0.0
+
+        # Daily aggregation — group by calendar date in UTC
+        cursor.execute(
+            """
+            SELECT
+                DATE(timestamp) AS day,
+                COALESCE(SUM(estimated_cost_usd), 0.0) AS cost
+            FROM token_usage
+            WHERE timestamp >= ? AND timestamp < ?
+            GROUP BY DATE(timestamp)
+            """,
+            (start_iso, end_iso),
+        )
+        by_day: Dict[str, float] = {row["day"]: float(row["cost"] or 0.0) for row in cursor.fetchall()}
+
+        daily: List[Dict[str, Any]] = []
+        for offset in range(days):
+            d = start_date + timedelta(days=offset)
+            iso = d.isoformat()
+            daily.append({"date": iso, "cost_usd": by_day.get(iso, 0.0)})
+
+        return {
+            "total_spend_usd": total_spend,
+            "total_tasks": total_tasks,
+            "avg_cost_per_task": avg_cost,
+            "daily": daily,
+        }
 
     def get_project_costs_aggregate(self, project_id: int) -> Dict[str, Any]:
         """Get aggregated cost statistics for a project.

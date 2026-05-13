@@ -67,6 +67,7 @@ import type {
   UpdateProofConfigRequest,
   WorkspaceConfigResponse,
   UpdateWorkspaceConfigRequest,
+  CostSummaryResponse,
 } from '@/types';
 
 // FastAPI validation error format
@@ -904,6 +905,23 @@ export const workspaceConfigApi = {
       '/api/v2/workspaces/config',
       body,
       { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+};
+
+// Cost analytics API (issue #557)
+export const costsApi = {
+  /**
+   * Get aggregated spend summary for the workspace.
+   */
+  getSummary: async (
+    workspacePath: string,
+    days: number
+  ): Promise<CostSummaryResponse> => {
+    const response = await api.get<CostSummaryResponse>(
+      '/api/v2/costs/summary',
+      { params: { workspace_path: workspacePath, days } }
     );
     return response.data;
   },
