@@ -14,6 +14,7 @@ pre-existing schema conflict between `codeframe/core/workspace.py` and
 to a raw connection skips `Database.initialize()` entirely.
 """
 
+import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List
@@ -25,6 +26,8 @@ from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.persistence.repositories.token_repository import TokenRepository
 from codeframe.ui.dependencies import get_v2_workspace
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/costs", tags=["metrics"])
 
@@ -66,11 +69,19 @@ def _query_costs(db_path: str, days: int) -> Dict:
 
     Returns an empty summary if the DB can't be opened or the table is missing,
     rather than raising — keeps the endpoint safe for fresh workspaces.
+
+    TODO(schema-conflict): we open the connection directly rather than through
+    `Database(...).initialize()` because the v2 workspace schema in
+    `codeframe/core/workspace.py` and the global schema in
+    `persistence/schema_manager.py` define `blockers` incompatibly, and
+    `Database.initialize()` therefore crashes on existing workspace DBs.
+    Remove this workaround once the two schemas converge.
     """
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
-    except sqlite3.Error:
+    except sqlite3.Error as e:
+        logger.warning("costs: failed to open %s: %s", db_path, e)
         return _empty_summary(days)
 
     try:
@@ -84,9 +95,10 @@ def _query_costs(db_path: str, days: int) -> Dict:
 
             repo = TokenRepository(sync_conn=conn)
             return repo.get_costs_summary(days)
-        except sqlite3.Error:
+        except sqlite3.Error as e:
             # Locked DB, corrupted schema, etc. — fall back to empty state
             # rather than 500'ing the dashboard.
+            logger.warning("costs: query failed on %s: %s", db_path, e)
             return _empty_summary(days)
     finally:
         conn.close()

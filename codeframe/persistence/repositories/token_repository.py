@@ -300,6 +300,10 @@ class TokenRepository(BaseRepository):
         end_date = now_utc.date()
         start_date = end_date - timedelta(days=days - 1)
         start_iso = start_date.strftime("%Y-%m-%d %H:%M:%S")
+        # Exclusive upper bound = midnight after today, so the daily chart and
+        # the KPI cards always cover the same set of rows even if some records
+        # are future-dated (clock skew, bad seed data).
+        end_iso = (end_date + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
 
         cursor = self.conn.cursor()
 
@@ -311,9 +315,9 @@ class TokenRepository(BaseRepository):
                 COALESCE(SUM(estimated_cost_usd), 0.0) AS total_spend,
                 COUNT(DISTINCT CASE WHEN task_id IS NOT NULL THEN task_id END) AS task_count
             FROM token_usage
-            WHERE timestamp >= ?
+            WHERE timestamp >= ? AND timestamp < ?
             """,
-            (start_iso,),
+            (start_iso, end_iso),
         )
         totals = cursor.fetchone()
         total_spend = float(totals["total_spend"] or 0.0)
@@ -327,10 +331,10 @@ class TokenRepository(BaseRepository):
                 DATE(timestamp) AS day,
                 COALESCE(SUM(estimated_cost_usd), 0.0) AS cost
             FROM token_usage
-            WHERE timestamp >= ?
+            WHERE timestamp >= ? AND timestamp < ?
             GROUP BY DATE(timestamp)
             """,
-            (start_iso,),
+            (start_iso, end_iso),
         )
         by_day: Dict[str, float] = {row["day"]: float(row["cost"] or 0.0) for row in cursor.fetchall()}
 

@@ -125,6 +125,24 @@ class TestGetCostsSummaryWithData:
 
         assert summary["total_spend_usd"] == pytest.approx(0.10)
 
+    def test_excludes_future_dated_rows(self, db):
+        """A row with a timestamp past today must not inflate the KPI cards.
+
+        Without an upper bound the daily chart (which is built from a fixed
+        list of dates within the window) would exclude future rows while the
+        SUM() KPIs would include them, making the two views disagree.
+        """
+        t1 = _create_task(db)
+        now = datetime.now(timezone.utc)
+        _save(db, task_id=t1, cost=0.10, timestamp=now)
+        _save(db, task_id=t1, cost=42.0, timestamp=now + timedelta(days=2))
+
+        summary = db.token_usage.get_costs_summary(days=7)
+
+        assert summary["total_spend_usd"] == pytest.approx(0.10)
+        # And the daily series sum agrees with the KPI total
+        assert sum(d["cost_usd"] for d in summary["daily"]) == pytest.approx(0.10)
+
     def test_daily_dates_are_ordered_oldest_to_newest(self, db):
         summary = db.token_usage.get_costs_summary(days=7)
         dates = [d["date"] for d in summary["daily"]]
