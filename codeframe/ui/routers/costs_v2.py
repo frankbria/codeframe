@@ -10,8 +10,8 @@ no spend data exists or the table isn't present — never 404.
 
 The handler opens the workspace SQLite database directly to avoid the
 pre-existing schema conflict between `codeframe/core/workspace.py` and
-`codeframe/persistence/schema_manager.py` (see #557 review notes). Token
-records are inserted by the same direct path in agent worker code.
+`codeframe/persistence/schema_manager.py` — wiring `TokenRepository`
+to a raw connection skips `Database.initialize()` entirely.
 """
 
 import sqlite3
@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
+from codeframe.persistence.repositories.token_repository import TokenRepository
 from codeframe.ui.dependencies import get_v2_workspace
 
 router = APIRouter(prefix="/api/v2/costs", tags=["metrics"])
@@ -61,14 +62,11 @@ def _empty_summary(days: int) -> Dict:
 
 
 def _query_costs(db_path: str, days: int) -> Dict:
-    """Query the workspace DB directly. Returns empty summary on any issue."""
-    now_utc = datetime.now(timezone.utc)
-    end_date = now_utc.date()
-    start_date = end_date - timedelta(days=days - 1)
-    start_iso = datetime(
-        start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc
-    ).isoformat()
+    """Query the workspace DB via TokenRepository on a raw connection.
 
+    Returns an empty summary if the DB can't be opened or the table is missing,
+    rather than raising — keeps the endpoint safe for fresh workspaces.
+    """
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
@@ -76,7 +74,6 @@ def _query_costs(db_path: str, days: int) -> Dict:
         return _empty_summary(days)
 
     try:
-        # If the table doesn't exist (workspace never ran an agent), treat as empty.
         cursor = conn.cursor()
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'"
@@ -84,46 +81,8 @@ def _query_costs(db_path: str, days: int) -> Dict:
         if cursor.fetchone() is None:
             return _empty_summary(days)
 
-        cursor.execute(
-            """
-            SELECT
-                COALESCE(SUM(estimated_cost_usd), 0.0) AS total_spend,
-                COUNT(DISTINCT CASE WHEN task_id IS NOT NULL THEN task_id END) AS task_count
-            FROM token_usage
-            WHERE timestamp >= ?
-            """,
-            (start_iso,),
-        )
-        totals = cursor.fetchone()
-        total_spend = float(totals["total_spend"] or 0.0)
-        total_tasks = int(totals["task_count"] or 0)
-        avg_cost = (total_spend / total_tasks) if total_tasks > 0 else 0.0
-
-        cursor.execute(
-            """
-            SELECT
-                DATE(timestamp) AS day,
-                COALESCE(SUM(estimated_cost_usd), 0.0) AS cost
-            FROM token_usage
-            WHERE timestamp >= ?
-            GROUP BY DATE(timestamp)
-            """,
-            (start_iso,),
-        )
-        by_day = {row["day"]: float(row["cost"] or 0.0) for row in cursor.fetchall()}
-
-        daily = []
-        for offset in range(days):
-            d = start_date + timedelta(days=offset)
-            iso = d.isoformat()
-            daily.append({"date": iso, "cost_usd": by_day.get(iso, 0.0)})
-
-        return {
-            "total_spend_usd": total_spend,
-            "total_tasks": total_tasks,
-            "avg_cost_per_task": avg_cost,
-            "daily": daily,
-        }
+        repo = TokenRepository(sync_conn=conn)
+        return repo.get_costs_summary(days)
     finally:
         conn.close()
 

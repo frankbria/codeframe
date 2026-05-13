@@ -293,12 +293,13 @@ class TokenRepository(BaseRepository):
             raise ValueError("days must be a positive integer")
 
         now_utc = datetime.now(timezone.utc)
-        # Inclusive window starting at midnight UTC, `days` calendar days back
+        # Inclusive window starting at midnight UTC, `days` calendar days back.
+        # Use a space-separated, offset-free format so lexicographic comparison
+        # works against both `CURRENT_TIMESTAMP` defaults ("YYYY-MM-DD HH:MM:SS")
+        # and Python `.isoformat()` outputs ("YYYY-MM-DDTHH:MM:SS+00:00").
         end_date = now_utc.date()
         start_date = end_date - timedelta(days=days - 1)
-        start_iso = datetime(
-            start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc
-        ).isoformat()
+        start_iso = start_date.strftime("%Y-%m-%d %H:%M:%S")
 
         cursor = self.conn.cursor()
 

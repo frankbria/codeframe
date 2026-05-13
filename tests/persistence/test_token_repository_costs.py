@@ -142,6 +142,39 @@ class TestGetCostsSummaryWithData:
         assert summary["avg_cost_per_task"] == 0.0
 
 
+class TestGetCostsSummaryTimestampFormats:
+    """Records inserted via different timestamp formats must all be picked up.
+
+    SQLite's `CURRENT_TIMESTAMP` produces space-separated values
+    ("YYYY-MM-DD HH:MM:SS"), Python `.isoformat()` produces T-separated
+    values with an offset suffix ("YYYY-MM-DDTHH:MM:SS+00:00"). The query
+    must include both.
+    """
+
+    def test_includes_records_with_space_separated_timestamps(self, db):
+        """A record inserted with SQLite's default timestamp format must be counted."""
+        tid = _create_task(db)
+        # Insert raw with a space-separated timestamp (the schema default format).
+        # This simulates DEFAULT CURRENT_TIMESTAMP behavior.
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        cursor = db.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO token_usage (task_id, agent_id, project_id, model_name,
+                input_tokens, output_tokens, estimated_cost_usd, call_type, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (tid, "agent-001", 1, "claude-sonnet-4-5",
+             100, 50, 0.42, "task_execution", now_str),
+        )
+        db.conn.commit()
+
+        summary = db.token_usage.get_costs_summary(days=7)
+
+        assert summary["total_spend_usd"] == pytest.approx(0.42)
+        assert summary["total_tasks"] == 1
+
+
 class TestGetCostsSummaryRangeValidation:
     @pytest.mark.parametrize("days", [7, 30, 90])
     def test_valid_ranges(self, db, days):
