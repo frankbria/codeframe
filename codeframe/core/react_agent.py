@@ -359,15 +359,19 @@ class ReactAgent:
             db.initialize()
             tracker = MetricsTracker(db=db)
 
-            # Cast task_id to int for the persistence layer (core uses str, DB uses int).
+            # v1 tasks have integer PKs; v2 workspaces use UUID strings.
+            # Pass the raw value — SQLite preserves the type, and downstream
+            # analytics (issue #558) group by whatever was stored. Forcing
+            # int() here used to drop every v2 record's task linkage.
+            persist_task_id: int | str
             try:
-                task_id_int: int | None = int(task_id)
+                persist_task_id = int(task_id)
             except (ValueError, TypeError):
-                task_id_int = None
+                persist_task_id = str(task_id)
 
             for record in self._token_records:
                 tracker.record_token_usage_sync(
-                    task_id=task_id_int,
+                    task_id=persist_task_id,
                     agent_id="react-agent",
                     project_id=0,
                     model_name=record["model"],

@@ -195,7 +195,7 @@ These are items that were considered and excluded because they do not serve the 
 | 4A | PR status + PROOF9 merge gate | ❌ Not started | — |
 | 4B | Post-merge glitch capture loop | ❌ Not started | — |
 | 5.1 | Settings page (skeleton + agent config + PROOF9/workspace tabs) | ✅ Complete | #554–556 |
-| 5.2 | Cost analytics | ❌ Not started | #557–558 |
+| 5.2 | Cost analytics | ✅ Complete | #557–558 |
 | 5.3 | Async notifications | ❌ Not started | #559–560 |
 | 5.4 | PRD stress-test web UI | ❌ Not started | #561–562 |
 | 5.5 | GitHub Issues import | ❌ Not started | #563–565 |

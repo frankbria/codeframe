@@ -17,11 +17,12 @@ to a raw connection skips `Database.initialize()` entirely.
 import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
+from codeframe.core import tasks as tasks_module
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.persistence.repositories.token_repository import TokenRepository
@@ -127,4 +128,195 @@ async def get_costs_summary(
             DailyCostPoint(date=d["date"], cost_usd=d["cost_usd"])
             for d in summary["daily"]
         ],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Per-task and per-agent breakdowns (Issue #558)
+# ---------------------------------------------------------------------------
+
+
+class TaskCostEntry(BaseModel):
+    """One task's aggregated cost with the most-used agent."""
+
+    task_id: str
+    task_title: str
+    agent_id: str
+    input_tokens: int
+    output_tokens: int
+    total_cost_usd: float
+
+
+class TaskCostsResponse(BaseModel):
+    """Top-N tasks by cost over the requested window."""
+
+    tasks: List[TaskCostEntry]
+
+
+class AgentCostEntry(BaseModel):
+    """One agent's aggregated cost over the window."""
+
+    agent_id: str
+    input_tokens: int
+    output_tokens: int
+    total_cost_usd: float
+    call_count: int
+
+
+class AgentCostsResponse(BaseModel):
+    """Per-agent breakdown plus overall token totals."""
+
+    by_agent: List[AgentCostEntry]
+    total_input_tokens: int
+    total_output_tokens: int
+
+
+def _placeholder_task_title(task_id: str) -> str:
+    """Title to display when a task referenced by token_usage no longer exists."""
+    short = str(task_id)[:8] if task_id else "unknown"
+    return f"Unknown task ({short})"
+
+
+def _open_workspace_conn(db_path: str) -> Optional[sqlite3.Connection]:
+    """Open the workspace DB or return None if it cannot be read.
+
+    Mirrors _query_costs's tolerance for fresh/locked workspaces: callers
+    fall back to an empty response rather than 500'ing the dashboard.
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+    except sqlite3.Error as e:
+        logger.warning("costs: failed to open %s: %s", db_path, e)
+        return None
+
+
+def _token_usage_exists(conn: sqlite3.Connection) -> bool:
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'"
+    )
+    return cursor.fetchone() is not None
+
+
+def _query_top_tasks(
+    db_path: str, workspace: Workspace, days: int, limit: int,
+) -> List[Dict[str, Any]]:
+    """Aggregate per-task cost and join titles via workspace.tasks.
+
+    Returns a list of dicts ready for serialization into ``TaskCostEntry``.
+    """
+    conn = _open_workspace_conn(db_path)
+    if conn is None:
+        return []
+
+    try:
+        if not _token_usage_exists(conn):
+            return []
+        try:
+            repo = TokenRepository(sync_conn=conn)
+            rows = repo.get_top_tasks_by_cost(days=days, limit=limit)
+        except sqlite3.Error as e:
+            logger.warning("costs/tasks: query failed on %s: %s", db_path, e)
+            return []
+    finally:
+        conn.close()
+
+    entries: List[Dict[str, Any]] = []
+    for row in rows:
+        raw_id = row["task_id"]
+        task_id_str = str(raw_id) if raw_id is not None else ""
+        title = _placeholder_task_title(task_id_str)
+        try:
+            task = tasks_module.get(workspace, task_id_str)
+            if task is not None:
+                title = task.title
+        except Exception:
+            # Lookup failures are non-fatal — keep the placeholder title.
+            logger.debug("costs/tasks: task lookup failed for %s", task_id_str, exc_info=True)
+
+        entries.append({
+            "task_id": task_id_str,
+            "task_title": title,
+            "agent_id": row["agent_id"],
+            "input_tokens": row["input_tokens"],
+            "output_tokens": row["output_tokens"],
+            "total_cost_usd": row["total_cost_usd"],
+        })
+
+    return entries
+
+
+def _query_costs_by_agent(db_path: str, days: int) -> Dict[str, Any]:
+    """Aggregate per-agent cost over the window."""
+    empty = {"by_agent": [], "total_input_tokens": 0, "total_output_tokens": 0}
+
+    conn = _open_workspace_conn(db_path)
+    if conn is None:
+        return empty
+
+    try:
+        if not _token_usage_exists(conn):
+            return empty
+        try:
+            repo = TokenRepository(sync_conn=conn)
+            return repo.get_costs_by_agent(days=days)
+        except sqlite3.Error as e:
+            logger.warning("costs/by-agent: query failed on %s: %s", db_path, e)
+            return empty
+    finally:
+        conn.close()
+
+
+@router.get("/tasks", response_model=TaskCostsResponse)
+@rate_limit_standard()
+async def get_costs_by_task(
+    request: Request,
+    workspace: Workspace = Depends(get_v2_workspace),
+    days: int = Query(30, ge=1, le=365, description="Window size in days (1-365)"),
+    limit: int = Query(
+        10,
+        ge=1,
+        le=1000,
+        description=(
+            "Max number of tasks to return. Default 10 matches the analytics view; "
+            "raise it (e.g. to 1000) when populating a per-task badge map for the "
+            "full task board."
+        ),
+    ),
+):
+    """Return the top ``limit`` tasks by total cost over the requested window.
+
+    Token usage rows are grouped by ``task_id``; the resulting list is sorted
+    by total cost (descending). Rows whose ``task_id`` is NULL are excluded —
+    only task-attributable spend counts here.
+
+    If the workspace has no token usage data yet (or the table doesn't exist),
+    returns ``{"tasks": []}`` rather than an error.
+    """
+    entries = _query_top_tasks(str(workspace.db_path), workspace, days, limit=limit)
+    return TaskCostsResponse(
+        tasks=[TaskCostEntry(**e) for e in entries],
+    )
+
+
+@router.get("/by-agent", response_model=AgentCostsResponse)
+@rate_limit_standard()
+async def get_costs_by_agent_endpoint(
+    request: Request,
+    workspace: Workspace = Depends(get_v2_workspace),
+    days: int = Query(30, ge=1, le=365, description="Window size in days (1-365)"),
+):
+    """Return per-agent cost breakdown and overall input/output token totals.
+
+    Token usage rows are grouped by ``agent_id`` and sorted by total cost
+    (descending). Rows with NULL ``task_id`` still count toward the agent's
+    totals (a non-task call still represents spend).
+    """
+    summary = _query_costs_by_agent(str(workspace.db_path), days)
+    return AgentCostsResponse(
+        by_agent=[AgentCostEntry(**a) for a in summary["by_agent"]],
+        total_input_tokens=summary["total_input_tokens"],
+        total_output_tokens=summary["total_output_tokens"],
     )

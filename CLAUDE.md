@@ -36,6 +36,8 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 ### Current Focus: Phase 4A
 
+**Phase 5.2 is complete** — Costs page now ships per-task and per-agent breakdowns (#558) on top of the spend summary (#557). Backend: `GET /api/v2/costs/tasks?days=N&limit=M` (top-N tasks with titles, agent, tokens, cost) and `GET /api/v2/costs/by-agent?days=N` (per-agent rollup + total input/output tokens), both via `TokenRepository.get_top_tasks_by_cost` and `get_costs_by_agent`. Task board cards show an inline `MoneyBag02Icon` cost badge with token-breakdown tooltip when cost data exists. Fixed a v2 data-loss bug where `react_agent` int-cast UUID task IDs and stored NULL in `token_usage`.
+
 **Phase 5.1 is complete** — Settings page now ships three working tabs: Agent (#554), API Keys (#555), and PROOF9 Defaults + Workspace Config (#556). Backend: `GET/PUT /api/v2/proof/config` and `/api/v2/workspaces/config`, plus `run_proof()` now honors `enabled_gates` filtering and `strictness` (`strict` vs `warn`). Atomic JSON writes via `codeframe/ui/routers/_helpers.atomic_write_json`. The 9-gate canonical order and `proof_config.json` filename live in `codeframe/core/proof/models.py`.
 
 **Phase 3.5C is complete** — `CaptureGlitchModal` form (description/markdown, source, scope, gate obligations, severity, expiry) reachable from the PROOF9 page and the persistent sidebar "Capture Glitch" button. REQ detail view (`/proof/[req_id]`) ships markdown description rendering, `ProofScope` metadata display, obligations table with `Latest Run` column, sortable/filterable evidence history, and empty-state CTA. Backend: `ScopeOut` model on `RequirementResponse`. Issues #568, #569.

@@ -198,3 +198,191 @@ class TestGetCostsSummaryRangeValidation:
     def test_valid_ranges(self, db, days):
         summary = db.token_usage.get_costs_summary(days=days)
         assert len(summary["daily"]) == days
+
+
+# ---------------------------------------------------------------------------
+# get_top_tasks_by_cost (Issue #558) — per-task cost breakdown
+# ---------------------------------------------------------------------------
+
+
+def _save_with_agent(
+    db, task_id, cost, agent_id="agent-001", project_id=1, timestamp=None,
+    input_tokens=100, output_tokens=50,
+):
+    if timestamp is None:
+        timestamp = datetime.now(timezone.utc)
+    usage = TokenUsage(
+        task_id=task_id,
+        agent_id=agent_id,
+        project_id=project_id,
+        model_name="claude-sonnet-4-5",
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        estimated_cost_usd=cost,
+        actual_cost_usd=None,
+        call_type=CallType.TASK_EXECUTION,
+        timestamp=timestamp,
+    )
+    return db.save_token_usage(usage)
+
+
+class TestGetTopTasksByCost:
+    def test_empty_returns_empty_list(self, db):
+        result = db.token_usage.get_top_tasks_by_cost(days=30)
+        assert result == []
+
+    def test_aggregates_cost_per_task(self, db):
+        t1 = _create_task(db)
+        t2 = _create_task(db)
+        _save_with_agent(db, task_id=t1, cost=0.25)
+        _save_with_agent(db, task_id=t1, cost=0.50)
+        _save_with_agent(db, task_id=t2, cost=0.10)
+
+        result = db.token_usage.get_top_tasks_by_cost(days=30)
+
+        # Sorted by cost desc
+        assert len(result) == 2
+        assert result[0]["task_id"] == t1
+        assert result[0]["total_cost_usd"] == pytest.approx(0.75)
+        assert result[0]["input_tokens"] == 200
+        assert result[0]["output_tokens"] == 100
+        assert result[1]["task_id"] == t2
+        assert result[1]["total_cost_usd"] == pytest.approx(0.10)
+
+    def test_includes_most_used_agent_per_task(self, db):
+        """Task aggregates should report the agent with the most calls."""
+        t1 = _create_task(db)
+        _save_with_agent(db, task_id=t1, cost=0.10, agent_id="react-agent")
+        _save_with_agent(db, task_id=t1, cost=0.10, agent_id="react-agent")
+        _save_with_agent(db, task_id=t1, cost=0.10, agent_id="other-agent")
+
+        result = db.token_usage.get_top_tasks_by_cost(days=30)
+
+        assert result[0]["agent_id"] == "react-agent"
+
+    def test_excludes_null_task_ids(self, db):
+        t1 = _create_task(db)
+        _save_with_agent(db, task_id=t1, cost=0.10)
+        _save_with_agent(db, task_id=None, cost=99.0)
+
+        result = db.token_usage.get_top_tasks_by_cost(days=30)
+
+        assert len(result) == 1
+        assert result[0]["task_id"] == t1
+
+    def test_respects_limit(self, db):
+        for _ in range(15):
+            tid = _create_task(db)
+            _save_with_agent(db, task_id=tid, cost=0.01)
+
+        result = db.token_usage.get_top_tasks_by_cost(days=30, limit=10)
+        assert len(result) == 10
+
+    def test_excludes_data_outside_window(self, db):
+        t1 = _create_task(db)
+        now = datetime.now(timezone.utc)
+        _save_with_agent(db, task_id=t1, cost=0.10, timestamp=now)
+        _save_with_agent(db, task_id=t1, cost=99.0, timestamp=now - timedelta(days=100))
+
+        result = db.token_usage.get_top_tasks_by_cost(days=30)
+
+        assert result[0]["total_cost_usd"] == pytest.approx(0.10)
+
+    def test_supports_text_task_ids(self, db):
+        """SQLite is type-flexible: TEXT (UUID) task_ids must be aggregated correctly.
+
+        v2 workspaces store task UUIDs in the same INTEGER-declared column; the
+        aggregation has to group by the raw value without type coercion. The v1
+        Database fixture enforces FK(token_usage.task_id → tasks.id), so we
+        relax it for this test to model the v2 schema where token_usage has no
+        such constraint.
+        """
+        uuid_a = "task-uuid-aaaa"
+        uuid_b = "task-uuid-bbbb"
+        cursor = db.conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = OFF")
+        try:
+            for tid, cost in [(uuid_a, 0.50), (uuid_a, 0.25), (uuid_b, 0.10)]:
+                cursor.execute(
+                    """
+                    INSERT INTO token_usage (task_id, agent_id, project_id, model_name,
+                        input_tokens, output_tokens, estimated_cost_usd, call_type, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (tid, "react-agent", 1, "claude-sonnet-4-5",
+                     100, 50, cost, "task_execution",
+                     datetime.now(timezone.utc).isoformat()),
+                )
+            db.conn.commit()
+        finally:
+            cursor.execute("PRAGMA foreign_keys = ON")
+
+        result = db.token_usage.get_top_tasks_by_cost(days=30)
+
+        assert len(result) == 2
+        assert result[0]["task_id"] == uuid_a
+        assert result[0]["total_cost_usd"] == pytest.approx(0.75)
+
+
+# ---------------------------------------------------------------------------
+# get_costs_by_agent (Issue #558) — per-agent cost breakdown
+# ---------------------------------------------------------------------------
+
+
+class TestGetCostsByAgent:
+    def test_empty_returns_zero_state(self, db):
+        result = db.token_usage.get_costs_by_agent(days=30)
+        assert result["by_agent"] == []
+        assert result["total_input_tokens"] == 0
+        assert result["total_output_tokens"] == 0
+
+    def test_aggregates_cost_per_agent(self, db):
+        t1 = _create_task(db)
+        _save_with_agent(db, task_id=t1, cost=0.30, agent_id="claude-code")
+        _save_with_agent(db, task_id=t1, cost=0.20, agent_id="claude-code")
+        _save_with_agent(db, task_id=t1, cost=0.40, agent_id="codex")
+
+        result = db.token_usage.get_costs_by_agent(days=30)
+
+        # Sorted by cost desc
+        agents = result["by_agent"]
+        assert len(agents) == 2
+        assert agents[0]["agent_id"] == "claude-code"
+        assert agents[0]["total_cost_usd"] == pytest.approx(0.50)
+        assert agents[0]["call_count"] == 2
+        assert agents[0]["input_tokens"] == 200
+        assert agents[0]["output_tokens"] == 100
+        assert agents[1]["agent_id"] == "codex"
+        assert agents[1]["total_cost_usd"] == pytest.approx(0.40)
+
+    def test_includes_null_task_records(self, db):
+        """Per-agent totals should include calls not linked to a task."""
+        _save_with_agent(db, task_id=None, cost=0.10, agent_id="solo-agent")
+
+        result = db.token_usage.get_costs_by_agent(days=30)
+
+        assert len(result["by_agent"]) == 1
+        assert result["by_agent"][0]["agent_id"] == "solo-agent"
+
+    def test_totals_match_sum_of_agents(self, db):
+        t1 = _create_task(db)
+        _save_with_agent(db, task_id=t1, cost=0.10,
+                         agent_id="a", input_tokens=100, output_tokens=50)
+        _save_with_agent(db, task_id=t1, cost=0.10,
+                         agent_id="b", input_tokens=200, output_tokens=75)
+
+        result = db.token_usage.get_costs_by_agent(days=30)
+
+        assert result["total_input_tokens"] == 300
+        assert result["total_output_tokens"] == 125
+
+    def test_excludes_data_outside_window(self, db):
+        t1 = _create_task(db)
+        now = datetime.now(timezone.utc)
+        _save_with_agent(db, task_id=t1, cost=0.10, agent_id="a", timestamp=now)
+        _save_with_agent(db, task_id=t1, cost=99.0, agent_id="a",
+                         timestamp=now - timedelta(days=100))
+
+        result = db.token_usage.get_costs_by_agent(days=30)
+
+        assert result["by_agent"][0]["total_cost_usd"] == pytest.approx(0.10)

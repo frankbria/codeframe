@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskCard } from '@/components/tasks/TaskCard';
-import type { Task } from '@/types';
+import type { Task, TaskCostEntry } from '@/types';
 
 // ─── Fixtures ───────────────────────────────────────────────────────
 
@@ -226,5 +226,69 @@ describe('TaskCard', () => {
     renderCard({ status: 'FAILED' }, { isLoading: true });
     expect(screen.queryByRole('button', { name: /reset/i })).not.toBeInTheDocument();
     expect(screen.getByRole('status', { name: /loading/i })).toBeInTheDocument();
+  });
+
+  // ─── Cost badge (issue #558) ─────────────────────────────────────────
+
+  function makeCostMap(entries: Partial<TaskCostEntry>[]): Map<string, TaskCostEntry> {
+    const map = new Map<string, TaskCostEntry>();
+    for (const entry of entries) {
+      const full: TaskCostEntry = {
+        task_id: entry.task_id ?? 'task-1',
+        task_title: entry.task_title ?? 'Implement login',
+        agent_id: entry.agent_id ?? 'react-agent',
+        input_tokens: entry.input_tokens ?? 1000,
+        output_tokens: entry.output_tokens ?? 500,
+        total_cost_usd: entry.total_cost_usd ?? 0.12,
+      };
+      map.set(full.task_id, full);
+    }
+    return map;
+  }
+
+  it('renders a cost badge when cost data exists for the task', () => {
+    renderCard({}, {
+      costMap: makeCostMap([{ task_id: 'task-1', total_cost_usd: 0.1234 }]),
+    });
+    const badge = screen.getByTestId('cost-badge');
+    expect(badge).toBeInTheDocument();
+    expect(badge.textContent).toContain('$0.12');
+  });
+
+  it('hides the cost badge when no cost data exists for the task', () => {
+    renderCard({}, {
+      costMap: makeCostMap([{ task_id: 'other-task', total_cost_usd: 0.99 }]),
+    });
+    expect(screen.queryByTestId('cost-badge')).not.toBeInTheDocument();
+  });
+
+  it('hides the cost badge when cost is zero', () => {
+    renderCard({}, {
+      costMap: makeCostMap([{ task_id: 'task-1', total_cost_usd: 0 }]),
+    });
+    expect(screen.queryByTestId('cost-badge')).not.toBeInTheDocument();
+  });
+
+  it('hides the cost badge when costMap is undefined', () => {
+    renderCard();
+    expect(screen.queryByTestId('cost-badge')).not.toBeInTheDocument();
+  });
+
+  it('formats cost above one dollar with two decimals', () => {
+    renderCard({}, {
+      costMap: makeCostMap([{ task_id: 'task-1', total_cost_usd: 12.5 }]),
+    });
+    expect(screen.getByTestId('cost-badge').textContent).toContain('$12.50');
+  });
+
+  it('shows sub-cent costs at four-decimal precision', () => {
+    // Regression: $0.0042 must not collapse to $0.00 just because the
+    // badge is visible. Matches TopTasksTable's precision.
+    renderCard({}, {
+      costMap: makeCostMap([{ task_id: 'task-1', total_cost_usd: 0.0042 }]),
+    });
+    const text = screen.getByTestId('cost-badge').textContent ?? '';
+    expect(text).toContain('$0.0042');
+    expect(text).not.toMatch(/\$0\.00\b/);
   });
 });

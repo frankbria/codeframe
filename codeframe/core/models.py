@@ -879,7 +879,9 @@ class TokenUsage(BaseModel):
     """Token usage record for a single LLM call (Sprint 10)."""
 
     id: Optional[int] = None
-    task_id: Optional[int] = None  # None for non-task calls
+    # Tasks use integer PKs in the v1 schema and UUID strings in v2 workspaces;
+    # SQLite is type-flexible, so we accept either at the model boundary.
+    task_id: Optional[Union[int, str]] = None  # None for non-task calls
     agent_id: str
     project_id: int
     model_name: str = Field(..., description="e.g., claude-sonnet-4-5")

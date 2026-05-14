@@ -40,7 +40,7 @@ import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from codeframe.core.models import CallType, TokenUsage
 from codeframe.persistence.database import Database
 
@@ -163,7 +163,7 @@ class MetricsTracker:
 
     async def record_token_usage(
         self,
-        task_id: Optional[int],
+        task_id: Optional[Union[int, str]],
         agent_id: str,
         project_id: int,
         model_name: str,
@@ -238,7 +238,7 @@ class MetricsTracker:
 
     def record_token_usage_sync(
         self,
-        task_id: Optional[int],
+        task_id: Optional[Union[int, str]],
         agent_id: str,
         project_id: int,
         model_name: str,

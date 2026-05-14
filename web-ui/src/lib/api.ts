@@ -68,6 +68,8 @@ import type {
   WorkspaceConfigResponse,
   UpdateWorkspaceConfigRequest,
   CostSummaryResponse,
+  TaskCostsResponse,
+  AgentCostsResponse,
 } from '@/types';
 
 // FastAPI validation error format
@@ -910,7 +912,7 @@ export const workspaceConfigApi = {
   },
 };
 
-// Cost analytics API (issue #557)
+// Cost analytics API (issues #557, #558)
 export const costsApi = {
   /**
    * Get aggregated spend summary for the workspace.
@@ -921,6 +923,39 @@ export const costsApi = {
   ): Promise<CostSummaryResponse> => {
     const response = await api.get<CostSummaryResponse>(
       '/api/v2/costs/summary',
+      { params: { workspace_path: workspacePath, days } }
+    );
+    return response.data;
+  },
+
+  /**
+   * Get tasks by total cost over a `days` window, descending.
+   *
+   * Default `limit=10` matches the analytics view. The task board passes a
+   * much higher limit so its cost badge map covers every task that ever had
+   * spend, not just the top 10.
+   */
+  getTopTasks: async (
+    workspacePath: string,
+    days: number = 30,
+    limit: number = 10
+  ): Promise<TaskCostsResponse> => {
+    const response = await api.get<TaskCostsResponse>(
+      '/api/v2/costs/tasks',
+      { params: { workspace_path: workspacePath, days, limit } }
+    );
+    return response.data;
+  },
+
+  /**
+   * Get per-agent cost breakdown plus overall token totals.
+   */
+  getByAgent: async (
+    workspacePath: string,
+    days: number = 30
+  ): Promise<AgentCostsResponse> => {
+    const response = await api.get<AgentCostsResponse>(
+      '/api/v2/costs/by-agent',
       { params: { workspace_path: workspacePath, days } }
     );
     return response.data;
