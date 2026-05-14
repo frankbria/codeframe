@@ -280,4 +280,15 @@ describe('TaskCard', () => {
     });
     expect(screen.getByTestId('cost-badge').textContent).toContain('$12.50');
   });
+
+  it('shows sub-cent costs at four-decimal precision', () => {
+    // Regression: $0.0042 must not collapse to $0.00 just because the
+    // badge is visible. Matches TopTasksTable's precision.
+    renderCard({}, {
+      costMap: makeCostMap([{ task_id: 'task-1', total_cost_usd: 0.0042 }]),
+    });
+    const text = screen.getByTestId('cost-badge').textContent ?? '';
+    expect(text).toContain('$0.0042');
+    expect(text).not.toMatch(/\$0\.00\b/);
+  });
 });

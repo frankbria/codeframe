@@ -39,9 +39,14 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
 
   // Cost badge data (issue #558) — non-blocking. If this request fails or
   // returns no data the board still renders; badges simply don't show.
+  //
+  // Limit 1000: we want a badge for every task on the board, not just the
+  // top 10 analytics view. The endpoint caps server-side at 1000. The SWR
+  // key is intentionally separate from the /costs page (which uses a
+  // user-controlled time range) — these are independent views.
   const { data: costData } = useSWR<TaskCostsResponse, ApiError>(
-    `/api/v2/costs/tasks?path=${workspacePath}`,
-    () => costsApi.getTopTasks(workspacePath),
+    `/api/v2/costs/tasks?path=${workspacePath}&limit=1000`,
+    () => costsApi.getTopTasks(workspacePath, 30, 1000),
     { refreshInterval: 60000 }
   );
   const costMap = useMemo(() => {

@@ -929,15 +929,20 @@ export const costsApi = {
   },
 
   /**
-   * Get the top 10 tasks by total cost over a `days` window.
+   * Get tasks by total cost over a `days` window, descending.
+   *
+   * Default `limit=10` matches the analytics view. The task board passes a
+   * much higher limit so its cost badge map covers every task that ever had
+   * spend, not just the top 10.
    */
   getTopTasks: async (
     workspacePath: string,
-    days: number = 30
+    days: number = 30,
+    limit: number = 10
   ): Promise<TaskCostsResponse> => {
     const response = await api.get<TaskCostsResponse>(
       '/api/v2/costs/tasks',
-      { params: { workspace_path: workspacePath, days } }
+      { params: { workspace_path: workspacePath, days, limit } }
     );
     return response.data;
   },

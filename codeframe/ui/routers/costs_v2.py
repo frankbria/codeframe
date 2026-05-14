@@ -201,7 +201,7 @@ def _token_usage_exists(conn: sqlite3.Connection) -> bool:
 
 
 def _query_top_tasks(
-    db_path: str, workspace: Workspace, days: int, limit: int = 10,
+    db_path: str, workspace: Workspace, days: int, limit: int,
 ) -> List[Dict[str, Any]]:
     """Aggregate per-task cost and join titles via workspace.tasks.
 
@@ -275,17 +275,27 @@ async def get_costs_by_task(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
     days: int = Query(30, ge=1, le=365, description="Window size in days (1-365)"),
+    limit: int = Query(
+        10,
+        ge=1,
+        le=1000,
+        description=(
+            "Max number of tasks to return. Default 10 matches the analytics view; "
+            "raise it (e.g. to 1000) when populating a per-task badge map for the "
+            "full task board."
+        ),
+    ),
 ):
-    """Return the top 10 tasks by total cost over the requested window.
+    """Return the top ``limit`` tasks by total cost over the requested window.
 
     Token usage rows are grouped by ``task_id``; the resulting list is sorted
-    by total cost (descending) and capped at 10 entries. Rows whose ``task_id``
-    is NULL are excluded — only task-attributable spend counts here.
+    by total cost (descending). Rows whose ``task_id`` is NULL are excluded —
+    only task-attributable spend counts here.
 
     If the workspace has no token usage data yet (or the table doesn't exist),
     returns ``{"tasks": []}`` rather than an error.
     """
-    entries = _query_top_tasks(str(workspace.db_path), workspace, days, limit=10)
+    entries = _query_top_tasks(str(workspace.db_path), workspace, days, limit=limit)
     return TaskCostsResponse(
         tasks=[TaskCostEntry(**e) for e in entries],
     )

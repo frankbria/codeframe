@@ -416,6 +416,9 @@ class TokenRepository(BaseRepository):
         )
         rows = cursor.fetchall()
 
+        # TODO(perf): the dominant-agent lookup is N+1 against the limit.
+        # Acceptable at limit=10 (analytics view) and even limit=1000 (badge
+        # map for a board). Fold into a single CTE if the cap grows further.
         result: List[Dict[str, Any]] = []
         for row in rows:
             task_id = row["task_id"]

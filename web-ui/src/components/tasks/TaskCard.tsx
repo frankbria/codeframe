@@ -10,8 +10,21 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/comp
 import { STATUS_INFO } from '@/lib/taskStatusInfo';
 import type { Task, TaskStatus, ProofRequirement, TaskCostEntry } from '@/types';
 
-/** Format cost for the inline badge — cents-precision under $1, two decimals above. */
+/** Format cost for the inline badge.
+ *
+ * AI per-task costs commonly sit below $0.01, so 2dp would display "$0.00"
+ * and hide real spend. Mirrors TopTasksTable's 4dp precision under $1 and
+ * falls back to 2dp once costs cross a dollar.
+ */
 function formatBadgeCost(value: number): string {
+  if (value < 0.01) {
+    return value.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 4,
+    });
+  }
   if (value < 1) {
     return `$${value.toFixed(2)}`;
   }
