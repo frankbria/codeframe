@@ -351,6 +351,168 @@ class TokenRepository(BaseRepository):
             "daily": daily,
         }
 
+    def _window_iso_bounds(self, days: int) -> tuple[str, str]:
+        """Return inclusive start / exclusive end ISO strings for a `days` window.
+
+        Mirrors get_costs_summary's bounds so the per-task and per-agent
+        aggregations cover the same rows. Space-separated, offset-free format
+        works against both ``CURRENT_TIMESTAMP`` defaults and ``.isoformat()``.
+        """
+        if days <= 0:
+            raise ValueError("days must be a positive integer")
+        end_date = datetime.now(timezone.utc).date()
+        start_date = end_date - timedelta(days=days - 1)
+        start_iso = start_date.strftime("%Y-%m-%d %H:%M:%S")
+        end_iso = (end_date + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+        return start_iso, end_iso
+
+    def get_top_tasks_by_cost(
+        self,
+        days: int,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """Aggregate spend per task and return the top N by cost.
+
+        Args:
+            days: Trailing window in days.
+            limit: Maximum number of tasks to return.
+
+        Returns:
+            List of dicts, sorted by total_cost_usd DESC:
+                {
+                    "task_id": <native value from token_usage.task_id>,
+                    "agent_id": str,
+                    "input_tokens": int,
+                    "output_tokens": int,
+                    "total_cost_usd": float,
+                }
+            Excludes rows where task_id IS NULL. The reported ``agent_id`` is
+            the agent that made the most calls for that task (ties broken
+            arbitrarily). ``task_id`` is returned as stored — SQLite preserves
+            the inserted type, so v2 UUID strings come back as strings and v1
+            integers come back as integers.
+        """
+        if limit <= 0:
+            raise ValueError("limit must be a positive integer")
+        start_iso, end_iso = self._window_iso_bounds(days)
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                task_id,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) AS total_cost_usd
+            FROM token_usage
+            WHERE task_id IS NOT NULL
+              AND timestamp >= ?
+              AND timestamp < ?
+            GROUP BY task_id
+            ORDER BY total_cost_usd DESC
+            LIMIT ?
+            """,
+            (start_iso, end_iso, limit),
+        )
+        rows = cursor.fetchall()
+
+        result: List[Dict[str, Any]] = []
+        for row in rows:
+            task_id = row["task_id"]
+            # Find the most-used agent for this task in the same window.
+            cursor.execute(
+                """
+                SELECT agent_id, COUNT(*) AS calls
+                FROM token_usage
+                WHERE task_id = ?
+                  AND timestamp >= ?
+                  AND timestamp < ?
+                GROUP BY agent_id
+                ORDER BY calls DESC
+                LIMIT 1
+                """,
+                (task_id, start_iso, end_iso),
+            )
+            agent_row = cursor.fetchone()
+            agent_id = agent_row["agent_id"] if agent_row else ""
+
+            result.append({
+                "task_id": task_id,
+                "agent_id": agent_id,
+                "input_tokens": int(row["input_tokens"] or 0),
+                "output_tokens": int(row["output_tokens"] or 0),
+                "total_cost_usd": float(row["total_cost_usd"] or 0.0),
+            })
+
+        return result
+
+    def get_costs_by_agent(self, days: int) -> Dict[str, Any]:
+        """Aggregate spend per agent over a trailing `days` window.
+
+        Args:
+            days: Trailing window in days.
+
+        Returns:
+            {
+                "by_agent": [
+                    {
+                        "agent_id": str,
+                        "input_tokens": int,
+                        "output_tokens": int,
+                        "total_cost_usd": float,
+                        "call_count": int,
+                    },
+                    ...
+                ],
+                "total_input_tokens": int,
+                "total_output_tokens": int,
+            }
+
+        Includes records with NULL ``task_id`` — calls without a task still
+        attribute to an agent. Sorted by total_cost_usd DESC.
+        """
+        start_iso, end_iso = self._window_iso_bounds(days)
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                agent_id,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) AS total_cost_usd,
+                COUNT(*) AS call_count
+            FROM token_usage
+            WHERE timestamp >= ? AND timestamp < ?
+            GROUP BY agent_id
+            ORDER BY total_cost_usd DESC
+            """,
+            (start_iso, end_iso),
+        )
+        rows = cursor.fetchall()
+
+        by_agent: List[Dict[str, Any]] = []
+        total_input = 0
+        total_output = 0
+        for row in rows:
+            inp = int(row["input_tokens"] or 0)
+            out = int(row["output_tokens"] or 0)
+            by_agent.append({
+                "agent_id": row["agent_id"],
+                "input_tokens": inp,
+                "output_tokens": out,
+                "total_cost_usd": float(row["total_cost_usd"] or 0.0),
+                "call_count": int(row["call_count"] or 0),
+            })
+            total_input += inp
+            total_output += out
+
+        return {
+            "by_agent": by_agent,
+            "total_input_tokens": total_input,
+            "total_output_tokens": total_output,
+        }
+
     def get_project_costs_aggregate(self, project_id: int) -> Dict[str, Any]:
         """Get aggregated cost statistics for a project.
 

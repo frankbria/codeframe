@@ -9,13 +9,20 @@ import {
 } from '@hugeicons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SpendBarChart } from '@/components/costs/SpendBarChart';
+import { TopTasksTable } from '@/components/costs/TopTasksTable';
+import { AgentCostBars } from '@/components/costs/AgentCostBars';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
 import { costsApi, workspaceApi } from '@/lib/api';
 import {
   getSelectedWorkspacePath,
   setSelectedWorkspacePath,
 } from '@/lib/workspace-storage';
-import type { CostSummaryResponse, ApiError } from '@/types';
+import type {
+  CostSummaryResponse,
+  TaskCostsResponse,
+  AgentCostsResponse,
+  ApiError,
+} from '@/types';
 
 const DAY_OPTIONS = [
   { value: 7, label: 'Last 7 days' },
@@ -45,6 +52,18 @@ export default function CostsPage() {
   const { data, error, isLoading } = useSWR<CostSummaryResponse, ApiError>(
     workspacePath ? ['/api/v2/costs/summary', workspacePath, days] : null,
     () => costsApi.getSummary(workspacePath!, days),
+    { refreshInterval: 60000 }
+  );
+
+  const { data: tasksData, isLoading: tasksLoading } = useSWR<TaskCostsResponse, ApiError>(
+    workspacePath ? ['/api/v2/costs/tasks', workspacePath, days] : null,
+    () => costsApi.getTopTasks(workspacePath!, days),
+    { refreshInterval: 60000 }
+  );
+
+  const { data: agentsData, isLoading: agentsLoading } = useSWR<AgentCostsResponse, ApiError>(
+    workspacePath ? ['/api/v2/costs/by-agent', workspacePath, days] : null,
+    () => costsApi.getByAgent(workspacePath!, days),
     { refreshInterval: 60000 }
   );
 
@@ -175,6 +194,42 @@ export default function CostsPage() {
             <div className="mt-6">
               <SpendBarChart daily={data.daily} days={days} />
             </div>
+
+            <section className="mt-8" aria-labelledby="top-tasks-heading">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 id="top-tasks-heading" className="text-lg font-semibold">
+                  Top tasks by cost
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Top 10 over the selected window
+                </p>
+              </div>
+              <TopTasksTable
+                tasks={tasksData?.tasks ?? []}
+                isLoading={tasksLoading && !tasksData}
+              />
+            </section>
+
+            <section className="mt-8" aria-labelledby="by-agent-heading">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 id="by-agent-heading" className="text-lg font-semibold">
+                  Cost by agent
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Spend grouped by agent over the selected window
+                </p>
+              </div>
+              <AgentCostBars
+                data={
+                  agentsData ?? {
+                    by_agent: [],
+                    total_input_tokens: 0,
+                    total_output_tokens: 0,
+                  }
+                }
+                isLoading={agentsLoading && !agentsData}
+              />
+            </section>
           </>
         ) : null}
       </div>

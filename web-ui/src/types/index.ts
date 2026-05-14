@@ -632,3 +632,31 @@ export interface CostSummaryResponse {
   avg_cost_per_task: number;
   daily: DailyCostPoint[];
 }
+
+// Cost analytics breakdowns (issue #558)
+export interface TaskCostEntry {
+  task_id: string;
+  task_title: string;
+  agent_id: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_cost_usd: number;
+}
+
+export interface TaskCostsResponse {
+  tasks: TaskCostEntry[];
+}
+
+export interface AgentCostEntry {
+  agent_id: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_cost_usd: number;
+  call_count: number;
+}
+
+export interface AgentCostsResponse {
+  by_agent: AgentCostEntry[];
+  total_input_tokens: number;
+  total_output_tokens: number;
+}

@@ -3,7 +3,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TaskCard } from './TaskCard';
-import type { Task, TaskStatus, ProofRequirement } from '@/types';
+import type { Task, TaskStatus, ProofRequirement, TaskCostEntry } from '@/types';
 
 /** Human-readable column headers. */
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -31,6 +31,7 @@ interface TaskColumnProps {
   onDeselectAll?: (taskIds: string[]) => void;
   loadingTaskIds?: Set<string>;
   requirementsMap?: Map<string, ProofRequirement>;
+  costMap?: Map<string, TaskCostEntry>;
 }
 
 export function TaskColumn({
@@ -48,6 +49,7 @@ export function TaskColumn({
   onDeselectAll,
   loadingTaskIds = new Set(),
   requirementsMap,
+  costMap,
 }: TaskColumnProps) {
   const taskIds = tasks.map((t) => t.id);
   const selectedCount = tasks.filter((t) => selectedTaskIds.has(t.id)).length;
@@ -102,6 +104,7 @@ export function TaskColumn({
               onReset={onReset}
               isLoading={loadingTaskIds.has(task.id)}
               requirementsMap={requirementsMap}
+              costMap={costMap}
             />
           ))
         )}

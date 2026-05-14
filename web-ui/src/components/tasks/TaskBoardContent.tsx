@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { TaskColumn } from './TaskColumn';
-import type { Task, TaskStatus, ProofRequirement } from '@/types';
+import type { Task, TaskStatus, ProofRequirement, TaskCostEntry } from '@/types';
 
 /** Column display order matches the task lifecycle. */
 const COLUMN_ORDER: TaskStatus[] = [
@@ -28,6 +28,7 @@ interface TaskBoardContentProps {
   onDeselectAll?: (taskIds: string[]) => void;
   loadingTaskIds?: Set<string>;
   requirementsMap?: Map<string, ProofRequirement>;
+  costMap?: Map<string, TaskCostEntry>;
 }
 
 export function TaskBoardContent({
@@ -44,6 +45,7 @@ export function TaskBoardContent({
   onDeselectAll,
   loadingTaskIds,
   requirementsMap,
+  costMap,
 }: TaskBoardContentProps) {
   /** Group flat task array into per-status buckets. */
   const tasksByStatus = useMemo(() => {
@@ -78,6 +80,7 @@ export function TaskBoardContent({
           onDeselectAll={onDeselectAll}
           loadingTaskIds={loadingTaskIds}
           requirementsMap={requirementsMap}
+          costMap={costMap}
         />
       ))}
     </div>

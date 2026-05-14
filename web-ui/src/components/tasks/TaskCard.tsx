@@ -1,14 +1,31 @@
 'use client';
 
 import Link from 'next/link';
-import { PlayCircleIcon, CheckmarkCircle01Icon, LinkCircleIcon, Cancel01Icon, ArrowTurnBackwardIcon, Loading03Icon, BookOpen01Icon } from '@hugeicons/react';
+import { PlayCircleIcon, CheckmarkCircle01Icon, LinkCircleIcon, Cancel01Icon, ArrowTurnBackwardIcon, Loading03Icon, BookOpen01Icon, MoneyBag02Icon } from '@hugeicons/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { STATUS_INFO } from '@/lib/taskStatusInfo';
-import type { Task, TaskStatus, ProofRequirement } from '@/types';
+import type { Task, TaskStatus, ProofRequirement, TaskCostEntry } from '@/types';
+
+/** Format cost for the inline badge — cents-precision under $1, two decimals above. */
+function formatBadgeCost(value: number): string {
+  if (value < 1) {
+    return `$${value.toFixed(2)}`;
+  }
+  return value.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatTokens(n: number): string {
+  return n.toLocaleString('en-US');
+}
 
 /** Map backend TaskStatus to badge variant name. */
 const STATUS_BADGE_VARIANT: Record<TaskStatus, string> = {
@@ -47,6 +64,8 @@ interface TaskCardProps {
   isLoading?: boolean;
   /** Map of requirement ID → ProofRequirement for badge lookup (shared SWR cache from parent). */
   requirementsMap?: Map<string, ProofRequirement>;
+  /** Map of task ID → cost entry. When present and entry has nonzero cost, a cost badge renders. */
+  costMap?: Map<string, TaskCostEntry>;
 }
 
 export function TaskCard({
@@ -61,10 +80,13 @@ export function TaskCard({
   onReset,
   isLoading = false,
   requirementsMap,
+  costMap,
 }: TaskCardProps) {
   const reqIds = task.requirement_ids ?? [];
   const firstReq = reqIds.length > 0 ? requirementsMap?.get(reqIds[0]) : undefined;
   const overflowCount = reqIds.length > 1 ? reqIds.length - 1 : 0;
+  const costEntry = costMap?.get(task.id);
+  const showCostBadge = costEntry !== undefined && costEntry.total_cost_usd > 0;
   return (
     <Card
       className="cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
@@ -150,6 +172,35 @@ export function TaskCard({
             {overflowCount > 0 && (
               <span className="text-[10px] text-muted-foreground">+{overflowCount}</span>
             )}
+          </div>
+        )}
+
+        {/* Cost badge (issue #558) */}
+        {showCostBadge && costEntry && (
+          <div
+            className="mt-2 flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge
+                  data-testid="cost-badge"
+                  variant="outline"
+                  className="h-5 gap-1 px-1.5 text-[10px]"
+                >
+                  <MoneyBag02Icon className="h-3 w-3" />
+                  <span className="tabular-nums">{formatBadgeCost(costEntry.total_cost_usd)}</span>
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[220px] space-y-0.5 text-xs">
+                <p>Input tokens: {formatTokens(costEntry.input_tokens)}</p>
+                <p>Output tokens: {formatTokens(costEntry.output_tokens)}</p>
+                <p className="font-medium">
+                  Total: {formatBadgeCost(costEntry.total_cost_usd)}
+                </p>
+              </TooltipContent>
+            </Tooltip>
           </div>
         )}
 

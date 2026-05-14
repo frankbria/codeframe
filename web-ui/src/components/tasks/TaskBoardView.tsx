@@ -11,11 +11,13 @@ import { BatchActionsBar } from './BatchActionsBar';
 import { BulkActionConfirmDialog, type BulkActionType } from './BulkActionConfirmDialog';
 import { Cancel01Icon, Task01Icon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
-import { tasksApi, prdApi } from '@/lib/api';
+import { tasksApi, prdApi, costsApi } from '@/lib/api';
 import { useRequirementsLookup } from '@/hooks/useRequirementsLookup';
 import type {
   TaskStatus,
   TaskListResponse,
+  TaskCostsResponse,
+  TaskCostEntry,
   BatchStrategy,
   ApiError,
   PrdListResponse,
@@ -34,6 +36,21 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
     () => tasksApi.getAll(workspacePath)
   );
   const { requirementsMap } = useRequirementsLookup(workspacePath);
+
+  // Cost badge data (issue #558) — non-blocking. If this request fails or
+  // returns no data the board still renders; badges simply don't show.
+  const { data: costData } = useSWR<TaskCostsResponse, ApiError>(
+    `/api/v2/costs/tasks?path=${workspacePath}`,
+    () => costsApi.getTopTasks(workspacePath),
+    { refreshInterval: 60000 }
+  );
+  const costMap = useMemo(() => {
+    const map = new Map<string, TaskCostEntry>();
+    for (const entry of costData?.tasks ?? []) {
+      map.set(entry.task_id, entry);
+    }
+    return map;
+  }, [costData?.tasks]);
 
   // PRD existence check — drives empty state context message
   const { data: prdData } = useSWR<PrdListResponse>(
@@ -416,6 +433,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onDeselectAll={handleDeselectAll}
         loadingTaskIds={loadingTaskIds}
         requirementsMap={requirementsMap}
+        costMap={costMap}
       />}
 
       {/* Task detail modal */}
