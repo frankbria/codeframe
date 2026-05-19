@@ -94,8 +94,8 @@ def initialized_workspace(target_project_dir, cf, sample_prd_path):
     A workspace with:
     - cf init complete
     - PRD added
-    - Tasks generated
-    Ready for `cf work batch run --all-ready --execute`.
+    - Tasks generated and promoted from BACKLOG → READY
+    Ready for `cf work batch run --all-ready`.
     """
     result = cf("init", str(target_project_dir), "--tech-stack", "Python with uv")
     assert result.returncode == 0, f"cf init failed:\n{result.stderr}"
@@ -109,5 +109,10 @@ def initialized_workspace(target_project_dir, cf, sample_prd_path):
 
     result = cf("tasks", "generate")
     assert result.returncode == 0, f"cf tasks generate failed:\n{result.stderr}"
+
+    # `cf tasks generate` creates BACKLOG tasks; promote to READY so the
+    # batch runner picks them up via --all-ready.
+    result = cf("tasks", "set", "status", "READY", "--all", "--from", "BACKLOG")
+    assert result.returncode == 0, f"cf tasks set status READY failed:\n{result.stderr}"
 
     return target_project_dir
