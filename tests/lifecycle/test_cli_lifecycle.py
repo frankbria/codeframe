@@ -39,7 +39,6 @@ class TestCLILifecycle:
         result = cf(
             "work", "batch", "run",
             "--all-ready",
-            "--execute",
             "--engine", "react",
             "--retry", "1",
             timeout=1800,  # 30 min ceiling
@@ -68,7 +67,7 @@ class TestCLILifecycle:
         """All tasks reach DONE or BLOCKED status — none stuck in IN_PROGRESS."""
         cf(
             "work", "batch", "run",
-            "--all-ready", "--execute", "--engine", "react",
+            "--all-ready", "--engine", "react",
             timeout=1800,
         )
 
