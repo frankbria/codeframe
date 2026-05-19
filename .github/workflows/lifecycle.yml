@@ -30,6 +30,7 @@ jobs:
   lifecycle:
     name: Lifecycle (${{ inputs.mode || 'cli' }} / ${{ inputs.model || 'haiku' }})
     runs-on: ubuntu-latest
+    environment: staging
     timeout-minutes: 60
 
     steps:
@@ -73,13 +74,17 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CODEFRAME_LIFECYCLE_MODEL: ${{ inputs.model || 'haiku' }}
         run: |
+          mkdir -p artifacts
           uv run pytest ${{ steps.tests.outputs.path }} \
             -m lifecycle \
             -v \
             --tb=long \
             --no-header \
             -p no:warnings \
-            --timeout=1800
+            --timeout=1800 \
+            --basetemp=artifacts/pytest \
+            2>&1 | tee artifacts/pytest.log
+          exit "${PIPESTATUS[0]}"
 
       - name: Upload test artifacts on failure
         if: failure()
@@ -87,5 +92,6 @@ jobs:
         with:
           name: lifecycle-failure-${{ github.run_id }}
           path: |
-            /tmp/pytest-*/
+            artifacts/
           retention-days: 7
+          if-no-files-found: warn
