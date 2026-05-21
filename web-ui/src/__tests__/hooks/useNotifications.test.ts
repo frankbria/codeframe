@@ -265,6 +265,44 @@ describe('useNotifications', () => {
       expect(localStorage.getItem(NOTIFICATIONS_STORAGE_KEY)).toBeNull();
     });
 
+    it('ignores cross-tab storage events for unrelated keys', () => {
+      setSelectedWorkspacePath('/workspace/A');
+      const wsKey = `${NOTIFICATIONS_STORAGE_KEY_PREFIX}_${encodeURIComponent('/workspace/A')}`;
+      const { result } = renderHook(() => useNotifications());
+      act(() => {
+        result.current.addNotification({ type: 'batch.completed', message: 'A1' });
+      });
+      expect(result.current.notifications).toHaveLength(1);
+
+      // Simulate another tab writing to an unrelated localStorage key.
+      // Our hook must not reload from storage and overwrite in-memory state.
+      const beforeRef = result.current.notifications;
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', { key: 'some_other_app_key', newValue: 'x' })
+        );
+      });
+      // Same reference => no state update happened.
+      expect(result.current.notifications).toBe(beforeRef);
+
+      // But cross-tab writes to the notification key DO trigger reload.
+      const remoteEntry = [{
+        id: 'remote',
+        type: 'batch.completed',
+        message: 'from Tab B',
+        timestamp: new Date().toISOString(),
+        read: false,
+      }];
+      act(() => {
+        localStorage.setItem(wsKey, JSON.stringify(remoteEntry));
+        window.dispatchEvent(
+          new StorageEvent('storage', { key: wsKey, newValue: JSON.stringify(remoteEntry) })
+        );
+      });
+      expect(result.current.notifications).toHaveLength(1);
+      expect(result.current.notifications[0].id).toBe('remote');
+    });
+
     it('does not leak notifications across workspaces', () => {
       setSelectedWorkspacePath('/workspace/A');
       const { result, rerender } = renderHook(() => useNotifications());

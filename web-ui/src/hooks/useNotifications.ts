@@ -99,16 +99,33 @@ export function useNotifications(): UseNotificationsReturn {
     setWorkspacePath(path);
     setNotifications(readStored(storageKeyFor(path)));
 
-    const handleWorkspaceChange = () => {
+    const reload = () => {
       const next = getSelectedWorkspacePath();
       setWorkspacePath(next);
       setNotifications(readStored(storageKeyFor(next)));
     };
-    window.addEventListener('storage', handleWorkspaceChange);
-    window.addEventListener('workspaceChanged', handleWorkspaceChange);
+    // Cross-tab storage events fire for every localStorage key. Filter so we
+    // only react to (a) the active-workspace key, or (b) keys belonging to
+    // the notification store. Unrelated mutations are ignored.
+    const onStorage = (event: StorageEvent) => {
+      const key = event.key;
+      if (key === null) {
+        reload(); // localStorage.clear() — refresh defensively
+        return;
+      }
+      if (key === 'codeframe_workspace_path') {
+        reload();
+        return;
+      }
+      if (key.startsWith(NOTIFICATIONS_STORAGE_KEY_PREFIX)) {
+        reload();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('workspaceChanged', reload);
     return () => {
-      window.removeEventListener('storage', handleWorkspaceChange);
-      window.removeEventListener('workspaceChanged', handleWorkspaceChange);
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('workspaceChanged', reload);
     };
   }, []);
 
