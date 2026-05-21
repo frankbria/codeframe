@@ -20,6 +20,17 @@ jest.mock('@/lib/api', () => ({
     waiveRequirement: jest.fn(),
   },
 }));
+jest.mock('@/contexts/NotificationContext', () => ({
+  useNotificationContext: () => ({
+    notifications: [],
+    unreadCount: 0,
+    addNotification: jest.fn(),
+    markRead: jest.fn(),
+    markAllRead: jest.fn(),
+    clearAll: jest.fn(),
+  }),
+  NotificationProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
 jest.mock('@/components/proof', () => ({
   ProofStatusBadge: ({ status }: { status: string }) => <span data-testid="status-badge">{status}</span>,
   WaiveDialog: () => null,

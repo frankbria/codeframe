@@ -53,6 +53,15 @@ function ExecutionLandingContent() {
     setWorkspaceReady(true);
   }, []);
 
+  // Request browser notification permission once on first visit
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
+    if (Notification.permission === 'default') {
+      // Fire-and-forget — browsers handle the UI; we honor whatever the user picks.
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
   // If ?task= is present, redirect immediately
   useEffect(() => {
     if (taskIdParam) {

@@ -31,6 +31,12 @@ jest.mock('@/components/proof', () => ({
     open ? <div data-testid="capture-modal">CaptureGlitchModal</div> : null,
 }));
 
+// Mock NotificationCenter — it requires NotificationProvider context, which
+// this isolated sidebar test does not provide. The component has its own tests.
+jest.mock('@/components/layout/NotificationCenter', () => ({
+  NotificationCenter: () => <div data-testid="notification-center" />,
+}));
+
 // Mock SWR (used for blocker + session badge counts)
 const mockSWRData: Record<string, unknown> = {};
 jest.mock('swr', () => ({

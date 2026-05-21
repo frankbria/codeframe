@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { ProofStatusBadge, WaiveDialog, GateRunPanel, GateRunBanner, RunHistoryPanel, GateEvidencePanel, CaptureGlitchModal } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { useProofRun } from '@/hooks/useProofRun';
+import { useNotificationContext } from '@/contexts/NotificationContext';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import type { ProofRequirement, ProofRequirementListResponse, ProofReqStatus, ProofSeverity, ProofRunDetail } from '@/types';
 
@@ -107,6 +108,21 @@ function ProofPageContent() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   const { runState, gateEntries, passed, runMessage, errorMessage, startRun, retry } = useProofRun();
+  const { addNotification } = useNotificationContext();
+
+  // Notify on each gate failure when a run completes with passed=false
+  useEffect(() => {
+    if (runState !== 'complete' || passed !== false) return;
+    for (const entry of gateEntries) {
+      if (entry.status === 'failed') {
+        addNotification({
+          type: 'gate.run.failed',
+          message: `Gate run failed: ${entry.gate}`,
+          gateName: entry.gate,
+        });
+      }
+    }
+  }, [runState, passed, gateEntries, addNotification]);
 
   // Sort state (default: status asc → open first, then severity)
   const [sortCol, setSortCol] = useState<SortCol>('status');

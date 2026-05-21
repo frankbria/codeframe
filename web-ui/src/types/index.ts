@@ -660,3 +660,20 @@ export interface AgentCostsResponse {
   total_input_tokens: number;
   total_output_tokens: number;
 }
+
+// Async notifications (issue #559)
+export type AppNotificationType =
+  | 'batch.completed'
+  | 'blocker.created'
+  | 'gate.run.failed';
+
+export interface AppNotification {
+  id: string;
+  type: AppNotificationType;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  batchId?: string;
+  taskId?: string;
+  gateName?: string;
+}
