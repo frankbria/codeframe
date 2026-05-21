@@ -126,6 +126,32 @@ describe('NotificationCenter', () => {
     expect(screen.getByText(/no notifications/i)).toBeInTheDocument();
   });
 
+  it('does not render a green checkmark for a FAILED batch notification', () => {
+    // Regression for codex review finding: FAILED/CANCELLED must not look like success.
+    const stored = [
+      {
+        id: '1',
+        type: 'batch.completed',
+        batchStatus: 'FAILED',
+        message: 'Batch X failed — 2/5 tasks completed before failure',
+        timestamp: new Date().toISOString(),
+        read: false,
+      },
+    ];
+    localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(stored));
+
+    render(
+      <Harness>
+        <NotificationCenter />
+      </Harness>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /notifications/i }));
+    const item = screen.getByText(/Batch X failed/).closest('[data-testid="notification-item"]');
+    expect(item).toBeTruthy();
+    // The success icon must not be present in a failed-batch row
+    expect(within(item as HTMLElement).queryByTestId('icon-CheckmarkCircle01Icon')).toBeNull();
+  });
+
   it('renders notifications from existing localStorage state on mount', () => {
     const stored = [
       {

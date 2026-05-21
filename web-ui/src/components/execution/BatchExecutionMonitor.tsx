@@ -118,9 +118,18 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
       const completedCount = batch.task_ids.filter(
         (id) => batch.results[id] === 'COMPLETED' || batch.results[id] === 'DONE'
       ).length;
+      const total = batch.task_ids.length;
+      const shortId = batchId.slice(0, 8);
+      const outcomeMessage =
+        batch.status === 'COMPLETED'
+          ? `Batch ${shortId} finished — ${completedCount}/${total} tasks done`
+          : batch.status === 'FAILED'
+            ? `Batch ${shortId} failed — ${completedCount}/${total} tasks completed before failure`
+            : `Batch ${shortId} cancelled — ${completedCount}/${total} tasks completed`;
       addNotification({
         type: 'batch.completed',
-        message: `Batch ${batchId.slice(0, 8)} finished — ${completedCount}/${batch.task_ids.length} tasks done`,
+        batchStatus: batch.status as 'COMPLETED' | 'FAILED' | 'CANCELLED',
+        message: outcomeMessage,
         batchId,
       });
     }

@@ -9,19 +9,16 @@ import {
 } from '@hugeicons/react';
 import { formatDistanceToNow } from 'date-fns';
 import { useNotificationContext } from '@/contexts/NotificationContext';
-import type { AppNotification, AppNotificationType } from '@/types';
+import type { AppNotification } from '@/types';
 
-const TYPE_ICONS: Record<AppNotificationType, typeof Alert02Icon> = {
-  'batch.completed': CheckmarkCircle01Icon,
-  'blocker.created': Alert02Icon,
-  'gate.run.failed': Alert02Icon,
-};
-
-const TYPE_COLOR: Record<AppNotificationType, string> = {
-  'batch.completed': 'text-green-600',
-  'blocker.created': 'text-amber-600',
-  'gate.run.failed': 'text-red-600',
-};
+function iconForNotification(n: AppNotification) {
+  if (n.type === 'batch.completed' && n.batchStatus && n.batchStatus !== 'COMPLETED') {
+    return { Icon: Cancel01Icon, color: n.batchStatus === 'FAILED' ? 'text-red-600' : 'text-muted-foreground' };
+  }
+  if (n.type === 'batch.completed') return { Icon: CheckmarkCircle01Icon, color: 'text-green-600' };
+  if (n.type === 'blocker.created') return { Icon: Alert02Icon, color: 'text-amber-600' };
+  return { Icon: Alert02Icon, color: 'text-red-600' };
+}
 
 function formatTimestamp(iso: string): string {
   try {
@@ -115,8 +112,7 @@ function NotificationRow({
   notification: AppNotification;
   onMarkRead: (id: string) => void;
 }) {
-  const Icon = TYPE_ICONS[notification.type];
-  const colorClass = TYPE_COLOR[notification.type];
+  const { Icon, color: colorClass } = iconForNotification(notification);
   return (
     <li
       data-testid="notification-item"

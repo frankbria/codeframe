@@ -1,5 +1,11 @@
 import { renderHook, act } from '@testing-library/react';
-import { useNotifications, NOTIFICATIONS_STORAGE_KEY, MAX_NOTIFICATIONS } from '@/hooks/useNotifications';
+import {
+  useNotifications,
+  NOTIFICATIONS_STORAGE_KEY,
+  NOTIFICATIONS_STORAGE_KEY_PREFIX,
+  MAX_NOTIFICATIONS,
+} from '@/hooks/useNotifications';
+import { setSelectedWorkspacePath, clearSelectedWorkspacePath } from '@/lib/workspace-storage';
 
 // Helper to mock Notification API + visibility
 type PermissionState = NotificationPermission;
@@ -198,5 +204,72 @@ describe('useNotifications', () => {
       });
     });
     expect(NotificationCtor).not.toHaveBeenCalled();
+  });
+
+  it('persists batchStatus on the stored notification', () => {
+    const { result } = renderHook(() => useNotifications());
+    act(() => {
+      result.current.addNotification({
+        type: 'batch.completed',
+        batchStatus: 'FAILED',
+        message: 'Batch X failed — 2/5 tasks completed before failure',
+      });
+    });
+    expect(result.current.notifications[0].batchStatus).toBe('FAILED');
+    const persisted = JSON.parse(localStorage.getItem(NOTIFICATIONS_STORAGE_KEY)!);
+    expect(persisted[0].batchStatus).toBe('FAILED');
+  });
+
+  describe('workspace scoping', () => {
+    afterEach(() => {
+      clearSelectedWorkspacePath();
+    });
+
+    it('stores notifications under a workspace-scoped key when a workspace is selected', () => {
+      setSelectedWorkspacePath('/workspace/A');
+      const { result } = renderHook(() => useNotifications());
+      act(() => {
+        result.current.addNotification({ type: 'batch.completed', message: 'workspace A msg' });
+      });
+
+      const wsKey = `${NOTIFICATIONS_STORAGE_KEY_PREFIX}_${encodeURIComponent('/workspace/A')}`;
+      const persisted = JSON.parse(localStorage.getItem(wsKey)!);
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0].message).toBe('workspace A msg');
+      expect(persisted[0].workspacePath).toBe('/workspace/A');
+      // The global key must remain untouched
+      expect(localStorage.getItem(NOTIFICATIONS_STORAGE_KEY)).toBeNull();
+    });
+
+    it('does not leak notifications across workspaces', () => {
+      setSelectedWorkspacePath('/workspace/A');
+      const { result, rerender } = renderHook(() => useNotifications());
+      act(() => {
+        result.current.addNotification({ type: 'batch.completed', message: 'A1' });
+        result.current.addNotification({ type: 'blocker.created', message: 'A2' });
+      });
+      expect(result.current.notifications).toHaveLength(2);
+
+      // Switch workspaces
+      act(() => {
+        setSelectedWorkspacePath('/workspace/B');
+      });
+      rerender();
+      expect(result.current.notifications).toHaveLength(0);
+
+      act(() => {
+        result.current.addNotification({ type: 'batch.completed', message: 'B1' });
+      });
+      expect(result.current.notifications).toHaveLength(1);
+      expect(result.current.notifications[0].message).toBe('B1');
+
+      // Switch back — workspace A notifications should still be there
+      act(() => {
+        setSelectedWorkspacePath('/workspace/A');
+      });
+      rerender();
+      expect(result.current.notifications).toHaveLength(2);
+      expect(result.current.notifications[0].message).toBe('A2');
+    });
   });
 });

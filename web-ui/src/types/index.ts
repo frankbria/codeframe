@@ -667,6 +667,8 @@ export type AppNotificationType =
   | 'blocker.created'
   | 'gate.run.failed';
 
+export type AppNotificationBatchStatus = 'COMPLETED' | 'FAILED' | 'CANCELLED';
+
 export interface AppNotification {
   id: string;
   type: AppNotificationType;
@@ -674,6 +676,10 @@ export interface AppNotification {
   timestamp: string;
   read: boolean;
   batchId?: string;
+  /** Final batch status — set when type is 'batch.completed'. */
+  batchStatus?: AppNotificationBatchStatus;
   taskId?: string;
   gateName?: string;
+  /** Workspace this notification belongs to. Populated automatically by the hook. */
+  workspacePath?: string;
 }
