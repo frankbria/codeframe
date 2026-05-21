@@ -49,6 +49,9 @@ export function NotificationCenter() {
       <button
         type="button"
         aria-label="Notifications"
+        aria-expanded={open}
+        aria-controls="notification-popover"
+        aria-haspopup="dialog"
         onClick={() => setOpen((prev) => !prev)}
         className="relative flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground lg:px-3"
       >
@@ -65,7 +68,12 @@ export function NotificationCenter() {
       </button>
 
       {open && (
-        <div className="absolute bottom-0 left-full z-50 ml-2 w-80 rounded-md border bg-popover shadow-lg">
+        <div
+          id="notification-popover"
+          role="dialog"
+          aria-label="Notifications"
+          className="absolute bottom-0 left-full z-50 ml-2 w-80 rounded-md border bg-popover shadow-lg"
+        >
           <div className="flex items-center justify-between border-b px-3 py-2">
             <span className="text-sm font-semibold">Notifications</span>
             <div className="flex items-center gap-2">

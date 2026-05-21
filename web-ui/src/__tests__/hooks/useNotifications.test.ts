@@ -206,6 +206,30 @@ describe('useNotifications', () => {
     expect(NotificationCtor).not.toHaveBeenCalled();
   });
 
+  it('does not crash when localStorage.setItem throws', () => {
+    // Simulate quota-exceeded / private-mode by stubbing setItem
+    const original = Storage.prototype.setItem;
+    const consoleErr = jest.spyOn(console, 'error').mockImplementation(() => {});
+    Storage.prototype.setItem = jest.fn(() => {
+      throw new Error('QuotaExceededError');
+    });
+
+    try {
+      const { result } = renderHook(() => useNotifications());
+      expect(() => {
+        act(() => {
+          result.current.addNotification({ type: 'batch.completed', message: 'should not crash' });
+        });
+      }).not.toThrow();
+      // The in-memory state still reflects the update even though persist failed
+      expect(result.current.notifications).toHaveLength(1);
+      expect(consoleErr).toHaveBeenCalled();
+    } finally {
+      Storage.prototype.setItem = original;
+      consoleErr.mockRestore();
+    }
+  });
+
   it('persists batchStatus on the stored notification', () => {
     const { result } = renderHook(() => useNotifications());
     act(() => {

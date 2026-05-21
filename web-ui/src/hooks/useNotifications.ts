@@ -54,7 +54,14 @@ function readStored(key: string): AppNotification[] {
 
 function persist(key: string, notifications: AppNotification[]): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(notifications));
+  try {
+    localStorage.setItem(key, JSON.stringify(notifications));
+  } catch (err) {
+    // Quota exceeded, private-mode restriction, or storage disabled: drop the
+    // write rather than crash the caller. In-memory state still reflects the
+    // update for the rest of the session.
+    console.error('[useNotifications] failed to persist notifications:', err);
+  }
 }
 
 function generateId(): string {

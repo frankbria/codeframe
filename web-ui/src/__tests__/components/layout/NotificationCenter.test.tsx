@@ -152,6 +152,21 @@ describe('NotificationCenter', () => {
     expect(within(item as HTMLElement).queryByTestId('icon-CheckmarkCircle01Icon')).toBeNull();
   });
 
+  it('exposes aria-expanded and aria-controls on the bell button', () => {
+    render(
+      <Harness>
+        <NotificationCenter />
+      </Harness>
+    );
+    const bell = screen.getByRole('button', { name: /notifications/i });
+    expect(bell).toHaveAttribute('aria-expanded', 'false');
+    expect(bell).toHaveAttribute('aria-controls', 'notification-popover');
+
+    fireEvent.click(bell);
+    expect(bell).toHaveAttribute('aria-expanded', 'true');
+    expect(document.getElementById('notification-popover')).toBeInTheDocument();
+  });
+
   it('renders notifications from existing localStorage state on mount', () => {
     const stored = [
       {
