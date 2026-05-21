@@ -152,6 +152,20 @@ describe('NotificationCenter', () => {
     expect(within(item as HTMLElement).queryByTestId('icon-CheckmarkCircle01Icon')).toBeNull();
   });
 
+  it('closes the dropdown when Escape is pressed', () => {
+    render(
+      <Harness>
+        <NotificationCenter />
+      </Harness>
+    );
+    const bell = screen.getByRole('button', { name: /notifications/i });
+    fireEvent.click(bell);
+    expect(bell).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(bell).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('exposes aria-expanded and aria-controls on the bell button', () => {
     render(
       <Harness>
