@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
@@ -110,9 +110,19 @@ function ProofPageContent() {
   const { runState, gateEntries, passed, runMessage, errorMessage, startRun, retry } = useProofRun();
   const { addNotification } = useNotificationContext();
 
-  // Notify on each gate failure when a run completes with passed=false
+  // Notify on each gate failure when a run completes with passed=false.
+  // Track the gateEntries array we already dispatched for so we don't re-fire
+  // notifications when an unrelated dep changes (e.g. workspace switch → new
+  // addNotification reference) while the completed run is still in state.
+  const dispatchedGateEntriesRef = useRef<typeof gateEntries | null>(null);
   useEffect(() => {
+    if (runState === 'idle') {
+      dispatchedGateEntriesRef.current = null;
+      return;
+    }
     if (runState !== 'complete' || passed !== false) return;
+    if (dispatchedGateEntriesRef.current === gateEntries) return;
+    dispatchedGateEntriesRef.current = gateEntries;
     for (const entry of gateEntries) {
       if (entry.status === 'failed') {
         addNotification({
