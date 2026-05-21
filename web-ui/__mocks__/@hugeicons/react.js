@@ -75,4 +75,6 @@ module.exports = {
   MoneyBag02Icon: createIconMock('MoneyBag02Icon'),
   Analytics01Icon: createIconMock('Analytics01Icon'),
   ChartLineData01Icon: createIconMock('ChartLineData01Icon'),
+  // NotificationCenter
+  Notification02Icon: createIconMock('Notification02Icon'),
 };

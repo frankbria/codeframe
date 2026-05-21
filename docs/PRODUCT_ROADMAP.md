@@ -126,15 +126,19 @@ Without a settings page, a new user who cannot find the env vars cannot use the 
 
 ### 3. Async Notifications
 
-**Current state**: Batch executions can run for hours. The user has no notification when a batch completes, a blocker is created, or a gate run fails.
+**Current state**: Browser notifications + in-app notification center shipped (#559). Webhook integration (#560) is the only remaining piece — out of scope for #559, tracked separately.
 
-**What to build**:
+**What was built (#559)**:
 
-- **Browser notifications** (Web Notifications API): opt-in, triggered on batch completion, blocker creation, and gate run failure — follow the existing WebSocket event stream for triggers
-- **In-app notification center**: a bell icon in the sidebar with a history of recent notifications, clearable
+- **Browser notifications** (Web Notifications API): fire only when the tab is hidden and permission is granted, for batch terminal transitions (COMPLETED/FAILED/CANCELLED labeled distinctly), per-task BLOCKED transitions, and PROOF9 gate failures
+- **In-app notification center**: bell icon in the sidebar footer with unread badge and dropdown panel; last 20 notifications, per-item dismiss, mark-all-read, and clear-all actions; persisted in `localStorage` scoped per workspace
+- **Permission request**: fires once on first visit to `/execution` only when permission state is `default`
+
+**Known limitation**: notifications only fire while the `BatchExecutionMonitor` is mounted — a global background poller for cross-page notifications would require an architecture change and is out of scope for #559.
+
+**What's still planned (#560)**:
+
 - **Optional webhook**: a single URL the user can configure to receive JSON payloads on key events (batch done, blocker created, PR merged) — supports Slack, Discord, or any HTTP endpoint
-
-The webhook is optional and last priority. Browser notifications and the in-app center are sufficient for the core use case.
 
 ---
 
@@ -196,7 +200,7 @@ These are items that were considered and excluded because they do not serve the 
 | 4B | Post-merge glitch capture loop | ❌ Not started | — |
 | 5.1 | Settings page (skeleton + agent config + PROOF9/workspace tabs) | ✅ Complete | #554–556 |
 | 5.2 | Cost analytics | ✅ Complete | #557–558 |
-| 5.3 | Async notifications | ❌ Not started | #559–560 |
+| 5.3 | Async notifications | 🚧 Browser + in-app center shipped (#559); webhook (#560) deferred | #559–560 |
 | 5.4 | PRD stress-test web UI | ❌ Not started | #561–562 |
 | 5.5 | GitHub Issues import | ❌ Not started | #563–565 |
 

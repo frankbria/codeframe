@@ -660,3 +660,26 @@ export interface AgentCostsResponse {
   total_input_tokens: number;
   total_output_tokens: number;
 }
+
+// Async notifications (issue #559)
+export type AppNotificationType =
+  | 'batch.completed'
+  | 'blocker.created'
+  | 'gate.run.failed';
+
+export type AppNotificationBatchStatus = 'COMPLETED' | 'FAILED' | 'CANCELLED';
+
+export interface AppNotification {
+  id: string;
+  type: AppNotificationType;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  batchId?: string;
+  /** Final batch status — set when type is 'batch.completed'. */
+  batchStatus?: AppNotificationBatchStatus;
+  taskId?: string;
+  gateName?: string;
+  /** Workspace this notification belongs to. Populated automatically by the hook. */
+  workspacePath?: string;
+}

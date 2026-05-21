@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Nunito_Sans } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { AppLayout } from '@/components/layout';
+import { NotificationProvider } from '@/contexts/NotificationContext';
 import './globals.css';
 
 const nunitoSans = Nunito_Sans({
@@ -31,8 +32,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${nunitoSans.variable} font-sans antialiased`}>
-        <AppLayout>{children}</AppLayout>
-        <Toaster richColors position="top-right" />
+        <NotificationProvider>
+          <AppLayout>{children}</AppLayout>
+          <Toaster richColors position="top-right" />
+        </NotificationProvider>
       </body>
     </html>
   );

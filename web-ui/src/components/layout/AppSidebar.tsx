@@ -20,6 +20,7 @@ import {
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import { blockersApi, sessionsApi } from '@/lib/api';
 import { CaptureGlitchModal } from '@/components/proof';
+import { NotificationCenter } from './NotificationCenter';
 import type { BlockerListResponse, SessionListResponse, ProofRequirement } from '@/types';
 
 interface NavItem {
@@ -146,8 +147,9 @@ export function AppSidebar() {
         })}
       </nav>
 
-      {/* Capture Glitch action */}
+      {/* Sidebar footer: notifications + capture glitch */}
       <div className="mt-auto border-t px-2 pt-3 pb-2">
+        <NotificationCenter />
         <button
           type="button"
           aria-label="Capture Glitch"

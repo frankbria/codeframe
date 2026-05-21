@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { ProofStatusBadge, WaiveDialog, GateRunPanel, GateRunBanner, RunHistoryPanel, GateEvidencePanel, CaptureGlitchModal } from '@/components/proof';
 import { proofApi } from '@/lib/api';
 import { useProofRun } from '@/hooks/useProofRun';
+import { useNotificationContext } from '@/contexts/NotificationContext';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import type { ProofRequirement, ProofRequirementListResponse, ProofReqStatus, ProofSeverity, ProofRunDetail } from '@/types';
 
@@ -107,6 +108,31 @@ function ProofPageContent() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   const { runState, gateEntries, passed, runMessage, errorMessage, startRun, retry } = useProofRun();
+  const { addNotification } = useNotificationContext();
+
+  // Notify on each gate failure when a run completes with passed=false.
+  // Track the gateEntries array we already dispatched for so we don't re-fire
+  // notifications when an unrelated dep changes (e.g. workspace switch → new
+  // addNotification reference) while the completed run is still in state.
+  const dispatchedGateEntriesRef = useRef<typeof gateEntries | null>(null);
+  useEffect(() => {
+    if (runState === 'idle') {
+      dispatchedGateEntriesRef.current = null;
+      return;
+    }
+    if (runState !== 'complete' || passed !== false) return;
+    if (dispatchedGateEntriesRef.current === gateEntries) return;
+    dispatchedGateEntriesRef.current = gateEntries;
+    for (const entry of gateEntries) {
+      if (entry.status === 'failed') {
+        addNotification({
+          type: 'gate.run.failed',
+          message: `Gate run failed: ${entry.gate}`,
+          gateName: entry.gate,
+        });
+      }
+    }
+  }, [runState, passed, gateEntries, addNotification]);
 
   // Sort state (default: status asc → open first, then severity)
   const [sortCol, setSortCol] = useState<SortCol>('status');

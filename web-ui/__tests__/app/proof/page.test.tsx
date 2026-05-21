@@ -15,6 +15,19 @@ jest.mock('@/lib/workspace-storage', () => ({
 
 jest.mock('swr', () => ({ __esModule: true, default: jest.fn() }));
 
+// Stub NotificationContext — gate-failure dispatch is exercised in its own tests.
+jest.mock('@/contexts/NotificationContext', () => ({
+  useNotificationContext: () => ({
+    notifications: [],
+    unreadCount: 0,
+    addNotification: jest.fn(),
+    markRead: jest.fn(),
+    markAllRead: jest.fn(),
+    clearAll: jest.fn(),
+  }),
+  NotificationProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 import useSWR from 'swr';
 import { proofApi } from '@/lib/api';
 
