@@ -33,6 +33,41 @@ from codeframe.core.runtime import RunStatus, get_active_run, reset_blocked_run
 
 logger = logging.getLogger(__name__)
 
+
+def _dispatch_batch_completed_webhook(
+    workspace: Workspace,
+    event_type: "events.EventType",
+    batch_id: str,
+    task_count: int,
+) -> None:
+    """Best-effort outbound webhook for ``batch.completed`` (issue #560).
+
+    Only fires when the batch reached the full COMPLETED state — PARTIAL,
+    FAILED, and CANCELLED are intentionally out of scope for v1. Failures
+    never break the batch.
+    """
+    if event_type != events.EventType.BATCH_COMPLETED:
+        return
+    try:
+        from codeframe.core.notifications_config import is_webhook_active
+        from codeframe.notifications.webhook import (
+            WebhookNotificationService,
+            format_batch_payload,
+        )
+
+        url = is_webhook_active(workspace)
+        if url is None:
+            return
+        svc = WebhookNotificationService(webhook_url=url, timeout=5)
+        svc.send_event_background(format_batch_payload(batch_id, task_count))
+    except Exception:
+        logger.warning(
+            "Failed to dispatch batch.completed webhook for %s",
+            batch_id,
+            exc_info=True,
+        )
+
+
 # Tactical patterns that the supervisor should auto-resolve
 SUPERVISOR_TACTICAL_PATTERNS = [
     # Virtual environment / package management
@@ -1125,6 +1160,7 @@ def _execute_serial_resume(
         },
         print_event=True,
     )
+    _dispatch_batch_completed_webhook(workspace, event_type, batch.id, final_completed)
 
     # Print summary
     print(f"\nBatch resume {batch.status.value.lower()}: {final_completed}/{total} tasks completed")
@@ -1282,6 +1318,7 @@ def _execute_retries(
         },
         print_event=True,
     )
+    _dispatch_batch_completed_webhook(workspace, event_type, batch.id, final_completed)
 
     # Print retry summary
     if final_failed == 0:
@@ -1544,6 +1581,7 @@ def _execute_serial(
             },
             print_event=True,
         )
+        _dispatch_batch_completed_webhook(workspace, event_type, batch.id, completed_count)
 
         # Stop reconciliation thread
         reconcile_stop.set()
@@ -1733,6 +1771,7 @@ def _execute_parallel(
             },
             print_event=True,
         )
+        _dispatch_batch_completed_webhook(workspace, event_type, batch.id, completed_count)
 
         # Stop reconciliation thread
         _reconcile_stop_p.set()

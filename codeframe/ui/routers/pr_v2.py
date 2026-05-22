@@ -177,6 +177,43 @@ def _get_github_client() -> GitHubIntegration:
         )
 
 
+def _dispatch_pr_merged_webhook(workspace: Workspace, pr_number: int) -> None:
+    """Best-effort outbound webhook for ``pr.merged`` (issue #560).
+
+    Builds the canonical ``https://github.com/{owner}/{repo}/pull/{N}`` URL
+    from the GitHub integration when available; sets ``pr_url`` to ``None``
+    when the integration can't be constructed (e.g., ``GITHUB_REPO`` unset).
+    The always-present ``pr_number`` field lets consumers branch without
+    parsing a URL.
+    """
+    try:
+        from codeframe.core.notifications_config import is_webhook_active
+        from codeframe.notifications.webhook import (
+            WebhookNotificationService,
+            format_pr_payload,
+        )
+
+        url = is_webhook_active(workspace)
+        if url is None:
+            return
+
+        # Canonical github.com URL when GITHUB_REPO is configured, ``None``
+        # otherwise. The payload always carries ``pr_number`` so consumers
+        # can branch on it without parsing the URL.
+        try:
+            gh = GitHubIntegration()
+            pr_url: Optional[str] = f"https://github.com/{gh.repo}/pull/{pr_number}"
+        except Exception:
+            pr_url = None
+
+        svc = WebhookNotificationService(webhook_url=url, timeout=5)
+        svc.send_event_background(format_pr_payload(pr_number, pr_url))
+    except Exception:
+        logger.warning(
+            "Failed to dispatch pr.merged webhook for PR #%s", pr_number, exc_info=True
+        )
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -586,6 +623,11 @@ async def merge_pull_request(
     client = _get_github_client()
     try:
         result = await client.merge_pull_request(pr_number, method=method)
+
+        # Outbound webhook for pr.merged (issue #560) — only on successful
+        # merge, never raises into the caller.
+        if result.merged:
+            _dispatch_pr_merged_webhook(workspace, pr_number)
 
         return MergeResponse(
             sha=result.sha,

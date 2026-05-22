@@ -620,6 +620,23 @@ export interface UpdateWorkspaceConfigRequest {
   tech_stack_override: string | null;
 }
 
+// Outbound webhook notifications (issue #560)
+export interface NotificationSettingsResponse {
+  webhook_url: string | null;
+  webhook_enabled: boolean;
+}
+
+export interface UpdateNotificationSettingsRequest {
+  webhook_url: string | null;
+  webhook_enabled: boolean;
+}
+
+export interface TestWebhookResponse {
+  ok: boolean;
+  status_code: number | null;
+  error: string | null;
+}
+
 // Cost analytics types (issue #557)
 export interface DailyCostPoint {
   date: string; // ISO YYYY-MM-DD

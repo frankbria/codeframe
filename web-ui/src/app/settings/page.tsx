@@ -9,6 +9,7 @@ import { settingsApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import type { AgentSettings, AgentTypeKey, ApiError } from '@/types';
 import { ApiKeysTab } from '@/components/settings/ApiKeysTab';
+import { NotificationsTab } from '@/components/settings/NotificationsTab';
 import { Proof9DefaultsTab } from '@/components/settings/Proof9DefaultsTab';
 import { WorkspaceConfigTab } from '@/components/settings/WorkspaceConfigTab';
 import { Button } from '@/components/ui/button';
@@ -117,6 +118,7 @@ export default function SettingsPage() {
           <TabsList className="mb-6">
             <TabsTrigger value="agent">Agent</TabsTrigger>
             <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+            <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="proof9">PROOF9</TabsTrigger>
             <TabsTrigger value="workspace">Workspace</TabsTrigger>
           </TabsList>
@@ -160,6 +162,16 @@ export default function SettingsPage() {
             <section className="rounded-lg border bg-card p-6">
               <h2 className="mb-1 text-lg font-semibold">API Keys</h2>
               <ApiKeysTab />
+            </section>
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            <section className="rounded-lg border bg-card p-6">
+              <h2 className="mb-1 text-lg font-semibold">Notifications</h2>
+              <p className="mb-6 text-sm text-muted-foreground">
+                Outbound webhook for batch, blocker, and PR-merge events.
+              </p>
+              <NotificationsTab workspacePath={workspacePath} />
             </section>
           </TabsContent>
 
