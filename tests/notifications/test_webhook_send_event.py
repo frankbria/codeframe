@@ -135,8 +135,17 @@ def test_send_event_background_outside_loop_runs_in_thread():
             time.sleep(0.01)
 
     assert mock_runner.called, "expected daemon thread to invoke the sync runner"
-    # The thread spawns and dies — no leaked thread count.
-    threading.active_count() - threads_before  # informational only
+    # The thread spawns and dies — no leaked thread count. Give it up to a
+    # second to clean up before asserting (the runner is mocked so this is
+    # really just the thread overhead).
+    for _ in range(50):
+        leaked = threading.active_count() - threads_before
+        if leaked <= 0:
+            break
+        time.sleep(0.02)
+    assert threading.active_count() - threads_before <= 0, (
+        "send_event_background leaked a thread"
+    )
 
 
 @pytest.mark.asyncio
@@ -171,10 +180,28 @@ def test_format_blocker_payload_allows_null_task_id():
 
 
 def test_format_pr_payload():
-    p = format_pr_payload(pr_url="https://github.com/o/r/pull/42")
+    p = format_pr_payload(pr_number=42, pr_url="https://github.com/o/r/pull/42")
     assert p["event"] == "pr.merged"
+    assert p["pr_number"] == 42
     assert p["pr_url"] == "https://github.com/o/r/pull/42"
     assert "timestamp" in p
+
+
+def test_format_pr_payload_url_is_optional():
+    """When the GitHub integration can't construct a URL we send None,
+    not an unparseable sentinel like 'pr#42' — consumers can branch on
+    pr_number (always present) and use pr_url when available."""
+    p = format_pr_payload(pr_number=99)
+    assert p["event"] == "pr.merged"
+    assert p["pr_number"] == 99
+    assert p["pr_url"] is None
+
+
+def test_format_batch_payload_includes_status():
+    """Payload self-documents the terminal state — forward-compatible
+    if PARTIAL/FAILED events get added later."""
+    p = format_batch_payload(batch_id="b-1", task_count=3)
+    assert p["status"] == "completed"
 
 
 def test_format_test_payload():

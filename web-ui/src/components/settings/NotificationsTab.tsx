@@ -65,8 +65,10 @@ export function NotificationsTab({ workspacePath }: NotificationsTabProps) {
   const trimmedUrl = (draft.webhook_url ?? '').trim();
   const dirty = isDirty(data, draft);
   const canSave = dirty && !saving;
-  const canTest =
-    !testing && trimmedUrl.length > 0 && (data.webhook_url ?? '') === trimmedUrl;
+  // Test must require BOTH a saved URL AND no pending edits — including
+  // whitespace-only edits, which trim to a value that matches `data.webhook_url`
+  // but still leave the persisted form mid-edit.
+  const canTest = !testing && !dirty && !!data.webhook_url && trimmedUrl.length > 0;
 
   const handleSave = async () => {
     setSaving(true);

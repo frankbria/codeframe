@@ -99,6 +99,7 @@ describe('NotificationsTab', () => {
     expect(screen.getByRole('button', { name: /^test$/i })).toBeEnabled();
   });
 
+
   it('Save and Discard disabled when not dirty', () => {
     mockSWR(CONFIGURED);
     render(<NotificationsTab workspacePath="/ws" />);

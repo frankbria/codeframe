@@ -195,14 +195,17 @@ def _dispatch_pr_merged_webhook(workspace: Workspace, pr_number: int) -> None:
         if url is None:
             return
 
+        # Canonical github.com URL when GITHUB_REPO is configured, ``None``
+        # otherwise. The payload always carries ``pr_number`` so consumers
+        # can branch on it without parsing the URL.
         try:
             gh = GitHubIntegration()
-            pr_url = f"https://github.com/{gh.repo}/pull/{pr_number}"
+            pr_url: Optional[str] = f"https://github.com/{gh.repo}/pull/{pr_number}"
         except Exception:
-            pr_url = f"pr#{pr_number}"
+            pr_url = None
 
         svc = WebhookNotificationService(webhook_url=url, timeout=5)
-        svc.send_event_background(format_pr_payload(pr_url))
+        svc.send_event_background(format_pr_payload(pr_number, pr_url))
     except Exception:
         logger.warning(
             "Failed to dispatch pr.merged webhook for PR #%s", pr_number, exc_info=True

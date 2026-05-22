@@ -47,10 +47,14 @@ def _utc_iso_now() -> str:
 
 
 def format_batch_payload(batch_id: str, task_count: int) -> dict:
+    # ``status`` is always "completed" today (the dispatcher gates on
+    # BATCH_COMPLETED only) but is included so consumers can self-document
+    # and so a future PARTIAL/FAILED extension is forward-compatible.
     return {
         "event": "batch.completed",
         "batch_id": batch_id,
         "task_count": task_count,
+        "status": "completed",
         "timestamp": _utc_iso_now(),
     }
 
@@ -64,9 +68,14 @@ def format_blocker_payload(blocker_id: str, task_id: Optional[str]) -> dict:
     }
 
 
-def format_pr_payload(pr_url: str) -> dict:
+def format_pr_payload(pr_number: int, pr_url: Optional[str] = None) -> dict:
+    # ``pr_number`` is always present so consumers can branch on it.
+    # ``pr_url`` is the canonical github.com URL when GITHUB_REPO is set,
+    # ``None`` otherwise (an unparseable sentinel like ``"pr#42"`` was
+    # actively confusing for downstream handlers).
     return {
         "event": "pr.merged",
+        "pr_number": pr_number,
         "pr_url": pr_url,
         "timestamp": _utc_iso_now(),
     }
@@ -77,10 +86,13 @@ def format_test_payload() -> dict:
 
 
 class WebhookNotificationService:
-    """Async webhook notification service for blocker alerts.
+    """Async outbound webhook service.
 
-    Sends HTTP POST notifications for SYNC blockers to configured webhook endpoints.
-    Uses fire-and-forget delivery with timeout to prevent blocking agent execution.
+    Originally built for SYNC blocker alerts (``send_blocker_notification``);
+    now also powers the issue #560 outbound event webhooks (batch / blocker /
+    PR / test) via ``send_event``. Delivery is fire-and-forget with a
+    configurable timeout — failures are logged but never break the triggering
+    operation.
     """
 
     def __init__(

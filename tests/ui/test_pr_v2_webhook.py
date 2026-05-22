@@ -55,12 +55,14 @@ def test_dispatches_when_enabled_with_pr_url(workspace, monkeypatch):
     instance.send_event_background.assert_called_once()
     payload = instance.send_event_background.call_args.args[0]
     assert payload["event"] == "pr.merged"
+    assert payload["pr_number"] == 42
     assert payload["pr_url"] == "https://github.com/frankbria/codeframe/pull/42"
 
 
-def test_dispatches_with_fallback_url_when_github_unconfigured(workspace, monkeypatch):
+def test_dispatches_with_null_url_when_github_unconfigured(workspace, monkeypatch):
     """If GitHubIntegration() can't be constructed, we still emit the event
-    with a non-empty pr_url so the receiving system has something to log."""
+    but pr_url is None — consumers branch on pr_number (always present)
+    rather than parsing an unparseable sentinel."""
     save_notifications_config(
         workspace,
         {"webhook_url": "https://example.com/h", "webhook_enabled": True},
@@ -77,7 +79,8 @@ def test_dispatches_with_fallback_url_when_github_unconfigured(workspace, monkey
     MockSvc.assert_called_once()
     payload = instance.send_event_background.call_args.args[0]
     assert payload["event"] == "pr.merged"
-    assert payload["pr_url"] == "pr#99"
+    assert payload["pr_number"] == 99
+    assert payload["pr_url"] is None
 
 
 def test_dispatch_failure_does_not_raise(workspace, monkeypatch):

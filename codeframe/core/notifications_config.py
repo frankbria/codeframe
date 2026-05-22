@@ -52,6 +52,12 @@ def _is_safe_webhook_url(url: str) -> bool:
     The router PUT validates too, but a hand-edited or pre-migration JSON
     file could carry a ``file://`` or schemeless URL. Used by
     ``is_webhook_active`` to fail-safe to ``None``.
+
+    TODO: This does NOT block RFC-1918 (10/8, 172.16/12, 192.168/16) or
+    loopback (127/8) addresses. For a self-hosted single-user tool that is
+    intentional — users want to point at local receivers. If CodeFRAME ever
+    runs as a shared / multi-tenant service, add a socket-level check here
+    that resolves the host and rejects private/loopback ranges.
     """
     from urllib.parse import urlparse
 
