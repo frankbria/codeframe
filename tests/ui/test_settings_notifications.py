@@ -199,6 +199,17 @@ class TestNotificationWebhookTest:
         assert data["ok"] is False
         assert data["status_code"] == 500
 
+    def test_rejects_unsafe_stored_url_at_test_time(self, client, workspace):
+        """Defence-in-depth: even if a hand-edited config bypassed the PUT
+        validation, /test must refuse to POST to an unsafe URL."""
+        # Write directly to the config file to simulate a hand-edited bypass.
+        path = workspace.state_dir / "notifications_config.json"
+        path.write_text(
+            '{"webhook_url": "file:///etc/passwd", "webhook_enabled": true}'
+        )
+        r = client.post("/api/v2/settings/notifications/test")
+        assert r.status_code == 400
+
     def test_test_works_even_when_enabled_flag_is_false(self, client):
         """The Test button should still work when the user is verifying
         a URL before turning notifications on."""

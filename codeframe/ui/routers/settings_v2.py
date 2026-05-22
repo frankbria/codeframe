@@ -495,10 +495,21 @@ async def update_notification_settings(
     ``file://`` / ``ftp://`` SSRF on local resources.
     """
     url = _validate_webhook_url(body.webhook_url)
-    save_notifications_config(
-        workspace,
-        {"webhook_url": url, "webhook_enabled": body.webhook_enabled},
-    )
+    try:
+        save_notifications_config(
+            workspace,
+            {"webhook_url": url, "webhook_enabled": body.webhook_enabled},
+        )
+    except OSError as e:
+        logger.error("Failed to save notifications config: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=api_error(
+                "Failed to save notifications config",
+                ErrorCodes.EXECUTION_FAILED,
+                str(e),
+            ),
+        )
     return NotificationSettingsResponse(
         webhook_url=url, webhook_enabled=body.webhook_enabled
     )
@@ -513,10 +524,23 @@ async def test_notification_webhook(
     """Fire a test payload against the configured webhook URL.
 
     Returns the HTTP status code on success, or an error message on failure.
-    Returns 400 if no URL is configured — the [Test] button should be
+    Returns 400 if no URL is configured or if the stored URL fails the same
+    safety checks the PUT endpoint enforces — the [Test] button should be
     disabled in that case, but we guard server-side too.
     """
-    cfg = load_notifications_config(workspace)
+    try:
+        cfg = load_notifications_config(workspace)
+    except Exception as e:
+        logger.error("Failed to load notifications config: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=api_error(
+                "Failed to load notifications config",
+                ErrorCodes.EXECUTION_FAILED,
+                str(e),
+            ),
+        )
+
     url = (cfg["webhook_url"] or "").strip()
     if not url:
         raise HTTPException(
@@ -525,6 +549,8 @@ async def test_notification_webhook(
                 "No webhook URL configured", ErrorCodes.VALIDATION_ERROR
             ),
         )
+    # Re-validate at send time — defence-in-depth for hand-edited config files.
+    _validate_webhook_url(url)
 
     svc = WebhookNotificationService(webhook_url=url, timeout=5)
     result = await svc.send_event(format_test_payload())

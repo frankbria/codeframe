@@ -101,3 +101,51 @@ def test_is_webhook_active_trims_whitespace(workspace):
         {"webhook_url": "   ", "webhook_enabled": True},
     )
     assert is_webhook_active(workspace) is None
+
+
+def test_load_handles_non_object_json_list(workspace):
+    """A valid-JSON-but-not-object payload (e.g. ``[]``) must not crash."""
+    path = workspace.state_dir / NOTIFICATIONS_CONFIG_FILENAME
+    path.write_text("[]")
+    cfg = load_notifications_config(workspace)
+    assert cfg == {"webhook_url": None, "webhook_enabled": False}
+
+
+def test_load_handles_non_object_json_null(workspace):
+    path = workspace.state_dir / NOTIFICATIONS_CONFIG_FILENAME
+    path.write_text("null")
+    cfg = load_notifications_config(workspace)
+    assert cfg == {"webhook_url": None, "webhook_enabled": False}
+
+
+def test_load_handles_non_object_json_integer(workspace):
+    path = workspace.state_dir / NOTIFICATIONS_CONFIG_FILENAME
+    path.write_text("42")
+    cfg = load_notifications_config(workspace)
+    assert cfg == {"webhook_url": None, "webhook_enabled": False}
+
+
+def test_is_webhook_active_rejects_file_scheme_in_stored_config(workspace):
+    """Defence-in-depth: hand-edited config with ``file://`` must not be dispatched."""
+    path = workspace.state_dir / NOTIFICATIONS_CONFIG_FILENAME
+    # Write directly, bypassing save's normalization, to simulate hand edit.
+    path.write_text(
+        '{"webhook_url": "file:///etc/passwd", "webhook_enabled": true}'
+    )
+    assert is_webhook_active(workspace) is None
+
+
+def test_is_webhook_active_rejects_schemeless_url_in_stored_config(workspace):
+    path = workspace.state_dir / NOTIFICATIONS_CONFIG_FILENAME
+    path.write_text(
+        '{"webhook_url": "example.com/hook", "webhook_enabled": true}'
+    )
+    assert is_webhook_active(workspace) is None
+
+
+def test_is_webhook_active_accepts_valid_https(workspace):
+    save_notifications_config(
+        workspace,
+        {"webhook_url": "https://hooks.example.com/h", "webhook_enabled": True},
+    )
+    assert is_webhook_active(workspace) == "https://hooks.example.com/h"

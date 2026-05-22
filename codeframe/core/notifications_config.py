@@ -9,6 +9,11 @@ Schema (``.codeframe/notifications_config.json``):
       "webhook_url": "https://hooks.example.com/...",  // or null
       "webhook_enabled": true
     }
+
+Defense-in-depth: ``is_webhook_active`` re-validates the URL scheme/host
+because the JSON file can be hand-edited or migrated from an older
+deployment that didn't enforce validation at write time. The router PUT
+endpoint validates too — never trust just one layer.
 """
 
 from __future__ import annotations
@@ -26,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 NOTIFICATIONS_CONFIG_FILENAME = "notifications_config.json"
 
+_ALLOWED_SCHEMES = frozenset({"http", "https"})
+
 
 class NotificationsConfig(TypedDict):
     webhook_url: Optional[str]
@@ -39,16 +46,39 @@ def _config_path(workspace: Workspace) -> Path:
     return workspace.state_dir / NOTIFICATIONS_CONFIG_FILENAME
 
 
+def _is_safe_webhook_url(url: str) -> bool:
+    """Defence-in-depth: scheme/host check on a stored URL before we POST.
+
+    The router PUT validates too, but a hand-edited or pre-migration JSON
+    file could carry a ``file://`` or schemeless URL. Used by
+    ``is_webhook_active`` to fail-safe to ``None``.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url)
+    except (TypeError, ValueError):
+        return False
+    return parsed.scheme.lower() in _ALLOWED_SCHEMES and bool(parsed.netloc)
+
+
 def load_notifications_config(workspace: Workspace) -> NotificationsConfig:
     """Read notifications config, returning defaults on missing/corrupt file.
 
     Never raises — a broken config should not break the triggering operation.
+    Non-object JSON (``[]``, ``null``, a bare integer) is treated as corrupt
+    and falls back to defaults rather than raising ``AttributeError`` from
+    a downstream ``.get()`` call.
     """
     path = _config_path(workspace)
     if not path.exists():
         return dict(_DEFAULT)  # type: ignore[return-value]
     try:
         data = json.loads(path.read_text())
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"Expected JSON object, got {type(data).__name__}"
+            )
         return {
             "webhook_url": data.get("webhook_url") or None,
             "webhook_enabled": bool(data.get("webhook_enabled", False)),
@@ -86,13 +116,22 @@ def save_notifications_config(
 
 
 def is_webhook_active(workspace: Workspace) -> Optional[str]:
-    """Return the webhook URL if both URL is set AND enabled flag is on.
+    """Return the webhook URL if URL is set, enabled flag is on, AND the URL
+    passes basic safety checks (``http(s)`` scheme + non-empty host).
 
     Returns ``None`` otherwise — callers should short-circuit on ``None`` to
-    avoid instantiating the webhook service for nothing.
+    avoid instantiating the webhook service for nothing. The safety check is
+    intentionally redundant with the PUT-endpoint validation: it protects
+    against hand-edited config files and pre-migration data.
     """
     cfg = load_notifications_config(workspace)
     url = (cfg["webhook_url"] or "").strip()
     if not url or not cfg["webhook_enabled"]:
+        return None
+    if not _is_safe_webhook_url(url):
+        logger.warning(
+            "Refusing to dispatch webhook to unsafe URL (scheme/host invalid): %s",
+            url,
+        )
         return None
     return url
