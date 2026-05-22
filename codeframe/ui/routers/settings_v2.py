@@ -550,6 +550,9 @@ async def test_notification_webhook(
             ),
         )
     # Re-validate at send time — defence-in-depth for hand-edited config files.
+    # We discard the return value: ``_validate_webhook_url`` raises
+    # ``HTTPException(400)`` on a bad scheme/host, which is the side-effect
+    # we want here. The trimmed URL it returns is already in ``url``.
     _validate_webhook_url(url)
 
     svc = WebhookNotificationService(webhook_url=url, timeout=5)

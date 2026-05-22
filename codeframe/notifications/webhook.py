@@ -320,7 +320,14 @@ class WebhookNotificationService:
             )
             thread.start()
             return
-        loop.create_task(self.send_event(payload, url=url))
+        task = loop.create_task(self.send_event(payload, url=url))
+        # ``send_event`` already swallows all exceptions, but Python 3.11+
+        # warns ``Task exception was never retrieved`` if a task ends with
+        # an unhandled exception and nobody awaited / called .exception().
+        # Add a no-op callback so the result is always consumed.
+        task.add_done_callback(
+            lambda t: t.exception() if not t.cancelled() else None
+        )
 
     def _run_send_event_sync(self, payload: dict, url: Optional[str]) -> None:
         """Run ``send_event`` to completion in a fresh event loop.

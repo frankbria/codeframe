@@ -158,6 +158,42 @@ async def test_send_event_background_schedules_task():
         await asyncio.sleep(0)
 
 
+@pytest.mark.asyncio
+async def test_send_event_background_task_has_done_callback():
+    """Python 3.11+ logs ``Task exception was never retrieved`` when an
+    async task ends with an unhandled exception and nobody awaits or calls
+    .exception(). ``send_event`` swallows exceptions internally, but
+    defence-in-depth: attach a done-callback so the result is always
+    consumed and the log noise never appears in production.
+    """
+    svc = WebhookNotificationService(webhook_url="https://example.com/hook", timeout=5)
+
+    captured_tasks = []
+    loop = asyncio.get_running_loop()
+    real_create_task = loop.create_task
+
+    def capture(coro):
+        t = real_create_task(coro)
+        captured_tasks.append(t)
+        return t
+
+    with patch.object(loop, "create_task", side_effect=capture):
+        with patch("aiohttp.ClientSession", return_value=_mock_post(200)):
+            svc.send_event_background({"event": "test"})
+
+    assert len(captured_tasks) == 1
+    # The task's repr includes its registered callbacks. The send_event_background
+    # lambda must appear there — without it, Python 3.11+ would warn on task
+    # completion if send_event ever raised.
+    assert "send_event_background.<locals>.<lambda>" in repr(captured_tasks[0])
+
+    # Drain the task so the test exit is clean.
+    try:
+        await asyncio.wait_for(captured_tasks[0], timeout=1.0)
+    except asyncio.TimeoutError:
+        captured_tasks[0].cancel()
+
+
 def test_format_batch_payload():
     p = format_batch_payload(batch_id="b-123", task_count=5)
     assert p["event"] == "batch.completed"

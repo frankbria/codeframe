@@ -47,6 +47,14 @@ def client(workspace):
     return TestClient(app)
 
 
+# Note on the "workspace_path contract" suggestion raised by reviewers:
+# `get_v2_workspace` does not strictly fail when ``workspace_path`` is
+# absent — it falls back to default-workspace resolution. So a test
+# asserting 400/422 on missing query param wouldn't reflect reality.
+# That contract is a router-wide concern; it's not specific to #560 and
+# would need a fix in the dependency itself, not in this endpoint's tests.
+
+
 class TestGetNotificationSettings:
     def test_returns_defaults_when_no_config(self, client):
         r = client.get("/api/v2/settings/notifications")

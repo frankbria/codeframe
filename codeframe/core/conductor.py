@@ -35,7 +35,10 @@ logger = logging.getLogger(__name__)
 
 
 def _dispatch_batch_completed_webhook(
-    workspace: Workspace, event_type, batch_id: str, task_count: int
+    workspace: Workspace,
+    event_type: "events.EventType",
+    batch_id: str,
+    task_count: int,
 ) -> None:
     """Best-effort outbound webhook for ``batch.completed`` (issue #560).
 
