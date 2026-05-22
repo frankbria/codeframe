@@ -31,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 NOTIFICATIONS_CONFIG_FILENAME = "notifications_config.json"
 
+# Intentionally duplicated with codeframe/ui/routers/settings_v2.py's
+# ``_ALLOWED_WEBHOOK_SCHEMES``: core cannot import from the UI layer
+# (architecture rule #1 — core must be headless). Keep both values in
+# sync if extended.
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
 
 
@@ -146,10 +150,15 @@ def is_webhook_active(workspace: Workspace) -> Optional[str]:
 def _redact_url_for_log(url: str) -> str:
     """Return a logging-safe representation of a webhook URL.
 
-    Slack/Discord/GitHub-style webhook URLs commonly embed secrets in the
-    path or query (Slack's ``T*/B*/...`` token, GitHub PAT URLs, signed
-    Zapier hooks). Echoing them verbatim into logs is a credential leak.
-    Returns ``scheme://host`` when parsable, else ``"<unparseable>"``.
+    Slack/Discord/GitHub-style webhook URLs commonly embed secrets in:
+
+    * the path or query (Slack's ``T*/B*/...`` token, signed Zapier hooks)
+    * basic-auth credentials in ``user:password@host`` form
+
+    ``parsed.netloc`` preserves the userinfo segment, so we use
+    ``parsed.hostname`` (which strips auth and port) and re-attach the
+    port explicitly. Returns ``scheme://host[:port]`` when parsable, else
+    ``"<unparseable>"``.
     """
     from urllib.parse import urlparse
 
@@ -157,6 +166,9 @@ def _redact_url_for_log(url: str) -> str:
         parsed = urlparse(url)
     except (TypeError, ValueError):
         return "<unparseable>"
-    if not parsed.scheme or not parsed.netloc:
+    if not parsed.scheme or not parsed.hostname:
         return "<unparseable>"
-    return f"{parsed.scheme}://{parsed.netloc}"
+    host = parsed.hostname
+    if parsed.port is not None:
+        host = f"{host}:{parsed.port}"
+    return f"{parsed.scheme}://{host}"

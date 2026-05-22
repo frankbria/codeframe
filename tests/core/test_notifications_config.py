@@ -151,6 +151,37 @@ def test_is_webhook_active_accepts_valid_https(workspace):
     assert is_webhook_active(workspace) == "https://hooks.example.com/h"
 
 
+def test_unsafe_url_log_does_not_leak_basic_auth(workspace, caplog):
+    """Basic-auth credentials in the URL must be stripped before logging.
+    ``parsed.netloc`` preserves ``user:password@host``, so we use
+    ``parsed.hostname`` to drop the auth segment.
+    """
+    import logging
+
+    # Unsafe scheme so we hit the warning branch.
+    path = workspace.state_dir / NOTIFICATIONS_CONFIG_FILENAME
+    path.write_text(
+        '{"webhook_url": "file://admin:SuperSecret@private.host/x", '
+        '"webhook_enabled": true}'
+    )
+
+    with caplog.at_level(logging.WARNING):
+        assert is_webhook_active(workspace) is None
+
+    log_text = "\n".join(rec.getMessage() for rec in caplog.records)
+    assert "SuperSecret" not in log_text
+    assert "admin:" not in log_text
+
+
+def test_redact_url_for_log_preserves_port():
+    """Port is non-secret and useful in logs (which environment), so keep it."""
+    from codeframe.core.notifications_config import _redact_url_for_log
+
+    assert _redact_url_for_log("https://hooks.example.com:8443/path/x?q=1") == (
+        "https://hooks.example.com:8443"
+    )
+
+
 def test_unsafe_url_log_does_not_leak_path_or_query(workspace, caplog):
     """Logs must NOT echo the full URL — webhook URLs often embed secrets
     in the path or query (e.g. Slack token in path, signed Zapier hook)."""

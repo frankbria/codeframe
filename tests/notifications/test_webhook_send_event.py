@@ -187,11 +187,17 @@ async def test_send_event_background_task_has_done_callback():
     # completion if send_event ever raised.
     assert "send_event_background.<locals>.<lambda>" in repr(captured_tasks[0])
 
-    # Drain the task so the test exit is clean.
+    # Drain the task so the test exit is clean. After cancelling, await
+    # the task so cancellation actually propagates — otherwise Python may
+    # emit "Task was destroyed but it is pending" warnings on loop close.
     try:
         await asyncio.wait_for(captured_tasks[0], timeout=1.0)
     except asyncio.TimeoutError:
         captured_tasks[0].cancel()
+        try:
+            await captured_tasks[0]
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 def test_format_batch_payload():
