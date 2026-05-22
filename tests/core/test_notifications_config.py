@@ -182,6 +182,26 @@ def test_redact_url_for_log_preserves_port():
     )
 
 
+def test_redact_url_for_log_handles_malformed_port():
+    """``parsed.port`` raises ValueError for invalid ports — the redaction
+    helper must convert that into <unparseable> rather than letting it bubble
+    out and turn ``is_webhook_active``'s fail-safe branch into an exception.
+    """
+    from codeframe.core.notifications_config import _redact_url_for_log
+
+    assert _redact_url_for_log("https://host:not-a-port/path") == "<unparseable>"
+
+
+def test_is_webhook_active_returns_none_for_malformed_port(workspace):
+    """The fail-safe branch must return None even when the URL has a
+    malformed port that would otherwise crash ``parsed.port`` access."""
+    path = workspace.state_dir / NOTIFICATIONS_CONFIG_FILENAME
+    path.write_text(
+        '{"webhook_url": "file://private.host:abc/secret", "webhook_enabled": true}'
+    )
+    assert is_webhook_active(workspace) is None
+
+
 def test_unsafe_url_log_does_not_leak_path_or_query(workspace, caplog):
     """Logs must NOT echo the full URL — webhook URLs often embed secrets
     in the path or query (e.g. Slack token in path, signed Zapier hook)."""

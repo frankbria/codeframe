@@ -169,6 +169,15 @@ def _redact_url_for_log(url: str) -> str:
     if not parsed.scheme or not parsed.hostname:
         return "<unparseable>"
     host = parsed.hostname
-    if parsed.port is not None:
-        host = f"{host}:{parsed.port}"
+    # ``parsed.port`` raises ValueError for malformed ports (e.g.
+    # ``file://host:abc/x``). Without this guard the "fail-safe" branch
+    # in ``is_webhook_active`` could end up raising instead of returning
+    # None, which would bubble through every dispatch site's broad
+    # ``except Exception``.
+    try:
+        port = parsed.port
+    except ValueError:
+        return "<unparseable>"
+    if port is not None:
+        host = f"{host}:{port}"
     return f"{parsed.scheme}://{host}"
