@@ -10,6 +10,7 @@ but never break the triggering operation.
 
 import asyncio
 import logging
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
@@ -36,8 +37,13 @@ class WebhookSendResult:
 
 
 def _utc_iso_now() -> str:
-    """ISO-8601 UTC timestamp for webhook payloads."""
-    return datetime.now(timezone.utc).isoformat()
+    """ISO-8601 UTC timestamp for webhook payloads (``Z`` suffix).
+
+    Slack/Discord/Zapier-style consumers expect ``Z``, not ``+00:00``.
+    Drops sub-second precision for the same reason — consumers vary widely
+    in fractional-second handling.
+    """
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def format_batch_payload(batch_id: str, task_count: int) -> dict:
@@ -275,21 +281,50 @@ class WebhookNotificationService:
     def send_event_background(self, payload: dict, url: Optional[str] = None) -> None:
         """Fire-and-forget wrapper for ``send_event``.
 
-        Schedules the send on the current event loop and returns immediately.
-        If no event loop is running (e.g., called from sync code outside of
-        async context), the call is silently dropped after logging — the
-        triggering operation must never block on webhook delivery.
+        Works in both contexts:
+
+        * **Async** (FastAPI request handler): schedules the send on the
+          current event loop via ``loop.create_task`` and returns
+          immediately.
+        * **Sync** (CLI batch run, sync test): spawns a daemon thread that
+          runs the send in a fresh event loop. The thread is daemon so it
+          never blocks process exit; ``timeout`` still applies inside the
+          loop, so the thread lives at most ``self.timeout`` seconds.
+
+        Either way, the triggering operation never blocks on webhook
+        delivery and never sees an exception from this method.
         """
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            logger.warning(
-                "send_event_background called outside of a running event loop; "
-                "skipping webhook for event %s",
-                payload.get("event"),
+            # No running loop — we're in sync context (CLI). Run the send
+            # in a daemon thread so we don't block the caller and so the
+            # process can exit cleanly even if the webhook hangs.
+            thread = threading.Thread(
+                target=self._run_send_event_sync,
+                args=(payload, url),
+                daemon=True,
+                name="webhook-send-event",
             )
+            thread.start()
             return
         loop.create_task(self.send_event(payload, url=url))
+
+    def _run_send_event_sync(self, payload: dict, url: Optional[str]) -> None:
+        """Run ``send_event`` to completion in a fresh event loop.
+
+        Used only by the sync branch of ``send_event_background`` — never
+        raises into the calling thread (the daemon thread is meant to die
+        quietly).
+        """
+        try:
+            asyncio.run(self.send_event(payload, url=url))
+        except Exception:
+            logger.warning(
+                "Sync webhook dispatch failed for event %s",
+                payload.get("event"),
+                exc_info=True,
+            )
 
     def send_blocker_notification_background(
         self,

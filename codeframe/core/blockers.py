@@ -142,7 +142,7 @@ def _dispatch_blocker_webhook(
             return
         svc = WebhookNotificationService(webhook_url=url, timeout=5)
         svc.send_event_background(format_blocker_payload(blocker_id, task_id))
-    except Exception:  # pragma: no cover -- guarded by send_event_background already
+    except Exception:
         import logging
 
         logging.getLogger(__name__).warning(

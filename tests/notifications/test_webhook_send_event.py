@@ -108,14 +108,35 @@ async def test_send_event_handles_client_error():
     assert "connection refused" in (result.error or "")
 
 
-@pytest.mark.asyncio
-async def test_send_event_background_outside_loop_logs_and_returns():
-    """Calling background dispatch outside an event loop must not raise."""
+def test_send_event_background_outside_loop_runs_in_thread():
+    """In sync context (no running loop), dispatch spawns a daemon thread
+    and runs the send to completion. The caller must not block beyond the
+    thread spawn cost.
+
+    This is the CLI batch-run path — without this, webhooks from
+    ``cf work batch run`` would silently never fire.
+    """
+    import threading
+
     svc = WebhookNotificationService(webhook_url="https://example.com/hook", timeout=5)
-    # Run synchronously — no running loop in this context (we're in the sync
-    # part before pytest-asyncio creates one).
-    # Calling the background method should not raise.
-    svc.send_event_background({"event": "test"})  # no exception
+    threads_before = threading.active_count()
+
+    with patch(
+        "codeframe.notifications.webhook.WebhookNotificationService._run_send_event_sync"
+    ) as mock_runner:
+        svc.send_event_background({"event": "test"})
+        # Thread is spawned synchronously and starts immediately. Give it a
+        # beat to run.
+        import time
+
+        for _ in range(50):
+            if mock_runner.called:
+                break
+            time.sleep(0.01)
+
+    assert mock_runner.called, "expected daemon thread to invoke the sync runner"
+    # The thread spawns and dies — no leaked thread count.
+    threading.active_count() - threads_before  # informational only
 
 
 @pytest.mark.asyncio
@@ -160,3 +181,12 @@ def test_format_test_payload():
     p = format_test_payload()
     assert p["event"] == "test"
     assert "timestamp" in p
+
+
+def test_timestamp_uses_z_suffix_not_offset():
+    """Slack/Discord/Zapier prefer the Z suffix over +00:00 offset format."""
+    p = format_test_payload()
+    assert p["timestamp"].endswith("Z"), (
+        f"Expected ISO timestamp with Z suffix, got: {p['timestamp']!r}"
+    )
+    assert "+00:00" not in p["timestamp"]

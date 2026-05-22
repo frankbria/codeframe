@@ -444,6 +444,42 @@ async def get_notification_settings(
     )
 
 
+_ALLOWED_WEBHOOK_SCHEMES = frozenset({"http", "https"})
+
+
+def _validate_webhook_url(url: Optional[str]) -> Optional[str]:
+    """Normalize and validate a user-supplied webhook URL.
+
+    Returns the trimmed URL on success, or ``None`` if empty. Raises
+    ``HTTPException(400)`` for non-``http(s)`` schemes — without this guard,
+    a user could enter ``file:///...`` or ``ftp://...`` and aiohttp would
+    happily attempt the request (SSRF on local resources).
+    """
+    from urllib.parse import urlparse
+
+    trimmed = (url or "").strip()
+    if not trimmed:
+        return None
+    parsed = urlparse(trimmed)
+    if parsed.scheme.lower() not in _ALLOWED_WEBHOOK_SCHEMES:
+        raise HTTPException(
+            status_code=400,
+            detail=api_error(
+                f"Webhook URL must use http or https, got: {parsed.scheme!r}",
+                ErrorCodes.VALIDATION_ERROR,
+            ),
+        )
+    if not parsed.netloc:
+        raise HTTPException(
+            status_code=400,
+            detail=api_error(
+                "Webhook URL must include a host",
+                ErrorCodes.VALIDATION_ERROR,
+            ),
+        )
+    return trimmed
+
+
 @router.put("/notifications", response_model=NotificationSettingsResponse)
 @rate_limit_standard()
 async def update_notification_settings(
@@ -455,9 +491,10 @@ async def update_notification_settings(
 
     An empty / whitespace-only URL is normalized to ``None``. The enabled
     flag is preserved as-is so the user can toggle delivery without losing
-    the saved URL.
+    the saved URL. The URL is validated for ``http(s)`` scheme to avoid
+    ``file://`` / ``ftp://`` SSRF on local resources.
     """
-    url = (body.webhook_url or "").strip() or None
+    url = _validate_webhook_url(body.webhook_url)
     save_notifications_config(
         workspace,
         {"webhook_url": url, "webhook_enabled": body.webhook_enabled},

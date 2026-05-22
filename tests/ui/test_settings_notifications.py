@@ -98,6 +98,43 @@ class TestUpdateNotificationSettings:
         )
         assert r.json()["webhook_url"] is None
 
+    def test_rejects_file_scheme_url(self, client):
+        """SSRF guard — file:// must be rejected (CVE-class issue)."""
+        r = client.put(
+            "/api/v2/settings/notifications",
+            json={"webhook_url": "file:///etc/passwd", "webhook_enabled": True},
+        )
+        assert r.status_code == 400
+
+    def test_rejects_ftp_scheme_url(self, client):
+        r = client.put(
+            "/api/v2/settings/notifications",
+            json={"webhook_url": "ftp://example.com/h", "webhook_enabled": True},
+        )
+        assert r.status_code == 400
+
+    def test_rejects_url_without_host(self, client):
+        r = client.put(
+            "/api/v2/settings/notifications",
+            json={"webhook_url": "http://", "webhook_enabled": True},
+        )
+        assert r.status_code == 400
+
+    def test_accepts_https(self, client):
+        r = client.put(
+            "/api/v2/settings/notifications",
+            json={"webhook_url": "https://hooks.example.com/h", "webhook_enabled": True},
+        )
+        assert r.status_code == 200
+
+    def test_accepts_http(self, client):
+        """Plain http is allowed for local testing / internal endpoints."""
+        r = client.put(
+            "/api/v2/settings/notifications",
+            json={"webhook_url": "http://localhost:9876/h", "webhook_enabled": True},
+        )
+        assert r.status_code == 200
+
 
 class TestNotificationWebhookTest:
     def test_returns_400_when_no_url_configured(self, client):
