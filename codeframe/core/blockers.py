@@ -119,7 +119,36 @@ def create(
         print_event=True,
     )
 
+    # Outbound webhook dispatch (issue #560) — fire-and-forget, never blocks
+    # blocker creation. A misconfigured webhook must not break the workflow.
+    _dispatch_blocker_webhook(workspace, blocker_id, task_id)
+
     return blocker
+
+
+def _dispatch_blocker_webhook(
+    workspace: Workspace, blocker_id: str, task_id: Optional[str]
+) -> None:
+    """Best-effort outbound webhook for ``blocker.created``."""
+    try:
+        from codeframe.core.notifications_config import is_webhook_active
+        from codeframe.notifications.webhook import (
+            WebhookNotificationService,
+            format_blocker_payload,
+        )
+
+        url = is_webhook_active(workspace)
+        if url is None:
+            return
+        svc = WebhookNotificationService(webhook_url=url, timeout=5)
+        svc.send_event_background(format_blocker_payload(blocker_id, task_id))
+    except Exception:  # pragma: no cover -- guarded by send_event_background already
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Failed to dispatch blocker.created webhook for %s", blocker_id,
+            exc_info=True,
+        )
 
 
 def get(workspace: Workspace, blocker_id: str) -> Optional[Blocker]:

@@ -87,11 +87,12 @@ describe('SettingsPage', () => {
       mockGetWorkspace.mockReturnValue(WORKSPACE);
     });
 
-    it('renders all four tabs', () => {
+    it('renders all five tabs', () => {
       mockSWR(SAMPLE_SETTINGS);
       render(<SettingsPage />);
       expect(screen.getByRole('tab', { name: 'Agent' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'API Keys' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Notifications' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'PROOF9' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Workspace' })).toBeInTheDocument();
     });

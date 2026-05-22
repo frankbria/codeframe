@@ -1,20 +1,24 @@
-"""V2 Settings router — agent settings + API key management.
+"""V2 Settings router — agent settings + API key management + notifications.
 
 Routes:
-    GET    /api/v2/settings              - Load agent settings (defaults if missing)
-    PUT    /api/v2/settings              - Save agent settings (merge into config)
-    GET    /api/v2/settings/keys         - List API key status for all providers
-    PUT    /api/v2/settings/keys/{p}     - Store an API key for provider p
-    DELETE /api/v2/settings/keys/{p}     - Delete an API key for provider p
-    POST   /api/v2/settings/verify-key   - Live-verify a key against its provider
+    GET    /api/v2/settings                       - Load agent settings (defaults if missing)
+    PUT    /api/v2/settings                       - Save agent settings (merge into config)
+    GET    /api/v2/settings/keys                  - List API key status for all providers
+    PUT    /api/v2/settings/keys/{p}              - Store an API key for provider p
+    DELETE /api/v2/settings/keys/{p}              - Delete an API key for provider p
+    POST   /api/v2/settings/verify-key            - Live-verify a key against its provider
+    GET    /api/v2/settings/notifications         - Load outbound webhook config
+    PUT    /api/v2/settings/notifications         - Save outbound webhook config
+    POST   /api/v2/settings/notifications/test    - Fire a test payload and return HTTP status
 
 Key management is machine-wide (CredentialManager / keyring) and does not
-require a workspace. Env vars take precedence at read time.
+require a workspace. Env vars take precedence at read time. Notifications
+config is per-workspace and persisted under .codeframe/notifications_config.json.
 """
 
 import logging
 
-from typing import cast
+from typing import Optional, cast
 
 from anthropic import Anthropic as _AnthropicClient
 from anthropic import AuthenticationError as _AnthropicAuthError
@@ -22,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from openai import AuthenticationError as _OpenAIAuthError
 from openai import OpenAI as _OpenAIClient
+from pydantic import BaseModel, Field
 
 from codeframe.core.config import (
     AgentBudgetConfig,
@@ -35,7 +40,15 @@ from codeframe.core.credentials import (
     CredentialSource,
     validate_credential_format,
 )
+from codeframe.core.notifications_config import (
+    load_notifications_config,
+    save_notifications_config,
+)
 from codeframe.core.workspace import Workspace
+from codeframe.notifications.webhook import (
+    WebhookNotificationService,
+    format_test_payload,
+)
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.models import (
@@ -386,3 +399,98 @@ async def verify_key(
         valid, message = False, "Verification not supported for this provider"
 
     return VerifyKeyResponse(provider=body.provider, valid=valid, message=message)
+
+
+# ============================================================================
+# Outbound webhook notifications (issue #560)
+#
+# Per-workspace: stored under .codeframe/notifications_config.json. The URL is
+# kept as plaintext for v1 — the workspace DB is already a local file, and the
+# legacy BLOCKER_WEBHOOK_URL env var was plaintext too. Encryption-at-rest is
+# tracked as future work.
+# ============================================================================
+
+
+class NotificationSettingsResponse(BaseModel):
+    webhook_url: Optional[str] = None
+    webhook_enabled: bool = False
+
+
+class UpdateNotificationSettingsRequest(BaseModel):
+    webhook_url: Optional[str] = Field(
+        default=None,
+        description="Outbound webhook URL. Empty/None clears the value.",
+    )
+    webhook_enabled: bool = False
+
+
+class TestWebhookResponse(BaseModel):
+    ok: bool
+    status_code: Optional[int] = None
+    error: Optional[str] = None
+
+
+@router.get("/notifications", response_model=NotificationSettingsResponse)
+@rate_limit_standard()
+async def get_notification_settings(
+    request: Request,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> NotificationSettingsResponse:
+    """Load outbound webhook config for this workspace."""
+    cfg = load_notifications_config(workspace)
+    return NotificationSettingsResponse(
+        webhook_url=cfg["webhook_url"],
+        webhook_enabled=cfg["webhook_enabled"],
+    )
+
+
+@router.put("/notifications", response_model=NotificationSettingsResponse)
+@rate_limit_standard()
+async def update_notification_settings(
+    request: Request,
+    body: UpdateNotificationSettingsRequest,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> NotificationSettingsResponse:
+    """Save outbound webhook config for this workspace.
+
+    An empty / whitespace-only URL is normalized to ``None``. The enabled
+    flag is preserved as-is so the user can toggle delivery without losing
+    the saved URL.
+    """
+    url = (body.webhook_url or "").strip() or None
+    save_notifications_config(
+        workspace,
+        {"webhook_url": url, "webhook_enabled": body.webhook_enabled},
+    )
+    return NotificationSettingsResponse(
+        webhook_url=url, webhook_enabled=body.webhook_enabled
+    )
+
+
+@router.post("/notifications/test", response_model=TestWebhookResponse)
+@rate_limit_standard()
+async def test_notification_webhook(
+    request: Request,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> TestWebhookResponse:
+    """Fire a test payload against the configured webhook URL.
+
+    Returns the HTTP status code on success, or an error message on failure.
+    Returns 400 if no URL is configured — the [Test] button should be
+    disabled in that case, but we guard server-side too.
+    """
+    cfg = load_notifications_config(workspace)
+    url = (cfg["webhook_url"] or "").strip()
+    if not url:
+        raise HTTPException(
+            status_code=400,
+            detail=api_error(
+                "No webhook URL configured", ErrorCodes.VALIDATION_ERROR
+            ),
+        )
+
+    svc = WebhookNotificationService(webhook_url=url, timeout=5)
+    result = await svc.send_event(format_test_payload())
+    return TestWebhookResponse(
+        ok=result.ok, status_code=result.status_code, error=result.error
+    )

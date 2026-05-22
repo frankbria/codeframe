@@ -70,6 +70,9 @@ import type {
   CostSummaryResponse,
   TaskCostsResponse,
   AgentCostsResponse,
+  NotificationSettingsResponse,
+  UpdateNotificationSettingsRequest,
+  TestWebhookResponse,
 } from '@/types';
 
 // FastAPI validation error format
@@ -906,6 +909,40 @@ export const workspaceConfigApi = {
     const response = await api.put<WorkspaceConfigResponse>(
       '/api/v2/workspaces/config',
       body,
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+};
+
+// Outbound webhook notifications API (issue #560)
+export const notificationsApi = {
+  get: async (
+    workspacePath: string
+  ): Promise<NotificationSettingsResponse> => {
+    const response = await api.get<NotificationSettingsResponse>(
+      '/api/v2/settings/notifications',
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  update: async (
+    workspacePath: string,
+    body: UpdateNotificationSettingsRequest
+  ): Promise<NotificationSettingsResponse> => {
+    const response = await api.put<NotificationSettingsResponse>(
+      '/api/v2/settings/notifications',
+      body,
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  test: async (workspacePath: string): Promise<TestWebhookResponse> => {
+    const response = await api.post<TestWebhookResponse>(
+      '/api/v2/settings/notifications/test',
+      undefined,
       { params: { workspace_path: workspacePath } }
     );
     return response.data;
