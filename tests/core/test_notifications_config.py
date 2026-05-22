@@ -149,3 +149,29 @@ def test_is_webhook_active_accepts_valid_https(workspace):
         {"webhook_url": "https://hooks.example.com/h", "webhook_enabled": True},
     )
     assert is_webhook_active(workspace) == "https://hooks.example.com/h"
+
+
+def test_unsafe_url_log_does_not_leak_path_or_query(workspace, caplog):
+    """Logs must NOT echo the full URL — webhook URLs often embed secrets
+    in the path or query (e.g. Slack token in path, signed Zapier hook)."""
+    import logging
+
+    # Write directly to bypass save's PUT-style normalization (which would
+    # reject this URL).
+    secret_path = (
+        "https://example.com/services/T123456/B999/SUPER_SECRET_TOKEN_xyz?sig=abc"
+    )
+    # Use an unsafe scheme so the unsafe-URL branch fires.
+    path = workspace.state_dir / NOTIFICATIONS_CONFIG_FILENAME
+    path.write_text(
+        f'{{"webhook_url": "file://{secret_path}", "webhook_enabled": true}}'
+    )
+
+    with caplog.at_level(logging.WARNING):
+        assert is_webhook_active(workspace) is None
+
+    log_text = "\n".join(rec.getMessage() for rec in caplog.records)
+    # The redacted form (scheme://host) is fine; the secret path/token is not.
+    assert "SUPER_SECRET_TOKEN" not in log_text
+    assert "T123456" not in log_text
+    assert "sig=abc" not in log_text

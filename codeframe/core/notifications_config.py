@@ -136,8 +136,27 @@ def is_webhook_active(workspace: Workspace) -> Optional[str]:
         return None
     if not _is_safe_webhook_url(url):
         logger.warning(
-            "Refusing to dispatch webhook to unsafe URL (scheme/host invalid): %s",
-            url,
+            "Refusing to dispatch webhook to unsafe URL: %s",
+            _redact_url_for_log(url),
         )
         return None
     return url
+
+
+def _redact_url_for_log(url: str) -> str:
+    """Return a logging-safe representation of a webhook URL.
+
+    Slack/Discord/GitHub-style webhook URLs commonly embed secrets in the
+    path or query (Slack's ``T*/B*/...`` token, GitHub PAT URLs, signed
+    Zapier hooks). Echoing them verbatim into logs is a credential leak.
+    Returns ``scheme://host`` when parsable, else ``"<unparseable>"``.
+    """
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url)
+    except (TypeError, ValueError):
+        return "<unparseable>"
+    if not parsed.scheme or not parsed.netloc:
+        return "<unparseable>"
+    return f"{parsed.scheme}://{parsed.netloc}"

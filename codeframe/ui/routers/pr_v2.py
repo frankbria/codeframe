@@ -181,8 +181,10 @@ def _dispatch_pr_merged_webhook(workspace: Workspace, pr_number: int) -> None:
     """Best-effort outbound webhook for ``pr.merged`` (issue #560).
 
     Builds the canonical ``https://github.com/{owner}/{repo}/pull/{N}`` URL
-    from the GitHub integration when available; falls back to ``pr#N`` so a
-    misconfigured env doesn't drop the notification entirely.
+    from the GitHub integration when available; sets ``pr_url`` to ``None``
+    when the integration can't be constructed (e.g., ``GITHUB_REPO`` unset).
+    The always-present ``pr_number`` field lets consumers branch without
+    parsing a URL.
     """
     try:
         from codeframe.core.notifications_config import is_webhook_active
