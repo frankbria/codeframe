@@ -205,23 +205,22 @@ def clean_database_between_tests(api_client: TestClient) -> Generator[None, None
         db = server.app.state.db
         cursor = db.conn.cursor()
 
-        # Delete all rows from tables (in reverse dependency order)
-        cursor.execute("DELETE FROM code_reviews")
-        cursor.execute("DELETE FROM token_usage")
-        cursor.execute("DELETE FROM context_items")
-        cursor.execute("DELETE FROM checkpoints")
-        cursor.execute("DELETE FROM memory")
-        cursor.execute("DELETE FROM blockers")
-        cursor.execute("DELETE FROM changelog")  # References projects, tasks
-        cursor.execute("DELETE FROM tasks")
-        cursor.execute("DELETE FROM git_branches")  # Must be before issues (FK constraint)
-        cursor.execute("DELETE FROM issues")
-        cursor.execute("DELETE FROM project_agents")  # Multi-agent junction table
-        cursor.execute("DELETE FROM agents")
-        cursor.execute("DELETE FROM sessions")  # Auth sessions
-        cursor.execute("DELETE FROM project_users")  # Project-user relationships
-        cursor.execute("DELETE FROM projects")
-        # Note: Keep users table (especially default admin user with id=1)
+        # Clear every table except `users` (keeps the default admin id=1).
+        # Only touch tables that actually exist — the control-plane schema is
+        # intentionally minimal, so legacy tables may not be present.
+        existing = {
+            row[0]
+            for row in cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name NOT LIKE 'sqlite_%'"
+            ).fetchall()
+        }
+        cursor.execute("PRAGMA foreign_keys = OFF")
+        for table in existing - {"users"}:
+            # Identifier comes from sqlite_master (not user input); quote it
+            # anyway so reserved words / unusual names are handled safely.
+            cursor.execute(f'DELETE FROM "{table}"')
+        cursor.execute("PRAGMA foreign_keys = ON")
 
         db.conn.commit()
 
