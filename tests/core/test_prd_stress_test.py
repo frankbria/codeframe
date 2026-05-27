@@ -367,6 +367,84 @@ class TestStressTestPrd:
                 assert child.children == []  # No grandchildren at depth 1
 
 
+# --- Streaming Generator Tests ---
+
+
+class TestStressTestPrdStream:
+    async def test_emits_event_sequence(self, sample_prd, mock_provider):
+        from codeframe.core.prd_stress_test import stress_test_prd_stream
+
+        events = [
+            ev async for ev in stress_test_prd_stream(
+                sample_prd, mock_provider, max_depth=3,
+            )
+        ]
+
+        types = [e["type"] for e in events]
+        # First event announces extracted goals, last announces completion.
+        assert types[0] == "goals_extracted"
+        assert types[-1] == "complete"
+        # One goal_analyzed per top-level goal (3 in the sample PRD).
+        assert types.count("goal_analyzed") == 3
+
+    async def test_goals_extracted_payload(self, sample_prd, mock_provider):
+        from codeframe.core.prd_stress_test import stress_test_prd_stream
+
+        events = [
+            ev async for ev in stress_test_prd_stream(sample_prd, mock_provider)
+        ]
+        goals_event = events[0]
+        assert goals_event["goals"] == [
+            "User Authentication",
+            "Invoice Management",
+            "PDF Export",
+        ]
+
+    async def test_goal_analyzed_carries_classification_and_running_count(
+        self, sample_prd, mock_provider
+    ):
+        from codeframe.core.prd_stress_test import stress_test_prd_stream
+
+        events = [
+            ev async for ev in stress_test_prd_stream(sample_prd, mock_provider)
+        ]
+        analyzed = [e for e in events if e["type"] == "goal_analyzed"]
+
+        auth = next(e for e in analyzed if e["goal"] == "User Authentication")
+        assert auth["classification"] == "ambiguous"
+        assert auth["ambiguities_so_far"] == 1
+
+        invoice = next(e for e in analyzed if e["goal"] == "Invoice Management")
+        assert invoice["classification"] == "composite"
+
+        pdf = next(e for e in analyzed if e["goal"] == "PDF Export")
+        assert pdf["classification"] == "atomic"
+
+    async def test_complete_payload(self, sample_prd, mock_provider):
+        from codeframe.core.prd_stress_test import stress_test_prd_stream
+
+        events = [
+            ev async for ev in stress_test_prd_stream(sample_prd, mock_provider)
+        ]
+        complete = events[-1]
+        assert complete["type"] == "complete"
+        assert complete["ambiguity_count"] == 1
+        assert "# Technical Specification" in complete["tech_spec_markdown"]
+        assert "AUTH SCOPE" in complete["ambiguity_report"]
+
+    async def test_provider_failure_yields_error_event(self, sample_prd):
+        from codeframe.core.prd_stress_test import stress_test_prd_stream
+
+        failing = MagicMock()
+        failing.complete.side_effect = RuntimeError("LLM unavailable")
+
+        events = [
+            ev async for ev in stress_test_prd_stream(sample_prd, failing)
+        ]
+        assert events[-1]["type"] == "error"
+        assert "LLM unavailable" in events[-1]["message"]
+
+
 # --- CLI Tests ---
 
 

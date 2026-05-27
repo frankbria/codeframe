@@ -32,20 +32,32 @@ jest.mock('@/components/prd', () => ({
   PRDView: ({
     onGenerateTasks,
     isGeneratingTasks,
+    onStressTest,
   }: {
     onGenerateTasks: () => void;
     isGeneratingTasks: boolean;
+    onStressTest?: () => void;
   }) => (
     <div>
       <button onClick={onGenerateTasks} disabled={isGeneratingTasks}>
         Generate Tasks
       </button>
+      <button onClick={onStressTest}>Stress Test</button>
     </div>
   ),
 }));
 
 jest.mock('@/components/prd/UploadPRDModal', () => ({
   UploadPRDModal: () => null,
+}));
+
+// Capture the props passed to StressTestModal so we can assert open state.
+const stressTestModalProps: { open?: boolean } = {};
+jest.mock('@/components/prd/StressTestModal', () => ({
+  StressTestModal: ({ open }: { open: boolean }) => {
+    stressTestModalProps.open = open;
+    return open ? <div>stress-test-modal-open</div> : null;
+  },
 }));
 
 jest.mock('next/link', () => {
@@ -149,5 +161,30 @@ describe('PrdPage — handleGenerateTasks', () => {
         'Failed to generate tasks. Please try again.'
       );
     });
+  });
+});
+
+describe('PrdPage — Stress Test wiring', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    delete stressTestModalProps.open;
+    mockGetSelectedWorkspacePath.mockReturnValue(WORKSPACE);
+    setupSWR();
+  });
+
+  it('renders the stress-test modal closed by default', () => {
+    render(<PrdPage />);
+    expect(stressTestModalProps.open).toBe(false);
+    expect(screen.queryByText('stress-test-modal-open')).not.toBeInTheDocument();
+  });
+
+  it('opens the stress-test modal when the button is clicked', async () => {
+    render(<PrdPage />);
+    fireEvent.click(screen.getByRole('button', { name: /stress test/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('stress-test-modal-open')).toBeInTheDocument();
+    });
+    expect(stressTestModalProps.open).toBe(true);
   });
 });

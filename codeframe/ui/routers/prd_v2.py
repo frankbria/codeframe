@@ -14,10 +14,13 @@ Routes:
     GET  /api/v2/prd/{id}/diff            - Diff two versions
 """
 
+import json
 import logging
-from typing import Optional
+import os
+from typing import AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
@@ -184,6 +187,75 @@ async def get_latest_prd(
         )
 
     return _prd_to_response(record)
+
+
+@router.get("/stress-test")
+async def stress_test_prd_stream_endpoint(
+    request: Request,
+    max_depth: int = Query(3, ge=1, le=10, description="Maximum recursion depth"),
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> StreamingResponse:
+    """Stream a PRD stress-test (recursive decomposition) via SSE.
+
+    Runs the headless ``stress_test_prd_stream`` core generator over the
+    latest PRD and emits its progress events as Server-Sent Events. This is
+    the web equivalent of ``cf prd stress-test``.
+
+    Declared as GET (not POST) so it is reachable from a browser
+    ``EventSource``, matching ``GET /api/v2/tasks/{task_id}/stream``. No custom
+    auth headers are required (cookie-based auth via ``withCredentials``).
+
+    Event payloads (JSON in the SSE ``data:`` field, ``type`` field):
+        - ``goals_extracted``: high-level goals parsed from the PRD
+        - ``goal_analyzed``: one per top-level goal (classification + running
+          ambiguity count)
+        - ``complete``: ambiguity count + rendered tech spec / ambiguity report
+        - ``error``: no PRD, missing API key, or decomposition failure
+
+    Recoverable problems (missing PRD, missing ``ANTHROPIC_API_KEY``) are
+    surfaced as in-stream ``error`` events rather than HTTP errors, so the
+    browser ``EventSource`` can display them via its message handler.
+    """
+    from codeframe.core.prd_stress_test import stress_test_prd_stream
+
+    def _sse(event: dict) -> str:
+        return f"data: {json.dumps(event)}\n\n"
+
+    async def _generate() -> AsyncGenerator[str, None]:
+        record = prd.get_latest(workspace)
+        if not record:
+            yield _sse({
+                "type": "error",
+                "message": "No PRD found. Add or generate a PRD first.",
+            })
+            return
+
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            yield _sse({
+                "type": "error",
+                "message": "ANTHROPIC_API_KEY environment variable required.",
+            })
+            return
+
+        from codeframe.adapters.llm.anthropic import AnthropicProvider
+
+        provider = AnthropicProvider(api_key=api_key)
+
+        async for event in stress_test_prd_stream(
+            record.content, provider, max_depth=max_depth,
+        ):
+            yield _sse(event)
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/{prd_id}", response_model=PrdResponse)

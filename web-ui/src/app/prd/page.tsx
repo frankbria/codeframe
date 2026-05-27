@@ -7,6 +7,7 @@ import useSWR from 'swr';
 import { PRDView } from '@/components/prd';
 import { UploadPRDModal } from '@/components/prd/UploadPRDModal';
 import { PRDVersionHistoryModal } from '@/components/prd/PRDVersionHistoryModal';
+import { StressTestModal } from '@/components/prd/StressTestModal';
 import { prdApi, tasksApi, discoveryApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import type {
@@ -23,6 +24,7 @@ export default function PrdPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingTasks, setIsGeneratingTasks] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [stressTestOpen, setStressTestOpen] = useState(false);
 
   useEffect(() => {
     setWorkspacePath(getSelectedWorkspacePath());
@@ -175,6 +177,7 @@ export default function PrdPage() {
           onSavePrd={handleSavePrd}
           onPrdGenerated={handlePrdGenerated}
           onViewHistory={() => setVersionHistoryOpen(true)}
+          onStressTest={() => setStressTestOpen(true)}
         />
 
         <UploadPRDModal
@@ -193,6 +196,12 @@ export default function PrdPage() {
             onVersionRestored={handleVersionRestored}
           />
         )}
+
+        <StressTestModal
+          open={stressTestOpen}
+          onOpenChange={setStressTestOpen}
+          workspacePath={workspacePath}
+        />
       </div>
     </main>
   );

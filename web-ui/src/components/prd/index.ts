@@ -7,3 +7,4 @@ export { DiscoveryTranscript } from './DiscoveryTranscript';
 export { DiscoveryInput } from './DiscoveryInput';
 export { AssociatedTasksSummary } from './AssociatedTasksSummary';
 export { PRDVersionHistoryModal } from './PRDVersionHistoryModal';
+export { StressTestModal } from './StressTestModal';

@@ -33,6 +33,7 @@ module.exports = {
   Upload04Icon: createIconMock('Upload04Icon'),
   MessageSearch01Icon: createIconMock('MessageSearch01Icon'),
   TaskEdit01Icon: createIconMock('TaskEdit01Icon'),
+  TestTube01Icon: createIconMock('TestTube01Icon'),
   ArtificialIntelligence01Icon: createIconMock('ArtificialIntelligence01Icon'),
   SentIcon: createIconMock('SentIcon'),
   // AppSidebar
