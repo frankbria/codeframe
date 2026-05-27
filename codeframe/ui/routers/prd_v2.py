@@ -218,17 +218,46 @@ async def _stress_test_event_stream(
         })
         return
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
+    # Resolve the LLM provider following the documented chain:
+    # env var → workspace config (.codeframe/config.yaml) → default "anthropic".
+    # (No CLI flag here — this is the web surface.) Mirrors runtime.py.
+    from codeframe.adapters.llm import get_provider
+    from codeframe.core.config import load_environment_config
+
+    env_cfg = load_environment_config(workspace.repo_path)
+    llm_cfg = env_cfg.llm if (env_cfg and env_cfg.llm) else None
+    provider_type = (
+        os.getenv("CODEFRAME_LLM_PROVIDER")
+        or (llm_cfg.provider if llm_cfg else None)
+        or "anthropic"
+    )
+
+    # Only the Anthropic provider needs an API key up front; local providers
+    # (ollama/vllm/compatible) do not.
+    if provider_type == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
         yield _sse({
             "type": "error",
             "message": "ANTHROPIC_API_KEY environment variable required.",
         })
         return
 
-    from codeframe.adapters.llm.anthropic import AnthropicProvider
+    provider_kwargs: dict = {}
+    model_override = os.getenv("CODEFRAME_LLM_MODEL") or (
+        llm_cfg.model if llm_cfg else None
+    )
+    base_url_override = (llm_cfg.base_url if llm_cfg else None) or os.getenv(
+        "OPENAI_BASE_URL"
+    )
+    if model_override:
+        provider_kwargs["model"] = model_override
+    if base_url_override:
+        provider_kwargs["base_url"] = base_url_override
 
-    provider = AnthropicProvider(api_key=api_key)
+    try:
+        provider = get_provider(provider_type, **provider_kwargs)
+    except ValueError as exc:
+        yield _sse({"type": "error", "message": str(exc)})
+        return
 
     async for event in stress_test_prd_stream(
         record.content, provider, max_depth=max_depth,

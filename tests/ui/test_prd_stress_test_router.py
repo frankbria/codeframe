@@ -115,12 +115,12 @@ def _parse_sse(text: str) -> list[dict]:
 
 
 class TestStressTestEndpoint:
-    @patch("codeframe.adapters.llm.anthropic.AnthropicProvider")
+    @patch("codeframe.adapters.llm.get_provider")
     def test_streams_event_sequence(
-        self, mock_provider_cls, test_client, mock_provider, monkeypatch
+        self, mock_get_provider, test_client, mock_provider, monkeypatch
     ):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
-        mock_provider_cls.return_value = mock_provider
+        mock_get_provider.return_value = mock_provider
         prd_module.store(test_client.workspace, SAMPLE_PRD, "Invoice SaaS", {})
 
         response = test_client.get("/api/v2/prd/stress-test")
@@ -134,12 +134,12 @@ class TestStressTestEndpoint:
         assert types.count("goal_analyzed") == 3
         assert events[-1]["ambiguity_count"] == 1
 
-    @patch("codeframe.adapters.llm.anthropic.AnthropicProvider")
+    @patch("codeframe.adapters.llm.get_provider")
     def test_no_prd_emits_error_event(
-        self, mock_provider_cls, test_client, mock_provider, monkeypatch
+        self, mock_get_provider, test_client, mock_provider, monkeypatch
     ):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
-        mock_provider_cls.return_value = mock_provider
+        mock_get_provider.return_value = mock_provider
 
         response = test_client.get("/api/v2/prd/stress-test")
         assert response.status_code == 200
@@ -157,6 +157,24 @@ class TestStressTestEndpoint:
         assert events[-1]["type"] == "error"
         assert "ANTHROPIC_API_KEY" in events[-1]["message"]
 
+    @patch("codeframe.adapters.llm.get_provider")
+    def test_non_anthropic_provider_does_not_require_anthropic_key(
+        self, mock_get_provider, test_client, mock_provider, monkeypatch
+    ):
+        # A local/OpenAI-compatible provider is selected via env; the Anthropic
+        # key gate must not apply and the stream should run to completion.
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("CODEFRAME_LLM_PROVIDER", "ollama")
+        mock_get_provider.return_value = mock_provider
+        prd_module.store(test_client.workspace, SAMPLE_PRD, "Invoice SaaS", {})
+
+        response = test_client.get("/api/v2/prd/stress-test")
+        assert response.status_code == 200
+        events = _parse_sse(response.text)
+        assert events[-1]["type"] == "complete"
+        # Provider was resolved via the chain, not hardcoded to Anthropic.
+        assert mock_get_provider.call_args.args[0] == "ollama"
+
 
 class TestStressTestDisconnect:
     """The stream must stop issuing LLM calls once the client disconnects."""
@@ -164,12 +182,11 @@ class TestStressTestDisconnect:
     async def test_aborts_when_client_disconnects(
         self, test_workspace, mock_provider, monkeypatch
     ):
-        import codeframe.adapters.llm.anthropic as anthropic_mod
         from codeframe.ui.routers.prd_v2 import _stress_test_event_stream
 
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
         monkeypatch.setattr(
-            anthropic_mod, "AnthropicProvider", lambda *a, **k: mock_provider
+            "codeframe.adapters.llm.get_provider", lambda *a, **k: mock_provider
         )
         prd_module.store(test_workspace, SAMPLE_PRD, "Invoice SaaS", {})
 
@@ -202,12 +219,11 @@ class TestStressTestDisconnect:
     async def test_completes_when_client_stays_connected(
         self, test_workspace, mock_provider, monkeypatch
     ):
-        import codeframe.adapters.llm.anthropic as anthropic_mod
         from codeframe.ui.routers.prd_v2 import _stress_test_event_stream
 
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
         monkeypatch.setattr(
-            anthropic_mod, "AnthropicProvider", lambda *a, **k: mock_provider
+            "codeframe.adapters.llm.get_provider", lambda *a, **k: mock_provider
         )
         prd_module.store(test_workspace, SAMPLE_PRD, "Invoice SaaS", {})
 
