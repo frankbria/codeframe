@@ -25,10 +25,4 @@ export {
   type UseStressTestStreamReturn,
   type StressTestStatus,
   type StressTestResultData,
-  type StressTestEvent,
-  type StressTestEventType,
-  type StressTestGoalsExtractedEvent,
-  type StressTestGoalAnalyzedEvent,
-  type StressTestCompleteEvent,
-  type StressTestErrorEvent,
 } from './useStressTestStream';

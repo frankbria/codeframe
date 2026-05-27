@@ -242,6 +242,7 @@ async def _stress_test_event_stream(
 
 
 @router.get("/stress-test")
+@rate_limit_standard()
 async def stress_test_prd_stream_endpoint(
     request: Request,
     max_depth: int = Query(3, ge=1, le=10, description="Maximum recursion depth"),

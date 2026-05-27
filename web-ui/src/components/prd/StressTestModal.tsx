@@ -15,7 +15,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useStressTestStream } from '@/hooks/useStressTestStream';
 
 interface StressTestModalProps {
@@ -90,20 +89,19 @@ export function StressTestModal({
           </div>
         )}
 
-        {/* Streaming log */}
+        {/* Streaming log — single scroll container so the auto-scroll ref
+            (scrollTop) and the visible scrollbar are the same element. */}
         {(status === 'streaming' || status === 'complete') && lines.length > 0 && (
-          <ScrollArea className="max-h-[40vh]">
-            <div
-              ref={scrollRef}
-              className="max-h-[40vh] overflow-y-auto rounded-md bg-muted p-4 font-mono text-xs"
-            >
-              {lines.map((line, i) => (
-                <div key={i} className="whitespace-pre-wrap">
-                  {line}
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
+          <div
+            ref={scrollRef}
+            className="max-h-[40vh] overflow-y-auto rounded-md bg-muted p-4 font-mono text-xs"
+          >
+            {lines.map((line, i) => (
+              <div key={i} className="whitespace-pre-wrap">
+                {line}
+              </div>
+            ))}
+          </div>
         )}
 
         {/* Error state */}

@@ -196,6 +196,16 @@ describe('useStressTestStream', () => {
     expect(result.current.error).toBe('boom from server');
   });
 
+  it('fails fast (no connection) when workspacePath is null', () => {
+    const { result } = renderHook(() => useStressTestStream(null));
+
+    act(() => result.current.start());
+
+    expect(result.current.status).toBe('error');
+    expect(result.current.error).toMatch(/no workspace selected/i);
+    expect(MockEventSource.instances).toHaveLength(0);
+  });
+
   it('reset() closes the connection and returns to idle', () => {
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
     act(() => result.current.start());

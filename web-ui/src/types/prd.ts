@@ -94,3 +94,44 @@ export interface DiscoveryMessage {
 }
 
 export type DiscoveryState = 'idle' | 'discovering' | 'completed';
+
+// ---------------------------------------------------------------------------
+// PRD stress-test SSE event types (mirror stress_test_prd_stream in
+// codeframe/core/prd_stress_test.py, streamed by GET /api/v2/prd/stress-test)
+// ---------------------------------------------------------------------------
+
+export type StressTestEventType =
+  | 'goals_extracted'
+  | 'goal_analyzed'
+  | 'complete'
+  | 'error';
+
+export interface StressTestGoalsExtractedEvent {
+  type: 'goals_extracted';
+  goals: string[];
+}
+
+export interface StressTestGoalAnalyzedEvent {
+  type: 'goal_analyzed';
+  goal: string;
+  classification: 'atomic' | 'composite' | 'ambiguous';
+  ambiguities_so_far: number;
+}
+
+export interface StressTestCompleteEvent {
+  type: 'complete';
+  ambiguity_count: number;
+  tech_spec_markdown: string;
+  ambiguity_report: string;
+}
+
+export interface StressTestErrorEvent {
+  type: 'error';
+  message: string;
+}
+
+export type StressTestEvent =
+  | StressTestGoalsExtractedEvent
+  | StressTestGoalAnalyzedEvent
+  | StressTestCompleteEvent
+  | StressTestErrorEvent;

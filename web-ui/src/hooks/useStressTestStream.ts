@@ -2,44 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useEventSource } from './useEventSource';
-
-// ── Event types matching the backend stress_test_prd_stream payloads ──────
-
-export type StressTestEventType =
-  | 'goals_extracted'
-  | 'goal_analyzed'
-  | 'complete'
-  | 'error';
-
-export interface StressTestGoalsExtractedEvent {
-  type: 'goals_extracted';
-  goals: string[];
-}
-
-export interface StressTestGoalAnalyzedEvent {
-  type: 'goal_analyzed';
-  goal: string;
-  classification: 'atomic' | 'composite' | 'ambiguous';
-  ambiguities_so_far: number;
-}
-
-export interface StressTestCompleteEvent {
-  type: 'complete';
-  ambiguity_count: number;
-  tech_spec_markdown: string;
-  ambiguity_report: string;
-}
-
-export interface StressTestErrorEvent {
-  type: 'error';
-  message: string;
-}
-
-export type StressTestEvent =
-  | StressTestGoalsExtractedEvent
-  | StressTestGoalAnalyzedEvent
-  | StressTestCompleteEvent
-  | StressTestErrorEvent;
+import type { StressTestEvent } from '@/types';
 
 // ── Hook state ────────────────────────────────────────────────────────────
 
@@ -184,10 +147,16 @@ export function useStressTestStream(
     setLines([]);
     setResult(null);
     setError(null);
+    if (!workspacePath) {
+      // No URL can be built — fail fast instead of hanging in 'streaming'.
+      setError('No workspace selected.');
+      setStatus('error');
+      return;
+    }
     setStatus('streaming');
     setRunId((id) => id + 1);
     setActive(true);
-  }, []);
+  }, [workspacePath]);
 
   const reset = useCallback(() => {
     close();

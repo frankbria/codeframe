@@ -194,10 +194,10 @@ class TestStressTestDisconnect:
         # disconnect is detected; no `complete` frame is sent.
         types = [json.loads(f[len("data:"):].strip())["type"] for f in frames]
         assert types == ["goals_extracted"]
-        # The abort stops further decomposition: a full run of the 3-goal sample
-        # PRD would make 6 LLM calls (extract + auth + invoice + 2 children +
-        # pdf); aborting after the first goal makes far fewer.
-        assert mock_provider.complete.call_count < 6
+        # The abort stops further decomposition. A full run of this fixture is 4
+        # calls (extract + 3 atomic goals); aborting after goal 1 is at most 2
+        # (extract + first goal's classification).
+        assert mock_provider.complete.call_count <= 2
 
     async def test_completes_when_client_stays_connected(
         self, test_workspace, mock_provider, monkeypatch
