@@ -5,6 +5,7 @@ import {
   Upload04Icon,
   MessageSearch01Icon,
   TaskEdit01Icon,
+  TestTube01Icon,
   Loading03Icon,
   Time01Icon,
 } from '@hugeicons/react';
@@ -18,6 +19,7 @@ interface PRDHeaderProps {
   onStartDiscovery: () => void;
   onGenerateTasks: () => void;
   onViewHistory?: () => void;
+  onStressTest?: () => void;
 }
 
 export function PRDHeader({
@@ -27,6 +29,7 @@ export function PRDHeader({
   onStartDiscovery,
   onGenerateTasks,
   onViewHistory,
+  onStressTest,
 }: PRDHeaderProps) {
   return (
     <header className="flex items-center justify-between">
@@ -56,6 +59,17 @@ export function PRDHeader({
           <Upload04Icon className="mr-1.5 h-4 w-4" />
           {prd ? 'Upload New' : 'Upload PRD'}
         </Button>
+        {onStressTest && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onStressTest}
+            disabled={!prd}
+          >
+            <TestTube01Icon className="mr-1.5 h-4 w-4" />
+            Stress Test
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={onStartDiscovery}>
           <MessageSearch01Icon className="mr-1.5 h-4 w-4" />
           Discovery

@@ -14,10 +14,13 @@ Routes:
     GET  /api/v2/prd/{id}/diff            - Diff two versions
 """
 
+import json
 import logging
-from typing import Optional
+import os
+from typing import AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
@@ -184,6 +187,122 @@ async def get_latest_prd(
         )
 
     return _prd_to_response(record)
+
+
+def _sse(event: dict) -> str:
+    """Format a stress-test event dict as an SSE ``data:`` frame."""
+    return f"data: {json.dumps(event)}\n\n"
+
+
+async def _stress_test_event_stream(
+    workspace: Workspace,
+    max_depth: int,
+    request: Optional[Request] = None,
+) -> AsyncGenerator[str, None]:
+    """Yield SSE frames for a PRD stress-test.
+
+    Recoverable problems (missing PRD, missing ``ANTHROPIC_API_KEY``) are
+    surfaced as in-stream ``error`` events rather than HTTP errors, so a
+    browser ``EventSource`` can display them via its message handler.
+
+    Stops early if the client disconnects, so an abandoned stream does not keep
+    issuing LLM calls — mirroring ``event_stream_generator`` in streaming_v2.
+    """
+    from codeframe.core.prd_stress_test import stress_test_prd_stream
+
+    record = prd.get_latest(workspace)
+    if not record:
+        yield _sse({
+            "type": "error",
+            "message": "No PRD found. Add or generate a PRD first.",
+        })
+        return
+
+    # Resolve the LLM provider following the documented chain:
+    # env var → workspace config (.codeframe/config.yaml) → default "anthropic".
+    # (No CLI flag here — this is the web surface.) Mirrors runtime.py.
+    from codeframe.adapters.llm import get_provider
+    from codeframe.core.config import load_environment_config
+
+    env_cfg = load_environment_config(workspace.repo_path)
+    llm_cfg = env_cfg.llm if (env_cfg and env_cfg.llm) else None
+    provider_type = (
+        os.getenv("CODEFRAME_LLM_PROVIDER")
+        or (llm_cfg.provider if llm_cfg else None)
+        or "anthropic"
+    )
+
+    # Only the Anthropic provider needs an API key up front; local providers
+    # (ollama/vllm/compatible) do not.
+    if provider_type == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
+        yield _sse({
+            "type": "error",
+            "message": "ANTHROPIC_API_KEY environment variable required.",
+        })
+        return
+
+    provider_kwargs: dict = {}
+    model_override = os.getenv("CODEFRAME_LLM_MODEL") or (
+        llm_cfg.model if llm_cfg else None
+    )
+    base_url_override = (llm_cfg.base_url if llm_cfg else None) or os.getenv(
+        "OPENAI_BASE_URL"
+    )
+    if model_override:
+        provider_kwargs["model"] = model_override
+    if base_url_override:
+        provider_kwargs["base_url"] = base_url_override
+
+    try:
+        provider = get_provider(provider_type, **provider_kwargs)
+    except ValueError as exc:
+        yield _sse({"type": "error", "message": str(exc)})
+        return
+
+    async for event in stress_test_prd_stream(
+        record.content, provider, max_depth=max_depth,
+    ):
+        # If the browser has gone away, stop iterating the core generator so its
+        # next (blocking, billable) LLM call is never made.
+        if request is not None and await request.is_disconnected():
+            logger.info("Client disconnected from stress-test stream; aborting")
+            break
+        yield _sse(event)
+
+
+@router.get("/stress-test")
+@rate_limit_standard()
+async def stress_test_prd_stream_endpoint(
+    request: Request,
+    max_depth: int = Query(3, ge=1, le=10, description="Maximum recursion depth"),
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> StreamingResponse:
+    """Stream a PRD stress-test (recursive decomposition) via SSE.
+
+    Runs the headless ``stress_test_prd_stream`` core generator over the
+    latest PRD and emits its progress events as Server-Sent Events. This is
+    the web equivalent of ``cf prd stress-test``.
+
+    Declared as GET (not POST) so it is reachable from a browser
+    ``EventSource``, matching ``GET /api/v2/tasks/{task_id}/stream``. No custom
+    auth headers are required (cookie-based auth via ``withCredentials``).
+
+    Event payloads (JSON in the SSE ``data:`` field, ``type`` field):
+        - ``goals_extracted``: high-level goals parsed from the PRD
+        - ``goal_analyzed``: one per top-level goal (classification + running
+          ambiguity count)
+        - ``complete``: ambiguity count + rendered tech spec / ambiguity report
+        - ``error``: no PRD, missing API key, or decomposition failure
+    """
+    return StreamingResponse(
+        _stress_test_event_stream(workspace, max_depth, request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/{prd_id}", response_model=PrdResponse)

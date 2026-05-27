@@ -20,3 +20,9 @@ export {
   type ErrorEvent,
   type HeartbeatEvent,
 } from './useTaskStream';
+export {
+  useStressTestStream,
+  type UseStressTestStreamReturn,
+  type StressTestStatus,
+  type StressTestResultData,
+} from './useStressTestStream';

@@ -8,12 +8,13 @@ tool — not a task generator.
 This module is headless — no FastAPI or HTTP dependencies.
 """
 
+import asyncio
 import json
 import logging
 import uuid
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import AsyncGenerator, Optional
 
 from codeframe.adapters.llm.base import Purpose
 
@@ -407,3 +408,62 @@ def stress_test_prd(
         tech_spec_markdown=tech_spec,
         ambiguity_report=amb_report,
     )
+
+
+async def stress_test_prd_stream(
+    prd_content: str, provider, max_depth: int = 3
+) -> AsyncGenerator[dict, None]:
+    """Async streaming variant of :func:`stress_test_prd`.
+
+    Yields progress event dicts suitable for SSE delivery as each top-level
+    goal is decomposed, so a UI can render incremental output:
+
+    - ``{"type": "goals_extracted", "goals": [...]}``
+    - ``{"type": "goal_analyzed", "goal": str, "classification": str,
+         "ambiguities_so_far": int}`` (once per top-level goal)
+    - ``{"type": "complete", "ambiguity_count": int,
+         "tech_spec_markdown": str, "ambiguity_report": str}``
+    - ``{"type": "error", "message": str}`` if decomposition raises
+
+    The underlying ``provider.complete()`` calls are synchronous and blocking,
+    so each is offloaded via :func:`asyncio.to_thread` to keep the event loop
+    responsive. This function stays headless (no FastAPI/HTTP imports).
+    """
+    try:
+        goals = await asyncio.to_thread(extract_goals, prd_content, provider)
+        yield {"type": "goals_extracted", "goals": goals}
+
+        ambiguities: list[Ambiguity] = []
+        tree: list[DecompositionNode] = []
+
+        for goal in goals:
+            node = await asyncio.to_thread(
+                recursive_decompose,
+                goal,            # title
+                goal,            # description
+                [],              # lineage
+                prd_content,
+                0,               # depth
+                max_depth,
+                ambiguities,
+                provider,
+            )
+            tree.append(node)
+            yield {
+                "type": "goal_analyzed",
+                "goal": node.title,
+                "classification": node.classification.value,
+                "ambiguities_so_far": len(ambiguities),
+            }
+
+        tech_spec = render_tech_spec(tree, ambiguities)
+        amb_report = render_ambiguity_report(ambiguities)
+        yield {
+            "type": "complete",
+            "ambiguity_count": len(ambiguities),
+            "tech_spec_markdown": tech_spec,
+            "ambiguity_report": amb_report,
+        }
+    except Exception as exc:  # noqa: BLE001 — surface any failure to the client
+        logger.warning("Stress test stream failed: %s", exc, exc_info=True)
+        yield {"type": "error", "message": str(exc)}

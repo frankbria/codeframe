@@ -147,11 +147,10 @@ Without a settings page, a new user who cannot find the env vars cannot use the 
 
 ### 4. PRD Stress-Test Web UI
 
-**Current state**: The CLI has `cf prd stress-test` for recursive decomposition — it takes the PRD and surfaces ambiguities the agent cannot resolve without human input. This is described in the vision as a core part of the THINK phase. The web UI has no equivalent; users who work exclusively in the browser never see this step.
+**Current state**: Phase 5.4 trigger + streaming shipped (#561). The `/prd` page now has a "Stress Test" button (enabled only when a PRD exists) that opens `StressTestModal`. The modal connects via `useStressTestStream` to `GET /api/v2/prd/stress-test` (SSE), which streams `goals_extracted`, `goal_analyzed`, `complete`, and `error` events from `core/prd_stress_test.py`. Results rendering — displaying the decomposition tree, surfacing ambiguities as answerable questions, feeding answers back to refine the PRD — is tracked in #562 and is not yet built.
 
-**What to build**:
+**What remains (#562)**:
 
-- A **[Stress Test]** button on the PRD page that triggers the stress-test process
 - A **results view** showing the decomposition tree with ambiguities surfaced as questions, styled similarly to the existing Discovery transcript
 - Each ambiguity has an inline answer field — the user's answers are fed back to refine the PRD
 - On completion: the refined PRD is saved and the user can proceed to task generation
@@ -204,7 +203,7 @@ These are items that were considered and excluded because they do not serve the 
 | 5.1 | Settings page (skeleton + agent config + PROOF9/workspace tabs) | ✅ Complete | #554–556 |
 | 5.2 | Cost analytics | ✅ Complete | #557–558 |
 | 5.3 | Async notifications | ✅ Complete (browser + in-app center #559, webhook #560) | #559–560 |
-| 5.4 | PRD stress-test web UI | ❌ Not started | #561–562 |
+| 5.4 | PRD stress-test web UI | ✅ Complete (trigger + streaming #561; results rendering #562 pending) | #561–562 |
 | 5.5 | GitHub Issues import | ❌ Not started | #563–565 |
 
 **Current focus**: Phase 4A — PR status tracking + PROOF9 merge gate.

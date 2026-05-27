@@ -24,6 +24,7 @@ interface PRDViewProps {
   onSavePrd: (content: string, changeSummary: string) => Promise<void>;
   onPrdGenerated: (prd: PrdResponse) => void;
   onViewHistory?: () => void;
+  onStressTest?: () => void;
 }
 
 export function PRDView({
@@ -41,6 +42,7 @@ export function PRDView({
   onSavePrd,
   onPrdGenerated,
   onViewHistory,
+  onStressTest,
 }: PRDViewProps) {
   if (isLoading) {
     return (
@@ -97,6 +99,7 @@ export function PRDView({
         onStartDiscovery={onStartDiscovery}
         onGenerateTasks={onGenerateTasks}
         onViewHistory={onViewHistory}
+        onStressTest={onStressTest}
       />
 
       {taskCounts && (

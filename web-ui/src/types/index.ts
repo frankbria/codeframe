@@ -16,6 +16,12 @@ export type {
   DiscoveryMessage,
   DiscoveryRole,
   DiscoveryState,
+  StressTestEventType,
+  StressTestGoalsExtractedEvent,
+  StressTestGoalAnalyzedEvent,
+  StressTestCompleteEvent,
+  StressTestErrorEvent,
+  StressTestEvent,
 } from './prd';
 
 // Workspace types
