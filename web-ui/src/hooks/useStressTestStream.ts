@@ -92,6 +92,10 @@ export function useStressTestStream(
   // Ref to close() so the message handler can stop the stream on a terminal
   // event without a stale closure (close is created after handleMessage).
   const closeRef = useRef<() => void>(() => {});
+  // Tracks whether a terminal data event (complete/error) was received, so a
+  // transport-level error fired afterward (e.g. the server closing the stream)
+  // is not misreported as a connection failure.
+  const terminalRef = useRef(false);
 
   const sseBase = process.env.NEXT_PUBLIC_SSE_URL || 'http://localhost:8000';
   const url =
@@ -134,12 +138,14 @@ export function useStressTestStream(
           techSpecMarkdown: event.tech_spec_markdown,
           ambiguityReport: event.ambiguity_report,
         });
+        terminalRef.current = true;
         setStatus('complete');
         // Server closes after this; close ourselves to avoid a reconnect loop.
         closeRef.current();
         break;
       }
       case 'error':
+        terminalRef.current = true;
         setError(event.message);
         setStatus('error');
         closeRef.current();
@@ -147,9 +153,26 @@ export function useStressTestStream(
     }
   }, []);
 
+  // Surface transport-level failures (server down, 404/CORS, dropped
+  // connection) that arrive without any `data:` frame. Without this the modal
+  // would stay on "Analyzing PRD..." forever. Only act on a CLOSED connection
+  // so the browser's own transient-reconnect attempts aren't reported as
+  // failures, and only when no terminal data event has been received.
+  const handleError = useCallback((event: Event) => {
+    if (terminalRef.current) return;
+    const es = event.target as EventSource | null;
+    if (es && es.readyState !== EventSource.CLOSED) return;
+    setError(
+      (prev) =>
+        prev ?? 'Connection to the stress-test stream failed. Please try again.'
+    );
+    setStatus('error');
+  }, []);
+
   const { close } = useEventSource({
     url,
     onMessage: handleMessage,
+    onError: handleError,
     // The stress-test is a one-shot stream; don't auto-reconnect when the
     // server closes the connection on completion.
     maxRetries: 0,
@@ -157,6 +180,7 @@ export function useStressTestStream(
   closeRef.current = close;
 
   const start = useCallback(() => {
+    terminalRef.current = false;
     setLines([]);
     setResult(null);
     setError(null);

@@ -30,6 +30,12 @@ class MockEventSource {
     this.onmessage?.({ data: JSON.stringify(payload) });
   }
 
+  /** Simulate a transport-level error. Pass the resulting readyState. */
+  emitError(readyState: number = MockEventSource.CLOSED) {
+    this.readyState = readyState;
+    this.onerror?.({ target: this });
+  }
+
   static latest(): MockEventSource {
     return MockEventSource.instances[MockEventSource.instances.length - 1];
   }
@@ -146,6 +152,48 @@ describe('useStressTestStream', () => {
     expect(MockEventSource.instances.length).toBeGreaterThanOrEqual(2);
     const urls = MockEventSource.instances.map((es) => es.url);
     expect(new Set(urls).size).toBe(urls.length);
+  });
+
+  it('reports a transport failure (closed connection, no data) as an error', () => {
+    const { result } = renderHook(() => useStressTestStream(WORKSPACE));
+    act(() => result.current.start());
+
+    // EventSource fails before any `data:` frame and ends up CLOSED.
+    act(() => {
+      MockEventSource.latest().emitError(MockEventSource.CLOSED);
+    });
+
+    expect(result.current.status).toBe('error');
+    expect(result.current.error).toMatch(/connection to the stress-test stream failed/i);
+  });
+
+  it('ignores transient (non-closed) connection errors while streaming', () => {
+    const { result } = renderHook(() => useStressTestStream(WORKSPACE));
+    act(() => result.current.start());
+
+    // A transient error where the browser will reconnect (readyState CONNECTING).
+    act(() => {
+      MockEventSource.latest().emitError(MockEventSource.CONNECTING);
+    });
+
+    expect(result.current.status).toBe('streaming');
+    expect(result.current.error).toBeNull();
+  });
+
+  it('does not overwrite a backend error event with a transport error', () => {
+    const { result } = renderHook(() => useStressTestStream(WORKSPACE));
+    act(() => result.current.start());
+
+    act(() => {
+      MockEventSource.latest().emit({ type: 'error', message: 'boom from server' });
+    });
+    // Server then closes the connection, firing onerror — must not clobber.
+    act(() => {
+      MockEventSource.latest().emitError(MockEventSource.CLOSED);
+    });
+
+    expect(result.current.status).toBe('error');
+    expect(result.current.error).toBe('boom from server');
   });
 
   it('reset() closes the connection and returns to idle', () => {

@@ -189,6 +189,58 @@ async def get_latest_prd(
     return _prd_to_response(record)
 
 
+def _sse(event: dict) -> str:
+    """Format a stress-test event dict as an SSE ``data:`` frame."""
+    return f"data: {json.dumps(event)}\n\n"
+
+
+async def _stress_test_event_stream(
+    workspace: Workspace,
+    max_depth: int,
+    request: Optional[Request] = None,
+) -> AsyncGenerator[str, None]:
+    """Yield SSE frames for a PRD stress-test.
+
+    Recoverable problems (missing PRD, missing ``ANTHROPIC_API_KEY``) are
+    surfaced as in-stream ``error`` events rather than HTTP errors, so a
+    browser ``EventSource`` can display them via its message handler.
+
+    Stops early if the client disconnects, so an abandoned stream does not keep
+    issuing LLM calls — mirroring ``event_stream_generator`` in streaming_v2.
+    """
+    from codeframe.core.prd_stress_test import stress_test_prd_stream
+
+    record = prd.get_latest(workspace)
+    if not record:
+        yield _sse({
+            "type": "error",
+            "message": "No PRD found. Add or generate a PRD first.",
+        })
+        return
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        yield _sse({
+            "type": "error",
+            "message": "ANTHROPIC_API_KEY environment variable required.",
+        })
+        return
+
+    from codeframe.adapters.llm.anthropic import AnthropicProvider
+
+    provider = AnthropicProvider(api_key=api_key)
+
+    async for event in stress_test_prd_stream(
+        record.content, provider, max_depth=max_depth,
+    ):
+        # If the browser has gone away, stop iterating the core generator so its
+        # next (blocking, billable) LLM call is never made.
+        if request is not None and await request.is_disconnected():
+            logger.info("Client disconnected from stress-test stream; aborting")
+            break
+        yield _sse(event)
+
+
 @router.get("/stress-test")
 async def stress_test_prd_stream_endpoint(
     request: Request,
@@ -211,44 +263,9 @@ async def stress_test_prd_stream_endpoint(
           ambiguity count)
         - ``complete``: ambiguity count + rendered tech spec / ambiguity report
         - ``error``: no PRD, missing API key, or decomposition failure
-
-    Recoverable problems (missing PRD, missing ``ANTHROPIC_API_KEY``) are
-    surfaced as in-stream ``error`` events rather than HTTP errors, so the
-    browser ``EventSource`` can display them via its message handler.
     """
-    from codeframe.core.prd_stress_test import stress_test_prd_stream
-
-    def _sse(event: dict) -> str:
-        return f"data: {json.dumps(event)}\n\n"
-
-    async def _generate() -> AsyncGenerator[str, None]:
-        record = prd.get_latest(workspace)
-        if not record:
-            yield _sse({
-                "type": "error",
-                "message": "No PRD found. Add or generate a PRD first.",
-            })
-            return
-
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            yield _sse({
-                "type": "error",
-                "message": "ANTHROPIC_API_KEY environment variable required.",
-            })
-            return
-
-        from codeframe.adapters.llm.anthropic import AnthropicProvider
-
-        provider = AnthropicProvider(api_key=api_key)
-
-        async for event in stress_test_prd_stream(
-            record.content, provider, max_depth=max_depth,
-        ):
-            yield _sse(event)
-
     return StreamingResponse(
-        _generate(),
+        _stress_test_event_stream(workspace, max_depth, request),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

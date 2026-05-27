@@ -156,3 +156,70 @@ class TestStressTestEndpoint:
         events = _parse_sse(response.text)
         assert events[-1]["type"] == "error"
         assert "ANTHROPIC_API_KEY" in events[-1]["message"]
+
+
+class TestStressTestDisconnect:
+    """The stream must stop issuing LLM calls once the client disconnects."""
+
+    async def test_aborts_when_client_disconnects(
+        self, test_workspace, mock_provider, monkeypatch
+    ):
+        import codeframe.adapters.llm.anthropic as anthropic_mod
+        from codeframe.ui.routers.prd_v2 import _stress_test_event_stream
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
+        monkeypatch.setattr(
+            anthropic_mod, "AnthropicProvider", lambda *a, **k: mock_provider
+        )
+        prd_module.store(test_workspace, SAMPLE_PRD, "Invoice SaaS", {})
+
+        class FakeRequest:
+            """Reports connected for the first event, then disconnected."""
+
+            def __init__(self):
+                self.calls = 0
+
+            async def is_disconnected(self):
+                self.calls += 1
+                return self.calls > 1
+
+        frames = [
+            frame
+            async for frame in _stress_test_event_stream(
+                test_workspace, max_depth=3, request=FakeRequest()
+            )
+        ]
+
+        # Only the first frame (goals_extracted) is emitted before the
+        # disconnect is detected; no `complete` frame is sent.
+        types = [json.loads(f[len("data:"):].strip())["type"] for f in frames]
+        assert types == ["goals_extracted"]
+        # The abort stops further decomposition: a full run of the 3-goal sample
+        # PRD would make 6 LLM calls (extract + auth + invoice + 2 children +
+        # pdf); aborting after the first goal makes far fewer.
+        assert mock_provider.complete.call_count < 6
+
+    async def test_completes_when_client_stays_connected(
+        self, test_workspace, mock_provider, monkeypatch
+    ):
+        import codeframe.adapters.llm.anthropic as anthropic_mod
+        from codeframe.ui.routers.prd_v2 import _stress_test_event_stream
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
+        monkeypatch.setattr(
+            anthropic_mod, "AnthropicProvider", lambda *a, **k: mock_provider
+        )
+        prd_module.store(test_workspace, SAMPLE_PRD, "Invoice SaaS", {})
+
+        class ConnectedRequest:
+            async def is_disconnected(self):
+                return False
+
+        frames = [
+            frame
+            async for frame in _stress_test_event_stream(
+                test_workspace, max_depth=3, request=ConnectedRequest()
+            )
+        ]
+        types = [json.loads(f[len("data:"):].strip())["type"] for f in frames]
+        assert types[-1] == "complete"
