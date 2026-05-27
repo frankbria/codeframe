@@ -38,8 +38,9 @@ Both end up with PRD records managed by `core.prd`.
 | `cf prd export` | `core.prd` | `export_to_file()` | (CLI-only) | - | N/A |
 | `cf prd versions` | `core.prd` | `get_versions()` | `/api/v2/prd/{id}/versions` | GET | ✅ Present |
 | `cf prd diff` | `core.prd` | `diff_versions()` | `/api/v2/prd/{id}/diff` | GET | ✅ Present |
+| `cf prd stress-test` | `core.prd_stress_test` | `stress_test_prd_stream()` | `/api/v2/prd/stress-test` | GET (SSE) | ✅ Present |
 
-**Note:** Both Discovery workflow and PRD CRUD are now complete ✅.
+**Note:** Both Discovery workflow and PRD CRUD are now complete ✅. The stress-test SSE endpoint (#561) is present; web UI results rendering (#562) is pending.
 
 ### Task Commands
 
