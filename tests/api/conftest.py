@@ -217,7 +217,9 @@ def clean_database_between_tests(api_client: TestClient) -> Generator[None, None
         }
         cursor.execute("PRAGMA foreign_keys = OFF")
         for table in existing - {"users"}:
-            cursor.execute(f"DELETE FROM {table}")
+            # Identifier comes from sqlite_master (not user input); quote it
+            # anyway so reserved words / unusual names are handled safely.
+            cursor.execute(f'DELETE FROM "{table}"')
         cursor.execute("PRAGMA foreign_keys = ON")
 
         db.conn.commit()
