@@ -1,14 +1,8 @@
-"""AI agents for CodeFRAME."""
+"""Agent utilities for CodeFRAME.
 
-from codeframe.agents.lead_agent import LeadAgent
-from codeframe.agents.worker_agent import WorkerAgent
-from codeframe.agents.factory import AgentFactory
-from codeframe.agents.definition_loader import AgentDefinitionLoader, AgentDefinition
+The legacy multi-agent orchestration (LeadAgent/WorkerAgent/AgentFactory) was
+removed during the v1 cleanup. Only the dependency resolver remains, used by the
+live ``cf`` task-scheduling commands. Import it directly:
 
-__all__ = [
-    "LeadAgent",
-    "WorkerAgent",
-    "AgentFactory",
-    "AgentDefinitionLoader",
-    "AgentDefinition",
-]
+    from codeframe.agents.dependency_resolver import ...
+"""
