@@ -244,44 +244,6 @@ class BaseRepository:
             return None
         return dt.isoformat()
 
-    def _get_last_insert_id(self) -> int:
-        """Get the last inserted row ID with thread-safe locking.
-
-        Returns:
-            Last row ID
-
-        Raises:
-            RuntimeError: If sync connection is not available
-
-        Note:
-            Uses threading lock if available to ensure thread-safe access
-            to the shared connection object.
-        """
-        if self.conn is None:
-            raise RuntimeError("Sync connection not available, use async methods")
-
-        if self._sync_lock is not None:
-            with self._sync_lock:
-                cursor = self.conn.cursor()
-                return cursor.lastrowid
-        else:
-            cursor = self.conn.cursor()
-            return cursor.lastrowid
-
-    async def _get_last_insert_id_async(self) -> int:
-        """Get the last inserted row ID asynchronously.
-
-        Returns:
-            Last row ID
-
-        Raises:
-            RuntimeError: If async connection is not available
-        """
-        if self._async_conn is None:
-            raise RuntimeError("Async connection not available, use sync methods")
-        cursor = await self._async_conn.cursor()
-        return cursor.lastrowid
-
     async def _get_async_conn(self) -> aiosqlite.Connection:
         """Get async connection with health check and automatic reconnection.
 

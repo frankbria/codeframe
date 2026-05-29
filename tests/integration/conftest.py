@@ -16,13 +16,12 @@ Usage:
 
 import json
 from pathlib import Path
-from typing import Any, Generator
+from typing import Generator
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from codeframe.persistence.database import Database
-from codeframe.core.models import AgentMaturity, TaskStatus
 
 
 # =============================================================================
@@ -66,51 +65,6 @@ def real_db_file(tmp_path: Path) -> Generator[Database, None, None]:
     yield db
     if db.conn:
         db.conn.close()
-
-
-@pytest.fixture
-def integration_project(real_db: Database, test_workspace: Path) -> dict[str, Any]:
-    """Create a complete test project with database and workspace.
-
-    This fixture provides a fully configured project for integration testing,
-    including:
-    - Project record in database
-    - Test workspace directory
-    - Sample issues and tasks
-
-    Args:
-        real_db: Real database fixture
-        test_workspace: Temp directory fixture
-
-    Returns:
-        dict: Project configuration with keys:
-            - project_id: Database project ID
-            - workspace_path: Path to workspace directory
-            - db: Database instance
-    """
-    project_id = real_db.create_project(
-        name="integration-test-project",
-        description="Project for integration testing",
-        source_type="empty",
-        workspace_path=str(test_workspace),
-    )
-
-    # Create sample issue
-    issue_id = real_db.create_issue({
-        "project_id": project_id,
-        "issue_number": "INT-001",
-        "title": "Integration Test Issue",
-        "description": "Test issue for integration testing",
-        "priority": 1,
-        "workflow_step": 1,
-    })
-
-    return {
-        "project_id": project_id,
-        "issue_id": issue_id,
-        "workspace_path": test_workspace,
-        "db": real_db,
-    }
 
 
 # =============================================================================
@@ -298,119 +252,6 @@ def mock_llm_response_factory(mock_anthropic_api):
 # =============================================================================
 
 
-@pytest.fixture
-def worker_agent_config(real_db: Database) -> dict[str, Any]:
-    """Basic worker agent configuration for integration tests.
-
-    Returns:
-        dict: Agent configuration with real database and test API key.
-    """
-    return {
-        "agent_id": "test-worker-001",
-        "agent_type": "backend",
-        "provider": "anthropic",
-        "db": real_db,
-        "maturity": AgentMaturity.D2,
-    }
-
-
-@pytest.fixture
-def registered_agent(real_db: Database, worker_agent_config: dict) -> str:
-    """Create a registered agent in the database.
-
-    Args:
-        real_db: Database fixture
-        worker_agent_config: Agent config fixture
-
-    Returns:
-        str: Agent ID
-    """
-    agent_id = worker_agent_config["agent_id"]
-    real_db.create_agent(
-        agent_id=agent_id,
-        agent_type=worker_agent_config["agent_type"],
-        provider=worker_agent_config["provider"],
-        maturity_level=worker_agent_config["maturity"],
-    )
-    return agent_id
-
-
-# =============================================================================
-# Task Fixtures
-# =============================================================================
-
-
-@pytest.fixture
-def sample_task(integration_project: dict) -> dict[str, Any]:
-    """Create a sample task in the integration project.
-
-    Args:
-        integration_project: Project fixture
-
-    Returns:
-        dict: Task data including ID and full task object.
-    """
-    db = integration_project["db"]
-    project_id = integration_project["project_id"]
-    issue_id = integration_project["issue_id"]
-
-    task_id = db.create_task_with_issue(
-        project_id=project_id,
-        issue_id=issue_id,
-        task_number="INT-001-1",
-        parent_issue_number="INT-001",
-        title="Sample Integration Test Task",
-        description="Create a sample module with tests",
-        status=TaskStatus.PENDING,
-        priority=1,
-        workflow_step=1,
-        can_parallelize=False,
-    )
-
-    task = db.get_task(task_id)
-
-    return {
-        "id": task_id,
-        "task": task,
-        "project_id": project_id,
-        "issue_id": issue_id,
-    }
-
-
-@pytest.fixture
-def pending_tasks(integration_project: dict) -> list[dict[str, Any]]:
-    """Create multiple pending tasks for parallel execution testing.
-
-    Args:
-        integration_project: Project fixture
-
-    Returns:
-        list: List of task data dicts.
-    """
-    db = integration_project["db"]
-    project_id = integration_project["project_id"]
-    issue_id = integration_project["issue_id"]
-
-    tasks = []
-    for i in range(3):
-        task_id = db.create_task_with_issue(
-            project_id=project_id,
-            issue_id=issue_id,
-            task_number=f"INT-001-{i+1}",
-            parent_issue_number="INT-001",
-            title=f"Parallel Task {i+1}",
-            description=f"Task {i+1} for parallel execution",
-            status=TaskStatus.PENDING,
-            priority=1,
-            workflow_step=i + 1,
-            can_parallelize=True,
-        )
-        task = db.get_task(task_id)
-        tasks.append({"id": task_id, "task": task})
-
-    return tasks
-
-
 # =============================================================================
 # Environment Fixtures
 # =============================================================================
@@ -448,20 +289,6 @@ def clean_env(monkeypatch):
 # =============================================================================
 # Quality Gates Fixtures
 # =============================================================================
-
-
-@pytest.fixture
-def quality_gates_config(integration_project: dict) -> dict[str, Any]:
-    """Configuration for quality gates integration tests.
-
-    Returns:
-        dict: Quality gates configuration.
-    """
-    return {
-        "db": integration_project["db"],
-        "project_id": integration_project["project_id"],
-        "project_root": integration_project["workspace_path"],
-    }
 
 
 # =============================================================================
