@@ -70,7 +70,7 @@
 #### 2.2 Agent Creation
 - [ ] Use Python REPL or script:
   ```python
-  from codeframe.persistence.database import Database
+  from codeframe.platform_store.database import Database
   db = Database("test-project/.codeframe/state.db")
   db.initialize()
   agent_id = db.create_agent("lead-1", "lead", "claude", "directive")
@@ -123,7 +123,7 @@
 - [ ] Test Lead Agent initialization:
   ```python
   from codeframe.agents.lead_agent import LeadAgent
-  from codeframe.persistence.database import Database
+  from codeframe.platform_store.database import Database
 
   db = Database("test-project/.codeframe/state.db")
   db.initialize()
@@ -190,7 +190,7 @@
 - [ ] Test agent lifecycle:
   ```python
   from codeframe.agents.lead_agent import LeadAgent
-  from codeframe.persistence.database import Database
+  from codeframe.platform_store.database import Database
   from codeframe.core.models import AgentMaturity
 
   db = Database("test-project/.codeframe/state.db")

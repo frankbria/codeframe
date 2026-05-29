@@ -59,7 +59,7 @@ class AuditResult:
 # Patterns that indicate excessive mocking (mocking core functionality)
 CORE_FUNCTIONALITY_PATTERNS = [
     # Database operations - should use real in-memory database
-    ("codeframe.persistence.database.Database", "database operations"),
+    ("codeframe.platform_store.database.Database", "database operations"),
     ("db.create_", "database creation methods"),
     ("db.get_", "database retrieval methods"),
     ("db.update_", "database update methods"),

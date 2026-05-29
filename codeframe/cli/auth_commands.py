@@ -41,7 +41,7 @@ from codeframe.core.credentials import (
     CredentialSource,
 )
 from codeframe.core.api_key_service import ApiKeyService
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 
 logger = logging.getLogger(__name__)
 

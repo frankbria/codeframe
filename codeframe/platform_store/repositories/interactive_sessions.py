@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, UTC
 from typing import Optional
 
-from codeframe.persistence.repositories.base import BaseRepository
+from codeframe.platform_store.repositories.base import BaseRepository
 
 
 class InteractiveSessionRepository(BaseRepository):

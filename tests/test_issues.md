@@ -28,7 +28,7 @@ tests/blockers/test_blockers.py::TestDuplicateResolution::test_concurrent_resolu
     File "/home/frankbria/projects/codeframe/tests/blockers/test_blockers.py", line 227, in resolve_a
       results.append(db.resolve_blocker(blocker_id, "Answer A"))
                      ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
-    File "/home/frankbria/projects/codeframe/codeframe/persistence/database.py", line 749, in resolve_blocker
+    File "/home/frankbria/projects/codeframe/codeframe/platform_store/database.py", line 749, in resolve_blocker
       cursor.execute(
       ~~~~~~~~~~~~~~^
           """UPDATE blockers

@@ -11,7 +11,7 @@ import logging
 from codeframe.core.models import (
     CallType,
 )
-from codeframe.persistence.repositories.base import BaseRepository
+from codeframe.platform_store.repositories.base import BaseRepository
 
 if TYPE_CHECKING:
     from codeframe.core.models import TokenUsage

@@ -11,7 +11,7 @@ across agents and projects. It supports:
 
 Example:
     >>> from codeframe.lib.metrics_tracker import MetricsTracker
-    >>> from codeframe.persistence.database import Database
+    >>> from codeframe.platform_store.database import Database
     >>> from codeframe.core.models import CallType
     >>>
     >>> db = Database("state.db")
@@ -42,7 +42,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Union
 from codeframe.core.models import CallType, TokenUsage
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 
 logger = logging.getLogger(__name__)
 

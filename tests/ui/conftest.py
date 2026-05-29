@@ -21,22 +21,15 @@ import pytest
 import requests
 import shutil
 
-# Skip v1 legacy tests that import removed dependencies
-# These tests rely on v1 routers/persistence that use get_db/get_db_websocket
-# NOTE: collect_ignore must be at module level but can come after imports
+# Two legacy WebSocket tests are still in transition. They reference live
+# managers but use the v1 get_db/get_db_websocket plumbing; until they are
+# rewritten on the v2 dependencies, keep them excluded from collection.
 collect_ignore = [
     "test_websocket_integration.py",
     "test_websocket_subscriptions.py",
-    "test_deployment_mode.py",
-    "test_project_api.py",
-    "test_session_router.py",
 ]
 
-# Guard v1 import - only needed by skipped tests
-try:
-    from codeframe.persistence.database import Database
-except ImportError:
-    Database = None  # type: ignore
+from codeframe.platform_store.database import Database  # noqa: E402
 
 
 def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:

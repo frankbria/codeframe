@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 
 
 # =============================================================================

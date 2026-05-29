@@ -67,7 +67,7 @@ When creating new API endpoints that access project resources:
 
 ```python
 from fastapi import HTTPException, Depends
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 from codeframe.ui.dependencies import get_db, get_current_user, User
 
 @router.get("/api/projects/{project_id}/resource")

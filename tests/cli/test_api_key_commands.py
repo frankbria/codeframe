@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 from unittest.mock import patch
 
 from codeframe.cli.app import app
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 from codeframe.auth.api_keys import generate_api_key, SCOPE_READ, SCOPE_WRITE
 
 # Mark all tests in this module as v2 tests

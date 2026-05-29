@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from codeframe.ui.routers.interactive_sessions_v2 import router
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 
 pytestmark = pytest.mark.v2
 
