@@ -13,14 +13,12 @@ import pytest
 # NOTE: collect_ignore must be at module level but can come after imports
 collect_ignore = [
     # v1 API tests (use app.state.db)
-    "api/test_api_discovery_progress.py",
     "api/test_api_issues.py",
     "api/test_api_metrics.py",
     "api/test_api_prd.py",
     "api/test_api_session.py",
     "api/test_blocker_resolution_api.py",
     "api/test_chat_api.py",
-    "api/test_discovery_endpoints.py",
     "api/test_discovery_restart.py",
     "api/test_endpoints_database.py",
     "api/test_generate_tasks_endpoint.py",
@@ -41,8 +39,6 @@ collect_ignore = [
     "auth/test_dual_auth.py",
     # v1 persistence tests
     "persistence/test_server_database.py",
-    # Other v1 tests
-    "test_review_api.py",
 ]
 
 
