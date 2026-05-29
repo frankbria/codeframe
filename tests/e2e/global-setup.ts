@@ -56,7 +56,7 @@ function initializeTestDatabase(): void {
   try {
     console.log('🔧 Creating database schema...');
     const projectRoot = path.resolve(__dirname, '../..');
-    const pythonCode = `from codeframe.persistence.database import Database; import sys; db = Database(sys.argv[1]); db.initialize()`;
+    const pythonCode = `from codeframe.platform_store.database import Database; import sys; db = Database(sys.argv[1]); db.initialize()`;
     const result = spawnSync('uv', ['run', 'python', '-c', pythonCode, TEST_DB_PATH], {
       cwd: projectRoot,
       stdio: 'inherit',
