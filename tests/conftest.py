@@ -8,9 +8,7 @@ from pathlib import Path
 from typing import Generator
 import pytest
 
-# Skip v1 legacy tests that depend on removed v1 persistence layer (app.state.db)
-# These tests use v1 routers/APIs that were removed in the v2 refactor
-# NOTE: collect_ignore must be at module level but can come after imports
+# All v1 legacy tests have been removed; nothing to ignore at the root.
 collect_ignore: list[str] = []
 
 
