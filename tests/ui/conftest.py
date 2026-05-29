@@ -162,20 +162,6 @@ def running_server():
     # Note: WebSocket uses JWT tokens (same as HTTP endpoints) since FastAPI Users migration
     session_token = create_test_jwt_token(user_id=1)
 
-    # Create test projects (project_id=1, 2, 3)
-    for project_id in [1, 2, 3]:
-        try:
-            db.create_project(
-                name=f"Test Project {project_id}",
-                description=f"Test project {project_id} for WebSocket tests",
-                workspace_path=str(workspace_root / str(project_id)),
-                user_id=1,
-            )
-            db.conn.commit()
-        except Exception:
-            # Project might already exist, that's OK
-            pass
-
     # Close the database before server starts (server will re-open it)
     db.close()
 

@@ -135,35 +135,6 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
         # Add authentication header to all requests
         client.headers["Authorization"] = f"Bearer {test_token}"
 
-        # Patch Database.create_project to inject user_id=1 when not provided
-        original_create_project = db.create_project
-
-        def patched_create_project(
-            name: str,
-            description: str,
-            source_type: str = "empty",
-            source_location: str = None,
-            source_branch: str = "main",
-            workspace_path: str = None,
-            user_id: int = None,
-            **kwargs,
-        ) -> int:
-            # Default to admin user (id=1) if no user_id provided
-            if user_id is None:
-                user_id = 1
-            return original_create_project(
-                name=name,
-                description=description,
-                source_type=source_type,
-                source_location=source_location,
-                source_branch=source_branch,
-                workspace_path=workspace_path,
-                user_id=user_id,
-                **kwargs,
-            )
-
-        db.create_project = patched_create_project
-
         yield client
 
     # Restore original environment state

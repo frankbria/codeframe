@@ -1,5 +1,5 @@
-"""Git workflow management for CodeFRAME."""
+"""Git integration for CodeFRAME.
 
-from codeframe.git.workflow_manager import GitWorkflowManager
-
-__all__ = ["GitWorkflowManager"]
+The GitHub API client lives in :mod:`codeframe.git.github_integration` and is
+imported directly where needed (``cf pr`` commands, the ``pr_v2`` router).
+"""
