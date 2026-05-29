@@ -14,7 +14,6 @@ import contextlib
 import os
 import sqlite3
 import threading
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 import logging
@@ -243,22 +242,12 @@ class Database:
             finally:
                 self.conn.isolation_level = old_isolation
 
-    def _parse_datetime(
-        self, value: str, field_name: str, row_id: Optional[int] = None
-    ) -> Optional[datetime]:
-        """Parse ISO datetime string with logging for failures."""
-        if not value:
-            return None
-        try:
-            return datetime.fromisoformat(value)
-        except (ValueError, TypeError) as e:
-            row_context = f" (row {row_id})" if row_id else ""
-            logger.warning(
-                f"Failed to parse {field_name}{row_context}: '{value}', error: {e}"
-            )
-            return None
-
-    # ----- Token usage (control-plane facade; also used per-workspace) -----
+    # ----- Token usage (dual-use facade) -----
+    # Note: ``token_usage`` is the one repository whose backing table is NOT in
+    # ``SchemaManager`` (control-plane). It is also created by the per-workspace
+    # schema in ``core/workspace.py``, and ``react_agent``/``stats_commands``
+    # instantiate ``Database(workspace.db_path)`` to record token usage via
+    # ``MetricsTracker``. Keep the delegations alongside the control-plane ones.
     def save_token_usage(self, *args, **kwargs):
         """Delegate to token_usage.save_token_usage()."""
         return self.token_usage.save_token_usage(*args, **kwargs)
