@@ -74,10 +74,7 @@ Golden Path commands must work from the CLI with **no server running**. FastAPI 
 
 This separation prevents duplicate state transitions (e.g., DONE→DONE errors).
 
-### 4) Legacy can be read, not depended on
-`server/` is reference only. Do NOT import legacy UI/server modules into core.
-
-### 5) Keep commits runnable
+### 4) Keep commits runnable
 At all times: `codeframe --help` works, Golden Path stubs can run, no breaking renames/moves.
 
 ---
@@ -89,7 +86,6 @@ At all times: `codeframe --help` works, Golden Path stubs can run, no breaking r
 - **CLI-first**: Golden Path works **without any running FastAPI server**
 - **Adapters**: LLM providers in `codeframe/adapters/llm/`
 - **Server/UI optional**: FastAPI and UI are thin adapters over core; web UI connects via REST/WebSocket
-- `server/` contains v1 code retained as reference only; do not build toward v1 patterns
 
 ### Phase 3 Web UI (actively developed — not legacy)
 Next.js 16 App Router, TypeScript, Shadcn/UI, Tailwind CSS, Hugeicons, XTerm.js, WebSocket + SSE.
@@ -128,14 +124,15 @@ codeframe/
 │   ├── server.py, models.py, dependencies.py
 │   └── routers/    # 16 v2 router modules
 ├── auth/           # API key service + auth dependencies
-├── lib/            # rate_limiter.py, audit_logger.py
-└── server/         # Legacy v1 (reference only)
+├── lib/            # rate_limiter.py, audit_logger.py, metrics_tracker.py
+└── platform_store/ # Control-plane store: auth, api keys, audit logs,
+                    # interactive sessions, token usage (slim Database + repos)
 
 web-ui/             # Phase 3 Web UI (Next.js, actively developed)
 tests/
 ├── core/           # Core module tests (auto-marked v2)
 ├── adapters/       # LLM + E2B adapter tests
-├── agents/         # Worker agent tests
+├── agents/         # dependency_resolver tests
 ├── integration/    # Cross-module integration tests
 ├── lifecycle/      # End-to-end lifecycle tests (CLI + API + web, uses MockProvider)
 └── ui/             # FastAPI router tests

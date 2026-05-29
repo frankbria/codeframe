@@ -44,7 +44,7 @@ from codeframe.ui.routers import (
     workspace_v2,
 )
 from codeframe.auth import router as auth_router
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 from codeframe.lib.rate_limiter import (
     get_rate_limiter,
     rate_limit_exceeded_handler,

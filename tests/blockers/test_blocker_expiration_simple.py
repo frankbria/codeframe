@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 
 
 @pytest.fixture

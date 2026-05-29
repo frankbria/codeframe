@@ -353,7 +353,7 @@ class ReactAgent:
         db = None
         try:
             from codeframe.lib.metrics_tracker import MetricsTracker
-            from codeframe.persistence.database import Database
+            from codeframe.platform_store.database import Database
 
             db = Database(str(self.workspace.db_path))
             db.initialize()

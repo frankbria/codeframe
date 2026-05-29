@@ -10,7 +10,7 @@ no spend data exists or the table isn't present — never 404.
 
 The handler opens the workspace SQLite database directly to avoid the
 pre-existing schema conflict between `codeframe/core/workspace.py` and
-`codeframe/persistence/schema_manager.py` — wiring `TokenRepository`
+`codeframe/platform_store/schema_manager.py` — wiring `TokenRepository`
 to a raw connection skips `Database.initialize()` entirely.
 """
 
@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from codeframe.core import tasks as tasks_module
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
-from codeframe.persistence.repositories.token_repository import TokenRepository
+from codeframe.platform_store.repositories.token_repository import TokenRepository
 from codeframe.ui.dependencies import get_v2_workspace
 
 logger = logging.getLogger(__name__)

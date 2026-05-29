@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 import logging
 
-from codeframe.persistence.repositories.base import BaseRepository
+from codeframe.platform_store.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 

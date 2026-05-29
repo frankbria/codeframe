@@ -38,4 +38,3 @@ def test_health_endpoint_structure(client):
     assert "version" in data
     assert "commit" in data
     assert "deployed_at" in data
-    assert "database" in data

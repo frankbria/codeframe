@@ -13,7 +13,7 @@ from datetime import datetime, UTC
 from typing import Optional, Dict, Any
 from enum import Enum
 
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 
 
 class AuditEventType(Enum):

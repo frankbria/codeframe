@@ -6,7 +6,7 @@ Following TDD: tests written first, implementation follows.
 import pytest
 from datetime import datetime, timedelta, timezone
 
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 from codeframe.auth.api_keys import generate_api_key, SCOPE_READ, SCOPE_WRITE
 
 

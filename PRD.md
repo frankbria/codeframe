@@ -129,7 +129,7 @@ High‑level architecture is defined in [`specs/CODEFRAME_SPEC.md`](specs/CODEFR
 - **CLI** (`codeframe/cli.py`) – project initialization, server start, session commands.
 - **Backend API** (`codeframe/ui/server.py`) – projects, agents, tasks, blockers, discovery, PRD, context, session.
 - **Agent layer** (`codeframe/agents/*`) – lead + worker agents + pool + dependency resolver.
-- **Persistence** (`codeframe/persistence/database.py`) – all state with flattened v1.0 schema.
+- **Persistence** (`codeframe/platform_store/database.py`) – all state with flattened v1.0 schema.
 - **Context & session** (`codeframe/lib/context_manager.py`, `codeframe/core/session_manager.py`).
 - **Dashboard** (`web-ui/*`) – React/TypeScript UI with SWR and WebSocket integration.
 
@@ -219,7 +219,7 @@ This section captures the **stepwise workflows**; the next section defines forma
 
 2. DB keeps issues/tasks plus DAG dependencies; implementation lives in:
 
-   - `codeframe/persistence/database.py` methods for issues, tasks, `task_dependencies`.
+   - `codeframe/platform_store/database.py` methods for issues, tasks, `task_dependencies`.
    - `tests/api/test_api_issues.py` verifies the contract.
 
 3. API and UI:
@@ -264,7 +264,7 @@ This section captures the **stepwise workflows**; the next section defines forma
 1. When blocked, worker agents create blockers in DB:
 
    - Schema and behavior in `specs/049-human-in-loop/spec.md`.
-   - Implementation in `codeframe/persistence/database.py` and `codeframe/ui/server.py` endpoints:
+   - Implementation in `codeframe/platform_store/database.py` and `codeframe/ui/server.py` endpoints:
      - `GET /api/projects/{id}/blockers`
      - `GET /api/blockers/{id}`
      - `POST /api/blockers/{id}/resolve`

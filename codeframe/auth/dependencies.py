@@ -183,7 +183,7 @@ async def get_api_key_auth(
             # Fallback: create database connection
             logger.warning("No db in app.state, creating fallback connection for API key auth")
             import os
-            from codeframe.persistence.database import Database
+            from codeframe.platform_store.database import Database
 
             db_path = os.getenv(
                 "DATABASE_PATH",

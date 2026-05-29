@@ -7,10 +7,10 @@ now lives per-workspace via ``codeframe.core.workspace``. The interactive-sessio
 repository is imported directly from its module by ``database.py``.
 """
 
-from codeframe.persistence.repositories.base import BaseRepository
-from codeframe.persistence.repositories.token_repository import TokenRepository
-from codeframe.persistence.repositories.audit_repository import AuditRepository
-from codeframe.persistence.repositories.api_key_repository import APIKeyRepository
+from codeframe.platform_store.repositories.base import BaseRepository
+from codeframe.platform_store.repositories.token_repository import TokenRepository
+from codeframe.platform_store.repositories.audit_repository import AuditRepository
+from codeframe.platform_store.repositories.api_key_repository import APIKeyRepository
 
 __all__ = [
     "BaseRepository",

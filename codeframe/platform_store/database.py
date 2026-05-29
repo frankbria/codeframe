@@ -21,13 +21,13 @@ import logging
 import asyncio
 import aiosqlite
 
-from codeframe.persistence.schema_manager import SchemaManager
-from codeframe.persistence.repositories import (
+from codeframe.platform_store.schema_manager import SchemaManager
+from codeframe.platform_store.repositories import (
     TokenRepository,
     AuditRepository,
     APIKeyRepository,
 )
-from codeframe.persistence.repositories.interactive_sessions import InteractiveSessionRepository
+from codeframe.platform_store.repositories.interactive_sessions import InteractiveSessionRepository
 
 logger = logging.getLogger(__name__)
 

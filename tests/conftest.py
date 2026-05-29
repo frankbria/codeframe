@@ -11,23 +11,7 @@ import pytest
 # Skip v1 legacy tests that depend on removed v1 persistence layer (app.state.db)
 # These tests use v1 routers/APIs that were removed in the v2 refactor
 # NOTE: collect_ignore must be at module level but can come after imports
-collect_ignore = [
-    # v1 API tests (use app.state.db)
-    "api/test_chat_api.py",
-    "api/test_discovery_restart.py",
-    "api/test_generate_tasks_endpoint.py",
-    "api/test_health_endpoint.py",
-    "api/test_project_creation_api.py",
-    "api/test_schedule_api.py",
-    "api/test_templates_api.py",
-    "api/test_workspace_cleanup.py",
-    # v1 agent tests (use v1 routers)
-    "agents/test_agent_lifecycle.py",
-    # v1 auth tests (use v1 routers)
-    "auth/test_api_key_endpoints.py",
-    "auth/test_authorization_integration.py",
-    "auth/test_dual_auth.py",
-]
+collect_ignore: list[str] = []
 
 
 def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:
@@ -137,33 +121,6 @@ def mock_env(monkeypatch) -> dict[str, str]:
     # Provide helper method
     env["_set"] = set_env
     return env
-
-
-@pytest.fixture
-def sample_project_config() -> dict:
-    """Provide sample project configuration data.
-
-    Returns:
-        Dictionary with valid project configuration
-    """
-    return {
-        "project_name": "test-project",
-        "project_type": "python",
-        "providers": {
-            "lead_agent": "claude",
-            "backend_agent": "claude",
-            "frontend_agent": "gpt4",
-        },
-        "agent_policy": {
-            "require_review_below_maturity": "supporting",
-            "allow_full_autonomy": False,
-        },
-        "interruption_mode": {
-            "enabled": True,
-            "sync_blockers": ["requirement", "security"],
-            "async_blockers": ["technical", "external"],
-        },
-    }
 
 
 @pytest.fixture(autouse=True)

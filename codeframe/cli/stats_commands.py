@@ -45,7 +45,7 @@ def _get_db():
     Raises:
         typer.Exit: If no workspace is found.
     """
-    from codeframe.persistence.database import Database
+    from codeframe.platform_store.database import Database
 
     db_path = Path(".codeframe/state.db")
     if not db_path.exists():

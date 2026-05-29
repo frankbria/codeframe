@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 import logging
 
 
-from codeframe.persistence.repositories.base import BaseRepository
+from codeframe.platform_store.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 

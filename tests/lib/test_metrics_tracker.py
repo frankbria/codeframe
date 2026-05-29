@@ -7,7 +7,7 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from codeframe.lib.metrics_tracker import MetricsTracker
 from codeframe.core.models import CallType
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 
 
 @pytest.fixture

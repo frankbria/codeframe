@@ -331,7 +331,7 @@ jobs:
         run: |
           mkdir -p .codeframe
           source .venv/bin/activate
-          python -c "from codeframe.persistence.database import Database; db = Database('.codeframe/state.db'); db.initialize(); db.close()"
+          python -c "from codeframe.platform_store.database import Database; db = Database('.codeframe/state.db'); db.initialize(); db.close()"
           echo "✅ Database initialized"
 
       - name: Start FastAPI server in background
@@ -466,7 +466,7 @@ jobs:
   #         # E2E tests expect database at tests/e2e/.codeframe/state.db
   #         mkdir -p tests/e2e/.codeframe
   #         source .venv/bin/activate
-  #         python -c "from codeframe.persistence.database import Database; db = Database('tests/e2e/.codeframe/state.db'); db.initialize(); db.close()"
+  #         python -c "from codeframe.platform_store.database import Database; db = Database('tests/e2e/.codeframe/state.db'); db.initialize(); db.close()"
   #         echo "✅ Database initialized at tests/e2e/.codeframe/state.db"
   #
   #     - name: Start backend server
@@ -621,7 +621,7 @@ jobs:
   #       run: |
   #         mkdir -p .codeframe
   #         source .venv/bin/activate
-  #         python -c "from codeframe.persistence.database import Database; db = Database('.codeframe/state.db'); db.initialize(); db.close()"
+  #         python -c "from codeframe.platform_store.database import Database; db = Database('.codeframe/state.db'); db.initialize(); db.close()"
   #         echo "✅ Database initialized"
   #
   #     - name: Start backend server

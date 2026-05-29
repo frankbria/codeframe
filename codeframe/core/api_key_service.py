@@ -15,7 +15,7 @@ from codeframe.auth.api_keys import (
     SCOPE_READ,
     SCOPE_WRITE,
 )
-from codeframe.persistence.database import Database
+from codeframe.platform_store.database import Database
 
 logger = logging.getLogger(__name__)
 

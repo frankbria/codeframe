@@ -27,14 +27,11 @@ import shutil
 collect_ignore = [
     "test_websocket_integration.py",
     "test_websocket_subscriptions.py",
-    "test_deployment_mode.py",
-    "test_project_api.py",
-    "test_session_router.py",
 ]
 
 # Guard v1 import - only needed by skipped tests
 try:
-    from codeframe.persistence.database import Database
+    from codeframe.platform_store.database import Database
 except ImportError:
     Database = None  # type: ignore
 
