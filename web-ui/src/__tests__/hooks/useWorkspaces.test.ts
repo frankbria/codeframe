@@ -85,7 +85,7 @@ describe('useWorkspaces', () => {
     expect(result.current.workspaces[0].path_exists).toBe(true);
   });
 
-  it('shows server entries plus browser-only recents while online', async () => {
+  it('is server-authoritative online but preserves local-only recents for offline fallback', async () => {
     // A recent only this browser knows about (e.g. opened before the registry).
     setRecentWorkspaces([
       { path: '/p/local-only', name: 'local-only', lastUsed: '2026-03-01T00:00:00Z' },
@@ -93,13 +93,17 @@ describe('useWorkspaces', () => {
     mockedApi.list.mockResolvedValue(serverItems);
 
     const { result } = renderHook(() => useWorkspaces(), { wrapper });
-    await waitFor(() => expect(result.current.workspaces).toHaveLength(3));
+    await waitFor(() => expect(result.current.workspaces).toHaveLength(2));
 
-    const paths = result.current.workspaces.map((w) => w.repo_path);
-    // Server entries first, then the local-only one (still reachable online).
-    expect(paths).toEqual(['/p/alpha', '/p/beta', '/p/local-only']);
+    // Online list is exactly the server list — local-only is NOT appended here
+    // (appending would resurrect entries deregistered on another device).
+    expect(result.current.workspaces.map((w) => w.repo_path)).toEqual([
+      '/p/alpha',
+      '/p/beta',
+    ]);
 
-    // localStorage mirror preserves the local-only entry, not clobbered.
+    // But the localStorage mirror still keeps the local-only entry, so the
+    // offline fallback retains full history.
     expect(getRecentWorkspaces().map((r) => r.path)).toEqual([
       '/p/alpha',
       '/p/beta',

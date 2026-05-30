@@ -83,22 +83,20 @@ export function useWorkspaces(): UseWorkspacesReturn {
     }
   );
 
-  const workspaces = useMemo<WorkspaceRegistryItem[]>(() => {
-    if (data) {
-      // Online: show the authoritative server list, plus any browser-only
-      // recents not yet registered server-side, so they stay reachable (e.g.
-      // projects opened before the registry existed). Server wins on overlap.
-      const serverPaths = new Set(data.map((w) => w.repo_path));
-      const localOnly = recentsToItems(getRecentWorkspaces()).filter(
-        (item) => !serverPaths.has(item.repo_path)
-      );
-      return [...data, ...localOnly];
-    }
-    // Offline/error: fall back to the localStorage mirror entirely.
+  const fallback = useMemo<WorkspaceRegistryItem[]>(() => {
+    // Referenced so this recomputes after a local-only removal bumps it.
+    void localVersion;
+    // Offline/error fallback only.
     return error ? recentsToItems(getRecentWorkspaces()) : [];
-    // localVersion forces recompute after a local-only removal.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, error, localVersion]);
+  }, [error, localVersion]);
+
+  // Online: the server list is authoritative — we do NOT append browser-only
+  // recents here. Doing so would resurrect entries another device deregistered
+  // (the local mirror can't tell "never registered" from "deleted elsewhere").
+  // Local-only projects remain reachable via the "Open Project" path input,
+  // which auto-registers them server-side on open. localStorage stays a faithful
+  // mirror so the offline fallback still shows full history.
+  const workspaces = data ?? fallback;
 
   const removeWorkspace = useCallback(
     async (workspaceId: string) => {
