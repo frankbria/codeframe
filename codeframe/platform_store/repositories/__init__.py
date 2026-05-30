@@ -11,10 +11,14 @@ from codeframe.platform_store.repositories.base import BaseRepository
 from codeframe.platform_store.repositories.token_repository import TokenRepository
 from codeframe.platform_store.repositories.audit_repository import AuditRepository
 from codeframe.platform_store.repositories.api_key_repository import APIKeyRepository
+from codeframe.platform_store.repositories.workspace_registry_repository import (
+    WorkspaceRegistryRepository,
+)
 
 __all__ = [
     "BaseRepository",
     "TokenRepository",
     "AuditRepository",
     "APIKeyRepository",
+    "WorkspaceRegistryRepository",
 ]

@@ -39,6 +39,17 @@ export interface WorkspaceExistsResponse {
   state_dir: string | null;
 }
 
+// Server-side workspace registry entry (issue #601)
+export interface WorkspaceRegistryItem {
+  id: string;
+  repo_path: string;
+  name: string | null;
+  tech_stack: string | null;
+  created_at: string | null;
+  last_opened_at: string | null;
+  path_exists: boolean;
+}
+
 // Task types
 // Must match backend: codeframe/core/state_machine.py:TaskStatus
 export type TaskStatus =

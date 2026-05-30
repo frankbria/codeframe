@@ -43,6 +43,9 @@ class SchemaManager:
         # Interactive session tables
         self._create_interactive_session_tables(cursor)
 
+        # Workspace registry table (issue #601)
+        self._create_workspaces_registry_table(cursor)
+
         # Create indexes
         self._create_indexes(cursor)
 
@@ -195,6 +198,28 @@ class SchemaManager:
             """
         )
 
+    def _create_workspaces_registry_table(self, cursor: sqlite3.Cursor) -> None:
+        """Create the workspaces_registry table (issue #601).
+
+        Stores cross-workspace, cross-device project metadata plus a pointer
+        (``repo_path``) to each per-workspace ``.codeframe/state.db``. It does
+        NOT hold any domain data — per-workspace isolation is unchanged. This is
+        deliberately not a revival of the v1 global ``projects`` table.
+        """
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workspaces_registry (
+                id TEXT PRIMARY KEY,
+                repo_path TEXT UNIQUE NOT NULL,
+                name TEXT,
+                owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                tech_stack TEXT,
+                created_at TEXT,
+                last_opened_at TEXT
+            )
+            """
+        )
+
     def _create_audit_log_table(self, cursor: sqlite3.Cursor) -> None:
         """Create the audit log table."""
         cursor.execute(
@@ -248,6 +273,16 @@ class SchemaManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)")
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)"
+        )
+
+        # Workspace registry indexes (issue #601)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_workspaces_registry_owner "
+            "ON workspaces_registry(owner_user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_workspaces_registry_last_opened "
+            "ON workspaces_registry(last_opened_at DESC)"
         )
 
     def _ensure_default_admin_user(self) -> None:
