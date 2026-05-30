@@ -9,6 +9,7 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import type {
   WorkspaceResponse,
   WorkspaceExistsResponse,
+  WorkspaceRegistryItem,
   Task,
   TaskStatus,
   TaskListResponse,
@@ -191,6 +192,24 @@ export const workspaceApi = {
       { params: { workspace_path: workspacePath } }
     );
     return response.data;
+  },
+
+  /**
+   * List all server-registered workspaces (issue #601)
+   */
+  list: async (): Promise<WorkspaceRegistryItem[]> => {
+    const response = await api.get<{ workspaces: WorkspaceRegistryItem[] }>(
+      '/api/v2/workspaces'
+    );
+    return response.data.workspaces;
+  },
+
+  /**
+   * Deregister a workspace from the server-side registry (issue #601).
+   * Does not delete any on-disk state.
+   */
+  remove: async (workspaceId: string): Promise<void> => {
+    await api.delete(`/api/v2/workspaces/${workspaceId}`);
   },
 };
 

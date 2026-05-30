@@ -26,6 +26,7 @@ from codeframe.platform_store.repositories import (
     TokenRepository,
     AuditRepository,
     APIKeyRepository,
+    WorkspaceRegistryRepository,
 )
 from codeframe.platform_store.repositories.interactive_sessions import InteractiveSessionRepository
 
@@ -65,6 +66,7 @@ class Database:
         self.audit_logs: Optional[AuditRepository] = None
         self.api_keys: Optional[APIKeyRepository] = None
         self.interactive_sessions: Optional[InteractiveSessionRepository] = None
+        self.workspace_registry: Optional[WorkspaceRegistryRepository] = None
 
     def initialize(self) -> None:
         """Initialize database schema and repositories."""
@@ -97,6 +99,7 @@ class Database:
         self.audit_logs = AuditRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
         self.api_keys = APIKeyRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
         self.interactive_sessions = InteractiveSessionRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.workspace_registry = WorkspaceRegistryRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
 
     # Connection management methods
     def close(self) -> None:
@@ -143,7 +146,7 @@ class Database:
 
     def _update_repository_async_connections(self) -> None:
         """Update async connections in all repositories."""
-        for repo in [self.token_usage, self.audit_logs, self.api_keys, self.interactive_sessions]:
+        for repo in [self.token_usage, self.audit_logs, self.api_keys, self.interactive_sessions, self.workspace_registry]:
             if repo:
                 repo._async_conn = self._async_conn
 

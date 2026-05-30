@@ -12,9 +12,9 @@ Routes:
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from codeframe.core import workspace as ws
@@ -56,6 +56,26 @@ class UpdateWorkspaceRequest(BaseModel):
     """Request for updating workspace."""
 
     tech_stack: Optional[str] = Field(None, description="New tech stack description")
+
+
+class WorkspaceRegistryResponse(BaseModel):
+    """A single registered workspace from the server-side registry (issue #601)."""
+
+    id: str
+    repo_path: str
+    name: Optional[str] = None
+    tech_stack: Optional[str] = None
+    created_at: Optional[str] = None
+    last_opened_at: Optional[str] = None
+    path_exists: bool = Field(
+        ..., description="Whether repo_path still exists on disk (computed at list time)."
+    )
+
+
+class WorkspaceListResponse(BaseModel):
+    """Response for listing registered workspaces."""
+
+    workspaces: List[WorkspaceRegistryResponse]
 
 
 # ============================================================================
@@ -123,9 +143,81 @@ def _detect_tech_stack(repo_path: Path) -> Optional[str]:
     return ", ".join(tech_parts) if tech_parts else None
 
 
+def _get_registry(request: Request):
+    """Return the WorkspaceRegistryRepository, or None if unavailable.
+
+    Registry writes are best-effort: when the control-plane DB isn't attached
+    (e.g. lightweight tests that mount only this router), registry tracking is
+    silently skipped so core workspace operations never break.
+    """
+    db = getattr(request.app.state, "db", None)
+    if db is None:
+        return None
+    return getattr(db, "workspace_registry", None)
+
+
+def _register_workspace(request: Request, workspace: Workspace) -> None:
+    """Best-effort upsert of a workspace into the server-side registry."""
+    registry = _get_registry(request)
+    if registry is None:
+        return
+    try:
+        registry.upsert(
+            repo_path=str(workspace.repo_path),
+            name=workspace.repo_path.name,
+            tech_stack=workspace.tech_stack,
+            owner_user_id=None,  # Until auth is enforced on v2 routers.
+        )
+    except Exception as e:  # noqa: BLE001 - tracking must never break the request
+        logger.warning("Failed to register workspace in registry: %s", e)
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
+
+
+@router.get("", response_model=WorkspaceListResponse)
+@rate_limit_standard()
+async def list_workspaces(request: Request) -> WorkspaceListResponse:
+    """List all registered workspaces (issue #601).
+
+    Returns server-side registry entries ordered by recency, each annotated with
+    a computed ``path_exists`` so clients can flag stale projects.
+
+    When the control-plane DB / registry is unavailable, responds 503 rather than
+    an empty 200 — clients treat a successful response as authoritative and would
+    otherwise wipe their local fallback list. A genuinely empty registry still
+    returns 200 with ``[]``.
+    """
+    registry = _get_registry(request)
+    if registry is None:
+        raise HTTPException(
+            status_code=503,
+            detail=api_error(
+                "Registry unavailable",
+                ErrorCodes.EXECUTION_FAILED,
+                "Workspace registry is not available on this server.",
+            ),
+        )
+
+    entries = registry.list_all()
+    # path_exists is a per-entry blocking stat() inside an async handler. The
+    # registry is recency-scoped and small in practice, so the event-loop cost is
+    # negligible; revisit (e.g. run_in_executor) only if the list grows large.
+    workspaces = [
+        WorkspaceRegistryResponse(
+            id=entry["id"],
+            repo_path=entry["repo_path"],
+            name=entry.get("name"),
+            tech_stack=entry.get("tech_stack"),
+            created_at=entry.get("created_at"),
+            last_opened_at=entry.get("last_opened_at"),
+            path_exists=Path(entry["repo_path"]).exists(),
+        )
+        for entry in entries
+    ]
+    return WorkspaceListResponse(workspaces=workspaces)
 
 
 @router.post("", response_model=WorkspaceResponse, status_code=201)
@@ -191,6 +283,9 @@ async def init_workspace(
         else:
             workspace = ws.create_or_load_workspace(repo_path, tech_stack=tech_stack)
 
+        # Register (or refresh) the workspace in the server-side registry (#601).
+        _register_workspace(request, workspace)
+
         return _workspace_to_response(workspace)
 
     except HTTPException:
@@ -220,6 +315,19 @@ async def get_current_workspace(
     Returns:
         Workspace information
     """
+    # Track access recency in the registry (#601). Auto-register workspaces that
+    # were opened directly by path so they become server-tracked. Best-effort.
+    registry = _get_registry(request)
+    if registry is not None:
+        try:
+            entry = registry.get_by_path(str(workspace.repo_path))
+            if entry is not None:
+                registry.update_last_opened(entry["id"])
+            else:
+                _register_workspace(request, workspace)
+        except Exception as e:  # noqa: BLE001 - tracking must never break the request
+            logger.warning("Failed to track workspace access: %s", e)
+
     return _workspace_to_response(workspace)
 
 
@@ -251,6 +359,8 @@ async def update_current_workspace(
 
         if body.tech_stack is not None:
             updated = ws.update_workspace_tech_stack(workspace.repo_path, body.tech_stack)
+            # Keep the registry's cached metadata (tech_stack) in sync (#601).
+            _register_workspace(request, updated)
 
         return _workspace_to_response(updated)
 
@@ -371,3 +481,47 @@ async def check_workspace_exists(
         "path": str(path),
         "state_dir": str(path / ".codeframe") if ws.workspace_exists(path) else None,
     }
+
+
+@router.delete("/{workspace_id}", status_code=204)
+@rate_limit_standard()
+async def deregister_workspace(
+    request: Request,
+    workspace_id: str,
+) -> Response:
+    """Deregister a workspace from the server-side registry (issue #601).
+
+    Removes only the registry entry — it never deletes the ``.codeframe/``
+    directory or any on-disk state.
+
+    Returns:
+        204 No Content on success.
+
+    Raises:
+        HTTPException:
+            - 404: workspace_id not found in the registry
+            - 503: registry/control-plane DB unavailable
+    """
+    registry = _get_registry(request)
+    if registry is None:
+        raise HTTPException(
+            status_code=503,
+            detail=api_error(
+                "Registry unavailable",
+                ErrorCodes.EXECUTION_FAILED,
+                "Workspace registry is not available on this server.",
+            ),
+        )
+
+    deleted = registry.delete(workspace_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error(
+                "Workspace not found",
+                ErrorCodes.NOT_FOUND,
+                f"No registered workspace with id: {workspace_id}",
+            ),
+        )
+
+    return Response(status_code=204)

@@ -1,33 +1,47 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
+import type { WorkspaceRegistryItem } from '@/types';
 
-// Mock the workspace storage module
-jest.mock('@/lib/workspace-storage', () => ({
-  getRecentWorkspaces: jest.fn(() => []),
-  removeFromRecentWorkspaces: jest.fn(),
+// Mock the server-backed workspaces hook (issue #601)
+const mockRemoveWorkspace = jest.fn();
+let mockHookState: {
+  workspaces: WorkspaceRegistryItem[];
+  isLoading: boolean;
+  error: unknown;
+};
+
+jest.mock('@/hooks/useWorkspaces', () => ({
+  useWorkspaces: () => ({
+    workspaces: mockHookState.workspaces,
+    isLoading: mockHookState.isLoading,
+    error: mockHookState.error,
+    refresh: jest.fn(),
+    removeWorkspace: mockRemoveWorkspace,
+  }),
 }));
 
-import {
-  getRecentWorkspaces,
-  removeFromRecentWorkspaces,
-} from '@/lib/workspace-storage';
-
-const mockGetRecentWorkspaces = getRecentWorkspaces as jest.MockedFunction<
-  typeof getRecentWorkspaces
->;
-const mockRemoveFromRecentWorkspaces =
-  removeFromRecentWorkspaces as jest.MockedFunction<
-    typeof removeFromRecentWorkspaces
-  >;
+function makeItem(overrides: Partial<WorkspaceRegistryItem>): WorkspaceRegistryItem {
+  return {
+    id: 'default-test-id',
+    repo_path: '/home/user/project',
+    name: 'project',
+    tech_stack: null,
+    created_at: '2026-01-01T00:00:00Z',
+    last_opened_at: new Date().toISOString(),
+    path_exists: true,
+    ...overrides,
+  };
+}
 
 describe('WorkspaceSelector', () => {
   const mockOnSelectWorkspace = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetRecentWorkspaces.mockReturnValue([]);
+    mockHookState = { workspaces: [], isLoading: false, error: null };
     mockOnSelectWorkspace.mockResolvedValue(undefined);
+    mockRemoveWorkspace.mockResolvedValue(undefined);
   });
 
   describe('initial render', () => {
@@ -221,21 +235,23 @@ describe('WorkspaceSelector', () => {
   });
 
   describe('recent workspaces', () => {
-    const mockRecentWorkspaces = [
-      {
-        path: '/home/user/project-a',
+    const mockRecentWorkspaces: WorkspaceRegistryItem[] = [
+      makeItem({
+        id: 'id-a',
+        repo_path: '/home/user/project-a',
         name: 'project-a',
-        lastUsed: new Date().toISOString(),
-      },
-      {
-        path: '/home/user/project-b',
+        last_opened_at: new Date().toISOString(),
+      }),
+      makeItem({
+        id: 'id-b',
+        repo_path: '/home/user/project-b',
         name: 'project-b',
-        lastUsed: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-      },
+        last_opened_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
+      }),
     ];
 
     beforeEach(() => {
-      mockGetRecentWorkspaces.mockReturnValue(mockRecentWorkspaces);
+      mockHookState.workspaces = mockRecentWorkspaces;
     });
 
     it('shows recent projects section when there are recent workspaces', () => {
@@ -266,7 +282,7 @@ describe('WorkspaceSelector', () => {
     });
 
     it('shows empty state message when no recent workspaces', () => {
-      mockGetRecentWorkspaces.mockReturnValue([]);
+      mockHookState.workspaces = [];
 
       render(
         <WorkspaceSelector
@@ -337,7 +353,7 @@ describe('WorkspaceSelector', () => {
       });
     });
 
-    it('removes workspace from recent when remove button is clicked', async () => {
+    it('removes workspace via the server-backed hook when remove button is clicked', async () => {
       render(
         <WorkspaceSelector
           onSelectWorkspace={mockOnSelectWorkspace}
@@ -349,9 +365,7 @@ describe('WorkspaceSelector', () => {
       const removeButtons = screen.getAllByTitle(/remove from recent/i);
       await userEvent.click(removeButtons[0]);
 
-      expect(mockRemoveFromRecentWorkspaces).toHaveBeenCalledWith(
-        '/home/user/project-a'
-      );
+      expect(mockRemoveWorkspace).toHaveBeenCalledWith('id-a');
     });
 
     it('does not select workspace when remove button is clicked', async () => {
@@ -399,6 +413,42 @@ describe('WorkspaceSelector', () => {
 
       await userEvent.click(projectA!);
       expect(mockOnSelectWorkspace).not.toHaveBeenCalled();
+    });
+
+    it('shows a loading state while the server list is being fetched', () => {
+      mockHookState.workspaces = [];
+      mockHookState.isLoading = true;
+
+      render(
+        <WorkspaceSelector
+          onSelectWorkspace={mockOnSelectWorkspace}
+          isLoading={false}
+          error={null}
+        />
+      );
+
+      expect(screen.getByTestId('workspaces-loading')).toBeInTheDocument();
+    });
+
+    it('marks workspaces whose path no longer exists as stale', () => {
+      mockHookState.workspaces = [
+        makeItem({
+          id: 'id-stale',
+          repo_path: '/home/user/gone',
+          name: 'gone',
+          path_exists: false,
+        }),
+      ];
+
+      render(
+        <WorkspaceSelector
+          onSelectWorkspace={mockOnSelectWorkspace}
+          isLoading={false}
+          error={null}
+        />
+      );
+
+      expect(screen.getByText('Missing')).toBeInTheDocument();
     });
   });
 });

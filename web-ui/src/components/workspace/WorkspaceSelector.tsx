@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Folder01Icon, Time01Icon, Cancel01Icon, Loading03Icon } from '@hugeicons/react';
+import { useState } from 'react';
+import {
+  Folder01Icon,
+  Time01Icon,
+  Cancel01Icon,
+  Loading03Icon,
+  Alert02Icon,
+} from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  getRecentWorkspaces,
-  removeFromRecentWorkspaces,
-  type RecentWorkspace,
-} from '@/lib/workspace-storage';
+import { useWorkspaces } from '@/hooks/useWorkspaces';
 import { formatDistanceToNow } from 'date-fns';
 
 interface WorkspaceSelectorProps {
@@ -29,13 +31,12 @@ export function WorkspaceSelector({
   error,
 }: WorkspaceSelectorProps) {
   const [inputPath, setInputPath] = useState('');
-  // Initialize empty to avoid hydration mismatch (localStorage isn't available on server)
-  const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspace[]>([]);
-
-  // Load recent workspaces on client only
-  useEffect(() => {
-    setRecentWorkspaces(getRecentWorkspaces());
-  }, []);
+  // Server-backed workspace list with localStorage fallback (issue #601).
+  const {
+    workspaces: recentWorkspaces,
+    isLoading: workspacesLoading,
+    removeWorkspace,
+  } = useWorkspaces();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,10 +48,15 @@ export function WorkspaceSelector({
     await onSelectWorkspace(path);
   };
 
-  const handleRemoveRecent = (path: string, e: React.MouseEvent) => {
+  const handleRemoveRecent = async (workspaceId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    removeFromRecentWorkspaces(path);
-    setRecentWorkspaces(getRecentWorkspaces());
+    try {
+      await removeWorkspace(workspaceId);
+    } catch (err) {
+      // Best-effort: a failed deregister leaves the list unchanged. Surface it in
+      // devtools so the failure isn't completely silent.
+      console.warn('Failed to remove workspace from registry', err);
+    }
   };
 
   return (
@@ -124,59 +130,87 @@ export function WorkspaceSelector({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {recentWorkspaces.length === 0 ? (
+            {workspacesLoading && recentWorkspaces.length === 0 ? (
+              <div
+                data-testid="workspaces-loading"
+                className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground"
+              >
+                <Loading03Icon className="h-4 w-4 animate-spin" />
+                Loading projects…
+              </div>
+            ) : recentWorkspaces.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
                 No recent projects. Open a project above to get started.
               </p>
             ) : (
               <ul className="space-y-2">
-                {recentWorkspaces.map((workspace) => (
-                  <li key={workspace.path}>
+                {recentWorkspaces.map((workspace) => {
+                  const displayName =
+                    workspace.name ?? workspace.repo_path.split(/[\\/]/).pop() ?? workspace.repo_path;
+                  const isStale = workspace.path_exists === false;
+                  return (
+                  <li key={workspace.id}>
                     <div
                       role="button"
                       tabIndex={isLoading ? -1 : 0}
-                      onClick={() => !isLoading && handleSelectRecent(workspace.path)}
+                      onClick={() => !isLoading && handleSelectRecent(workspace.repo_path)}
                       onKeyDown={(e) => {
                         if (e.target !== e.currentTarget) return;
                         if ((e.key === 'Enter' || e.key === ' ') && !isLoading) {
                           e.preventDefault();
-                          handleSelectRecent(workspace.path);
+                          handleSelectRecent(workspace.repo_path);
                         }
                       }}
-                      className="w-full flex items-center justify-between p-3 rounded-md border hover:bg-accent transition-colors text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                      className={`w-full flex items-center justify-between p-3 rounded-md border hover:bg-accent transition-colors text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring aria-disabled:opacity-50 aria-disabled:cursor-not-allowed${
+                        isStale ? ' opacity-60' : ''
+                      }`}
                       aria-disabled={isLoading}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <Folder01Icon className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
                         <div className="min-w-0">
-                          <p className="font-medium truncate">{workspace.name}</p>
+                          <p className="font-medium truncate flex items-center gap-1.5">
+                            {displayName}
+                            {isStale && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground"
+                                title="This path no longer exists on disk"
+                              >
+                                <Alert02Icon className="h-3 w-3" />
+                                Missing
+                              </span>
+                            )}
+                          </p>
                           <p className="text-xs text-muted-foreground truncate">
-                            {workspace.path}
+                            {workspace.repo_path}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                        <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(workspace.lastUsed), {
-                            addSuffix: true,
-                          })}
-                        </span>
+                        {workspace.last_opened_at && (
+                          <span className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(workspace.last_opened_at), {
+                              addSuffix: true,
+                            })}
+                          </span>
+                        )}
                         <button
                           type="button"
-                          onClick={(e) => handleRemoveRecent(workspace.path, e)}
+                          onClick={(e) => handleRemoveRecent(workspace.id, e)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
                           }}
                           className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive focus:outline-none focus:ring-2 focus:ring-ring"
                           title="Remove from recent"
-                          aria-label={`Remove ${workspace.name} from recent projects`}
+                          aria-label={`Remove ${displayName} from recent projects`}
                         >
                           <Cancel01Icon className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </CardContent>

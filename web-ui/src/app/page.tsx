@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import useSWR from 'swr';
+import useSWR, { mutate as globalMutate } from 'swr';
+import { WORKSPACES_SWR_KEY } from '@/hooks/useWorkspaces';
 import {
   WorkspaceHeader,
   WorkspaceStatsCards,
@@ -150,7 +151,10 @@ export default function WorkspacePage() {
       const exists = await workspaceApi.checkExists(path);
 
       if (exists.exists) {
-        // Workspace exists, just select it
+        // Workspace exists, just select it. Touch /current so the server bumps
+        // recency and tracks it — fire-and-forget so a transient error on this
+        // best-effort call can't block opening an accessible workspace.
+        void workspaceApi.getByPath(path).catch(() => {});
         setSelectedWorkspacePath(path);
         setWorkspacePath(path);
       } else {
@@ -160,6 +164,9 @@ export default function WorkspacePage() {
         setWorkspacePath(path);
         setTechStackDialog({ open: true, detectedStack: initialized.tech_stack });
       }
+      // Keep the server-backed workspace list fresh (localStorage dual-write
+      // already happened via setSelectedWorkspacePath → addToRecentWorkspaces).
+      void globalMutate(WORKSPACES_SWR_KEY);
     } catch (error) {
       const apiError = error as ApiError;
       setSelectionError(apiError.detail || 'Failed to open project');

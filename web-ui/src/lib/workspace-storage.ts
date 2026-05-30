@@ -81,6 +81,16 @@ export function addToRecentWorkspaces(path: string): void {
 }
 
 /**
+ * Replace the entire recent-workspaces list (used to mirror the server-backed
+ * registry into localStorage so it stays available offline). Most-recent first.
+ */
+export function setRecentWorkspaces(workspaces: RecentWorkspace[]): void {
+  if (typeof window === 'undefined') return;
+  const trimmed = workspaces.slice(0, MAX_RECENT_WORKSPACES);
+  localStorage.setItem(RECENT_WORKSPACES_KEY, JSON.stringify(trimmed));
+}
+
+/**
  * Get whether the onboarding card has been dismissed for a workspace
  */
 export function getOnboardingDismissed(workspacePath: string): boolean {
