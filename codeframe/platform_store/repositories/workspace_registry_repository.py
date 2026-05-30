@@ -58,9 +58,11 @@ class WorkspaceRegistryRepository(BaseRepository):
             )
             VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(repo_path) DO UPDATE SET
-                name = excluded.name,
+                -- COALESCE so a refresh that omits name/tech_stack (None) keeps the
+                -- previously-stored value instead of nulling it.
+                name = COALESCE(excluded.name, workspaces_registry.name),
                 owner_user_id = excluded.owner_user_id,
-                tech_stack = excluded.tech_stack,
+                tech_stack = COALESCE(excluded.tech_stack, workspaces_registry.tech_stack),
                 last_opened_at = excluded.last_opened_at
             """,
             (new_id, repo_path, name, owner_user_id, tech_stack, now, now),

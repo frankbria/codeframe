@@ -73,6 +73,16 @@ class TestUpsert:
         )
         assert entry["owner_user_id"] == 1
 
+    def test_upsert_preserves_name_and_tech_stack_when_omitted(self, db):
+        """A refresh upsert that omits name/tech_stack (None) keeps prior values."""
+        db.workspace_registry.upsert(
+            repo_path="/p/alpha", name="alpha", tech_stack="Python"
+        )
+        # e.g. an auto-register/recency path that doesn't carry metadata.
+        refreshed = db.workspace_registry.upsert(repo_path="/p/alpha")
+        assert refreshed["name"] == "alpha"
+        assert refreshed["tech_stack"] == "Python"
+
 
 class TestListAll:
     def test_list_all_empty(self, db):

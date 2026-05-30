@@ -40,6 +40,7 @@ def client(temp_root):
     app.state.db = db
 
     with TestClient(app, raise_server_exceptions=True) as c:
+        c.db = db  # expose for tests that need to pin registry state directly
         yield c
 
 
@@ -87,6 +88,13 @@ class TestListWorkspaces:
         b = _make_repo(temp_root, "b")
         client.post("/api/v2/workspaces", json={"repo_path": str(a)})
         client.post("/api/v2/workspaces", json={"repo_path": str(b)})
+
+        # Pin both to fixed past timestamps so the upcoming /current bump on 'a'
+        # is unambiguously the newest, regardless of sub-second POST timing.
+        client.db.conn.execute(
+            "UPDATE workspaces_registry SET last_opened_at = '2000-01-01T00:00:00+00:00'"
+        )
+        client.db.conn.commit()
 
         # Touch 'a' again so it becomes the most recently opened.
         client.get("/api/v2/workspaces/current", params={"workspace_path": str(a)})

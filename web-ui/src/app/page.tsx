@@ -152,8 +152,9 @@ export default function WorkspacePage() {
 
       if (exists.exists) {
         // Workspace exists, just select it. Touch /current so the server bumps
-        // recency and tracks it, then refresh the registry list.
-        await workspaceApi.getByPath(path);
+        // recency and tracks it — fire-and-forget so a transient error on this
+        // best-effort call can't block opening an accessible workspace.
+        void workspaceApi.getByPath(path).catch(() => {});
         setSelectedWorkspacePath(path);
         setWorkspacePath(path);
       } else {
