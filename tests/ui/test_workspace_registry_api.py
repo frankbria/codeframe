@@ -118,6 +118,29 @@ class TestCurrentTracksAccess:
         assert workspaces[0]["repo_path"] == str(repo.resolve())
 
 
+class TestRegistryUnavailable:
+    """When no control-plane DB is attached, the registry endpoints must signal
+    unavailability (503) rather than a misleading empty-but-successful response —
+    clients treat a 200 as authoritative and would wipe their local fallback.
+    """
+
+    @pytest.fixture
+    def client_no_db(self):
+        from codeframe.ui.routers import workspace_v2
+
+        app = FastAPI()
+        app.include_router(workspace_v2.router)
+        # Deliberately do NOT set app.state.db.
+        with TestClient(app, raise_server_exceptions=True) as c:
+            yield c
+
+    def test_list_returns_503_without_registry(self, client_no_db):
+        assert client_no_db.get("/api/v2/workspaces").status_code == 503
+
+    def test_delete_returns_503_without_registry(self, client_no_db):
+        assert client_no_db.delete("/api/v2/workspaces/anything").status_code == 503
+
+
 class TestDeleteWorkspace:
     def test_delete_existing_returns_204(self, client, temp_root):
         repo = _make_repo(temp_root, "delta")

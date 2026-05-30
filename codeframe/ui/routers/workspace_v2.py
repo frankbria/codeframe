@@ -183,12 +183,23 @@ async def list_workspaces(request: Request) -> WorkspaceListResponse:
     """List all registered workspaces (issue #601).
 
     Returns server-side registry entries ordered by recency, each annotated with
-    a computed ``path_exists`` so clients can flag stale projects. Returns an
-    empty list when the registry is unavailable.
+    a computed ``path_exists`` so clients can flag stale projects.
+
+    When the control-plane DB / registry is unavailable, responds 503 rather than
+    an empty 200 — clients treat a successful response as authoritative and would
+    otherwise wipe their local fallback list. A genuinely empty registry still
+    returns 200 with ``[]``.
     """
     registry = _get_registry(request)
     if registry is None:
-        return WorkspaceListResponse(workspaces=[])
+        raise HTTPException(
+            status_code=503,
+            detail=api_error(
+                "Registry unavailable",
+                ErrorCodes.EXECUTION_FAILED,
+                "Workspace registry is not available on this server.",
+            ),
+        )
 
     entries = registry.list_all()
     workspaces = [

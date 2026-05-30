@@ -85,6 +85,43 @@ describe('useWorkspaces', () => {
     expect(result.current.workspaces[0].path_exists).toBe(true);
   });
 
+  it('preserves local-only recents when mirroring the server list', async () => {
+    // A recent only this browser knows about (e.g. opened before the registry).
+    setRecentWorkspaces([
+      { path: '/p/local-only', name: 'local-only', lastUsed: '2026-03-01T00:00:00Z' },
+    ]);
+    mockedApi.list.mockResolvedValue(serverItems);
+
+    const { result } = renderHook(() => useWorkspaces(), { wrapper });
+    await waitFor(() => expect(result.current.workspaces).toHaveLength(2));
+
+    // Server entries first, then the surviving local-only entry — not clobbered.
+    expect(getRecentWorkspaces().map((r) => r.path)).toEqual([
+      '/p/alpha',
+      '/p/beta',
+      '/p/local-only',
+    ]);
+  });
+
+  it('removes a fallback (offline) entry locally without calling the API', async () => {
+    setRecentWorkspaces([
+      { path: '/p/cached', name: 'cached', lastUsed: '2026-04-01T00:00:00Z' },
+    ]);
+    mockedApi.list.mockRejectedValue(new Error('network down'));
+
+    const { result } = renderHook(() => useWorkspaces(), { wrapper });
+    await waitFor(() => expect(result.current.workspaces).toHaveLength(1));
+
+    await act(async () => {
+      // In fallback mode the id is the filesystem path.
+      await result.current.removeWorkspace('/p/cached');
+    });
+
+    expect(mockedApi.remove).not.toHaveBeenCalled();
+    expect(getRecentWorkspaces()).toHaveLength(0);
+    await waitFor(() => expect(result.current.workspaces).toHaveLength(0));
+  });
+
   it('removeWorkspace calls the API and refreshes from the server', async () => {
     // Initial fetch returns both; after deletion the server drops alpha.
     mockedApi.list

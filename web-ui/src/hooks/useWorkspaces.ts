@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { workspaceApi } from '@/lib/api';
 import {
@@ -30,6 +30,22 @@ function itemsToRecents(items: WorkspaceRegistryItem[]): RecentWorkspace[] {
   }));
 }
 
+/**
+ * Merge the server list into the existing localStorage recents without losing
+ * local-only entries (e.g. projects opened before the registry existed, or only
+ * known to this browser). Server entries win for overlapping paths and keep
+ * their recency order; local-only recents are appended.
+ */
+function mergeRecents(
+  serverItems: WorkspaceRegistryItem[],
+  existing: RecentWorkspace[]
+): RecentWorkspace[] {
+  const serverRecents = itemsToRecents(serverItems);
+  const serverPaths = new Set(serverRecents.map((r) => r.path));
+  const localOnly = existing.filter((r) => !serverPaths.has(r.path));
+  return [...serverRecents, ...localOnly];
+}
+
 /** Map localStorage recents back to registry items for the offline fallback. */
 function recentsToItems(recents: RecentWorkspace[]): WorkspaceRegistryItem[] {
   return recents.map((recent) => ({
@@ -53,33 +69,45 @@ function recentsToItems(recents: RecentWorkspace[]): WorkspaceRegistryItem[] {
  * - On fetch error (network/auth), falls back to the localStorage recents.
  */
 export function useWorkspaces(): UseWorkspacesReturn {
+  // Bumped after a local-only (offline) removal so the fallback list re-renders.
+  const [localVersion, setLocalVersion] = useState(0);
+
   const { data, error, isLoading, mutate } = useSWR<WorkspaceRegistryItem[]>(
     WORKSPACES_SWR_KEY,
     () => workspaceApi.list(),
     {
       onSuccess: (items) => {
-        setRecentWorkspaces(itemsToRecents(items));
+        // Merge (never clobber) so local-only recents survive as offline fallback.
+        setRecentWorkspaces(mergeRecents(items, getRecentWorkspaces()));
       },
     }
   );
 
   const fallback = useMemo<WorkspaceRegistryItem[]>(
-    // Recompute only when an error is present (offline/auth failure).
+    // Recompute when an error is present (offline/auth failure) or after a
+    // local-only removal bumps localVersion.
     () => (error ? recentsToItems(getRecentWorkspaces()) : []),
-    [error]
+    [error, localVersion]
   );
 
   const workspaces = data ?? (error ? fallback : []);
 
   const removeWorkspace = useCallback(
     async (workspaceId: string) => {
-      await workspaceApi.remove(workspaceId);
-      // Keep the localStorage mirror in sync by path.
-      const removed = (data ?? []).find((w) => w.id === workspaceId);
-      if (removed) {
-        removeFromRecentWorkspaces(removed.repo_path);
+      // Server-backed entry: deregister on the server, then sync the local mirror.
+      const serverEntry = (data ?? []).find((w) => w.id === workspaceId);
+      if (serverEntry) {
+        await workspaceApi.remove(workspaceId);
+        removeFromRecentWorkspaces(serverEntry.repo_path);
+        await mutate();
+        return;
       }
-      await mutate();
+
+      // Fallback (offline) entry: its id IS the filesystem path. Remove it from
+      // localStorage directly — calling the unreachable server would only fail
+      // and strand the stale entry in the list.
+      removeFromRecentWorkspaces(workspaceId);
+      setLocalVersion((v) => v + 1);
     },
     [data, mutate]
   );
