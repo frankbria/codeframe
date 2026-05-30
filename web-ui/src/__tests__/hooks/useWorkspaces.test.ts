@@ -85,7 +85,7 @@ describe('useWorkspaces', () => {
     expect(result.current.workspaces[0].path_exists).toBe(true);
   });
 
-  it('preserves local-only recents when mirroring the server list', async () => {
+  it('shows server entries plus browser-only recents while online', async () => {
     // A recent only this browser knows about (e.g. opened before the registry).
     setRecentWorkspaces([
       { path: '/p/local-only', name: 'local-only', lastUsed: '2026-03-01T00:00:00Z' },
@@ -93,9 +93,13 @@ describe('useWorkspaces', () => {
     mockedApi.list.mockResolvedValue(serverItems);
 
     const { result } = renderHook(() => useWorkspaces(), { wrapper });
-    await waitFor(() => expect(result.current.workspaces).toHaveLength(2));
+    await waitFor(() => expect(result.current.workspaces).toHaveLength(3));
 
-    // Server entries first, then the surviving local-only entry — not clobbered.
+    const paths = result.current.workspaces.map((w) => w.repo_path);
+    // Server entries first, then the local-only one (still reachable online).
+    expect(paths).toEqual(['/p/alpha', '/p/beta', '/p/local-only']);
+
+    // localStorage mirror preserves the local-only entry, not clobbered.
     expect(getRecentWorkspaces().map((r) => r.path)).toEqual([
       '/p/alpha',
       '/p/beta',

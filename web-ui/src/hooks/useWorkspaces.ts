@@ -83,14 +83,22 @@ export function useWorkspaces(): UseWorkspacesReturn {
     }
   );
 
-  const fallback = useMemo<WorkspaceRegistryItem[]>(
-    // Recompute when an error is present (offline/auth failure) or after a
-    // local-only removal bumps localVersion.
-    () => (error ? recentsToItems(getRecentWorkspaces()) : []),
-    [error, localVersion]
-  );
-
-  const workspaces = data ?? (error ? fallback : []);
+  const workspaces = useMemo<WorkspaceRegistryItem[]>(() => {
+    if (data) {
+      // Online: show the authoritative server list, plus any browser-only
+      // recents not yet registered server-side, so they stay reachable (e.g.
+      // projects opened before the registry existed). Server wins on overlap.
+      const serverPaths = new Set(data.map((w) => w.repo_path));
+      const localOnly = recentsToItems(getRecentWorkspaces()).filter(
+        (item) => !serverPaths.has(item.repo_path)
+      );
+      return [...data, ...localOnly];
+    }
+    // Offline/error: fall back to the localStorage mirror entirely.
+    return error ? recentsToItems(getRecentWorkspaces()) : [];
+    // localVersion forces recompute after a local-only removal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, error, localVersion]);
 
   const removeWorkspace = useCallback(
     async (workspaceId: string) => {

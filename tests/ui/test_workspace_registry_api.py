@@ -95,6 +95,22 @@ class TestListWorkspaces:
         assert workspaces[0]["repo_path"] == str(a.resolve())
 
 
+class TestPatchRefreshesRegistry:
+    def test_tech_stack_edit_updates_registry_metadata(self, client, temp_root):
+        repo = _make_repo(temp_root, "zeta")
+        client.post("/api/v2/workspaces", json={"repo_path": str(repo)})
+
+        resp = client.patch(
+            "/api/v2/workspaces/current",
+            params={"workspace_path": str(repo)},
+            json={"tech_stack": "Python with FastAPI"},
+        )
+        assert resp.status_code == 200
+
+        entry = client.get("/api/v2/workspaces").json()["workspaces"][0]
+        assert entry["tech_stack"] == "Python with FastAPI"
+
+
 class TestCurrentTracksAccess:
     def test_current_auto_registers_untracked_workspace(self, client, temp_root):
         """A workspace opened directly (not via POST) becomes tracked."""

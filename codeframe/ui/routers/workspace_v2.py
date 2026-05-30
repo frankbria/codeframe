@@ -356,6 +356,8 @@ async def update_current_workspace(
 
         if body.tech_stack is not None:
             updated = ws.update_workspace_tech_stack(workspace.repo_path, body.tech_stack)
+            # Keep the registry's cached metadata (tech_stack) in sync (#601).
+            _register_workspace(request, updated)
 
         return _workspace_to_response(updated)
 
