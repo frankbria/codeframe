@@ -23,7 +23,7 @@ jest.mock('@/hooks/useWorkspaces', () => ({
 
 function makeItem(overrides: Partial<WorkspaceRegistryItem>): WorkspaceRegistryItem {
   return {
-    id: overrides.repo_path ?? 'id',
+    id: 'default-test-id',
     repo_path: '/home/user/project',
     name: 'project',
     tech_stack: null,

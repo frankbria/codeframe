@@ -202,6 +202,9 @@ async def list_workspaces(request: Request) -> WorkspaceListResponse:
         )
 
     entries = registry.list_all()
+    # path_exists is a per-entry blocking stat() inside an async handler. The
+    # registry is recency-scoped and small in practice, so the event-loop cost is
+    # negligible; revisit (e.g. run_in_executor) only if the list grows large.
     workspaces = [
         WorkspaceRegistryResponse(
             id=entry["id"],

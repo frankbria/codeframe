@@ -69,8 +69,13 @@ class WorkspaceRegistryRepository(BaseRepository):
 
         # Re-read so callers always get the canonical row (stable id on conflict).
         entry = self.get_by_path(repo_path)
-        # get_by_path cannot return None right after a successful upsert.
-        assert entry is not None
+        if entry is None:
+            # Should be unreachable right after a successful upsert. Raise a real
+            # error (not assert, which `python -O` strips) so the dict-return
+            # contract holds in every execution mode.
+            raise RuntimeError(
+                f"workspaces_registry upsert succeeded but row not found: {repo_path}"
+            )
         return entry
 
     def list_all(self, owner_user_id: Optional[int] = None) -> List[Dict[str, Any]]:

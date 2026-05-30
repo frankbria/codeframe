@@ -52,8 +52,10 @@ export function WorkspaceSelector({
     e.stopPropagation();
     try {
       await removeWorkspace(workspaceId);
-    } catch {
-      // Best-effort: a failed deregister leaves the list unchanged.
+    } catch (err) {
+      // Best-effort: a failed deregister leaves the list unchanged. Surface it in
+      // devtools so the failure isn't completely silent.
+      console.warn('Failed to remove workspace from registry', err);
     }
   };
 

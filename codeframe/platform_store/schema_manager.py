@@ -214,8 +214,8 @@ class SchemaManager:
                 name TEXT,
                 owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
                 tech_stack TEXT,
-                created_at TEXT,
-                last_opened_at TEXT
+                created_at TEXT NOT NULL,
+                last_opened_at TEXT NOT NULL
             )
             """
         )
