@@ -14,6 +14,7 @@ Routes:
     GET  /api/v2/prd/{id}/diff            - Diff two versions
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -99,7 +100,7 @@ class PrdDiffResponse(BaseModel):
 class AmbiguityAnswer(BaseModel):
     """A single answered ambiguity from the stress-test results view (#562)."""
 
-    label: str = Field(..., description="Short ambiguity label")
+    label: str = Field(..., min_length=1, description="Short ambiguity label")
     questions: list[str] = Field(
         default_factory=list, description="The unanswered questions"
     )
@@ -405,8 +406,11 @@ async def refine_prd_from_stress_test(
     ]
 
     try:
-        refined_content = resolve_ambiguities_into_prd(
-            record.content, ambiguities, provider
+        # resolve_ambiguities_into_prd makes a synchronous, blocking LLM call;
+        # offload it to a thread so it does not stall the event loop (mirrors
+        # stress_test_prd_stream's asyncio.to_thread usage).
+        refined_content = await asyncio.to_thread(
+            resolve_ambiguities_into_prd, record.content, ambiguities, provider
         )
         # resolve_ambiguities_into_prd returns the original content unchanged
         # when the LLM rewrite looks truncated. Surface that as an error rather

@@ -360,6 +360,20 @@ class TestRefineEndpoint:
         )
         assert response.status_code == 422
 
+    def test_refine_rejects_empty_label(self, test_client, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
+        record = prd_module.store(
+            test_client.workspace, SAMPLE_PRD, "Invoice SaaS", {}
+        )
+        response = test_client.post(
+            "/api/v2/prd/stress-test/refine",
+            json={
+                "prd_id": record.id,
+                "answers": [{"label": "", "questions": ["?"], "answer": "y"}],
+            },
+        )
+        assert response.status_code == 422
+
     def test_refine_requires_at_least_one_answer(self, test_client, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
         record = prd_module.store(

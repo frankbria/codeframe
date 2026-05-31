@@ -18,7 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useStressTestStream } from '@/hooks/useStressTestStream';
 import { prdApi } from '@/lib/api';
-import type { ApiError, PrdResponse } from '@/types';
+import type { PrdResponse } from '@/types';
 import { AmbiguityCard } from './AmbiguityCard';
 
 interface StressTestModalProps {
@@ -111,8 +111,12 @@ export function StressTestModal({
       onRefined?.(refined);
       onOpenChange(false);
     } catch (err) {
-      const apiError = err as ApiError;
-      toast.error(apiError.detail || 'Failed to refine PRD. Please try again.');
+      const detail = (err as { detail?: unknown }).detail;
+      toast.error(
+        typeof detail === 'string'
+          ? detail
+          : 'Failed to refine PRD. Please try again.'
+      );
     } finally {
       setIsRefining(false);
     }

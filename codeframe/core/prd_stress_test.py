@@ -14,7 +14,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from enum import Enum
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Literal, Optional
 
 from codeframe.adapters.llm.base import Purpose
 
@@ -54,7 +54,7 @@ class Ambiguity:
     recommendation: str
     # "blocking" ambiguities must be answered before a PRD can be refined;
     # "warning" ambiguities are advisory and skippable (issue #562).
-    severity: str = "blocking"
+    severity: Literal["blocking", "warning"] = "blocking"
     resolved_answer: Optional[str] = None
 
 
@@ -332,7 +332,7 @@ def render_ambiguity_report(ambiguities: list[Ambiguity]) -> str:
     return "\n".join(lines)
 
 
-def ambiguity_to_dict(amb: Ambiguity) -> dict:
+def ambiguity_to_dict(amb: Ambiguity) -> dict[str, object]:
     """Serialize an :class:`Ambiguity` for SSE / JSON transport (issue #562).
 
     Carries the structured fields the web results view needs to render an
