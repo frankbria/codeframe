@@ -14,7 +14,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from enum import Enum
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Literal, Optional
 
 from codeframe.adapters.llm.base import Purpose
 
@@ -52,6 +52,9 @@ class Ambiguity:
     source_node_title: str
     questions: list[str]
     recommendation: str
+    # "blocking" ambiguities must be answered before a PRD can be refined;
+    # "warning" ambiguities are advisory and skippable (issue #562).
+    severity: Literal["blocking", "warning"] = "blocking"
     resolved_answer: Optional[str] = None
 
 
@@ -94,8 +97,13 @@ Return a JSON object with these fields:
   "ambiguity_label": "SHORT LABEL",                       // only if ambiguous
   "questions": ["question 1", "question 2"],              // only if ambiguous
   "recommendation": "what to add to the PRD",             // only if ambiguous
+  "severity": "blocking" | "warning",                     // only if ambiguous
   "complexity_hint": "Low" | "Low-Medium" | "Medium" | "High"  // always
 }
+
+For "severity": use "blocking" when the missing information prevents \
+implementation and must be answered; use "warning" for advisory gaps that \
+have a reasonable default and can be skipped.
 
 Return ONLY valid JSON. No markdown wrapping."""
 
@@ -183,12 +191,15 @@ def classify_and_decompose(
 
     ambiguity = None
     if cls == Classification.AMBIGUOUS:
+        raw_severity = str(data.get("severity", "blocking")).lower()
+        severity = raw_severity if raw_severity in ("blocking", "warning") else "blocking"
         ambiguity = Ambiguity(
             id=str(uuid.uuid4()),
             label=data.get("ambiguity_label", "UNSPECIFIED"),
             source_node_title=title,
             questions=data.get("questions", []),
             recommendation=data.get("recommendation", ""),
+            severity=severity,
         )
 
     return cls, children, ambiguity, complexity
@@ -321,6 +332,23 @@ def render_ambiguity_report(ambiguities: list[Ambiguity]) -> str:
     return "\n".join(lines)
 
 
+def ambiguity_to_dict(amb: Ambiguity) -> dict[str, object]:
+    """Serialize an :class:`Ambiguity` for SSE / JSON transport (issue #562).
+
+    Carries the structured fields the web results view needs to render an
+    answerable card: question text, severity, and the recommendation.
+    """
+    return {
+        "id": amb.id,
+        "label": amb.label,
+        "source_node_title": amb.source_node_title,
+        "questions": list(amb.questions),
+        "recommendation": amb.recommendation,
+        "severity": amb.severity,
+        "resolved_answer": amb.resolved_answer,
+    }
+
+
 def resolve_ambiguities_into_prd(
     prd_content: str,
     ambiguities: list[Ambiguity],
@@ -422,6 +450,7 @@ async def stress_test_prd_stream(
     - ``{"type": "goal_analyzed", "goal": str, "classification": str,
          "ambiguities_so_far": int}`` (once per top-level goal)
     - ``{"type": "complete", "ambiguity_count": int,
+         "ambiguities": [ambiguity_to_dict(...)],
          "tech_spec_markdown": str, "ambiguity_report": str}``
     - ``{"type": "error", "message": str}`` if decomposition raises
 
@@ -461,6 +490,7 @@ async def stress_test_prd_stream(
         yield {
             "type": "complete",
             "ambiguity_count": len(ambiguities),
+            "ambiguities": [ambiguity_to_dict(a) for a in ambiguities],
             "tech_spec_markdown": tech_spec,
             "ambiguity_report": amb_report,
         }

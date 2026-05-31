@@ -14,6 +14,7 @@ Routes:
     GET  /api/v2/prd/{id}/diff            - Diff two versions
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -21,7 +22,7 @@ from typing import AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
@@ -94,6 +95,39 @@ class PrdDiffResponse(BaseModel):
     version1: int
     version2: int
     diff: str
+
+
+class AmbiguityAnswer(BaseModel):
+    """A single answered ambiguity from the stress-test results view (#562)."""
+
+    label: str = Field(..., min_length=1, description="Short ambiguity label")
+    questions: list[str] = Field(
+        default_factory=list, description="The unanswered questions"
+    )
+    answer: str = Field(..., min_length=1, description="The user's answer")
+
+    @field_validator("answer")
+    @classmethod
+    def _answer_not_blank(cls, v: str) -> str:
+        # min_length alone admits whitespace-only answers from API callers;
+        # reject them so a blank string is never treated as resolved input.
+        if not v.strip():
+            raise ValueError("answer must not be blank")
+        return v
+
+
+class StressTestRefineRequest(BaseModel):
+    """Request to refine a PRD from resolved stress-test ambiguities (#562).
+
+    Stateless: the client sends back the answered ambiguities' content (the
+    server does not persist stress-test runs), which are folded into the PRD
+    and saved as a new version.
+    """
+
+    prd_id: str = Field(..., description="ID of the PRD to refine")
+    answers: list[AmbiguityAnswer] = Field(
+        ..., min_length=1, description="Resolved ambiguities to fold into the PRD"
+    )
 
 
 # ============================================================================
@@ -194,6 +228,48 @@ def _sse(event: dict) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
+def _resolve_llm_provider(workspace: Workspace):
+    """Resolve the LLM provider for PRD stress-test web operations.
+
+    Follows the documented chain: env var → workspace config
+    (``.codeframe/config.yaml``) → default ``anthropic``. (No CLI flag here —
+    this is the web surface.) Mirrors ``runtime.py`` and the stress-test stream.
+
+    Raises:
+        ValueError: with a user-facing message when the Anthropic API key is
+            missing or the provider cannot be constructed.
+    """
+    from codeframe.adapters.llm import get_provider
+    from codeframe.core.config import load_environment_config
+
+    env_cfg = load_environment_config(workspace.repo_path)
+    llm_cfg = env_cfg.llm if (env_cfg and env_cfg.llm) else None
+    provider_type = (
+        os.getenv("CODEFRAME_LLM_PROVIDER")
+        or (llm_cfg.provider if llm_cfg else None)
+        or "anthropic"
+    )
+
+    # Only the Anthropic provider needs an API key up front; local providers
+    # (ollama/vllm/compatible) do not.
+    if provider_type == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
+        raise ValueError("ANTHROPIC_API_KEY environment variable required.")
+
+    provider_kwargs: dict = {}
+    model_override = os.getenv("CODEFRAME_LLM_MODEL") or (
+        llm_cfg.model if llm_cfg else None
+    )
+    base_url_override = (llm_cfg.base_url if llm_cfg else None) or os.getenv(
+        "OPENAI_BASE_URL"
+    )
+    if model_override:
+        provider_kwargs["model"] = model_override
+    if base_url_override:
+        provider_kwargs["base_url"] = base_url_override
+
+    return get_provider(provider_type, **provider_kwargs)
+
+
 async def _stress_test_event_stream(
     workspace: Workspace,
     max_depth: int,
@@ -218,43 +294,11 @@ async def _stress_test_event_stream(
         })
         return
 
-    # Resolve the LLM provider following the documented chain:
-    # env var → workspace config (.codeframe/config.yaml) → default "anthropic".
-    # (No CLI flag here — this is the web surface.) Mirrors runtime.py.
-    from codeframe.adapters.llm import get_provider
-    from codeframe.core.config import load_environment_config
-
-    env_cfg = load_environment_config(workspace.repo_path)
-    llm_cfg = env_cfg.llm if (env_cfg and env_cfg.llm) else None
-    provider_type = (
-        os.getenv("CODEFRAME_LLM_PROVIDER")
-        or (llm_cfg.provider if llm_cfg else None)
-        or "anthropic"
-    )
-
-    # Only the Anthropic provider needs an API key up front; local providers
-    # (ollama/vllm/compatible) do not.
-    if provider_type == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
-        yield _sse({
-            "type": "error",
-            "message": "ANTHROPIC_API_KEY environment variable required.",
-        })
-        return
-
-    provider_kwargs: dict = {}
-    model_override = os.getenv("CODEFRAME_LLM_MODEL") or (
-        llm_cfg.model if llm_cfg else None
-    )
-    base_url_override = (llm_cfg.base_url if llm_cfg else None) or os.getenv(
-        "OPENAI_BASE_URL"
-    )
-    if model_override:
-        provider_kwargs["model"] = model_override
-    if base_url_override:
-        provider_kwargs["base_url"] = base_url_override
-
+    # Resolve the LLM provider following the documented chain (shared with the
+    # refine endpoint). Recoverable problems become in-stream error events so a
+    # browser EventSource can display them.
     try:
-        provider = get_provider(provider_type, **provider_kwargs)
+        provider = _resolve_llm_provider(workspace)
     except ValueError as exc:
         yield _sse({"type": "error", "message": str(exc)})
         return
@@ -303,6 +347,114 @@ async def stress_test_prd_stream_endpoint(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# NOTE: registered before the "/{prd_id}" catch-all so FastAPI does not match
+# "stress-test/refine" as a PRD id.
+@router.post("/stress-test/refine", response_model=PrdResponse)
+@rate_limit_standard()
+async def refine_prd_from_stress_test(
+    request: Request,
+    body: StressTestRefineRequest,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> PrdResponse:
+    """Refine a PRD by folding in answered stress-test ambiguities (#562).
+
+    Reconstructs :class:`Ambiguity` objects from the submitted answers, calls
+    the headless ``resolve_ambiguities_into_prd`` to rewrite the PRD via the
+    LLM, then persists the result as a new PRD version. Returns the new version.
+    """
+    from codeframe.core.prd_stress_test import (
+        Ambiguity,
+        resolve_ambiguities_into_prd,
+    )
+
+    record = prd.get_by_id(workspace, body.prd_id)
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error(
+                "PRD not found", ErrorCodes.NOT_FOUND, f"No PRD with id {body.prd_id}"
+            ),
+        )
+
+    try:
+        provider = _resolve_llm_provider(workspace)
+    except ValueError as exc:
+        # The request is well-formed; the server lacks LLM configuration
+        # (missing API key or unknown provider) → 503, not 400.
+        raise HTTPException(
+            status_code=503,
+            detail=api_error(
+                "LLM provider unavailable",
+                ErrorCodes.SERVICE_UNAVAILABLE,
+                str(exc),
+            ),
+        )
+
+    # resolve_ambiguities_into_prd only reads label, questions, and
+    # resolved_answer, so source_node_title/recommendation are intentionally
+    # left empty here (the client does not need to round-trip them).
+    ambiguities = [
+        Ambiguity(
+            id=str(i),
+            label=ans.label,
+            source_node_title="",
+            questions=list(ans.questions),
+            recommendation="",
+            resolved_answer=ans.answer,
+        )
+        for i, ans in enumerate(body.answers)
+    ]
+
+    try:
+        # resolve_ambiguities_into_prd makes a synchronous, blocking LLM call;
+        # offload it to a thread so it does not stall the event loop (mirrors
+        # stress_test_prd_stream's asyncio.to_thread usage).
+        refined_content = await asyncio.to_thread(
+            resolve_ambiguities_into_prd, record.content, ambiguities, provider
+        )
+        # resolve_ambiguities_into_prd returns the original content unchanged
+        # when the LLM rewrite looks truncated. Surface that as an error rather
+        # than recording a no-op duplicate version under a "success" toast.
+        if refined_content == record.content:
+            raise HTTPException(
+                status_code=502,
+                detail=api_error(
+                    "PRD refinement produced no changes",
+                    ErrorCodes.EXECUTION_FAILED,
+                    "The model returned no usable changes (its output may have "
+                    "been truncated). Please try again.",
+                ),
+            )
+        new_record = prd.create_new_version(
+            workspace,
+            parent_prd_id=body.prd_id,
+            new_content=refined_content,
+            change_summary="Refined via stress-test ambiguity resolution",
+        )
+        if not new_record:
+            # get_by_id already confirmed the PRD exists, so a None here is a
+            # persistence fault, not a missing resource → 500, not 404.
+            raise HTTPException(
+                status_code=500,
+                detail=api_error(
+                    "Failed to persist new PRD version",
+                    ErrorCodes.INTERNAL_ERROR,
+                    f"create_new_version returned no record for {body.prd_id}",
+                ),
+            )
+        return _prd_to_response(new_record)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to refine PRD: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=api_error(
+                "Failed to refine PRD", ErrorCodes.EXECUTION_FAILED, str(e)
+            ),
+        )
 
 
 @router.get("/{prd_id}", response_model=PrdResponse)

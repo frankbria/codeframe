@@ -235,6 +235,77 @@ class TestClassifyAndDecompose:
         assert ambiguity.label == "AUTH SCOPE"
         assert len(ambiguity.questions) == 2
 
+    def test_severity_defaults_to_blocking(self, mock_provider):
+        # The mock's ambiguous response omits "severity"; it must default to
+        # "blocking" so unanswered gaps stop a refine (issue #562).
+        from codeframe.core.prd_stress_test import classify_and_decompose
+
+        _, _, ambiguity, _ = classify_and_decompose(
+            "User Authentication", "users can register and log in", [], "prd", 0, mock_provider,
+        )
+        assert ambiguity is not None
+        assert ambiguity.severity == "blocking"
+
+    def test_severity_parsed_from_response(self):
+        from codeframe.core.prd_stress_test import classify_and_decompose
+
+        provider = MagicMock()
+        provider.complete.return_value = MagicMock(content=json.dumps({
+            "classification": "ambiguous",
+            "ambiguity_label": "OPTIONAL EXPORT FORMAT",
+            "questions": ["CSV or XLSX?"],
+            "recommendation": "Pick a default",
+            "severity": "warning",
+            "complexity_hint": "Low",
+        }))
+
+        _, _, ambiguity, _ = classify_and_decompose(
+            "Export", "export data", [], "prd", 0, provider,
+        )
+        assert ambiguity is not None
+        assert ambiguity.severity == "warning"
+
+    def test_invalid_severity_falls_back_to_blocking(self):
+        from codeframe.core.prd_stress_test import classify_and_decompose
+
+        provider = MagicMock()
+        provider.complete.return_value = MagicMock(content=json.dumps({
+            "classification": "ambiguous",
+            "ambiguity_label": "X",
+            "questions": ["?"],
+            "recommendation": "y",
+            "severity": "nonsense",
+            "complexity_hint": "Low",
+        }))
+
+        _, _, ambiguity, _ = classify_and_decompose(
+            "X", "x", [], "prd", 0, provider,
+        )
+        assert ambiguity is not None
+        assert ambiguity.severity == "blocking"
+
+    def test_ambiguity_to_dict_round_trips_fields(self):
+        from codeframe.core.prd_stress_test import Ambiguity, ambiguity_to_dict
+
+        amb = Ambiguity(
+            id="abc",
+            label="AUTH SCOPE",
+            source_node_title="User Authentication",
+            questions=["Email/password or OAuth?"],
+            recommendation="Add an auth section",
+            severity="warning",
+        )
+        payload = ambiguity_to_dict(amb)
+        assert payload == {
+            "id": "abc",
+            "label": "AUTH SCOPE",
+            "source_node_title": "User Authentication",
+            "questions": ["Email/password or OAuth?"],
+            "recommendation": "Add an auth section",
+            "severity": "warning",
+            "resolved_answer": None,
+        }
+
 
 class TestRecursiveDecompose:
     def test_atomic_returns_leaf(self, mock_provider):
@@ -431,6 +502,13 @@ class TestStressTestPrdStream:
         assert complete["ambiguity_count"] == 1
         assert "# Technical Specification" in complete["tech_spec_markdown"]
         assert "AUTH SCOPE" in complete["ambiguity_report"]
+        # Structured ambiguities are carried for the web results view (#562).
+        assert len(complete["ambiguities"]) == 1
+        amb = complete["ambiguities"][0]
+        assert amb["label"] == "AUTH SCOPE"
+        assert amb["severity"] == "blocking"
+        assert amb["questions"] == ["Email/password or OAuth?", "JWT or server sessions?"]
+        assert "id" in amb and amb["resolved_answer"] is None
 
     async def test_provider_failure_yields_error_event(self, sample_prd):
         from codeframe.core.prd_stress_test import stress_test_prd_stream

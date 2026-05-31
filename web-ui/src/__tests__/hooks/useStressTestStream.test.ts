@@ -100,10 +100,23 @@ describe('useStressTestStream', () => {
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
     act(() => result.current.start());
 
+    const ambiguities = [
+      {
+        id: 'amb-1',
+        label: 'AUTH SCOPE',
+        source_node_title: 'User Authentication',
+        questions: ['Email/password or OAuth?'],
+        recommendation: 'Add an auth section',
+        severity: 'blocking' as const,
+        resolved_answer: null,
+      },
+    ];
+
     act(() => {
       MockEventSource.latest().emit({
         type: 'complete',
         ambiguity_count: 2,
+        ambiguities,
         tech_spec_markdown: '# Technical Specification',
         ambiguity_report: 'PRD Stress Test — 2 ambiguities found',
       });
@@ -112,6 +125,7 @@ describe('useStressTestStream', () => {
     expect(result.current.status).toBe('complete');
     expect(result.current.result).toEqual({
       ambiguityCount: 2,
+      ambiguities,
       techSpecMarkdown: '# Technical Specification',
       ambiguityReport: 'PRD Stress Test — 2 ambiguities found',
     });
