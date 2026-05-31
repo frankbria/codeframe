@@ -294,7 +294,9 @@ class TestRefineEndpoint:
         )
         assert response.status_code == 404
 
-    def test_refine_missing_api_key_returns_400(self, test_client, monkeypatch):
+    def test_refine_missing_api_key_returns_503(self, test_client, monkeypatch):
+        # Missing server-side LLM config is a service-availability problem, not a
+        # malformed request → 503, not 400.
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         record = prd_module.store(
             test_client.workspace, SAMPLE_PRD, "Invoice SaaS", {}
@@ -308,7 +310,7 @@ class TestRefineEndpoint:
                 ],
             },
         )
-        assert response.status_code == 400
+        assert response.status_code == 503
 
     @patch("codeframe.adapters.llm.get_provider")
     def test_refine_no_change_returns_502(

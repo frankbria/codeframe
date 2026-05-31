@@ -380,13 +380,18 @@ async def refine_prd_from_stress_test(
     try:
         provider = _resolve_llm_provider(workspace)
     except ValueError as exc:
+        # The request is well-formed; the server lacks LLM configuration
+        # (missing API key or unknown provider) → 503, not 400.
         raise HTTPException(
-            status_code=400,
+            status_code=503,
             detail=api_error(
-                "LLM provider unavailable", ErrorCodes.VALIDATION_ERROR, str(exc)
+                "LLM provider unavailable", ErrorCodes.EXECUTION_FAILED, str(exc)
             ),
         )
 
+    # resolve_ambiguities_into_prd only reads label, questions, and
+    # resolved_answer, so source_node_title/recommendation are intentionally
+    # left empty here (the client does not need to round-trip them).
     ambiguities = [
         Ambiguity(
             id=str(i),
