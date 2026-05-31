@@ -147,13 +147,14 @@ Without a settings page, a new user who cannot find the env vars cannot use the 
 
 ### 4. PRD Stress-Test Web UI
 
-**Current state**: Phase 5.4 trigger + streaming shipped (#561). The `/prd` page now has a "Stress Test" button (enabled only when a PRD exists) that opens `StressTestModal`. The modal connects via `useStressTestStream` to `GET /api/v2/prd/stress-test` (SSE), which streams `goals_extracted`, `goal_analyzed`, `complete`, and `error` events from `core/prd_stress_test.py`. Results rendering — displaying the decomposition tree, surfacing ambiguities as answerable questions, feeding answers back to refine the PRD — is tracked in #562 and is not yet built.
+**Current state**: Phase 5.4 is **fully shipped** (trigger + streaming #561; results view + refinement #562). The `/prd` page's "Stress Test" button opens `StressTestModal`, which connects via `useStressTestStream` to `GET /api/v2/prd/stress-test` (SSE) streaming `goals_extracted`, `goal_analyzed`, `complete`, and `error` events from `core/prd_stress_test.py`. The `complete` event carries structured, severity-tagged `ambiguities`, which the modal renders as a results view.
 
-**What remains (#562)**:
+**Shipped in #562**:
 
-- A **results view** showing the decomposition tree with ambiguities surfaced as questions, styled similarly to the existing Discovery transcript
-- Each ambiguity has an inline answer field — the user's answers are fed back to refine the PRD
-- On completion: the refined PRD is saved and the user can proceed to task generation
+- A **results view** of `AmbiguityCard`s — each shows the question text, a severity badge (`blocking`/`warning`), and an inline answer textarea, with an "X of Y answered" progress indicator
+- A **[Refine PRD]** button, disabled until every blocking ambiguity is answered, that posts answers to `POST /api/v2/prd/stress-test/refine`
+- The refine endpoint folds answers into the PRD via `resolve_ambiguities_into_prd` and persists a new version (`prd.create_new_version`); the editor updates via `mutatePrd`, ready for task generation
+- Out of scope (per acceptance criteria): full collapsible decomposition-tree visualization (the streaming log already surfaces the goal breakdown)
 
 **Why it matters for the vision**: "Gaps discovered at planning time, not execution time." The stress-test is the mechanism that makes requirements specific enough for agents to execute correctly. Without it in the web UI, the web-first user skips the most valuable part of the THINK phase.
 
@@ -203,7 +204,7 @@ These are items that were considered and excluded because they do not serve the 
 | 5.1 | Settings page (skeleton + agent config + PROOF9/workspace tabs) | ✅ Complete | #554–556 |
 | 5.2 | Cost analytics | ✅ Complete | #557–558 |
 | 5.3 | Async notifications | ✅ Complete (browser + in-app center #559, webhook #560) | #559–560 |
-| 5.4 | PRD stress-test web UI | ✅ Complete (trigger + streaming #561; results rendering #562 pending) | #561–562 |
+| 5.4 | PRD stress-test web UI | ✅ Complete (trigger + streaming #561; results view + refinement #562) | #561–562 |
 | 5.5 | GitHub Issues import | ❌ Not started | #563–565 |
 
 **Current focus**: Phase 4A — PR status tracking + PROOF9 merge gate.
