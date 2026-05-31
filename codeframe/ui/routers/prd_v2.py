@@ -386,7 +386,9 @@ async def refine_prd_from_stress_test(
         raise HTTPException(
             status_code=503,
             detail=api_error(
-                "LLM provider unavailable", ErrorCodes.EXECUTION_FAILED, str(exc)
+                "LLM provider unavailable",
+                ErrorCodes.SERVICE_UNAVAILABLE,
+                str(exc),
             ),
         )
 
@@ -432,12 +434,14 @@ async def refine_prd_from_stress_test(
             change_summary="Refined via stress-test ambiguity resolution",
         )
         if not new_record:
+            # get_by_id already confirmed the PRD exists, so a None here is a
+            # persistence fault, not a missing resource → 500, not 404.
             raise HTTPException(
-                status_code=404,
+                status_code=500,
                 detail=api_error(
-                    "PRD not found",
-                    ErrorCodes.NOT_FOUND,
-                    f"No PRD with id {body.prd_id}",
+                    "Failed to persist new PRD version",
+                    ErrorCodes.INTERNAL_ERROR,
+                    f"create_new_version returned no record for {body.prd_id}",
                 ),
             )
         return _prd_to_response(new_record)

@@ -360,6 +360,29 @@ class TestRefineEndpoint:
         )
         assert response.status_code == 422
 
+    @patch("codeframe.adapters.llm.get_provider")
+    @patch("codeframe.core.prd.create_new_version", return_value=None)
+    def test_refine_persistence_failure_returns_500(
+        self, _mock_create, mock_get_provider, test_client, mock_provider, monkeypatch
+    ):
+        # The PRD exists (get_by_id succeeds) but persistence returns None — a
+        # server fault, surfaced as 500 rather than a misleading 404.
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
+        mock_get_provider.return_value = mock_provider
+        record = prd_module.store(
+            test_client.workspace, SAMPLE_PRD, "Invoice SaaS", {}
+        )
+        response = test_client.post(
+            "/api/v2/prd/stress-test/refine",
+            json={
+                "prd_id": record.id,
+                "answers": [
+                    {"label": "AUTH SCOPE", "questions": ["?"], "answer": "y"}
+                ],
+            },
+        )
+        assert response.status_code == 500
+
     def test_refine_rejects_empty_label(self, test_client, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
         record = prd_module.store(
