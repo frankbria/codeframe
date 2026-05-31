@@ -118,9 +118,25 @@ export interface StressTestGoalAnalyzedEvent {
   ambiguities_so_far: number;
 }
 
+export type AmbiguitySeverity = 'blocking' | 'warning';
+
+/** A single ambiguity surfaced by the stress-test, rendered as an answerable
+ *  card in the results view (issue #562). Mirrors `ambiguity_to_dict` in
+ *  codeframe/core/prd_stress_test.py. */
+export interface StressTestAmbiguity {
+  id: string;
+  label: string;
+  source_node_title: string;
+  questions: string[];
+  recommendation: string;
+  severity: AmbiguitySeverity;
+  resolved_answer: string | null;
+}
+
 export interface StressTestCompleteEvent {
   type: 'complete';
   ambiguity_count: number;
+  ambiguities: StressTestAmbiguity[];
   tech_spec_markdown: string;
   ambiguity_report: string;
 }

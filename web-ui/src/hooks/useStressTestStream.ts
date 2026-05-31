@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useEventSource } from './useEventSource';
-import type { StressTestEvent } from '@/types';
+import type { StressTestEvent, StressTestAmbiguity } from '@/types';
 
 // ── Hook state ────────────────────────────────────────────────────────────
 
@@ -11,6 +11,8 @@ export type StressTestStatus = 'idle' | 'streaming' | 'complete' | 'error';
 /** Decomposition results, retained for the results view (issue #562). */
 export interface StressTestResultData {
   ambiguityCount: number;
+  /** Structured ambiguities the results view renders as answerable cards. */
+  ambiguities: StressTestAmbiguity[];
   techSpecMarkdown: string;
   ambiguityReport: string;
 }
@@ -98,6 +100,7 @@ export function useStressTestStream(
         ]);
         setResult({
           ambiguityCount: event.ambiguity_count,
+          ambiguities: event.ambiguities ?? [],
           techSpecMarkdown: event.tech_spec_markdown,
           ambiguityReport: event.ambiguity_report,
         });

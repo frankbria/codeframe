@@ -136,6 +136,12 @@ export default function PrdPage() {
     setVersionHistoryOpen(false);
   };
 
+  const handleStressTestRefined = (newPrd: PrdResponse) => {
+    // The refine endpoint creates a new PRD version; reflect it in the editor.
+    mutatePrd(newPrd, false);
+    setStressTestOpen(false);
+  };
+
   const handleGenerateTasks = async () => {
     if (!workspacePath || !prd) return;
     setIsGeneratingTasks(true);
@@ -201,6 +207,8 @@ export default function PrdPage() {
           open={stressTestOpen}
           onOpenChange={setStressTestOpen}
           workspacePath={workspacePath}
+          prdId={hasPrd && prd ? prd.id : null}
+          onRefined={handleStressTestRefined}
         />
       </div>
     </main>

@@ -93,6 +93,14 @@ def mock_provider():
                     "classification": "atomic",
                     "complexity_hint": "Low",
                 })
+        # Ambiguity resolution (refine) — return a clearly-rewritten PRD that is
+        # long enough to pass resolve_ambiguities_into_prd's truncation guard.
+        elif "update the prd" in (system or "").lower():
+            response.content = (
+                "# Invoice SaaS (Updated)\n\n"
+                "## Authentication\nEmail/password with JWT sessions.\n\n"
+                + SAMPLE_PRD
+            )
         else:
             response.content = json.dumps(
                 {"classification": "atomic", "complexity_hint": "Low"}
@@ -239,3 +247,140 @@ class TestStressTestDisconnect:
         ]
         types = [json.loads(f[len("data:"):].strip())["type"] for f in frames]
         assert types[-1] == "complete"
+
+
+class TestRefineEndpoint:
+    """POST /api/v2/prd/stress-test/refine folds answers into a new PRD version."""
+
+    @patch("codeframe.adapters.llm.get_provider")
+    def test_refine_creates_new_version(
+        self, mock_get_provider, test_client, mock_provider, monkeypatch
+    ):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
+        mock_get_provider.return_value = mock_provider
+        record = prd_module.store(
+            test_client.workspace, SAMPLE_PRD, "Invoice SaaS", {}
+        )
+
+        response = test_client.post(
+            "/api/v2/prd/stress-test/refine",
+            json={
+                "prd_id": record.id,
+                "answers": [
+                    {
+                        "label": "AUTH SCOPE",
+                        "questions": ["Email/password or OAuth?"],
+                        "answer": "Email/password with JWT sessions",
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        # A new version was created and its content is the LLM-refined PRD.
+        assert body["version"] == record.version + 1
+        assert "Updated" in body["content"]
+
+    def test_refine_unknown_prd_returns_404(self, test_client, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
+        response = test_client.post(
+            "/api/v2/prd/stress-test/refine",
+            json={
+                "prd_id": "does-not-exist",
+                "answers": [
+                    {"label": "X", "questions": ["?"], "answer": "y"}
+                ],
+            },
+        )
+        assert response.status_code == 404
+
+    def test_refine_missing_api_key_returns_400(self, test_client, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        record = prd_module.store(
+            test_client.workspace, SAMPLE_PRD, "Invoice SaaS", {}
+        )
+        response = test_client.post(
+            "/api/v2/prd/stress-test/refine",
+            json={
+                "prd_id": record.id,
+                "answers": [
+                    {"label": "X", "questions": ["?"], "answer": "y"}
+                ],
+            },
+        )
+        assert response.status_code == 400
+
+    @patch("codeframe.adapters.llm.get_provider")
+    def test_refine_no_change_returns_502(
+        self, mock_get_provider, test_client, monkeypatch
+    ):
+        # When the LLM rewrite is truncated, resolve_ambiguities_into_prd returns
+        # the original content; the endpoint must surface that instead of saving
+        # a no-op version.
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
+        record = prd_module.store(
+            test_client.workspace, SAMPLE_PRD, "Invoice SaaS", {}
+        )
+
+        truncating = MagicMock()
+        # A short rewrite trips resolve_ambiguities_into_prd's truncation guard,
+        # so it falls back to the original content (no change).
+        truncating.complete.return_value = MagicMock(content="too short")
+        mock_get_provider.return_value = truncating
+
+        response = test_client.post(
+            "/api/v2/prd/stress-test/refine",
+            json={
+                "prd_id": record.id,
+                "answers": [
+                    {"label": "X", "questions": ["?"], "answer": "y"}
+                ],
+            },
+        )
+        assert response.status_code == 502
+        # No extra version should have been persisted.
+        versions = prd_module.get_versions(test_client.workspace, record.id)
+        assert len(versions) == 1
+
+    def test_refine_rejects_whitespace_only_answer(self, test_client, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
+        record = prd_module.store(
+            test_client.workspace, SAMPLE_PRD, "Invoice SaaS", {}
+        )
+        response = test_client.post(
+            "/api/v2/prd/stress-test/refine",
+            json={
+                "prd_id": record.id,
+                "answers": [
+                    {"label": "X", "questions": ["?"], "answer": "   "}
+                ],
+            },
+        )
+        assert response.status_code == 422
+
+    def test_refine_requires_at_least_one_answer(self, test_client, monkeypatch):
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
+        record = prd_module.store(
+            test_client.workspace, SAMPLE_PRD, "Invoice SaaS", {}
+        )
+        response = test_client.post(
+            "/api/v2/prd/stress-test/refine",
+            json={"prd_id": record.id, "answers": []},
+        )
+        assert response.status_code == 422
+
+    def test_refine_route_not_shadowed_by_prd_id(
+        self, test_client, monkeypatch
+    ):
+        # "stress-test/refine" must not be matched as GET /{prd_id}; a POST to
+        # the refine path with a missing PRD should 404 from the refine handler
+        # (not 405 method-not-allowed from a different route).
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake")
+        response = test_client.post(
+            "/api/v2/prd/stress-test/refine",
+            json={
+                "prd_id": "missing",
+                "answers": [{"label": "X", "questions": [], "answer": "y"}],
+            },
+        )
+        assert response.status_code == 404

@@ -16,6 +16,8 @@ export type {
   DiscoveryMessage,
   DiscoveryRole,
   DiscoveryState,
+  AmbiguitySeverity,
+  StressTestAmbiguity,
   StressTestEventType,
   StressTestGoalsExtractedEvent,
   StressTestGoalAnalyzedEvent,

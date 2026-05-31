@@ -500,6 +500,21 @@ export const prdApi = {
     });
     return response.data;
   },
+
+  /** Refine a PRD by folding in answered stress-test ambiguities (#562).
+   *  Returns the newly-created PRD version. */
+  refineStressTest: async (
+    prdId: string,
+    workspacePath: string,
+    answers: { label: string; questions: string[]; answer: string }[]
+  ): Promise<PrdResponse> => {
+    const response = await api.post<PrdResponse>(
+      '/api/v2/prd/stress-test/refine',
+      { prd_id: prdId, answers },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
 };
 
 // Discovery API methods
