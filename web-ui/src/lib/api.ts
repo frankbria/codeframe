@@ -76,6 +76,8 @@ import type {
   TestWebhookResponse,
   GitHubConnectResponse,
   GitHubIntegrationStatus,
+  GitHubIssuesResponse,
+  GitHubIssuesParams,
 } from '@/types';
 
 // FastAPI validation error format
@@ -1014,6 +1016,27 @@ export const integrationsApi = {
     await api.delete('/api/v2/integrations/github/disconnect', {
       params: { workspace_path: workspacePath },
     });
+  },
+
+  // List the connected repo's open issues for the import browser (issue #564).
+  getIssues: async (
+    workspacePath: string,
+    params: GitHubIssuesParams = {}
+  ): Promise<GitHubIssuesResponse> => {
+    const { page = 1, perPage = 25, search = '', label = '' } = params;
+    const response = await api.get<GitHubIssuesResponse>(
+      '/api/v2/integrations/github/issues',
+      {
+        params: {
+          workspace_path: workspacePath,
+          page,
+          per_page: perPage,
+          search,
+          label,
+        },
+      }
+    );
+    return response.data;
   },
 };
 

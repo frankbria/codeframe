@@ -241,3 +241,124 @@ class TestDisconnect:
     def test_disconnect_when_not_connected_is_ok(self, client):
         r = client.delete("/api/v2/integrations/github/disconnect")
         assert r.status_code == 204
+
+
+def _connect(client, monkeypatch, repo="acme/app"):
+    """Helper: establish a connected workspace (PAT + repo metadata stored)."""
+    _mock_validate(monkeypatch)
+    client.post(
+        "/api/v2/integrations/github/connect",
+        json={"pat": VALID_PAT, "repo": repo},
+    )
+
+
+def _mock_list_issues(monkeypatch, *, calls=None, result=None, exc=None):
+    """Patch the issues service used by the router. Records call kwargs."""
+    from codeframe.ui.routers import github_integrations_v2
+
+    async def fake(pat, repo, **kwargs):
+        if calls is not None:
+            calls.append({"pat": pat, "repo": repo, **kwargs})
+        if exc is not None:
+            raise exc
+        return result if result is not None else ([], 0)
+
+    monkeypatch.setattr(github_integrations_v2, "list_issues", fake)
+
+
+def _clear_issue_cache():
+    from codeframe.ui.routers import github_integrations_v2
+
+    github_integrations_v2._ISSUE_CACHE.clear()
+
+
+class TestListIssues:
+    def test_requires_connection(self, client, monkeypatch):
+        _clear_issue_cache()
+        # Not connected: no PAT, no repo metadata.
+        r = client.get("/api/v2/integrations/github/issues")
+        assert r.status_code == 409
+
+    def test_returns_issues_when_connected(self, client, monkeypatch):
+        _clear_issue_cache()
+        _connect(client, monkeypatch)
+        sample = (
+            [
+                {
+                    "number": 42,
+                    "title": "Fix login bug",
+                    "labels": ["bug"],
+                    "assignee": "alice",
+                    "created_at": "2026-05-01T12:00:00Z",
+                    "html_url": "https://github.com/acme/app/issues/42",
+                }
+            ],
+            1,
+        )
+        _mock_list_issues(monkeypatch, result=sample)
+        r = client.get("/api/v2/integrations/github/issues")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total"] == 1
+        assert data["page"] == 1
+        assert data["per_page"] == 25
+        assert data["issues"][0]["number"] == 42
+        assert data["issues"][0]["assignee"] == "alice"
+
+    def test_forwards_pagination_and_filters(self, client, monkeypatch):
+        _clear_issue_cache()
+        _connect(client, monkeypatch)
+        calls: list = []
+        _mock_list_issues(monkeypatch, calls=calls, result=([], 0))
+        client.get(
+            "/api/v2/integrations/github/issues"
+            "?page=3&per_page=10&search=login&label=bug"
+        )
+        assert calls[0]["repo"] == "acme/app"
+        assert calls[0]["page"] == 3
+        assert calls[0]["per_page"] == 10
+        assert calls[0]["search"] == "login"
+        assert calls[0]["label"] == "bug"
+
+    def test_per_page_is_clamped(self, client, monkeypatch):
+        _clear_issue_cache()
+        _connect(client, monkeypatch)
+        calls: list = []
+        _mock_list_issues(monkeypatch, calls=calls, result=([], 0))
+        client.get("/api/v2/integrations/github/issues?per_page=500")
+        assert calls[0]["per_page"] == 100
+
+    def test_response_caches_within_ttl(self, client, monkeypatch):
+        _clear_issue_cache()
+        _connect(client, monkeypatch)
+        calls: list = []
+        _mock_list_issues(monkeypatch, calls=calls, result=([], 0))
+        client.get("/api/v2/integrations/github/issues?page=1")
+        client.get("/api/v2/integrations/github/issues?page=1")
+        # Second identical request served from the 60s cache → no 2nd call.
+        assert len(calls) == 1
+
+    def test_invalid_token_maps_to_401(self, client, monkeypatch):
+        _clear_issue_cache()
+        _connect(client, monkeypatch)
+        from codeframe.core.github_connect_service import InvalidTokenError
+
+        _mock_list_issues(monkeypatch, exc=InvalidTokenError("bad"))
+        r = client.get("/api/v2/integrations/github/issues")
+        assert r.status_code == 401
+
+    def test_insufficient_scope_maps_to_403(self, client, monkeypatch):
+        _clear_issue_cache()
+        _connect(client, monkeypatch)
+        from codeframe.core.github_connect_service import InsufficientScopeError
+
+        _mock_list_issues(monkeypatch, exc=InsufficientScopeError("nope"))
+        r = client.get("/api/v2/integrations/github/issues")
+        assert r.status_code == 403
+
+    def test_pat_never_echoed(self, client, monkeypatch):
+        _clear_issue_cache()
+        _connect(client, monkeypatch)
+        _mock_list_issues(monkeypatch, result=([], 0))
+        r = client.get("/api/v2/integrations/github/issues")
+        assert VALID_PAT not in r.text
