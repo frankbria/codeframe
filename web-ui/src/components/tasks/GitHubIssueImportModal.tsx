@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import useSWR from 'swr';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNowStrict } from 'date-fns';
 import {
   Search01Icon,
   ArrowLeft01Icon,
@@ -311,21 +311,29 @@ export function GitHubIssueImportModal({
   );
 }
 
-/** Render an ISO timestamp as a short relative age, tolerating bad input. */
+const AGE_UNIT_ABBR: Record<string, string> = {
+  second: 's',
+  minute: 'm',
+  hour: 'h',
+  day: 'd',
+  week: 'w',
+  month: 'mo',
+  year: 'y',
+};
+
+/** Render an ISO timestamp as a compact relative age (e.g. "3d", "2mo").
+ *
+ * Uses the *strict* formatter so there are no "about "/"almost "/"less than a
+ * minute" prefixes to mangle; output is always "<n> <unit>" which we then
+ * abbreviate. Tolerates empty/invalid input by returning "".
+ */
 function formatAge(iso: string): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return formatDistanceToNow(d, { addSuffix: false })
-    .replace('about ', '')
-    .replace(' months', 'mo')
-    .replace(' month', 'mo')
-    .replace(' days', 'd')
-    .replace(' day', 'd')
-    .replace(' years', 'y')
-    .replace(' year', 'y')
-    .replace(' hours', 'h')
-    .replace(' hour', 'h')
-    .replace(' minutes', 'm')
-    .replace(' minute', 'm');
+  const strict = formatDistanceToNowStrict(d); // e.g. "3 days", "1 minute"
+  const match = strict.match(/^(\d+)\s+(\w+?)s?$/);
+  if (!match) return strict;
+  const [, count, unit] = match;
+  return `${count}${AGE_UNIT_ABBR[unit] ?? unit}`;
 }
