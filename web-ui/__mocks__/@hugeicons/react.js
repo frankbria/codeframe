@@ -78,4 +78,6 @@ module.exports = {
   ChartLineData01Icon: createIconMock('ChartLineData01Icon'),
   // NotificationCenter
   Notification02Icon: createIconMock('Notification02Icon'),
+  // GitHub issue import (issue #564)
+  GithubIcon: createIconMock('GithubIcon'),
 };

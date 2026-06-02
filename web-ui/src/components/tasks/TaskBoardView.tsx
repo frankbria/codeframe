@@ -9,9 +9,10 @@ import { TaskDetailModal } from './TaskDetailModal';
 import { TaskFilters } from './TaskFilters';
 import { BatchActionsBar } from './BatchActionsBar';
 import { BulkActionConfirmDialog, type BulkActionType } from './BulkActionConfirmDialog';
-import { Cancel01Icon, Task01Icon } from '@hugeicons/react';
+import { GitHubIssueImportModal } from './GitHubIssueImportModal';
+import { Cancel01Icon, Task01Icon, GithubIcon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
-import { tasksApi, prdApi, costsApi } from '@/lib/api';
+import { tasksApi, prdApi, costsApi, integrationsApi } from '@/lib/api';
 import { useRequirementsLookup } from '@/hooks/useRequirementsLookup';
 import type {
   TaskStatus,
@@ -21,6 +22,8 @@ import type {
   BatchStrategy,
   ApiError,
   PrdListResponse,
+  GitHubIntegrationStatus,
+  GitHubIssue,
 } from '@/types';
 
 interface TaskBoardViewProps {
@@ -64,6 +67,14 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   );
   const hasPrd = (prdData?.total ?? 0) > 0;
 
+  // GitHub connection status (issue #564) — gates the "Import from GitHub"
+  // button. Non-blocking: if this fails the board still renders without it.
+  const { data: ghStatus } = useSWR<GitHubIntegrationStatus, ApiError>(
+    `/api/v2/integrations/github/status?path=${workspacePath}`,
+    () => integrationsApi.getStatus(workspacePath)
+  );
+  const githubConnected = ghStatus?.connected === true;
+
   // ─── Filter state ──────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<TaskStatus | null>(null);
@@ -83,6 +94,15 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
 
   // ─── Detail modal state ────────────────────────────────────────
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+
+  // ─── GitHub issue import modal (issue #564) ────────────────────
+  const [importModalOpen, setImportModalOpen] = useState(false);
+
+  // The actual import flow lands in #565; for now selecting + confirming
+  // simply closes the modal (the browser/multi-select is the #564 deliverable).
+  const handleImportIssues = useCallback((_selected: GitHubIssue[]) => {
+    setImportModalOpen(false);
+  }, []);
 
   // ─── Error state for actions ───────────────────────────────────
   const [actionError, setActionError] = useState<string | null>(null);
@@ -342,6 +362,15 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
             {tasks.length} task{tasks.length !== 1 ? 's' : ''} total
           </p>
         </div>
+        {githubConnected && (
+          <Button
+            variant="outline"
+            onClick={() => setImportModalOpen(true)}
+          >
+            <GithubIcon className="mr-2 h-4 w-4" />
+            Import from GitHub
+          </Button>
+        )}
       </div>
 
       {/* Filters + batch actions */}
@@ -450,6 +479,15 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         onExecute={handleExecute}
         onStatusChange={handleStatusChange}
         onOpenTask={handleTaskClick}
+      />
+
+      {/* GitHub issue import browser (issue #564) */}
+      <GitHubIssueImportModal
+        open={importModalOpen}
+        workspacePath={workspacePath}
+        repo={ghStatus?.repo}
+        onClose={() => setImportModalOpen(false)}
+        onImport={handleImportIssues}
       />
 
       {/* Bulk action confirmation */}

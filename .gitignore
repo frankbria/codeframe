@@ -84,7 +84,9 @@ Thumbs.db
 .codeframe/
 .agent-tasks/
 # Local planning scratch (issue-lifecycle todo.md, migration notes) — not source.
-tasks/
+# Anchored to repo root so it does NOT also ignore nested source dirs such as
+# web-ui/src/components/tasks/.
+/tasks/
 
 # TestSprite Specific
 testsprite_tests/tmp/config.json

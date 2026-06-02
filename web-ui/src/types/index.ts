@@ -676,6 +676,30 @@ export interface GitHubIntegrationStatus {
   owner_avatar_url: string | null;
 }
 
+// GitHub issue browser (issue #564)
+export interface GitHubIssue {
+  number: number;
+  title: string;
+  labels: string[];
+  assignee: string | null;
+  created_at: string;
+  html_url: string;
+}
+
+export interface GitHubIssuesResponse {
+  issues: GitHubIssue[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface GitHubIssuesParams {
+  page?: number;
+  perPage?: number;
+  search?: string;
+  label?: string;
+}
+
 // Cost analytics types (issue #557)
 export interface DailyCostPoint {
   date: string; // ISO YYYY-MM-DD

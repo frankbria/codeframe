@@ -4,6 +4,7 @@ Routes (prefix ``/api/v2/integrations/github``):
     POST   /connect      - Validate PAT against repo, store PAT, save repo metadata
     DELETE /disconnect   - Clear stored PAT + repo metadata
     GET    /status       - Report connection status (never exposes the PAT)
+    GET    /issues       - List the connected repo's open issues (#564)
 
 The PAT is stored machine-wide via ``CredentialManager`` under
 ``CredentialProvider.GIT_GITHUB`` — the same slot the API Keys settings tab
@@ -13,9 +14,10 @@ response.
 """
 
 import logging
-from typing import Optional
+import time
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from codeframe.core.credentials import CredentialManager, CredentialProvider
@@ -27,6 +29,7 @@ from codeframe.core.github_connect_service import (
     parse_repo,
     validate_connection,
 )
+from codeframe.core.github_issues_service import list_issues
 from codeframe.core.github_integration_config import (
     clear_github_integration_config,
     load_github_integration_config,
@@ -67,6 +70,45 @@ class StatusResponse(BaseModel):
     repo: Optional[str] = None
     owner_login: Optional[str] = None
     owner_avatar_url: Optional[str] = None
+
+
+class GitHubIssueItem(BaseModel):
+    number: int
+    title: str
+    labels: list[str]
+    assignee: Optional[str] = None
+    created_at: str
+    html_url: str
+
+
+class GitHubIssuesResponse(BaseModel):
+    issues: list[GitHubIssueItem]
+    total: int
+    page: int
+    per_page: int
+
+
+# In-process TTL cache for issue listings (#564). Keyed by the full query
+# (repo + page + per_page + search + label); entries expire after 60s to avoid
+# hammering GitHub's rate limit on repeated browses. Module-level so it is
+# shared across requests within the same server process.
+_ISSUE_CACHE_TTL_SECONDS = 60.0
+_ISSUE_CACHE: dict[str, tuple[float, Any]] = {}
+
+
+def _issue_cache_get(key: str) -> Optional[Any]:
+    entry = _ISSUE_CACHE.get(key)
+    if entry is None:
+        return None
+    expires_at, payload = entry
+    if time.monotonic() >= expires_at:
+        _ISSUE_CACHE.pop(key, None)
+        return None
+    return payload
+
+
+def _issue_cache_set(key: str, payload: Any) -> None:
+    _ISSUE_CACHE[key] = (time.monotonic() + _ISSUE_CACHE_TTL_SECONDS, payload)
 
 
 @router.get("/status", response_model=StatusResponse)
@@ -216,3 +258,83 @@ async def disconnect(
         if "no such" not in msg and "not found" not in msg:
             logger.warning("Failed to delete GitHub PAT on disconnect: %s", e)
     return Response(status_code=204)
+
+
+@router.get("/issues", response_model=GitHubIssuesResponse)
+@rate_limit_standard()
+async def get_issues(
+    request: Request,
+    page: int = Query(1, ge=1, description="1-indexed page number"),
+    per_page: int = Query(25, description="Page size (clamped to 1..100)"),
+    search: str = Query("", description="Free-text title/body search"),
+    label: str = Query("", description="Filter by a single label name"),
+    workspace: Workspace = Depends(get_v2_workspace),
+    manager: CredentialManager = Depends(get_credential_manager),
+) -> GitHubIssuesResponse:
+    """List the connected repository's **open** issues for the import browser.
+
+    Requires an established connection (#563): repo metadata in
+    ``.codeframe/github_integration.json`` AND a stored GitHub PAT. Responses
+    are cached in-process for 60s keyed by the full query to avoid GitHub
+    rate-limit pressure during paging/searching. The PAT is never returned.
+    """
+    cfg = load_github_integration_config(workspace)
+    pat = manager.get_credential(CredentialProvider.GIT_GITHUB)
+    if cfg is None or not pat:
+        raise HTTPException(
+            status_code=409,
+            detail=api_error(
+                "No GitHub repository is connected. Connect one in Settings → "
+                "Integrations first.",
+                ErrorCodes.CONFLICT,
+            ),
+        )
+
+    # GitHub caps per_page at 100; clamp to a sane 1..100 window.
+    per_page = max(1, min(per_page, 100))
+    repo = cfg["repo"]
+
+    cache_key = f"{repo}|{page}|{per_page}|{search}|{label}"
+    cached = _issue_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        issues, total = await list_issues(
+            pat,
+            repo,
+            page=page,
+            per_page=per_page,
+            search=search,
+            label=label,
+        )
+    except ValueError as e:
+        # Stored repo metadata is malformed — surface as a conflict, not a 500.
+        raise HTTPException(
+            status_code=409,
+            detail=api_error(str(e), ErrorCodes.CONFLICT),
+        )
+    except InvalidTokenError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR),
+        )
+    except InsufficientScopeError as e:
+        raise HTTPException(
+            status_code=403,
+            detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR),
+        )
+    except GitHubConnectError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=api_error(str(e), ErrorCodes.EXECUTION_FAILED),
+        )
+
+    response = GitHubIssuesResponse(
+        issues=[GitHubIssueItem(**issue) for issue in issues],
+        total=total,
+        page=page,
+        per_page=per_page,
+    )
+    _issue_cache_set(cache_key, response)
+    return response
