@@ -205,7 +205,7 @@ These are items that were considered and excluded because they do not serve the 
 | 5.2 | Cost analytics | ✅ Complete | #557–558 |
 | 5.3 | Async notifications | ✅ Complete (browser + in-app center #559, webhook #560) | #559–560 |
 | 5.4 | PRD stress-test web UI | ✅ Complete (trigger + streaming #561; results view + refinement #562) | #561–562 |
-| 5.5 | GitHub Issues import | ❌ Not started | #563–565 |
+| 5.5 | GitHub Issues import | 🚧 In progress (repo connection via PAT #563) | #563–565 |
 
 **Current focus**: Phase 4A — PR status tracking + PROOF9 merge gate.
 
