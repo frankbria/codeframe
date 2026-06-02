@@ -146,6 +146,10 @@ async def connect(
         )
 
     # Validation passed — store the PAT (machine-wide) and repo metadata.
+    # The GIT_GITHUB slot is shared machine-wide with the API Keys tab, so
+    # capture any prior token first to restore it if the config write fails —
+    # never blindly delete an unrelated, previously working credential.
+    prior_pat = manager.get_credential(CredentialProvider.GIT_GITHUB)
     try:
         manager.set_credential(CredentialProvider.GIT_GITHUB, body.pat)
     except Exception as e:
@@ -168,9 +172,14 @@ async def connect(
         )
     except OSError as e:
         # Roll back the credential so we don't leave a half-connected state.
+        # Restore the prior token if there was one; only delete when the slot
+        # was empty before this request.
         logger.error("Failed to save integration config: %s", e, exc_info=True)
         try:
-            manager.delete_credential(CredentialProvider.GIT_GITHUB)
+            if prior_pat is not None:
+                manager.set_credential(CredentialProvider.GIT_GITHUB, prior_pat)
+            else:
+                manager.delete_credential(CredentialProvider.GIT_GITHUB)
         except Exception:
             pass
         raise HTTPException(

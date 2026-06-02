@@ -189,6 +189,37 @@ class TestConnect:
         )
         assert manager.get_credential(CredentialProvider.GIT_GITHUB) is None
 
+    def test_config_save_failure_restores_prior_pat(
+        self, client, manager, monkeypatch
+    ):
+        """A config-write failure must not clobber a pre-existing GitHub PAT.
+
+        The PAT slot is machine-wide (shared with the API Keys tab); rollback
+        must restore the prior token rather than blindly deleting it.
+        """
+        from codeframe.core.credentials import CredentialProvider
+        from codeframe.ui.routers import github_integrations_v2
+
+        prior = "ghp_preexisting9876543210"
+        manager.set_credential(CredentialProvider.GIT_GITHUB, prior)
+
+        _mock_validate(monkeypatch)
+
+        def boom(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(
+            github_integrations_v2, "save_github_integration_config", boom
+        )
+
+        r = client.post(
+            "/api/v2/integrations/github/connect",
+            json={"pat": VALID_PAT, "repo": "acme/app"},
+        )
+        assert r.status_code == 500
+        # Prior credential preserved, not wiped.
+        assert manager.get_credential(CredentialProvider.GIT_GITHUB) == prior
+
 
 class TestDisconnect:
     def test_disconnect_clears_credential_and_config(
