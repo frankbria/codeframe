@@ -74,6 +74,8 @@ import type {
   NotificationSettingsResponse,
   UpdateNotificationSettingsRequest,
   TestWebhookResponse,
+  GitHubConnectResponse,
+  GitHubIntegrationStatus,
 } from '@/types';
 
 // FastAPI validation error format
@@ -980,6 +982,38 @@ export const notificationsApi = {
       { params: { workspace_path: workspacePath } }
     );
     return response.data;
+  },
+};
+
+// GitHub integration API (issue #563)
+export const integrationsApi = {
+  getStatus: async (
+    workspacePath: string
+  ): Promise<GitHubIntegrationStatus> => {
+    const response = await api.get<GitHubIntegrationStatus>(
+      '/api/v2/integrations/github/status',
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  connect: async (
+    workspacePath: string,
+    pat: string,
+    repo: string
+  ): Promise<GitHubConnectResponse> => {
+    const response = await api.post<GitHubConnectResponse>(
+      '/api/v2/integrations/github/connect',
+      { pat, repo },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  disconnect: async (workspacePath: string): Promise<void> => {
+    await api.delete('/api/v2/integrations/github/disconnect', {
+      params: { workspace_path: workspacePath },
+    });
   },
 };
 

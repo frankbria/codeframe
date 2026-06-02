@@ -29,6 +29,7 @@ from codeframe.ui.routers import (
     events_v2,
     gates_v2,
     git_v2,
+    github_integrations_v2,
     interactive_sessions_v2,
     pr_v2,
     prd_v2,
@@ -257,6 +258,10 @@ OPENAPI_TAGS = [
     {
         "name": "proof-v2",
         "description": "PROOF9 quality system — capture requirements from glitches, run proof obligations, manage waivers, and query evidence.",
+    },
+    {
+        "name": "integrations",
+        "description": "External service integrations — connect a GitHub repository via Personal Access Token for issue import.",
     },
 ]
 
@@ -491,6 +496,7 @@ app.include_router(environment_v2.router)   # /api/v2/env
 app.include_router(events_v2.router)        # /api/v2/events
 app.include_router(gates_v2.router)         # /api/v2/gates
 app.include_router(git_v2.router)           # /api/v2/git
+app.include_router(github_integrations_v2.router)  # /api/v2/integrations/github
 app.include_router(interactive_sessions_v2.router)  # /api/v2/sessions
 app.include_router(session_chat_ws.router)          # /ws/sessions/{id}/chat
 app.include_router(terminal_ws.router)              # /ws/sessions/{id}/terminal

@@ -656,6 +656,26 @@ export interface TestWebhookResponse {
   error: string | null;
 }
 
+// GitHub integration (issue #563)
+export interface GitHubConnectRequest {
+  pat: string;
+  repo: string;
+}
+
+export interface GitHubConnectResponse {
+  connected: boolean;
+  repo: string;
+  owner_login: string;
+  owner_avatar_url: string;
+}
+
+export interface GitHubIntegrationStatus {
+  connected: boolean;
+  repo: string | null;
+  owner_login: string | null;
+  owner_avatar_url: string | null;
+}
+
 // Cost analytics types (issue #557)
 export interface DailyCostPoint {
   date: string; // ISO YYYY-MM-DD
