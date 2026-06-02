@@ -16,7 +16,6 @@ Uses ``httpx.AsyncClient`` consistent with ``codeframe/git/github_integration.py
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import httpx
 
@@ -53,12 +52,25 @@ def parse_repo(repo: str) -> tuple[str, str]:
     """
     if not repo or "/" not in repo:
         raise ValueError(f"Invalid repository format: {repo!r}. Expected 'owner/repo'.")
+    # Reject pasted URLs (e.g. "https://github.com/acme/app" or "github.com/acme")
+    # which would otherwise parse to a bogus owner.
+    if "://" in repo or repo.strip().lower().startswith("http"):
+        raise ValueError(
+            f"Invalid repository format: {repo!r}. Expected 'owner/repo', not a URL."
+        )
     parts = repo.split("/")
     if len(parts) != 2:
         raise ValueError(f"Invalid repository format: {repo!r}. Expected 'owner/repo'.")
     owner, name = parts[0].strip(), parts[1].strip()
     if not owner or not name:
         raise ValueError(f"Invalid repository format: {repo!r}. Expected 'owner/repo'.")
+    # GitHub owners (users/orgs) cannot contain dots — a dotted owner means the
+    # user pasted a host like "github.com/acme". Repo names MAY contain dots.
+    if "." in owner:
+        raise ValueError(
+            f"Invalid repository format: {repo!r}. "
+            "Expected 'owner/repo' (did you paste a URL?)."
+        )
     return owner, name
 
 
@@ -75,7 +87,7 @@ async def validate_connection(
     pat: str,
     repo: str,
     *,
-    client: Optional[httpx.AsyncClient] = None,
+    client: httpx.AsyncClient | None = None,
 ) -> dict[str, str]:
     """Validate a PAT against a target repository and verify issues-read access.
 
@@ -106,8 +118,10 @@ async def validate_connection(
             repo_resp = await client.get(
                 f"{GITHUB_API_BASE}/repos/{owner}/{name}", headers=headers
             )
-        except httpx.HTTPError as exc:  # network/timeout — don't leak token in msg
-            logger.warning("GitHub repo lookup failed: %s", exc)
+        except httpx.HTTPError as exc:
+            # Log only the exception class — an httpx error's str() can embed the
+            # request (URL/headers, hence the PAT) depending on version/config.
+            logger.warning("GitHub repo lookup failed: %s", type(exc).__name__)
             raise GitHubConnectError("Could not reach GitHub. Try again later.")
 
         if repo_resp.status_code == 401:
@@ -138,7 +152,7 @@ async def validate_connection(
                 headers=headers,
             )
         except httpx.HTTPError as exc:
-            logger.warning("GitHub issues check failed: %s", exc)
+            logger.warning("GitHub issues check failed: %s", type(exc).__name__)
             raise GitHubConnectError("Could not reach GitHub. Try again later.")
 
         # 410 Gone == issues are disabled on the repo. The connection is still

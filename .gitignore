@@ -83,6 +83,8 @@ Thumbs.db
 !.beads/*.jsonl
 .codeframe/
 .agent-tasks/
+# Local planning scratch (issue-lifecycle todo.md, migration notes) — not source.
+tasks/
 
 # TestSprite Specific
 testsprite_tests/tmp/config.json

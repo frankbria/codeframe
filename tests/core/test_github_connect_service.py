@@ -45,6 +45,24 @@ class TestParseRepo:
         with pytest.raises(ValueError):
             parse_repo(bad)
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "github.com/acme",
+            "https://github.com/acme/app",
+            "http://github.com/acme",
+            "GITHUB.COM/acme",
+        ],
+    )
+    def test_rejects_url_paste(self, url):
+        """A pasted GitHub URL must not be silently accepted as owner/repo."""
+        with pytest.raises(ValueError):
+            parse_repo(url)
+
+    def test_allows_dotted_repo_name(self):
+        """Repo names may contain dots (only the owner is host-checked)."""
+        assert parse_repo("acme/my.app") == ("acme", "my.app")
+
 
 class TestValidateConnection:
     @pytest.mark.asyncio

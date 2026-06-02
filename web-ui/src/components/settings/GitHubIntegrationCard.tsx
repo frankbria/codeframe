@@ -66,10 +66,11 @@ export function GitHubIntegrationCard({
       setRepo('');
       toast.success(`Connected to ${result.repo}`);
     } catch (err) {
+      // Inline error is the primary signal here — the user is focused on the
+      // form, so we don't also fire a toast (avoids a duplicate message).
       const detail =
         (err as ApiError).detail || 'Failed to connect. Check the token and repo.';
       setFormError(detail);
-      toast.error(detail);
     } finally {
       setWorking(false);
     }
