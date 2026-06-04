@@ -14,6 +14,7 @@ response.
 """
 
 import logging
+import sqlite3
 import time
 from typing import Any, Optional
 
@@ -29,12 +30,18 @@ from codeframe.core.github_connect_service import (
     parse_repo,
     validate_connection,
 )
-from codeframe.core.github_issues_service import list_issues
+from codeframe.core.github_issues_service import (
+    IssueNotFoundError,
+    NotAnIssueError,
+    get_issue,
+    list_issues,
+)
 from codeframe.core.github_integration_config import (
     clear_github_integration_config,
     load_github_integration_config,
     save_github_integration_config,
 )
+from codeframe.core import tasks
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.ui.dependencies import get_v2_workspace
@@ -88,6 +95,24 @@ class GitHubIssuesResponse(BaseModel):
     per_page: int
 
 
+class ImportRequest(BaseModel):
+    issue_numbers: list[int] = Field(
+        ..., min_length=1, description="GitHub issue numbers to import as tasks"
+    )
+
+
+class ImportedTaskSummary(BaseModel):
+    task_id: str
+    issue_number: int
+    title: str
+
+
+class ImportResponse(BaseModel):
+    created: list[ImportedTaskSummary]
+    skipped: list[int]
+    total_created: int
+
+
 # In-process TTL cache for issue listings (#564). Keyed by the full query
 # (repo + page + per_page + search + label); entries expire after 60s to avoid
 # hammering GitHub's rate limit on repeated browses. Module-level so it is
@@ -109,6 +134,17 @@ def _issue_cache_get(key: str) -> Optional[Any]:
 
 def _issue_cache_set(key: str, payload: Any) -> None:
     _ISSUE_CACHE[key] = (time.monotonic() + _ISSUE_CACHE_TTL_SECONDS, payload)
+
+
+def _issue_cache_invalidate(repo: str) -> None:
+    """Drop all cached issue listings for ``repo``.
+
+    Called after an import so reopening the browse modal doesn't keep offering
+    just-imported issues as selectable (they would now be skipped as dupes).
+    """
+    prefix = f"{repo}|"
+    for key in [k for k in _ISSUE_CACHE if k.startswith(prefix)]:
+        _ISSUE_CACHE.pop(key, None)
 
 
 @router.get("/status", response_model=StatusResponse)
@@ -338,3 +374,159 @@ async def get_issues(
     )
     _issue_cache_set(cache_key, response)
     return response
+
+
+def _require_connection(
+    workspace: Workspace, manager: CredentialManager
+) -> tuple[str, str]:
+    """Return ``(repo, pat)`` for a connected workspace, or raise 409.
+
+    Mirrors the not-connected guard used by ``get_issues``: both per-workspace
+    repo metadata AND a stored PAT must be present.
+    """
+    cfg = load_github_integration_config(workspace)
+    pat = manager.get_credential(CredentialProvider.GIT_GITHUB)
+    if cfg is None or not pat:
+        raise HTTPException(
+            status_code=409,
+            detail=api_error(
+                "No GitHub repository is connected. Connect one in Settings → "
+                "Integrations first.",
+                ErrorCodes.CONFLICT,
+            ),
+        )
+    return cfg["repo"], pat
+
+
+def _map_github_error(e: Exception) -> HTTPException:
+    """Map a typed GitHub service error to an HTTPException (shared mapping)."""
+    if isinstance(e, InvalidTokenError):
+        return HTTPException(
+            status_code=401, detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR)
+        )
+    if isinstance(e, InsufficientScopeError):
+        return HTTPException(
+            status_code=403, detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR)
+        )
+    return HTTPException(
+        status_code=502, detail=api_error(str(e), ErrorCodes.EXECUTION_FAILED)
+    )
+
+
+@router.post("/import", response_model=ImportResponse)
+@rate_limit_ai()
+async def import_issues(
+    request: Request,
+    body: ImportRequest,
+    workspace: Workspace = Depends(get_v2_workspace),
+    manager: CredentialManager = Depends(get_credential_manager),
+) -> ImportResponse:
+    """Import selected GitHub issues as CodeFRAME tasks (issue #565).
+
+    Each issue becomes a task (title + body, with a best-effort ``Labels:``
+    footer) linked back to the issue via ``github_issue_number`` + ``external_url``.
+    Issues already imported into this workspace are skipped (duplicate-import
+    protection), keyed on the full issue URL so the same number in a different
+    repo is still importable.
+
+    The import is all-or-nothing on fetch: every selected issue is fetched and
+    de-duplicated *before* any task is created, so a single stale/inaccessible
+    issue fails the request cleanly without leaving a partial set of tasks
+    behind (which would confuse a retry with phantom duplicates).
+    """
+    repo, pat = _require_connection(workspace, manager)
+
+    skipped: list[int] = []
+    to_create: list[tuple[int, dict]] = []
+    seen_urls: set[str] = set()
+
+    # Phase 1 — fetch + de-dupe everything first. Any fetch error aborts here,
+    # before a single task has been created.
+    for number in body.issue_numbers:
+        try:
+            issue = await get_issue(pat, repo, number)
+        except ValueError as e:
+            # Malformed saved repo slug (parse_repo) — surface as a recoverable
+            # conflict like the browse endpoint, not a 500.
+            raise HTTPException(
+                status_code=409,
+                detail=api_error(str(e), ErrorCodes.CONFLICT),
+            )
+        except NotAnIssueError as e:
+            # A PR number slipped in (the browse UI filters PRs, so this only
+            # happens with a malformed/manual payload). Reject the request.
+            raise HTTPException(
+                status_code=422,
+                detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR),
+            )
+        except IssueNotFoundError as e:
+            # A stale/typo'd issue number — a client error, not a 502.
+            raise HTTPException(
+                status_code=404,
+                detail=api_error(str(e), ErrorCodes.NOT_FOUND),
+            )
+        except GitHubConnectError as e:
+            raise _map_github_error(e)
+
+        url = issue["html_url"]
+        # Skip both already-imported issues and in-payload duplicates (the same
+        # number repeated in one request must not create two tasks).
+        if url in seen_urls or tasks.get_by_external_url(workspace, url) is not None:
+            skipped.append(number)
+            continue
+        seen_urls.add(url)
+        to_create.append((number, issue))
+
+    # Phase 2 — create the tasks. Each create commits independently, so an
+    # unexpected mid-loop DB error (e.g. OperationalError on a locked DB) is
+    # rolled back below to preserve the all-or-nothing contract. (The
+    # URL-unique index additionally makes a retry idempotent.)
+    created: list[ImportedTaskSummary] = []
+    created_ids: list[str] = []
+    try:
+        for number, issue in to_create:
+            description = issue["body"] or ""
+            if issue["labels"]:
+                footer = "**Labels:** " + ", ".join(issue["labels"])
+                description = f"{description}\n\n{footer}" if description else footer
+
+            try:
+                task = tasks.create(
+                    workspace,
+                    title=issue["title"],
+                    description=description,
+                    github_issue_number=number,
+                    external_url=issue["html_url"],
+                )
+            except sqlite3.IntegrityError:
+                # A concurrent import (double-submit / second tab) created this
+                # task between our de-dupe read and now. The unique index on
+                # (workspace_id, external_url) makes that race a no-op: treat it
+                # as an already-imported skip rather than a duplicate task.
+                skipped.append(number)
+                continue
+
+            created_ids.append(task.id)
+            created.append(
+                ImportedTaskSummary(
+                    task_id=task.id, issue_number=number, title=task.title
+                )
+            )
+    except Exception:
+        # Roll back the tasks created so far so a mid-create failure never leaves
+        # a partial import behind.
+        for task_id in created_ids:
+            try:
+                tasks.delete(workspace, task_id)
+            except Exception:  # noqa: BLE001 - best-effort cleanup
+                logger.warning("Failed to roll back imported task %s", task_id)
+        raise
+
+    # Invalidate the browse cache so a re-open reflects current duplicate state.
+    # Always — even a skipped-only import (issues created by another tab/process)
+    # must drop the stale listing that still offers them as selectable.
+    _issue_cache_invalidate(repo)
+
+    return ImportResponse(
+        created=created, skipped=skipped, total_created=len(created)
+    )

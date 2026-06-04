@@ -37,6 +37,23 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT = 15.0
 
+
+class NotAnIssueError(Exception):
+    """The requested number refers to a pull request, not an issue (#565).
+
+    Intentionally NOT a ``GitHubConnectError`` subclass: callers map it to a
+    client error (the caller sent a PR number), not a GitHub upstream failure.
+    """
+
+
+class IssueNotFoundError(Exception):
+    """The requested issue number does not exist in the repo (404) (#565).
+
+    Intentionally NOT a ``GitHubConnectError`` subclass: a missing/stale issue
+    number is a client error (bad payload), not a GitHub upstream failure, so
+    callers map it to a 4xx rather than a 502.
+    """
+
 # Parse the ``page=N`` query param out of a Link header's rel="last" URL.
 _LAST_PAGE_RE = re.compile(r'[?&]page=(\d+)[^>]*>;\s*rel="last"')
 
@@ -188,6 +205,207 @@ async def _list_issues(
     issues = [_simplify(it) for it in raw_items if "pull_request" not in it]
     total = _total_from_link_header(resp.headers.get("Link"), len(issues), per_page)
     return issues, total
+
+
+class GitHubIssueDetail(TypedDict):
+    number: int
+    title: str
+    body: str
+    labels: list[str]
+    html_url: str
+
+
+async def get_issue(
+    pat: str,
+    repo: str,
+    number: int,
+    *,
+    client: Optional[httpx.AsyncClient] = None,
+) -> GitHubIssueDetail:
+    """Fetch a single issue's details for import (issue #565).
+
+    Unlike the list endpoint, this returns the issue ``body`` so the importer
+    can populate the task description.
+
+    Args:
+        pat: GitHub Personal Access Token.
+        repo: Repository in ``owner/repo`` format.
+        number: Issue number to fetch.
+        client: Optional httpx client (injected by tests). When ``None`` a
+            short-lived client is created and closed internally.
+
+    Returns:
+        ``{number, title, body, labels, html_url}`` — ``body`` is normalized to
+        ``""`` when GitHub returns null.
+
+    Raises:
+        ValueError: if ``repo`` is not a valid ``owner/repo`` string.
+        InvalidTokenError: GitHub returned 401.
+        InsufficientScopeError: the token cannot read issues (403).
+        GitHubConnectError: any other non-success response or network error.
+    """
+    owner, name = parse_repo(repo)
+
+    own_client = client is None
+    if own_client:
+        client = httpx.AsyncClient(timeout=_TIMEOUT)
+    try:
+        try:
+            resp = await client.get(
+                f"{GITHUB_API_BASE}/repos/{owner}/{name}/issues/{number}",
+                headers=_headers(pat),
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("GitHub get issue failed: %s", type(exc).__name__)
+            raise GitHubConnectError("Could not reach GitHub. Try again later.")
+
+        # A 404 on /issues/{n} is ambiguous: the issue may genuinely not exist,
+        # OR the repo/token became inaccessible (renamed/deleted repo, rotated
+        # token). Probe the repo to tell a client typo (-> IssueNotFoundError,
+        # 404) apart from a broken integration (-> connect/auth error) so callers
+        # get the right recovery path. The probe only runs on the 404 path.
+        if resp.status_code == 404:
+            try:
+                repo_resp = await client.get(
+                    f"{GITHUB_API_BASE}/repos/{owner}/{name}", headers=_headers(pat)
+                )
+            except httpx.HTTPError as exc:
+                logger.warning("GitHub repo probe failed: %s", type(exc).__name__)
+                raise GitHubConnectError("Could not reach GitHub. Try again later.")
+            if repo_resp.status_code == 401:
+                raise InvalidTokenError("Invalid GitHub token.")
+            if repo_resp.status_code == 403:
+                raise InsufficientScopeError(
+                    "Token lacks access to this repository."
+                )
+            if repo_resp.status_code == 404:
+                raise GitHubConnectError(
+                    f"Repository '{repo}' is no longer accessible."
+                )
+            if repo_resp.status_code >= 400:
+                # Rate limit / 5xx / other failure on the probe — a real upstream
+                # problem, NOT a missing issue. Surface it as such so the caller
+                # retries rather than blaming the issue number.
+                raise GitHubConnectError(
+                    f"GitHub repo check returned status {repo_resp.status_code}."
+                )
+            # Repo probe succeeded (2xx) → the issue itself genuinely does not
+            # exist. (A 3xx would also land here, but GitHub answers repo lookups
+            # with 2xx/4xx, not redirects, for this endpoint.)
+            if repo_resp.status_code >= 300:
+                raise GitHubConnectError(
+                    f"GitHub repo check returned status {repo_resp.status_code}."
+                )
+            raise IssueNotFoundError(f"Issue #{number} was not found in '{repo}'.")
+        _raise_for_status(resp.status_code, context="get issue")
+
+        raw = resp.json()
+        if not isinstance(raw, dict):
+            raw = {}
+        # The issues endpoint also returns pull requests (a PR is an issue with a
+        # ``pull_request`` member). Reject them so the import stays consistent
+        # with ``list_issues`` (which excludes PRs) and never links a PR as an
+        # issue.
+        if "pull_request" in raw:
+            raise NotAnIssueError(f"#{number} is a pull request, not an issue.")
+        labels_raw = raw.get("labels") or []
+        labels = [
+            (lbl.get("name") if isinstance(lbl, dict) else str(lbl))
+            for lbl in labels_raw
+        ]
+        labels = [n for n in labels if n]
+        return {
+            "number": int(raw.get("number", number)),
+            "title": str(raw.get("title") or ""),
+            "body": str(raw.get("body") or ""),
+            "labels": labels,
+            "html_url": str(raw.get("html_url") or ""),
+        }
+    finally:
+        if own_client:
+            await client.aclose()
+
+
+async def close_issue(
+    pat: str,
+    repo: str,
+    number: int,
+    *,
+    comment: Optional[str] = None,
+    timeout: float = _TIMEOUT,
+    client: Optional[httpx.AsyncClient] = None,
+) -> bool:
+    """Close a GitHub issue, optionally posting a comment first (issue #565).
+
+    Args:
+        pat: GitHub Personal Access Token.
+        repo: Repository in ``owner/repo`` format.
+        number: Issue number to close.
+        comment: Optional comment body to post before closing.
+        timeout: HTTP timeout in seconds for the (self-created) client. Auto-close
+            passes a short value so a hung close never stalls a caller for long.
+        client: Optional httpx client (injected by tests). When ``None`` a
+            short-lived client is created and closed internally.
+
+    Returns:
+        ``True`` when the issue was closed.
+
+    Raises:
+        ValueError: if ``repo`` is not a valid ``owner/repo`` string.
+        InvalidTokenError: GitHub returned 401.
+        InsufficientScopeError: the token cannot write issues (403).
+        GitHubConnectError: any other non-success response or network error.
+    """
+    owner, name = parse_repo(repo)
+
+    own_client = client is None
+    if own_client:
+        client = httpx.AsyncClient(timeout=timeout)
+    try:
+        headers = _headers(pat)
+        base = f"{GITHUB_API_BASE}/repos/{owner}/{name}/issues/{number}"
+
+        if comment:
+            # Best-effort: the comment is cosmetic. A failure to post it (locked
+            # issue, repo with commenting disabled, transient error) must NOT
+            # prevent the close itself, which is the operation that matters.
+            try:
+                cresp = await client.post(
+                    f"{base}/comments", json={"body": comment}, headers=headers
+                )
+                if cresp.status_code >= 400:
+                    logger.warning(
+                        "GitHub issue comment returned %s; closing anyway.",
+                        cresp.status_code,
+                    )
+            except httpx.HTTPError as exc:
+                logger.warning(
+                    "GitHub issue comment failed (%s); closing anyway.",
+                    type(exc).__name__,
+                )
+
+        try:
+            resp = await client.patch(
+                base, json={"state": "closed"}, headers=headers
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("GitHub close issue failed: %s", type(exc).__name__)
+            raise GitHubConnectError("Could not reach GitHub. Try again later.")
+
+        _raise_for_status(resp.status_code, context="close issue")
+        # A redirect (3xx) — e.g. a moved/renamed/transferred repo — means the
+        # PATCH was NOT applied (httpx does not follow redirects by default), so
+        # the issue is still open. Treat it as a failure rather than reporting a
+        # silent success.
+        if resp.status_code >= 300:
+            raise GitHubConnectError(
+                f"GitHub close returned status {resp.status_code}; "
+                "issue was not closed (repository may have moved)."
+            )
+        return True
+    finally:
+        if own_client:
+            await client.aclose()
 
 
 async def _search_issues(

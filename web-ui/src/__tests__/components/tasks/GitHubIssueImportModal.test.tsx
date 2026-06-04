@@ -178,4 +178,25 @@ describe('GitHubIssueImportModal', () => {
     const lastCallKey = mockUseSWR.mock.calls.at(-1)?.[0];
     expect(lastCallKey).toBeNull();
   });
+
+  it('renders an inline import error and keeps the modal usable', () => {
+    mockSWRByPage({ 1: [issue(1, 'x')] }, 1);
+    render(
+      <GitHubIssueImportModal {...baseProps} importError="No GitHub repository is connected." />
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'No GitHub repository is connected.'
+    );
+    // The issue row is still rendered (selection preserved for a retry).
+    expect(screen.getByText('x')).toBeInTheDocument();
+  });
+
+  it('shows an importing progress label on the action button', () => {
+    mockSWRByPage({ 1: [issue(1, 'x')] }, 1);
+    render(<GitHubIssueImportModal {...baseProps} importing />);
+    expect(
+      screen.getByRole('button', { name: /importing/i })
+    ).toBeInTheDocument();
+  });
+
 });

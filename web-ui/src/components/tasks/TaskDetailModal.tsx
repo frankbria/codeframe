@@ -27,6 +27,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { STATUS_INFO } from '@/lib/taskStatusInfo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { GitHubIssueBadge } from './GitHubIssueBadge';
 import useSWR from 'swr';
 import { tasksApi } from '@/lib/api';
 import { useRequirementsLookup } from '@/hooks/useRequirementsLookup';
@@ -128,6 +130,21 @@ export function TaskDetailModal({
     }
   };
 
+  // Toggle "close GitHub issue when DONE" for imported tasks (#565). Optimistic:
+  // flip locally, then persist; revert on failure.
+  const handleToggleAutoClose = async (checked: boolean) => {
+    if (!task) return;
+    const previous = task.auto_close_github_issue ?? false;
+    setTask({ ...task, auto_close_github_issue: checked });
+    try {
+      await tasksApi.updateGitHubSettings(workspacePath, task.id, checked);
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setError(apiErr.detail || 'Failed to update GitHub setting');
+      setTask({ ...task, auto_close_github_issue: previous });
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
       <DialogContent className="max-w-xl">
@@ -208,6 +225,24 @@ export function TaskDetailModal({
                 </span>
               )}
             </div>
+
+            {/* GitHub issue linkage (#565) — badge + auto-close toggle */}
+            {task.github_issue_number != null && task.external_url && (
+              <div className="space-y-2 rounded-md border bg-muted/20 px-3 py-2.5">
+                <GitHubIssueBadge
+                  issueNumber={task.github_issue_number}
+                  issueUrl={task.external_url}
+                />
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox
+                    checked={task.auto_close_github_issue ?? false}
+                    onCheckedChange={(c) => handleToggleAutoClose(c === true)}
+                    aria-label="Close GitHub issue when task is marked DONE"
+                  />
+                  Close GitHub issue when task is marked DONE
+                </label>
+              </div>
+            )}
 
             {/* Dependencies — full list with status highlights and navigation */}
             {task.depends_on.length > 0 && (

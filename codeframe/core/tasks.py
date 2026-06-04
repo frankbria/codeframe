@@ -5,16 +5,22 @@ Handles task CRUD operations, status transitions, and task generation from PRD.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import asyncio
 import json
+import logging
 import re
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlparse
 
 from codeframe.core.state_machine import TaskStatus, validate_transition
 from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core.prd import PrdRecord
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -61,6 +67,8 @@ class Task:
     is_leaf: bool = True
     hierarchical_id: Optional[str] = None
     requirement_ids: list[str] = field(default_factory=list)
+    external_url: Optional[str] = None
+    auto_close_github_issue: bool = False
 
 
 def create(
@@ -79,6 +87,9 @@ def create(
     is_leaf: bool = True,
     hierarchical_id: Optional[str] = None,
     requirement_ids: Optional[list[str]] = None,
+    github_issue_number: Optional[int] = None,
+    external_url: Optional[str] = None,
+    auto_close_github_issue: bool = False,
 ) -> Task:
     """Create a new task.
 
@@ -113,10 +124,10 @@ def create(
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, parent_id, lineage, is_leaf, hierarchical_id, created_at, updated_at, requirement_ids)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, parent_id, lineage, is_leaf, hierarchical_id, created_at, updated_at, requirement_ids, github_issue_number, external_url, auto_close_github_issue)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, complexity_score, uncertainty_level, parent_id, json.dumps(lineage_list), 1 if is_leaf else 0, hierarchical_id, now, now, json.dumps(requirement_ids_list)),
+            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, complexity_score, uncertainty_level, parent_id, json.dumps(lineage_list), 1 if is_leaf else 0, hierarchical_id, now, now, json.dumps(requirement_ids_list), github_issue_number, external_url, 1 if auto_close_github_issue else 0),
         )
         conn.commit()
     finally:
@@ -139,6 +150,9 @@ def create(
         is_leaf=is_leaf,
         hierarchical_id=hierarchical_id,
         requirement_ids=requirement_ids_list,
+        github_issue_number=github_issue_number,
+        external_url=external_url,
+        auto_close_github_issue=auto_close_github_issue,
         created_at=datetime.fromisoformat(now),
         updated_at=datetime.fromisoformat(now),
     )
@@ -159,7 +173,7 @@ def get(workspace: Workspace, task_id: str) -> Optional[Task]:
 
     cursor.execute(
         """
-        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids
+        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
         FROM tasks
         WHERE workspace_id = ? AND id = ?
         """,
@@ -172,6 +186,90 @@ def get(workspace: Workspace, task_id: str) -> Optional[Task]:
         return None
 
     return _row_to_task(row)
+
+
+def get_by_external_url(
+    workspace: Workspace, external_url: str
+) -> Optional[Task]:
+    """Get a task previously imported from a given external (issue) URL.
+
+    Used for duplicate-import protection (issue #565). Keying on the full issue
+    URL — not just the issue number — keeps de-duplication correct when a
+    workspace is reconnected to a different repository (where the same issue
+    number refers to a different issue).
+
+    Args:
+        workspace: Workspace to query
+        external_url: The issue's ``html_url`` to look up
+
+    Returns:
+        The matching Task if one exists, otherwise None
+    """
+    conn = get_db_connection(workspace)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
+            FROM tasks
+            WHERE workspace_id = ? AND external_url = ?
+            LIMIT 1
+            """,
+            (workspace.id, external_url),
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return None
+
+    return _row_to_task(row)
+
+
+def update_auto_close(
+    workspace: Workspace,
+    task_id: str,
+    auto_close: bool,
+) -> Task:
+    """Update whether the linked GitHub issue should close when the task is DONE.
+
+    Args:
+        workspace: Target workspace
+        task_id: Task to update
+        auto_close: New auto-close setting
+
+    Returns:
+        Updated Task
+
+    Raises:
+        ValueError: If task not found
+    """
+    task = get(workspace, task_id)
+    if not task:
+        raise ValueError(f"Task not found: {task_id}")
+
+    now = _utc_now().isoformat()
+
+    conn = get_db_connection(workspace)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET auto_close_github_issue = ?, updated_at = ?
+            WHERE workspace_id = ? AND id = ?
+            """,
+            (1 if auto_close else 0, now, workspace.id, task_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    task.auto_close_github_issue = auto_close
+    task.updated_at = datetime.fromisoformat(now)
+
+    return task
 
 
 def list_tasks(
@@ -195,7 +293,7 @@ def list_tasks(
     if status:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
             FROM tasks
             WHERE workspace_id = ? AND status = ?
             ORDER BY priority ASC, created_at ASC
@@ -206,7 +304,7 @@ def list_tasks(
     else:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
             FROM tasks
             WHERE workspace_id = ?
             ORDER BY priority ASC, created_at ASC
@@ -287,7 +385,134 @@ def update_status(
     task.status = new_status
     task.updated_at = datetime.fromisoformat(now)
 
+    # On completion, best-effort close the linked GitHub issue when opted in
+    # (issue #565). Placed here — the single chokepoint every DONE transition
+    # flows through (HTTP, CLI, agent/batch via runtime.complete_run) — so the
+    # behavior is consistent regardless of how the task was completed.
+    if new_status == TaskStatus.DONE:
+        _dispatch_github_autoclose(workspace, task)
+
     return task
+
+
+def _repo_from_issue_url(url: Optional[str]) -> Optional[str]:
+    """Extract ``owner/repo`` from a GitHub issue ``html_url``.
+
+    e.g. ``https://github.com/acme/app/issues/12`` -> ``"acme/app"``. Returns
+    ``None`` when the URL is missing or not in the expected issue-URL shape.
+    """
+    if not url:
+        return None
+    try:
+        parts = urlparse(url).path.strip("/").split("/")
+    except (ValueError, AttributeError):
+        return None
+    # .../{owner}/{repo}/issues/{number}
+    if len(parts) >= 4 and parts[-2] == "issues":
+        return f"{parts[-4]}/{parts[-3]}"
+    return None
+
+
+def autoclose_if_done(workspace: Workspace, task: Task) -> None:
+    """Fire the GitHub auto-close when opting in on an already-DONE task (#565).
+
+    The normal path closes the issue on the DONE *transition*. But a user can
+    enable the auto-close toggle on a task that is already DONE — in which case
+    no transition occurs, so this is called explicitly to honor the intent.
+    Best-effort and fully guarded (no-op unless DONE + opted in + linked).
+    """
+    if task.status == TaskStatus.DONE:
+        _dispatch_github_autoclose(workspace, task)
+
+
+def _dispatch_github_autoclose(workspace: Workspace, task: Task) -> None:
+    """Best-effort close of the linked GitHub issue when a task is DONE (#565).
+
+    Mirrors the outbound-webhook dispatch pattern (``blockers._dispatch_*``):
+    fully guarded so a missing connection or any GitHub error never affects the
+    task transition. The repo is taken from the task's own ``external_url`` (its
+    source repo) — NOT the workspace's current connection — so completing an
+    older imported task always closes the right issue even after the workspace
+    is reconnected to a different repository. The PAT comes from the machine-wide
+    credential store.
+    """
+    if not task.auto_close_github_issue or task.github_issue_number is None:
+        return
+    repo = _repo_from_issue_url(task.external_url)
+    if repo is None:
+        logger.info(
+            "Skipping GitHub auto-close for issue #%s: no source repo on task.",
+            task.github_issue_number,
+        )
+        return
+    try:
+        from codeframe.core.credentials import CredentialManager, CredentialProvider
+
+        pat = CredentialManager().get_credential(CredentialProvider.GIT_GITHUB)
+        if not pat:
+            logger.info(
+                "Skipping GitHub auto-close for issue #%s: no stored PAT.",
+                task.github_issue_number,
+            )
+            return
+        _close_issue_background(pat, repo, task.github_issue_number)
+    except Exception:  # noqa: BLE001 - must never break the task transition
+        logger.warning(
+            "Failed to dispatch GitHub auto-close for issue #%s",
+            task.github_issue_number,
+            exc_info=True,
+        )
+
+
+# Bounded timeout for the auto-close call so a hung GitHub request never stalls
+# a short-lived CLI process for long at exit.
+_AUTOCLOSE_TIMEOUT = 10.0
+
+
+async def _safe_close_issue(pat: str, repo: str, issue_number: int) -> None:
+    """Close the issue, swallowing every error (best-effort, off the hot path)."""
+    try:
+        from codeframe.core.github_issues_service import close_issue
+
+        await close_issue(
+            pat,
+            repo,
+            issue_number,
+            comment="Completed via CodeFRAME",
+            timeout=_AUTOCLOSE_TIMEOUT,
+        )
+    except Exception:  # noqa: BLE001 - background best-effort
+        logger.warning(
+            "GitHub auto-close of issue #%s failed", issue_number, exc_info=True
+        )
+
+
+def _close_issue_background(pat: str, repo: str, issue_number: int) -> None:
+    """Run the auto-close off the caller's path (#565).
+
+    Context-aware, mirroring ``WebhookNotificationService.send_event_background``:
+
+    * **Async (server)**: there is a running event loop (the FastAPI handler),
+      so schedule the close on it and return immediately. No thread is created,
+      so nothing is left to join at process shutdown.
+    * **Sync (CLI / agent worker thread)**: no running loop, so run the close to
+      completion on a **non-daemon** thread. Unlike a fire-and-forget
+      notification, leaving the issue open is a real failure, so a short-lived
+      CLI process waits for the close at interpreter exit (bounded by
+      ``_AUTOCLOSE_TIMEOUT``) instead of abandoning it.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        threading.Thread(
+            target=lambda: asyncio.run(
+                _safe_close_issue(pat, repo, issue_number)
+            ),
+            daemon=False,
+            name=f"gh-autoclose-{issue_number}",
+        ).start()
+    else:
+        loop.create_task(_safe_close_issue(pat, repo, issue_number))
 
 
 def update(
@@ -753,7 +978,8 @@ def _row_to_task(row: tuple) -> Task:
     Row columns: id, workspace_id, prd_id, title, description, status, priority,
                  depends_on, estimated_hours, complexity_score, uncertainty_level,
                  created_at, updated_at, github_issue_number, parent_id, lineage,
-                 is_leaf, hierarchical_id, requirement_ids
+                 is_leaf, hierarchical_id, requirement_ids, external_url,
+                 auto_close_github_issue
     """
     # Parse depends_on from JSON string (default to empty list if null)
     depends_on_raw = row[7]
@@ -791,4 +1017,6 @@ def _row_to_task(row: tuple) -> Task:
         is_leaf=is_leaf,
         hierarchical_id=row[17] if len(row) > 17 else None,
         requirement_ids=requirement_ids,
+        external_url=row[19] if len(row) > 19 else None,
+        auto_close_github_issue=bool(row[20]) if len(row) > 20 and row[20] is not None else False,
     )

@@ -8,6 +8,17 @@ from pathlib import Path
 from typing import Generator
 import pytest
 
+# Disable the global default rate limiter for the whole test suite. The
+# @rate_limit_* decorators bind the limiter at ROUTER IMPORT time and the limits
+# library keeps counters in a process-shared in-memory store, so the fixed
+# ``ip:testclient`` bucket is shared across every test and exhausts in the full
+# suite (notably the AI bucket: connect/import are 20/min) — causing spurious
+# 429s. Setting this BEFORE any router is imported makes every route import
+# unwrapped. Tests that specifically exercise rate limiting construct their own
+# explicit Limiter, so they are unaffected; ``setdefault`` lets an explicit
+# environment override win.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+
 # All v1 legacy tests have been removed; nothing to ignore at the root.
 collect_ignore: list[str] = []
 

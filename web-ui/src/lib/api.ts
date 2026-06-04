@@ -78,6 +78,7 @@ import type {
   GitHubIntegrationStatus,
   GitHubIssuesResponse,
   GitHubIssuesParams,
+  GitHubImportResponse,
 } from '@/types';
 
 // FastAPI validation error format
@@ -253,6 +254,22 @@ export const tasksApi = {
     const response = await api.patch<Task>(
       `/api/v2/tasks/${taskId}`,
       { status },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  /**
+   * Toggle whether the linked GitHub issue closes when the task is DONE (#565)
+   */
+  updateGitHubSettings: async (
+    workspacePath: string,
+    taskId: string,
+    autoClose: boolean
+  ): Promise<Task> => {
+    const response = await api.patch<Task>(
+      `/api/v2/tasks/${taskId}`,
+      { auto_close_github_issue: autoClose },
       { params: { workspace_path: workspacePath } }
     );
     return response.data;
@@ -1038,6 +1055,20 @@ export const integrationsApi = {
     );
     return response.data;
   },
+
+  // Import selected GitHub issues as tasks (issue #565).
+  importIssues: async (
+    workspacePath: string,
+    issueNumbers: number[]
+  ): Promise<GitHubImportResponse> => {
+    const response = await api.post<GitHubImportResponse>(
+      '/api/v2/integrations/github/import',
+      { issue_numbers: issueNumbers },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
 };
 
 // Cost analytics API (issues #557, #558)

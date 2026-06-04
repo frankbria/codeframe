@@ -26,7 +26,11 @@ from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import runtime, tasks, conductor, streaming
 from codeframe.core.runtime import RunStatus
-from codeframe.core.state_machine import TaskStatus
+from codeframe.core.state_machine import (
+    InvalidTransitionError,
+    TaskStatus,
+    can_transition,
+)
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
 
@@ -145,6 +149,29 @@ class TaskResponse(BaseModel):
     estimated_hours: Optional[float] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    # GitHub issue traceability (#565)
+    github_issue_number: Optional[int] = None
+    external_url: Optional[str] = None
+    auto_close_github_issue: bool = False
+
+    @classmethod
+    def from_task(cls, task: tasks.Task) -> "TaskResponse":
+        """Build a response from a core ``Task`` (single source of mapping)."""
+        return cls(
+            id=task.id,
+            title=task.title,
+            description=task.description,
+            status=task.status.value,
+            priority=task.priority,
+            depends_on=task.depends_on,
+            requirement_ids=task.requirement_ids,
+            estimated_hours=task.estimated_hours,
+            created_at=task.created_at.isoformat() if task.created_at else None,
+            updated_at=task.updated_at.isoformat() if task.updated_at else None,
+            github_issue_number=task.github_issue_number,
+            external_url=task.external_url,
+            auto_close_github_issue=task.auto_close_github_issue,
+        )
 
 
 class TaskListResponse(BaseModel):
@@ -162,6 +189,10 @@ class UpdateTaskRequest(BaseModel):
     description: Optional[str] = Field(None, description="New task description")
     priority: Optional[int] = Field(None, ge=0, description="New task priority (0 = highest)")
     status: Optional[str] = Field(None, description="New task status (use for manual transitions)")
+    auto_close_github_issue: Optional[bool] = Field(
+        None,
+        description="Whether to close the linked GitHub issue when this task is DONE (#565)",
+    )
 
 
 # ============================================================================
@@ -209,21 +240,7 @@ async def list_tasks(
     status_counts = tasks.count_by_status(workspace)
 
     return TaskListResponse(
-        tasks=[
-            TaskResponse(
-                id=t.id,
-                title=t.title,
-                description=t.description,
-                status=t.status.value,
-                priority=t.priority,
-                depends_on=t.depends_on,
-                requirement_ids=t.requirement_ids,
-                estimated_hours=t.estimated_hours,
-                created_at=t.created_at.isoformat() if t.created_at else None,
-                updated_at=t.updated_at.isoformat() if t.updated_at else None,
-            )
-            for t in task_list
-        ],
+        tasks=[TaskResponse.from_task(t) for t in task_list],
         total=len(task_list),
         by_status=status_counts,
     )
@@ -255,18 +272,7 @@ async def get_task(
             detail=api_error("Task not found", ErrorCodes.NOT_FOUND, f"No task with id {task_id}"),
         )
 
-    return TaskResponse(
-        id=task.id,
-        title=task.title,
-        description=task.description,
-        status=task.status.value,
-        priority=task.priority,
-        depends_on=task.depends_on,
-        requirement_ids=task.requirement_ids,
-        estimated_hours=task.estimated_hours,
-        created_at=task.created_at.isoformat() if task.created_at else None,
-        updated_at=task.updated_at.isoformat() if task.updated_at else None,
-    )
+    return TaskResponse.from_task(task)
 
 
 @router.patch("/{task_id}", response_model=TaskResponse)
@@ -296,28 +302,91 @@ async def update_task(
             - 400: Invalid status or status transition
     """
     try:
-        # Handle status update separately if provided
+        # Validate everything that can reject the request BEFORE any mutation, so
+        # a rejected PATCH (bad status, illegal transition, missing task) never
+        # leaves a side effect. (#565)
+        current = None
+        if body.status or body.auto_close_github_issue is not None:
+            current = tasks.get(workspace, task_id)
+            if current is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=api_error(
+                        "Task not found",
+                        ErrorCodes.NOT_FOUND,
+                        f"No task with id {task_id}",
+                    ),
+                )
+
+        new_status: Optional[TaskStatus] = None
         if body.status:
             try:
                 new_status = TaskStatus(body.status.upper())
-                tasks.update_status(workspace, task_id, new_status)
-            except ValueError as e:
-                if "Invalid status" in str(e) or "not a valid" in str(e).lower():
-                    raise HTTPException(
-                        status_code=400,
-                        detail=api_error(
-                            f"Invalid status: {body.status}",
-                            ErrorCodes.VALIDATION_ERROR,
-                            f"Valid values: {[s.value for s in TaskStatus]}",
-                        ),
-                    )
-                # Status transition error
+            except ValueError:
                 raise HTTPException(
                     status_code=400,
-                    detail=api_error("Invalid status transition", ErrorCodes.INVALID_STATE, str(e)),
+                    detail=api_error(
+                        f"Invalid status: {body.status}",
+                        ErrorCodes.VALIDATION_ERROR,
+                        f"Valid values: {[s.value for s in TaskStatus]}",
+                    ),
+                )
+            if not can_transition(current.status, new_status):
+                raise HTTPException(
+                    status_code=400,
+                    detail=api_error(
+                        "Invalid status transition",
+                        ErrorCodes.INVALID_STATE,
+                        f"Cannot transition from {current.status.value} to "
+                        f"{new_status.value}",
+                    ),
                 )
 
-        # Update other fields
+        # Persist the auto-close preference FIRST so the DONE transition below
+        # sees the value requested in THIS PATCH. That makes a combined request
+        # behave correctly both ways: {status: DONE, opt-in} closes the issue and
+        # {status: DONE, opt-OUT} does not — core reads the freshly-saved flag.
+        original_auto_close = (
+            current.auto_close_github_issue
+            if (current is not None and body.auto_close_github_issue is not None)
+            else None
+        )
+        if body.auto_close_github_issue is not None:
+            tasks.update_auto_close(
+                workspace, task_id, body.auto_close_github_issue
+            )
+
+        # Apply the (pre-validated) status transition. Core closes the linked
+        # issue here when the task is opted in and transitions to DONE.
+        if new_status is not None:
+            try:
+                tasks.update_status(workspace, task_id, new_status)
+            except InvalidTransitionError:
+                # Pre-validation passed, so the task state changed concurrently
+                # between the check and the apply. Roll back the flag we just
+                # persisted so this failed request leaves no side effect.
+                if original_auto_close is not None:
+                    tasks.update_auto_close(workspace, task_id, original_auto_close)
+                raise HTTPException(
+                    status_code=409,
+                    detail=api_error(
+                        "Task state changed concurrently; please retry.",
+                        ErrorCodes.CONFLICT,
+                    ),
+                )
+
+        # Late opt-in: enabling the flag (false -> true) on a task that is ALREADY
+        # DONE — with no status transition in this request — won't trigger core's
+        # transition-based close, so fire it explicitly here.
+        if (
+            body.auto_close_github_issue
+            and original_auto_close is False
+            and new_status is None
+        ):
+            tasks.autoclose_if_done(workspace, tasks.get(workspace, task_id))
+
+        # Update remaining fields; re-reads current state so the returned task
+        # reflects every change (including the auto-close flag above).
         task = tasks.update(
             workspace,
             task_id,
@@ -326,18 +395,7 @@ async def update_task(
             priority=body.priority,
         )
 
-        return TaskResponse(
-            id=task.id,
-            title=task.title,
-            description=task.description,
-            status=task.status.value,
-            priority=task.priority,
-            depends_on=task.depends_on,
-            requirement_ids=task.requirement_ids,
-            estimated_hours=task.estimated_hours,
-            created_at=task.created_at.isoformat() if task.created_at else None,
-            updated_at=task.updated_at.isoformat() if task.updated_at else None,
-        )
+        return TaskResponse.from_task(task)
 
     except ValueError as e:
         error_msg = str(e)

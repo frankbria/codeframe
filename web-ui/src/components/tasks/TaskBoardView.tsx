@@ -95,14 +95,57 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   // ─── Detail modal state ────────────────────────────────────────
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
 
-  // ─── GitHub issue import modal (issue #564) ────────────────────
+  // ─── GitHub issue import modal (issues #564 / #565) ────────────
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
-  // The actual import flow lands in #565; for now selecting + confirming
-  // simply closes the modal (the browser/multi-select is the #564 deliverable).
-  const handleImportIssues = useCallback((_selected: GitHubIssue[]) => {
-    setImportModalOpen(false);
-  }, []);
+  // Execute the import (#565): create tasks from the selected issues, then
+  // refresh the board so the new tasks (with their GitHub badges) appear.
+  const handleImportIssues = useCallback(
+    async (selectedIssues: GitHubIssue[]) => {
+      if (selectedIssues.length === 0) {
+        setImportModalOpen(false);
+        return;
+      }
+      setIsImporting(true);
+      setActionError(null);
+      setImportSummary(null);
+      setImportError(null);
+      let imported = false;
+      try {
+        const numbers = selectedIssues.map((i) => i.number);
+        const result = await integrationsApi.importIssues(workspacePath, numbers);
+        imported = true;
+        setImportModalOpen(false);
+        const parts = [
+          `${result.total_created} task${result.total_created !== 1 ? 's' : ''} created`,
+        ];
+        if (result.skipped.length > 0) {
+          parts.push(
+            `${result.skipped.length} skipped (already imported)`
+          );
+        }
+        setImportSummary(parts.join(' · '));
+      } catch (err) {
+        const apiErr = err as ApiError;
+        // Keep the modal open and show the error inline there, so the user sees
+        // it (a board-level banner would sit behind the dialog) and keeps their
+        // selection for a retry.
+        setImportError(apiErr.detail || 'Failed to import issues from GitHub');
+      } finally {
+        setIsImporting(false);
+      }
+      // Refresh the board AFTER the import resolves. A refresh failure is not an
+      // import failure — the tasks were already created — so it must not flip
+      // the success summary into an error (SWR will revalidate again later).
+      if (imported) {
+        mutate();
+      }
+    },
+    [workspacePath, mutate]
+  );
 
   // ─── Error state for actions ───────────────────────────────────
   const [actionError, setActionError] = useState<string | null>(null);
@@ -398,6 +441,23 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         />
       </div>
 
+      {/* Import success summary banner (#565) */}
+      {importSummary && (
+        <div
+          role="status"
+          className="flex items-center justify-between rounded-md bg-green-500/10 px-4 py-2 text-sm text-green-700 dark:text-green-400"
+        >
+          <span>Imported from GitHub: {importSummary}</span>
+          <button
+            onClick={() => setImportSummary(null)}
+            aria-label="Dismiss import summary"
+            className="ml-2 rounded p-0.5 hover:opacity-70 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+          >
+            <Cancel01Icon className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Action error banner */}
       {actionError && (
         <div role="alert" className="flex items-center justify-between rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
@@ -486,7 +546,12 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         open={importModalOpen}
         workspacePath={workspacePath}
         repo={ghStatus?.repo}
-        onClose={() => setImportModalOpen(false)}
+        importing={isImporting}
+        importError={importError}
+        onClose={() => {
+          setImportModalOpen(false);
+          setImportError(null);
+        }}
         onImport={handleImportIssues}
       />
 

@@ -1161,3 +1161,292 @@ class TestRateLimitingIntegration:
         data = response.json()
         assert "blockers" in data
         assert "total" in data
+
+
+# ============================================================================
+# Tasks v2 — GitHub traceability + auto-close (issue #565)
+# ============================================================================
+
+
+class TestTasksV2GitHubTraceability:
+    """TaskResponse exposes GitHub linkage; PATCH toggles auto-close; DONE closes."""
+
+    def test_response_includes_github_fields(self, test_client):
+        from codeframe.core import tasks
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Imported",
+            github_issue_number=42,
+            external_url="https://github.com/acme/app/issues/42",
+        )
+        r = test_client.get(f"/api/v2/tasks/{task.id}")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["github_issue_number"] == 42
+        assert data["external_url"] == "https://github.com/acme/app/issues/42"
+        assert data["auto_close_github_issue"] is False
+
+    def test_plain_task_has_null_github_fields(self, test_client_with_task):
+        r = test_client_with_task.get(f"/api/v2/tasks/{test_client_with_task.task.id}")
+        data = r.json()
+        assert data["github_issue_number"] is None
+        assert data["external_url"] is None
+        assert data["auto_close_github_issue"] is False
+
+    def test_patch_sets_auto_close(self, test_client):
+        from codeframe.core import tasks
+
+        task = tasks.create(
+            test_client.workspace, title="Imported", github_issue_number=7
+        )
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}", json={"auto_close_github_issue": True}
+        )
+        assert r.status_code == 200
+        assert r.json()["auto_close_github_issue"] is True
+        assert tasks.get(test_client.workspace, task.id).auto_close_github_issue is True
+
+    def test_done_via_http_reaches_core_autoclose(self, test_client, monkeypatch):
+        """PATCH status=DONE flows through to the core auto-close dispatch (#565).
+
+        The detailed dispatch behavior (connection resolution, opt-out, failure
+        isolation) is covered by the core unit tests; here we only assert the
+        HTTP DONE path reaches it. Auto-close lives in core so the CLI/agent
+        completion paths get the same behavior.
+        """
+        from codeframe.core import tasks
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
+        )
+        from codeframe.core.state_machine import TaskStatus
+
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+        save_github_integration_config(
+            test_client.workspace,
+            {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
+        )
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Imported",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=99,
+            external_url="https://github.com/acme/app/issues/99",
+            auto_close_github_issue=True,
+        )
+        r = test_client.patch(f"/api/v2/tasks/{task.id}", json={"status": "DONE"})
+        assert r.status_code == 200
+        assert calls == [("acme/app", 99)]
+        assert tasks.get(test_client.workspace, task.id).status == TaskStatus.DONE
+
+    def test_combined_done_and_optin_in_one_request_closes(
+        self, test_client, monkeypatch
+    ):
+        """A single PATCH setting both status=DONE and auto_close=true closes.
+
+        The flag must be persisted before the DONE transition so the core
+        dispatch observes the opt-in (#565 — codex review).
+        """
+        from codeframe.core import tasks
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
+        )
+        from codeframe.core.state_machine import TaskStatus
+
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+        save_github_integration_config(
+            test_client.workspace,
+            {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
+        )
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Imported",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=77,
+            external_url="https://github.com/acme/app/issues/77",
+            auto_close_github_issue=False,
+        )
+        # Opt in AND complete in the same request.
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}",
+            json={"status": "DONE", "auto_close_github_issue": True},
+        )
+        assert r.status_code == 200
+        assert calls == [("acme/app", 77)]
+
+    def test_optin_on_already_done_task_closes_now(self, test_client, monkeypatch):
+        """Enabling auto-close on an already-DONE task closes the issue now."""
+        from codeframe.core import tasks
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
+        )
+        from codeframe.core.state_machine import TaskStatus
+
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+        save_github_integration_config(
+            test_client.workspace,
+            {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
+        )
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Already done",
+            status=TaskStatus.DONE,
+            github_issue_number=88,
+            external_url="https://github.com/acme/app/issues/88",
+            auto_close_github_issue=False,
+        )
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}",
+            json={"auto_close_github_issue": True},
+        )
+        assert r.status_code == 200
+        assert calls == [("acme/app", 88)]
+
+    def test_combined_done_and_optout_does_not_close(self, test_client, monkeypatch):
+        """A single PATCH that completes AND opts out must NOT close the issue."""
+        from codeframe.core import tasks
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
+        )
+        from codeframe.core.state_machine import TaskStatus
+
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+        save_github_integration_config(
+            test_client.workspace,
+            {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
+        )
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Opted in",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=55,
+            external_url="https://github.com/acme/app/issues/55",
+            auto_close_github_issue=True,
+        )
+        # Complete AND opt out in one request — the issue must stay open.
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}",
+            json={"status": "DONE", "auto_close_github_issue": False},
+        )
+        assert r.status_code == 200
+        assert calls == []
+        after = tasks.get(test_client.workspace, task.id)
+        assert after.status == TaskStatus.DONE
+        assert after.auto_close_github_issue is False
+
+    def test_reopen_with_optin_does_not_close(self, test_client, monkeypatch):
+        """A combined reopen (DONE->READY) + opt-in must NOT close the issue."""
+        from codeframe.core import tasks
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
+        )
+        from codeframe.core.state_machine import TaskStatus
+
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+        save_github_integration_config(
+            test_client.workspace,
+            {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
+        )
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Done import",
+            status=TaskStatus.DONE,
+            github_issue_number=88,
+            external_url="https://github.com/acme/app/issues/88",
+            auto_close_github_issue=False,
+        )
+        # Reopen AND opt in within one request — the issue must stay open.
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}",
+            json={"status": "READY", "auto_close_github_issue": True},
+        )
+        assert r.status_code == 200
+        assert calls == []
+        assert tasks.get(test_client.workspace, task.id).status == TaskStatus.READY
+
+    def test_optout_on_done_task_does_not_close(self, test_client, monkeypatch):
+        """Disabling auto-close on a DONE task must not trigger a close."""
+        from codeframe.core import tasks
+        from codeframe.core.state_machine import TaskStatus
+
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Already done",
+            status=TaskStatus.DONE,
+            github_issue_number=88,
+            external_url="https://github.com/acme/app/issues/88",
+            auto_close_github_issue=True,
+        )
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}",
+            json={"auto_close_github_issue": False},
+        )
+        assert r.status_code == 200
+        assert calls == []
+
+    def test_rejected_transition_does_not_persist_auto_close(self, test_client):
+        """An invalid transition must not leave the auto-close flag mutated."""
+        from codeframe.core import tasks
+        from codeframe.core.state_machine import TaskStatus
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Imported",
+            status=TaskStatus.BACKLOG,
+            github_issue_number=5,
+            external_url="https://github.com/acme/app/issues/5",
+            auto_close_github_issue=False,
+        )
+        # BACKLOG -> DONE is not an allowed transition; the request is rejected
+        # and the auto_close flag must remain unchanged (no hidden side effect).
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}",
+            json={"status": "DONE", "auto_close_github_issue": True},
+        )
+        assert r.status_code == 400
+        assert (
+            tasks.get(test_client.workspace, task.id).auto_close_github_issue is False
+        )

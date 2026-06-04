@@ -154,6 +154,10 @@ def _init_database(db_path: Path) -> None:
         cursor.execute("ALTER TABLE tasks ADD COLUMN hierarchical_id TEXT")
     if "requirement_ids" not in columns:
         cursor.execute("ALTER TABLE tasks ADD COLUMN requirement_ids TEXT DEFAULT '[]'")
+    if "external_url" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN external_url TEXT")
+    if "auto_close_github_issue" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN auto_close_github_issue INTEGER DEFAULT 0")
 
     # Append-only event log
     cursor.execute("""
@@ -366,6 +370,13 @@ def _init_database(db_path: Path) -> None:
     # Create indexes for common queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+    # Atomic duplicate-import protection (#565): one task per (workspace, issue
+    # URL). SQLite treats NULLs as distinct, so non-imported tasks (NULL
+    # external_url) are unaffected.
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url "
+        "ON tasks(workspace_id, external_url)"
+    )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blockers_workspace ON blockers(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blockers_status ON blockers(status)")
@@ -522,6 +533,20 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         if "github_issue_number" not in task_columns:
             cursor.execute("ALTER TABLE tasks ADD COLUMN github_issue_number INTEGER")
             conn.commit()
+        if "external_url" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN external_url TEXT")
+            conn.commit()
+        if "auto_close_github_issue" not in task_columns:
+            cursor.execute(
+                "ALTER TABLE tasks ADD COLUMN auto_close_github_issue INTEGER DEFAULT 0"
+            )
+            conn.commit()
+        # Atomic duplicate-import protection (#565) for existing workspaces.
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url "
+            "ON tasks(workspace_id, external_url)"
+        )
+        conn.commit()
 
     # Ensure runs table exists before creating dependent tables (run_logs, diagnostic_reports)
     cursor.execute(
