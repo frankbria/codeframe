@@ -434,6 +434,13 @@ async def import_issues(
     for number in body.issue_numbers:
         try:
             issue = await get_issue(pat, repo, number)
+        except ValueError as e:
+            # Malformed saved repo slug (parse_repo) — surface as a recoverable
+            # conflict like the browse endpoint, not a 500.
+            raise HTTPException(
+                status_code=409,
+                detail=api_error(str(e), ErrorCodes.CONFLICT),
+            )
         except NotAnIssueError as e:
             # A PR number slipped in (the browse UI filters PRs, so this only
             # happens with a malformed/manual payload). Reject the request.
@@ -459,35 +466,50 @@ async def import_issues(
         seen_urls.add(url)
         to_create.append((number, issue))
 
-    # Phase 2 — create the tasks. No awaits here, so nothing can fail partway.
+    # Phase 2 — create the tasks. Each create commits independently, so an
+    # unexpected mid-loop DB error (e.g. OperationalError on a locked DB) is
+    # rolled back below to preserve the all-or-nothing contract. (The
+    # URL-unique index additionally makes a retry idempotent.)
     created: list[ImportedTaskSummary] = []
-    for number, issue in to_create:
-        description = issue["body"] or ""
-        if issue["labels"]:
-            footer = "**Labels:** " + ", ".join(issue["labels"])
-            description = f"{description}\n\n{footer}" if description else footer
+    created_ids: list[str] = []
+    try:
+        for number, issue in to_create:
+            description = issue["body"] or ""
+            if issue["labels"]:
+                footer = "**Labels:** " + ", ".join(issue["labels"])
+                description = f"{description}\n\n{footer}" if description else footer
 
-        try:
-            task = tasks.create(
-                workspace,
-                title=issue["title"],
-                description=description,
-                github_issue_number=number,
-                external_url=issue["html_url"],
-            )
-        except sqlite3.IntegrityError:
-            # A concurrent import (double-submit / second tab) created this task
-            # between our de-dupe read and now. The unique index on
-            # (workspace_id, external_url) makes that race a no-op: treat it as
-            # an already-imported skip rather than a duplicate task.
-            skipped.append(number)
-            continue
+            try:
+                task = tasks.create(
+                    workspace,
+                    title=issue["title"],
+                    description=description,
+                    github_issue_number=number,
+                    external_url=issue["html_url"],
+                )
+            except sqlite3.IntegrityError:
+                # A concurrent import (double-submit / second tab) created this
+                # task between our de-dupe read and now. The unique index on
+                # (workspace_id, external_url) makes that race a no-op: treat it
+                # as an already-imported skip rather than a duplicate task.
+                skipped.append(number)
+                continue
 
-        created.append(
-            ImportedTaskSummary(
-                task_id=task.id, issue_number=number, title=task.title
+            created_ids.append(task.id)
+            created.append(
+                ImportedTaskSummary(
+                    task_id=task.id, issue_number=number, title=task.title
+                )
             )
-        )
+    except Exception:
+        # Roll back the tasks created so far so a mid-create failure never leaves
+        # a partial import behind.
+        for task_id in created_ids:
+            try:
+                tasks.delete(workspace, task_id)
+            except Exception:  # noqa: BLE001 - best-effort cleanup
+                logger.warning("Failed to roll back imported task %s", task_id)
+        raise
 
     return ImportResponse(
         created=created, skipped=skipped, total_created=len(created)

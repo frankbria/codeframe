@@ -531,6 +531,60 @@ class TestImport:
 
         assert tasks.list_tasks(workspace) == []
 
+    def test_malformed_saved_repo_maps_to_409(self, client, monkeypatch, workspace):
+        """A malformed stored repo slug surfaces as a 409, not a 500."""
+        _connect(client, monkeypatch)
+        from codeframe.ui.routers import github_integrations_v2
+
+        async def bad_repo(pat, repo, number, **kwargs):
+            raise ValueError("Invalid repository format: 'acme'. Expected 'owner/repo'.")
+
+        monkeypatch.setattr(github_integrations_v2, "get_issue", bad_repo)
+        r = client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [1]}
+        )
+        assert r.status_code == 409
+
+    def test_create_failure_rolls_back_partial_import(
+        self, client, monkeypatch, workspace
+    ):
+        """A mid-create DB error rolls back already-created tasks (all-or-nothing)."""
+        _connect(client, monkeypatch)
+        _mock_get_issue(
+            monkeypatch,
+            {
+                1: {"title": "One", "body": "a"},
+                2: {"title": "Two", "body": "b"},
+                3: {"title": "Three", "body": "c"},
+            },
+        )
+
+        import sqlite3 as _sqlite3
+
+        from codeframe.core import tasks as tasks_mod
+
+        real_create = tasks_mod.create
+        calls = {"n": 0}
+
+        def flaky_create(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 3:  # fail on the third create
+                raise _sqlite3.OperationalError("database is locked")
+            return real_create(*args, **kwargs)
+
+        monkeypatch.setattr(
+            "codeframe.ui.routers.github_integrations_v2.tasks.create", flaky_create
+        )
+        # The server raises a 500; TestClient re-raises it. The endpoint rolls
+        # back the already-created tasks before the error propagates.
+        with pytest.raises(_sqlite3.OperationalError):
+            client.post(
+                "/api/v2/integrations/github/import",
+                json={"issue_numbers": [1, 2, 3]},
+            )
+        # The two tasks created before the failure must have been rolled back.
+        assert tasks_mod.list_tasks(workspace) == []
+
     def test_missing_issue_number_maps_to_404(self, client, monkeypatch, workspace):
         """A stale/typo'd issue number is a client error (404), not a 502."""
         _connect(client, monkeypatch)
