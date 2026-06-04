@@ -422,15 +422,16 @@ async def import_issues(
     skipped: list[int] = []
 
     for number in body.issue_numbers:
-        existing = tasks.get_by_github_issue_number(workspace, number)
-        if existing is not None:
-            skipped.append(number)
-            continue
-
         try:
             issue = await get_issue(pat, repo, number)
         except GitHubConnectError as e:
             raise _map_github_error(e)
+
+        # De-dupe on the full issue URL (repo-aware): the same issue number in a
+        # different repo is a distinct issue and must still be importable.
+        if tasks.get_by_external_url(workspace, issue["html_url"]) is not None:
+            skipped.append(number)
+            continue
 
         description = issue["body"] or ""
         if issue["labels"]:

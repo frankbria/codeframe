@@ -9,6 +9,7 @@ flow relies on (duplicate-import protection + auto-close toggle).
 import pytest
 
 from codeframe.core import tasks
+from codeframe.core.state_machine import TaskStatus
 from codeframe.core.workspace import create_or_load_workspace
 
 pytestmark = pytest.mark.v2
@@ -65,26 +66,127 @@ class TestTraceabilityFields:
         assert by_id[imported.id].external_url.endswith("/issues/99")
 
 
-class TestGetByGithubIssueNumber:
+class TestGetByExternalUrl:
     def test_returns_matching_task(self, workspace):
+        url = "https://github.com/acme/app/issues/123"
         created = tasks.create(
-            workspace, title="Imported", github_issue_number=123
+            workspace, title="Imported", github_issue_number=123, external_url=url
         )
-        found = tasks.get_by_github_issue_number(workspace, 123)
+        found = tasks.get_by_external_url(workspace, url)
         assert found is not None
         assert found.id == created.id
 
     def test_returns_none_when_absent(self, workspace):
         tasks.create(workspace, title="Plain")
-        assert tasks.get_by_github_issue_number(workspace, 555) is None
+        assert (
+            tasks.get_by_external_url(
+                workspace, "https://github.com/acme/app/issues/555"
+            )
+            is None
+        )
+
+    def test_distinguishes_repos_with_same_issue_number(self, workspace):
+        """Same issue number, different repo URL → not a duplicate."""
+        tasks.create(
+            workspace,
+            title="acme #12",
+            github_issue_number=12,
+            external_url="https://github.com/acme/app/issues/12",
+        )
+        # A different repo's #12 must not be seen as already imported.
+        assert (
+            tasks.get_by_external_url(
+                workspace, "https://github.com/other/app/issues/12"
+            )
+            is None
+        )
 
     def test_scoped_to_workspace(self, workspace, tmp_path):
         """A different workspace must not see this workspace's imported issue."""
-        tasks.create(workspace, title="Imported", github_issue_number=10)
+        url = "https://github.com/acme/app/issues/10"
+        tasks.create(
+            workspace, title="Imported", github_issue_number=10, external_url=url
+        )
         other_path = tmp_path / "other"
         other_path.mkdir()
         other = create_or_load_workspace(other_path)
-        assert tasks.get_by_github_issue_number(other, 10) is None
+        assert tasks.get_by_external_url(other, url) is None
+
+
+class TestAutoCloseDispatch:
+    """update_status fires the GitHub auto-close on DONE for all callers (#565)."""
+
+    def test_done_dispatches_when_opted_in(self, workspace, monkeypatch):
+        from codeframe.core import tasks as tasks_mod
+
+        calls = []
+        monkeypatch.setattr(
+            tasks_mod,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
+        )
+
+        save_github_integration_config(
+            workspace,
+            {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
+        )
+
+        task = tasks.create(
+            workspace,
+            title="Imported",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=99,
+            external_url="https://github.com/acme/app/issues/99",
+            auto_close_github_issue=True,
+        )
+        tasks.update_status(workspace, task.id, TaskStatus.DONE)
+        assert calls == [("acme/app", 99)]
+
+    def test_done_does_not_dispatch_when_not_opted_in(self, workspace, monkeypatch):
+        from codeframe.core import tasks as tasks_mod
+
+        calls = []
+        monkeypatch.setattr(
+            tasks_mod,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+
+        task = tasks.create(
+            workspace,
+            title="Imported",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=99,
+            auto_close_github_issue=False,
+        )
+        tasks.update_status(workspace, task.id, TaskStatus.DONE)
+        assert calls == []
+
+    def test_done_skips_when_not_connected(self, workspace, monkeypatch):
+        from codeframe.core import tasks as tasks_mod
+
+        calls = []
+        monkeypatch.setattr(
+            tasks_mod,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        # No github config saved and no PAT → nothing dispatched.
+        task = tasks.create(
+            workspace,
+            title="Imported",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=99,
+            auto_close_github_issue=True,
+        )
+        tasks.update_status(workspace, task.id, TaskStatus.DONE)
+        assert calls == []
 
 
 class TestUpdateAutoClose:

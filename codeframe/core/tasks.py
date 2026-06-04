@@ -5,8 +5,11 @@ Handles task CRUD operations, status transitions, and task generation from PRD.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import asyncio
 import json
+import logging
 import re
+import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -15,6 +18,8 @@ from typing import Optional
 from codeframe.core.state_machine import TaskStatus, validate_transition
 from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core.prd import PrdRecord
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -182,18 +187,19 @@ def get(workspace: Workspace, task_id: str) -> Optional[Task]:
     return _row_to_task(row)
 
 
-def get_by_github_issue_number(
-    workspace: Workspace, github_issue_number: int
+def get_by_external_url(
+    workspace: Workspace, external_url: str
 ) -> Optional[Task]:
-    """Get a task previously imported from a given GitHub issue number.
+    """Get a task previously imported from a given external (issue) URL.
 
-    Used for duplicate-import protection (issue #565): if a task already exists
-    for an issue number in this workspace, the import is skipped rather than
-    creating a second task.
+    Used for duplicate-import protection (issue #565). Keying on the full issue
+    URL — not just the issue number — keeps de-duplication correct when a
+    workspace is reconnected to a different repository (where the same issue
+    number refers to a different issue).
 
     Args:
         workspace: Workspace to query
-        github_issue_number: GitHub issue number to look up
+        external_url: The issue's ``html_url`` to look up
 
     Returns:
         The matching Task if one exists, otherwise None
@@ -204,10 +210,10 @@ def get_by_github_issue_number(
         """
         SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
         FROM tasks
-        WHERE workspace_id = ? AND github_issue_number = ?
+        WHERE workspace_id = ? AND external_url = ?
         LIMIT 1
         """,
-        (workspace.id, github_issue_number),
+        (workspace.id, external_url),
     )
     row = cursor.fetchone()
     conn.close()
@@ -376,7 +382,69 @@ def update_status(
     task.status = new_status
     task.updated_at = datetime.fromisoformat(now)
 
+    # On completion, best-effort close the linked GitHub issue when opted in
+    # (issue #565). Placed here — the single chokepoint every DONE transition
+    # flows through (HTTP, CLI, agent/batch via runtime.complete_run) — so the
+    # behavior is consistent regardless of how the task was completed.
+    if new_status == TaskStatus.DONE:
+        _dispatch_github_autoclose(workspace, task)
+
     return task
+
+
+def _dispatch_github_autoclose(workspace: Workspace, task: Task) -> None:
+    """Best-effort close of the linked GitHub issue when a task is DONE (#565).
+
+    Mirrors the outbound-webhook dispatch pattern (``blockers._dispatch_*``):
+    fully guarded so a missing connection or any GitHub error never affects the
+    task transition. Resolves the repo from the per-workspace integration
+    config and the PAT from the machine-wide credential store.
+    """
+    if not task.auto_close_github_issue or task.github_issue_number is None:
+        return
+    try:
+        from codeframe.core.credentials import CredentialManager, CredentialProvider
+        from codeframe.core.github_integration_config import (
+            load_github_integration_config,
+        )
+
+        cfg = load_github_integration_config(workspace)
+        pat = CredentialManager().get_credential(CredentialProvider.GIT_GITHUB)
+        if cfg is None or not pat:
+            logger.info(
+                "Skipping GitHub auto-close for issue #%s: no connection.",
+                task.github_issue_number,
+            )
+            return
+        _close_issue_background(pat, cfg["repo"], task.github_issue_number)
+    except Exception:  # noqa: BLE001 - must never break the task transition
+        logger.warning(
+            "Failed to dispatch GitHub auto-close for issue #%s",
+            task.github_issue_number,
+            exc_info=True,
+        )
+
+
+def _close_issue_background(pat: str, repo: str, issue_number: int) -> None:
+    """Fire-and-forget the GitHub issue close on a daemon thread (#565)."""
+
+    def _run() -> None:
+        try:
+            from codeframe.core.github_issues_service import close_issue
+
+            asyncio.run(
+                close_issue(
+                    pat, repo, issue_number, comment="Completed via CodeFRAME"
+                )
+            )
+        except Exception:  # noqa: BLE001 - background best-effort
+            logger.warning(
+                "GitHub auto-close of issue #%s failed", issue_number, exc_info=True
+            )
+
+    threading.Thread(
+        target=_run, daemon=True, name=f"gh-autoclose-{issue_number}"
+    ).start()
 
 
 def update(

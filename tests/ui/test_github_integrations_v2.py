@@ -456,11 +456,14 @@ class TestImport:
         # Tasks really exist in the workspace with the right linkage.
         from codeframe.core import tasks
 
-        t12 = tasks.get_by_github_issue_number(workspace, 12)
+        t12 = tasks.get_by_external_url(
+            workspace, "https://github.com/acme/app/issues/12"
+        )
         assert t12 is not None
         assert t12.title == "Fix login"
         assert "Repro steps" in t12.description
         assert t12.external_url == "https://github.com/acme/app/issues/12"
+        assert t12.github_issue_number == 12
 
     def test_labels_appended_to_description(self, client, monkeypatch, workspace):
         _connect(client, monkeypatch)
@@ -473,7 +476,9 @@ class TestImport:
         )
         from codeframe.core import tasks
 
-        t = tasks.get_by_github_issue_number(workspace, 5)
+        t = tasks.get_by_external_url(
+            workspace, "https://github.com/acme/app/issues/5"
+        )
         assert "bug" in t.description and "ui" in t.description
 
     def test_duplicate_import_is_skipped(self, client, monkeypatch, workspace):
@@ -498,6 +503,30 @@ class TestImport:
             t for t in tasks.list_tasks(workspace) if t.github_issue_number == 7
         ]
         assert len(matching) == 1
+
+    def test_same_issue_number_different_repo_is_not_skipped(
+        self, client, monkeypatch, workspace
+    ):
+        """After reconnecting to another repo, the same issue number imports."""
+        _connect(client, monkeypatch, repo="acme/app")
+        _mock_get_issue(monkeypatch, {12: {"title": "acme 12", "body": "x"}})
+        client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [12]}
+        )
+
+        # Reconnect the same workspace to a different repo and import its #12.
+        _connect(client, monkeypatch, repo="other/app")
+        _mock_get_issue(monkeypatch, {12: {"title": "other 12", "body": "y"}})
+        r = client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [12]}
+        )
+        assert r.json()["total_created"] == 1
+        assert r.json()["skipped"] == []
+
+        from codeframe.core import tasks
+
+        titles = {t.title for t in tasks.list_tasks(workspace)}
+        assert {"acme 12", "other 12"} <= titles
 
 
 class TestCloseIssueEndpoint:

@@ -1207,111 +1207,41 @@ class TestTasksV2GitHubTraceability:
         assert r.json()["auto_close_github_issue"] is True
         assert tasks.get(test_client.workspace, task.id).auto_close_github_issue is True
 
-    def _build_client(self, workspace):
-        """A tasks_v2 client with an isolated credential manager holding a PAT."""
-        import tempfile as _tf
-        from pathlib import Path as _Path
+    def test_done_via_http_reaches_core_autoclose(self, test_client, monkeypatch):
+        """PATCH status=DONE flows through to the core auto-close dispatch (#565).
 
-        from codeframe.core.credentials import (
-            CredentialManager,
-            CredentialProvider,
-            CredentialStore,
-        )
+        The detailed dispatch behavior (connection resolution, opt-out, failure
+        isolation) is covered by the core unit tests; here we only assert the
+        HTTP DONE path reaches it. Auto-close lives in core so the CLI/agent
+        completion paths get the same behavior.
+        """
+        from codeframe.core import tasks
         from codeframe.core.github_integration_config import (
             save_github_integration_config,
         )
-        from codeframe.ui.dependencies import get_v2_workspace
-        from codeframe.ui.routers import tasks_v2
+        from codeframe.core.state_machine import TaskStatus
 
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
         save_github_integration_config(
-            workspace,
+            test_client.workspace,
             {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
         )
-        store = CredentialStore(storage_dir=_Path(_tf.mkdtemp()))
-        store._keyring_available = False
-        manager = CredentialManager.__new__(CredentialManager)
-        manager._store = store
-        manager.set_credential(CredentialProvider.GIT_GITHUB, "ghp_token")
 
-        app = FastAPI()
-        app.include_router(tasks_v2.router)
-        app.dependency_overrides[get_v2_workspace] = lambda: workspace
-        app.dependency_overrides[tasks_v2.get_credential_manager] = lambda: manager
-        client = TestClient(app)
-        client.workspace = workspace
-        return client
-
-    def test_done_transition_triggers_auto_close(self, test_workspace, monkeypatch):
-        from codeframe.core import tasks
-        from codeframe.core.state_machine import TaskStatus
-        from codeframe.ui.routers import tasks_v2
-
-        calls = []
-
-        async def fake_close(pat, repo, number, **kwargs):
-            calls.append((repo, number))
-            return True
-
-        monkeypatch.setattr(tasks_v2, "close_issue", fake_close)
-
-        client = self._build_client(test_workspace)
         task = tasks.create(
-            test_workspace,
+            test_client.workspace,
             title="Imported",
             status=TaskStatus.IN_PROGRESS,
             github_issue_number=99,
+            external_url="https://github.com/acme/app/issues/99",
             auto_close_github_issue=True,
         )
-        r = client.patch(f"/api/v2/tasks/{task.id}", json={"status": "DONE"})
+        r = test_client.patch(f"/api/v2/tasks/{task.id}", json={"status": "DONE"})
         assert r.status_code == 200
         assert calls == [("acme/app", 99)]
-
-    def test_done_without_auto_close_does_not_close(self, test_workspace, monkeypatch):
-        from codeframe.core import tasks
-        from codeframe.core.state_machine import TaskStatus
-        from codeframe.ui.routers import tasks_v2
-
-        calls = []
-
-        async def fake_close(pat, repo, number, **kwargs):
-            calls.append(number)
-            return True
-
-        monkeypatch.setattr(tasks_v2, "close_issue", fake_close)
-
-        client = self._build_client(test_workspace)
-        task = tasks.create(
-            test_workspace,
-            title="Imported, no auto-close",
-            status=TaskStatus.IN_PROGRESS,
-            github_issue_number=99,
-            auto_close_github_issue=False,
-        )
-        r = client.patch(f"/api/v2/tasks/{task.id}", json={"status": "DONE"})
-        assert r.status_code == 200
-        assert calls == []
-
-    def test_done_auto_close_failure_does_not_break_transition(
-        self, test_workspace, monkeypatch
-    ):
-        from codeframe.core import tasks
-        from codeframe.core.github_connect_service import GitHubConnectError
-        from codeframe.core.state_machine import TaskStatus
-        from codeframe.ui.routers import tasks_v2
-
-        async def boom(pat, repo, number, **kwargs):
-            raise GitHubConnectError("GitHub down")
-
-        monkeypatch.setattr(tasks_v2, "close_issue", boom)
-
-        client = self._build_client(test_workspace)
-        task = tasks.create(
-            test_workspace,
-            title="Imported",
-            status=TaskStatus.IN_PROGRESS,
-            github_issue_number=99,
-            auto_close_github_issue=True,
-        )
-        r = client.patch(f"/api/v2/tasks/{task.id}", json={"status": "DONE"})
-        assert r.status_code == 200
-        assert tasks.get(test_workspace, task.id).status == TaskStatus.DONE
+        assert tasks.get(test_client.workspace, task.id).status == TaskStatus.DONE
