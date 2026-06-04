@@ -154,6 +154,10 @@ def _init_database(db_path: Path) -> None:
         cursor.execute("ALTER TABLE tasks ADD COLUMN hierarchical_id TEXT")
     if "requirement_ids" not in columns:
         cursor.execute("ALTER TABLE tasks ADD COLUMN requirement_ids TEXT DEFAULT '[]'")
+    if "external_url" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN external_url TEXT")
+    if "auto_close_github_issue" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN auto_close_github_issue INTEGER DEFAULT 0")
 
     # Append-only event log
     cursor.execute("""
@@ -521,6 +525,14 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             conn.commit()
         if "github_issue_number" not in task_columns:
             cursor.execute("ALTER TABLE tasks ADD COLUMN github_issue_number INTEGER")
+            conn.commit()
+        if "external_url" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN external_url TEXT")
+            conn.commit()
+        if "auto_close_github_issue" not in task_columns:
+            cursor.execute(
+                "ALTER TABLE tasks ADD COLUMN auto_close_github_issue INTEGER DEFAULT 0"
+            )
             conn.commit()
 
     # Ensure runs table exists before creating dependent tables (run_logs, diagnostic_reports)

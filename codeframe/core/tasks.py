@@ -61,6 +61,8 @@ class Task:
     is_leaf: bool = True
     hierarchical_id: Optional[str] = None
     requirement_ids: list[str] = field(default_factory=list)
+    external_url: Optional[str] = None
+    auto_close_github_issue: bool = False
 
 
 def create(
@@ -79,6 +81,9 @@ def create(
     is_leaf: bool = True,
     hierarchical_id: Optional[str] = None,
     requirement_ids: Optional[list[str]] = None,
+    github_issue_number: Optional[int] = None,
+    external_url: Optional[str] = None,
+    auto_close_github_issue: bool = False,
 ) -> Task:
     """Create a new task.
 
@@ -113,10 +118,10 @@ def create(
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, parent_id, lineage, is_leaf, hierarchical_id, created_at, updated_at, requirement_ids)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, parent_id, lineage, is_leaf, hierarchical_id, created_at, updated_at, requirement_ids, github_issue_number, external_url, auto_close_github_issue)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, complexity_score, uncertainty_level, parent_id, json.dumps(lineage_list), 1 if is_leaf else 0, hierarchical_id, now, now, json.dumps(requirement_ids_list)),
+            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, complexity_score, uncertainty_level, parent_id, json.dumps(lineage_list), 1 if is_leaf else 0, hierarchical_id, now, now, json.dumps(requirement_ids_list), github_issue_number, external_url, 1 if auto_close_github_issue else 0),
         )
         conn.commit()
     finally:
@@ -139,6 +144,9 @@ def create(
         is_leaf=is_leaf,
         hierarchical_id=hierarchical_id,
         requirement_ids=requirement_ids_list,
+        github_issue_number=github_issue_number,
+        external_url=external_url,
+        auto_close_github_issue=auto_close_github_issue,
         created_at=datetime.fromisoformat(now),
         updated_at=datetime.fromisoformat(now),
     )
@@ -159,7 +167,7 @@ def get(workspace: Workspace, task_id: str) -> Optional[Task]:
 
     cursor.execute(
         """
-        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids
+        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
         FROM tasks
         WHERE workspace_id = ? AND id = ?
         """,
@@ -172,6 +180,87 @@ def get(workspace: Workspace, task_id: str) -> Optional[Task]:
         return None
 
     return _row_to_task(row)
+
+
+def get_by_github_issue_number(
+    workspace: Workspace, github_issue_number: int
+) -> Optional[Task]:
+    """Get a task previously imported from a given GitHub issue number.
+
+    Used for duplicate-import protection (issue #565): if a task already exists
+    for an issue number in this workspace, the import is skipped rather than
+    creating a second task.
+
+    Args:
+        workspace: Workspace to query
+        github_issue_number: GitHub issue number to look up
+
+    Returns:
+        The matching Task if one exists, otherwise None
+    """
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
+        FROM tasks
+        WHERE workspace_id = ? AND github_issue_number = ?
+        LIMIT 1
+        """,
+        (workspace.id, github_issue_number),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return _row_to_task(row)
+
+
+def update_auto_close(
+    workspace: Workspace,
+    task_id: str,
+    auto_close: bool,
+) -> Task:
+    """Update whether the linked GitHub issue should close when the task is DONE.
+
+    Args:
+        workspace: Target workspace
+        task_id: Task to update
+        auto_close: New auto-close setting
+
+    Returns:
+        Updated Task
+
+    Raises:
+        ValueError: If task not found
+    """
+    task = get(workspace, task_id)
+    if not task:
+        raise ValueError(f"Task not found: {task_id}")
+
+    now = _utc_now().isoformat()
+
+    conn = get_db_connection(workspace)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET auto_close_github_issue = ?, updated_at = ?
+            WHERE workspace_id = ? AND id = ?
+            """,
+            (1 if auto_close else 0, now, workspace.id, task_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    task.auto_close_github_issue = auto_close
+    task.updated_at = datetime.fromisoformat(now)
+
+    return task
 
 
 def list_tasks(
@@ -195,7 +284,7 @@ def list_tasks(
     if status:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
             FROM tasks
             WHERE workspace_id = ? AND status = ?
             ORDER BY priority ASC, created_at ASC
@@ -206,7 +295,7 @@ def list_tasks(
     else:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
             FROM tasks
             WHERE workspace_id = ?
             ORDER BY priority ASC, created_at ASC
@@ -753,7 +842,8 @@ def _row_to_task(row: tuple) -> Task:
     Row columns: id, workspace_id, prd_id, title, description, status, priority,
                  depends_on, estimated_hours, complexity_score, uncertainty_level,
                  created_at, updated_at, github_issue_number, parent_id, lineage,
-                 is_leaf, hierarchical_id, requirement_ids
+                 is_leaf, hierarchical_id, requirement_ids, external_url,
+                 auto_close_github_issue
     """
     # Parse depends_on from JSON string (default to empty list if null)
     depends_on_raw = row[7]
@@ -791,4 +881,6 @@ def _row_to_task(row: tuple) -> Task:
         is_leaf=is_leaf,
         hierarchical_id=row[17] if len(row) > 17 else None,
         requirement_ids=requirement_ids,
+        external_url=row[19] if len(row) > 19 else None,
+        auto_close_github_issue=bool(row[20]) if len(row) > 20 and row[20] is not None else False,
     )
