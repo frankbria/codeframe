@@ -66,6 +66,23 @@ class TestTraceabilityFields:
         assert by_id[imported.id].external_url.endswith("/issues/99")
 
 
+class TestExternalUrlUniqueIndex:
+    def test_duplicate_external_url_rejected_by_db(self, workspace):
+        """A unique index enforces one task per (workspace, issue URL) (#565)."""
+        import sqlite3
+
+        url = "https://github.com/acme/app/issues/12"
+        tasks.create(workspace, title="First", external_url=url)
+        with pytest.raises(sqlite3.IntegrityError):
+            tasks.create(workspace, title="Dup", external_url=url)
+
+    def test_multiple_null_external_urls_allowed(self, workspace):
+        """Non-imported tasks (NULL external_url) are unaffected by the index."""
+        tasks.create(workspace, title="A")
+        tasks.create(workspace, title="B")
+        assert len(tasks.list_tasks(workspace)) == 2
+
+
 class TestGetByExternalUrl:
     def test_returns_matching_task(self, workspace):
         url = "https://github.com/acme/app/issues/123"

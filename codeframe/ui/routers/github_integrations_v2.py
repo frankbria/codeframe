@@ -14,6 +14,7 @@ response.
 """
 
 import logging
+import sqlite3
 import time
 from typing import Any, Optional
 
@@ -459,13 +460,22 @@ async def import_issues(
             footer = "**Labels:** " + ", ".join(issue["labels"])
             description = f"{description}\n\n{footer}" if description else footer
 
-        task = tasks.create(
-            workspace,
-            title=issue["title"],
-            description=description,
-            github_issue_number=number,
-            external_url=issue["html_url"],
-        )
+        try:
+            task = tasks.create(
+                workspace,
+                title=issue["title"],
+                description=description,
+                github_issue_number=number,
+                external_url=issue["html_url"],
+            )
+        except sqlite3.IntegrityError:
+            # A concurrent import (double-submit / second tab) created this task
+            # between our de-dupe read and now. The unique index on
+            # (workspace_id, external_url) makes that race a no-op: treat it as
+            # an already-imported skip rather than a duplicate task.
+            skipped.append(number)
+            continue
+
         created.append(
             ImportedTaskSummary(
                 task_id=task.id, issue_number=number, title=task.title

@@ -285,6 +285,7 @@ async def close_issue(
     number: int,
     *,
     comment: Optional[str] = None,
+    timeout: float = _TIMEOUT,
     client: Optional[httpx.AsyncClient] = None,
 ) -> bool:
     """Close a GitHub issue, optionally posting a comment first (issue #565).
@@ -294,6 +295,8 @@ async def close_issue(
         repo: Repository in ``owner/repo`` format.
         number: Issue number to close.
         comment: Optional comment body to post before closing.
+        timeout: HTTP timeout in seconds for the (self-created) client. Auto-close
+            passes a short value so a hung close never stalls a caller for long.
         client: Optional httpx client (injected by tests). When ``None`` a
             short-lived client is created and closed internally.
 
@@ -310,7 +313,7 @@ async def close_issue(
 
     own_client = client is None
     if own_client:
-        client = httpx.AsyncClient(timeout=_TIMEOUT)
+        client = httpx.AsyncClient(timeout=timeout)
     try:
         headers = _headers(pat)
         base = f"{GITHUB_API_BASE}/repos/{owner}/{name}/issues/{number}"

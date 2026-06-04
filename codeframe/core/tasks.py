@@ -450,34 +450,55 @@ def _dispatch_github_autoclose(workspace: Workspace, task: Task) -> None:
         )
 
 
+# Bounded timeout for the auto-close call so a hung GitHub request never stalls
+# a short-lived CLI process for long at exit.
+_AUTOCLOSE_TIMEOUT = 10.0
+
+
+async def _safe_close_issue(pat: str, repo: str, issue_number: int) -> None:
+    """Close the issue, swallowing every error (best-effort, off the hot path)."""
+    try:
+        from codeframe.core.github_issues_service import close_issue
+
+        await close_issue(
+            pat,
+            repo,
+            issue_number,
+            comment="Completed via CodeFRAME",
+            timeout=_AUTOCLOSE_TIMEOUT,
+        )
+    except Exception:  # noqa: BLE001 - background best-effort
+        logger.warning(
+            "GitHub auto-close of issue #%s failed", issue_number, exc_info=True
+        )
+
+
 def _close_issue_background(pat: str, repo: str, issue_number: int) -> None:
-    """Close the linked GitHub issue off the caller's path (#565).
+    """Run the auto-close off the caller's path (#565).
 
-    The close runs on a separate thread so it never blocks the task transition
-    (the FastAPI response returns immediately; the agent/CLI continues). The
-    thread is intentionally **non-daemon**: unlike a best-effort notification,
-    leaving the issue open is a real failure, so a short-lived CLI process must
-    wait for the close at interpreter exit rather than abandoning it. The wait
-    is bounded by the GitHub client timeout (~15s).
+    Context-aware, mirroring ``WebhookNotificationService.send_event_background``:
+
+    * **Async (server)**: there is a running event loop (the FastAPI handler),
+      so schedule the close on it and return immediately. No thread is created,
+      so nothing is left to join at process shutdown.
+    * **Sync (CLI / agent worker thread)**: no running loop, so run the close to
+      completion on a **non-daemon** thread. Unlike a fire-and-forget
+      notification, leaving the issue open is a real failure, so a short-lived
+      CLI process waits for the close at interpreter exit (bounded by
+      ``_AUTOCLOSE_TIMEOUT``) instead of abandoning it.
     """
-
-    def _run() -> None:
-        try:
-            from codeframe.core.github_issues_service import close_issue
-
-            asyncio.run(
-                close_issue(
-                    pat, repo, issue_number, comment="Completed via CodeFRAME"
-                )
-            )
-        except Exception:  # noqa: BLE001 - background best-effort
-            logger.warning(
-                "GitHub auto-close of issue #%s failed", issue_number, exc_info=True
-            )
-
-    threading.Thread(
-        target=_run, daemon=False, name=f"gh-autoclose-{issue_number}"
-    ).start()
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        threading.Thread(
+            target=lambda: asyncio.run(
+                _safe_close_issue(pat, repo, issue_number)
+            ),
+            daemon=False,
+            name=f"gh-autoclose-{issue_number}",
+        ).start()
+    else:
+        loop.create_task(_safe_close_issue(pat, repo, issue_number))
 
 
 def update(
