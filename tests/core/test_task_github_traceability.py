@@ -116,7 +116,8 @@ class TestGetByExternalUrl:
 class TestAutoCloseDispatch:
     """update_status fires the GitHub auto-close on DONE for all callers (#565)."""
 
-    def test_done_dispatches_when_opted_in(self, workspace, monkeypatch):
+    @staticmethod
+    def _record_calls(monkeypatch):
         from codeframe.core import tasks as tasks_mod
 
         calls = []
@@ -125,15 +126,11 @@ class TestAutoCloseDispatch:
             "_close_issue_background",
             lambda pat, repo, number: calls.append((repo, number)),
         )
-        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
-        from codeframe.core.github_integration_config import (
-            save_github_integration_config,
-        )
+        return calls
 
-        save_github_integration_config(
-            workspace,
-            {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
-        )
+    def test_done_dispatches_when_opted_in(self, workspace, monkeypatch):
+        calls = self._record_calls(monkeypatch)
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
 
         task = tasks.create(
             workspace,
@@ -146,15 +143,34 @@ class TestAutoCloseDispatch:
         tasks.update_status(workspace, task.id, TaskStatus.DONE)
         assert calls == [("acme/app", 99)]
 
-    def test_done_does_not_dispatch_when_not_opted_in(self, workspace, monkeypatch):
-        from codeframe.core import tasks as tasks_mod
-
-        calls = []
-        monkeypatch.setattr(
-            tasks_mod,
-            "_close_issue_background",
-            lambda pat, repo, number: calls.append((repo, number)),
+    def test_done_targets_source_repo_from_external_url(self, workspace, monkeypatch):
+        """The close targets the task's source repo, not the live connection."""
+        calls = self._record_calls(monkeypatch)
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+        # Workspace is currently connected to a DIFFERENT repo than the task came
+        # from — the close must still target the task's original repo.
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
         )
+
+        save_github_integration_config(
+            workspace,
+            {"repo": "newowner/newrepo", "owner_login": "newowner",
+             "owner_avatar_url": ""},
+        )
+        task = tasks.create(
+            workspace,
+            title="From old repo",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=42,
+            external_url="https://github.com/acme/app/issues/42",
+            auto_close_github_issue=True,
+        )
+        tasks.update_status(workspace, task.id, TaskStatus.DONE)
+        assert calls == [("acme/app", 42)]
+
+    def test_done_does_not_dispatch_when_not_opted_in(self, workspace, monkeypatch):
+        calls = self._record_calls(monkeypatch)
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
 
         task = tasks.create(
@@ -162,27 +178,39 @@ class TestAutoCloseDispatch:
             title="Imported",
             status=TaskStatus.IN_PROGRESS,
             github_issue_number=99,
+            external_url="https://github.com/acme/app/issues/99",
             auto_close_github_issue=False,
         )
         tasks.update_status(workspace, task.id, TaskStatus.DONE)
         assert calls == []
 
-    def test_done_skips_when_not_connected(self, workspace, monkeypatch):
-        from codeframe.core import tasks as tasks_mod
-
-        calls = []
-        monkeypatch.setattr(
-            tasks_mod,
-            "_close_issue_background",
-            lambda pat, repo, number: calls.append((repo, number)),
+    def test_done_skips_when_no_source_repo(self, workspace, monkeypatch):
+        """No external_url → no parseable repo → nothing dispatched."""
+        calls = self._record_calls(monkeypatch)
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+        task = tasks.create(
+            workspace,
+            title="Imported, no url",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=99,
+            auto_close_github_issue=True,
         )
-        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-        # No github config saved and no PAT → nothing dispatched.
+        tasks.update_status(workspace, task.id, TaskStatus.DONE)
+        assert calls == []
+
+    def test_done_skips_when_no_pat(self, workspace, monkeypatch):
+        """A parseable repo but no stored PAT → nothing dispatched."""
+        calls = self._record_calls(monkeypatch)
+        monkeypatch.setattr(
+            "codeframe.core.credentials.CredentialManager.get_credential",
+            lambda self, provider, name=None: None,
+        )
         task = tasks.create(
             workspace,
             title="Imported",
             status=TaskStatus.IN_PROGRESS,
             github_issue_number=99,
+            external_url="https://github.com/acme/app/issues/99",
             auto_close_github_issue=True,
         )
         tasks.update_status(workspace, task.id, TaskStatus.DONE)

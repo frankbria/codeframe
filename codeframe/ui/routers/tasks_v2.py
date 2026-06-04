@@ -26,7 +26,7 @@ from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import runtime, tasks, conductor, streaming
 from codeframe.core.runtime import RunStatus
-from codeframe.core.state_machine import TaskStatus
+from codeframe.core.state_machine import TaskStatus, can_transition
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
 
@@ -298,36 +298,56 @@ async def update_task(
             - 400: Invalid status or status transition
     """
     try:
-        # Persist the GitHub auto-close preference BEFORE any status change, so a
-        # combined request ({status: "DONE", auto_close_github_issue: true})
-        # closes the issue: the DONE transition (in core) reads the freshly-saved
-        # flag rather than the stale value. (#565)
-        if body.auto_close_github_issue is not None:
-            tasks.update_auto_close(workspace, task_id, body.auto_close_github_issue)
-
-        # Handle status update separately if provided
+        # Validate everything that can reject the request BEFORE any mutation,
+        # so a rejected PATCH (bad status, illegal transition, missing task)
+        # never leaves a side effect — notably a persisted auto-close flag that
+        # would later close the issue unexpectedly. (#565)
+        new_status: Optional[TaskStatus] = None
         if body.status:
             try:
                 new_status = TaskStatus(body.status.upper())
-                tasks.update_status(workspace, task_id, new_status)
-            except ValueError as e:
-                if "Invalid status" in str(e) or "not a valid" in str(e).lower():
-                    raise HTTPException(
-                        status_code=400,
-                        detail=api_error(
-                            f"Invalid status: {body.status}",
-                            ErrorCodes.VALIDATION_ERROR,
-                            f"Valid values: {[s.value for s in TaskStatus]}",
-                        ),
-                    )
-                # Status transition error
+            except ValueError:
                 raise HTTPException(
                     status_code=400,
-                    detail=api_error("Invalid status transition", ErrorCodes.INVALID_STATE, str(e)),
+                    detail=api_error(
+                        f"Invalid status: {body.status}",
+                        ErrorCodes.VALIDATION_ERROR,
+                        f"Valid values: {[s.value for s in TaskStatus]}",
+                    ),
+                )
+            current = tasks.get(workspace, task_id)
+            if current is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=api_error(
+                        "Task not found",
+                        ErrorCodes.NOT_FOUND,
+                        f"No task with id {task_id}",
+                    ),
+                )
+            if not can_transition(current.status, new_status):
+                raise HTTPException(
+                    status_code=400,
+                    detail=api_error(
+                        "Invalid status transition",
+                        ErrorCodes.INVALID_STATE,
+                        f"Cannot transition from {current.status.value} to "
+                        f"{new_status.value}",
+                    ),
                 )
 
-        # Update other fields (re-reads current state, including the auto-close
-        # flag persisted above, so the returned task reflects every change).
+        # Validations passed — persist the auto-close preference first so a
+        # combined {status: DONE, auto_close_github_issue: true} request closes
+        # the issue (the DONE transition in core reads the freshly-saved flag).
+        if body.auto_close_github_issue is not None:
+            tasks.update_auto_close(workspace, task_id, body.auto_close_github_issue)
+
+        # Apply the already-validated status transition.
+        if new_status is not None:
+            tasks.update_status(workspace, task_id, new_status)
+
+        # Update remaining fields; re-reads current state so the returned task
+        # reflects every change (including the auto-close flag above).
         task = tasks.update(
             workspace,
             task_id,

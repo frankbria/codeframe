@@ -504,6 +504,37 @@ class TestImport:
         ]
         assert len(matching) == 1
 
+    def test_fetch_failure_creates_no_tasks(self, client, monkeypatch, workspace):
+        """A mid-batch fetch error aborts cleanly — no partial tasks created."""
+        _connect(client, monkeypatch)
+
+        from codeframe.core.github_connect_service import GitHubConnectError
+        from codeframe.ui.routers import github_integrations_v2
+
+        async def flaky_get_issue(pat, repo, number, **kwargs):
+            if number == 2:
+                raise GitHubConnectError("issue 2 is inaccessible")
+            return {
+                "number": number,
+                "title": f"Issue {number}",
+                "body": "x",
+                "labels": [],
+                "html_url": f"https://github.com/acme/app/issues/{number}",
+            }
+
+        monkeypatch.setattr(
+            github_integrations_v2, "get_issue", flaky_get_issue
+        )
+        r = client.post(
+            "/api/v2/integrations/github/import",
+            json={"issue_numbers": [1, 2, 3]},
+        )
+        assert r.status_code == 502
+        # The earlier valid issue (#1) must NOT have been created.
+        from codeframe.core import tasks
+
+        assert tasks.list_tasks(workspace) == []
+
     def test_same_issue_number_different_repo_is_not_skipped(
         self, client, monkeypatch, workspace
     ):

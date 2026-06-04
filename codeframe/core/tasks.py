@@ -14,6 +14,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlparse
 
 from codeframe.core.state_machine import TaskStatus, validate_transition
 from codeframe.core.workspace import Workspace, get_db_connection
@@ -392,31 +393,55 @@ def update_status(
     return task
 
 
+def _repo_from_issue_url(url: Optional[str]) -> Optional[str]:
+    """Extract ``owner/repo`` from a GitHub issue ``html_url``.
+
+    e.g. ``https://github.com/acme/app/issues/12`` -> ``"acme/app"``. Returns
+    ``None`` when the URL is missing or not in the expected issue-URL shape.
+    """
+    if not url:
+        return None
+    try:
+        parts = urlparse(url).path.strip("/").split("/")
+    except (ValueError, AttributeError):
+        return None
+    # .../{owner}/{repo}/issues/{number}
+    if len(parts) >= 4 and parts[-2] == "issues":
+        return f"{parts[-4]}/{parts[-3]}"
+    return None
+
+
 def _dispatch_github_autoclose(workspace: Workspace, task: Task) -> None:
     """Best-effort close of the linked GitHub issue when a task is DONE (#565).
 
     Mirrors the outbound-webhook dispatch pattern (``blockers._dispatch_*``):
     fully guarded so a missing connection or any GitHub error never affects the
-    task transition. Resolves the repo from the per-workspace integration
-    config and the PAT from the machine-wide credential store.
+    task transition. The repo is taken from the task's own ``external_url`` (its
+    source repo) — NOT the workspace's current connection — so completing an
+    older imported task always closes the right issue even after the workspace
+    is reconnected to a different repository. The PAT comes from the machine-wide
+    credential store.
     """
     if not task.auto_close_github_issue or task.github_issue_number is None:
         return
+    repo = _repo_from_issue_url(task.external_url)
+    if repo is None:
+        logger.info(
+            "Skipping GitHub auto-close for issue #%s: no source repo on task.",
+            task.github_issue_number,
+        )
+        return
     try:
         from codeframe.core.credentials import CredentialManager, CredentialProvider
-        from codeframe.core.github_integration_config import (
-            load_github_integration_config,
-        )
 
-        cfg = load_github_integration_config(workspace)
         pat = CredentialManager().get_credential(CredentialProvider.GIT_GITHUB)
-        if cfg is None or not pat:
+        if not pat:
             logger.info(
-                "Skipping GitHub auto-close for issue #%s: no connection.",
+                "Skipping GitHub auto-close for issue #%s: no stored PAT.",
                 task.github_issue_number,
             )
             return
-        _close_issue_background(pat, cfg["repo"], task.github_issue_number)
+        _close_issue_background(pat, repo, task.github_issue_number)
     except Exception:  # noqa: BLE001 - must never break the task transition
         logger.warning(
             "Failed to dispatch GitHub auto-close for issue #%s",

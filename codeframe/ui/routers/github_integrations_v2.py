@@ -414,25 +414,35 @@ async def import_issues(
     Each issue becomes a task (title + body, with a best-effort ``Labels:``
     footer) linked back to the issue via ``github_issue_number`` + ``external_url``.
     Issues already imported into this workspace are skipped (duplicate-import
-    protection), keyed on ``github_issue_number``.
+    protection), keyed on the full issue URL so the same number in a different
+    repo is still importable.
+
+    The import is all-or-nothing on fetch: every selected issue is fetched and
+    de-duplicated *before* any task is created, so a single stale/inaccessible
+    issue fails the request cleanly without leaving a partial set of tasks
+    behind (which would confuse a retry with phantom duplicates).
     """
     repo, pat = _require_connection(workspace, manager)
 
-    created: list[ImportedTaskSummary] = []
     skipped: list[int] = []
+    to_create: list[tuple[int, dict]] = []
 
+    # Phase 1 — fetch + de-dupe everything first. Any fetch error aborts here,
+    # before a single task has been created.
     for number in body.issue_numbers:
         try:
             issue = await get_issue(pat, repo, number)
         except GitHubConnectError as e:
             raise _map_github_error(e)
 
-        # De-dupe on the full issue URL (repo-aware): the same issue number in a
-        # different repo is a distinct issue and must still be importable.
         if tasks.get_by_external_url(workspace, issue["html_url"]) is not None:
             skipped.append(number)
             continue
+        to_create.append((number, issue))
 
+    # Phase 2 — create the tasks. No awaits here, so nothing can fail partway.
+    created: list[ImportedTaskSummary] = []
+    for number, issue in to_create:
         description = issue["body"] or ""
         if issue["labels"]:
             footer = "**Labels:** " + ", ".join(issue["labels"])

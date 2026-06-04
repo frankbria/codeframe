@@ -1287,3 +1287,27 @@ class TestTasksV2GitHubTraceability:
         )
         assert r.status_code == 200
         assert calls == [("acme/app", 77)]
+
+    def test_rejected_transition_does_not_persist_auto_close(self, test_client):
+        """An invalid transition must not leave the auto-close flag mutated."""
+        from codeframe.core import tasks
+        from codeframe.core.state_machine import TaskStatus
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Imported",
+            status=TaskStatus.BACKLOG,
+            github_issue_number=5,
+            external_url="https://github.com/acme/app/issues/5",
+            auto_close_github_issue=False,
+        )
+        # BACKLOG -> DONE is not an allowed transition; the request is rejected
+        # and the auto_close flag must remain unchanged (no hidden side effect).
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}",
+            json={"status": "DONE", "auto_close_github_issue": True},
+        )
+        assert r.status_code == 400
+        assert (
+            tasks.get(test_client.workspace, task.id).auto_close_github_issue is False
+        )
