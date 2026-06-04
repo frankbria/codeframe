@@ -259,9 +259,30 @@ async def get_issue(
             logger.warning("GitHub get issue failed: %s", type(exc).__name__)
             raise GitHubConnectError("Could not reach GitHub. Try again later.")
 
-        # A 404 means the issue number doesn't exist (stale/typo'd payload) —
-        # a client error, distinct from an upstream GitHub failure.
+        # A 404 on /issues/{n} is ambiguous: the issue may genuinely not exist,
+        # OR the repo/token became inaccessible (renamed/deleted repo, rotated
+        # token). Probe the repo to tell a client typo (-> IssueNotFoundError,
+        # 404) apart from a broken integration (-> connect/auth error) so callers
+        # get the right recovery path. The probe only runs on the 404 path.
         if resp.status_code == 404:
+            try:
+                repo_resp = await client.get(
+                    f"{GITHUB_API_BASE}/repos/{owner}/{name}", headers=_headers(pat)
+                )
+            except httpx.HTTPError as exc:
+                logger.warning("GitHub repo probe failed: %s", type(exc).__name__)
+                raise GitHubConnectError("Could not reach GitHub. Try again later.")
+            if repo_resp.status_code == 401:
+                raise InvalidTokenError("Invalid GitHub token.")
+            if repo_resp.status_code == 403:
+                raise InsufficientScopeError(
+                    "Token lacks access to this repository."
+                )
+            if repo_resp.status_code == 404:
+                raise GitHubConnectError(
+                    f"Repository '{repo}' is no longer accessible."
+                )
+            # Repo is reachable → the issue itself genuinely does not exist.
             raise IssueNotFoundError(f"Issue #{number} was not found in '{repo}'.")
         _raise_for_status(resp.status_code, context="get issue")
 

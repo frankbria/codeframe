@@ -311,12 +311,41 @@ class TestGetIssue:
                 await get_issue(VALID_PAT, "acme/app", 1, client=client)
 
     @pytest.mark.asyncio
-    async def test_404_maps_to_issue_not_found(self):
+    async def test_404_with_reachable_repo_maps_to_issue_not_found(self):
+        """Issue 404 + repo reachable → the issue genuinely doesn't exist."""
+
         def handler(request: httpx.Request) -> httpx.Response:
+            # The repo probe (GET /repos/acme/app) succeeds; the issue 404s.
+            if request.url.path == "/repos/acme/app":
+                return httpx.Response(200, json={"full_name": "acme/app"})
             return httpx.Response(404, json={"message": "Not Found"})
 
         async with _client(handler) as client:
             with pytest.raises(IssueNotFoundError):
+                await get_issue(VALID_PAT, "acme/app", 999, client=client)
+
+    @pytest.mark.asyncio
+    async def test_404_with_unreachable_repo_maps_to_connect_error(self):
+        """Issue 404 + repo also 404 → broken integration, not a missing issue."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"message": "Not Found"})
+
+        async with _client(handler) as client:
+            with pytest.raises(GitHubConnectError):
+                await get_issue(VALID_PAT, "acme/app", 999, client=client)
+
+    @pytest.mark.asyncio
+    async def test_404_with_revoked_token_maps_to_invalid_token(self):
+        """Issue 404 + repo probe 401 → token problem, surfaced as such."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/repos/acme/app":
+                return httpx.Response(401, json={"message": "Bad credentials"})
+            return httpx.Response(404, json={"message": "Not Found"})
+
+        async with _client(handler) as client:
+            with pytest.raises(InvalidTokenError):
                 await get_issue(VALID_PAT, "acme/app", 999, client=client)
 
 

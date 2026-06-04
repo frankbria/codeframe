@@ -26,7 +26,11 @@ from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import runtime, tasks, conductor, streaming
 from codeframe.core.runtime import RunStatus
-from codeframe.core.state_machine import TaskStatus, can_transition
+from codeframe.core.state_machine import (
+    InvalidTransitionError,
+    TaskStatus,
+    can_transition,
+)
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
 
@@ -336,24 +340,40 @@ async def update_task(
                     ),
                 )
 
-        # Validations passed — persist the auto-close preference first so a
-        # combined {status: DONE, auto_close_github_issue: true} request closes
-        # the issue (the DONE transition in core reads the freshly-saved flag).
+        # Apply the (pre-validated) status transition FIRST so the auto-close
+        # flag is never persisted ahead of a transition that could still be
+        # rejected by a concurrent state change — leaving no side effect on a
+        # failed request. When the task was already opted in, core closes the
+        # issue on this DONE transition.
+        if new_status is not None:
+            try:
+                tasks.update_status(workspace, task_id, new_status)
+            except InvalidTransitionError:
+                # Pre-validation passed, so this means the task state changed
+                # concurrently between the check and the apply. Nothing has been
+                # persisted yet — report a conflict.
+                raise HTTPException(
+                    status_code=409,
+                    detail=api_error(
+                        "Task state changed concurrently; please retry.",
+                        ErrorCodes.CONFLICT,
+                    ),
+                )
+
+        # Persist the auto-close preference AFTER the status change has
+        # succeeded. When the flag is newly enabled (false -> true) and the task
+        # is now DONE, close the issue explicitly: core only auto-closes on the
+        # DONE transition for tasks that were ALREADY opted in, so a freshly
+        # enabled flag (late opt-in, or a combined {status: DONE, opt-in})
+        # otherwise wouldn't fire.
         if body.auto_close_github_issue is not None:
+            before = tasks.get(workspace, task_id)
+            was_opted_in = before.auto_close_github_issue if before else False
             updated = tasks.update_auto_close(
                 workspace, task_id, body.auto_close_github_issue
             )
-            # If the user opts in on a task that is ALREADY done, close the issue
-            # now — otherwise it would stay open forever. Only when this request
-            # is NOT also changing status: a request that transitions the task
-            # (e.g. DONE -> READY to reopen it) must not close the issue; the
-            # DONE-transition path below handles the close when appropriate.
-            if body.auto_close_github_issue and new_status is None:
+            if body.auto_close_github_issue and not was_opted_in:
                 tasks.autoclose_if_done(workspace, updated)
-
-        # Apply the already-validated status transition.
-        if new_status is not None:
-            tasks.update_status(workspace, task_id, new_status)
 
         # Update remaining fields; re-reads current state so the returned task
         # reflects every change (including the auto-close flag above).
