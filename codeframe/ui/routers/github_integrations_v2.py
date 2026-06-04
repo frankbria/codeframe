@@ -31,6 +31,7 @@ from codeframe.core.github_connect_service import (
     validate_connection,
 )
 from codeframe.core.github_issues_service import (
+    IssueNotFoundError,
     NotAnIssueError,
     get_issue,
     list_issues,
@@ -439,6 +440,12 @@ async def import_issues(
             raise HTTPException(
                 status_code=422,
                 detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR),
+            )
+        except IssueNotFoundError as e:
+            # A stale/typo'd issue number — a client error, not a 502.
+            raise HTTPException(
+                status_code=404,
+                detail=api_error(str(e), ErrorCodes.NOT_FOUND),
             )
         except GitHubConnectError as e:
             raise _map_github_error(e)

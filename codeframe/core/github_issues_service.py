@@ -45,6 +45,15 @@ class NotAnIssueError(Exception):
     client error (the caller sent a PR number), not a GitHub upstream failure.
     """
 
+
+class IssueNotFoundError(Exception):
+    """The requested issue number does not exist in the repo (404) (#565).
+
+    Intentionally NOT a ``GitHubConnectError`` subclass: a missing/stale issue
+    number is a client error (bad payload), not a GitHub upstream failure, so
+    callers map it to a 4xx rather than a 502.
+    """
+
 # Parse the ``page=N`` query param out of a Link header's rel="last" URL.
 _LAST_PAGE_RE = re.compile(r'[?&]page=(\d+)[^>]*>;\s*rel="last"')
 
@@ -250,6 +259,10 @@ async def get_issue(
             logger.warning("GitHub get issue failed: %s", type(exc).__name__)
             raise GitHubConnectError("Could not reach GitHub. Try again later.")
 
+        # A 404 means the issue number doesn't exist (stale/typo'd payload) —
+        # a client error, distinct from an upstream GitHub failure.
+        if resp.status_code == 404:
+            raise IssueNotFoundError(f"Issue #{number} was not found in '{repo}'.")
         _raise_for_status(resp.status_code, context="get issue")
 
         raw = resp.json()

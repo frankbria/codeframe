@@ -531,6 +531,24 @@ class TestImport:
 
         assert tasks.list_tasks(workspace) == []
 
+    def test_missing_issue_number_maps_to_404(self, client, monkeypatch, workspace):
+        """A stale/typo'd issue number is a client error (404), not a 502."""
+        _connect(client, monkeypatch)
+        from codeframe.core.github_issues_service import IssueNotFoundError
+        from codeframe.ui.routers import github_integrations_v2
+
+        async def missing(pat, repo, number, **kwargs):
+            raise IssueNotFoundError(f"Issue #{number} was not found in '{repo}'.")
+
+        monkeypatch.setattr(github_integrations_v2, "get_issue", missing)
+        r = client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [9999]}
+        )
+        assert r.status_code == 404
+        from codeframe.core import tasks
+
+        assert tasks.list_tasks(workspace) == []
+
     def test_fetch_failure_creates_no_tasks(self, client, monkeypatch, workspace):
         """A mid-batch fetch error aborts cleanly — no partial tasks created."""
         _connect(client, monkeypatch)

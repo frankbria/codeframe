@@ -231,6 +231,7 @@ class TestErrorMapping:
 
 from codeframe.core.github_connect_service import GitHubConnectError  # noqa: E402
 from codeframe.core.github_issues_service import (  # noqa: E402
+    IssueNotFoundError,
     NotAnIssueError,
     close_issue,
     get_issue,
@@ -310,12 +311,12 @@ class TestGetIssue:
                 await get_issue(VALID_PAT, "acme/app", 1, client=client)
 
     @pytest.mark.asyncio
-    async def test_404_maps_to_connect_error(self):
+    async def test_404_maps_to_issue_not_found(self):
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(404, json={"message": "Not Found"})
 
         async with _client(handler) as client:
-            with pytest.raises(GitHubConnectError):
+            with pytest.raises(IssueNotFoundError):
                 await get_issue(VALID_PAT, "acme/app", 999, client=client)
 
 

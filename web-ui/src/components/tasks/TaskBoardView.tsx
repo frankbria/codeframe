@@ -111,9 +111,11 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
       setIsImporting(true);
       setActionError(null);
       setImportSummary(null);
+      let imported = false;
       try {
         const numbers = selectedIssues.map((i) => i.number);
         const result = await integrationsApi.importIssues(workspacePath, numbers);
+        imported = true;
         setImportModalOpen(false);
         const parts = [
           `${result.total_created} task${result.total_created !== 1 ? 's' : ''} created`,
@@ -124,12 +126,17 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
           );
         }
         setImportSummary(parts.join(' · '));
-        await mutate();
       } catch (err) {
         const apiErr = err as ApiError;
         setActionError(apiErr.detail || 'Failed to import issues from GitHub');
       } finally {
         setIsImporting(false);
+      }
+      // Refresh the board AFTER the import resolves. A refresh failure is not an
+      // import failure — the tasks were already created — so it must not flip
+      // the success summary into an error (SWR will revalidate again later).
+      if (imported) {
+        mutate();
       }
     },
     [workspacePath, mutate]
