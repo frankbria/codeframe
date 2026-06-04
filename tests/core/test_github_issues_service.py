@@ -223,3 +223,132 @@ class TestErrorMapping:
             )
         assert issues == []
         assert total == 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# get_issue / close_issue (issue #565 — import execution + auto-close)
+# ─────────────────────────────────────────────────────────────────────────────
+
+from codeframe.core.github_connect_service import GitHubConnectError  # noqa: E402
+from codeframe.core.github_issues_service import close_issue, get_issue  # noqa: E402
+
+
+class TestGetIssue:
+    @pytest.mark.asyncio
+    async def test_returns_issue_fields(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.method == "GET"
+            assert request.url.path == "/repos/acme/app/issues/42"
+            return httpx.Response(
+                200,
+                json={
+                    "number": 42,
+                    "title": "Fix login bug",
+                    "body": "Steps to reproduce...",
+                    "labels": [{"name": "bug"}, {"name": "auth"}],
+                    "html_url": "https://github.com/acme/app/issues/42",
+                },
+            )
+
+        async with _client(handler) as client:
+            issue = await get_issue(VALID_PAT, "acme/app", 42, client=client)
+        assert issue["number"] == 42
+        assert issue["title"] == "Fix login bug"
+        assert issue["body"] == "Steps to reproduce..."
+        assert issue["labels"] == ["bug", "auth"]
+        assert issue["html_url"] == "https://github.com/acme/app/issues/42"
+
+    @pytest.mark.asyncio
+    async def test_handles_null_body(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "number": 7,
+                    "title": "No body issue",
+                    "body": None,
+                    "labels": [],
+                    "html_url": "https://github.com/acme/app/issues/7",
+                },
+            )
+
+        async with _client(handler) as client:
+            issue = await get_issue(VALID_PAT, "acme/app", 7, client=client)
+        assert issue["body"] == ""
+        assert issue["labels"] == []
+
+    @pytest.mark.asyncio
+    async def test_401_maps_to_invalid_token(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(401, json={"message": "Bad credentials"})
+
+        async with _client(handler) as client:
+            with pytest.raises(InvalidTokenError):
+                await get_issue(VALID_PAT, "acme/app", 1, client=client)
+
+    @pytest.mark.asyncio
+    async def test_404_maps_to_connect_error(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, json={"message": "Not Found"})
+
+        async with _client(handler) as client:
+            with pytest.raises(GitHubConnectError):
+                await get_issue(VALID_PAT, "acme/app", 999, client=client)
+
+
+class TestCloseIssue:
+    @pytest.mark.asyncio
+    async def test_patches_state_closed(self):
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append((request.method, request.url.path))
+            return httpx.Response(200, json={"number": 42, "state": "closed"})
+
+        async with _client(handler) as client:
+            ok = await close_issue(VALID_PAT, "acme/app", 42, client=client)
+        assert ok is True
+        assert ("PATCH", "/repos/acme/app/issues/42") in calls
+
+    @pytest.mark.asyncio
+    async def test_posts_comment_then_closes_when_comment_given(self):
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append((request.method, request.url.path))
+            if request.url.path.endswith("/comments"):
+                return httpx.Response(201, json={"id": 1})
+            return httpx.Response(200, json={"number": 42, "state": "closed"})
+
+        async with _client(handler) as client:
+            ok = await close_issue(
+                VALID_PAT, "acme/app", 42, comment="Completed via CodeFRAME", client=client
+            )
+        assert ok is True
+        assert ("POST", "/repos/acme/app/issues/42/comments") in calls
+        assert ("PATCH", "/repos/acme/app/issues/42") in calls
+        # Comment must be posted before the close patch.
+        assert calls.index(("POST", "/repos/acme/app/issues/42/comments")) < calls.index(
+            ("PATCH", "/repos/acme/app/issues/42")
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_comment_skips_comment_call(self):
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append((request.method, request.url.path))
+            return httpx.Response(200, json={"number": 42, "state": "closed"})
+
+        async with _client(handler) as client:
+            await close_issue(VALID_PAT, "acme/app", 42, client=client)
+        assert not any(p.endswith("/comments") for _, p in calls)
+
+    @pytest.mark.asyncio
+    async def test_401_maps_to_invalid_token(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(401, json={"message": "Bad credentials"})
+
+        async with _client(handler) as client:
+            with pytest.raises(InvalidTokenError):
+                await close_issue(VALID_PAT, "acme/app", 1, client=client)

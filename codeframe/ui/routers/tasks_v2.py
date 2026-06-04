@@ -25,6 +25,10 @@ from pydantic import BaseModel, Field, model_validator
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import runtime, tasks, conductor, streaming
+from codeframe.core.credentials import CredentialManager, CredentialProvider
+from codeframe.core.github_connect_service import GitHubConnectError
+from codeframe.core.github_integration_config import load_github_integration_config
+from codeframe.core.github_issues_service import close_issue
 from codeframe.core.runtime import RunStatus
 from codeframe.core.state_machine import TaskStatus
 from codeframe.ui.dependencies import get_v2_workspace
@@ -33,6 +37,52 @@ from codeframe.ui.response_models import api_error, ErrorCodes
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/tasks", tags=["tasks-v2"])
+
+
+def get_credential_manager() -> CredentialManager:
+    """Dependency: machine-wide CredentialManager (overridden in tests).
+
+    Shares the ``CredentialProvider.GIT_GITHUB`` slot used by the Integrations
+    settings tab (#555/#563) — used here to resolve the PAT for GitHub
+    issue auto-close on task completion (#565).
+    """
+    return CredentialManager()
+
+
+async def _auto_close_github_issue(
+    workspace: Workspace,
+    manager: CredentialManager,
+    github_issue_number: int,
+) -> None:
+    """Close the linked GitHub issue when its task is marked DONE (#565).
+
+    Runs as a fire-and-forget background task. Resolves the repo from the
+    per-workspace integration config and the PAT from the credential store; a
+    missing connection (or any GitHub error) is logged and swallowed so the
+    task transition is never affected.
+    """
+    try:
+        cfg = load_github_integration_config(workspace)
+        pat = manager.get_credential(CredentialProvider.GIT_GITHUB)
+        if cfg is None or not pat:
+            logger.info(
+                "Skipping GitHub auto-close for issue #%s: no connection.",
+                github_issue_number,
+            )
+            return
+        await close_issue(
+            pat, cfg["repo"], github_issue_number, comment="Completed via CodeFRAME"
+        )
+    except GitHubConnectError as e:
+        logger.warning(
+            "Auto-close of GitHub issue #%s failed: %s", github_issue_number, e
+        )
+    except Exception as e:  # noqa: BLE001 - must never break the task transition
+        logger.warning(
+            "Unexpected error auto-closing GitHub issue #%s: %s",
+            github_issue_number,
+            e,
+        )
 
 
 # ============================================================================
@@ -145,6 +195,29 @@ class TaskResponse(BaseModel):
     estimated_hours: Optional[float] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    # GitHub issue traceability (#565)
+    github_issue_number: Optional[int] = None
+    external_url: Optional[str] = None
+    auto_close_github_issue: bool = False
+
+    @classmethod
+    def from_task(cls, task: tasks.Task) -> "TaskResponse":
+        """Build a response from a core ``Task`` (single source of mapping)."""
+        return cls(
+            id=task.id,
+            title=task.title,
+            description=task.description,
+            status=task.status.value,
+            priority=task.priority,
+            depends_on=task.depends_on,
+            requirement_ids=task.requirement_ids,
+            estimated_hours=task.estimated_hours,
+            created_at=task.created_at.isoformat() if task.created_at else None,
+            updated_at=task.updated_at.isoformat() if task.updated_at else None,
+            github_issue_number=task.github_issue_number,
+            external_url=task.external_url,
+            auto_close_github_issue=task.auto_close_github_issue,
+        )
 
 
 class TaskListResponse(BaseModel):
@@ -162,6 +235,10 @@ class UpdateTaskRequest(BaseModel):
     description: Optional[str] = Field(None, description="New task description")
     priority: Optional[int] = Field(None, ge=0, description="New task priority (0 = highest)")
     status: Optional[str] = Field(None, description="New task status (use for manual transitions)")
+    auto_close_github_issue: Optional[bool] = Field(
+        None,
+        description="Whether to close the linked GitHub issue when this task is DONE (#565)",
+    )
 
 
 # ============================================================================
@@ -209,21 +286,7 @@ async def list_tasks(
     status_counts = tasks.count_by_status(workspace)
 
     return TaskListResponse(
-        tasks=[
-            TaskResponse(
-                id=t.id,
-                title=t.title,
-                description=t.description,
-                status=t.status.value,
-                priority=t.priority,
-                depends_on=t.depends_on,
-                requirement_ids=t.requirement_ids,
-                estimated_hours=t.estimated_hours,
-                created_at=t.created_at.isoformat() if t.created_at else None,
-                updated_at=t.updated_at.isoformat() if t.updated_at else None,
-            )
-            for t in task_list
-        ],
+        tasks=[TaskResponse.from_task(t) for t in task_list],
         total=len(task_list),
         by_status=status_counts,
     )
@@ -255,18 +318,7 @@ async def get_task(
             detail=api_error("Task not found", ErrorCodes.NOT_FOUND, f"No task with id {task_id}"),
         )
 
-    return TaskResponse(
-        id=task.id,
-        title=task.title,
-        description=task.description,
-        status=task.status.value,
-        priority=task.priority,
-        depends_on=task.depends_on,
-        requirement_ids=task.requirement_ids,
-        estimated_hours=task.estimated_hours,
-        created_at=task.created_at.isoformat() if task.created_at else None,
-        updated_at=task.updated_at.isoformat() if task.updated_at else None,
-    )
+    return TaskResponse.from_task(task)
 
 
 @router.patch("/{task_id}", response_model=TaskResponse)
@@ -275,7 +327,9 @@ async def update_task(
     request: Request,
     task_id: str,
     body: UpdateTaskRequest,
+    background_tasks: BackgroundTasks,
     workspace: Workspace = Depends(get_v2_workspace),
+    manager: CredentialManager = Depends(get_credential_manager),
 ) -> TaskResponse:
     """Update a task's title, description, priority, or status.
 
@@ -296,11 +350,13 @@ async def update_task(
             - 400: Invalid status or status transition
     """
     try:
+        transitioned_to_done = False
         # Handle status update separately if provided
         if body.status:
             try:
                 new_status = TaskStatus(body.status.upper())
                 tasks.update_status(workspace, task_id, new_status)
+                transitioned_to_done = new_status == TaskStatus.DONE
             except ValueError as e:
                 if "Invalid status" in str(e) or "not a valid" in str(e).lower():
                     raise HTTPException(
@@ -326,18 +382,28 @@ async def update_task(
             priority=body.priority,
         )
 
-        return TaskResponse(
-            id=task.id,
-            title=task.title,
-            description=task.description,
-            status=task.status.value,
-            priority=task.priority,
-            depends_on=task.depends_on,
-            requirement_ids=task.requirement_ids,
-            estimated_hours=task.estimated_hours,
-            created_at=task.created_at.isoformat() if task.created_at else None,
-            updated_at=task.updated_at.isoformat() if task.updated_at else None,
-        )
+        # Persist the GitHub auto-close preference if provided (#565).
+        if body.auto_close_github_issue is not None:
+            task = tasks.update_auto_close(
+                workspace, task_id, body.auto_close_github_issue
+            )
+
+        # On a DONE transition, fire-and-forget the GitHub issue close when the
+        # task opted in and is linked to an issue (#565). Failures are swallowed
+        # inside the background task — the transition has already succeeded.
+        if (
+            transitioned_to_done
+            and task.auto_close_github_issue
+            and task.github_issue_number is not None
+        ):
+            background_tasks.add_task(
+                _auto_close_github_issue,
+                workspace,
+                manager,
+                task.github_issue_number,
+            )
+
+        return TaskResponse.from_task(task)
 
     except ValueError as e:
         error_msg = str(e)

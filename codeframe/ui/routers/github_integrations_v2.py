@@ -29,12 +29,13 @@ from codeframe.core.github_connect_service import (
     parse_repo,
     validate_connection,
 )
-from codeframe.core.github_issues_service import list_issues
+from codeframe.core.github_issues_service import close_issue, get_issue, list_issues
 from codeframe.core.github_integration_config import (
     clear_github_integration_config,
     load_github_integration_config,
     save_github_integration_config,
 )
+from codeframe.core import tasks
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.ui.dependencies import get_v2_workspace
@@ -86,6 +87,29 @@ class GitHubIssuesResponse(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+class ImportRequest(BaseModel):
+    issue_numbers: list[int] = Field(
+        ..., min_length=1, description="GitHub issue numbers to import as tasks"
+    )
+
+
+class ImportedTaskSummary(BaseModel):
+    task_id: str
+    issue_number: int
+    title: str
+
+
+class ImportResponse(BaseModel):
+    created: list[ImportedTaskSummary]
+    skipped: list[int]
+    total_created: int
+
+
+class CloseIssueResponse(BaseModel):
+    success: bool
+    issue_number: int
 
 
 # In-process TTL cache for issue listings (#564). Keyed by the full query
@@ -338,3 +362,113 @@ async def get_issues(
     )
     _issue_cache_set(cache_key, response)
     return response
+
+
+def _require_connection(
+    workspace: Workspace, manager: CredentialManager
+) -> tuple[str, str]:
+    """Return ``(repo, pat)`` for a connected workspace, or raise 409.
+
+    Mirrors the not-connected guard used by ``get_issues``: both per-workspace
+    repo metadata AND a stored PAT must be present.
+    """
+    cfg = load_github_integration_config(workspace)
+    pat = manager.get_credential(CredentialProvider.GIT_GITHUB)
+    if cfg is None or not pat:
+        raise HTTPException(
+            status_code=409,
+            detail=api_error(
+                "No GitHub repository is connected. Connect one in Settings → "
+                "Integrations first.",
+                ErrorCodes.CONFLICT,
+            ),
+        )
+    return cfg["repo"], pat
+
+
+def _map_github_error(e: Exception) -> HTTPException:
+    """Map a typed GitHub service error to an HTTPException (shared mapping)."""
+    if isinstance(e, InvalidTokenError):
+        return HTTPException(
+            status_code=401, detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR)
+        )
+    if isinstance(e, InsufficientScopeError):
+        return HTTPException(
+            status_code=403, detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR)
+        )
+    return HTTPException(
+        status_code=502, detail=api_error(str(e), ErrorCodes.EXECUTION_FAILED)
+    )
+
+
+@router.post("/import", response_model=ImportResponse)
+@rate_limit_ai()
+async def import_issues(
+    request: Request,
+    body: ImportRequest,
+    workspace: Workspace = Depends(get_v2_workspace),
+    manager: CredentialManager = Depends(get_credential_manager),
+) -> ImportResponse:
+    """Import selected GitHub issues as CodeFRAME tasks (issue #565).
+
+    Each issue becomes a task (title + body, with a best-effort ``Labels:``
+    footer) linked back to the issue via ``github_issue_number`` + ``external_url``.
+    Issues already imported into this workspace are skipped (duplicate-import
+    protection), keyed on ``github_issue_number``.
+    """
+    repo, pat = _require_connection(workspace, manager)
+
+    created: list[ImportedTaskSummary] = []
+    skipped: list[int] = []
+
+    for number in body.issue_numbers:
+        existing = tasks.get_by_github_issue_number(workspace, number)
+        if existing is not None:
+            skipped.append(number)
+            continue
+
+        try:
+            issue = await get_issue(pat, repo, number)
+        except GitHubConnectError as e:
+            raise _map_github_error(e)
+
+        description = issue["body"] or ""
+        if issue["labels"]:
+            footer = "**Labels:** " + ", ".join(issue["labels"])
+            description = f"{description}\n\n{footer}" if description else footer
+
+        task = tasks.create(
+            workspace,
+            title=issue["title"],
+            description=description,
+            github_issue_number=number,
+            external_url=issue["html_url"],
+        )
+        created.append(
+            ImportedTaskSummary(
+                task_id=task.id, issue_number=number, title=task.title
+            )
+        )
+
+    return ImportResponse(
+        created=created, skipped=skipped, total_created=len(created)
+    )
+
+
+@router.patch("/issues/{number}/close", response_model=CloseIssueResponse)
+@rate_limit_standard()
+async def close_github_issue(
+    request: Request,
+    number: int,
+    workspace: Workspace = Depends(get_v2_workspace),
+    manager: CredentialManager = Depends(get_credential_manager),
+) -> CloseIssueResponse:
+    """Close a GitHub issue (issue #565), posting a completion comment."""
+    repo, pat = _require_connection(workspace, manager)
+
+    try:
+        await close_issue(pat, repo, number, comment="Completed via CodeFRAME")
+    except GitHubConnectError as e:
+        raise _map_github_error(e)
+
+    return CloseIssueResponse(success=True, issue_number=number)

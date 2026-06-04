@@ -1161,3 +1161,157 @@ class TestRateLimitingIntegration:
         data = response.json()
         assert "blockers" in data
         assert "total" in data
+
+
+# ============================================================================
+# Tasks v2 — GitHub traceability + auto-close (issue #565)
+# ============================================================================
+
+
+class TestTasksV2GitHubTraceability:
+    """TaskResponse exposes GitHub linkage; PATCH toggles auto-close; DONE closes."""
+
+    def test_response_includes_github_fields(self, test_client):
+        from codeframe.core import tasks
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Imported",
+            github_issue_number=42,
+            external_url="https://github.com/acme/app/issues/42",
+        )
+        r = test_client.get(f"/api/v2/tasks/{task.id}")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["github_issue_number"] == 42
+        assert data["external_url"] == "https://github.com/acme/app/issues/42"
+        assert data["auto_close_github_issue"] is False
+
+    def test_plain_task_has_null_github_fields(self, test_client_with_task):
+        r = test_client_with_task.get(f"/api/v2/tasks/{test_client_with_task.task.id}")
+        data = r.json()
+        assert data["github_issue_number"] is None
+        assert data["external_url"] is None
+        assert data["auto_close_github_issue"] is False
+
+    def test_patch_sets_auto_close(self, test_client):
+        from codeframe.core import tasks
+
+        task = tasks.create(
+            test_client.workspace, title="Imported", github_issue_number=7
+        )
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}", json={"auto_close_github_issue": True}
+        )
+        assert r.status_code == 200
+        assert r.json()["auto_close_github_issue"] is True
+        assert tasks.get(test_client.workspace, task.id).auto_close_github_issue is True
+
+    def _build_client(self, workspace):
+        """A tasks_v2 client with an isolated credential manager holding a PAT."""
+        import tempfile as _tf
+        from pathlib import Path as _Path
+
+        from codeframe.core.credentials import (
+            CredentialManager,
+            CredentialProvider,
+            CredentialStore,
+        )
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
+        )
+        from codeframe.ui.dependencies import get_v2_workspace
+        from codeframe.ui.routers import tasks_v2
+
+        save_github_integration_config(
+            workspace,
+            {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
+        )
+        store = CredentialStore(storage_dir=_Path(_tf.mkdtemp()))
+        store._keyring_available = False
+        manager = CredentialManager.__new__(CredentialManager)
+        manager._store = store
+        manager.set_credential(CredentialProvider.GIT_GITHUB, "ghp_token")
+
+        app = FastAPI()
+        app.include_router(tasks_v2.router)
+        app.dependency_overrides[get_v2_workspace] = lambda: workspace
+        app.dependency_overrides[tasks_v2.get_credential_manager] = lambda: manager
+        client = TestClient(app)
+        client.workspace = workspace
+        return client
+
+    def test_done_transition_triggers_auto_close(self, test_workspace, monkeypatch):
+        from codeframe.core import tasks
+        from codeframe.core.state_machine import TaskStatus
+        from codeframe.ui.routers import tasks_v2
+
+        calls = []
+
+        async def fake_close(pat, repo, number, **kwargs):
+            calls.append((repo, number))
+            return True
+
+        monkeypatch.setattr(tasks_v2, "close_issue", fake_close)
+
+        client = self._build_client(test_workspace)
+        task = tasks.create(
+            test_workspace,
+            title="Imported",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=99,
+            auto_close_github_issue=True,
+        )
+        r = client.patch(f"/api/v2/tasks/{task.id}", json={"status": "DONE"})
+        assert r.status_code == 200
+        assert calls == [("acme/app", 99)]
+
+    def test_done_without_auto_close_does_not_close(self, test_workspace, monkeypatch):
+        from codeframe.core import tasks
+        from codeframe.core.state_machine import TaskStatus
+        from codeframe.ui.routers import tasks_v2
+
+        calls = []
+
+        async def fake_close(pat, repo, number, **kwargs):
+            calls.append(number)
+            return True
+
+        monkeypatch.setattr(tasks_v2, "close_issue", fake_close)
+
+        client = self._build_client(test_workspace)
+        task = tasks.create(
+            test_workspace,
+            title="Imported, no auto-close",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=99,
+            auto_close_github_issue=False,
+        )
+        r = client.patch(f"/api/v2/tasks/{task.id}", json={"status": "DONE"})
+        assert r.status_code == 200
+        assert calls == []
+
+    def test_done_auto_close_failure_does_not_break_transition(
+        self, test_workspace, monkeypatch
+    ):
+        from codeframe.core import tasks
+        from codeframe.core.github_connect_service import GitHubConnectError
+        from codeframe.core.state_machine import TaskStatus
+        from codeframe.ui.routers import tasks_v2
+
+        async def boom(pat, repo, number, **kwargs):
+            raise GitHubConnectError("GitHub down")
+
+        monkeypatch.setattr(tasks_v2, "close_issue", boom)
+
+        client = self._build_client(test_workspace)
+        task = tasks.create(
+            test_workspace,
+            title="Imported",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=99,
+            auto_close_github_issue=True,
+        )
+        r = client.patch(f"/api/v2/tasks/{task.id}", json={"status": "DONE"})
+        assert r.status_code == 200
+        assert tasks.get(test_workspace, task.id).status == TaskStatus.DONE

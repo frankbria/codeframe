@@ -25,6 +25,29 @@ pytestmark = pytest.mark.v2
 VALID_PAT = "ghp_validtoken1234567890"
 
 
+@pytest.fixture(autouse=True)
+def _disable_rate_limiting(monkeypatch):
+    """Disable rate limiting around each test.
+
+    The TestClient hits a fixed ``ip:testclient`` bucket, so AI-rate-limited
+    endpoints (connect/import) accumulate across the whole module and would
+    eventually 429. Disabling the limiter and resetting the cached config +
+    limiter singleton keeps each test isolated.
+    """
+    from codeframe.config.rate_limits import _reset_rate_limit_config
+    from codeframe.core.config import reset_global_config
+    from codeframe.lib.rate_limiter import reset_rate_limiter
+
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "false")
+    _reset_rate_limit_config()
+    reset_global_config()
+    reset_rate_limiter()
+    yield
+    _reset_rate_limit_config()
+    reset_global_config()
+    reset_rate_limiter()
+
+
 @pytest.fixture
 def workspace():
     temp_dir = Path(tempfile.mkdtemp())
@@ -362,3 +385,139 @@ class TestListIssues:
         _mock_list_issues(monkeypatch, result=([], 0))
         r = client.get("/api/v2/integrations/github/issues")
         assert VALID_PAT not in r.text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Import execution + issue close (issue #565)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _mock_get_issue(monkeypatch, issues_by_number, *, exc=None):
+    """Patch get_issue on the router. ``issues_by_number`` maps number -> dict."""
+    from codeframe.ui.routers import github_integrations_v2
+
+    async def fake(pat, repo, number, **kwargs):
+        if exc is not None:
+            raise exc
+        data = issues_by_number[number]
+        return {
+            "number": number,
+            "title": data["title"],
+            "body": data.get("body", ""),
+            "labels": data.get("labels", []),
+            "html_url": data.get(
+                "html_url", f"https://github.com/{repo}/issues/{number}"
+            ),
+        }
+
+    monkeypatch.setattr(github_integrations_v2, "get_issue", fake)
+
+
+def _mock_close_issue(monkeypatch, *, calls=None, exc=None):
+    from codeframe.ui.routers import github_integrations_v2
+
+    async def fake(pat, repo, number, **kwargs):
+        if calls is not None:
+            calls.append({"repo": repo, "number": number, **kwargs})
+        if exc is not None:
+            raise exc
+        return True
+
+    monkeypatch.setattr(github_integrations_v2, "close_issue", fake)
+
+
+class TestImport:
+    def test_requires_connection(self, client):
+        r = client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [1]}
+        )
+        assert r.status_code == 409
+
+    def test_imports_create_tasks(self, client, monkeypatch, workspace):
+        _connect(client, monkeypatch)
+        _mock_get_issue(
+            monkeypatch,
+            {
+                12: {"title": "Fix login", "body": "Repro steps", "labels": ["bug"]},
+                34: {"title": "Dark mode", "body": "", "labels": []},
+            },
+        )
+        r = client.post(
+            "/api/v2/integrations/github/import",
+            json={"issue_numbers": [12, 34]},
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total_created"] == 2
+        assert data["skipped"] == []
+        titles = {c["title"] for c in data["created"]}
+        assert titles == {"Fix login", "Dark mode"}
+
+        # Tasks really exist in the workspace with the right linkage.
+        from codeframe.core import tasks
+
+        t12 = tasks.get_by_github_issue_number(workspace, 12)
+        assert t12 is not None
+        assert t12.title == "Fix login"
+        assert "Repro steps" in t12.description
+        assert t12.external_url == "https://github.com/acme/app/issues/12"
+
+    def test_labels_appended_to_description(self, client, monkeypatch, workspace):
+        _connect(client, monkeypatch)
+        _mock_get_issue(
+            monkeypatch,
+            {5: {"title": "Tagged", "body": "Body text", "labels": ["bug", "ui"]}},
+        )
+        client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [5]}
+        )
+        from codeframe.core import tasks
+
+        t = tasks.get_by_github_issue_number(workspace, 5)
+        assert "bug" in t.description and "ui" in t.description
+
+    def test_duplicate_import_is_skipped(self, client, monkeypatch, workspace):
+        _connect(client, monkeypatch)
+        _mock_get_issue(monkeypatch, {7: {"title": "Once", "body": "x"}})
+        first = client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [7]}
+        )
+        assert first.json()["total_created"] == 1
+
+        second = client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [7]}
+        )
+        body = second.json()
+        assert body["total_created"] == 0
+        assert body["skipped"] == [7]
+
+        # Only one task exists for issue 7.
+        from codeframe.core import tasks
+
+        matching = [
+            t for t in tasks.list_tasks(workspace) if t.github_issue_number == 7
+        ]
+        assert len(matching) == 1
+
+
+class TestCloseIssueEndpoint:
+    def test_requires_connection(self, client):
+        r = client.patch("/api/v2/integrations/github/issues/5/close")
+        assert r.status_code == 409
+
+    def test_closes_issue(self, client, monkeypatch):
+        _connect(client, monkeypatch)
+        calls = []
+        _mock_close_issue(monkeypatch, calls=calls)
+        r = client.patch("/api/v2/integrations/github/issues/5/close")
+        assert r.status_code == 200
+        assert r.json() == {"success": True, "issue_number": 5}
+        assert calls[0]["number"] == 5
+
+    def test_invalid_token_maps_to_401(self, client, monkeypatch):
+        _connect(client, monkeypatch)
+        from codeframe.core.github_connect_service import InvalidTokenError
+
+        _mock_close_issue(monkeypatch, exc=InvalidTokenError("bad"))
+        r = client.patch("/api/v2/integrations/github/issues/5/close")
+        assert r.status_code == 401

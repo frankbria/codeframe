@@ -190,6 +190,142 @@ async def _list_issues(
     return issues, total
 
 
+class GitHubIssueDetail(TypedDict):
+    number: int
+    title: str
+    body: str
+    labels: list[str]
+    html_url: str
+
+
+async def get_issue(
+    pat: str,
+    repo: str,
+    number: int,
+    *,
+    client: Optional[httpx.AsyncClient] = None,
+) -> GitHubIssueDetail:
+    """Fetch a single issue's details for import (issue #565).
+
+    Unlike the list endpoint, this returns the issue ``body`` so the importer
+    can populate the task description.
+
+    Args:
+        pat: GitHub Personal Access Token.
+        repo: Repository in ``owner/repo`` format.
+        number: Issue number to fetch.
+        client: Optional httpx client (injected by tests). When ``None`` a
+            short-lived client is created and closed internally.
+
+    Returns:
+        ``{number, title, body, labels, html_url}`` — ``body`` is normalized to
+        ``""`` when GitHub returns null.
+
+    Raises:
+        ValueError: if ``repo`` is not a valid ``owner/repo`` string.
+        InvalidTokenError: GitHub returned 401.
+        InsufficientScopeError: the token cannot read issues (403).
+        GitHubConnectError: any other non-success response or network error.
+    """
+    owner, name = parse_repo(repo)
+
+    own_client = client is None
+    if own_client:
+        client = httpx.AsyncClient(timeout=_TIMEOUT)
+    try:
+        try:
+            resp = await client.get(
+                f"{GITHUB_API_BASE}/repos/{owner}/{name}/issues/{number}",
+                headers=_headers(pat),
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("GitHub get issue failed: %s", type(exc).__name__)
+            raise GitHubConnectError("Could not reach GitHub. Try again later.")
+
+        _raise_for_status(resp.status_code, context="get issue")
+
+        raw = resp.json()
+        if not isinstance(raw, dict):
+            raw = {}
+        labels_raw = raw.get("labels") or []
+        labels = [
+            (lbl.get("name") if isinstance(lbl, dict) else str(lbl))
+            for lbl in labels_raw
+        ]
+        labels = [n for n in labels if n]
+        return {
+            "number": int(raw.get("number", number)),
+            "title": str(raw.get("title") or ""),
+            "body": str(raw.get("body") or ""),
+            "labels": labels,
+            "html_url": str(raw.get("html_url") or ""),
+        }
+    finally:
+        if own_client:
+            await client.aclose()
+
+
+async def close_issue(
+    pat: str,
+    repo: str,
+    number: int,
+    *,
+    comment: Optional[str] = None,
+    client: Optional[httpx.AsyncClient] = None,
+) -> bool:
+    """Close a GitHub issue, optionally posting a comment first (issue #565).
+
+    Args:
+        pat: GitHub Personal Access Token.
+        repo: Repository in ``owner/repo`` format.
+        number: Issue number to close.
+        comment: Optional comment body to post before closing.
+        client: Optional httpx client (injected by tests). When ``None`` a
+            short-lived client is created and closed internally.
+
+    Returns:
+        ``True`` when the issue was closed.
+
+    Raises:
+        ValueError: if ``repo`` is not a valid ``owner/repo`` string.
+        InvalidTokenError: GitHub returned 401.
+        InsufficientScopeError: the token cannot write issues (403).
+        GitHubConnectError: any other non-success response or network error.
+    """
+    owner, name = parse_repo(repo)
+
+    own_client = client is None
+    if own_client:
+        client = httpx.AsyncClient(timeout=_TIMEOUT)
+    try:
+        headers = _headers(pat)
+        base = f"{GITHUB_API_BASE}/repos/{owner}/{name}/issues/{number}"
+
+        if comment:
+            try:
+                cresp = await client.post(
+                    f"{base}/comments", json={"body": comment}, headers=headers
+                )
+            except httpx.HTTPError as exc:
+                logger.warning("GitHub issue comment failed: %s", type(exc).__name__)
+                raise GitHubConnectError("Could not reach GitHub. Try again later.")
+            _raise_for_status(cresp.status_code, context="issue comment")
+
+        try:
+            resp = await client.patch(
+                base, json={"state": "closed"}, headers=headers
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("GitHub close issue failed: %s", type(exc).__name__)
+            raise GitHubConnectError("Could not reach GitHub. Try again later.")
+
+        _raise_for_status(resp.status_code, context="close issue")
+        return True
+    finally:
+        if own_client:
+            await client.aclose()
+
+
 async def _search_issues(
     client: httpx.AsyncClient,
     headers: dict[str, str],
