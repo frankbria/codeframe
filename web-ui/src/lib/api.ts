@@ -1069,18 +1069,6 @@ export const integrationsApi = {
     return response.data;
   },
 
-  // Close a GitHub issue (issue #565).
-  closeIssue: async (
-    workspacePath: string,
-    issueNumber: number
-  ): Promise<{ success: boolean; issue_number: number }> => {
-    const response = await api.patch<{ success: boolean; issue_number: number }>(
-      `/api/v2/integrations/github/issues/${issueNumber}/close`,
-      {},
-      { params: { workspace_path: workspacePath } }
-    );
-    return response.data;
-  },
 };
 
 // Cost analytics API (issues #557, #558)

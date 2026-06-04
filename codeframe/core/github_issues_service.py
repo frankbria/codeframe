@@ -37,6 +37,14 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT = 15.0
 
+
+class NotAnIssueError(Exception):
+    """The requested number refers to a pull request, not an issue (#565).
+
+    Intentionally NOT a ``GitHubConnectError`` subclass: callers map it to a
+    client error (the caller sent a PR number), not a GitHub upstream failure.
+    """
+
 # Parse the ``page=N`` query param out of a Link header's rel="last" URL.
 _LAST_PAGE_RE = re.compile(r'[?&]page=(\d+)[^>]*>;\s*rel="last"')
 
@@ -247,6 +255,12 @@ async def get_issue(
         raw = resp.json()
         if not isinstance(raw, dict):
             raw = {}
+        # The issues endpoint also returns pull requests (a PR is an issue with a
+        # ``pull_request`` member). Reject them so the import stays consistent
+        # with ``list_issues`` (which excludes PRs) and never links a PR as an
+        # issue.
+        if "pull_request" in raw:
+            raise NotAnIssueError(f"#{number} is a pull request, not an issue.")
         labels_raw = raw.get("labels") or []
         labels = [
             (lbl.get("name") if isinstance(lbl, dict) else str(lbl))

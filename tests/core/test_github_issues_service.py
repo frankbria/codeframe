@@ -230,10 +230,33 @@ class TestErrorMapping:
 # ─────────────────────────────────────────────────────────────────────────────
 
 from codeframe.core.github_connect_service import GitHubConnectError  # noqa: E402
-from codeframe.core.github_issues_service import close_issue, get_issue  # noqa: E402
+from codeframe.core.github_issues_service import (  # noqa: E402
+    NotAnIssueError,
+    close_issue,
+    get_issue,
+)
 
 
 class TestGetIssue:
+    @pytest.mark.asyncio
+    async def test_rejects_pull_requests(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "number": 50,
+                    "title": "A PR",
+                    "body": "diff",
+                    "labels": [],
+                    "html_url": "https://github.com/acme/app/pull/50",
+                    "pull_request": {"url": "https://api.github.com/.../pulls/50"},
+                },
+            )
+
+        async with _client(handler) as client:
+            with pytest.raises(NotAnIssueError):
+                await get_issue(VALID_PAT, "acme/app", 50, client=client)
+
     @pytest.mark.asyncio
     async def test_returns_issue_fields(self):
         def handler(request: httpx.Request) -> httpx.Response:

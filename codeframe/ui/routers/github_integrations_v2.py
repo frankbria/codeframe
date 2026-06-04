@@ -29,7 +29,11 @@ from codeframe.core.github_connect_service import (
     parse_repo,
     validate_connection,
 )
-from codeframe.core.github_issues_service import close_issue, get_issue, list_issues
+from codeframe.core.github_issues_service import (
+    NotAnIssueError,
+    get_issue,
+    list_issues,
+)
 from codeframe.core.github_integration_config import (
     clear_github_integration_config,
     load_github_integration_config,
@@ -105,11 +109,6 @@ class ImportResponse(BaseModel):
     created: list[ImportedTaskSummary]
     skipped: list[int]
     total_created: int
-
-
-class CloseIssueResponse(BaseModel):
-    success: bool
-    issue_number: int
 
 
 # In-process TTL cache for issue listings (#564). Keyed by the full query
@@ -426,18 +425,30 @@ async def import_issues(
 
     skipped: list[int] = []
     to_create: list[tuple[int, dict]] = []
+    seen_urls: set[str] = set()
 
     # Phase 1 — fetch + de-dupe everything first. Any fetch error aborts here,
     # before a single task has been created.
     for number in body.issue_numbers:
         try:
             issue = await get_issue(pat, repo, number)
+        except NotAnIssueError as e:
+            # A PR number slipped in (the browse UI filters PRs, so this only
+            # happens with a malformed/manual payload). Reject the request.
+            raise HTTPException(
+                status_code=422,
+                detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR),
+            )
         except GitHubConnectError as e:
             raise _map_github_error(e)
 
-        if tasks.get_by_external_url(workspace, issue["html_url"]) is not None:
+        url = issue["html_url"]
+        # Skip both already-imported issues and in-payload duplicates (the same
+        # number repeated in one request must not create two tasks).
+        if url in seen_urls or tasks.get_by_external_url(workspace, url) is not None:
             skipped.append(number)
             continue
+        seen_urls.add(url)
         to_create.append((number, issue))
 
     # Phase 2 — create the tasks. No awaits here, so nothing can fail partway.
@@ -464,22 +475,3 @@ async def import_issues(
     return ImportResponse(
         created=created, skipped=skipped, total_created=len(created)
     )
-
-
-@router.patch("/issues/{number}/close", response_model=CloseIssueResponse)
-@rate_limit_standard()
-async def close_github_issue(
-    request: Request,
-    number: int,
-    workspace: Workspace = Depends(get_v2_workspace),
-    manager: CredentialManager = Depends(get_credential_manager),
-) -> CloseIssueResponse:
-    """Close a GitHub issue (issue #565), posting a completion comment."""
-    repo, pat = _require_connection(workspace, manager)
-
-    try:
-        await close_issue(pat, repo, number, comment="Completed via CodeFRAME")
-    except GitHubConnectError as e:
-        raise _map_github_error(e)
-
-    return CloseIssueResponse(success=True, issue_number=number)

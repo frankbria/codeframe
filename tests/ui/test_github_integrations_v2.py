@@ -413,19 +413,6 @@ def _mock_get_issue(monkeypatch, issues_by_number, *, exc=None):
     monkeypatch.setattr(github_integrations_v2, "get_issue", fake)
 
 
-def _mock_close_issue(monkeypatch, *, calls=None, exc=None):
-    from codeframe.ui.routers import github_integrations_v2
-
-    async def fake(pat, repo, number, **kwargs):
-        if calls is not None:
-            calls.append({"repo": repo, "number": number, **kwargs})
-        if exc is not None:
-            raise exc
-        return True
-
-    monkeypatch.setattr(github_integrations_v2, "close_issue", fake)
-
-
 class TestImport:
     def test_requires_connection(self, client):
         r = client.post(
@@ -504,6 +491,46 @@ class TestImport:
         ]
         assert len(matching) == 1
 
+    def test_repeated_number_in_payload_creates_one_task(
+        self, client, monkeypatch, workspace
+    ):
+        """The same issue number twice in one request must create one task."""
+        _connect(client, monkeypatch)
+        _mock_get_issue(monkeypatch, {3: {"title": "Once", "body": "x"}})
+        r = client.post(
+            "/api/v2/integrations/github/import",
+            json={"issue_numbers": [3, 3]},
+        )
+        body = r.json()
+        assert body["total_created"] == 1
+        assert body["skipped"] == [3]
+
+        from codeframe.core import tasks
+
+        matching = [
+            t for t in tasks.list_tasks(workspace) if t.github_issue_number == 3
+        ]
+        assert len(matching) == 1
+
+    def test_pull_request_number_is_rejected(self, client, monkeypatch, workspace):
+        """A PR number is rejected (422) and creates no task."""
+        _connect(client, monkeypatch)
+        from codeframe.core.github_issues_service import NotAnIssueError
+        from codeframe.ui.routers import github_integrations_v2
+
+        async def pr_get_issue(pat, repo, number, **kwargs):
+            raise NotAnIssueError(f"#{number} is a pull request, not an issue.")
+
+        monkeypatch.setattr(github_integrations_v2, "get_issue", pr_get_issue)
+        r = client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [50]}
+        )
+        assert r.status_code == 422
+
+        from codeframe.core import tasks
+
+        assert tasks.list_tasks(workspace) == []
+
     def test_fetch_failure_creates_no_tasks(self, client, monkeypatch, workspace):
         """A mid-batch fetch error aborts cleanly — no partial tasks created."""
         _connect(client, monkeypatch)
@@ -560,24 +587,3 @@ class TestImport:
         assert {"acme 12", "other 12"} <= titles
 
 
-class TestCloseIssueEndpoint:
-    def test_requires_connection(self, client):
-        r = client.patch("/api/v2/integrations/github/issues/5/close")
-        assert r.status_code == 409
-
-    def test_closes_issue(self, client, monkeypatch):
-        _connect(client, monkeypatch)
-        calls = []
-        _mock_close_issue(monkeypatch, calls=calls)
-        r = client.patch("/api/v2/integrations/github/issues/5/close")
-        assert r.status_code == 200
-        assert r.json() == {"success": True, "issue_number": 5}
-        assert calls[0]["number"] == 5
-
-    def test_invalid_token_maps_to_401(self, client, monkeypatch):
-        _connect(client, monkeypatch)
-        from codeframe.core.github_connect_service import InvalidTokenError
-
-        _mock_close_issue(monkeypatch, exc=InvalidTokenError("bad"))
-        r = client.patch("/api/v2/integrations/github/issues/5/close")
-        assert r.status_code == 401
