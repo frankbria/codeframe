@@ -25,29 +25,6 @@ pytestmark = pytest.mark.v2
 VALID_PAT = "ghp_validtoken1234567890"
 
 
-@pytest.fixture(autouse=True)
-def _disable_rate_limiting(monkeypatch):
-    """Disable rate limiting around each test.
-
-    The TestClient hits a fixed ``ip:testclient`` bucket, so AI-rate-limited
-    endpoints (connect/import) accumulate across the whole module and would
-    eventually 429. Disabling the limiter and resetting the cached config +
-    limiter singleton keeps each test isolated.
-    """
-    from codeframe.config.rate_limits import _reset_rate_limit_config
-    from codeframe.core.config import reset_global_config
-    from codeframe.lib.rate_limiter import reset_rate_limiter
-
-    monkeypatch.setenv("RATE_LIMIT_ENABLED", "false")
-    _reset_rate_limit_config()
-    reset_global_config()
-    reset_rate_limiter()
-    yield
-    _reset_rate_limit_config()
-    reset_global_config()
-    reset_rate_limiter()
-
-
 @pytest.fixture
 def workspace():
     temp_dir = Path(tempfile.mkdtemp())
