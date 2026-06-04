@@ -45,15 +45,18 @@ jest.mock('@/components/tasks/GitHubIssueImportModal', () => ({
   GitHubIssueImportModal: ({
     open,
     importing,
+    importError,
     onImport,
   }: {
     open: boolean;
     importing: boolean;
+    importError: string | null;
     onImport: (issues: GitHubIssue[]) => void;
   }) =>
     open ? (
       <div data-testid="import-modal">
         {importing && <span>importing-flag</span>}
+        {importError && <div role="alert">{importError}</div>}
         <button
           onClick={() =>
             onImport([

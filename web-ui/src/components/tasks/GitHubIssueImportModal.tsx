@@ -31,6 +31,8 @@ interface GitHubIssueImportModalProps {
   repo?: string | null;
   /** True while the parent is executing the import (#565) — shows progress. */
   importing?: boolean;
+  /** Error message from a failed import (#565) — rendered inline in the modal. */
+  importError?: string | null;
   onClose: () => void;
   /** Called with the chosen issues when the user confirms the import. */
   onImport: (selectedIssues: GitHubIssue[]) => void;
@@ -43,6 +45,7 @@ export function GitHubIssueImportModal({
   workspacePath,
   repo,
   importing = false,
+  importError = null,
   onClose,
   onImport,
 }: GitHubIssueImportModalProps) {
@@ -268,6 +271,17 @@ export function GitHubIssueImportModal({
               );
             })}
         </div>
+
+        {/* Import error (kept in-modal so the selection is preserved) */}
+        {importError && (
+          <div
+            role="alert"
+            className="flex items-center gap-2 border-t border-destructive/40 bg-destructive/10 px-6 py-2.5 text-sm text-destructive"
+          >
+            <Alert02Icon className="h-4 w-4 shrink-0" />
+            <span>{importError}</span>
+          </div>
+        )}
 
         {/* Footer: pagination + actions */}
         <div className="flex items-center justify-between border-t px-6 py-3">

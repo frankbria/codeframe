@@ -99,6 +99,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   // Execute the import (#565): create tasks from the selected issues, then
   // refresh the board so the new tasks (with their GitHub badges) appear.
@@ -111,6 +112,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
       setIsImporting(true);
       setActionError(null);
       setImportSummary(null);
+      setImportError(null);
       let imported = false;
       try {
         const numbers = selectedIssues.map((i) => i.number);
@@ -128,7 +130,10 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         setImportSummary(parts.join(' · '));
       } catch (err) {
         const apiErr = err as ApiError;
-        setActionError(apiErr.detail || 'Failed to import issues from GitHub');
+        // Keep the modal open and show the error inline there, so the user sees
+        // it (a board-level banner would sit behind the dialog) and keeps their
+        // selection for a retry.
+        setImportError(apiErr.detail || 'Failed to import issues from GitHub');
       } finally {
         setIsImporting(false);
       }
@@ -542,7 +547,11 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         workspacePath={workspacePath}
         repo={ghStatus?.repo}
         importing={isImporting}
-        onClose={() => setImportModalOpen(false)}
+        importError={importError}
+        onClose={() => {
+          setImportModalOpen(false);
+          setImportError(null);
+        }}
         onImport={handleImportIssues}
       />
 

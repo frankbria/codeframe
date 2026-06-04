@@ -531,6 +531,28 @@ class TestImport:
 
         assert tasks.list_tasks(workspace) == []
 
+    def test_import_invalidates_issue_cache(self, client, monkeypatch, workspace):
+        """After import, the browse cache for the repo is cleared (#565)."""
+        _clear_issue_cache()
+        _connect(client, monkeypatch)
+        # Prime the issue-list cache via the browse endpoint.
+        _mock_list_issues(monkeypatch, result=([], 0))
+        client.get("/api/v2/integrations/github/issues")
+        from codeframe.ui.routers import github_integrations_v2
+
+        assert len(github_integrations_v2._ISSUE_CACHE) > 0
+
+        _mock_get_issue(monkeypatch, {1: {"title": "One", "body": "x"}})
+        r = client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [1]}
+        )
+        assert r.json()["total_created"] == 1
+        # The repo's cached listings were dropped.
+        assert all(
+            not k.startswith("acme/app|")
+            for k in github_integrations_v2._ISSUE_CACHE
+        )
+
     def test_malformed_saved_repo_maps_to_409(self, client, monkeypatch, workspace):
         """A malformed stored repo slug surfaces as a 409, not a 500."""
         _connect(client, monkeypatch)

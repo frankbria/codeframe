@@ -136,6 +136,17 @@ def _issue_cache_set(key: str, payload: Any) -> None:
     _ISSUE_CACHE[key] = (time.monotonic() + _ISSUE_CACHE_TTL_SECONDS, payload)
 
 
+def _issue_cache_invalidate(repo: str) -> None:
+    """Drop all cached issue listings for ``repo``.
+
+    Called after an import so reopening the browse modal doesn't keep offering
+    just-imported issues as selectable (they would now be skipped as dupes).
+    """
+    prefix = f"{repo}|"
+    for key in [k for k in _ISSUE_CACHE if k.startswith(prefix)]:
+        _ISSUE_CACHE.pop(key, None)
+
+
 @router.get("/status", response_model=StatusResponse)
 @rate_limit_standard()
 async def get_status(
@@ -510,6 +521,10 @@ async def import_issues(
             except Exception:  # noqa: BLE001 - best-effort cleanup
                 logger.warning("Failed to roll back imported task %s", task_id)
         raise
+
+    # Invalidate the browse cache so a re-open reflects the new duplicates.
+    if created:
+        _issue_cache_invalidate(repo)
 
     return ImportResponse(
         created=created, skipped=skipped, total_created=len(created)
