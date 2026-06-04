@@ -95,14 +95,45 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
   // ─── Detail modal state ────────────────────────────────────────
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
 
-  // ─── GitHub issue import modal (issue #564) ────────────────────
+  // ─── GitHub issue import modal (issues #564 / #565) ────────────
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<string | null>(null);
 
-  // The actual import flow lands in #565; for now selecting + confirming
-  // simply closes the modal (the browser/multi-select is the #564 deliverable).
-  const handleImportIssues = useCallback((_selected: GitHubIssue[]) => {
-    setImportModalOpen(false);
-  }, []);
+  // Execute the import (#565): create tasks from the selected issues, then
+  // refresh the board so the new tasks (with their GitHub badges) appear.
+  const handleImportIssues = useCallback(
+    async (selectedIssues: GitHubIssue[]) => {
+      if (selectedIssues.length === 0) {
+        setImportModalOpen(false);
+        return;
+      }
+      setIsImporting(true);
+      setActionError(null);
+      setImportSummary(null);
+      try {
+        const numbers = selectedIssues.map((i) => i.number);
+        const result = await integrationsApi.importIssues(workspacePath, numbers);
+        setImportModalOpen(false);
+        const parts = [
+          `${result.total_created} task${result.total_created !== 1 ? 's' : ''} created`,
+        ];
+        if (result.skipped.length > 0) {
+          parts.push(
+            `${result.skipped.length} skipped (already imported)`
+          );
+        }
+        setImportSummary(parts.join(' · '));
+        await mutate();
+      } catch (err) {
+        const apiErr = err as ApiError;
+        setActionError(apiErr.detail || 'Failed to import issues from GitHub');
+      } finally {
+        setIsImporting(false);
+      }
+    },
+    [workspacePath, mutate]
+  );
 
   // ─── Error state for actions ───────────────────────────────────
   const [actionError, setActionError] = useState<string | null>(null);
@@ -398,6 +429,23 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         />
       </div>
 
+      {/* Import success summary banner (#565) */}
+      {importSummary && (
+        <div
+          role="status"
+          className="flex items-center justify-between rounded-md bg-green-500/10 px-4 py-2 text-sm text-green-700 dark:text-green-400"
+        >
+          <span>Imported from GitHub: {importSummary}</span>
+          <button
+            onClick={() => setImportSummary(null)}
+            aria-label="Dismiss import summary"
+            className="ml-2 rounded p-0.5 hover:opacity-70 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+          >
+            <Cancel01Icon className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Action error banner */}
       {actionError && (
         <div role="alert" className="flex items-center justify-between rounded-md bg-destructive/10 px-4 py-2 text-sm text-destructive">
@@ -486,6 +534,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
         open={importModalOpen}
         workspacePath={workspacePath}
         repo={ghStatus?.repo}
+        importing={isImporting}
         onClose={() => setImportModalOpen(false)}
         onImport={handleImportIssues}
       />

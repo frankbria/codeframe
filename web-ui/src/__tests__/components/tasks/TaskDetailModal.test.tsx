@@ -38,6 +38,7 @@ jest.mock('@/lib/api', () => ({
     getOne: jest.fn(),
     getAll: jest.fn(),
     updateStatus: jest.fn(),
+    updateGitHubSettings: jest.fn(),
   },
 }));
 
@@ -157,5 +158,49 @@ describe('TaskDetailModal last changed timestamp', () => {
     renderModal({ status: 'BACKLOG' });
     await waitFor(() => expect(screen.getByText('Test Task')).toBeInTheDocument());
     expect(screen.queryByText(/last changed/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('TaskDetailModal — GitHub traceability (#565)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('shows the GitHub badge for imported tasks', async () => {
+    renderModal({
+      github_issue_number: 42,
+      external_url: 'https://github.com/acme/app/issues/42',
+    });
+    await waitFor(() => expect(screen.getByText('Test Task')).toBeInTheDocument());
+    const link = screen.getByRole('link', { name: /imported from github issue #42/i });
+    expect(link).toHaveAttribute('href', 'https://github.com/acme/app/issues/42');
+  });
+
+  it('does not show the badge for non-imported tasks', async () => {
+    renderModal({ github_issue_number: undefined, external_url: undefined });
+    await waitFor(() => expect(screen.getByText('Test Task')).toBeInTheDocument());
+    expect(
+      screen.queryByRole('checkbox', {
+        name: /close github issue when task is marked done/i,
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  it('persists the auto-close toggle via the API', async () => {
+    (tasksApi.updateGitHubSettings as jest.Mock).mockResolvedValue({});
+    renderModal({
+      github_issue_number: 42,
+      external_url: 'https://github.com/acme/app/issues/42',
+      auto_close_github_issue: false,
+    });
+    await waitFor(() => expect(screen.getByText('Test Task')).toBeInTheDocument());
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /close github issue when task is marked done/i,
+    });
+    expect(checkbox).not.toBeChecked();
+    checkbox.click();
+
+    await waitFor(() =>
+      expect(tasksApi.updateGitHubSettings).toHaveBeenCalledWith('/ws', 'task-1', true)
+    );
   });
 });

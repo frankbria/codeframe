@@ -29,6 +29,8 @@ interface GitHubIssueImportModalProps {
   workspacePath: string;
   /** Connected repo slug ("owner/repo") for the header, when known. */
   repo?: string | null;
+  /** True while the parent is executing the import (#565) — shows progress. */
+  importing?: boolean;
   onClose: () => void;
   /** Called with the chosen issues when the user confirms the import. */
   onImport: (selectedIssues: GitHubIssue[]) => void;
@@ -40,6 +42,7 @@ export function GitHubIssueImportModal({
   open,
   workspacePath,
   repo,
+  importing = false,
   onClose,
   onImport,
 }: GitHubIssueImportModalProps) {
@@ -297,12 +300,14 @@ export function GitHubIssueImportModal({
             </Button>
             <Button
               onClick={handleImport}
-              disabled={selected.size === 0}
+              disabled={selected.size === 0 || importing}
             >
-              {isLoading && (
+              {(isLoading || importing) && (
                 <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
               )}
-              Import Selected
+              {importing
+                ? `Importing ${selected.size} issue${selected.size !== 1 ? 's' : ''}…`
+                : 'Import Selected'}
             </Button>
           </div>
         </div>

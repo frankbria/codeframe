@@ -84,6 +84,10 @@ export interface Task {
   estimated_hours?: number;
   created_at?: string;
   updated_at?: string;
+  // GitHub issue traceability (issue #565)
+  github_issue_number?: number | null;
+  external_url?: string | null;
+  auto_close_github_issue?: boolean;
 }
 
 export interface TaskListResponse {
@@ -698,6 +702,19 @@ export interface GitHubIssuesParams {
   perPage?: number;
   search?: string;
   label?: string;
+}
+
+// GitHub issue import execution (issue #565)
+export interface ImportedTaskSummary {
+  task_id: string;
+  issue_number: number;
+  title: string;
+}
+
+export interface GitHubImportResponse {
+  created: ImportedTaskSummary[];
+  skipped: number[];
+  total_created: number;
 }
 
 // Cost analytics types (issue #557)
