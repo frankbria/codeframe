@@ -1323,6 +1323,45 @@ class TestTasksV2GitHubTraceability:
         assert r.status_code == 200
         assert calls == [("acme/app", 88)]
 
+    def test_combined_done_and_optout_does_not_close(self, test_client, monkeypatch):
+        """A single PATCH that completes AND opts out must NOT close the issue."""
+        from codeframe.core import tasks
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
+        )
+        from codeframe.core.state_machine import TaskStatus
+
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+        save_github_integration_config(
+            test_client.workspace,
+            {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
+        )
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Opted in",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=55,
+            external_url="https://github.com/acme/app/issues/55",
+            auto_close_github_issue=True,
+        )
+        # Complete AND opt out in one request — the issue must stay open.
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}",
+            json={"status": "DONE", "auto_close_github_issue": False},
+        )
+        assert r.status_code == 200
+        assert calls == []
+        after = tasks.get(test_client.workspace, task.id)
+        assert after.status == TaskStatus.DONE
+        assert after.auto_close_github_issue is False
+
     def test_reopen_with_optin_does_not_close(self, test_client, monkeypatch):
         """A combined reopen (DONE->READY) + opt-in must NOT close the issue."""
         from codeframe.core import tasks

@@ -302,10 +302,22 @@ async def update_task(
             - 400: Invalid status or status transition
     """
     try:
-        # Validate everything that can reject the request BEFORE any mutation,
-        # so a rejected PATCH (bad status, illegal transition, missing task)
-        # never leaves a side effect — notably a persisted auto-close flag that
-        # would later close the issue unexpectedly. (#565)
+        # Validate everything that can reject the request BEFORE any mutation, so
+        # a rejected PATCH (bad status, illegal transition, missing task) never
+        # leaves a side effect. (#565)
+        current = None
+        if body.status or body.auto_close_github_issue is not None:
+            current = tasks.get(workspace, task_id)
+            if current is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=api_error(
+                        "Task not found",
+                        ErrorCodes.NOT_FOUND,
+                        f"No task with id {task_id}",
+                    ),
+                )
+
         new_status: Optional[TaskStatus] = None
         if body.status:
             try:
@@ -319,16 +331,6 @@ async def update_task(
                         f"Valid values: {[s.value for s in TaskStatus]}",
                     ),
                 )
-            current = tasks.get(workspace, task_id)
-            if current is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=api_error(
-                        "Task not found",
-                        ErrorCodes.NOT_FOUND,
-                        f"No task with id {task_id}",
-                    ),
-                )
             if not can_transition(current.status, new_status):
                 raise HTTPException(
                     status_code=400,
@@ -340,18 +342,31 @@ async def update_task(
                     ),
                 )
 
-        # Apply the (pre-validated) status transition FIRST so the auto-close
-        # flag is never persisted ahead of a transition that could still be
-        # rejected by a concurrent state change — leaving no side effect on a
-        # failed request. When the task was already opted in, core closes the
-        # issue on this DONE transition.
+        # Persist the auto-close preference FIRST so the DONE transition below
+        # sees the value requested in THIS PATCH. That makes a combined request
+        # behave correctly both ways: {status: DONE, opt-in} closes the issue and
+        # {status: DONE, opt-OUT} does not — core reads the freshly-saved flag.
+        original_auto_close = (
+            current.auto_close_github_issue
+            if (current is not None and body.auto_close_github_issue is not None)
+            else None
+        )
+        if body.auto_close_github_issue is not None:
+            tasks.update_auto_close(
+                workspace, task_id, body.auto_close_github_issue
+            )
+
+        # Apply the (pre-validated) status transition. Core closes the linked
+        # issue here when the task is opted in and transitions to DONE.
         if new_status is not None:
             try:
                 tasks.update_status(workspace, task_id, new_status)
             except InvalidTransitionError:
-                # Pre-validation passed, so this means the task state changed
-                # concurrently between the check and the apply. Nothing has been
-                # persisted yet — report a conflict.
+                # Pre-validation passed, so the task state changed concurrently
+                # between the check and the apply. Roll back the flag we just
+                # persisted so this failed request leaves no side effect.
+                if original_auto_close is not None:
+                    tasks.update_auto_close(workspace, task_id, original_auto_close)
                 raise HTTPException(
                     status_code=409,
                     detail=api_error(
@@ -360,20 +375,15 @@ async def update_task(
                     ),
                 )
 
-        # Persist the auto-close preference AFTER the status change has
-        # succeeded. When the flag is newly enabled (false -> true) and the task
-        # is now DONE, close the issue explicitly: core only auto-closes on the
-        # DONE transition for tasks that were ALREADY opted in, so a freshly
-        # enabled flag (late opt-in, or a combined {status: DONE, opt-in})
-        # otherwise wouldn't fire.
-        if body.auto_close_github_issue is not None:
-            before = tasks.get(workspace, task_id)
-            was_opted_in = before.auto_close_github_issue if before else False
-            updated = tasks.update_auto_close(
-                workspace, task_id, body.auto_close_github_issue
-            )
-            if body.auto_close_github_issue and not was_opted_in:
-                tasks.autoclose_if_done(workspace, updated)
+        # Late opt-in: enabling the flag (false -> true) on a task that is ALREADY
+        # DONE — with no status transition in this request — won't trigger core's
+        # transition-based close, so fire it explicitly here.
+        if (
+            body.auto_close_github_issue
+            and original_auto_close is False
+            and new_status is None
+        ):
+            tasks.autoclose_if_done(workspace, tasks.get(workspace, task_id))
 
         # Update remaining fields; re-reads current state so the returned task
         # reflects every change (including the auto-close flag above).
