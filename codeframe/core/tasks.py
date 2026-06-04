@@ -426,7 +426,15 @@ def _dispatch_github_autoclose(workspace: Workspace, task: Task) -> None:
 
 
 def _close_issue_background(pat: str, repo: str, issue_number: int) -> None:
-    """Fire-and-forget the GitHub issue close on a daemon thread (#565)."""
+    """Close the linked GitHub issue off the caller's path (#565).
+
+    The close runs on a separate thread so it never blocks the task transition
+    (the FastAPI response returns immediately; the agent/CLI continues). The
+    thread is intentionally **non-daemon**: unlike a best-effort notification,
+    leaving the issue open is a real failure, so a short-lived CLI process must
+    wait for the close at interpreter exit rather than abandoning it. The wait
+    is bounded by the GitHub client timeout (~15s).
+    """
 
     def _run() -> None:
         try:
@@ -443,7 +451,7 @@ def _close_issue_background(pat: str, repo: str, issue_number: int) -> None:
             )
 
     threading.Thread(
-        target=_run, daemon=True, name=f"gh-autoclose-{issue_number}"
+        target=_run, daemon=False, name=f"gh-autoclose-{issue_number}"
     ).start()
 
 

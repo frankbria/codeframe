@@ -1245,3 +1245,45 @@ class TestTasksV2GitHubTraceability:
         assert r.status_code == 200
         assert calls == [("acme/app", 99)]
         assert tasks.get(test_client.workspace, task.id).status == TaskStatus.DONE
+
+    def test_combined_done_and_optin_in_one_request_closes(
+        self, test_client, monkeypatch
+    ):
+        """A single PATCH setting both status=DONE and auto_close=true closes.
+
+        The flag must be persisted before the DONE transition so the core
+        dispatch observes the opt-in (#565 — codex review).
+        """
+        from codeframe.core import tasks
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
+        )
+        from codeframe.core.state_machine import TaskStatus
+
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+        save_github_integration_config(
+            test_client.workspace,
+            {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
+        )
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Imported",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=77,
+            external_url="https://github.com/acme/app/issues/77",
+            auto_close_github_issue=False,
+        )
+        # Opt in AND complete in the same request.
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}",
+            json={"status": "DONE", "auto_close_github_issue": True},
+        )
+        assert r.status_code == 200
+        assert calls == [("acme/app", 77)]

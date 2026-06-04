@@ -298,6 +298,13 @@ async def update_task(
             - 400: Invalid status or status transition
     """
     try:
+        # Persist the GitHub auto-close preference BEFORE any status change, so a
+        # combined request ({status: "DONE", auto_close_github_issue: true})
+        # closes the issue: the DONE transition (in core) reads the freshly-saved
+        # flag rather than the stale value. (#565)
+        if body.auto_close_github_issue is not None:
+            tasks.update_auto_close(workspace, task_id, body.auto_close_github_issue)
+
         # Handle status update separately if provided
         if body.status:
             try:
@@ -319,7 +326,8 @@ async def update_task(
                     detail=api_error("Invalid status transition", ErrorCodes.INVALID_STATE, str(e)),
                 )
 
-        # Update other fields
+        # Update other fields (re-reads current state, including the auto-close
+        # flag persisted above, so the returned task reflects every change).
         task = tasks.update(
             workspace,
             task_id,
@@ -327,14 +335,6 @@ async def update_task(
             description=body.description,
             priority=body.priority,
         )
-
-        # Persist the GitHub auto-close preference if provided (#565). The
-        # actual issue close fires from core on the DONE transition
-        # (tasks.update_status), so it applies to CLI/agent completions too.
-        if body.auto_close_github_issue is not None:
-            task = tasks.update_auto_close(
-                workspace, task_id, body.auto_close_github_issue
-            )
 
         return TaskResponse.from_task(task)
 
