@@ -206,18 +206,20 @@ def get_by_external_url(
         The matching Task if one exists, otherwise None
     """
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
-        FROM tasks
-        WHERE workspace_id = ? AND external_url = ?
-        LIMIT 1
-        """,
-        (workspace.id, external_url),
-    )
-    row = cursor.fetchone()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
+            FROM tasks
+            WHERE workspace_id = ? AND external_url = ?
+            LIMIT 1
+            """,
+            (workspace.id, external_url),
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
 
     if not row:
         return None

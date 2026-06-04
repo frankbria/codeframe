@@ -147,6 +147,9 @@ class TestAutoCloseDispatch:
 
     def test_done_dispatches_when_opted_in(self, workspace, monkeypatch):
         calls = self._record_calls(monkeypatch)
+        # The dispatch resolves the PAT via CredentialManager.get_credential,
+        # which reads the GITHUB_TOKEN env var first (see credentials.py) — that
+        # is what makes the credential non-empty here so the close is dispatched.
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
 
         task = tasks.create(
