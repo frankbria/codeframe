@@ -282,7 +282,20 @@ async def get_issue(
                 raise GitHubConnectError(
                     f"Repository '{repo}' is no longer accessible."
                 )
-            # Repo is reachable → the issue itself genuinely does not exist.
+            if repo_resp.status_code >= 400:
+                # Rate limit / 5xx / other failure on the probe — a real upstream
+                # problem, NOT a missing issue. Surface it as such so the caller
+                # retries rather than blaming the issue number.
+                raise GitHubConnectError(
+                    f"GitHub repo check returned status {repo_resp.status_code}."
+                )
+            # Repo probe succeeded (2xx) → the issue itself genuinely does not
+            # exist. (A 3xx would also land here, but GitHub answers repo lookups
+            # with 2xx/4xx, not redirects, for this endpoint.)
+            if repo_resp.status_code >= 300:
+                raise GitHubConnectError(
+                    f"GitHub repo check returned status {repo_resp.status_code}."
+                )
             raise IssueNotFoundError(f"Issue #{number} was not found in '{repo}'.")
         _raise_for_status(resp.status_code, context="get issue")
 
@@ -380,6 +393,15 @@ async def close_issue(
             raise GitHubConnectError("Could not reach GitHub. Try again later.")
 
         _raise_for_status(resp.status_code, context="close issue")
+        # A redirect (3xx) — e.g. a moved/renamed/transferred repo — means the
+        # PATCH was NOT applied (httpx does not follow redirects by default), so
+        # the issue is still open. Treat it as a failure rather than reporting a
+        # silent success.
+        if resp.status_code >= 300:
+            raise GitHubConnectError(
+                f"GitHub close returned status {resp.status_code}; "
+                "issue was not closed (repository may have moved)."
+            )
         return True
     finally:
         if own_client:

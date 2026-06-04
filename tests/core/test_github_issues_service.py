@@ -336,6 +336,19 @@ class TestGetIssue:
                 await get_issue(VALID_PAT, "acme/app", 999, client=client)
 
     @pytest.mark.asyncio
+    async def test_404_with_degraded_repo_probe_maps_to_connect_error(self):
+        """Issue 404 + repo probe 5xx/429 → upstream error, not 'issue missing'."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/repos/acme/app":
+                return httpx.Response(503, json={"message": "Service Unavailable"})
+            return httpx.Response(404, json={"message": "Not Found"})
+
+        async with _client(handler) as client:
+            with pytest.raises(GitHubConnectError):
+                await get_issue(VALID_PAT, "acme/app", 999, client=client)
+
+    @pytest.mark.asyncio
     async def test_404_with_revoked_token_maps_to_invalid_token(self):
         """Issue 404 + repo probe 401 → token problem, surfaced as such."""
 
@@ -422,4 +435,15 @@ class TestCloseIssue:
 
         async with _client(handler) as client:
             with pytest.raises(InvalidTokenError):
+                await close_issue(VALID_PAT, "acme/app", 1, client=client)
+
+    @pytest.mark.asyncio
+    async def test_redirect_is_not_treated_as_success(self):
+        """A 3xx (moved/renamed repo) means the close was not applied."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(301, headers={"Location": "/repos/new/app/issues/1"})
+
+        async with _client(handler) as client:
+            with pytest.raises(GitHubConnectError):
                 await close_issue(VALID_PAT, "acme/app", 1, client=client)
