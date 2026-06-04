@@ -1288,6 +1288,69 @@ class TestTasksV2GitHubTraceability:
         assert r.status_code == 200
         assert calls == [("acme/app", 77)]
 
+    def test_optin_on_already_done_task_closes_now(self, test_client, monkeypatch):
+        """Enabling auto-close on an already-DONE task closes the issue now."""
+        from codeframe.core import tasks
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
+        )
+        from codeframe.core.state_machine import TaskStatus
+
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+        save_github_integration_config(
+            test_client.workspace,
+            {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""},
+        )
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Already done",
+            status=TaskStatus.DONE,
+            github_issue_number=88,
+            external_url="https://github.com/acme/app/issues/88",
+            auto_close_github_issue=False,
+        )
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}",
+            json={"auto_close_github_issue": True},
+        )
+        assert r.status_code == 200
+        assert calls == [("acme/app", 88)]
+
+    def test_optout_on_done_task_does_not_close(self, test_client, monkeypatch):
+        """Disabling auto-close on a DONE task must not trigger a close."""
+        from codeframe.core import tasks
+        from codeframe.core.state_machine import TaskStatus
+
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((repo, number)),
+        )
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_token")
+
+        task = tasks.create(
+            test_client.workspace,
+            title="Already done",
+            status=TaskStatus.DONE,
+            github_issue_number=88,
+            external_url="https://github.com/acme/app/issues/88",
+            auto_close_github_issue=True,
+        )
+        r = test_client.patch(
+            f"/api/v2/tasks/{task.id}",
+            json={"auto_close_github_issue": False},
+        )
+        assert r.status_code == 200
+        assert calls == []
+
     def test_rejected_transition_does_not_persist_auto_close(self, test_client):
         """An invalid transition must not leave the auto-close flag mutated."""
         from codeframe.core import tasks

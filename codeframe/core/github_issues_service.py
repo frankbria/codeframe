@@ -319,14 +319,23 @@ async def close_issue(
         base = f"{GITHUB_API_BASE}/repos/{owner}/{name}/issues/{number}"
 
         if comment:
+            # Best-effort: the comment is cosmetic. A failure to post it (locked
+            # issue, repo with commenting disabled, transient error) must NOT
+            # prevent the close itself, which is the operation that matters.
             try:
                 cresp = await client.post(
                     f"{base}/comments", json={"body": comment}, headers=headers
                 )
+                if cresp.status_code >= 400:
+                    logger.warning(
+                        "GitHub issue comment returned %s; closing anyway.",
+                        cresp.status_code,
+                    )
             except httpx.HTTPError as exc:
-                logger.warning("GitHub issue comment failed: %s", type(exc).__name__)
-                raise GitHubConnectError("Could not reach GitHub. Try again later.")
-            _raise_for_status(cresp.status_code, context="issue comment")
+                logger.warning(
+                    "GitHub issue comment failed (%s); closing anyway.",
+                    type(exc).__name__,
+                )
 
         try:
             resp = await client.patch(

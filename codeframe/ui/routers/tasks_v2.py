@@ -340,7 +340,14 @@ async def update_task(
         # combined {status: DONE, auto_close_github_issue: true} request closes
         # the issue (the DONE transition in core reads the freshly-saved flag).
         if body.auto_close_github_issue is not None:
-            tasks.update_auto_close(workspace, task_id, body.auto_close_github_issue)
+            updated = tasks.update_auto_close(
+                workspace, task_id, body.auto_close_github_issue
+            )
+            # If the user opts in on a task that is ALREADY done (no transition
+            # will occur below), close the issue now — otherwise it would stay
+            # open forever. No-op when the task isn't DONE or isn't opted in.
+            if body.auto_close_github_issue:
+                tasks.autoclose_if_done(workspace, updated)
 
         # Apply the already-validated status transition.
         if new_status is not None:

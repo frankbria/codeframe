@@ -356,6 +356,24 @@ class TestCloseIssue:
         )
 
     @pytest.mark.asyncio
+    async def test_closes_even_when_comment_fails(self):
+        """A failed completion comment must not prevent the close itself."""
+        calls = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append((request.method, request.url.path))
+            if request.url.path.endswith("/comments"):
+                return httpx.Response(403, json={"message": "locked"})
+            return httpx.Response(200, json={"number": 42, "state": "closed"})
+
+        async with _client(handler) as client:
+            ok = await close_issue(
+                VALID_PAT, "acme/app", 42, comment="hi", client=client
+            )
+        assert ok is True
+        assert ("PATCH", "/repos/acme/app/issues/42") in calls
+
+    @pytest.mark.asyncio
     async def test_no_comment_skips_comment_call(self):
         calls = []
 

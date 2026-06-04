@@ -411,6 +411,18 @@ def _repo_from_issue_url(url: Optional[str]) -> Optional[str]:
     return None
 
 
+def autoclose_if_done(workspace: Workspace, task: Task) -> None:
+    """Fire the GitHub auto-close when opting in on an already-DONE task (#565).
+
+    The normal path closes the issue on the DONE *transition*. But a user can
+    enable the auto-close toggle on a task that is already DONE — in which case
+    no transition occurs, so this is called explicitly to honor the intent.
+    Best-effort and fully guarded (no-op unless DONE + opted in + linked).
+    """
+    if task.status == TaskStatus.DONE:
+        _dispatch_github_autoclose(workspace, task)
+
+
 def _dispatch_github_autoclose(workspace: Workspace, task: Task) -> None:
     """Best-effort close of the linked GitHub issue when a task is DONE (#565).
 
