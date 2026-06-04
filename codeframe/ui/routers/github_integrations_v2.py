@@ -522,9 +522,10 @@ async def import_issues(
                 logger.warning("Failed to roll back imported task %s", task_id)
         raise
 
-    # Invalidate the browse cache so a re-open reflects the new duplicates.
-    if created:
-        _issue_cache_invalidate(repo)
+    # Invalidate the browse cache so a re-open reflects current duplicate state.
+    # Always — even a skipped-only import (issues created by another tab/process)
+    # must drop the stale listing that still offers them as selectable.
+    _issue_cache_invalidate(repo)
 
     return ImportResponse(
         created=created, skipped=skipped, total_created=len(created)

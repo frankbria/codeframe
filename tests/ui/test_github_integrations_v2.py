@@ -553,6 +553,39 @@ class TestImport:
             for k in github_integrations_v2._ISSUE_CACHE
         )
 
+    def test_skipped_only_import_also_invalidates_cache(
+        self, client, monkeypatch, workspace
+    ):
+        """Even an all-skipped import drops the stale browse cache (#565)."""
+        _clear_issue_cache()
+        _connect(client, monkeypatch)
+        # Pre-create the task so the import will skip it.
+        from codeframe.core import tasks
+
+        tasks.create(
+            workspace,
+            title="Already here",
+            github_issue_number=1,
+            external_url="https://github.com/acme/app/issues/1",
+        )
+        # Prime the browse cache.
+        _mock_list_issues(monkeypatch, result=([], 0))
+        client.get("/api/v2/integrations/github/issues")
+        from codeframe.ui.routers import github_integrations_v2
+
+        assert len(github_integrations_v2._ISSUE_CACHE) > 0
+
+        _mock_get_issue(monkeypatch, {1: {"title": "Already here", "body": "x"}})
+        r = client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [1]}
+        )
+        assert r.json()["total_created"] == 0
+        assert r.json()["skipped"] == [1]
+        assert all(
+            not k.startswith("acme/app|")
+            for k in github_integrations_v2._ISSUE_CACHE
+        )
+
     def test_malformed_saved_repo_maps_to_409(self, client, monkeypatch, workspace):
         """A malformed stored repo slug surfaces as a 409, not a 500."""
         _connect(client, monkeypatch)
