@@ -80,4 +80,9 @@ module.exports = {
   Notification02Icon: createIconMock('Notification02Icon'),
   // GitHub issue import (issue #564)
   GithubIcon: createIconMock('GithubIcon'),
+  // Auth / login (issue #336)
+  Login01Icon: createIconMock('Login01Icon'),
+  Logout01Icon: createIconMock('Logout01Icon'),
+  LockIcon: createIconMock('LockIcon'),
+  Mail01Icon: createIconMock('Mail01Icon'),
 };

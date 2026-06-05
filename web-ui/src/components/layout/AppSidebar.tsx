@@ -16,8 +16,10 @@ import {
   Add01Icon,
   Settings01Icon,
   ChartLineData01Icon,
+  Logout01Icon,
 } from '@hugeicons/react';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
+import { logout } from '@/lib/auth';
 import { blockersApi, sessionsApi } from '@/lib/api';
 import { CaptureGlitchModal } from '@/components/proof';
 import { NotificationCenter } from './NotificationCenter';
@@ -158,6 +160,15 @@ export function AppSidebar() {
         >
           <Add01Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
           <span className="hidden lg:inline" aria-hidden="true">Capture Glitch</span>
+        </button>
+        <button
+          type="button"
+          aria-label="Sign out"
+          onClick={() => logout()}
+          className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground lg:px-3"
+        >
+          <Logout01Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <span className="hidden lg:inline" aria-hidden="true">Sign out</span>
         </button>
       </div>
 

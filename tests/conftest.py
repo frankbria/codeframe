@@ -19,6 +19,14 @@ import pytest
 # environment override win.
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
+# Run the existing TestClient suites with auth disabled (issue #336). Auth is
+# secure-by-default (CODEFRAME_AUTH_REQUIRED defaults ON), but the legacy suites
+# call v2 routes without credentials. Setting this BEFORE the app is imported
+# opts them out. The dedicated enforcement tests (tests/ui/test_v2_auth_
+# enforcement.py) explicitly monkeypatch it back to "true". ``setdefault`` lets
+# an explicit environment override win.
+os.environ.setdefault("CODEFRAME_AUTH_REQUIRED", "false")
+
 # All v1 legacy tests have been removed; nothing to ignore at the root.
 collect_ignore: list[str] = []
 

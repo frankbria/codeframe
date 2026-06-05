@@ -9,6 +9,8 @@ JWT tokens get full permissions for backward compatibility.
 """
 
 import logging
+import os
+import re
 from typing import Callable, Dict, Optional, Any
 
 from fastapi import Depends, HTTPException, Request, Security, status
@@ -30,6 +32,40 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=False)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
+# Truthy/falsy values for CODEFRAME_AUTH_REQUIRED (case-insensitive).
+_AUTH_FALSY = {"0", "false", "no", "off"}
+
+# Routes allowed to authenticate via a ?token=<JWT> query parameter. Browser
+# EventSource (SSE) cannot send an Authorization header, so these streaming
+# routes accept the token in the URL — the same trade-off the WebSocket
+# routes already make. Keep this list tight: query-string credentials can
+# leak via proxy/access logs and browser history, so the fallback must NOT
+# apply to the rest of the API (codex review P2, issue #336).
+_QUERY_TOKEN_PATHS = (
+    re.compile(r"^/api/v2/tasks/[^/]+/stream$"),  # task event stream (SSE)
+    re.compile(r"^/api/v2/prd/stress-test$"),  # PRD stress-test stream (SSE)
+)
+
+
+def _query_token_allowed(path: str) -> bool:
+    """Whether this request path may authenticate via ?token= (SSE only)."""
+    return any(pattern.match(path) for pattern in _QUERY_TOKEN_PATHS)
+
+
+def auth_required() -> bool:
+    """Whether authentication is enforced, read from the environment.
+
+    Controlled by ``CODEFRAME_AUTH_REQUIRED`` (default ON / secure by default).
+    Read at request time so tests can monkeypatch the value per call.
+
+    Falsy values (case-insensitive): ``0``, ``false``, ``no``, ``off``.
+    Anything else (including unset) is treated as enabled.
+    """
+    value = os.getenv("CODEFRAME_AUTH_REQUIRED")
+    if value is None:
+        return True
+    return value.strip().lower() not in _AUTH_FALSY
+
 
 async def get_current_user(
     request: Request,
@@ -37,12 +73,15 @@ async def get_current_user(
 ) -> User:
     """Get currently authenticated user.
 
-    Authentication is always required. All requests must include a valid
-    JWT Bearer token in the Authorization header.
+    Requires a valid JWT, supplied as an ``Authorization: Bearer`` header.
+    On the allowlisted SSE routes only (``_QUERY_TOKEN_PATHS``), a
+    ``?token=<JWT>`` query parameter is accepted when no header is present
+    (browser EventSource cannot send headers; mirrors the WebSocket
+    auth pattern).
 
     Args:
         request: FastAPI request object
-        credentials: Bearer token from Authorization header
+        credentials: Bearer token from Authorization header (optional)
 
     Returns:
         Authenticated user
@@ -50,8 +89,17 @@ async def get_current_user(
     Raises:
         HTTPException: 401 if authentication not provided or invalid
     """
-    # Authentication is always required
-    if not credentials or not credentials.credentials:
+    # Resolve the bearer token from the Authorization header. Only the
+    # allowlisted SSE routes may fall back to a ?token= query parameter
+    # (EventSource cannot send headers); everywhere else query-string
+    # credentials are rejected to keep them out of logs/history.
+    token: Optional[str] = None
+    if credentials and getattr(credentials, "credentials", None):
+        token = credentials.credentials
+    elif request is not None and _query_token_allowed(request.url.path):
+        token = request.query_params.get("token")
+
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
@@ -76,7 +124,7 @@ async def get_current_user(
         # auth.manager to ensure consistency with the JWTStrategy configuration.
         try:
             payload = pyjwt.decode(
-                credentials.credentials,
+                token,
                 SECRET,
                 algorithms=[JWT_ALGORITHM],
                 audience=JWT_AUDIENCE,
@@ -260,6 +308,15 @@ async def require_auth(
             # JWT users get all scopes for backward compatibility
             "scopes": [SCOPE_READ, SCOPE_WRITE, SCOPE_ADMIN],
             "user": jwt_user,
+        }
+
+    # Auth disabled (local opt-out): return a synthetic local-admin principal
+    # instead of raising. Real credentials above always take precedence.
+    if not auth_required():
+        return {
+            "type": "disabled",
+            "user_id": None,
+            "scopes": [SCOPE_READ, SCOPE_WRITE, SCOPE_ADMIN],
         }
 
     # No authentication provided
