@@ -10,6 +10,7 @@ JWT tokens get full permissions for backward compatibility.
 
 import logging
 import os
+import re
 from typing import Callable, Dict, Optional, Any
 
 from fastapi import Depends, HTTPException, Request, Security, status
@@ -34,6 +35,22 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 # Truthy/falsy values for CODEFRAME_AUTH_REQUIRED (case-insensitive).
 _AUTH_FALSY = {"0", "false", "no", "off"}
 
+# Routes allowed to authenticate via a ?token=<JWT> query parameter. Browser
+# EventSource (SSE) cannot send an Authorization header, so these streaming
+# routes accept the token in the URL — the same trade-off the WebSocket
+# routes already make. Keep this list tight: query-string credentials can
+# leak via proxy/access logs and browser history, so the fallback must NOT
+# apply to the rest of the API (codex review P2, issue #336).
+_QUERY_TOKEN_PATHS = (
+    re.compile(r"^/api/v2/tasks/[^/]+/stream$"),  # task event stream (SSE)
+    re.compile(r"^/api/v2/prd/stress-test$"),  # PRD stress-test stream (SSE)
+)
+
+
+def _query_token_allowed(path: str) -> bool:
+    """Whether this request path may authenticate via ?token= (SSE only)."""
+    return any(pattern.match(path) for pattern in _QUERY_TOKEN_PATHS)
+
 
 def auth_required() -> bool:
     """Whether authentication is enforced, read from the environment.
@@ -56,10 +73,11 @@ async def get_current_user(
 ) -> User:
     """Get currently authenticated user.
 
-    Requires a valid JWT, supplied either as an ``Authorization: Bearer``
-    header or, when no header is present, as a ``?token=<JWT>`` query
-    parameter (the latter enables browser EventSource / SSE, which cannot
-    send headers, and mirrors the WebSocket auth pattern).
+    Requires a valid JWT, supplied as an ``Authorization: Bearer`` header.
+    On the allowlisted SSE routes only (``_QUERY_TOKEN_PATHS``), a
+    ``?token=<JWT>`` query parameter is accepted when no header is present
+    (browser EventSource cannot send headers; mirrors the WebSocket
+    auth pattern).
 
     Args:
         request: FastAPI request object
@@ -71,14 +89,14 @@ async def get_current_user(
     Raises:
         HTTPException: 401 if authentication not provided or invalid
     """
-    # Resolve the bearer token from the Authorization header, falling back to
-    # a ``?token=<JWT>`` query parameter when no header is present. The query
-    # fallback enables browser EventSource (SSE), which cannot send headers,
-    # and mirrors the existing WebSocket auth pattern.
+    # Resolve the bearer token from the Authorization header. Only the
+    # allowlisted SSE routes may fall back to a ?token= query parameter
+    # (EventSource cannot send headers); everywhere else query-string
+    # credentials are rejected to keep them out of logs/history.
     token: Optional[str] = None
     if credentials and getattr(credentials, "credentials", None):
         token = credentials.credentials
-    elif request is not None:
+    elif request is not None and _query_token_allowed(request.url.path):
         token = request.query_params.get("token")
 
     if not token:
