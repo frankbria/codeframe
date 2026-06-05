@@ -35,7 +35,11 @@ V2_GET_ENDPOINTS = [
     ("pr", "/api/v2/pr/status"),
     ("prd", "/api/v2/prd"),
     ("proof", "/api/v2/proof/requirements"),
+    ("review", "/api/v2/review/diff"),
     ("schedule", "/api/v2/schedule"),
+    # streaming_v2 holds SSE utilities only; the SSE route itself is mounted
+    # under the tasks prefix — assert the auth dependency fires on it too.
+    ("streaming-sse", "/api/v2/tasks/abc/stream"),
     ("settings", "/api/v2/settings"),
     ("tasks", "/api/v2/tasks"),
     ("templates", "/api/v2/templates"),
@@ -74,6 +78,37 @@ def test_valid_jwt_not_401(auth_app, router_id, path):
     assert resp.status_code != 401, (
         f"{router_id} {path} returned 401 with a valid JWT"
     )
+
+
+def test_valid_api_key_not_401(auth_app, monkeypatch, tmp_path):
+    """End-to-end X-API-Key path: a real key stored in the platform store
+    must get past the router-level require_auth dependency."""
+    from codeframe.auth.api_keys import generate_api_key
+    from codeframe.platform_store.database import Database
+
+    db_path = tmp_path / "state.db"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+
+    db = Database(db_path)
+    db.initialize()
+    full_key, key_hash, prefix = generate_api_key()
+    db.api_keys.create(
+        user_id=1,
+        name="enforcement-test",
+        key_hash=key_hash,
+        prefix=prefix,
+        scopes=["read", "write", "admin"],
+    )
+    db.close()
+
+    # No lifespan (no `with`): get_api_key_auth falls back to DATABASE_PATH.
+    client = TestClient(auth_app, raise_server_exceptions=False)
+    resp = client.get("/api/v2/templates", headers={"X-API-Key": full_key})
+    assert resp.status_code != 401, resp.text
+
+    # And a bogus key must NOT pass.
+    resp = client.get("/api/v2/templates", headers={"X-API-Key": "cf_live_" + "0" * 32})
+    assert resp.status_code == 401
 
 
 def test_test_broadcast_requires_auth(auth_app):

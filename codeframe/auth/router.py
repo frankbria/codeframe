@@ -1,4 +1,6 @@
 """Auth router configuration."""
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 
@@ -16,8 +18,16 @@ router = APIRouter()
 # ._ensure_default_admin_user.
 _DISABLED_PASSWORD = "!DISABLED!"
 
+# Serializes the bootstrap registration check-then-create window. The count
+# check (here) and the user INSERT (fastapi-users route handler) run in
+# separate transactions, so without the lock two concurrent first-time
+# registrations could both pass the zero-users check (TOCTOU). The yield
+# dependency holds the lock until the response completes, covering creation.
+# In-process only — multi-worker deployments retain a narrow race.
+_register_lock = asyncio.Lock()
 
-async def allow_registration() -> None:
+
+async def allow_registration():
     """Gate registration to bootstrap-first-user only (issue #336).
 
     Registration is permitted only while no *real* (login-capable) account
@@ -25,20 +35,24 @@ async def allow_registration() -> None:
     password placeholder; that account cannot log in and does not count.
     Once the first real user registers, this raises 403.
     """
-    async_session_maker = get_async_session_maker()
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(func.count())
-            .select_from(User)
-            .where(User.hashed_password != _DISABLED_PASSWORD)
-        )
-        real_user_count = result.scalar_one()
+    async with _register_lock:
+        async_session_maker = get_async_session_maker()
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(func.count())
+                .select_from(User)
+                .where(User.hashed_password != _DISABLED_PASSWORD)
+            )
+            real_user_count = result.scalar_one()
 
-    if real_user_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Registration is closed: an account already exists.",
-        )
+        if real_user_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Registration is closed: an account already exists.",
+            )
+
+        # Hold the lock until the registration request finishes.
+        yield
 
 
 # Authentication routes (login, logout) - JWT endpoints at /auth/jwt/*

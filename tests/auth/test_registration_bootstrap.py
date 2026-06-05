@@ -70,3 +70,36 @@ class TestRegistrationBootstrap:
             json={"email": "second@example.com", "password": "secret123"},
         )
         assert resp.status_code == 403, resp.text
+
+    def test_concurrent_first_registrations_admit_exactly_one(self, auth_client):
+        """TOCTOU guard: two simultaneous first-time registrations must not
+        both slip through the zero-users check (codex review P2). The yield
+        dependency holds an in-process lock until user creation completes, so
+        exactly one succeeds and the other gets 403."""
+        import anyio
+        import httpx
+
+        app = auth_client.app
+        statuses = []
+
+        async def _register(client, email):
+            resp = await client.post(
+                "/auth/register",
+                json={"email": email, "password": "secret123"},
+            )
+            statuses.append(resp.status_code)
+
+        async def _run():
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                async with anyio.create_task_group() as tg:
+                    tg.start_soon(_register, client, "racer-a@example.com")
+                    tg.start_soon(_register, client, "racer-b@example.com")
+
+        anyio.run(_run)
+
+        assert sorted(statuses) == [201, 403] or sorted(statuses) == [200, 403], (
+            f"expected exactly one success and one 403, got {statuses}"
+        )
