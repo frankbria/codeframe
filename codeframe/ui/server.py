@@ -10,7 +10,7 @@ from enum import Enum
 from pathlib import Path
 
 # Third-party imports
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -45,6 +45,7 @@ from codeframe.ui.routers import (
     workspace_v2,
 )
 from codeframe.auth import router as auth_router
+from codeframe.auth.dependencies import require_auth
 from codeframe.platform_store.database import Database
 from codeframe.lib.rate_limiter import (
     get_rate_limiter,
@@ -457,7 +458,7 @@ async def health_check():
 # ============================================================================
 
 
-@app.post("/test/broadcast")
+@app.post("/test/broadcast", dependencies=[Depends(require_auth)])
 async def test_broadcast(message: dict, project_id: int = None):
     """Trigger a WebSocket broadcast for testing purposes.
 
@@ -486,30 +487,39 @@ async def test_broadcast(message: dict, project_id: int = None):
 app.include_router(auth_router.router)
 
 # v2 API routers - all delegate to codeframe.core modules
-app.include_router(batches_v2.router)       # /api/v2/batches
-app.include_router(blockers_v2.router)      # /api/v2/blockers
-app.include_router(checkpoints_v2.router)   # /api/v2/checkpoints
-app.include_router(costs_v2.router)         # /api/v2/costs
-app.include_router(diagnose_v2.router)      # /api/v2/tasks/{id}/diagnose
-app.include_router(discovery_v2.router)     # /api/v2/discovery
-app.include_router(environment_v2.router)   # /api/v2/env
-app.include_router(events_v2.router)        # /api/v2/events
-app.include_router(gates_v2.router)         # /api/v2/gates
-app.include_router(git_v2.router)           # /api/v2/git
-app.include_router(github_integrations_v2.router)  # /api/v2/integrations/github
-app.include_router(interactive_sessions_v2.router)  # /api/v2/sessions
-app.include_router(session_chat_ws.router)          # /ws/sessions/{id}/chat
-app.include_router(terminal_ws.router)              # /ws/sessions/{id}/terminal
-app.include_router(pr_v2.router)            # /api/v2/pr
-app.include_router(prd_v2.router)           # /api/v2/prd
-app.include_router(proof_v2.router)         # /api/v2/proof
-app.include_router(review_v2.router)        # /api/v2/review
-app.include_router(schedule_v2.router)      # /api/v2/schedule
-app.include_router(settings_v2.router)      # /api/v2/settings
-app.include_router(streaming_v2.router)     # /api/v2/tasks/{id}/stream (SSE)
-app.include_router(tasks_v2.router)         # /api/v2/tasks
-app.include_router(templates_v2.router)     # /api/v2/templates
-app.include_router(workspace_v2.router)     # /api/v2/workspaces
+#
+# Auth enforcement (issue #336): every v2 REST router is mounted with a
+# blanket ``require_auth`` dependency. With CODEFRAME_AUTH_REQUIRED disabled
+# (local opt-out) require_auth returns a synthetic principal instead of
+# raising, so behavior is unchanged for local/dev use. The two WebSocket
+# routers (session_chat_ws, terminal_ws) are intentionally excluded — they
+# perform their own ?token= JWT auth and cannot use an HTTP 401 dependency.
+# The auth_router (login/register) stays public.
+_AUTH = [Depends(require_auth)]
+app.include_router(batches_v2.router, dependencies=_AUTH)       # /api/v2/batches
+app.include_router(blockers_v2.router, dependencies=_AUTH)      # /api/v2/blockers
+app.include_router(checkpoints_v2.router, dependencies=_AUTH)   # /api/v2/checkpoints
+app.include_router(costs_v2.router, dependencies=_AUTH)         # /api/v2/costs
+app.include_router(diagnose_v2.router, dependencies=_AUTH)      # /api/v2/tasks/{id}/diagnose
+app.include_router(discovery_v2.router, dependencies=_AUTH)     # /api/v2/discovery
+app.include_router(environment_v2.router, dependencies=_AUTH)   # /api/v2/env
+app.include_router(events_v2.router, dependencies=_AUTH)        # /api/v2/events
+app.include_router(gates_v2.router, dependencies=_AUTH)         # /api/v2/gates
+app.include_router(git_v2.router, dependencies=_AUTH)           # /api/v2/git
+app.include_router(github_integrations_v2.router, dependencies=_AUTH)  # /api/v2/integrations/github
+app.include_router(interactive_sessions_v2.router, dependencies=_AUTH)  # /api/v2/sessions
+app.include_router(session_chat_ws.router)          # /ws/sessions/{id}/chat (WS: own auth)
+app.include_router(terminal_ws.router)              # /ws/sessions/{id}/terminal (WS: own auth)
+app.include_router(pr_v2.router, dependencies=_AUTH)            # /api/v2/pr
+app.include_router(prd_v2.router, dependencies=_AUTH)           # /api/v2/prd
+app.include_router(proof_v2.router, dependencies=_AUTH)         # /api/v2/proof
+app.include_router(review_v2.router, dependencies=_AUTH)        # /api/v2/review
+app.include_router(schedule_v2.router, dependencies=_AUTH)      # /api/v2/schedule
+app.include_router(settings_v2.router, dependencies=_AUTH)      # /api/v2/settings
+app.include_router(streaming_v2.router, dependencies=_AUTH)     # /api/v2/tasks/{id}/stream (SSE)
+app.include_router(tasks_v2.router, dependencies=_AUTH)         # /api/v2/tasks
+app.include_router(templates_v2.router, dependencies=_AUTH)     # /api/v2/templates
+app.include_router(workspace_v2.router, dependencies=_AUTH)     # /api/v2/workspaces
 
 
 # ============================================================================
