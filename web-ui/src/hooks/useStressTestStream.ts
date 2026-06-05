@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useEventSource } from './useEventSource';
+import { withTokenParam } from '@/lib/auth';
 import type { StressTestEvent, StressTestAmbiguity } from '@/types';
 
 // ── Hook state ────────────────────────────────────────────────────────────
@@ -65,7 +66,9 @@ export function useStressTestStream(
   const sseBase = process.env.NEXT_PUBLIC_SSE_URL || 'http://localhost:8000';
   const url =
     active && workspacePath
-      ? `${sseBase}/api/v2/prd/stress-test?workspace_path=${encodeURIComponent(workspacePath)}&run=${runId}`
+      ? withTokenParam(
+          `${sseBase}/api/v2/prd/stress-test?workspace_path=${encodeURIComponent(workspacePath)}&run=${runId}`
+        )
       : null;
 
   const handleMessage = useCallback((data: string) => {

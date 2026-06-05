@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useEventSource } from './useEventSource';
+import { withTokenParam } from '@/lib/auth';
 
 // ── Event types matching backend ExecutionEvent models ──────────────────
 
@@ -116,7 +117,9 @@ export function useTaskStream({
   const sseBase = process.env.NEXT_PUBLIC_SSE_URL || 'http://localhost:8000';
   const url =
     taskId && workspacePath
-      ? `${sseBase}/api/v2/tasks/${taskId}/stream?workspace_path=${encodeURIComponent(workspacePath)}`
+      ? withTokenParam(
+          `${sseBase}/api/v2/tasks/${taskId}/stream?workspace_path=${encodeURIComponent(workspacePath)}`
+        )
       : null;
 
   const handleMessage = useCallback(

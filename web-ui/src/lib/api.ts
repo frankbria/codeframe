@@ -6,6 +6,7 @@
  * and passes it with every request.
  */
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { getToken, clearToken } from './auth';
 import type {
   WorkspaceResponse,
   WorkspaceExistsResponse,
@@ -127,10 +128,29 @@ const createApiClient = (): AxiosInstance => {
     withCredentials: true,
   });
 
+  // Attach the JWT bearer token to every request when authenticated (#336).
+  client.interceptors.request.use((config) => {
+    const token = getToken();
+    if (token) {
+      config.headers.set('Authorization', `Bearer ${token}`);
+    }
+    return config;
+  });
+
   // Add response interceptor for error handling
   client.interceptors.response.use(
     (response) => response,
     (error: AxiosError<{ detail?: FastApiErrorDetail }>) => {
+      // On 401 (auth enabled, token missing/expired/invalid): drop the stale
+      // token and bounce to the login page — unless we're already there, to
+      // avoid a redirect loop on a failed login request (#336).
+      if (error.response?.status === 401 && typeof window !== 'undefined') {
+        clearToken();
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+      }
+
       // Transform error for consistent handling
       const apiError: ApiError = {
         detail: normalizeErrorDetail(error.response?.data?.detail, error.message),

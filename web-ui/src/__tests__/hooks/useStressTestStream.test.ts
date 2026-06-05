@@ -44,6 +44,7 @@ class MockEventSource {
 beforeEach(() => {
   MockEventSource.instances = [];
   (global as unknown as { EventSource: unknown }).EventSource = MockEventSource;
+  localStorage.clear();
 });
 
 const WORKSPACE = '/tmp/test-workspace';
@@ -68,6 +69,23 @@ describe('useStressTestStream', () => {
     expect(MockEventSource.latest().url).toContain(
       `workspace_path=${encodeURIComponent(WORKSPACE)}`
     );
+  });
+
+  it('appends the auth token as a query param when authenticated (#336)', () => {
+    localStorage.setItem('auth_token', 'jwt-sse');
+    const { result } = renderHook(() => useStressTestStream(WORKSPACE));
+
+    act(() => result.current.start());
+
+    expect(MockEventSource.latest().url).toContain('token=jwt-sse');
+  });
+
+  it('omits the token param when not authenticated', () => {
+    const { result } = renderHook(() => useStressTestStream(WORKSPACE));
+
+    act(() => result.current.start());
+
+    expect(MockEventSource.latest().url).not.toContain('token=');
   });
 
   it('accumulates human-readable lines from progress events', () => {
