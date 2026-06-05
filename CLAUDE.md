@@ -54,6 +54,8 @@ Issue **import + traceability** (#565) is **complete**: `POST /api/v2/integratio
 
 **Phase 3.5C is complete** — `CaptureGlitchModal` form (description/markdown, source, scope, gate obligations, severity, expiry) reachable from the PROOF9 page and the persistent sidebar "Capture Glitch" button. REQ detail view (`/proof/[req_id]`) ships markdown description rendering, `ProofScope` metadata display, obligations table with `Latest Run` column, sortable/filterable evidence history, and empty-state CTA. Backend: `ScopeOut` model on `RequirementResponse`. Issues #568, #569.
 
+**v2 API auth enforcement (#336) is complete** — all 22 v2 REST routers require auth (`require_auth`: JWT Bearer or `X-API-Key`) via router-level dependencies in `server.py`; env-gated `CODEFRAME_AUTH_REQUIRED` (default **ON**; set `false` for local dev — read at request time). `?token=<JWT>` query auth works **only** on the two SSE routes (allowlist `_QUERY_TOKEN_PATHS` in `codeframe/auth/dependencies.py`); WS routers keep their own `?token=` auth. `/auth/register` admits only the bootstrap first user (403 after; seeded `!DISABLED!` admin excluded; in-process lock closes the TOCTOU window). Web UI: `/login` page (sign-in + create-first-account), axios Bearer interceptor from localStorage `auth_token`, loop-safe 401→`/login` redirect, SSE hooks append the token, sidebar logout; `/auth/*` proxied in `next.config.js`. Backend tests run auth-off via root `tests/conftest.py` `setdefault`; `tests/ui/test_v2_auth_enforcement.py` opts back in.
+
 Next, in order:
 - **4A**: PR status tracking + PROOF9 merge gate
 - **4B**: Post-merge glitch capture loop

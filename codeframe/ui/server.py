@@ -153,8 +153,13 @@ async def lifespan(app: FastAPI):
     db.initialize()
     app.state.db = db
 
-    # Log that authentication is now always required
-    logger.info("🔒 Authentication: ENABLED (always required)")
+    # Log the effective auth mode (#336: env-gated, secure by default)
+    from codeframe.auth.dependencies import auth_required
+
+    if auth_required():
+        logger.info("🔒 Authentication: ENABLED (default; set CODEFRAME_AUTH_REQUIRED=false to disable locally)")
+    else:
+        logger.warning("🔓 Authentication: DISABLED via CODEFRAME_AUTH_REQUIRED — do not expose this server publicly")
 
     # Initialize rate limiting
     rate_limit_config = get_rate_limit_config()
@@ -284,10 +289,16 @@ The CodeFRAME API enables you to:
 
 ## Authentication
 
-All endpoints require authentication. The API supports two authentication methods:
+All `/api/v2/*` endpoints require authentication by default (disable for local
+development with `CODEFRAME_AUTH_REQUIRED=false`). Public: `/`, `/health`, docs,
+and the `/auth/*` login/register endpoints. Two authentication methods:
 
 1. **API Key** - Include `X-API-Key` header with your API key
 2. **Session Token** - Use JWT token from login endpoint in `Authorization: Bearer <token>` header
+
+SSE streaming endpoints additionally accept the JWT as a `?token=` query
+parameter (browser EventSource cannot send headers); this applies to the
+streaming routes only.
 
 ## Rate Limiting
 
