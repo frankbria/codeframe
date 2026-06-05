@@ -11,6 +11,8 @@ import importlib
 import pytest
 from fastapi.testclient import TestClient
 
+from codeframe.auth.manager import reset_auth_engine
+from codeframe.platform_store.database import Database
 from tests.conftest import create_test_jwt_token
 
 pytestmark = pytest.mark.v2
@@ -48,16 +50,41 @@ V2_GET_ENDPOINTS = [
 
 
 @pytest.fixture
-def auth_app(monkeypatch):
-    """Import the real server app with auth enforcement enabled."""
+def auth_app(tmp_path, monkeypatch):
+    """Import the real server app with auth enforcement enabled.
+
+    Provisions a dedicated initialized database with a test user (id=1) so
+    the JWT lookup path works in any environment — never rely on a dev
+    machine's ambient DATABASE_PATH (this fixture originally did, and passed
+    locally while failing in CI with "no such table: users").
+    """
+    db_path = tmp_path / "state.db"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
     monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+    reset_auth_engine()
+
+    db = Database(db_path)
+    db.initialize()
+    db.conn.execute(
+        """
+        INSERT OR REPLACE INTO users (
+            id, email, name, hashed_password,
+            is_active, is_superuser, is_verified, email_verified
+        )
+        VALUES (1, 'test@example.com', 'Test User', '!DISABLED!', 1, 0, 1, 1)
+        """
+    )
+    db.conn.commit()
+    db.close()
+
     # server module is import-time; the app object already exists. The
     # require_auth dependency reads the env at request time, so a freshly
     # constructed TestClient over the existing app honors the monkeypatch.
     from codeframe.ui import server
 
     importlib.reload(server)
-    return server.app
+    yield server.app
+    reset_auth_engine()
 
 
 @pytest.mark.parametrize("router_id,path", V2_GET_ENDPOINTS)

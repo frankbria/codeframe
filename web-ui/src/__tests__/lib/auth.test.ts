@@ -63,9 +63,13 @@ describe('login', () => {
     const [url, body, config] = mockedAxios.post.mock.calls[0];
     expect(url).toContain('/auth/jwt/login');
     // Body must be form-encoded (URLSearchParams) with username/password.
-    const bodyStr = body instanceof URLSearchParams ? body.toString() : String(body);
-    expect(bodyStr).toContain('username=user%40example.com');
-    expect(bodyStr).toContain('password=pw123');
+    // Parse rather than substring-match so the assertion doesn't embed a
+    // "password=..." literal (GitGuardian generic-password false positive).
+    const params = new URLSearchParams(
+      body instanceof URLSearchParams ? body.toString() : String(body)
+    );
+    expect(params.get('username')).toBe('user@example.com');
+    expect(params.get('password')).toBe('pw123');
     expect(config?.headers?.['Content-Type']).toBe(
       'application/x-www-form-urlencoded'
     );
