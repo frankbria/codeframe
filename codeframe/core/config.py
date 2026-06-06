@@ -534,16 +534,6 @@ class NotificationsConfig(BaseModel):
     async_blockers: NotificationChannelConfig = Field(default_factory=NotificationChannelConfig)
 
 
-class ContextManagementConfig(BaseModel):
-    """Virtual Project context configuration."""
-
-    enabled: bool = True  # Feature flag for context management
-    hot_tier_max_tokens: int = 20000
-    warm_tier_max_tokens: int = 40000
-    importance_threshold_hot: float = 0.8
-    importance_threshold_warm: float = 0.4
-
-
 class CheckpointConfig(BaseModel):
     """Checkpoint configuration."""
 
@@ -561,7 +551,6 @@ class ProjectConfig(BaseModel):
     agent_policy: AgentPolicyConfig = Field(default_factory=AgentPolicyConfig)
     interruption_mode: InterruptionConfig = Field(default_factory=InterruptionConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
-    context_management: ContextManagementConfig = Field(default_factory=ContextManagementConfig)
     checkpoints: CheckpointConfig = Field(default_factory=CheckpointConfig)
 
 
