@@ -30,6 +30,7 @@ from codeframe.cli.env_commands import env_app
 from codeframe.cli.engines_commands import engines_app
 from codeframe.cli.hooks_commands import hooks_app
 from codeframe.cli.stats_commands import stats_app
+from codeframe.cli.import_commands import import_app
 
 # Load environment variables from .env files
 # Priority: workspace .env > home .env
@@ -5650,6 +5651,8 @@ app.add_typer(proof_app, name="proof")
 from codeframe.cli.dashboard_commands import dashboard_app  # noqa: E402
 
 app.add_typer(dashboard_app, name="dashboard")
+
+app.add_typer(import_app, name="import")
 
 
 # =============================================================================

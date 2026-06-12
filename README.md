@@ -188,6 +188,11 @@ cf tasks show <id>                    # Task details with dependencies
 cf schedule show                      # Task schedule with dependencies
 cf schedule predict                   # Completion date estimates
 cf schedule bottlenecks               # Identify blocking tasks
+
+# Migration / on-ramps
+cf import ralph [path]                # Import a ralph-claude-code project
+cf import ralph [path] --dry-run      # Preview mapping without changes
+cf import ralph [path] -w <workspace> # Import into a specific workspace
 ```
 
 ### BUILD -- Execution
