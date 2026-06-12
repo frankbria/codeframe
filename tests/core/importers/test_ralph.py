@@ -187,7 +187,7 @@ class TestLoadRalphProject:
 # =============================================================================
 
 
-def _make_project(tmp_path: Path, fix_plan: str, ralphrc: str = "") -> "ralph.RalphProject":
+def _make_project(tmp_path: Path, fix_plan: str, ralphrc: str = "") -> ralph.RalphProject:
     (tmp_path / ".ralph").mkdir(exist_ok=True)
     (tmp_path / ".ralph" / "fix_plan.md").write_text(fix_plan)
     if ralphrc:
