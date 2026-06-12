@@ -64,7 +64,6 @@ def import_ralph(
             "[yellow]DRY RUN[/yellow] — mapping report only, no changes made\n"
         )
 
-    # Summary: source -> destination
     ready = sum(
         1 for t in report.tasks_created if t["status"].value == "READY"
     )
