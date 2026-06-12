@@ -48,6 +48,7 @@ def import_ralph(
         RalphProjectNotFoundError,
         import_ralph_project,
     )
+    from codeframe.core.state_machine import TaskStatus
 
     ralph_path = (path or Path.cwd()).resolve()
 
@@ -65,7 +66,7 @@ def import_ralph(
         )
 
     ready = sum(
-        1 for t in report.tasks_created if t["status"].value == "READY"
+        1 for t in report.tasks_created if t["status"] == TaskStatus.READY
     )
     backlog = len(report.tasks_created) - ready
     summary = Table(title=f"Ralph import: {ralph_path}")

@@ -299,6 +299,18 @@ class TestMapPrdContent:
         project = _make_project(tmp_path, "## Core\n- [ ] only tasks here\n")
         assert ralph.map_prd_content(project) is None
 
+    def test_specs_only_project_still_maps(self, tmp_path: Path):
+        project = _make_project(tmp_path, "## Core\n- [ ] a task\n")
+        specs_dir = tmp_path / ".ralph" / "specs"
+        specs_dir.mkdir()
+        (specs_dir / "spec.md").write_text("# Spec\nDetails here.")
+        project = ralph.load_ralph_project(tmp_path)
+
+        mapping = ralph.map_prd_content(project)
+        assert mapping is not None
+        assert ".ralph/specs/spec.md" in mapping["content"]
+        assert mapping["metadata"]["sources"] == [".ralph/specs/spec.md"]
+
 
 class TestMapAgentPreferences:
     def test_extracts_commands_and_allowed_tools(self):
