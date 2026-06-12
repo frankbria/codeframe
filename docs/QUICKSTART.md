@@ -17,6 +17,43 @@ Get your project built with AI agents in minutes.
    export OPENAI_BASE_URL=http://localhost:11434/v1  # for local providers (ollama, vllm)
    ```
 
+## Coming from ralph?
+
+If your project already runs under [ralph-claude-code](https://github.com/frankbria/ralph-claude-code), one command turns it into a CodeFRAME project:
+
+```bash
+cd ~/projects/my-ralph-project
+cf import ralph              # import in place (or: cf import ralph /path/to/project)
+```
+
+Preview the mapping first with `--dry-run`:
+
+```bash
+cf import ralph --dry-run    # human-readable report, no changes made
+```
+
+What maps where:
+
+| ralph concept | CodeFRAME equivalent |
+|---|---|
+| `.ralph/fix_plan.md` checkboxes | Tasks (`cf tasks list`), file order preserved |
+| Items under Optional/Future/Nice to Have headings | Tasks in `BACKLOG` (deferred) |
+| Other unchecked items | Tasks in `READY` |
+| Checked `- [x]` items | Skipped (already completed) |
+| `.ralph/PROMPT.md` + `.ralph/specs/` | PRD (`cf prd show`), with source attribution |
+| `.ralph/AGENT.md` build/test commands | `AGENTS.md` **Commands** section |
+| `.ralphrc` `ALLOWED_TOOLS` | `AGENTS.md` **Always Do** section |
+| `.ralphrc` `OPTIONAL_SECTIONS` | Which fix_plan headings import as `BACKLOG` |
+| ralph state files (`status.json`, `.call_count`, ...) | Never read — reported as ignored |
+
+Notes:
+
+- **Optional sections**: headings matching `OPTIONAL_SECTIONS` from your `.ralphrc` (or the defaults: Optional, Future, Nice to Have, Backlog, Later, Someday) import as `BACKLOG` so they don't block execution — mirroring ralph's "doesn't block exit" semantics.
+- **Idempotent**: re-running `cf import ralph` skips everything already imported; only new fix_plan items are added. If `PROMPT.md`/specs changed, the PRD gets a new version. An existing `AGENTS.md` is never overwritten.
+- Use `--workspace <path>` to import into a different directory than the ralph project root.
+
+After importing, continue with `cf work start` / `cf work batch run` as usual — see The Happy Path below (you can skip the PRD step; your tasks are already generated).
+
 ## The Happy Path
 
 ### Step 1: Initialize Your Workspace
@@ -179,6 +216,13 @@ codeframe checkpoint create "MVP complete"
 | `codeframe init <path> -i` | Initialize + interactive tech stack |
 | `codeframe status` | Show workspace overview |
 | `codeframe summary` | Concise status report |
+
+### Import Commands
+| Command | Description |
+|---------|-------------|
+| `cf import ralph [path]` | Import a ralph-claude-code project |
+| `cf import ralph --dry-run` | Preview the mapping report |
+| `cf import ralph -w <path>` | Import into a different workspace |
 
 ### PRD Commands
 | Command | Description |
