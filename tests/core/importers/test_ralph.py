@@ -68,6 +68,11 @@ class TestParseRalphrc:
         rc.write_text('X="${UNDEFINED_VAR}"\n')
         assert ralph.parse_ralphrc(rc)["X"] == ""
 
+    def test_non_assignment_lines_ignored(self, tmp_path: Path):
+        rc = tmp_path / ".ralphrc"
+        rc.write_text('if [ -f .env ]; then\n  source .env\nfi\nFOO="bar"\n')
+        assert ralph.parse_ralphrc(rc) == {"FOO": "bar"}
+
     def test_value_with_equals_sign_preserved(self, tmp_path: Path):
         rc = tmp_path / ".ralphrc"
         rc.write_text('FILTER="status:open=true"\n')
