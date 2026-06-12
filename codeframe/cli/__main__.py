@@ -9,11 +9,11 @@ The help text will correctly show 'codeframe' as the command name.
 
 def main():
     """Run the CLI with proper program name."""
-    from codeframe.cli.app import app
+    from codeframe.cli.app import main as app_main
 
-    # Use Typer's prog_name to override the usage line
-    # This is more reliable than sys.argv[0] manipulation
-    app(prog_name="codeframe")
+    # The telemetry-aware wrapper invokes the app with prog_name="codeframe",
+    # so the usage line shows the right command name here too.
+    app_main()
 
 
 if __name__ == "__main__":

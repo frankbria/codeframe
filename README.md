@@ -345,6 +345,15 @@ export RATE_LIMIT_DEFAULT=100/minute        # Default limit
 
 For server configuration, rate limiting options, and API key setup, see [docs/PHASE_2_DEVELOPER_GUIDE.md](docs/PHASE_2_DEVELOPER_GUIDE.md).
 
+### Privacy & telemetry
+
+CodeFRAME has **opt-in** (default off) anonymous telemetry and crash reporting
+to help us fix beta bugs — command name, duration, exit code, version, and OS
+only; never code, prompts, arguments, or file paths. Control it with
+`cf config telemetry on|off|status`, `CODEFRAME_TELEMETRY=on|off`, or
+`DO_NOT_TRACK=1`. See [PRIVACY.md](PRIVACY.md) for exactly what is collected,
+where it goes, and retention.
+
 ---
 
 ## Testing

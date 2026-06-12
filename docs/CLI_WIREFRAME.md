@@ -243,6 +243,37 @@ Each command:
 
 ---
 
+### `codeframe config telemetry <on|off|status>`
+**Purpose:** Enable, disable, or inspect machine-wide anonymous telemetry and crash reporting (default: off).
+
+**CLI module:**
+- `codeframe/cli/config_commands.py`
+
+**Core calls:**
+- `codeframe.core.telemetry.load_config() -> TelemetryConfig`
+- `codeframe.core.telemetry.save_config(config) -> None`
+- `codeframe.core.telemetry.env_override() -> bool | None` (for status display)
+
+**Options:**
+- `on`: Enable telemetry and persist consent.
+- `off`: Disable telemetry and persist consent.
+- `status`: Print current effective state (respects env overrides and `DO_NOT_TRACK`).
+
+**State writes:**
+- `~/.codeframe/telemetry.json` (machine-wide; not workspace-scoped)
+
+**Env overrides (resolution order):**
+- `CODEFRAME_TELEMETRY=on|off` — always wins
+- `DO_NOT_TRACK=1` — disables telemetry (standard convention)
+- `~/.codeframe/telemetry.json` — user preference
+- Default: off
+
+**Notes:**
+- The CLI wrapper (`codeframe/cli/telemetry_runtime.py`) shows a one-time opt-in prompt on the first interactive invocation. Users can skip or answer; the choice is persisted. The prompt is suppressed when `CODEFRAME_TELEMETRY` is set, when `DO_NOT_TRACK` is set, when non-interactive, and during `cf config` commands.
+- See `PRIVACY.md` for exactly what is and is not collected.
+
+---
+
 ## PRD: `codeframe prd ...`
 
 ### `codeframe prd generate` (Enhanced - Primary)

@@ -208,6 +208,9 @@ cf env check|install|doctor
 
 # GitHub PR
 cf pr create|status|checks|merge
+
+# Telemetry (machine-wide, opt-in)
+cf config telemetry on|off|status
 ```
 
 Note: `codeframe serve` exists but Golden Path does not depend on it.
@@ -284,6 +287,11 @@ RATE_LIMIT_AI=20/minute
 REDIS_URL=redis://localhost:6379
 
 CODEFRAME_API_KEY_SECRET=<secret>     # API key hashing
+
+# Telemetry (default: off — must be explicitly opted in)
+CODEFRAME_TELEMETRY=on|off            # Force telemetry on or off; overrides ~/.codeframe/telemetry.json
+CODEFRAME_TELEMETRY_ENDPOINT=<url>    # Override collector URL (default: https://telemetry.codeframe.dev/v1/events)
+DO_NOT_TRACK=1                        # Standard convention; disables telemetry when set (and not 0/false)
 ```
 
 ---

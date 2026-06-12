@@ -275,6 +275,15 @@ codeframe checkpoint create "MVP complete"
 | `codeframe checkpoint create "name"` | Save state snapshot |
 | `codeframe checkpoint list` | List checkpoints |
 
+### Configuration Commands
+| Command | Description |
+|---------|-------------|
+| `cf config telemetry on` | Enable anonymous usage telemetry (opt-in) |
+| `cf config telemetry off` | Disable telemetry |
+| `cf config telemetry status` | Show current telemetry state and config path |
+
+> On first interactive use, CodeFRAME shows a one-time prompt asking whether to enable telemetry (default: No). You can also set `CODEFRAME_TELEMETRY=on|off` or `DO_NOT_TRACK=1` to skip the prompt. See [PRIVACY.md](../PRIVACY.md) for exactly what is collected.
+
 ---
 
 ## Execution Strategies
