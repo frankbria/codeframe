@@ -79,6 +79,20 @@ class TestTelemetryStatus:
         assert not _config_file(home).exists()
 
 
+class TestEndpointPreservation:
+    def test_custom_endpoint_survives_on_off(self, home):
+        """A hand-edited custom endpoint must survive consent changes."""
+        cfg = telemetry.load_config()
+        cfg.endpoint = "https://my-collector.example.com/v1/events"
+        telemetry.save_config(cfg)
+
+        runner.invoke(app, ["config", "telemetry", "on"])
+        runner.invoke(app, ["config", "telemetry", "off"])
+
+        data = json.loads(_config_file(home).read_text())
+        assert data["endpoint"] == "https://my-collector.example.com/v1/events"
+
+
 class TestValidation:
     def test_unknown_action_fails(self, home):
         result = runner.invoke(app, ["config", "telemetry", "sideways"])
