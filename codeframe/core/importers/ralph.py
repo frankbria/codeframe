@@ -396,6 +396,8 @@ def map_agent_preferences(project: RalphProject) -> Optional[dict]:
 
 def _find_ralph_prd(workspace, prd_module):
     """Find the most recent PRD previously imported from ralph, if any."""
+    # list_all is ordered newest-first, so the first ralph_import match is
+    # the latest version (create_new_version copies parent metadata).
     for record in prd_module.list_all(workspace):
         if record.metadata.get("ralph_import"):
             return record

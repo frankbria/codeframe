@@ -380,6 +380,20 @@ class TestImportRalphProject:
         assert len(tasks.list_tasks(ws)) == 7
         assert prd.get_latest(ws).version == 1
 
+    def test_duplicate_titles_idempotent_on_rerun(self, ralph_project: Path):
+        fix_plan = ralph_project / ".ralph" / "fix_plan.md"
+        fix_plan.write_text(
+            "## Core\n- [ ] repeated task\n- [ ] repeated task\n"
+        )
+        first = ralph.import_ralph_project(ralph_project)
+        assert len(first.tasks_created) == 2
+        second = ralph.import_ralph_project(ralph_project)
+        assert second.tasks_created == []
+
+        from codeframe.core.workspace import get_workspace
+
+        assert len(tasks.list_tasks(get_workspace(ralph_project))) == 2
+
     def test_rerun_after_fix_plan_edit_imports_only_new(self, ralph_project: Path):
         ralph.import_ralph_project(ralph_project)
         fix_plan = ralph_project / ".ralph" / "fix_plan.md"
