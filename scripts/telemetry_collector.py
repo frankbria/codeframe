@@ -39,9 +39,13 @@ def ingest(batch: EventBatch) -> dict:
         raise HTTPException(status_code=413, detail="batch too large")
     received_at = datetime.now(timezone.utc).isoformat()
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # One write call per request so concurrent requests (uvicorn threadpool)
+    # can't interleave partial lines in the JSONL file.
+    lines = "".join(
+        json.dumps({**event, "received_at": received_at}) + "\n" for event in batch.events
+    )
     with LOG_PATH.open("a") as f:
-        for event in batch.events:
-            f.write(json.dumps({**event, "received_at": received_at}) + "\n")
+        f.write(lines)
     return {"accepted": len(batch.events)}
 
 

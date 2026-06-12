@@ -50,17 +50,26 @@ def telemetry(
 
 
 def _print_status() -> None:
+    # Resolve the effective state from this single config read (rather than
+    # is_enabled(), which re-reads) so the displayed state and anonymous id
+    # can't disagree if the file changes between two loads.
     config = telemetry_core.load_config()
-    effective = telemetry_core.is_enabled()
+    override = telemetry_core.env_override()
+    dnt_active = os.environ.get("DO_NOT_TRACK", "").strip().lower() not in ("", "0", "false")
+    if override is not None:
+        effective = override
+    elif dnt_active:
+        effective = False
+    else:
+        effective = config.enabled
     state = "[green]enabled[/green]" if effective else "[yellow]disabled[/yellow]"
     console.print(f"Telemetry: {state}")
 
-    override = telemetry_core.env_override()
     if override is not None:
         console.print(
             f"  (overridden by CODEFRAME_TELEMETRY={os.environ['CODEFRAME_TELEMETRY']})"
         )
-    elif os.environ.get("DO_NOT_TRACK", "").strip().lower() not in ("", "0", "false"):
+    elif dnt_active:
         console.print("  (disabled by DO_NOT_TRACK)")
 
     console.print(f"  Config file: {telemetry_core.config_path()}")

@@ -185,13 +185,16 @@ class TestCrashEvent:
         assert "secret-user" not in json.dumps(event)
 
     def test_frames_only_include_codeframe_package(self):
-        """Frames outside the codeframe package (tests, stdlib) are dropped;
-        in-package frame paths are relative to the package parent."""
+        """Frames outside the codeframe package (tests, stdlib) are dropped.
+
+        The exception is raised from this test file, so every frame is
+        out-of-package and the sanitized list must be exactly empty — the
+        in-package (relative-path) case is covered by
+        test_in_package_frames_are_captured_relative.
+        """
         exc = self._raise_and_capture()
         event = telemetry.build_crash_event(exc, anonymous_id="abc")
-        for frame in event["frames"]:
-            assert frame["file"].startswith("codeframe/")
-            assert not frame["file"].startswith("/")
+        assert event["frames"] == []
 
     def test_in_package_frames_are_captured_relative(self, tmp_path):
         # Trigger a real exception inside the codeframe package: save_config's
