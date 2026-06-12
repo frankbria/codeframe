@@ -5654,6 +5654,10 @@ app.add_typer(dashboard_app, name="dashboard")
 
 app.add_typer(import_app, name="import")
 
+from codeframe.cli.config_commands import config_app  # noqa: E402
+
+app.add_typer(config_app, name="config")
+
 
 # =============================================================================
 # Version command
