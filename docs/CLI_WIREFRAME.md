@@ -898,6 +898,49 @@ Output includes:
 
 ---
 
+## Import (migration on-ramps): `codeframe import ...`
+
+### `codeframe import ralph [path] [--workspace PATH] [--dry-run]`
+**Purpose:** Import a ralph-claude-code project into a CodeFRAME workspace.
+
+**CLI module:**
+- `codeframe/cli/import_commands.py`
+
+**Core calls:**
+- `codeframe.core.importers.ralph.load_ralph_project(path) -> RalphProject`
+- `codeframe.core.importers.ralph.import_ralph_project(ralph_path, workspace_path, dry_run) -> RalphImportReport`
+
+**Mapping:**
+- `.ralph/fix_plan.md` → tasks (`READY` or `BACKLOG` based on section; already-checked items skipped)
+- `.ralph/PROMPT.md` + `.ralph/specs/*.md` → PRD (new version if content changed; skipped if identical)
+- `.ralph/AGENT.md` + `ALLOWED_TOOLS` in `.ralphrc` → `AGENTS.md` (skipped if file already exists)
+
+**State writes:**
+- Workspace record (created if not exists, otherwise loaded)
+- Task records with `external_url` idempotency key (`ralph://fix_plan.md#<sha1>`)
+- PRD record or new PRD version
+- `AGENTS.md` at workspace root
+
+**CLI options:**
+- `path`: Path to ralph project root (defaults to cwd)
+- `--workspace/-w PATH`: Target CodeFRAME workspace root (defaults to ralph project root)
+- `--dry-run`: Print mapping report without creating workspace or writing any records
+
+**Notes:**
+- Headless — no server required.
+- Idempotent: re-running skips already-imported tasks (keyed on `external_url`), skips identical PRD, never overwrites existing `AGENTS.md`.
+- Ralph runtime state files (`.ralph/status.json`, `.ralph/.call_count`, etc.) are ignored and listed in the report.
+
+**Examples:**
+```bash
+cf import ralph                              # Import ralph project in cwd
+cf import ralph /path/to/my-ralph-project   # Import from explicit path
+cf import ralph --dry-run                   # Preview mapping without changes
+cf import ralph /path/to/project --workspace /path/to/workspace
+```
+
+---
+
 ## Server (optional adapter): `codeframe serve`
 
 ### `codeframe serve`
