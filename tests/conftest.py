@@ -27,6 +27,12 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # an explicit environment override win.
 os.environ.setdefault("CODEFRAME_AUTH_REQUIRED", "false")
 
+# Telemetry is opt-in (issue #616), but force it off for the whole suite so no
+# test — including subprocess-based lifecycle tests, which inherit the env —
+# can ever prompt or send events. The env var is the highest-precedence switch;
+# telemetry tests that exercise other switches delete it via monkeypatch.
+os.environ.setdefault("CODEFRAME_TELEMETRY", "off")
+
 # All v1 legacy tests have been removed; nothing to ignore at the root.
 collect_ignore: list[str] = []
 

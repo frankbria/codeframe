@@ -5672,5 +5672,17 @@ def version() -> None:
     console.print(f"CodeFRAME version: [bold green]{__version__}[/bold green]")
 
 
+def main() -> None:
+    """Console-script entry point: telemetry-aware wrapper around the app.
+
+    Adds the one-time opt-in prompt, anonymous usage events, and crash
+    reporting (all default OFF — see PRIVACY.md) without changing the app's
+    behavior or exit codes.
+    """
+    from codeframe.cli.telemetry_runtime import run
+
+    run(app)
+
+
 if __name__ == "__main__":
-    app()
+    main()
