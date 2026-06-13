@@ -1,0 +1,76 @@
+name: Bug report
+description: Report something that is broken or behaving incorrectly in CodeFRAME.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill in the
+        details below so we can reproduce and fix it quickly.
+
+        **Security issue?** Do not file it here — use [private vulnerability
+        reporting](https://github.com/frankbria/codeframe/security) instead. See
+        [SECURITY.md](https://github.com/frankbria/codeframe/blob/main/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including what you expected to happen instead.
+      placeholder: "Running `cf work start` exits with ... but I expected ..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: CodeFRAME version
+      description: "Output of `cf --version` (or the commit hash if running from source)."
+      placeholder: "e.g. 0.x.y or commit 670c910"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows (WSL)
+        - Windows (native)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Execution engine
+      description: Which agent engine were you using when the bug occurred?
+      options:
+        - built-in (ReAct)
+        - claude-code
+        - codex
+        - opencode
+        - kilocode
+        - "N/A — not running an agent"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands or actions, in order, that trigger the bug.
+      placeholder: |
+        1. cf init ...
+        2. cf tasks generate
+        3. cf work start <id> --execute
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or output
+      description: Paste any error output or stack traces. This is automatically formatted as code, so no backticks needed. Do not paste API keys or secrets.
+      render: shell
+    validations:
+      required: false

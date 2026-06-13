@@ -1,0 +1,17 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💡 Feature request or idea
+    url: https://github.com/frankbria/codeframe/discussions/categories/ideas
+    about: During the beta, feature requests live in Discussions → Ideas so we can shape them together before they become issues.
+  - name: 🙋 Questions & help
+    url: https://github.com/frankbria/codeframe/discussions/categories/q-a
+    about: Ask how to do something, share setup problems, or get unstuck in Discussions → Q&A.
+  - name: 🛠️ Show & Tell
+    url: https://github.com/frankbria/codeframe/discussions/categories/show-and-tell
+    about: Show what you built with CodeFRAME.
+  - name: 👋 Coming from ralph?
+    url: https://github.com/frankbria/codeframe/discussions/categories/coming-from-ralph
+    about: Migrating from ralph-claude-code? Start here for migration help and feature conversations.
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/frankbria/codeframe/security/advisories/new
+    about: Privately report a security issue. Please do not open a public issue.

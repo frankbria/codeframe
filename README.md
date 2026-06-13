@@ -395,11 +395,24 @@ cd web-ui && npm run build             # Production build verification
 
 Code standards: PEP 8, `ruff` for linting, type hints required, 85%+ test coverage.
 
+During the beta, feature ideas go to [Discussions -> Ideas](https://github.com/frankbria/codeframe/discussions/categories/ideas) before code. See [CONTRIBUTING.md](CONTRIBUTING.md) for what's stable, what isn't, and how to propose changes.
+
+---
+
+## Security, licensing & support
+
+CodeFRAME is in **public beta**.
+
+- **Security:** found a vulnerability? Report it privately via [GitHub private vulnerability reporting](https://github.com/frankbria/codeframe/security/advisories/new) -- never a public issue. See [SECURITY.md](SECURITY.md) for scope and response expectations.
+- **Licensing:** CodeFRAME is [AGPL-3.0](LICENSE), an open-core stance. [LICENSING.md](LICENSING.md) explains what that means for individuals, internal company use, and embedding -- and how to reach us about **commercial licensing or a hosted offering** (both planned).
+- **Early access / design partners:** we're capturing early-access interest in a pinned [Discussion](https://github.com/frankbria/codeframe/discussions). Reply there to be included.
+- **Help & community:** [Discussions -> Q&A](https://github.com/frankbria/codeframe/discussions/categories/q-a) for questions, [Ideas](https://github.com/frankbria/codeframe/discussions/categories/ideas) for feature requests, and [bug reports](https://github.com/frankbria/codeframe/issues/new/choose) for confirmed bugs.
+
 ---
 
 ## License
 
-[AGPL-3.0](LICENSE) -- Free to use, modify, and distribute. Derivative works and network services must release source code under the same license.
+[AGPL-3.0](LICENSE) -- Free to use, modify, and distribute. Derivative works and network services must release source code under the same license. See [LICENSING.md](LICENSING.md) for a plain-language explanation and commercial options.
 
 ---
 

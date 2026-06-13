@@ -2,6 +2,40 @@
 
 Thank you for your interest in contributing to CodeFRAME!
 
+## Beta expectations
+
+CodeFRAME is in **public beta**. The product vision — Think → Build → Prove →
+Ship — is stable, but the surface area is still moving. Knowing what's settled
+and what isn't will save you time before you open a PR.
+
+**Stable enough to build on:**
+
+- The **Golden Path CLI** (`cf init/prd/tasks/work/proof/pr`) and its core
+  modules in `codeframe/core/`.
+- The **v2 REST API** and its authentication model.
+- The PROOF9 quality system and the agent/LLM adapter interfaces.
+
+**Still in flux (expect change):**
+
+- **Web UI** surfaces and components — pages are actively being added and
+  reworked; coordinate before large UI changes.
+- Anything behind a phase that is "in progress" in
+  [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md).
+- Database schemas and on-disk `.codeframe/` formats may change between betas.
+
+**How to propose a change:** open a thread in
+[**Discussions → Ideas**](https://github.com/frankbria/codeframe/discussions/categories/ideas)
+*before* writing code for anything non-trivial. During the beta, feature
+requests are routed to Discussions (not the issue tracker) so we can shape them
+together; the issue tracker is reserved for confirmed bugs and accepted work.
+Bug reports go through the [bug report
+template](https://github.com/frankbria/codeframe/issues/new/choose). Security
+issues follow [SECURITY.md](SECURITY.md) — never a public issue or PR.
+
+Every change must support the Think → Build → Prove → Ship pipeline. If it
+doesn't, it likely won't be merged regardless of quality — see
+[`CLAUDE.md`](CLAUDE.md) and [`docs/VISION.md`](docs/VISION.md).
+
 ## Development Setup
 
 ```bash
@@ -134,4 +168,5 @@ See `codeframe/tasks/test_runner.py` for test runner configuration.
 
 ## Questions?
 
-Open an issue or start a discussion on GitHub.
+Ask in [Discussions → Q&A](https://github.com/frankbria/codeframe/discussions/categories/q-a).
+For licensing or commercial questions, see [LICENSING.md](LICENSING.md).
