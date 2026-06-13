@@ -27,9 +27,9 @@ Report privately through GitHub's private vulnerability reporting:
 3. Fill in the advisory form with as much detail as you can (see below).
 
 This opens a private channel visible only to the maintainers. If you cannot use
-GitHub's private reporting for any reason, open a regular issue titled
-**"Security — request a private channel"** with **no technical details** and a
-maintainer will follow up privately.
+GitHub's private reporting for any reason, email **security@codeframe.sh** and a
+maintainer will follow up privately. GitHub private reporting is preferred — it
+keeps the full disclosure in one secure place.
 
 ### What to include
 

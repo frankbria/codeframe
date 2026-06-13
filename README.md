@@ -403,9 +403,9 @@ During the beta, feature ideas go to [Discussions -> Ideas](https://github.com/f
 
 CodeFRAME is in **public beta**.
 
-- **Security:** found a vulnerability? Report it privately via [GitHub private vulnerability reporting](https://github.com/frankbria/codeframe/security/advisories/new) -- never a public issue. See [SECURITY.md](SECURITY.md) for scope and response expectations.
-- **Licensing:** CodeFRAME is [AGPL-3.0](LICENSE), an open-core stance. [LICENSING.md](LICENSING.md) explains what that means for individuals, internal company use, and embedding -- and how to reach us about **commercial licensing or a hosted offering** (both planned).
-- **Early access / design partners:** we're capturing early-access interest in a pinned [Discussion](https://github.com/frankbria/codeframe/discussions). Reply there to be included.
+- **Security:** found a vulnerability? Report it privately via [GitHub private vulnerability reporting](https://github.com/frankbria/codeframe/security/advisories/new) (or `security@codeframe.sh`) -- never a public issue. See [SECURITY.md](SECURITY.md) for scope and response expectations.
+- **Licensing:** CodeFRAME is [AGPL-3.0](LICENSE), an open-core stance. [LICENSING.md](LICENSING.md) explains what that means for individuals, internal company use, and embedding -- and how to reach us about **commercial licensing or a hosted offering** (both planned). Commercial inquiries: `licensing@codeframe.sh`.
+- **Early access / design partners:** email `hello@codeframe.sh` or reply to the pinned [Discussion](https://github.com/frankbria/codeframe/discussions) to be included.
 - **Help & community:** [Discussions -> Q&A](https://github.com/frankbria/codeframe/discussions/categories/q-a) for questions, [Ideas](https://github.com/frankbria/codeframe/discussions/categories/ideas) for feature requests, and [bug reports](https://github.com/frankbria/codeframe/issues/new/choose) for confirmed bugs.
 
 ---
