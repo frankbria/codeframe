@@ -1,0 +1,99 @@
+name: Release
+
+# Publishes codeframe-ai to PyPI and creates a GitHub Release when a version
+# tag (vX.Y.Z) is pushed. Uses PyPI Trusted Publishing (OIDC) — no API tokens.
+#
+# One-time setup required on PyPI before the first tag:
+#   pypi.org -> project "codeframe-ai" -> Publishing -> add a Trusted Publisher
+#   with owner=frankbria, repo=codeframe, workflow=release.yml, environment=pypi.
+# Until that pending publisher exists, the publish-pypi job will fail by design.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VER="$(grep -m1 '^version = ' pyproject.toml | sed 's/.*"\(.*\)".*/\1/')"
+          echo "tag=$TAG pyproject=$VER"
+          if [ "$TAG" != "$VER" ]; then
+            echo "::error::Tag v$TAG does not match pyproject version $VER"
+            exit 1
+          fi
+
+      - name: Build
+        run: uv build
+
+      - name: Smoke-test the built wheel installs a working cf
+        run: |
+          uv venv /tmp/verify
+          uv pip install --python /tmp/verify dist/*.whl
+          /tmp/verify/bin/cf --help
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/codeframe-ai
+    permissions:
+      id-token: write # required for Trusted Publishing
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+
+  github-release:
+    name: GitHub Release
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'rc') }}

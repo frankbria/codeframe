@@ -3,22 +3,23 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "codeframe"
-version = "0.1.0"
-description = "Fully Remote Autonomous Multiagent Environment for coding"
+name = "codeframe-ai"
+version = "0.9.0"
+description = "A project delivery system that orchestrates frontier coding agents: Think, Build, Prove, Ship."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = {text = "AGPL-3.0-or-later"}
 authors = [
-    {name = "Frank Bria", email = "frankbria@example.com"}
+    {name = "Frank Bria", email = "hello@codeframe.sh"}
 ]
 keywords = ["ai", "agents", "autonomous", "coding", "development"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 dependencies = [
@@ -90,7 +91,14 @@ Repository = "https://github.com/frankbria/codeframe"
 Issues = "https://github.com/frankbria/codeframe/issues"
 
 [tool.setuptools]
-packages = ["codeframe"]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["codeframe*"]
+exclude = ["codeframe.tests*", "tests*", "web-ui*", "legacy*"]
+
+[tool.setuptools.package-data]
+codeframe = ["templates/*", "templates/**/*"]
 
 [tool.black]
 line-length = 100
