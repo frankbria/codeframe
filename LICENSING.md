@@ -67,12 +67,12 @@ commercial need, **tell us now** — early conversations shape what we build.
 
 ## Get in touch
 
-- **Commercial licensing / OEM / hosted interest:** start a thread in the
-  [**Commercial & Licensing** discussion](https://github.com/frankbria/codeframe/discussions)
-  (look for the pinned *Early access & commercial interest* post) so we can
-  follow up. This is the capture point for launch — even before pricing is
-  published.
-- **Design partners & early access:** the same pinned discussion is where we
-  collect early-access signups. Reply there to be included.
+- **Commercial licensing / OEM / hosted interest:** email
+  **licensing@codeframe.sh**, or start a thread in the pinned *Early access &
+  commercial interest* [discussion](https://github.com/frankbria/codeframe/discussions)
+  if you'd rather do it in the open. This is the capture point for launch —
+  even before pricing is published.
+- **Design partners & early access:** email **hello@codeframe.sh** or reply to
+  the same pinned discussion to be included.
 
 We read every one.
