@@ -2,7 +2,8 @@
 
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-v2%20Active%20Development-blue)
+![Status](https://img.shields.io/badge/status-beta-orange)
+[![PyPI](https://img.shields.io/pypi/v/codeframe-ai)](https://pypi.org/project/codeframe-ai/)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 [![CI](https://github.com/frankbria/codeframe/actions/workflows/test.yml/badge.svg)](https://github.com/frankbria/codeframe/actions/workflows/test.yml)
@@ -72,16 +73,38 @@ THE CLOSED LOOP
 
 ---
 
+> [!NOTE]
+> **CodeFRAME is in public beta (`0.9.0`).** The vision and the Golden Path CLI
+> (`cf init/prd/tasks/work/proof/pr`) and v2 API are stable enough to build on;
+> the web UI and anything marked "in progress" in
+> [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) are still moving, and
+> on-disk `.codeframe/` formats may change between betas. Expect rough edges and
+> [tell us about them](https://github.com/frankbria/codeframe/issues/new/choose).
+
 ## Quick Start
 
 **Step 1 — Install**
 
 ```bash
+uv tool install codeframe-ai     # installs the `cf` command globally
+cf --help                        # smoke test — should print the command tree
+```
+
+No `uv`? `pipx install codeframe-ai` works too, or run without installing via
+`uvx codeframe-ai --help`. (The PyPI package is `codeframe-ai`; the command is `cf`.)
+
+<details>
+<summary>Install from source (for contributors)</summary>
+
+```bash
 git clone https://github.com/frankbria/codeframe.git && cd codeframe
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv venv && source .venv/bin/activate && uv sync
-uv run cf --help   # smoke test — should print the command tree
+uv run cf --help
 ```
+
+When working from source, prefix the commands below with `uv run`.
+</details>
 
 **Step 2 — Set your API key**
 
@@ -92,23 +115,23 @@ export ANTHROPIC_API_KEY="sk-ant-..."   # get yours at https://console.anthropic
 **Step 3 — Initialize your project**
 
 ```bash
-uv run cf init /path/to/your/project --detect
+cf init /path/to/your/project --detect
 ```
 
 **Step 4 — Think: generate a PRD and tasks**
 
 ```bash
-uv run cf prd generate          # AI-guided Socratic requirements discovery
-uv run cf tasks generate        # Decompose PRD into atomic tasks with dependencies
-uv run cf tasks list            # Review what was generated
+cf prd generate          # AI-guided Socratic requirements discovery
+cf tasks generate        # Decompose PRD into atomic tasks with dependencies
+cf tasks list            # Review what was generated
 ```
 
 **Step 5 — Build, Prove, and Ship**
 
 ```bash
-uv run cf work batch run --all-ready   # Execute all READY tasks (delegates to agent)
-uv run cf proof run                    # Run PROOF9 quality gates
-uv run cf pr create                    # Open a PR with proof report attached
+cf work batch run --all-ready   # Execute all READY tasks (delegates to agent)
+cf proof run                    # Run PROOF9 quality gates
+cf pr create                    # Open a PR with proof report attached
 ```
 
 That is the entire workflow. Everything else is optional.

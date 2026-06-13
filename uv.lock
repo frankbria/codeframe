@@ -557,8 +557,8 @@ wheels = [
 ]
 
 [[package]]
-name = "codeframe"
-version = "0.1.0"
+name = "codeframe-ai"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -568,6 +568,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "fastapi-users", extra = ["sqlalchemy"] },
     { name = "gitpython" },
+    { name = "httpx" },
     { name = "hypothesis" },
     { name = "jinja2" },
     { name = "keyring" },
@@ -636,6 +637,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.109.0" },
     { name = "fastapi-users", extras = ["sqlalchemy"], specifier = ">=15.0.2" },
     { name = "gitpython", specifier = ">=3.1.40" },
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "hypothesis", specifier = ">=6.148.0" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
