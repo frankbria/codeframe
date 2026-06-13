@@ -1,6 +1,6 @@
 ![CodeFRAME Header](./codeframe_github_header_1600x500.png)
 
-# CodeFRAME
+# CodeFRAME™
 
 ![Status](https://img.shields.io/badge/status-beta-orange)
 [![PyPI](https://img.shields.io/pypi/v/codeframe-ai)](https://pypi.org/project/codeframe-ai/)
@@ -428,6 +428,7 @@ CodeFRAME is in **public beta**.
 
 - **Security:** found a vulnerability? Report it privately via [GitHub private vulnerability reporting](https://github.com/frankbria/codeframe/security/advisories/new) (or `security@codeframe.sh`) -- never a public issue. See [SECURITY.md](SECURITY.md) for scope and response expectations.
 - **Licensing:** CodeFRAME is [AGPL-3.0](LICENSE), an open-core stance. [LICENSING.md](LICENSING.md) explains what that means for individuals, internal company use, and embedding -- and how to reach us about **commercial licensing or a hosted offering** (both planned). Commercial inquiries: `licensing@codeframe.sh`.
+- **Trademark:** the code is AGPL-3.0, but the **CodeFRAME name and logo are trademarks** and are *not* covered by the code license. See [TRADEMARKS.md](TRADEMARKS.md) before using the name for a fork or product.
 - **Early access / design partners:** email `hello@codeframe.sh` or reply to the pinned [Discussion](https://github.com/frankbria/codeframe/discussions) to be included.
 - **Help & community:** [Discussions -> Q&A](https://github.com/frankbria/codeframe/discussions/categories/q-a) for questions, [Ideas](https://github.com/frankbria/codeframe/discussions/categories/ideas) for feature requests, and [bug reports](https://github.com/frankbria/codeframe/issues/new/choose) for confirmed bugs.
 
@@ -437,8 +438,12 @@ CodeFRAME is in **public beta**.
 
 [AGPL-3.0](LICENSE) -- Free to use, modify, and distribute. Derivative works and network services must release source code under the same license. See [LICENSING.md](LICENSING.md) for a plain-language explanation and commercial options.
 
+The code is AGPL-3.0; the **CodeFRAME™ name and logo are trademarks** of Noatak Enterprises, LLC, dba Bria Strategy Group, and are not licensed under the AGPL -- see [TRADEMARKS.md](TRADEMARKS.md).
+
 ---
 
 **Built by [Frank Bria](https://x.com/FrankBria18044)**
 
 [Issues](https://github.com/frankbria/codeframe/issues) | [Discussions](https://github.com/frankbria/codeframe/discussions) | [Documentation](https://github.com/frankbria/codeframe/tree/main/docs)
+
+_CodeFRAME™ is a trademark of Noatak Enterprises, LLC, dba Bria Strategy Group. All rights reserved._

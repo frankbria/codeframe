@@ -7,6 +7,11 @@ you — and what to do if the AGPL doesn't fit your situation.
 > This is a practical summary, not legal advice. The [LICENSE](LICENSE) file is
 > the binding text. When in doubt, consult a lawyer.
 
+> **Code vs. brand.** AGPL-3.0 licenses the **code**. It does **not** grant any
+> right to the **CodeFRAME™ name or logo**, which are trademarks covered
+> separately — see [TRADEMARKS.md](TRADEMARKS.md). You can fork the code under
+> the AGPL, but a fork must use a different name.
+
 ## Why AGPL-3.0
 
 CodeFRAME is **open core**: the project is fully open source, and we intend to

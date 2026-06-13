@@ -27,12 +27,11 @@ JWT_ALGORITHM = "HS256"
 JWT_AUDIENCE = ["fastapi-users:auth"]
 JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "604800"))  # 7 days
 
-# Warn if using default secret (but allow for development)
-if SECRET == DEFAULT_SECRET:
-    logger.warning(
-        "⚠️  AUTH_SECRET not set - using default value. "
-        "DO NOT USE IN PRODUCTION! Set AUTH_SECRET environment variable."
-    )
+# NOTE: The default-secret warning is intentionally NOT emitted at import time.
+# Importing this module must stay silent so it never leaks onto the CLI (the
+# Golden Path never uses auth). The check that matters runs when the server
+# actually starts — see codeframe/ui/server.py:_validate_security_config(),
+# which warns in self-hosted mode and fails hard in hosted mode.
 
 # Create async SQLAlchemy engine for auth
 # Uses aiosqlite driver for async SQLite access

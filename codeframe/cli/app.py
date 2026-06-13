@@ -54,6 +54,36 @@ app = typer.Typer(
 console = Console()
 
 
+def _get_version() -> str:
+    """Resolve the installed CodeFRAME version, falling back gracefully."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("codeframe-ai")
+    except PackageNotFoundError:  # running from an uninstalled source tree
+        return "0.0.0+unknown"
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"codeframe {_get_version()}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _root(
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        "-V",
+        help="Show the CodeFRAME version and exit.",
+        callback=_version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    """CodeFRAME: Autonomous coding agent orchestration (v2 CLI)."""
+
+
 # =============================================================================
 # Root-level commands (per GOLDEN_PATH.md)
 # =============================================================================

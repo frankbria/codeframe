@@ -7,6 +7,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-06-13
+
+### Added
+- `cf --version` / `cf -V` prints the installed version. (Note: with `uv tool install`, check the version via `uv tool list` or `cf --version` — the package is isolated, so a system Python's `importlib.metadata` will not see it.)
+- `TRADEMARKS.md` — trademark policy clarifying that the AGPL covers the code, while the CodeFRAME name and logo are reserved trademarks (a fork may use the code but must rename).
+
+### Fixed
+- The default-`AUTH_SECRET` warning no longer prints on every `cf` command. It was emitted at import time and leaked onto the CLI (which never uses auth); the check now lives only in server startup validation, which still warns in self-hosted mode and fails hard in hosted mode.
+
+### Changed
+- README marks the CodeFRAME™ trademark and links the new policy; `LICENSING.md` notes the code/brand boundary.
+
 ## [0.9.0] - 2026-06-12
 
 First public beta and the first release published to PyPI as
@@ -28,5 +40,6 @@ name claim is being pursued in parallel. The CLI entry point remains `cf`.
 - Version bumped from a placeholder `0.1.0` to an honest beta `0.9.0`; development status classifier moved to `4 - Beta`.
 - README installation section now leads with `uv tool install` instead of git-clone; status badge updated to **beta** with a stability statement.
 
-[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/frankbria/codeframe/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/frankbria/codeframe/releases/tag/v0.9.0
