@@ -107,22 +107,39 @@ def test_hosted_mode_escape_hatch_still_fails(monkeypatch):
         server._validate_security_config()
 
 
-@pytest.mark.parametrize("blank", ["", "   "])
+@pytest.mark.parametrize(
+    "raw",
+    ["", "   ", DEFAULT_SECRET + " ", "  " + DEFAULT_SECRET, f"\t{DEFAULT_SECRET}\n"],
+)
 @pytest.mark.parametrize("mode", ["self_hosted", "hosted"])
-def test_blank_secret_is_rejected_like_the_default(monkeypatch, blank, mode):
-    """A blank/whitespace AUTH_SECRET is as forgeable as the default, so it must
-    fall into the hard-fail path rather than be accepted as a custom secret."""
+def test_blank_or_padded_default_secret_is_rejected(monkeypatch, raw, mode):
+    """Blank/whitespace AUTH_SECRET — and a whitespace-padded copy of the known
+    default — are as forgeable as the default, so they must hit the hard-fail
+    path rather than be accepted as a custom secret."""
     import codeframe.auth.manager as manager
 
     _set_secret(monkeypatch, "stale-import-time-default")
     monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", mode)
     monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
-    monkeypatch.setenv("AUTH_SECRET", blank)
+    monkeypatch.setenv("AUTH_SECRET", raw)
 
     assert manager.refresh_secret() == DEFAULT_SECRET  # normalized to sentinel
 
     with pytest.raises(RuntimeError, match="AUTH_SECRET"):
         server._validate_security_config()
+
+
+def test_padded_custom_secret_is_preserved_verbatim(monkeypatch):
+    """A genuinely custom secret keeps its exact bytes (incl. padding) for
+    signing — only a padded copy of the *default* is normalized away."""
+    import codeframe.auth.manager as manager
+
+    _set_secret(monkeypatch, DEFAULT_SECRET)
+    monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("AUTH_SECRET", "  my-real-secret  ")
+
+    assert manager.refresh_secret() == "  my-real-secret  "  # not stripped
+    server._validate_security_config()  # must not raise
 
 
 def test_env_only_secret_is_honored_after_refresh(monkeypatch):

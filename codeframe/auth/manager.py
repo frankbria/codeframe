@@ -34,6 +34,12 @@ def _read_auth_secret() -> str:
     value = os.getenv("AUTH_SECRET")
     if value is None or not value.strip():
         return DEFAULT_SECRET
+    # A whitespace-padded copy of the known default (e.g. an accidental
+    # "CHANGE-ME-IN-PRODUCTION " paste) is just as guessable, so normalize it
+    # back to the sentinel and let the startup guard catch it. Genuinely custom
+    # secrets are returned verbatim (their exact bytes are used for signing).
+    if value.strip() == DEFAULT_SECRET:
+        return DEFAULT_SECRET
     return value
 
 
