@@ -78,9 +78,6 @@ server.log
 .DS_Store
 Thumbs.db
 
-# Beads
-.beads/
-!.beads/*.jsonl
 .codeframe/
 .agent-tasks/
 # Local planning scratch (issue-lifecycle todo.md, migration notes) — not source.
