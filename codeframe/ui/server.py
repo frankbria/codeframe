@@ -100,31 +100,75 @@ logger = logging.getLogger(__name__)
 # If session management is needed, implement in v2 core modules
 
 
+def _allow_insecure_secret() -> bool:
+    """Whether the local-dev escape hatch for the default JWT secret is set.
+
+    Controlled by ``CODEFRAME_ALLOW_INSECURE_SECRET`` (default OFF). Truthy
+    values (case-insensitive): ``1``, ``true``, ``yes``, ``on``. This hatch is
+    for local development only and is **never** honored in hosted mode.
+    """
+    value = os.getenv("CODEFRAME_ALLOW_INSECURE_SECRET")
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _validate_security_config():
     """Validate security configuration at startup.
 
+    Refuses to start whenever the JWT secret is still the publicly-known default
+    AND auth would actually be enforced — otherwise anyone can forge a valid JWT
+    and bypass auth on every v2/WS/SSE route (issue #643). A local-dev escape
+    hatch (``CODEFRAME_ALLOW_INSECURE_SECRET``) is honored only in self-hosted
+    mode; hosted mode always fails on the default secret.
+
     Raises:
-        RuntimeError: If security configuration is invalid for the deployment mode
+        RuntimeError: If auth is enabled (or hosted mode) while the default
+            secret is in use and no escape hatch applies.
     """
     from codeframe.auth.manager import SECRET, DEFAULT_SECRET
+    from codeframe.auth.dependencies import auth_required
+
+    if SECRET != DEFAULT_SECRET:
+        logger.info("🔐 AUTH_SECRET configured (custom secret in use)")
+        return
 
     deployment_mode = get_deployment_mode()
 
-    # In hosted mode, fail fast if using default JWT secret
-    if deployment_mode == DeploymentMode.HOSTED and SECRET == DEFAULT_SECRET:
+    # Hosted/production mode: never tolerate the default secret. The dev escape
+    # hatch is intentionally NOT honored here.
+    if deployment_mode == DeploymentMode.HOSTED:
         raise RuntimeError(
             "🚨 SECURITY: AUTH_SECRET must be set in hosted/production mode. "
             "Using the default secret compromises all JWT tokens. "
-            "Set the AUTH_SECRET environment variable to a secure random value."
+            "Set the AUTH_SECRET environment variable to a secure random value "
+            "(e.g. `openssl rand -hex 32`)."
         )
 
-    # Log security status
-    if SECRET == DEFAULT_SECRET:
-        logger.warning(
-            "⚠️  Running with default AUTH_SECRET - acceptable for self-hosted development only"
+    # Self-hosted with auth enabled: forging a JWT is trivial with the known
+    # default secret, so refuse to start unless the operator has explicitly
+    # opted into the insecure local-dev escape hatch.
+    if auth_required():
+        if _allow_insecure_secret():
+            logger.warning(
+                "⚠️  SECURITY: starting with the default AUTH_SECRET because "
+                "CODEFRAME_ALLOW_INSECURE_SECRET is set. JWTs can be forged — "
+                "use this for LOCAL DEVELOPMENT ONLY, never expose this server."
+            )
+            return
+        raise RuntimeError(
+            "🚨 SECURITY: AUTH_SECRET must be set when authentication is enabled. "
+            "The default secret lets anyone forge a valid JWT and bypass auth. "
+            "Set AUTH_SECRET to a secure random value (e.g. `openssl rand -hex 32`), "
+            "or set CODEFRAME_ALLOW_INSECURE_SECRET=1 for local development only."
         )
-    else:
-        logger.info("🔐 AUTH_SECRET configured (custom secret in use)")
+
+    # Auth disabled: the secret is not used to enforce access, so a default is
+    # acceptable — but still warn so it isn't shipped into an exposed server.
+    logger.warning(
+        "⚠️  Running with default AUTH_SECRET - acceptable for self-hosted "
+        "development only (auth is disabled)"
+    )
 
 
 @asynccontextmanager
@@ -133,6 +177,14 @@ async def lifespan(app: FastAPI):
     # Load environment variables from .env file
     from codeframe.core.config import load_environment
     load_environment()
+
+    # The auth manager captured SECRET at import time, before .env was loaded
+    # (the app module is imported by uvicorn before this lifespan runs). Refresh
+    # it from the now-loaded environment so a `.env`-only AUTH_SECRET is honored
+    # by signing, verification, and the WS decoders — and so the guard below
+    # validates the real configured secret, not a stale default (issue #643).
+    from codeframe.auth.manager import refresh_secret
+    refresh_secret()
 
     # Validate security configuration before starting
     _validate_security_config()

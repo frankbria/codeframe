@@ -339,6 +339,10 @@ jobs:
           DATABASE_PATH: ${{ github.workspace }}/.codeframe/state.db
           WORKSPACE_ROOT: ${{ github.workspace }}
           CODEFRAME_DEPLOYMENT_MODE: self_hosted
+          # Auth is ON by default and the server refuses to start on the default
+          # JWT secret (issue #643); supply a throwaway test secret so startup
+          # succeeds. Not a real credential — CI/E2E only.
+          AUTH_SECRET: ci-e2e-test-secret-not-a-real-credential
         run: |
           source .venv/bin/activate
           python -m uvicorn codeframe.ui.server:app --port 8080 > /tmp/server.log 2>&1 &

@@ -16,6 +16,20 @@ Get your project built with AI agents in minutes.
    export OPENAI_API_KEY=sk-...              # required for openai; not needed for local providers
    export OPENAI_BASE_URL=http://localhost:11434/v1  # for local providers (ollama, vllm)
    ```
+3. **`AUTH_SECRET` (required to run the server)** — the web UI / API
+   (`codeframe serve`) signs JWTs with this secret. Authentication is **on by
+   default**, so the server **refuses to start** with the built-in default
+   secret — set a strong random value:
+   ```bash
+   export AUTH_SECRET=$(openssl rand -hex 32)
+   ```
+   The Golden Path CLI does not use auth and needs no secret. For a throwaway
+   local server only, set `CODEFRAME_ALLOW_INSECURE_SECRET=1` to start without
+   a secret — it signs JWTs with the known default (forgeable, never expose it)
+   while keeping auth on so the REST API and the session/terminal WebSockets all
+   work. (`CODEFRAME_AUTH_REQUIRED=false` is a separate knob that disables REST
+   auth but **not** WebSocket auth, so the sessions UI is only partially usable
+   in that mode.)
 
 ## Coming from ralph?
 
