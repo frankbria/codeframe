@@ -19,7 +19,25 @@ logger = logging.getLogger(__name__)
 
 # Get configuration from environment
 DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION"
-SECRET = os.getenv("AUTH_SECRET", DEFAULT_SECRET)
+
+
+def _read_auth_secret() -> str:
+    """Read ``AUTH_SECRET`` from the env, treating blank/whitespace as unset.
+
+    ``AUTH_SECRET=`` (empty) or a whitespace-only value would otherwise be a
+    distinct-from-default string and slip past the startup guard as a "custom"
+    secret — yet a blank HMAC key is just as forgeable as the known default. So
+    empty/whitespace values fall back to ``DEFAULT_SECRET`` and into the same
+    hard-fail path (issue #643). A real secret is returned verbatim (not
+    stripped) so the operator's exact value is used for signing.
+    """
+    value = os.getenv("AUTH_SECRET")
+    if value is None or not value.strip():
+        return DEFAULT_SECRET
+    return value
+
+
+SECRET = _read_auth_secret()
 
 
 def refresh_secret() -> str:
@@ -30,10 +48,14 @@ def refresh_secret() -> str:
     imported via ``uvicorn codeframe.ui.server:app``). Call this after the
     environment is loaded so JWT signing (``get_jwt_strategy`` reads the live
     global), JWT verification, and the WS token decoders all use the configured
-    secret instead of the default. Returns the refreshed secret.
+    secret instead of the default. Also keeps the fastapi-users password-reset /
+    email-verify token secrets in sync in case those routers are re-enabled.
+    Returns the refreshed secret.
     """
     global SECRET
-    SECRET = os.getenv("AUTH_SECRET", DEFAULT_SECRET)
+    SECRET = _read_auth_secret()
+    UserManager.reset_password_token_secret = SECRET
+    UserManager.verification_token_secret = SECRET
     return SECRET
 
 # JWT configuration constants

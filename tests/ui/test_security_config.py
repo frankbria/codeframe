@@ -107,6 +107,24 @@ def test_hosted_mode_escape_hatch_still_fails(monkeypatch):
         server._validate_security_config()
 
 
+@pytest.mark.parametrize("blank", ["", "   "])
+@pytest.mark.parametrize("mode", ["self_hosted", "hosted"])
+def test_blank_secret_is_rejected_like_the_default(monkeypatch, blank, mode):
+    """A blank/whitespace AUTH_SECRET is as forgeable as the default, so it must
+    fall into the hard-fail path rather than be accepted as a custom secret."""
+    import codeframe.auth.manager as manager
+
+    _set_secret(monkeypatch, "stale-import-time-default")
+    monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", mode)
+    monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("AUTH_SECRET", blank)
+
+    assert manager.refresh_secret() == DEFAULT_SECRET  # normalized to sentinel
+
+    with pytest.raises(RuntimeError, match="AUTH_SECRET"):
+        server._validate_security_config()
+
+
 def test_env_only_secret_is_honored_after_refresh(monkeypatch):
     """Regression (#643 review P2): AUTH_SECRET set only in .env must let the
     server start.
