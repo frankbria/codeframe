@@ -355,8 +355,10 @@ kill <PID>
 **Solution**:
 ```bash
 # Check if backend can start manually
+# AUTH_SECRET is required: auth is ON by default and the server refuses to
+# start on the default JWT secret (issue #643).
 cd /home/frankbria/projects/codeframe
-uv run uvicorn codeframe.ui.server:app --port 8080
+AUTH_SECRET=local-e2e-test-secret uv run uvicorn codeframe.ui.server:app --port 8080
 
 # If successful, check health endpoint
 curl http://localhost:8080/health

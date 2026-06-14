@@ -165,7 +165,9 @@ export default defineConfig({
     : [
         // Backend FastAPI server
         {
-          command: `cd ../.. && DATABASE_PATH=${TEST_DB_PATH} uv run uvicorn codeframe.ui.server:app --port 8080`,
+          // AUTH_SECRET: auth is ON by default and the server refuses to start
+          // on the default JWT secret (issue #643). Throwaway local-E2E value.
+          command: `cd ../.. && AUTH_SECRET=local-e2e-test-secret-not-a-real-credential DATABASE_PATH=${TEST_DB_PATH} uv run uvicorn codeframe.ui.server:app --port 8080`,
           url: 'http://localhost:8080/ws/health',
           reuseExistingServer: !process.env.CI,
           timeout: 120000,
