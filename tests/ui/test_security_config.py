@@ -9,11 +9,10 @@ explicit local-dev escape hatch (which must never apply in hosted mode).
 
 import pytest
 
+from codeframe.auth.manager import DEFAULT_SECRET
 from codeframe.ui import server
 
 pytestmark = pytest.mark.v2
-
-DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION"
 
 
 @pytest.fixture(autouse=True)
@@ -81,6 +80,17 @@ def test_hosted_mode_default_secret_fails_hard(monkeypatch):
     _set_secret(monkeypatch, DEFAULT_SECRET)
     monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "hosted")
     monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+
+    with pytest.raises(RuntimeError, match="AUTH_SECRET"):
+        server._validate_security_config()
+
+
+def test_hosted_mode_default_secret_fails_even_with_auth_disabled(monkeypatch):
+    """Hosted mode rejects the default secret regardless of auth — the hosted
+    check fires before the auth_required() branch."""
+    _set_secret(monkeypatch, DEFAULT_SECRET)
+    monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "hosted")
+    monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
 
     with pytest.raises(RuntimeError, match="AUTH_SECRET"):
         server._validate_security_config()
