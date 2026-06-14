@@ -95,3 +95,27 @@ def test_hosted_mode_escape_hatch_still_fails(monkeypatch):
 
     with pytest.raises(RuntimeError, match="AUTH_SECRET"):
         server._validate_security_config()
+
+
+def test_env_only_secret_is_honored_after_refresh(monkeypatch):
+    """Regression (#643 review P2): AUTH_SECRET set only in .env must let the
+    server start.
+
+    The auth manager captures SECRET at import time — before the lifespan loads
+    .env — so an operator who sets AUTH_SECRET only in .env would otherwise hit
+    the new hard-fail. The lifespan calls refresh_secret() after load_environment
+    so the real secret is seen. Simulate that: SECRET starts at the default, the
+    env then gains a real value, and refresh_secret() must update it so
+    validation passes and signing uses the configured secret.
+    """
+    import codeframe.auth.manager as manager
+
+    _set_secret(monkeypatch, DEFAULT_SECRET)  # stale import-time default
+    monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("AUTH_SECRET", "secret-loaded-from-dotenv-at-startup")
+
+    refreshed = manager.refresh_secret()
+
+    assert refreshed == "secret-loaded-from-dotenv-at-startup"
+    assert manager.SECRET == "secret-loaded-from-dotenv-at-startup"
+    server._validate_security_config()  # must not raise

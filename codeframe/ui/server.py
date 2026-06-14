@@ -179,6 +179,14 @@ async def lifespan(app: FastAPI):
     from codeframe.core.config import load_environment
     load_environment()
 
+    # The auth manager captured SECRET at import time, before .env was loaded
+    # (the app module is imported by uvicorn before this lifespan runs). Refresh
+    # it from the now-loaded environment so a `.env`-only AUTH_SECRET is honored
+    # by signing, verification, and the WS decoders — and so the guard below
+    # validates the real configured secret, not a stale default (issue #643).
+    from codeframe.auth.manager import refresh_secret
+    refresh_secret()
+
     # Validate security configuration before starting
     _validate_security_config()
 

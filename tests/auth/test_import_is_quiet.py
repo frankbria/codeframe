@@ -39,13 +39,20 @@ def test_server_validation_still_raises_in_hosted_mode(monkeypatch):
 
 
 def test_server_validation_warns_but_allows_in_self_hosted_mode(monkeypatch, caplog):
-    """Self-hosted + default secret is allowed, with a warning at startup."""
+    """Self-hosted + default secret + auth OFF is allowed, with a warning.
+
+    Post-#643 the default secret is only tolerated when auth is not enforced;
+    set CODEFRAME_AUTH_REQUIRED=false explicitly so this test states its intent
+    rather than relying on the suite-wide conftest default. The auth-ON branch
+    (which now hard-fails) is covered in tests/ui/test_security_config.py.
+    """
     import logging
 
     import codeframe.auth.manager as manager
     from codeframe.ui.server import _validate_security_config
 
     monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "self_hosted")
+    monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
     monkeypatch.setattr(manager, "SECRET", manager.DEFAULT_SECRET)
 
     with caplog.at_level(logging.WARNING):

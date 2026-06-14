@@ -21,6 +21,21 @@ logger = logging.getLogger(__name__)
 DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION"
 SECRET = os.getenv("AUTH_SECRET", DEFAULT_SECRET)
 
+
+def refresh_secret() -> str:
+    """Re-read ``AUTH_SECRET`` from the environment and update the module global.
+
+    ``SECRET`` is captured at import time, which happens before the server
+    lifespan loads ``.env`` (the auth router is imported while the app module is
+    imported via ``uvicorn codeframe.ui.server:app``). Call this after the
+    environment is loaded so JWT signing (``get_jwt_strategy`` reads the live
+    global), JWT verification, and the WS token decoders all use the configured
+    secret instead of the default. Returns the refreshed secret.
+    """
+    global SECRET
+    SECRET = os.getenv("AUTH_SECRET", DEFAULT_SECRET)
+    return SECRET
+
 # JWT configuration constants
 # These must match the JWTStrategy defaults from FastAPI Users
 JWT_ALGORITHM = "HS256"

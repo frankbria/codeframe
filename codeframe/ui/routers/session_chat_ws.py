@@ -40,7 +40,8 @@ import jwt as pyjwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 
-from codeframe.auth.manager import SECRET, JWT_ALGORITHM, JWT_AUDIENCE, get_async_session_maker
+from codeframe.auth import manager
+from codeframe.auth.manager import JWT_ALGORITHM, JWT_AUDIENCE, get_async_session_maker
 from codeframe.auth.models import User
 from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
 from codeframe.ui.shared import session_chat_manager
@@ -63,7 +64,9 @@ async def _authenticate_websocket(websocket: WebSocket) -> Optional[int]:
         return None
 
     try:
-        payload = pyjwt.decode(token, SECRET, algorithms=[JWT_ALGORITHM], audience=JWT_AUDIENCE)
+        # Read manager.SECRET live: it may be refreshed from .env at server
+        # startup (after import), so binding the value at import would stale it.
+        payload = pyjwt.decode(token, manager.SECRET, algorithms=[JWT_ALGORITHM], audience=JWT_AUDIENCE)
         user_id_str = payload.get("sub")
         if not user_id_str:
             await websocket.close(code=1008, reason="Invalid token: missing subject")
