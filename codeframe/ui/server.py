@@ -160,8 +160,7 @@ def _validate_security_config():
             "🚨 SECURITY: AUTH_SECRET must be set when authentication is enabled. "
             "The default secret lets anyone forge a valid JWT and bypass auth. "
             "Set AUTH_SECRET to a secure random value (e.g. `openssl rand -hex 32`), "
-            "or set CODEFRAME_AUTH_REQUIRED=false / CODEFRAME_ALLOW_INSECURE_SECRET=1 "
-            "for local development only."
+            "or set CODEFRAME_ALLOW_INSECURE_SECRET=1 for local development only."
         )
 
     # Auth disabled: the secret is not used to enforce access, so a default is

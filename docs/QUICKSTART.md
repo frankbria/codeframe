@@ -24,10 +24,12 @@ Get your project built with AI agents in minutes.
    export AUTH_SECRET=$(openssl rand -hex 32)
    ```
    The Golden Path CLI does not use auth and needs no secret. For a throwaway
-   local server only, you may skip the secret by setting either
-   `CODEFRAME_ALLOW_INSECURE_SECRET=1` (signs JWTs with the known default —
-   forgeable, never expose it) or `CODEFRAME_AUTH_REQUIRED=false` (disables
-   auth entirely).
+   local server only, set `CODEFRAME_ALLOW_INSECURE_SECRET=1` to start without
+   a secret — it signs JWTs with the known default (forgeable, never expose it)
+   while keeping auth on so the REST API and the session/terminal WebSockets all
+   work. (`CODEFRAME_AUTH_REQUIRED=false` is a separate knob that disables REST
+   auth but **not** WebSocket auth, so the sessions UI is only partially usable
+   in that mode.)
 
 ## Coming from ralph?
 
