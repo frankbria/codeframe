@@ -66,8 +66,6 @@ const waivedReq = {
   },
 };
 
-const mockEvidenceResponse = [];
-
 describe('ProofDetailPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();

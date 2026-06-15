@@ -1,9 +1,8 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import useSWR from 'swr';
 
 import { GitHubIssueImportModal } from '@/components/tasks/GitHubIssueImportModal';
-import { integrationsApi } from '@/lib/api';
 import type { GitHubIssue, GitHubIssuesResponse } from '@/types';
 
 jest.mock('swr');

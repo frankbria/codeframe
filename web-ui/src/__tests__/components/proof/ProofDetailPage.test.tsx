@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import useSWR from 'swr';
 import ProofDetailPage from '@/app/proof/[req_id]/page';
 import * as storage from '@/lib/workspace-storage';
-import type { ProofEvidence, ProofRequirement, ProofEvidenceSortCol, SortDir } from '@/types';
+import type { ProofEvidence, ProofRequirement } from '@/types';
 
 // ── Mocks ────────────────────────────────────────────────────────────────
 
