@@ -103,6 +103,10 @@ def test_register_is_rate_limited(monkeypatch, tmp_path, _reset_rate_limit_state
     """/auth/register is likewise limited under repeated attempts."""
     client = _build_client(monkeypatch, tmp_path, enabled=True)
 
+    # Form data (not JSON) so requests within the limit fail validation (422)
+    # without creating users; the point is that requests beyond the limit are
+    # throttled (429) before reaching that logic. The rate-limit dependency runs
+    # first, so the throttling assertion holds regardless of the body format.
     statuses = _statuses(
         client,
         "/auth/register",

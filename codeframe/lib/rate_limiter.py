@@ -316,7 +316,9 @@ def get_auth_rate_limit_key(request: Request) -> str:
         request: FastAPI request object
 
     Returns:
-        Rate limit key string in format "user:{id}" or "ip:{address}"
+        Rate limit key string: "user:{id}" for authenticated requests, otherwise
+        "ip:{address}" — including a stable "ip:unknown" when the client IP cannot
+        be determined.
     """
     user = getattr(getattr(request, "state", None), "user", None)
     if user and getattr(user, "id", None):
@@ -361,7 +363,9 @@ async def enforce_auth_rate_limit(request: Request) -> None:
     )
 
     key = get_auth_rate_limit_key(request)
-    # Identifiers form the storage bucket: per-endpoint + per-client.
+    # SlowAPI's public @limiter.limit API can only decorate functions we own; for
+    # library-mounted routes we call the inner limits backend directly. Identifiers
+    # form the storage bucket: per-endpoint (scope) + per-client (key).
     if not limiter.limiter.hit(limit.limit, limit.scope, key):
         raise RateLimitExceeded(limit)
 
