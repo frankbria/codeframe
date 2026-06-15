@@ -15,6 +15,10 @@ from codeframe.core.workspace import (
     STATE_DB_NAME,
 )
 
+# Per CLAUDE.md, new v2 tests carry the marker explicitly (tests/core/ is also
+# auto-marked v2 by conftest, but the convention makes the intent self-evident).
+pytestmark = pytest.mark.v2
+
 
 @pytest.fixture
 def temp_repo(tmp_path: Path) -> Path:
