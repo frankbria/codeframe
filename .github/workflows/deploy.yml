@@ -83,8 +83,8 @@ jobs:
           # Fail fast if the AUTH_SECRET secret is missing/empty. The backend
           # hard-fails on the default secret when auth is enabled (issue #643),
           # which otherwise only surfaces as a health-check timeout much later.
-          if [ -z "${ENV_AUTH_SECRET}" ]; then
-            echo "❌ AUTH_SECRET GitHub Actions secret is not set (or empty)."
+          if [ -z "${ENV_AUTH_SECRET}" ] || ! printf '%s' "${ENV_AUTH_SECRET}" | grep -q '[^[:space:]]'; then
+            echo "❌ AUTH_SECRET GitHub Actions secret is not set (or blank/whitespace-only)."
             echo "   Set it to a secure random value, e.g.:"
             echo "     gh secret set AUTH_SECRET --body \"\$(openssl rand -hex 32)\""
             exit 1
@@ -311,8 +311,8 @@ jobs:
           # Fail fast if the AUTH_SECRET secret is missing/empty. The backend
           # hard-fails on the default secret when auth is enabled (issue #643),
           # which otherwise only surfaces as a health-check timeout much later.
-          if [ -z "${ENV_AUTH_SECRET}" ]; then
-            echo "❌ AUTH_SECRET GitHub Actions secret is not set (or empty)."
+          if [ -z "${ENV_AUTH_SECRET}" ] || ! printf '%s' "${ENV_AUTH_SECRET}" | grep -q '[^[:space:]]'; then
+            echo "❌ AUTH_SECRET GitHub Actions secret is not set (or blank/whitespace-only)."
             echo "   Set it to a secure random value, e.g.:"
             echo "     gh secret set AUTH_SECRET --body \"\$(openssl rand -hex 32)\""
             exit 1
