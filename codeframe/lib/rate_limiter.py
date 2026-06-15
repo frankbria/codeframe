@@ -24,8 +24,10 @@ from typing import Callable, Optional
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from limits import parse as parse_rate_limit
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
+from slowapi.wrappers import Limit
 
 from codeframe.config.rate_limits import get_rate_limit_config
 
@@ -299,6 +301,73 @@ def rate_limit_websocket() -> Callable:
     Default: 30 connections/minute (configurable via RATE_LIMIT_WEBSOCKET)
     """
     return _create_rate_limit_decorator("websocket_limit")()
+
+
+def get_auth_rate_limit_key(request: Request) -> str:
+    """Rate-limit key for auth endpoints (issue #644).
+
+    Unlike :func:`get_rate_limit_key`, this never assigns an "unknown" client a
+    unique per-request bucket. For brute-force protection the safe failure mode is
+    to fail *closed*: clients whose IP cannot be determined share one stable,
+    conservative bucket (``ip:unknown``) so they are throttled together rather
+    than bypassing the limit entirely.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        Rate limit key string: "user:{id}" for authenticated requests, otherwise
+        "ip:{address}" — including a stable "ip:unknown" when the client IP cannot
+        be determined.
+    """
+    user = getattr(getattr(request, "state", None), "user", None)
+    if user and getattr(user, "id", None):
+        return f"user:{user.id}"
+    return f"ip:{get_client_ip(request)}"
+
+
+async def enforce_auth_rate_limit(request: Request) -> None:
+    """FastAPI dependency that applies the auth-tier rate limit (issue #644).
+
+    The fastapi-users auth routes (``/auth/jwt/login``, ``/auth/register``) are
+    mounted via library factory functions, so the ``@limiter.limit`` decorator —
+    which binds at import time and must wrap an endpoint we own — cannot be
+    applied to them. This dependency performs the same auth-tier check at request
+    time and is attached to those router mounts, mirroring how ``allow_registration``
+    gates registration.
+
+    Buckets are namespaced per endpoint path and per client (user id or IP), so
+    login and register are throttled independently. When rate limiting is
+    disabled this is a strict no-op.
+
+    Raises:
+        RateLimitExceeded: when the client exceeds the configured auth limit;
+            the app-level handler renders the 429 response with headers.
+    """
+    limiter = get_rate_limiter()
+    if limiter is None:
+        # Rate limiting globally disabled — no-op.
+        return
+
+    config = get_rate_limit_config()
+    limit = Limit(
+        limit=parse_rate_limit(config.auth_limit),
+        key_func=get_auth_rate_limit_key,
+        scope=request.url.path,
+        per_method=False,
+        methods=None,
+        error_message=None,
+        exempt_when=None,
+        cost=1,
+        override_defaults=False,
+    )
+
+    key = get_auth_rate_limit_key(request)
+    # SlowAPI's public @limiter.limit API can only decorate functions we own; for
+    # library-mounted routes we call the inner limits backend directly. Identifiers
+    # form the storage bucket: per-endpoint (scope) + per-client (key).
+    if not limiter.limiter.hit(limit.limit, limit.scope, key):
+        raise RateLimitExceeded(limit)
 
 
 def reset_rate_limiter() -> None:

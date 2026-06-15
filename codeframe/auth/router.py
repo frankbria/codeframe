@@ -8,6 +8,7 @@ from codeframe.auth.schemas import UserCreate, UserRead, UserUpdate
 from codeframe.auth.manager import auth_backend, fastapi_users, get_async_session_maker
 from codeframe.auth.models import User
 from codeframe.auth.api_key_router import router as api_key_router
+from codeframe.lib.rate_limiter import enforce_auth_rate_limit
 
 router = APIRouter()
 
@@ -56,18 +57,21 @@ async def allow_registration():
 
 
 # Authentication routes (login, logout) - JWT endpoints at /auth/jwt/*
+# enforce_auth_rate_limit throttles credential brute-force (#644).
 router.include_router(
     fastapi_users.get_auth_router(auth_backend),
     prefix="/auth/jwt",
     tags=["auth"],
+    dependencies=[Depends(enforce_auth_rate_limit)],
 )
 
-# Registration route at /auth/register (bootstrap-first-user only)
+# Registration route at /auth/register (bootstrap-first-user only).
+# Rate-limit dependency runs first so throttling precedes the bootstrap 403 (#644).
 router.include_router(
     fastapi_users.get_register_router(UserRead, UserCreate),
     prefix="/auth",
     tags=["auth"],
-    dependencies=[Depends(allow_registration)],
+    dependencies=[Depends(enforce_auth_rate_limit), Depends(allow_registration)],
 )
 
 # User management routes (get me, update me) at /users/*
