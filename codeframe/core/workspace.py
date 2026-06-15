@@ -62,11 +62,15 @@ def _get_state_dir(repo_path: Path) -> Path:
 def _open_db(db_path: str | Path) -> sqlite3.Connection:
     """Open a workspace SQLite connection with concurrency safeguards.
 
-    Mirrors ``codeframe/platform_store/database.py``: enables WAL journaling
-    (readers don't block writers) and a 5s ``busy_timeout`` so a concurrent
-    writer waits for the lock instead of immediately raising
-    ``database is locked``. Used under parallel batch execution where multiple
-    processes and background agent threads write the same workspace DB.
+    Mirrors ``codeframe/platform_store/database.py``. The substantive change is
+    enabling **WAL journaling**: readers no longer block writers, which removes
+    the rollback-journal case where a writer hits ``database is locked``
+    immediately (the busy handler is skipped for that reader/writer deadlock).
+    WAL is a persistent, database-level setting, so applying it on every
+    connection is idempotent. ``busy_timeout`` is set to 5000ms to match
+    platform_store and make the value explicit (Python's ``sqlite3.connect``
+    already defaults to a 5s timeout). Matters under parallel batch execution
+    where multiple processes and background agent threads write the same DB.
 
     The caller is responsible for closing the connection.
     """

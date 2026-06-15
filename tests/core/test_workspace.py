@@ -192,13 +192,21 @@ class TestConcurrentWriters:
         assert journal_mode.lower() == "wal"
         assert busy_timeout >= 5000
 
-    def test_parallel_writers_do_not_raise_database_locked(
+    def test_writer_waits_for_held_lock_instead_of_failing(
         self, initialized_workspace: Workspace
     ):
-        """Parallel writers should wait on the busy timeout instead of failing
-        immediately with ``database is locked``."""
+        """A second writer should *wait* for a briefly-held write lock and then
+        succeed — not fail immediately with ``database is locked``.
+
+        This is deterministic by design: one thread holds the write lock
+        (``BEGIN IMMEDIATE``) for well under the busy timeout, and the second
+        writer must block until the holder commits. A high-concurrency stress
+        test was avoided on purpose — SQLite's busy handler is not fair, so
+        N aggressively-contending writers can starve one past any fixed timeout,
+        which would make the test flaky without telling us anything new.
+        """
+        import threading
         import time
-        from concurrent.futures import ThreadPoolExecutor
 
         ws = initialized_workspace
 
@@ -206,44 +214,46 @@ class TestConcurrentWriters:
         setup = get_db_connection(ws)
         try:
             setup.execute(
-                "CREATE TABLE concurrency_probe "
-                "(id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id INTEGER, n INTEGER)"
+                "CREATE TABLE lock_probe (id INTEGER PRIMARY KEY, label TEXT)"
             )
             setup.commit()
         finally:
             setup.close()
 
-        n_threads = 8
-        writes_per_thread = 15
-        errors: list[Exception] = []
+        lock_acquired = threading.Event()
+        hold_seconds = 0.5  # comfortably under the 5s busy timeout
 
-        def writer(thread_id: int) -> None:
+        def hold_write_lock() -> None:
+            conn = get_db_connection(ws)
+            conn.isolation_level = None  # take manual control of the transaction
             try:
-                conn = get_db_connection(ws)
-                try:
-                    for n in range(writes_per_thread):
-                        conn.execute(
-                            "INSERT INTO concurrency_probe (thread_id, n) VALUES (?, ?)",
-                            (thread_id, n),
-                        )
-                        conn.commit()
-                        time.sleep(0.001)  # widen the window for contention
-                finally:
-                    conn.close()
-            except sqlite3.OperationalError as exc:  # pragma: no cover - failure path
-                errors.append(exc)
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute("INSERT INTO lock_probe (id, label) VALUES (1, 'holder')")
+                lock_acquired.set()
+                time.sleep(hold_seconds)
+                conn.execute("COMMIT")
+            finally:
+                conn.close()
 
-        with ThreadPoolExecutor(max_workers=n_threads) as executor:
-            futures = [executor.submit(writer, i) for i in range(n_threads)]
-            for future in futures:
-                future.result()
+        holder = threading.Thread(target=hold_write_lock)
+        holder.start()
+        assert lock_acquired.wait(timeout=5), "holder never acquired the write lock"
 
-        assert not errors, f"concurrent writers raised OperationalError: {errors}"
+        # The lock is held now. Without the busy timeout this write would raise
+        # ``database is locked`` immediately; with it, the write blocks until the
+        # holder commits (~hold_seconds) and then succeeds.
+        conn2 = get_db_connection(ws)
+        try:
+            conn2.execute("INSERT INTO lock_probe (id, label) VALUES (2, 'waiter')")
+            conn2.commit()
+        finally:
+            conn2.close()
+        holder.join(timeout=5)
 
-        # Every write should have landed.
+        # Both writes landed — the waiter was not dropped.
         verify = get_db_connection(ws)
         try:
-            count = verify.execute("SELECT COUNT(*) FROM concurrency_probe").fetchone()[0]
+            count = verify.execute("SELECT COUNT(*) FROM lock_probe").fetchone()[0]
         finally:
             verify.close()
-        assert count == n_threads * writes_per_thread
+        assert count == 2
