@@ -48,8 +48,20 @@ jobs:
       - name: Run mypy (type checking)
         run: uv run mypy codeframe/
 
-      # Note: Frontend linting disabled - web-ui is legacy during v2 CLI-first refactor
-      # Re-enable when web-ui package.json is restored
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'web-ui/package-lock.json'
+
+      - name: Install frontend dependencies
+        working-directory: web-ui
+        run: npm ci
+
+      - name: Run frontend lint (eslint)
+        working-directory: web-ui
+        run: npm run lint
 
   # ============================================
   # Static Analysis - Check for Hardcoded URLs
@@ -264,6 +276,10 @@ jobs:
       - name: Install dependencies
         working-directory: web-ui
         run: npm ci
+
+      - name: Build (fail PR on TypeScript/build break)
+        working-directory: web-ui
+        run: npm run build
 
       - name: Run Jest tests with coverage
         working-directory: web-ui
