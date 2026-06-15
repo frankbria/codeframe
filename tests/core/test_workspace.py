@@ -15,6 +15,10 @@ from codeframe.core.workspace import (
     STATE_DB_NAME,
 )
 
+# Per CLAUDE.md, new v2 tests carry the marker explicitly (tests/core/ is also
+# auto-marked v2 by conftest, but the convention makes the intent self-evident).
+pytestmark = pytest.mark.v2
+
 
 @pytest.fixture
 def temp_repo(tmp_path: Path) -> Path:
@@ -175,3 +179,85 @@ class TestWorkspaceDbPath:
 
     def test_path_exists(self, initialized_workspace: Workspace):
         assert initialized_workspace.db_path.exists()
+
+
+class TestConcurrentWriters:
+    """Concurrency guards on workspace connections (issue #648)."""
+
+    def test_connection_sets_wal_and_busy_timeout(self, initialized_workspace: Workspace):
+        """get_db_connection should enable WAL journaling and a busy timeout."""
+        conn = get_db_connection(initialized_workspace)
+        try:
+            journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+            busy_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+        finally:
+            conn.close()
+
+        assert journal_mode.lower() == "wal"
+        assert busy_timeout >= 5000
+
+    def test_writer_waits_for_held_lock_instead_of_failing(
+        self, initialized_workspace: Workspace
+    ):
+        """A second writer should *wait* for a briefly-held write lock and then
+        succeed — not fail immediately with ``database is locked``.
+
+        This is deterministic by design: one thread holds the write lock
+        (``BEGIN IMMEDIATE``) for well under the busy timeout, and the second
+        writer must block until the holder commits. A high-concurrency stress
+        test was avoided on purpose — SQLite's busy handler is not fair, so
+        N aggressively-contending writers can starve one past any fixed timeout,
+        which would make the test flaky without telling us anything new.
+        """
+        import threading
+        import time
+
+        ws = initialized_workspace
+
+        # Dedicated probe table so the test is independent of the v2 schema.
+        setup = get_db_connection(ws)
+        try:
+            setup.execute(
+                "CREATE TABLE lock_probe (id INTEGER PRIMARY KEY, label TEXT)"
+            )
+            setup.commit()
+        finally:
+            setup.close()
+
+        lock_acquired = threading.Event()
+        hold_seconds = 0.5  # comfortably under the 5s busy timeout
+
+        def hold_write_lock() -> None:
+            conn = get_db_connection(ws)
+            conn.isolation_level = None  # take manual control of the transaction
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute("INSERT INTO lock_probe (id, label) VALUES (1, 'holder')")
+                lock_acquired.set()
+                time.sleep(hold_seconds)
+                conn.execute("COMMIT")
+            finally:
+                conn.close()
+
+        holder = threading.Thread(target=hold_write_lock)
+        holder.start()
+        assert lock_acquired.wait(timeout=5), "holder never acquired the write lock"
+
+        # The lock is held now. Without the busy timeout this write would raise
+        # ``database is locked`` immediately; with it, the write blocks until the
+        # holder commits (~hold_seconds) and then succeeds.
+        conn2 = get_db_connection(ws)
+        try:
+            conn2.execute("INSERT INTO lock_probe (id, label) VALUES (2, 'waiter')")
+            conn2.commit()
+        finally:
+            conn2.close()
+        holder.join(timeout=5)
+
+        # Both writes landed — the waiter was not dropped.
+        verify = get_db_connection(ws)
+        try:
+            count = verify.execute("SELECT COUNT(*) FROM lock_probe").fetchone()[0]
+        finally:
+            verify.close()
+        assert count == 2

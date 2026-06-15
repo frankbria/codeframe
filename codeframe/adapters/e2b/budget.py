@@ -10,6 +10,8 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
+from codeframe.core.workspace import get_db_connection
+
 
 def record_cloud_run(
     workspace: Any,
@@ -32,7 +34,7 @@ def record_cloud_run(
         scan_blocked: Number of files blocked by credential scanner.
     """
     created_at = datetime.now(timezone.utc).isoformat()
-    conn = sqlite3.connect(workspace.db_path)
+    conn = get_db_connection(workspace)
     try:
         conn.execute(
             """
@@ -60,7 +62,7 @@ def get_cloud_run(workspace: Any, run_id: str) -> dict | None:
     Returns:
         Dict with cloud run fields, or None if not found.
     """
-    conn = sqlite3.connect(workspace.db_path)
+    conn = get_db_connection(workspace)
     conn.row_factory = sqlite3.Row
     try:
         row = conn.execute(

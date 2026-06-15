@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from codeframe.core import tasks as tasks_module
-from codeframe.core.workspace import Workspace
+from codeframe.core.workspace import Workspace, get_db_connection_by_path
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.platform_store.repositories.token_repository import TokenRepository
 from codeframe.ui.dependencies import get_v2_workspace
@@ -79,7 +79,7 @@ def _query_costs(db_path: str, days: int) -> Dict:
     Remove this workaround once the two schemas converge.
     """
     try:
-        conn = sqlite3.connect(db_path)
+        conn = get_db_connection_by_path(db_path)
         conn.row_factory = sqlite3.Row
     except sqlite3.Error as e:
         logger.warning("costs: failed to open %s: %s", db_path, e)
@@ -184,7 +184,7 @@ def _open_workspace_conn(db_path: str) -> Optional[sqlite3.Connection]:
     fall back to an empty response rather than 500'ing the dashboard.
     """
     try:
-        conn = sqlite3.connect(db_path)
+        conn = get_db_connection_by_path(db_path)
         conn.row_factory = sqlite3.Row
         return conn
     except sqlite3.Error as e:
