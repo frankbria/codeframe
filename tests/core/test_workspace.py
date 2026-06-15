@@ -175,3 +175,75 @@ class TestWorkspaceDbPath:
 
     def test_path_exists(self, initialized_workspace: Workspace):
         assert initialized_workspace.db_path.exists()
+
+
+class TestConcurrentWriters:
+    """Concurrency guards on workspace connections (issue #648)."""
+
+    def test_connection_sets_wal_and_busy_timeout(self, initialized_workspace: Workspace):
+        """get_db_connection should enable WAL journaling and a busy timeout."""
+        conn = get_db_connection(initialized_workspace)
+        try:
+            journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+            busy_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+        finally:
+            conn.close()
+
+        assert journal_mode.lower() == "wal"
+        assert busy_timeout >= 5000
+
+    def test_parallel_writers_do_not_raise_database_locked(
+        self, initialized_workspace: Workspace
+    ):
+        """Parallel writers should wait on the busy timeout instead of failing
+        immediately with ``database is locked``."""
+        import time
+        from concurrent.futures import ThreadPoolExecutor
+
+        ws = initialized_workspace
+
+        # Dedicated probe table so the test is independent of the v2 schema.
+        setup = get_db_connection(ws)
+        try:
+            setup.execute(
+                "CREATE TABLE concurrency_probe "
+                "(id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id INTEGER, n INTEGER)"
+            )
+            setup.commit()
+        finally:
+            setup.close()
+
+        n_threads = 8
+        writes_per_thread = 15
+        errors: list[Exception] = []
+
+        def writer(thread_id: int) -> None:
+            try:
+                conn = get_db_connection(ws)
+                try:
+                    for n in range(writes_per_thread):
+                        conn.execute(
+                            "INSERT INTO concurrency_probe (thread_id, n) VALUES (?, ?)",
+                            (thread_id, n),
+                        )
+                        conn.commit()
+                        time.sleep(0.001)  # widen the window for contention
+                finally:
+                    conn.close()
+            except sqlite3.OperationalError as exc:  # pragma: no cover - failure path
+                errors.append(exc)
+
+        with ThreadPoolExecutor(max_workers=n_threads) as executor:
+            futures = [executor.submit(writer, i) for i in range(n_threads)]
+            for future in futures:
+                future.result()
+
+        assert not errors, f"concurrent writers raised OperationalError: {errors}"
+
+        # Every write should have landed.
+        verify = get_db_connection(ws)
+        try:
+            count = verify.execute("SELECT COUNT(*) FROM concurrency_probe").fetchone()[0]
+        finally:
+            verify.close()
+        assert count == n_threads * writes_per_thread

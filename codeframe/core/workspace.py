@@ -59,6 +59,27 @@ def _get_state_dir(repo_path: Path) -> Path:
     return repo_path / CODEFRAME_DIR
 
 
+def _open_db(db_path: str | Path) -> sqlite3.Connection:
+    """Open a workspace SQLite connection with concurrency safeguards.
+
+    Mirrors ``codeframe/platform_store/database.py``: enables WAL journaling
+    (readers don't block writers) and a 5s ``busy_timeout`` so a concurrent
+    writer waits for the lock instead of immediately raising
+    ``database is locked``. Used under parallel batch execution where multiple
+    processes and background agent threads write the same workspace DB.
+
+    The caller is responsible for closing the connection.
+    """
+    # NOTE: pass ``db_path`` through unchanged (sqlite3.connect accepts both str
+    # and PathLike). Do NOT wrap in ``str()`` — that would coerce a non-path
+    # (e.g. a test's MagicMock) into a literal filename and silently create a
+    # junk DB file instead of raising, diverging from the prior connect call.
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    return conn
+
+
 def _init_database(db_path: Path) -> None:
     """Initialize the workspace SQLite database with v2 schema.
 
@@ -70,7 +91,7 @@ def _init_database(db_path: Path) -> None:
     - blockers: Human-in-the-loop blockers
     - checkpoints: State snapshots
     """
-    conn = sqlite3.connect(db_path)
+    conn = _open_db(db_path)
     cursor = conn.cursor()
 
     # Workspace metadata
@@ -408,7 +429,7 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
     This function is idempotent and adds any new tables/columns
     that were added after the initial schema creation.
     """
-    conn = sqlite3.connect(db_path)
+    conn = _open_db(db_path)
     cursor = conn.cursor()
 
     # Check if batch_runs table exists, if not create it
@@ -767,7 +788,7 @@ def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) 
     workspace_id = str(uuid.uuid4())
     now = _utc_now().isoformat()
 
-    conn = sqlite3.connect(db_path)
+    conn = _open_db(db_path)
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO workspace (id, repo_path, tech_stack, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -807,7 +828,7 @@ def get_workspace(repo_path: Path) -> Workspace:
     # Ensure schema is up to date for existing workspaces
     _ensure_schema_upgrades(db_path)
 
-    conn = sqlite3.connect(db_path)
+    conn = _open_db(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT id, repo_path, tech_stack, created_at FROM workspace LIMIT 1")
     row = cursor.fetchone()
@@ -836,7 +857,7 @@ def get_db_connection(workspace: Workspace) -> sqlite3.Connection:
     Returns:
         SQLite connection
     """
-    return sqlite3.connect(workspace.db_path)
+    return _open_db(workspace.db_path)
 
 
 def workspace_exists(repo_path: Path) -> bool:
@@ -875,7 +896,7 @@ def update_workspace_tech_stack(repo_path: Path, tech_stack: Optional[str]) -> W
 
     now = _utc_now().isoformat()
 
-    conn = sqlite3.connect(db_path)
+    conn = _open_db(db_path)
     cursor = conn.cursor()
     cursor.execute(
         "UPDATE workspace SET tech_stack = ?, updated_at = ?",
