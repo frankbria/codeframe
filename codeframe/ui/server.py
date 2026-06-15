@@ -171,6 +171,53 @@ def _validate_security_config():
     )
 
 
+def _detect_worker_count() -> int:
+    """Best-effort detection of the configured uvicorn/gunicorn worker count.
+
+    Reads ``WEB_CONCURRENCY`` (honored by both uvicorn and gunicorn) and
+    ``UVICORN_WORKERS`` (uvicorn's env-var form of ``--workers``) and returns the
+    largest valid value found, or ``1`` when neither is set or parseable.
+
+    Worker count cannot be observed directly from inside a worker process, so
+    this is a best-effort signal for the startup warning below. A bare
+    ``uvicorn --workers N`` on the command line (no env var) is not detected.
+    """
+    count = 1
+    for var in ("WEB_CONCURRENCY", "UVICORN_WORKERS"):
+        raw = os.getenv(var)
+        if not raw or not raw.strip():
+            continue
+        try:
+            value = int(raw.strip())
+        except ValueError:
+            continue
+        if value > count:
+            count = value
+    return count
+
+
+def _per_worker_rate_limit_warning(
+    *, enabled: bool, storage: str, worker_count: int
+) -> str | None:
+    """Return a startup warning when in-memory rate limiting is per-worker.
+
+    With in-memory storage each worker process keeps its own rate-limit
+    counters, so the effective limit multiplies by the worker count — silently
+    weakening brute-force protection on the auth endpoints (issue #678). Returns
+    ``None`` when the configuration is safe (rate limiting disabled,
+    redis-backed, or a single worker).
+    """
+    if not enabled or storage != "memory" or worker_count <= 1:
+        return None
+    return (
+        f"⚠️  Rate limiting uses in-memory storage with {worker_count} workers: "
+        f"counters are per-worker, so limits (including auth brute-force "
+        f"protection) are effectively multiplied by ~{worker_count}x. "
+        f"Set RATE_LIMIT_STORAGE=redis (with REDIS_URL) for shared, "
+        f"cross-worker rate limiting."
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown."""
@@ -224,6 +271,16 @@ async def lifespan(app: FastAPI):
                 f"(storage={rate_limit_config.storage}, "
                 f"standard={rate_limit_config.standard_limit})"
             )
+        # Warn when in-memory counters are split across multiple workers, which
+        # multiplies the effective limit and weakens auth brute-force protection
+        # (issue #678). Silent for single-worker and Redis-backed deployments.
+        per_worker_warning = _per_worker_rate_limit_warning(
+            enabled=rate_limit_config.enabled,
+            storage=rate_limit_config.storage,
+            worker_count=_detect_worker_count(),
+        )
+        if per_worker_warning:
+            logger.warning(per_worker_warning)
     else:
         logger.info("🚦 Rate limiting: DISABLED")
 

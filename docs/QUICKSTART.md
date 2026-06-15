@@ -298,6 +298,21 @@ codeframe checkpoint create "MVP complete"
 
 > On first interactive use, CodeFRAME shows a one-time prompt asking whether to enable telemetry (default: No). You can also set `CODEFRAME_TELEMETRY=on|off` or `DO_NOT_TRACK=1` to skip the prompt. See [PRIVACY.md](../PRIVACY.md) for exactly what is collected.
 
+### Rate limiting in production
+
+The API server (`cf serve`) rate-limits requests, including auth brute-force
+protection. The storage backend is selected by `RATE_LIMIT_STORAGE` (default
+`memory`).
+
+> ⚠️ **Multi-worker deployments require Redis.** With the default in-memory
+> storage, each worker process keeps its **own** rate-limit counters, so running
+> with more than one worker (e.g. `uvicorn --workers 4`) multiplies the effective
+> limit by the worker count and silently weakens auth brute-force protection. For
+> any multi-worker deployment, set `RATE_LIMIT_STORAGE=redis` and `REDIS_URL` for
+> shared, cross-worker buckets. The server logs a `WARNING` at startup when it
+> detects in-memory storage with multiple workers (via the `WEB_CONCURRENCY` /
+> `UVICORN_WORKERS` env vars).
+
 ---
 
 ## Execution Strategies
