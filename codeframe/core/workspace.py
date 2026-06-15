@@ -864,6 +864,16 @@ def get_db_connection(workspace: Workspace) -> sqlite3.Connection:
     return _open_db(workspace.db_path)
 
 
+def get_db_connection_by_path(db_path: str | Path) -> sqlite3.Connection:
+    """Open a workspace DB connection from a raw path (WAL + busy_timeout).
+
+    Same connection setup as :func:`get_db_connection`, for callers that hold a
+    path rather than a :class:`Workspace` (e.g. the costs router's helpers that
+    tolerate fresh/locked DBs). The caller is responsible for closing it.
+    """
+    return _open_db(db_path)
+
+
 def workspace_exists(repo_path: Path) -> bool:
     """Check if a workspace exists at the given path.
 
