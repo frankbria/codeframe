@@ -279,6 +279,8 @@ jobs:
 
       - name: Build (fail PR on TypeScript/build break)
         working-directory: web-ui
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
         run: npm run build
 
       - name: Run Jest tests with coverage
