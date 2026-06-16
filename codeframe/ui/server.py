@@ -225,6 +225,11 @@ def _is_asgi_server_cmdline(argv: list[str]) -> bool:
     ``gunicorn`` (incl. ``-k uvicorn.workers.UvicornWorker``). Used to avoid
     reading a ``--workers`` flag off an unrelated ancestor (a wrapper, supervisor,
     or test runner) and mistaking it for the server's worker count.
+
+    This is a loose substring match on any token, so a path that merely contains
+    ``uvicorn``/``gunicorn`` would also match. That's acceptable for an
+    advisory-only warning: a false positive only emits an unnecessary WARNING, it
+    never breaks startup.
     """
     return any(("uvicorn" in token or "gunicorn" in token) for token in argv)
 
@@ -248,7 +253,7 @@ def _read_proc_cmdline(pid: int) -> list[str] | None:
 def _read_proc_ppid(pid: int) -> int | None:
     """Read the parent PID from ``/proc/<pid>/status``, or ``None`` on error."""
     try:
-        with open(f"/proc/{pid}/status", "r") as f:
+        with open(f"/proc/{pid}/status", "r", encoding="ascii") as f:
             for line in f:
                 if line.startswith("PPid:"):
                     return int(line.split()[1])
