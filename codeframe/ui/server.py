@@ -171,16 +171,12 @@ def _validate_security_config():
     )
 
 
-def _detect_worker_count() -> int:
-    """Best-effort detection of the configured uvicorn/gunicorn worker count.
+def _worker_count_from_env() -> int:
+    """Worker count from ``WEB_CONCURRENCY`` / ``UVICORN_WORKERS`` env vars.
 
-    Reads ``WEB_CONCURRENCY`` (honored by both uvicorn and gunicorn) and
-    ``UVICORN_WORKERS`` (uvicorn's env-var form of ``--workers``) and returns the
-    largest valid value found, or ``1`` when neither is set or parseable.
-
-    Worker count cannot be observed directly from inside a worker process, so
-    this is a best-effort signal for the startup warning below. A bare
-    ``uvicorn --workers N`` on the command line (no env var) is not detected.
+    Returns the largest valid value found, or ``1`` when neither is set or
+    parseable. ``WEB_CONCURRENCY`` is honored by both uvicorn and gunicorn;
+    ``UVICORN_WORKERS`` is uvicorn's env-var form of ``--workers``.
     """
     count = 1
     for var in ("WEB_CONCURRENCY", "UVICORN_WORKERS"):
@@ -193,6 +189,138 @@ def _detect_worker_count() -> int:
             continue
         if value > count:
             count = value
+    return count
+
+
+def _parse_worker_count_from_argv(argv: list[str]) -> int | None:
+    """Parse a uvicorn/gunicorn worker count from a command-line argv list.
+
+    Recognizes ``--workers N``, ``--workers=N``, ``-w N`` and ``-w=N``. Returns
+    the positive integer worker count, or ``None`` when no parseable, positive
+    worker flag is present.
+    """
+    for i, token in enumerate(argv):
+        value: str | None = None
+        if token in ("--workers", "-w"):
+            value = argv[i + 1] if i + 1 < len(argv) else None
+        elif token.startswith("--workers="):
+            value = token[len("--workers="):]
+        elif token.startswith("-w="):
+            value = token[len("-w="):]
+        if value is None:
+            continue
+        try:
+            count = int(value.strip())
+        except (ValueError, AttributeError):
+            continue
+        if count > 0:
+            return count
+    return None
+
+
+def _is_asgi_server_cmdline(argv: list[str]) -> bool:
+    """True when ``argv`` looks like a uvicorn/gunicorn server invocation.
+
+    Matches ``uvicorn``, ``python -m uvicorn``, an absolute ``uvicorn`` path, and
+    ``gunicorn`` (incl. ``-k uvicorn.workers.UvicornWorker``). Used to avoid
+    reading a ``--workers`` flag off an unrelated ancestor (a wrapper, supervisor,
+    or test runner) and mistaking it for the server's worker count.
+    """
+    return any(("uvicorn" in token or "gunicorn" in token) for token in argv)
+
+
+def _read_proc_cmdline(pid: int) -> list[str] | None:
+    """Read ``/proc/<pid>/cmdline`` as an argv list, or ``None`` if unavailable.
+
+    Linux-only; returns ``None`` on any error (missing /proc, permission, race).
+    """
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            raw = f.read()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    # /proc cmdline is NUL-separated and usually NUL-terminated.
+    return [part.decode("utf-8", "replace") for part in raw.split(b"\x00") if part]
+
+
+def _read_proc_ppid(pid: int) -> int | None:
+    """Read the parent PID from ``/proc/<pid>/status``, or ``None`` on error."""
+    try:
+        with open(f"/proc/{pid}/status", "r") as f:
+            for line in f:
+                if line.startswith("PPid:"):
+                    return int(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _iter_ancestor_cmdlines(max_depth: int = 8) -> list[list[str]]:
+    """Best-effort: this process's cmdline plus those of its ancestors.
+
+    Walks up the process tree via ``/proc`` (Linux only). Returns ``[]`` on
+    non-Linux platforms or when nothing is readable. Never raises.
+    """
+    cmdlines: list[list[str]] = []
+    try:
+        pid: int | None = os.getpid()
+    except OSError:
+        return cmdlines
+    seen: set[int] = set()
+    for _ in range(max_depth):
+        if pid is None or pid <= 0 or pid in seen:
+            break
+        seen.add(pid)
+        cmdline = _read_proc_cmdline(pid)
+        if cmdline:
+            cmdlines.append(cmdline)
+        pid = _read_proc_ppid(pid)
+    return cmdlines
+
+
+def _detect_workers_from_process_tree() -> int | None:
+    """Best-effort worker count from a ``--workers N`` flag on an ancestor.
+
+    Worker subprocesses are spawned, so their own ``sys.argv`` does not carry
+    ``--workers`` — the original flag lives on the supervisor (parent) process.
+    Returns ``None`` when nothing is found or detection isn't possible. Never
+    raises.
+    """
+    try:
+        for argv in _iter_ancestor_cmdlines():
+            if not _is_asgi_server_cmdline(argv):
+                continue
+            count = _parse_worker_count_from_argv(argv)
+            if count is not None:
+                return count
+    except Exception:  # best-effort signal; never break startup
+        return None
+    return None
+
+
+def _detect_worker_count() -> int:
+    """Best-effort detection of the configured uvicorn/gunicorn worker count.
+
+    Combines two signals and returns the largest:
+
+    - ``WEB_CONCURRENCY`` / ``UVICORN_WORKERS`` env vars (set by most production
+      process managers), and
+    - a ``--workers N`` flag on an ancestor process command line, which covers a
+      bare ``uvicorn ... --workers N`` invocation that sets no env var (Linux
+      only, via ``/proc``).
+
+    This is a best-effort signal for the startup warning below; detection
+    failure degrades silently to the env-var result (never raises).
+    """
+    count = _worker_count_from_env()
+    try:
+        from_tree = _detect_workers_from_process_tree()
+    except Exception:
+        from_tree = None
+    if from_tree is not None and from_tree > count:
+        count = from_tree
     return count
 
 
