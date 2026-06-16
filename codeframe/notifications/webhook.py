@@ -345,36 +345,3 @@ class WebhookNotificationService:
                 exc_info=True,
             )
 
-    def send_blocker_notification_background(
-        self,
-        blocker_id: int,
-        question: str,
-        agent_id: str,
-        task_id: int,
-        blocker_type: BlockerType,
-        created_at: datetime,
-    ) -> None:
-        """Fire-and-forget wrapper for send_blocker_notification.
-
-        Launches notification task in background without awaiting result.
-        Use this method to avoid blocking blocker creation.
-
-        Args:
-            blocker_id: Blocker database ID
-            question: Blocker question text
-            agent_id: Agent that created the blocker
-            task_id: Associated task ID
-            blocker_type: SYNC or ASYNC
-            created_at: Blocker creation timestamp
-        """
-        # Create background task
-        asyncio.create_task(
-            self.send_blocker_notification(
-                blocker_id=blocker_id,
-                question=question,
-                agent_id=agent_id,
-                task_id=task_id,
-                blocker_type=blocker_type,
-                created_at=created_at,
-            )
-        )

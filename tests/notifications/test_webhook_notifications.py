@@ -238,23 +238,6 @@ class TestWebhookNotificationService:
 
         assert result is False
 
-    def test_send_blocker_notification_background(self, webhook_service):
-        """Test fire-and-forget background notification."""
-        created_at = datetime(2025, 11, 8, 14, 30, 0)
-
-        with patch("asyncio.create_task") as mock_create_task:
-            webhook_service.send_blocker_notification_background(
-                blocker_id=123,
-                question="Critical blocker",
-                agent_id="backend-worker-1",
-                task_id=456,
-                blocker_type=BlockerType.SYNC,
-                created_at=created_at,
-            )
-
-            # Verify background task was created
-            mock_create_task.assert_called_once()
-
     @pytest.mark.asyncio
     async def test_send_blocker_notification_correct_payload(self, webhook_service):
         """Test webhook notification sends correct JSON payload."""
