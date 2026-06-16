@@ -16,6 +16,7 @@ import asyncio
 import pytest
 
 from codeframe.core import tasks
+from codeframe.core.state_machine import TaskStatus
 from codeframe.core.workspace import create_or_load_workspace, get_db_connection
 
 pytestmark = pytest.mark.v2
@@ -26,9 +27,29 @@ def workspace(tmp_path):
     return create_or_load_workspace(tmp_path)
 
 
+class _TrackingCursor:
+    """Wraps a real cursor, optionally raising on execute()."""
+
+    def __init__(self, real, fail_on):
+        self._real = real
+        self._fail_on = fail_on
+
+    def execute(self, *args, **kwargs):
+        if self._fail_on == "execute":
+            raise RuntimeError("boom-execute")
+        return self._real.execute(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
 class _TrackingConn:
     """Wraps a real SQLite connection, recording close() and optionally
-    raising on a chosen operation to simulate a mid-operation failure."""
+    raising on a chosen operation to simulate a mid-operation failure.
+
+    ``fail_on`` may be ``"execute"`` (raise inside the SQL call, so the
+    function's body — including branch selection — is reached) or ``"commit"``
+    (raise after the write executes, exercising the write path's ``finally``)."""
 
     def __init__(self, real, fail_on, registry):
         self._real = real
@@ -37,9 +58,7 @@ class _TrackingConn:
         registry.append(self)
 
     def cursor(self):
-        if self._fail_on == "cursor":
-            raise RuntimeError("boom-cursor")
-        return self._real.cursor()
+        return _TrackingCursor(self._real.cursor(), self._fail_on)
 
     def commit(self):
         if self._fail_on == "commit":
@@ -75,19 +94,26 @@ class TestConnectionReleasedOnException:
             pytest.param(lambda ws, tid: tasks.get(ws, tid), id="get"),
             pytest.param(lambda ws, tid: tasks.list_tasks(ws), id="list_tasks"),
             pytest.param(
+                lambda ws, tid: tasks.list_tasks(ws, status=TaskStatus.READY),
+                id="list_tasks_status_filter",
+            ),
+            pytest.param(
                 lambda ws, tid: tasks.count_by_status(ws), id="count_by_status"
             ),
             pytest.param(lambda ws, tid: tasks.delete(ws, tid), id="delete"),
             pytest.param(lambda ws, tid: tasks.delete_all(ws), id="delete_all"),
         ],
     )
-    def test_read_paths_release_on_cursor_error(
+    def test_paths_release_on_execute_error(
         self, workspace, monkeypatch, operation
     ):
+        # Failing inside execute() reaches the function body (and, for
+        # list_tasks, both SQL branches), so the leak guard is exercised in
+        # situ rather than at connection setup.
         task = tasks.create(workspace, title="leak-test")
-        registry = _patch_connections(monkeypatch, fail_on="cursor")
+        registry = _patch_connections(monkeypatch, fail_on="execute")
 
-        with pytest.raises(RuntimeError, match="boom-cursor"):
+        with pytest.raises(RuntimeError, match="boom-execute"):
             operation(workspace, task.id)
 
         assert registry, "expected at least one connection to be opened"
@@ -104,13 +130,16 @@ class TestConnectionReleasedOnException:
                 lambda ws, tid: tasks.update_requirement_ids(ws, tid, []),
                 id="update_requirement_ids",
             ),
+            pytest.param(lambda ws, tid: tasks.delete(ws, tid), id="delete"),
+            pytest.param(lambda ws, tid: tasks.delete_all(ws), id="delete_all"),
         ],
     )
     def test_write_paths_release_on_commit_error(
         self, workspace, monkeypatch, operation
     ):
-        # These call get() first (read, no commit) then their own UPDATE+commit;
-        # failing on commit exercises the UPDATE path's finally specifically.
+        # Every write path commits; failing on commit (after the SQL executes)
+        # exercises each write path's finally specifically. update_* also call
+        # get() first (read, no commit) — that connection must close too.
         task = tasks.create(workspace, title="leak-test")
         registry = _patch_connections(monkeypatch, fail_on="commit")
 
@@ -134,18 +163,24 @@ class TestFireAndForgetRetention:
             await gate.wait()
 
         monkeypatch.setattr(tasks, "_safe_close_issue", fake_close)
+        # Snapshot + restore so this test never leaves the module set dirty for
+        # subsequent tests, even if an assertion fails before the task drains.
+        saved = set(tasks._background_tasks)
         tasks._background_tasks.clear()
+        try:
+            tasks._close_issue_background("pat", "owner/repo", 7)
 
-        tasks._close_issue_background("pat", "owner/repo", 7)
+            # Retained synchronously so asyncio cannot GC it mid-flight.
+            assert len(tasks._background_tasks) == 1
+            task = next(iter(tasks._background_tasks))
 
-        # Retained synchronously so asyncio cannot GC it mid-flight.
-        assert len(tasks._background_tasks) == 1
-        task = next(iter(tasks._background_tasks))
+            await ran.wait()
+            gate.set()
+            await task
+            await asyncio.sleep(0)  # let the done-callback (call_soon) run
 
-        await ran.wait()
-        gate.set()
-        await task
-        await asyncio.sleep(0)  # let the done-callback run (scheduled via call_soon)
-
-        # Discarded after completion so the set does not grow unbounded.
-        assert task not in tasks._background_tasks
+            # Discarded after completion so the set does not grow unbounded.
+            assert task not in tasks._background_tasks
+        finally:
+            tasks._background_tasks.clear()
+            tasks._background_tasks.update(saved)
