@@ -809,13 +809,13 @@ def generate_from_prd(
             tasks_data = _generate_tasks_with_llm(prd.content)
         except json.JSONDecodeError as e:
             # Invalid JSON from LLM response — fall back to simple extraction
-            print(f"LLM generation failed ({e}), using simple extraction")
+            logger.warning(f"LLM generation failed ({e}), using simple extraction")
             tasks_data = _extract_tasks_simple(prd.content)
         except ValueError:
             raise  # Config errors (missing API key) should fail loudly
         except Exception as e:
             # Fall back to simple extraction
-            print(f"LLM generation failed ({e}), using simple extraction")
+            logger.warning(f"LLM generation failed ({e}), using simple extraction")
             tasks_data = _extract_tasks_simple(prd.content)
     else:
         tasks_data = _extract_tasks_simple(prd.content)
