@@ -715,8 +715,7 @@ def start_batch(
             # Execute with parallel strategy
             _execute_parallel(workspace, batch, on_event)
         except CycleDetectedError as e:
-            logger.warning(f"Error: {e}")
-            logger.warning("Falling back to serial execution")
+            logger.warning(f"Dependency cycle detected, falling back to serial execution: {e}")
             _execute_serial(workspace, batch, on_event)
         except Exception as e:
             logger.warning(f"Dependency analysis failed: {e}")
@@ -726,8 +725,7 @@ def start_batch(
         try:
             _execute_parallel(workspace, batch, on_event)
         except CycleDetectedError as e:
-            logger.warning(f"Error: {e}")
-            logger.warning("Falling back to serial execution")
+            logger.warning(f"Dependency cycle detected, falling back to serial execution: {e}")
             _execute_serial(workspace, batch, on_event)
     else:
         _execute_serial(workspace, batch, on_event)
