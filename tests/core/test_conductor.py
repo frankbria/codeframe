@@ -1,5 +1,7 @@
 """Tests for batch execution conductor."""
 
+import logging
+
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -164,19 +166,19 @@ class TestStartBatch:
         assert loaded.id == batch.id
         assert loaded.task_ids == task_ids
 
-    def test_start_batch_strategy_parallel_works(self, workspace_with_tasks, capsys):
+    def test_start_batch_strategy_parallel_works(self, workspace_with_tasks, caplog):
         """Should execute with parallel strategy when requested."""
         workspace, task_list = workspace_with_tasks
         task_ids = [t.id for t in task_list[:1]]  # Just one task
 
         # Mock subprocess to avoid actual execution
+        caplog.set_level(logging.INFO, logger="codeframe.core.conductor")
         with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
             mock_exec.return_value = "COMPLETED"
             batch = start_batch(workspace, task_ids, strategy="parallel", max_parallel=2)
 
-        captured = capsys.readouterr()
-        # Should show execution plan (parallel is now implemented)
-        assert "Execution plan:" in captured.out or batch.status == BatchStatus.COMPLETED
+        # Should log the execution plan (chatter routes through logger, #649)
+        assert "Execution plan:" in caplog.text or batch.status == BatchStatus.COMPLETED
         assert batch.status == BatchStatus.COMPLETED
 
 
@@ -570,10 +572,11 @@ class TestBatchExecution:
         assert batch.results[task_ids[1]] == "FAILED"
         assert batch.results[task_ids[2]] == "COMPLETED"
 
-    def test_task_fails_stop(self, workspace_with_tasks, capsys):
+    def test_task_fails_stop(self, workspace_with_tasks, caplog):
         """Batch should stop immediately when task fails with on_failure=stop."""
         workspace, task_list = workspace_with_tasks
         task_ids = [t.id for t in task_list]
+        caplog.set_level(logging.WARNING, logger="codeframe.core.conductor")
 
         # First task succeeds, second fails
         def mock_execute(ws, tid, batch_id=None, **kwargs):
@@ -591,8 +594,7 @@ class TestBatchExecution:
         assert batch.results[task_ids[1]] == "FAILED"
         assert task_ids[2] not in batch.results  # Third task never ran
 
-        captured = capsys.readouterr()
-        assert "Stopping batch due to --on-failure=stop" in captured.out
+        assert "Stopping batch due to --on-failure=stop" in caplog.text
 
     def test_all_tasks_fail(self, workspace_with_tasks):
         """Batch should be FAILED when all tasks fail."""
@@ -894,10 +896,12 @@ class TestResumeBatch:
 
         assert resumed.status == BatchStatus.FAILED
 
-    def test_resume_no_failed_tasks(self, workspace_with_tasks, capsys):
+    def test_resume_no_failed_tasks(self, workspace_with_tasks, caplog):
         """Should handle batch with no failed tasks gracefully."""
         workspace, task_list = workspace_with_tasks
         from datetime import datetime, timezone
+
+        caplog.set_level(logging.INFO, logger="codeframe.core.conductor")
 
         # Manually create a PARTIAL batch with no failed tasks
         # (edge case - maybe cancelled mid-way)
@@ -919,8 +923,7 @@ class TestResumeBatch:
         # Resume should detect nothing to do
         resumed = resume_batch(workspace, batch.id)
 
-        captured = capsys.readouterr()
-        assert "No failed or blocked tasks to resume" in captured.out
+        assert "No failed or blocked tasks to resume" in caplog.text
         assert resumed.status == BatchStatus.PARTIAL  # Unchanged
 
     def test_resume_preserves_completed_results(self, workspace_with_tasks):
