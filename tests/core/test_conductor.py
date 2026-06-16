@@ -23,6 +23,8 @@ from codeframe.core.workspace import create_or_load_workspace
 from codeframe.core import tasks
 from codeframe.core.state_machine import TaskStatus
 
+pytestmark = pytest.mark.v2
+
 
 @pytest.fixture
 def temp_workspace(tmp_path):
@@ -177,8 +179,9 @@ class TestStartBatch:
             mock_exec.return_value = "COMPLETED"
             batch = start_batch(workspace, task_ids, strategy="parallel", max_parallel=2)
 
-        # Should log the execution plan (chatter routes through logger, #649)
-        assert "Execution plan:" in caplog.text or batch.status == BatchStatus.COMPLETED
+        # The execution plan is logged unconditionally in _execute_parallel,
+        # so chatter must route through logger (#649), not stdout.
+        assert "Execution plan:" in caplog.text
         assert batch.status == BatchStatus.COMPLETED
 
 
