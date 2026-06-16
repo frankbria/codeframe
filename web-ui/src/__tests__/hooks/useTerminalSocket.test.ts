@@ -1,6 +1,13 @@
 import { TextEncoder as NodeTextEncoder } from 'util';
 import { renderHook, act } from '@testing-library/react';
 import { useTerminalSocket } from '@/hooks/useTerminalSocket';
+import { verifyAuthAfterStreamFailure } from '@/lib/api';
+
+// The terminal WS fires the re-auth probe on a 4001 auth close (#651).
+jest.mock('@/lib/api', () => ({ verifyAuthAfterStreamFailure: jest.fn() }));
+const mockVerify = verifyAuthAfterStreamFailure as jest.MockedFunction<
+  typeof verifyAuthAfterStreamFailure
+>;
 
 // ── WebSocket mock ────────────────────────────────────────────────────────
 
@@ -57,6 +64,7 @@ class MockWebSocket {
 
 beforeEach(() => {
   MockWebSocket.instances = [];
+  mockVerify.mockClear();
   (global as any).WebSocket = MockWebSocket;
   // jsdom doesn't ship TextEncoder; polyfill from Node
   if (typeof (global as any).TextEncoder === 'undefined') {
@@ -222,6 +230,34 @@ describe('useTerminalSocket', () => {
     act(() => jest.advanceTimersByTime(1000));
     expect(MockWebSocket.instances).toHaveLength(1); // no new connection
     expect(result.current.status).toBe('error');
+  });
+
+  it('fires the re-auth probe on a 4001 auth close (#651)', () => {
+    const onData = jest.fn();
+    renderHook(() =>
+      useTerminalSocket({ url: 'ws://localhost/ws/sessions/s1/terminal?token=t', onData })
+    );
+    const ws = MockWebSocket.instances[0];
+    act(() => ws.simulateOpen());
+    act(() => ws.simulateClose(4001));
+
+    expect(mockVerify).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire the probe on a transient (non-auth) close', () => {
+    const onData = jest.fn();
+    renderHook(() =>
+      useTerminalSocket({
+        url: 'ws://localhost/ws/sessions/s1/terminal?token=t',
+        onData,
+        retryDelay: 100,
+      })
+    );
+    const ws = MockWebSocket.instances[0];
+    act(() => ws.simulateOpen());
+    act(() => ws.simulateClose(1006));
+
+    expect(mockVerify).not.toHaveBeenCalled();
   });
 
   it('cleans up socket on unmount', () => {

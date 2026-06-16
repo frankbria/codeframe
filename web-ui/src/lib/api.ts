@@ -165,6 +165,29 @@ const createApiClient = (): AxiosInstance => {
 
 const api = createApiClient();
 
+/**
+ * Re-auth path for SSE/WebSocket streams (#651).
+ *
+ * EventSource/WebSocket cannot read the HTTP status of a failed handshake, so a
+ * stream that dies on an expired token looks identical to a transient network
+ * blip. When a stream hits a terminal/auth failure, call this to probe the
+ * lightweight authenticated `/users/me` endpoint via the shared axios client:
+ * - token still valid  → 200, resolves, the stream's own retry continues.
+ * - token expired/invalid → 401, the response interceptor above clears the
+ *   token and redirects to `/login` (the re-auth path).
+ *
+ * Always resolves — never throws — so callers can fire-and-forget from socket
+ * error handlers without unhandled rejections.
+ */
+export async function verifyAuthAfterStreamFailure(): Promise<void> {
+  try {
+    await api.get('/users/me');
+  } catch {
+    // 401 → handled by the interceptor (clear token + redirect). Any other
+    // error (network, 5xx) is swallowed: let the stream's retry recover.
+  }
+}
+
 // Workspace API methods
 export const workspaceApi = {
   /**

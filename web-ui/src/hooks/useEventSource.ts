@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { verifyAuthAfterStreamFailure } from '@/lib/api';
 
 export type SSEStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error';
 
@@ -47,6 +48,9 @@ export function useEventSource({
   const sourceRef = useRef<EventSource | null>(null);
   const retriesRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Fire the token-expiry re-auth probe at most once per connection attempt
+  // sequence (reset on a successful open/message) to avoid spamming /users/me.
+  const authProbeFiredRef = useRef(false);
 
   // Keep callback refs stable so effect doesn't re-run on every render
   const onMessageRef = useRef(onMessage);
@@ -66,6 +70,7 @@ export function useEventSource({
       sourceRef.current = null;
     }
     retriesRef.current = 0;
+    authProbeFiredRef.current = false;
     setStatus('closed');
   }, []);
 
@@ -84,6 +89,8 @@ export function useEventSource({
       sourceRef.current = es;
 
       es.onopen = () => {
+        retriesRef.current = 0;
+        authProbeFiredRef.current = false;
         setStatus('open');
         onOpenRef.current?.();
       };
@@ -93,6 +100,7 @@ export function useEventSource({
         // to prevent infinite reconnect loops when the server accepts
         // then immediately closes the connection.
         retriesRef.current = 0;
+        authProbeFiredRef.current = false;
         onMessageRef.current?.(event.data);
       };
 
@@ -102,6 +110,15 @@ export function useEventSource({
         // EventSource auto-reconnects on transient errors, but if readyState
         // is CLOSED the browser gave up — we handle retries ourselves.
         if (es.readyState === EventSource.CLOSED) {
+          // A CLOSED EventSource means the browser received an HTTP error
+          // response (e.g. 401 on an expired `?token=`) rather than a transient
+          // network drop. Probe `/users/me` once: a genuine expiry redirects to
+          // /login; anything else is left to the retry below (#651).
+          if (!authProbeFiredRef.current) {
+            authProbeFiredRef.current = true;
+            void verifyAuthAfterStreamFailure();
+          }
+
           es.close();
           sourceRef.current = null;
 

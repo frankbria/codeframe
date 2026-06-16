@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { getToken } from '@/lib/auth';
+import { verifyAuthAfterStreamFailure } from '@/lib/api';
 import type { AgentChatState, ChatMessage, MessageRole } from '@/types';
 
 export type { AgentChatState, ChatMessage, MessageRole };
@@ -13,12 +15,11 @@ const MAX_RETRIES = 5;
 const BASE_RETRY_DELAY_MS = 1000;
 const PING_INTERVAL_MS = 30_000;
 
-// ── Helpers ───────────────────────────────────────────────────────────
+// WebSocket close code the session-chat endpoint sends for any auth failure
+// (missing/expired/invalid token, inactive user). See session_chat_ws.py.
+const WS_AUTH_FAILURE_CODE = 1008;
 
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token');
-}
+// ── Helpers ───────────────────────────────────────────────────────────
 
 function generateId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -257,12 +258,21 @@ export function useAgentChat(sessionId: string | null): UseAgentChat {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event: CloseEvent) => {
       if (pingTimerRef.current !== null) {
         clearInterval(pingTimerRef.current);
         pingTimerRef.current = null;
       }
       updateState({ connected: false, status: 'disconnected' });
+
+      // Auth failure (1008): reconnecting with the same stale token would loop.
+      // Probe /users/me to surface the re-auth path — a genuine expiry clears
+      // the token and redirects to /login (#651).
+      if (event.code === WS_AUTH_FAILURE_CODE) {
+        void verifyAuthAfterStreamFailure();
+        updateState({ status: 'error', error: 'Authentication failed' });
+        return;
+      }
 
       if (retriesRef.current < MAX_RETRIES) {
         const delay = BASE_RETRY_DELAY_MS * 2 ** retriesRef.current;

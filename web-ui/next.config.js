@@ -14,6 +14,13 @@ const nextConfig = {
           source: '/auth/:path*',
           destination: 'http://localhost:8000/auth/:path*',
         },
+        // fastapi-users mounts `/users/me` outside the /api prefix. The
+        // SSE/WS re-auth probe (`verifyAuthAfterStreamFailure`) hits it to
+        // detect token expiry, so proxy it like /auth (#651).
+        {
+          source: '/users/:path*',
+          destination: 'http://localhost:8000/users/:path*',
+        },
       ],
     };
   },

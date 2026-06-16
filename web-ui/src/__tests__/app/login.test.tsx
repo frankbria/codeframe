@@ -10,21 +10,28 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import LoginPage from '@/app/login/page';
 
 const pushMock = jest.fn();
+const replaceMock = jest.fn();
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock, replace: jest.fn() }),
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
 }));
 
 const loginMock = jest.fn();
 const registerMock = jest.fn();
+const isAuthenticatedMock = jest.fn();
 jest.mock('@/lib/auth', () => ({
   login: (...args: unknown[]) => loginMock(...args),
   register: (...args: unknown[]) => registerMock(...args),
+  isAuthenticated: () => isAuthenticatedMock(),
 }));
 
 beforeEach(() => {
   pushMock.mockReset();
+  replaceMock.mockReset();
   loginMock.mockReset();
   registerMock.mockReset();
+  isAuthenticatedMock.mockReset();
+  // Default: unauthenticated, so the form renders for the existing flows.
+  isAuthenticatedMock.mockReturnValue(false);
 });
 
 describe('LoginPage', () => {
@@ -33,6 +40,14 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it('redirects an already-authenticated visitor to / and hides the form (#651)', () => {
+    isAuthenticatedMock.mockReturnValue(true);
+    render(<LoginPage />);
+    expect(replaceMock).toHaveBeenCalledWith('/');
+    expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('submits credentials and redirects to / on success', async () => {
