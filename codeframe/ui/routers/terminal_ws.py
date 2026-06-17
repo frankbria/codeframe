@@ -20,22 +20,20 @@ import json
 import logging
 import os
 import shutil
+from typing import Optional, Tuple
 
-import jwt as pyjwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy import select
 
-from codeframe.auth import manager
-from codeframe.auth.manager import JWT_ALGORITHM, JWT_AUDIENCE, get_async_session_maker
-from codeframe.auth.models import User
+from codeframe.auth.dependencies import authenticate_websocket
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
 
-# Per-user concurrent terminal connection counter (in-process; resets on restart)
+# Per-user concurrent terminal connection counter (in-process; resets on restart).
+# Key is the user_id, or None in no-auth mode (all local terminals share a bucket).
 _MAX_TERMINALS_PER_USER = 3
-_user_terminal_counts: dict[int, int] = {}
+_user_terminal_counts: dict[Optional[int], int] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -43,47 +41,13 @@ _user_terminal_counts: dict[int, int] = {}
 # ---------------------------------------------------------------------------
 
 
-async def _authenticate_websocket(websocket: WebSocket) -> int | None:
-    """Validate JWT from query param. Returns user_id or closes the socket."""
-    token = websocket.query_params.get("token")
-    if not token:
-        await websocket.close(code=4001, reason="Authentication required: missing token")
-        return None
+async def _authenticate_websocket(websocket: WebSocket) -> Tuple[bool, Optional[int]]:
+    """Authenticate the terminal WebSocket via the shared helper.
 
-    try:
-        # Read manager.SECRET live: it may be refreshed from .env at server
-        # startup (after import), so binding the value at import would stale it.
-        payload = pyjwt.decode(token, manager.SECRET, algorithms=[JWT_ALGORITHM], audience=JWT_AUDIENCE)
-        user_id_str = payload.get("sub")
-        if not user_id_str:
-            await websocket.close(code=4001, reason="Invalid token: missing subject")
-            return None
-        user_id = int(user_id_str)
-    except pyjwt.ExpiredSignatureError:
-        await websocket.close(code=4001, reason="Token expired")
-        return None
-    except (pyjwt.InvalidTokenError, ValueError) as exc:
-        logger.debug("Terminal WS JWT decode error: %s", exc)
-        await websocket.close(code=4001, reason="Invalid authentication token")
-        return None
-
-    try:
-        async_session_maker = get_async_session_maker()
-        async with async_session_maker() as session:
-            result = await session.execute(select(User).where(User.id == user_id))
-            user = result.scalar_one_or_none()
-            if user is None:
-                await websocket.close(code=4001, reason="User not found")
-                return None
-            if not user.is_active:
-                await websocket.close(code=4001, reason="User is inactive")
-                return None
-    except Exception as exc:
-        logger.error("Terminal WS user lookup error: %s", exc)
-        await websocket.close(code=4001, reason="Authentication failed")
-        return None
-
-    return user_id
+    Returns ``(authenticated, user_id)``; closes the socket with ``4001`` on
+    failure. ``user_id`` is ``None`` in no-auth mode — matching REST.
+    """
+    return await authenticate_websocket(websocket, close_code=4001)
 
 
 # ---------------------------------------------------------------------------
@@ -95,8 +59,8 @@ async def _authenticate_websocket(websocket: WebSocket) -> int | None:
 async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
     """Bidirectional WebSocket that shells bash in the session's workspace."""
     # --- Auth ---
-    user_id = await _authenticate_websocket(websocket)
-    if user_id is None:
+    authenticated, user_id = await _authenticate_websocket(websocket)
+    if not authenticated:
         return
 
     # --- Session lookup ---
@@ -111,8 +75,10 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
         return
 
     # --- Ownership check ---
+    # Skipped in no-auth mode (user_id is None): there is no identity to enforce,
+    # matching REST behavior under CODEFRAME_AUTH_REQUIRED=false.
     session_user_id = session.get("user_id")
-    if session_user_id is not None and int(session_user_id) != user_id:
+    if user_id is not None and session_user_id is not None and int(session_user_id) != user_id:
         await websocket.close(code=4003, reason="Forbidden: session belongs to another user")
         return
 
