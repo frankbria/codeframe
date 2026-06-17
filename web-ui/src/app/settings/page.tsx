@@ -155,7 +155,7 @@ export default function SettingsPage() {
                   saving={saving}
                 />
               ) : (
-                <ComingSoon />
+                <p className="text-sm text-muted-foreground">Loading…</p>
               )}
             </section>
           </TabsContent>
@@ -210,10 +210,6 @@ export default function SettingsPage() {
       </div>
     </main>
   );
-}
-
-function ComingSoon() {
-  return <p className="text-sm text-muted-foreground">Coming soon</p>;
 }
 
 function NoWorkspaceMessage() {

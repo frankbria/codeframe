@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SessionCard } from '@/components/sessions/SessionCard';
 import type { Session } from '@/types';
@@ -101,21 +101,30 @@ describe('SessionCard', () => {
     expect(screen.queryByRole('button', { name: /end/i })).not.toBeInTheDocument();
   });
 
-  it('calls onEnd when End button is clicked and confirmed', async () => {
+  it('opens a confirmation dialog before ending (does not call onEnd immediately)', async () => {
     const user = userEvent.setup();
-    window.confirm = jest.fn().mockReturnValue(true);
     renderCard({ state: 'active' });
     await user.click(screen.getByRole('button', { name: /end/i }));
-    expect(window.confirm).toHaveBeenCalled();
+    // Dialog is open; onEnd must not fire until the user confirms.
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    expect(defaultHandlers.onEnd).not.toHaveBeenCalled();
+  });
+
+  it('calls onEnd when the End action is confirmed in the dialog', async () => {
+    const user = userEvent.setup();
+    renderCard({ state: 'active' });
+    await user.click(screen.getByRole('button', { name: /end/i }));
+    const dialog = screen.getByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: /end session/i }));
     expect(defaultHandlers.onEnd).toHaveBeenCalledWith('aaaaaaaa-bbbb-cccc-dddd-eeeeeeee1234');
   });
 
-  it('does not call onEnd when confirm is cancelled', async () => {
+  it('does not call onEnd when the dialog is cancelled', async () => {
     const user = userEvent.setup();
-    window.confirm = jest.fn().mockReturnValue(false);
     renderCard({ state: 'active' });
     await user.click(screen.getByRole('button', { name: /end/i }));
-    expect(window.confirm).toHaveBeenCalled();
+    const dialog = screen.getByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: /^keep$/i }));
     expect(defaultHandlers.onEnd).not.toHaveBeenCalled();
   });
 

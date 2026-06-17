@@ -16,7 +16,8 @@ import { ProofStatusBadge, WaiveDialog, GateRunPanel, GateRunBanner, RunHistoryP
 import { proofApi } from '@/lib/api';
 import { useProofRun } from '@/hooks/useProofRun';
 import { useNotificationContext } from '@/contexts/NotificationContext';
-import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
+import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
+import { useWorkspaceSelection } from '@/hooks/useWorkspaceSelection';
 import type { ProofRequirement, ProofRequirementListResponse, ProofReqStatus, ProofSeverity, ProofRunDetail } from '@/types';
 
 // ── Sort / filter types ────────────────────────────────────────────────────
@@ -101,8 +102,13 @@ function sortAriaAttribute(col: SortCol, activeCol: SortCol, activeDir: SortDir)
 // ── Main page ──────────────────────────────────────────────────────────────
 
 function ProofPageContent() {
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
-  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const {
+    workspacePath,
+    workspaceReady,
+    isSelecting,
+    selectionError,
+    selectWorkspace,
+  } = useWorkspaceSelection();
   const [waivedReq, setWaivedReq] = useState<ProofRequirement | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -146,11 +152,6 @@ function ProofPageContent() {
 
   const searchParams = useSearchParams();
   const gateFilter = searchParams.get('gate')?.toLowerCase() ?? null;
-
-  useEffect(() => {
-    setWorkspacePath(getSelectedWorkspacePath());
-    setWorkspaceReady(true);
-  }, []);
 
   const { data, error, isLoading, mutate } = useSWR<ProofRequirementListResponse>(
     workspacePath ? `/api/v2/proof/requirements?path=${workspacePath}` : null,
@@ -201,16 +202,11 @@ function ProofPageContent() {
 
   if (!workspacePath) {
     return (
-      <main className="min-h-screen bg-background">
-        <div className="mx-auto max-w-7xl px-4 py-8">
-          <div className="rounded-lg border bg-muted/50 p-6 text-center">
-            <p className="text-muted-foreground">
-              No workspace selected. Return to{' '}
-              <Link href="/" className="text-primary hover:underline">Workspace</Link> and select a project.
-            </p>
-          </div>
-        </div>
-      </main>
+      <WorkspaceSelector
+        onSelectWorkspace={selectWorkspace}
+        isLoading={isSelecting}
+        error={selectionError}
+      />
     );
   }
 

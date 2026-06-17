@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import useSWR, { mutate as globalMutate } from 'swr';
-import { WORKSPACES_SWR_KEY } from '@/hooks/useWorkspaces';
+import { useState } from 'react';
+import useSWR from 'swr';
 import {
   WorkspaceHeader,
   WorkspaceStatsCards,
@@ -14,11 +13,7 @@ import { ProofStatusWidget } from '@/components/proof';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
 import { workspaceApi, tasksApi, eventsApi } from '@/lib/api';
 import { TechStackConfirmDialog } from '@/components/workspace/TechStackConfirmDialog';
-import {
-  getSelectedWorkspacePath,
-  setSelectedWorkspacePath,
-  clearSelectedWorkspacePath,
-} from '@/lib/workspace-storage';
+import { useWorkspaceSelection } from '@/hooks/useWorkspaceSelection';
 import type {
   WorkspaceResponse,
   TaskListResponse,
@@ -96,21 +91,19 @@ function mapEventToActivity(event: EventResponse): ActivityItem {
 
 export default function WorkspacePage() {
   // Track the selected workspace path
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
-  const [isSelectingWorkspace, setIsSelectingWorkspace] = useState(false);
-  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const {
+    workspacePath,
+    isSelecting: isSelectingWorkspace,
+    selectionError,
+    selectWorkspace,
+    clearWorkspace,
+  } = useWorkspaceSelection();
 
   // Tech stack confirmation dialog state
   const [techStackDialog, setTechStackDialog] = useState<{
     open: boolean;
     detectedStack: string | null;
   }>({ open: false, detectedStack: null });
-
-  // Load workspace path from localStorage on mount
-  useEffect(() => {
-    const stored = getSelectedWorkspacePath();
-    setWorkspacePath(stored);
-  }, []);
 
   // Fetch workspace data (only if we have a path)
   const {
@@ -141,44 +134,17 @@ export default function WorkspacePage() {
   // Map events to activity items
   const activities: ActivityItem[] = (eventsData?.events || []).map(mapEventToActivity);
 
-  // Handle workspace selection/initialization
-  const handleSelectWorkspace = async (path: string) => {
-    setIsSelectingWorkspace(true);
-    setSelectionError(null);
-
-    try {
-      // First check if workspace exists
-      const exists = await workspaceApi.checkExists(path);
-
-      if (exists.exists) {
-        // Workspace exists, just select it. Touch /current so the server bumps
-        // recency and tracks it — fire-and-forget so a transient error on this
-        // best-effort call can't block opening an accessible workspace.
-        void workspaceApi.getByPath(path).catch(() => {});
-        setSelectedWorkspacePath(path);
-        setWorkspacePath(path);
-      } else {
-        // Initialize new workspace and show tech stack confirmation
-        const initialized = await workspaceApi.init(path, { detect: true });
-        setSelectedWorkspacePath(path);
-        setWorkspacePath(path);
-        setTechStackDialog({ open: true, detectedStack: initialized.tech_stack });
-      }
-      // Keep the server-backed workspace list fresh (localStorage dual-write
-      // already happened via setSelectedWorkspacePath → addToRecentWorkspaces).
-      void globalMutate(WORKSPACES_SWR_KEY);
-    } catch (error) {
-      const apiError = error as ApiError;
-      setSelectionError(apiError.detail || 'Failed to open project');
-    } finally {
-      setIsSelectingWorkspace(false);
-    }
-  };
+  // Handle workspace selection/initialization. A newly initialized workspace
+  // opens the tech-stack confirmation dialog via the hook's onInitialized hook.
+  const handleSelectWorkspace = (path: string) =>
+    selectWorkspace(path, {
+      onInitialized: (initialized) =>
+        setTechStackDialog({ open: true, detectedStack: initialized.tech_stack }),
+    });
 
   // Handle switching to a different workspace
   const handleSwitchWorkspace = () => {
-    clearSelectedWorkspacePath();
-    setWorkspacePath(null);
+    clearWorkspace();
   };
 
   // Show workspace selector if no path selected
