@@ -31,6 +31,20 @@ from codeframe.core.workspace import Workspace, create_or_load_workspace
 pytestmark = pytest.mark.v2
 
 
+def _bare_workspace(repo_path: Path) -> Workspace:
+    """A Workspace carrying only the path attributes artifacts.py reads.
+
+    Intentionally bypasses __init__ (no DB/event setup) for tests that exercise
+    pure-filesystem / error paths and never emit events. Sets every attribute
+    artifacts.py touches (repo_path, state_dir); if Workspace grows a new
+    required attribute that artifacts.py uses, those tests will fail loudly.
+    """
+    ws = Workspace.__new__(Workspace)
+    ws.repo_path = repo_path
+    ws.state_dir = repo_path / ".codeframe"
+    return ws
+
+
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True)
 
@@ -122,9 +136,7 @@ class TestExportPatch:
     def test_export_not_a_git_repo_raises(self, tmp_path, skip_if_no_git):
         plain = tmp_path / "plain"
         plain.mkdir()
-        ws = Workspace.__new__(Workspace)
-        ws.repo_path = plain
-        ws.state_dir = plain / ".codeframe"
+        ws = _bare_workspace(plain)
         with pytest.raises(ValueError, match="Not a git repository"):
             export_patch(ws)
 
@@ -220,15 +232,11 @@ class TestGetStatus:
 
 class TestListPatches:
     def test_missing_patches_dir_returns_empty(self, tmp_path):
-        ws = Workspace.__new__(Workspace)
-        ws.repo_path = tmp_path
-        ws.state_dir = tmp_path / ".codeframe"  # does not exist
+        ws = _bare_workspace(tmp_path)  # .codeframe/ does not exist
         assert list_patches(ws) == []
 
     def test_lists_patches_newest_first(self, tmp_path):
-        ws = Workspace.__new__(Workspace)
-        ws.repo_path = tmp_path
-        ws.state_dir = tmp_path / ".codeframe"
+        ws = _bare_workspace(tmp_path)
         patches_dir = ws.state_dir / "patches"
         patches_dir.mkdir(parents=True)
 
