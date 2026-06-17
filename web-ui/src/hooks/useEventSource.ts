@@ -49,7 +49,7 @@ export function useEventSource({
   const retriesRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Fire the token-expiry re-auth probe at most once per connection attempt
-  // sequence (reset on a successful open/message) to avoid spamming /users/me.
+  // sequence (reset on a successful message) to avoid spamming the auth probe.
   const authProbeFiredRef = useRef(false);
 
   // Keep callback refs stable so effect doesn't re-run on every render
@@ -111,8 +111,8 @@ export function useEventSource({
         if (es.readyState === EventSource.CLOSED) {
           // A CLOSED EventSource means the browser received an HTTP error
           // response (e.g. 401 on an expired `?token=`) rather than a transient
-          // network drop. Probe `/users/me` once: a genuine expiry redirects to
-          // /login; anything else is left to the retry below (#651).
+          // network drop. Probe the auth endpoint once: a genuine expiry
+          // redirects to /login; anything else is left to the retry below (#651).
           if (!authProbeFiredRef.current) {
             authProbeFiredRef.current = true;
             void verifyAuthAfterStreamFailure();
