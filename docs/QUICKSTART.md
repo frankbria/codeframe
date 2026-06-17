@@ -27,9 +27,10 @@ Get your project built with AI agents in minutes.
    local server only, set `CODEFRAME_ALLOW_INSECURE_SECRET=1` to start without
    a secret — it signs JWTs with the known default (forgeable, never expose it)
    while keeping auth on so the REST API and the session/terminal WebSockets all
-   work. (`CODEFRAME_AUTH_REQUIRED=false` is a separate knob that disables REST
-   auth but **not** WebSocket auth, so the sessions UI is only partially usable
-   in that mode.)
+   work. (`CODEFRAME_AUTH_REQUIRED=false` is a separate knob that disables auth
+   entirely for local dev — both the REST API and the session/terminal
+   WebSockets then accept unauthenticated connections, so the sessions UI is
+   fully usable in that mode.)
 
 ## Coming from ralph?
 

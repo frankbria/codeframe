@@ -47,14 +47,16 @@ def _ws_url(session_id: str, token: str) -> str:
 class TestSessionChatWSAuth:
     """WebSocket endpoint rejects unauthenticated and invalid connections."""
 
-    def test_rejects_missing_token(self, api_client: TestClient):
+    def test_rejects_missing_token(self, api_client: TestClient, monkeypatch):
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         session_id = _create_session(api_client)
         with pytest.raises(WebSocketDisconnect) as exc_info:
             with api_client.websocket_connect(f"/ws/sessions/{session_id}/chat") as ws:
                 ws.receive_json()
         assert exc_info.value.code == 1008
 
-    def test_rejects_invalid_token(self, api_client: TestClient):
+    def test_rejects_invalid_token(self, api_client: TestClient, monkeypatch):
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         session_id = _create_session(api_client)
         with pytest.raises(WebSocketDisconnect) as exc_info:
             with api_client.websocket_connect(
@@ -63,7 +65,8 @@ class TestSessionChatWSAuth:
                 ws.receive_json()
         assert exc_info.value.code == 1008
 
-    def test_rejects_expired_token(self, api_client: TestClient):
+    def test_rejects_expired_token(self, api_client: TestClient, monkeypatch):
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         from datetime import datetime, timedelta, timezone
         from codeframe.auth.manager import SECRET
         import jwt as pyjwt
@@ -82,6 +85,15 @@ class TestSessionChatWSAuth:
             ) as ws:
                 ws.receive_json()
         assert exc_info.value.code == 1008
+
+    def test_no_auth_mode_connects_without_token(self, api_client: TestClient, monkeypatch):
+        """With CODEFRAME_AUTH_REQUIRED=false, the chat WS connects with no token (matches REST)."""
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
+        session_id = _create_session(api_client)
+        with api_client.websocket_connect(f"/ws/sessions/{session_id}/chat") as ws:
+            ws.send_json({"type": "ping"})
+            data = ws.receive_json()
+            assert data["type"] == "pong"
 
     def test_accepts_valid_token(self, api_client: TestClient):
         """A valid JWT connects successfully (responds to ping)."""

@@ -11,9 +11,9 @@ JWT tokens get full permissions for backward compatibility.
 import logging
 import os
 import re
-from typing import Callable, Dict, Optional, Any
+from typing import Callable, Dict, Optional, Any, Tuple
 
-from fastapi import Depends, HTTPException, Request, Security, status
+from fastapi import Depends, HTTPException, Request, Security, WebSocket, status
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 
 from codeframe.auth.models import User
@@ -325,6 +325,89 @@ async def require_auth(
         detail="Authentication required",
         headers={"WWW-Authenticate": "Bearer, ApiKey"},
     )
+
+
+async def authenticate_websocket(
+    websocket: WebSocket,
+    *,
+    close_code: int,
+) -> Tuple[bool, Optional[int]]:
+    """Authenticate a WebSocket connection, honoring the no-auth opt-out.
+
+    This is the single source of truth for WebSocket auth so the terminal and
+    session-chat sockets cannot drift from the REST behavior of ``require_auth()``:
+
+    - When auth is disabled (``CODEFRAME_AUTH_REQUIRED`` falsy), returns
+      ``(True, None)`` without requiring a token — the same synthetic local
+      principal (``user_id=None``) REST admits in no-auth mode.
+    - Otherwise validates the ``?token=<JWT>`` query parameter (decode → subject
+      → active DB user). On success returns ``(True, user_id)``. On any failure
+      the socket is closed with ``close_code`` and ``(False, None)`` is returned.
+
+    Args:
+        websocket: The incoming WebSocket connection (not yet accepted).
+        close_code: Close code to use when rejecting (callers pass their existing
+            code, e.g. ``4001`` for terminal, ``1008`` for session chat).
+
+    Returns:
+        ``(authenticated, user_id)``. ``user_id`` is ``None`` both in no-auth
+        mode and on failure — callers gate on the boolean, not on ``user_id``.
+    """
+    # Single source of truth for the no-auth opt-out — shared with require_auth().
+    if not auth_required():
+        return True, None
+
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=close_code, reason="Authentication required: missing token")
+        return False, None
+
+    import jwt as pyjwt
+    from sqlalchemy import select
+
+    from codeframe.auth import manager
+    from codeframe.auth.manager import (
+        JWT_ALGORITHM,
+        JWT_AUDIENCE,
+        get_async_session_maker,
+    )
+
+    try:
+        # Read manager.SECRET live: it may be refreshed from .env at server
+        # startup (after import), so binding the value at import would stale it.
+        payload = pyjwt.decode(
+            token, manager.SECRET, algorithms=[JWT_ALGORITHM], audience=JWT_AUDIENCE
+        )
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            await websocket.close(code=close_code, reason="Invalid token: missing subject")
+            return False, None
+        user_id = int(user_id_str)
+    except pyjwt.ExpiredSignatureError:
+        await websocket.close(code=close_code, reason="Token expired")
+        return False, None
+    except (pyjwt.InvalidTokenError, ValueError) as exc:
+        logger.debug("WebSocket JWT decode error: %s", exc)
+        await websocket.close(code=close_code, reason="Invalid authentication token")
+        return False, None
+
+    try:
+        async_session_maker = get_async_session_maker()
+        async with async_session_maker() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            if user is None:
+                await websocket.close(code=close_code, reason="User not found")
+                return False, None
+            if not user.is_active:
+                await websocket.close(code=close_code, reason="User is inactive")
+                return False, None
+    except Exception as exc:
+        logger.error("WebSocket user lookup error: %s", exc)
+        await websocket.close(code=close_code, reason="Authentication failed")
+        return False, None
+
+    return True, user_id
 
 
 def require_scope(required_scope: str) -> Callable:

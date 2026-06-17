@@ -34,15 +34,11 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
-import jwt as pyjwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy import select
 
-from codeframe.auth import manager
-from codeframe.auth.manager import JWT_ALGORITHM, JWT_AUDIENCE, get_async_session_maker
-from codeframe.auth.models import User
+from codeframe.auth.dependencies import authenticate_websocket
 from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
 from codeframe.ui.shared import session_chat_manager
 
@@ -56,47 +52,13 @@ router = APIRouter(tags=["websocket"])
 # ---------------------------------------------------------------------------
 
 
-async def _authenticate_websocket(websocket: WebSocket) -> Optional[int]:
-    """Validate JWT from query param. Returns user_id or closes with 1008."""
-    token = websocket.query_params.get("token")
-    if not token:
-        await websocket.close(code=1008, reason="Authentication required: missing token")
-        return None
+async def _authenticate_websocket(websocket: WebSocket) -> Tuple[bool, Optional[int]]:
+    """Authenticate the session-chat WebSocket via the shared helper.
 
-    try:
-        # Read manager.SECRET live: it may be refreshed from .env at server
-        # startup (after import), so binding the value at import would stale it.
-        payload = pyjwt.decode(token, manager.SECRET, algorithms=[JWT_ALGORITHM], audience=JWT_AUDIENCE)
-        user_id_str = payload.get("sub")
-        if not user_id_str:
-            await websocket.close(code=1008, reason="Invalid token: missing subject")
-            return None
-        user_id = int(user_id_str)
-    except pyjwt.ExpiredSignatureError:
-        await websocket.close(code=1008, reason="Token expired")
-        return None
-    except (pyjwt.InvalidTokenError, ValueError) as exc:
-        logger.debug("WebSocket JWT decode error: %s", exc)
-        await websocket.close(code=1008, reason="Invalid authentication token")
-        return None
-
-    try:
-        async_session_maker = get_async_session_maker()
-        async with async_session_maker() as session:
-            result = await session.execute(select(User).where(User.id == user_id))
-            user = result.scalar_one_or_none()
-            if user is None:
-                await websocket.close(code=1008, reason="User not found")
-                return None
-            if not user.is_active:
-                await websocket.close(code=1008, reason="User is inactive")
-                return None
-    except Exception as exc:
-        logger.error("WebSocket user lookup error: %s", exc)
-        await websocket.close(code=1008, reason="Authentication failed")
-        return None
-
-    return user_id
+    Returns ``(authenticated, user_id)``; closes the socket with ``1008`` on
+    failure. ``user_id`` is ``None`` in no-auth mode — matching REST.
+    """
+    return await authenticate_websocket(websocket, close_code=1008)
 
 
 async def _run_streaming_adapter(
@@ -146,8 +108,8 @@ async def _run_streaming_adapter(
 async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
     """Bidirectional WebSocket for streaming agent chat on an interactive session."""
     # --- Auth ---
-    user_id = await _authenticate_websocket(websocket)
-    if user_id is None:
+    authenticated, _user_id = await _authenticate_websocket(websocket)
+    if not authenticated:
         return
 
     # --- Session validation ---

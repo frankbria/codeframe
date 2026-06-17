@@ -39,7 +39,8 @@ def _make_app(session_data: dict | None = None, user_data=None):
 
 
 class TestTerminalWsAuth:
-    def test_missing_token_closes_4001(self):
+    def test_missing_token_closes_4001(self, monkeypatch):
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         app = _make_app()
         client = TestClient(app)
         with pytest.raises(Exception):
@@ -47,7 +48,8 @@ class TestTerminalWsAuth:
             with client.websocket_connect("/ws/sessions/s1/terminal"):
                 pass
 
-    def test_invalid_token_closes_4001(self):
+    def test_invalid_token_closes_4001(self, monkeypatch):
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         app = _make_app()
         client = TestClient(app)
         with pytest.raises(Exception):
@@ -62,7 +64,7 @@ class TestTerminalWsAuth:
         # Patch auth to succeed and return user_id=1
         with patch(
             "codeframe.ui.routers.terminal_ws._authenticate_websocket",
-            new=AsyncMock(return_value=1),
+            new=AsyncMock(return_value=(True, 1)),
         ):
             with pytest.raises(Exception):
                 with client.websocket_connect("/ws/sessions/missing/terminal?token=x"):
@@ -75,7 +77,7 @@ class TestTerminalWsAuth:
 
         with patch(
             "codeframe.ui.routers.terminal_ws._authenticate_websocket",
-            new=AsyncMock(return_value=1),
+            new=AsyncMock(return_value=(True, 1)),
         ):
             with pytest.raises(Exception):
                 with client.websocket_connect("/ws/sessions/s1/terminal?token=x"):
@@ -90,7 +92,7 @@ class TestTerminalWsAuth:
 
         with patch(
             "codeframe.ui.routers.terminal_ws._authenticate_websocket",
-            new=AsyncMock(return_value=1),
+            new=AsyncMock(return_value=(True, 1)),
         ):
             with pytest.raises(Exception):
                 with client.websocket_connect("/ws/sessions/s1/terminal?token=x"):
@@ -127,7 +129,7 @@ class TestTerminalWsRelay:
         with (
             patch(
                 "codeframe.ui.routers.terminal_ws._authenticate_websocket",
-                new=AsyncMock(return_value=1),
+                new=AsyncMock(return_value=(True, 1)),
             ),
             patch(
                 "asyncio.create_subprocess_exec",
@@ -139,6 +141,30 @@ class TestTerminalWsRelay:
                 # Connection was accepted; we can receive bytes
                 # (mock stdout.read returns b"$ " then b"" to end relay)
                 pass  # Just verify it connected without error
+
+    def test_no_auth_mode_connects_without_token(self, monkeypatch):
+        """With CODEFRAME_AUTH_REQUIRED=false, the terminal WS connects with no token."""
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
+        # Session has a user_id, but in no-auth mode (user_id=None) ownership is skipped.
+        app = _make_app(
+            session_data={"state": "active", "workspace_path": "/tmp", "user_id": 999}
+        )
+
+        mock_proc = MagicMock()
+        mock_proc.stdin = AsyncMock()
+        mock_proc.stdout = AsyncMock()
+        mock_proc.stdout.read = AsyncMock(return_value=b"$ ")
+        mock_proc.terminate = MagicMock()
+        mock_proc.wait = AsyncMock()
+
+        with patch(
+            "asyncio.create_subprocess_exec",
+            new=AsyncMock(return_value=mock_proc),
+        ):
+            client = TestClient(app)
+            # No ?token= and no auth patch — real auth helper must admit it.
+            with client.websocket_connect("/ws/sessions/s1/terminal") as ws:
+                pass  # Connected without error → no-auth path works
 
     def test_resize_message_does_not_crash(self):
         """Sending a resize JSON message should be silently ignored."""
@@ -157,7 +183,7 @@ class TestTerminalWsRelay:
         with (
             patch(
                 "codeframe.ui.routers.terminal_ws._authenticate_websocket",
-                new=AsyncMock(return_value=1),
+                new=AsyncMock(return_value=(True, 1)),
             ),
             patch(
                 "asyncio.create_subprocess_exec",
