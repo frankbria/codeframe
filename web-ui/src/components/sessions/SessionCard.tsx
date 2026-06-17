@@ -5,6 +5,17 @@ import { formatDistanceToNow } from 'date-fns';
 import { Cancel01Icon } from '@hugeicons/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import type { Session } from '@/types';
 
 interface SessionCardProps {
@@ -17,12 +28,6 @@ export function SessionCard({ session, onEnd }: SessionCardProps) {
   const workspaceName = session.workspace_path.split('/').pop() || session.workspace_path;
   const isActive = session.state === 'active';
   const relativeTime = formatDistanceToNow(new Date(session.created_at), { addSuffix: true });
-
-  const handleEnd = () => {
-    if (window.confirm('End this session? This will stop the active agent.')) {
-      onEnd(session.id);
-    }
-  };
 
   return (
     <Card className="transition-colors hover:border-primary/50">
@@ -54,15 +59,32 @@ export function SessionCard({ session, onEnd }: SessionCardProps) {
             </Link>
           </Button>
           {isActive && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 gap-1 px-2 text-xs text-destructive"
-              onClick={handleEnd}
-            >
-              <Cancel01Icon className="h-3.5 w-3.5" />
-              End
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 gap-1 px-2 text-xs text-destructive"
+                >
+                  <Cancel01Icon className="h-3.5 w-3.5" />
+                  End
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>End this session?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will stop the active agent for this session.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => onEnd(session.id)}>
+                    End Session
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
         </div>
       </CardContent>

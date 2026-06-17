@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import Link from 'next/link';
 import useSWR from 'swr';
-import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import { reviewApi, gatesApi, gitApi, prApi, tasksApi } from '@/lib/api';
+import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
+import { useWorkspaceSelection } from '@/hooks/useWorkspaceSelection';
 import { parseDiff, getFilePath } from '@/lib/diffParser';
 import type {
   DiffStatsResponse,
@@ -25,8 +25,13 @@ import { PRStatusPanel } from '@/components/review/PRStatusPanel';
 import { PRHistoryPanel } from '@/components/review/PRHistoryPanel';
 
 export default function ReviewPage() {
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
-  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const {
+    workspacePath,
+    workspaceReady,
+    isSelecting,
+    selectionError,
+    selectWorkspace,
+  } = useWorkspaceSelection();
 
   // Core state
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -50,11 +55,6 @@ export default function ReviewPage() {
 
   // Feedback
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
-  useEffect(() => {
-    setWorkspacePath(getSelectedWorkspacePath());
-    setWorkspaceReady(true);
-  }, []);
 
   // Fetch diff data
   const {
@@ -230,19 +230,11 @@ export default function ReviewPage() {
   // No workspace
   if (!workspacePath) {
     return (
-      <main className="min-h-screen bg-background">
-        <div className="mx-auto max-w-7xl px-4 py-8">
-          <div className="rounded-lg border bg-muted/50 p-6 text-center">
-            <p className="text-muted-foreground">
-              No workspace selected. Return to{' '}
-              <Link href="/" className="text-primary hover:underline">
-                Workspace
-              </Link>{' '}
-              and select a project.
-            </p>
-          </div>
-        </div>
-      </main>
+      <WorkspaceSelector
+        onSelectWorkspace={selectWorkspace}
+        isLoading={isSelecting}
+        error={selectionError}
+      />
     );
   }
 

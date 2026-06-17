@@ -72,7 +72,7 @@ export function StressTestModal({
     }
   }, [lines]);
 
-  const ambiguities = result?.ambiguities ?? [];
+  const ambiguities = useMemo(() => result?.ambiguities ?? [], [result]);
   const hasResults = status === 'complete' && ambiguities.length > 0;
 
   const answeredCount = useMemo(

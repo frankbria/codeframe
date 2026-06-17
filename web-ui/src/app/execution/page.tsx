@@ -4,9 +4,10 @@ import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loading03Icon } from '@hugeicons/react';
-import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import { tasksApi } from '@/lib/api';
 import { BatchExecutionMonitor } from '@/components/execution/BatchExecutionMonitor';
+import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
+import { useWorkspaceSelection } from '@/hooks/useWorkspaceSelection';
 
 /**
  * Execution landing page wrapper.
@@ -43,15 +44,14 @@ function ExecutionLandingContent() {
   const batchId = searchParams.get('batch');
   const taskIdParam = searchParams.get('task');
 
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
-  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const {
+    workspacePath,
+    workspaceReady,
+    isSelecting,
+    selectionError,
+    selectWorkspace,
+  } = useWorkspaceSelection();
   const [resolving, setResolving] = useState(true);
-
-  // Hydrate workspace path
-  useEffect(() => {
-    setWorkspacePath(getSelectedWorkspacePath());
-    setWorkspaceReady(true);
-  }, []);
 
   // Request browser notification permission once on first visit
   useEffect(() => {
@@ -97,19 +97,11 @@ function ExecutionLandingContent() {
 
   if (!workspacePath) {
     return (
-      <main className="min-h-screen bg-background">
-        <div className="mx-auto max-w-5xl px-4 py-8">
-          <div className="rounded-lg border bg-muted/50 p-6 text-center">
-            <p className="text-muted-foreground">
-              No workspace selected.{' '}
-              <Link href="/" className="text-primary hover:underline">
-                Select a workspace
-              </Link>{' '}
-              first.
-            </p>
-          </div>
-        </div>
-      </main>
+      <WorkspaceSelector
+        onSelectWorkspace={selectWorkspace}
+        isLoading={isSelecting}
+        error={selectionError}
+      />
     );
   }
 

@@ -91,7 +91,7 @@ export function GitHubIssueImportModal({
       })
   );
 
-  const issues = data?.issues ?? [];
+  const issues = useMemo(() => data?.issues ?? [], [data]);
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import useSWR from 'swr';
 import {
   MoneyBag02Icon,
@@ -12,11 +12,8 @@ import { SpendBarChart } from '@/components/costs/SpendBarChart';
 import { TopTasksTable } from '@/components/costs/TopTasksTable';
 import { AgentCostBars } from '@/components/costs/AgentCostBars';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
-import { costsApi, workspaceApi } from '@/lib/api';
-import {
-  getSelectedWorkspacePath,
-  setSelectedWorkspacePath,
-} from '@/lib/workspace-storage';
+import { costsApi } from '@/lib/api';
+import { useWorkspaceSelection } from '@/hooks/useWorkspaceSelection';
 import type {
   CostSummaryResponse,
   TaskCostsResponse,
@@ -40,14 +37,13 @@ function formatCurrency(value: number, fractionDigits = 4): string {
 }
 
 export default function CostsPage() {
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
+  const {
+    workspacePath,
+    isSelecting,
+    selectionError,
+    selectWorkspace,
+  } = useWorkspaceSelection();
   const [days, setDays] = useState<number>(30);
-  const [isSelecting, setIsSelecting] = useState(false);
-  const [selectionError, setSelectionError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setWorkspacePath(getSelectedWorkspacePath());
-  }, []);
 
   const { data, error, isLoading } = useSWR<CostSummaryResponse, ApiError>(
     workspacePath ? ['/api/v2/costs/summary', workspacePath, days] : null,
@@ -67,28 +63,10 @@ export default function CostsPage() {
     { refreshInterval: 60000 }
   );
 
-  const handleSelectWorkspace = async (path: string) => {
-    setIsSelecting(true);
-    setSelectionError(null);
-    try {
-      const exists = await workspaceApi.checkExists(path);
-      if (!exists.exists) {
-        await workspaceApi.init(path, { detect: true });
-      }
-      setSelectedWorkspacePath(path);
-      setWorkspacePath(path);
-    } catch (err) {
-      const apiError = err as ApiError;
-      setSelectionError(apiError.detail || 'Failed to open project');
-    } finally {
-      setIsSelecting(false);
-    }
-  };
-
   if (!workspacePath) {
     return (
       <WorkspaceSelector
-        onSelectWorkspace={handleSelectWorkspace}
+        onSelectWorkspace={selectWorkspace}
         isLoading={isSelecting}
         error={selectionError}
       />
