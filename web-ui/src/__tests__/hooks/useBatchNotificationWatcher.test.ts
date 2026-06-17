@@ -189,6 +189,38 @@ describe('useBatchNotificationWatcher', () => {
     expect(mockList.mock.calls.length).toBeGreaterThan(1);
   });
 
+  it('does not dispatch stale notifications when the workspace changes mid-poll', async () => {
+    const addNotification = jest.fn();
+    // A slow poll for workspace /ws-a that resolves with a terminal transition.
+    let resolveSlow: (v: BatchListResponse) => void = () => {};
+    const slow = new Promise<BatchListResponse>((res) => {
+      resolveSlow = res;
+    });
+    mockGetWorkspacePath.mockReturnValue('/ws-a');
+    mockList.mockReset();
+    // First poll (baseline) sees RUNNING; second poll returns the slow promise.
+    mockList.mockResolvedValueOnce(
+      listResponse([batch({ status: 'RUNNING', results: { t1: 'IN_PROGRESS' } })])
+    );
+    mockList.mockReturnValueOnce(slow);
+    mockList.mockResolvedValue(listResponse([batch()]));
+
+    renderHook(() => useBatchNotificationWatcher(addNotification, { intervalMs: INTERVAL }));
+    await flushPoll(); // baseline RUNNING for /ws-a
+    await tick(); // second poll starts, awaiting `slow`
+
+    // Workspace switches away before the slow poll resolves.
+    mockGetWorkspacePath.mockReturnValue('/ws-b');
+    await act(async () => {
+      resolveSlow(listResponse([batch({ status: 'COMPLETED', results: { t1: 'COMPLETED' } })]));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The terminal transition belongs to /ws-a, which is no longer active.
+    expect(addNotification).not.toHaveBeenCalled();
+  });
+
   it('stops polling after unmount', async () => {
     const addNotification = jest.fn();
     queueResponses(listResponse([batch()]));

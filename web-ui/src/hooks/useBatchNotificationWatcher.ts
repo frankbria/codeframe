@@ -70,6 +70,12 @@ export function useBatchNotificationWatcher(
         prevTaskStatusRef.current = {};
       }
 
+      // The workspace can change while the request is in flight; a late-
+      // resolving poll for the previous workspace must not dispatch into the
+      // new one's notification store. Also covers unmount via `cancelled`.
+      const isCurrentWorkspace = () =>
+        !cancelled && getSelectedWorkspacePath() === workspacePath;
+
       let batches;
       try {
         const response = await batchesApi.list(workspacePath, { limit: 50 });
@@ -78,7 +84,7 @@ export function useBatchNotificationWatcher(
         // Transient API/network failure — keep baselines and retry next tick.
         return;
       }
-      if (cancelled) return;
+      if (!isCurrentWorkspace()) return;
 
       const prevBatchStatus = prevBatchStatusRef.current;
       const prevTaskStatus = prevTaskStatusRef.current;
@@ -105,7 +111,7 @@ export function useBatchNotificationWatcher(
           const current = batch.results[taskId] ?? 'READY';
           const prev = prevTaskStatus[taskId];
           if (prev !== undefined && current === 'BLOCKED' && prev !== 'BLOCKED') {
-            void notifyBlocked(workspacePath, taskId, addRef.current);
+            void notifyBlocked(workspacePath, taskId, addRef.current, isCurrentWorkspace);
           }
           prevTaskStatus[taskId] = current;
         }
@@ -147,8 +153,10 @@ function buildBatchMessage(
 async function notifyBlocked(
   workspacePath: string,
   taskId: string,
-  add: (input: AddNotificationInput) => void
+  add: (input: AddNotificationInput) => void,
+  isCurrentWorkspace: () => boolean
 ): Promise<void> {
+  if (!isCurrentWorkspace()) return;
   let title: string | undefined;
   try {
     const task = await tasksApi.getOne(workspacePath, taskId);
@@ -156,6 +164,8 @@ async function notifyBlocked(
   } catch {
     // Title is best-effort; fall back to a generic message.
   }
+  // The title fetch is itself async — re-check before dispatching.
+  if (!isCurrentWorkspace()) return;
   add({
     type: 'blocker.created',
     message: title
