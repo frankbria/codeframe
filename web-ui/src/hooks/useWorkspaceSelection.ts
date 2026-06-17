@@ -23,8 +23,6 @@ interface SelectWorkspaceOptions {
 export interface UseWorkspaceSelectionResult {
   /** The selected workspace path, or null when none is selected. */
   workspacePath: string | null;
-  /** Imperatively set the path (e.g. after the home tech-stack flow). */
-  setWorkspacePath: (path: string | null) => void;
   /**
    * True once the path has been hydrated from localStorage on mount. Pages
    * gate their no-workspace UI on this to avoid an SSR/client hydration
@@ -99,11 +97,13 @@ export function useWorkspaceSelection(): UseWorkspaceSelectionResult {
   const clearWorkspace = useCallback(() => {
     clearSelectedWorkspacePath();
     setWorkspacePath(null);
+    // Drop any prior selection error so the selector doesn't re-render with a
+    // stale message after the user returns to it.
+    setSelectionError(null);
   }, []);
 
   return {
     workspacePath,
-    setWorkspacePath,
     workspaceReady,
     isSelecting,
     selectionError,
