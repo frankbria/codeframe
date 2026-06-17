@@ -31,6 +31,7 @@ import type {
   BlockerStatus,
   BlockerListResponse,
   BatchResponse,
+  BatchListResponse,
   DiffStatsResponse,
   PatchResponse,
   CommitMessageResponse,
@@ -487,6 +488,25 @@ export const blockersApi = {
 
 // Batches API methods
 export const batchesApi = {
+  /**
+   * List batches in the workspace, optionally filtered by status.
+   * Returns each batch with per-task results — used by the background
+   * notification watcher to detect terminal/blocked transitions.
+   */
+  list: async (
+    workspacePath: string,
+    options?: { status?: string; limit?: number }
+  ): Promise<BatchListResponse> => {
+    const response = await api.get<BatchListResponse>('/api/v2/batches', {
+      params: {
+        workspace_path: workspacePath,
+        ...(options?.status ? { status: options.status } : {}),
+        ...(options?.limit ? { limit: options.limit } : {}),
+      },
+    });
+    return response.data;
+  },
+
   /**
    * Get batch details including per-task results
    */

@@ -161,6 +161,13 @@ export interface BatchResponse {
   results: Record<string, string>; // task_id → RunStatus
 }
 
+// Mirrors batches_v2.py:BatchListResponse
+export interface BatchListResponse {
+  batches: BatchResponse[];
+  total: number;
+  by_status: Record<string, number>;
+}
+
 // UI-derived agent state for execution monitor display
 export type UIAgentState =
   | 'CONNECTING'

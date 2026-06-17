@@ -24,7 +24,6 @@ import {
 import { batchesApi, tasksApi } from '@/lib/api';
 import { EventStream } from './EventStream';
 import { useExecutionMonitor } from '@/hooks/useExecutionMonitor';
-import { useNotificationContext } from '@/contexts/NotificationContext';
 import type { BatchResponse, Task } from '@/types';
 
 // ── Status icon helper ────────────────────────────────────────────────
@@ -51,7 +50,6 @@ interface BatchExecutionMonitorProps {
 
 export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecutionMonitorProps) {
   const router = useRouter();
-  const { addNotification } = useNotificationContext();
   const [batch, setBatch] = useState<BatchResponse | null>(null);
   const [tasks, setTasks] = useState<Record<string, Task>>({});
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -60,10 +58,6 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
 
   // Track which task IDs have already been fetched to avoid refetching
   const fetchedTaskIdsRef = useRef<Set<string>>(new Set());
-
-  // Track previous batch + per-task statuses for transition-based notifications
-  const prevBatchStatusRef = useRef<string | null>(null);
-  const prevTaskStatusesRef = useRef<Record<string, string>>({});
 
   // ── Fetch batch details + task names ────────────────────────────────
   const fetchBatch = useCallback(async () => {
@@ -104,55 +98,10 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
     };
   }, [batch?.status, fetchBatch]);
 
-  // Fire notifications on batch terminal transition + per-task BLOCKED transitions
-  useEffect(() => {
-    if (!batch) return;
-
-    const TERMINAL = ['COMPLETED', 'FAILED', 'CANCELLED'];
-    const prevBatchStatus = prevBatchStatusRef.current;
-    if (
-      prevBatchStatus !== null &&
-      !TERMINAL.includes(prevBatchStatus) &&
-      TERMINAL.includes(batch.status)
-    ) {
-      const completedCount = batch.task_ids.filter(
-        (id) => batch.results[id] === 'COMPLETED' || batch.results[id] === 'DONE'
-      ).length;
-      const total = batch.task_ids.length;
-      const shortId = batchId.slice(0, 8);
-      const outcomeMessage =
-        batch.status === 'COMPLETED'
-          ? `Batch ${shortId} finished — ${completedCount}/${total} tasks done`
-          : batch.status === 'FAILED'
-            ? `Batch ${shortId} failed — ${completedCount}/${total} tasks completed before failure`
-            : `Batch ${shortId} cancelled — ${completedCount}/${total} tasks completed`;
-      addNotification({
-        type: 'batch.completed',
-        batchStatus: batch.status as 'COMPLETED' | 'FAILED' | 'CANCELLED',
-        message: outcomeMessage,
-        batchId,
-      });
-    }
-    prevBatchStatusRef.current = batch.status;
-
-    // Per-task: notify on transition to BLOCKED
-    const prevTaskStatuses = prevTaskStatusesRef.current;
-    for (const taskId of batch.task_ids) {
-      const currentStatus = batch.results[taskId];
-      const prevStatus = prevTaskStatuses[taskId];
-      if (currentStatus === 'BLOCKED' && prevStatus && prevStatus !== 'BLOCKED') {
-        const title = tasks[taskId]?.title;
-        addNotification({
-          type: 'blocker.created',
-          message: title
-            ? `Agent is blocked on "${title}" — your input needed`
-            : 'Agent is blocked — your input needed',
-          taskId,
-        });
-      }
-      prevTaskStatuses[taskId] = currentStatus ?? 'READY';
-    }
-  }, [batch, batchId, tasks, addNotification]);
+  // Note: batch.completed / blocker.created notifications are dispatched by the
+  // cross-page background watcher in NotificationProvider (issue #652), so they
+  // fire even when this monitor is unmounted. This component only renders the
+  // live view; it no longer dispatches notifications to avoid duplicates.
 
   // Auto-expand the first IN_PROGRESS task
   useEffect(() => {
