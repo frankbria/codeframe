@@ -197,6 +197,29 @@ describe('useEventSource', () => {
     expect(result.current.status).toBe('error');
   });
 
+  it('exhausts the retry budget even when each connection opens before closing (no infinite loop)', () => {
+    const { result } = renderHook(() =>
+      useEventSource({ url: '/api/stream', maxRetries: 1, retryDelay: 100 })
+    );
+
+    // Open then close WITHOUT a message — opening must not refund the retry
+    // budget, otherwise a server that accepts-then-drops loops forever.
+    act(() => {
+      MockEventSource.latest().simulateOpen();
+      MockEventSource.latest().simulateError(true);
+    });
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+    act(() => {
+      MockEventSource.latest().simulateOpen();
+      MockEventSource.latest().simulateError(true);
+    });
+
+    expect(result.current.status).toBe('error');
+    expect(MockEventSource._instances).toHaveLength(2); // one retry, then gave up
+  });
+
   // ─── Token-expiry re-auth probe (#651) ─────────────────────────────────
 
   it('fires the re-auth probe once on a CLOSED (fatal) error', () => {

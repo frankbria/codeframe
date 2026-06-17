@@ -89,16 +89,15 @@ export function useEventSource({
       sourceRef.current = es;
 
       es.onopen = () => {
-        retriesRef.current = 0;
-        authProbeFiredRef.current = false;
         setStatus('open');
         onOpenRef.current?.();
       };
 
       es.onmessage = (event) => {
-        // Reset retries after a successful message (not just on open)
-        // to prevent infinite reconnect loops when the server accepts
-        // then immediately closes the connection.
+        // Reset retries after a successful message (NOT on open) to prevent
+        // infinite reconnect loops when the server accepts then immediately
+        // closes the connection. The auth-probe guard re-arms on the same
+        // signal so a genuinely re-established stream can probe again (#651).
         retriesRef.current = 0;
         authProbeFiredRef.current = false;
         onMessageRef.current?.(event.data);
