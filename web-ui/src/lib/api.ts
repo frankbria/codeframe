@@ -165,6 +165,66 @@ const createApiClient = (): AxiosInstance => {
 
 const api = createApiClient();
 
+// Lightweight, param-less endpoint gated by the backend's `require_auth`
+// dependency. Crucially it RESPECTS `CODEFRAME_AUTH_REQUIRED`: with auth
+// disabled it returns 200 even without a token, so it never forces a redirect
+// in local/dev auth-off mode (unlike fastapi-users' `/users/me`, which always
+// 401s without a JWT). Returns only key *statuses*, never secrets (#651).
+const AUTH_PROBE_PATH = '/api/v2/settings/keys';
+
+const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL || '';
+
+/**
+ * Re-auth path for SSE/WebSocket streams (#651).
+ *
+ * EventSource/WebSocket cannot read the HTTP status of a failed handshake, so a
+ * stream that dies on an expired token looks identical to a transient network
+ * blip. When a stream hits a terminal/auth failure, call this to probe the
+ * auth-mode-aware endpoint via the shared axios client:
+ * - access ok (valid token, or auth disabled) → 200, resolves, the stream's own
+ *   retry continues.
+ * - token expired/invalid (auth required) → 401, the response interceptor above
+ *   clears the token and redirects to `/login` (the re-auth path).
+ *
+ * Always resolves — never throws — so callers can fire-and-forget from socket
+ * error handlers without unhandled rejections.
+ */
+export async function verifyAuthAfterStreamFailure(): Promise<void> {
+  try {
+    await api.get(AUTH_PROBE_PATH);
+  } catch {
+    // 401 → handled by the interceptor (clear token + redirect). Any other
+    // error (network, 5xx) is swallowed: let the stream's retry recover.
+  }
+}
+
+/**
+ * Proactive route-guard probe (#651). Determines whether the current client may
+ * access protected pages, WITHOUT triggering the global 401 redirect — the
+ * caller (AppLayout) decides what to do. Uses a bare axios call (not the shared
+ * client) so the response interceptor does not fire.
+ *
+ * - `'allowed'`  — 2xx: a valid token, or auth is disabled on the backend.
+ * - `'denied'`   — 401: auth is required and the client is unauthenticated.
+ * - `'error'`    — network/other failure: caller should fail open (render the
+ *   app and let real requests surface errors) rather than trap the user.
+ */
+export async function checkAuthAccess(): Promise<'allowed' | 'denied' | 'error'> {
+  const token = getToken();
+  try {
+    await axios.get(`${API_ORIGIN}${AUTH_PROBE_PATH}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      withCredentials: true,
+    });
+    return 'allowed';
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      return 'denied';
+    }
+    return 'error';
+  }
+}
+
 // Workspace API methods
 export const workspaceApi = {
   /**

@@ -2,6 +2,13 @@
 
 import { renderHook, act } from '@testing-library/react';
 import { useAgentChat } from '@/hooks/useAgentChat';
+import { verifyAuthAfterStreamFailure } from '@/lib/api';
+
+// The session-chat WS fires the re-auth probe on a 1008 auth close (#651).
+jest.mock('@/lib/api', () => ({ verifyAuthAfterStreamFailure: jest.fn() }));
+const mockVerify = verifyAuthAfterStreamFailure as jest.MockedFunction<
+  typeof verifyAuthAfterStreamFailure
+>;
 
 // ── WebSocket mock ────────────────────────────────────────────────────
 
@@ -15,7 +22,8 @@ class MockWebSocket {
 
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
-  onclose: (() => void) | null = null;
+  // Real browsers always deliver a CloseEvent with a numeric `code`.
+  onclose: ((event: { code: number }) => void) | null = null;
   onerror: (() => void) | null = null;
 
   static instances: MockWebSocket[] = [];
@@ -31,7 +39,7 @@ class MockWebSocket {
 
   close() {
     this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.();
+    this.onclose?.({ code: 1000 });
   }
 
   // Test helpers to simulate server events
@@ -43,9 +51,9 @@ class MockWebSocket {
     this.onmessage?.({ data: JSON.stringify(data) });
   }
 
-  simulateClose() {
+  simulateClose(code = 1000) {
     this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.();
+    this.onclose?.({ code });
   }
 
   simulateError() {
@@ -80,6 +88,7 @@ afterAll(() => {
 beforeEach(() => {
   MockWebSocket.instances = [];
   rafCallbacks = [];
+  mockVerify.mockClear();
   jest.useFakeTimers();
 
   // Set RAF mock AFTER useFakeTimers() — jest.useFakeTimers() replaces
@@ -161,6 +170,39 @@ describe('useAgentChat', () => {
       rerender({ id: 'session-2' });
       expect(MockWebSocket.instances).toHaveLength(2);
       expect(getLatestWs().url).toContain('session-2');
+    });
+  });
+
+  describe('auth-failure re-auth (#651)', () => {
+    // The backend denies WS auth before accepting the handshake, so a real
+    // browser reports an expired token as 1006 (abnormal), not 1008. The probe
+    // must therefore fire on any non-normal close; it self-filters (only a
+    // genuine 401 redirects), so transient closes still reconnect.
+    it('fires the re-auth probe on an abnormal (1006) close', () => {
+      renderHook(() => useAgentChat('session-1'));
+      act(() => { getLatestWs().simulateOpen(); });
+
+      act(() => { getLatestWs().simulateClose(1006); });
+
+      expect(mockVerify).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires the re-auth probe on an explicit 1008 auth close', () => {
+      renderHook(() => useAgentChat('session-1'));
+      act(() => { getLatestWs().simulateOpen(); });
+
+      act(() => { getLatestWs().simulateClose(1008); });
+
+      expect(mockVerify).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire the probe on a clean (1000) close', () => {
+      renderHook(() => useAgentChat('session-1'));
+      act(() => { getLatestWs().simulateOpen(); });
+
+      act(() => { getLatestWs().simulateClose(1000); });
+
+      expect(mockVerify).not.toHaveBeenCalled();
     });
   });
 

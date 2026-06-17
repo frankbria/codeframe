@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { getToken } from '@/lib/auth';
+import { verifyAuthAfterStreamFailure } from '@/lib/api';
 import type { AgentChatState, ChatMessage, MessageRole } from '@/types';
 
 export type { AgentChatState, ChatMessage, MessageRole };
@@ -13,12 +15,11 @@ const MAX_RETRIES = 5;
 const BASE_RETRY_DELAY_MS = 1000;
 const PING_INTERVAL_MS = 30_000;
 
-// ── Helpers ───────────────────────────────────────────────────────────
+// Normal WebSocket closure (RFC 6455). Anything else is treated as a possible
+// auth/expiry failure for the re-auth probe — see onclose below.
+const WS_NORMAL_CLOSURE_CODE = 1000;
 
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token');
-}
+// ── Helpers ───────────────────────────────────────────────────────────
 
 function generateId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -257,12 +258,21 @@ export function useAgentChat(sessionId: string | null): UseAgentChat {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event: CloseEvent) => {
       if (pingTimerRef.current !== null) {
         clearInterval(pingTimerRef.current);
         pingTimerRef.current = null;
       }
       updateState({ connected: false, status: 'disconnected' });
+
+      // A non-normal close may be an expired token. The backend rejects auth
+      // *before* accepting the WS handshake, so browsers report it as 1006
+      // (abnormal closure), not the server's 1008 — key off "not a clean close"
+      // rather than a specific code. The probe only redirects on a genuine 401,
+      // so transient closes still recover via the reconnect below (#651).
+      if (event.code !== WS_NORMAL_CLOSURE_CODE) {
+        void verifyAuthAfterStreamFailure();
+      }
 
       if (retriesRef.current < MAX_RETRIES) {
         const delay = BASE_RETRY_DELAY_MS * 2 ** retriesRef.current;

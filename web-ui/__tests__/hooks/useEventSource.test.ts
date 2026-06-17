@@ -1,5 +1,14 @@
 import { renderHook, act } from '@testing-library/react';
 import { useEventSource } from '@/hooks/useEventSource';
+import { verifyAuthAfterStreamFailure } from '@/lib/api';
+
+// The SSE re-auth probe (#651) is fired from useEventSource on terminal errors.
+jest.mock('@/lib/api', () => ({
+  verifyAuthAfterStreamFailure: jest.fn(),
+}));
+const mockVerify = verifyAuthAfterStreamFailure as jest.MockedFunction<
+  typeof verifyAuthAfterStreamFailure
+>;
 
 // Mock EventSource
 class MockEventSource {
@@ -50,6 +59,7 @@ class MockEventSource {
 describe('useEventSource', () => {
   beforeEach(() => {
     MockEventSource.reset();
+    mockVerify.mockClear();
     jest.useFakeTimers();
   });
 
@@ -185,5 +195,89 @@ describe('useEventSource', () => {
     });
 
     expect(result.current.status).toBe('error');
+  });
+
+  it('exhausts the retry budget even when each connection opens before closing (no infinite loop)', () => {
+    const { result } = renderHook(() =>
+      useEventSource({ url: '/api/stream', maxRetries: 1, retryDelay: 100 })
+    );
+
+    // Open then close WITHOUT a message — opening must not refund the retry
+    // budget, otherwise a server that accepts-then-drops loops forever.
+    act(() => {
+      MockEventSource.latest().simulateOpen();
+      MockEventSource.latest().simulateError(true);
+    });
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+    act(() => {
+      MockEventSource.latest().simulateOpen();
+      MockEventSource.latest().simulateError(true);
+    });
+
+    expect(result.current.status).toBe('error');
+    expect(MockEventSource._instances).toHaveLength(2); // one retry, then gave up
+  });
+
+  // ─── Token-expiry re-auth probe (#651) ─────────────────────────────────
+
+  it('fires the re-auth probe once on a CLOSED (fatal) error', () => {
+    renderHook(() => useEventSource({ url: '/api/stream', maxRetries: 2 }));
+
+    act(() => {
+      MockEventSource.latest().simulateError(true);
+    });
+
+    expect(mockVerify).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire the probe on a transient (non-CLOSED) error', () => {
+    renderHook(() => useEventSource({ url: '/api/stream' }));
+
+    act(() => {
+      MockEventSource.latest().simulateError(false);
+    });
+
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it('does not re-fire the probe on repeated CLOSED errors before a reconnect succeeds', () => {
+    renderHook(() =>
+      useEventSource({ url: '/api/stream', maxRetries: 3, retryDelay: 100 })
+    );
+
+    act(() => {
+      MockEventSource.latest().simulateError(true);
+    });
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+    // New EventSource from the reconnect; another fatal error.
+    act(() => {
+      MockEventSource.latest().simulateError(true);
+    });
+
+    expect(mockVerify).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-arms the probe after a successful message between failures', () => {
+    renderHook(() =>
+      useEventSource({ url: '/api/stream', maxRetries: 3, retryDelay: 100 })
+    );
+
+    act(() => {
+      MockEventSource.latest().simulateError(true);
+    });
+    act(() => {
+      jest.advanceTimersByTime(100);
+    });
+    act(() => {
+      MockEventSource.latest().simulateOpen();
+      MockEventSource.latest().simulateMessage('ok');
+      MockEventSource.latest().simulateError(true);
+    });
+
+    expect(mockVerify).toHaveBeenCalledTimes(2);
   });
 });

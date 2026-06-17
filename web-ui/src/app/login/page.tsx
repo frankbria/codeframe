@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Login01Icon, Mail01Icon, LockIcon, Loading03Icon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import {
   CardContent,
   CardFooter,
 } from '@/components/ui/card';
-import { login, register } from '@/lib/auth';
+import { login, register, isAuthenticated } from '@/lib/auth';
 
 type Mode = 'login' | 'register';
 
@@ -32,6 +32,17 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Already-authenticated visitors are bounced to the app (#651). Tracked in
+  // state so we render a neutral loader (not a flash of the form) while the
+  // client-side redirect runs.
+  const [redirecting, setRedirecting] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated()) {
+      setRedirecting(true);
+      router.replace('/');
+    }
+  }, [router]);
 
   const isRegister = mode === 'register';
 
@@ -58,6 +69,18 @@ export default function LoginPage() {
   function toggleMode() {
     setMode((prev) => (prev === 'login' ? 'register' : 'login'));
     setError(null);
+  }
+
+  if (redirecting) {
+    return (
+      <div
+        className="flex min-h-screen items-center justify-center bg-background p-4"
+        role="status"
+        aria-label="Redirecting"
+      >
+        <Loading03Icon className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+      </div>
+    );
   }
 
   return (

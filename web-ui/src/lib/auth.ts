@@ -36,6 +36,15 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+/**
+ * Whether a JWT is currently stored. Used by the proactive route guard
+ * (`AppLayout`) and the `/login` already-authenticated redirect (#651).
+ * Returns `false` during SSR (no `window`).
+ */
+export function isAuthenticated(): boolean {
+  return getToken() !== null;
+}
+
 // ── Auth flows ──────────────────────────────────────────────────────────
 
 interface LoginResponse {
