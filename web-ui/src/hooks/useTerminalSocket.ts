@@ -3,9 +3,9 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { verifyAuthAfterStreamFailure } from '@/lib/api';
 
-// WebSocket close code the terminal endpoint sends for auth failures
-// (missing/expired/invalid token, inactive user). See terminal_ws.py.
-const WS_AUTH_FAILURE_CODE = 4001;
+// Normal WebSocket closure (RFC 6455). Anything else is treated as a possible
+// auth/expiry failure for the re-auth probe — see onclose below.
+const WS_NORMAL_CLOSURE_CODE = 1000;
 
 export type TerminalSocketStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error';
 
@@ -99,10 +99,12 @@ export function useTerminalSocket({
 
       ws.onclose = (event) => {
         wsRef.current = null;
-        // A token-expiry close (4001) surfaces the re-auth path: probe
-        // /users/me so a genuine expiry clears the token and redirects to
-        // /login (#651).
-        if (event.code === WS_AUTH_FAILURE_CODE) {
+        // A non-normal close may be an expired token. The backend rejects auth
+        // *before* accepting the WS handshake, so browsers report it as 1006
+        // (abnormal closure), not the server's 4001 — key off "not a clean
+        // close" rather than a specific code. The probe only redirects on a
+        // genuine 401; transient closes still recover via the retry below (#651).
+        if (event.code !== WS_NORMAL_CLOSURE_CODE) {
           void verifyAuthAfterStreamFailure();
         }
         // Auth/authz rejections (4001, 4003, 4004, 4008) are permanent — retrying

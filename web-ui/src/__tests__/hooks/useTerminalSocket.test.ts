@@ -232,7 +232,11 @@ describe('useTerminalSocket', () => {
     expect(result.current.status).toBe('error');
   });
 
-  it('fires the re-auth probe on a 4001 auth close (#651)', () => {
+  // The backend denies WS auth before accepting the handshake, so a real
+  // browser reports an expired token as 1006 (abnormal), not 4001. The probe
+  // must fire on any non-normal close; it self-filters (only a genuine 401
+  // redirects), so transient closes still retry.
+  it('fires the re-auth probe on an explicit 4001 auth close (#651)', () => {
     const onData = jest.fn();
     renderHook(() =>
       useTerminalSocket({ url: 'ws://localhost/ws/sessions/s1/terminal?token=t', onData })
@@ -244,7 +248,7 @@ describe('useTerminalSocket', () => {
     expect(mockVerify).toHaveBeenCalledTimes(1);
   });
 
-  it('does not fire the probe on a transient (non-auth) close', () => {
+  it('fires the re-auth probe on an abnormal (1006) close', () => {
     const onData = jest.fn();
     renderHook(() =>
       useTerminalSocket({
@@ -256,6 +260,22 @@ describe('useTerminalSocket', () => {
     const ws = MockWebSocket.instances[0];
     act(() => ws.simulateOpen());
     act(() => ws.simulateClose(1006));
+
+    expect(mockVerify).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire the probe on a clean (1000) close', () => {
+    const onData = jest.fn();
+    renderHook(() =>
+      useTerminalSocket({
+        url: 'ws://localhost/ws/sessions/s1/terminal?token=t',
+        onData,
+        retryDelay: 100,
+      })
+    );
+    const ws = MockWebSocket.instances[0];
+    act(() => ws.simulateOpen());
+    act(() => ws.simulateClose(1000));
 
     expect(mockVerify).not.toHaveBeenCalled();
   });

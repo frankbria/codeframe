@@ -174,26 +174,33 @@ describe('useAgentChat', () => {
   });
 
   describe('auth-failure re-auth (#651)', () => {
-    it('fires the re-auth probe and does not reconnect on a 1008 auth close', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    // The backend denies WS auth before accepting the handshake, so a real
+    // browser reports an expired token as 1006 (abnormal), not 1008. The probe
+    // must therefore fire on any non-normal close; it self-filters (only a
+    // genuine 401 redirects), so transient closes still reconnect.
+    it('fires the re-auth probe on an abnormal (1006) close', () => {
+      renderHook(() => useAgentChat('session-1'));
+      act(() => { getLatestWs().simulateOpen(); });
+
+      act(() => { getLatestWs().simulateClose(1006); });
+
+      expect(mockVerify).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires the re-auth probe on an explicit 1008 auth close', () => {
+      renderHook(() => useAgentChat('session-1'));
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => { getLatestWs().simulateClose(1008); });
 
       expect(mockVerify).toHaveBeenCalledTimes(1);
-      expect(result.current.state.status).toBe('error');
-      expect(result.current.state.error).toBe('Authentication failed');
-
-      // No reconnect scheduled for an auth failure.
-      act(() => { jest.advanceTimersByTime(10_000); });
-      expect(MockWebSocket.instances).toHaveLength(1);
     });
 
-    it('does not fire the probe on a normal (non-auth) close', () => {
+    it('does not fire the probe on a clean (1000) close', () => {
       renderHook(() => useAgentChat('session-1'));
       act(() => { getLatestWs().simulateOpen(); });
 
-      act(() => { getLatestWs().simulateClose(1006); });
+      act(() => { getLatestWs().simulateClose(1000); });
 
       expect(mockVerify).not.toHaveBeenCalled();
     });

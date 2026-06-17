@@ -15,9 +15,9 @@ const MAX_RETRIES = 5;
 const BASE_RETRY_DELAY_MS = 1000;
 const PING_INTERVAL_MS = 30_000;
 
-// WebSocket close code the session-chat endpoint sends for any auth failure
-// (missing/expired/invalid token, inactive user). See session_chat_ws.py.
-const WS_AUTH_FAILURE_CODE = 1008;
+// Normal WebSocket closure (RFC 6455). Anything else is treated as a possible
+// auth/expiry failure for the re-auth probe — see onclose below.
+const WS_NORMAL_CLOSURE_CODE = 1000;
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -265,13 +265,13 @@ export function useAgentChat(sessionId: string | null): UseAgentChat {
       }
       updateState({ connected: false, status: 'disconnected' });
 
-      // Auth failure (1008): reconnecting with the same stale token would loop.
-      // Probe /users/me to surface the re-auth path — a genuine expiry clears
-      // the token and redirects to /login (#651).
-      if (event.code === WS_AUTH_FAILURE_CODE) {
+      // A non-normal close may be an expired token. The backend rejects auth
+      // *before* accepting the WS handshake, so browsers report it as 1006
+      // (abnormal closure), not the server's 1008 — key off "not a clean close"
+      // rather than a specific code. The probe only redirects on a genuine 401,
+      // so transient closes still recover via the reconnect below (#651).
+      if (event.code !== WS_NORMAL_CLOSURE_CODE) {
         void verifyAuthAfterStreamFailure();
-        updateState({ status: 'error', error: 'Authentication failed' });
-        return;
       }
 
       if (retriesRef.current < MAX_RETRIES) {
