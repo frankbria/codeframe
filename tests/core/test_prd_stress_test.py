@@ -584,3 +584,172 @@ class TestStressTestCLI:
         assert output_path.exists()
         content = output_path.read_text()
         assert "Technical Specification" in content
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage (issue #654): error/JSON-fallback paths, child filtering,
+# resolve_ambiguities_into_prd, and sync exception propagation.
+# ---------------------------------------------------------------------------
+
+
+def _provider_returning(content: str):
+    """A provider whose .complete() always returns the given content."""
+    mock = MagicMock()
+    resp = MagicMock()
+    resp.content = content
+    mock.complete.return_value = resp
+    return mock
+
+
+class TestExtractGoalsErrorPaths:
+    def test_invalid_json_returns_empty(self):
+        from codeframe.core.prd_stress_test import extract_goals
+
+        assert extract_goals("PRD", _provider_returning("not json at all")) == []
+
+    def test_non_list_json_returns_empty(self):
+        from codeframe.core.prd_stress_test import extract_goals
+
+        # Valid JSON, but an object rather than a list → treated as no goals.
+        assert extract_goals("PRD", _provider_returning('{"a": 1}')) == []
+
+    def test_list_of_non_strings_is_stringified(self):
+        from codeframe.core.prd_stress_test import extract_goals
+
+        assert extract_goals("PRD", _provider_returning("[1, 2]")) == ["1", "2"]
+
+
+class TestClassifyAndDecomposeErrorPaths:
+    def test_invalid_json_falls_back_to_atomic(self):
+        from codeframe.core.prd_stress_test import classify_and_decompose, Classification
+
+        cls, children, ambiguity, complexity = classify_and_decompose(
+            "Goal", "desc", [], "PRD", 0, _provider_returning("garbage{")
+        )
+        assert cls == Classification.ATOMIC
+        assert children == []
+        assert ambiguity is None
+        assert complexity == "Low"
+
+    def test_invalid_classification_string_falls_back_to_atomic(self):
+        from codeframe.core.prd_stress_test import classify_and_decompose, Classification
+
+        provider = _provider_returning('{"classification": "nonsense"}')
+        cls, _, _, _ = classify_and_decompose("G", "d", [], "PRD", 0, provider)
+        assert cls == Classification.ATOMIC
+
+    def test_composite_with_no_children(self):
+        from codeframe.core.prd_stress_test import classify_and_decompose, Classification
+
+        provider = _provider_returning(
+            '{"classification": "composite", "children": []}'
+        )
+        cls, children, _, _ = classify_and_decompose("G", "d", [], "PRD", 0, provider)
+        assert cls == Classification.COMPOSITE
+        assert children == []
+
+    def test_malformed_children_are_filtered(self):
+        from codeframe.core.prd_stress_test import classify_and_decompose
+
+        provider = _provider_returning(
+            '{"classification": "composite", "children": ['
+            '{"title": "keep me"},'
+            '"a bare string",'
+            '{"foo": "no title or description"},'
+            '{"description": "keep me too"}'
+            ']}'
+        )
+        _, children, _, _ = classify_and_decompose("G", "d", [], "PRD", 0, provider)
+        # Only the two dicts carrying title/description survive.
+        assert len(children) == 2
+        assert children[0]["title"] == "keep me"
+        assert children[1]["description"] == "keep me too"
+
+
+class TestResolveAmbiguitiesIntoPrd:
+    def _resolved_ambiguity(self):
+        from codeframe.core.prd_stress_test import Ambiguity
+
+        return Ambiguity(
+            id="amb-1",
+            label="AUTH",
+            source_node_title="Authentication",
+            questions=["OAuth or password?"],
+            recommendation="Pick password",
+            severity="blocking",
+            resolved_answer="Email/password with JWT",
+        )
+
+    def test_no_resolved_answers_returns_original_without_calling_llm(self):
+        from codeframe.core.prd_stress_test import (
+            resolve_ambiguities_into_prd,
+            Ambiguity,
+        )
+
+        unresolved = Ambiguity(
+            id="amb-x",
+            label="X",
+            source_node_title="N",
+            questions=["?"],
+            recommendation="r",
+        )
+        provider = MagicMock()
+        out = resolve_ambiguities_into_prd("ORIGINAL PRD", [unresolved], provider)
+        assert out == "ORIGINAL PRD"
+        provider.complete.assert_not_called()
+
+    def test_folds_resolved_answers_into_new_prd(self):
+        from codeframe.core.prd_stress_test import resolve_ambiguities_into_prd
+
+        original = "# PRD\n" + ("body line\n" * 20)
+        updated = original + "\n## Authentication\nEmail/password with JWT.\n"
+        provider = _provider_returning(updated)
+
+        out = resolve_ambiguities_into_prd(
+            original, [self._resolved_ambiguity()], provider
+        )
+        assert out == updated.strip()
+        provider.complete.assert_called_once()
+
+    def test_truncated_rewrite_returns_original(self):
+        from codeframe.core.prd_stress_test import resolve_ambiguities_into_prd
+
+        original = "x" * 200
+        # A rewrite shorter than half the original is treated as truncated.
+        provider = _provider_returning("too short")
+        out = resolve_ambiguities_into_prd(
+            original, [self._resolved_ambiguity()], provider
+        )
+        assert out == original
+
+
+class TestRenderAmbiguityReportEmpty:
+    def test_empty_list_reports_well_specified(self):
+        from codeframe.core.prd_stress_test import render_ambiguity_report
+
+        report = render_ambiguity_report([])
+        assert "No ambiguities found" in report
+
+    def test_resolved_answer_is_rendered(self):
+        from codeframe.core.prd_stress_test import render_ambiguity_report, Ambiguity
+
+        amb = Ambiguity(
+            id="a",
+            label="AUTH",
+            source_node_title="Authentication",
+            questions=["OAuth?"],
+            recommendation="password",
+            resolved_answer="Use JWT",
+        )
+        report = render_ambiguity_report([amb])
+        assert "✓ Resolved: Use JWT" in report
+
+
+class TestStressTestPrdSyncErrorPropagation:
+    def test_provider_exception_propagates(self):
+        from codeframe.core.prd_stress_test import stress_test_prd
+
+        provider = MagicMock()
+        provider.complete.side_effect = RuntimeError("LLM down")
+        with pytest.raises(RuntimeError, match="LLM down"):
+            stress_test_prd("# PRD\nSome content", provider)

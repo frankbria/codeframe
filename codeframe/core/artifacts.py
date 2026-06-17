@@ -288,7 +288,12 @@ def get_status(repo_path: Path) -> dict:
         text=True,
     )
 
-    lines = [line for line in result.stdout.strip().split("\n") if line]
+    # NOTE: use splitlines() (not strip().split("\n")). The porcelain status
+    # field is two columns wide (e.g. " M file" for a worktree-only change);
+    # str.strip() would remove the leading space of the first line and shift
+    # the column parsing, misclassifying that file as staged and dropping its
+    # first filename character.
+    lines = [line for line in result.stdout.splitlines() if line]
 
     staged = []
     unstaged = []
