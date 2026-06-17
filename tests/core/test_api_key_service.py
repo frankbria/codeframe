@@ -236,3 +236,16 @@ class TestGetApiKey:
 
     def test_get_unknown_key_returns_none(self, service):
         assert service.get_api_key("missing") is None
+
+    def test_get_api_key_is_owner_agnostic(self, service):
+        """Unlike revoke/rotate, get_api_key takes no user_id and does NOT
+        enforce ownership — it returns public (non-secret) info for any key id.
+        This pins that intentional contract so a future ownership change is a
+        deliberate, test-visible decision."""
+        created = service.create_api_key(user_id=USER_A, name="A-owned")
+        # Fetched without any user context; still resolves.
+        info = service.get_api_key(created.id)
+        assert info is not None
+        assert info.id == created.id
+        # And the returned info carries no secret material.
+        assert not hasattr(info, "key_hash")

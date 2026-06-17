@@ -202,6 +202,18 @@ class TestGetStatus:
         status = get_status(git_workspace.repo_path)
         assert "brand_new.py" in status["untracked"]
 
+    def test_staged_and_then_modified_again(self, git_workspace):
+        """`MM` porcelain: a file staged then modified again appears in BOTH
+        staged and unstaged — exercises the two-column parser directly."""
+        repo = git_workspace.repo_path
+        _git(repo, "add", "hello.py")
+        # Modify again after staging → worktree differs from index too.
+        (repo / "hello.py").write_text("def hello():\n    return 'third edit'\n")
+
+        status = get_status(repo)
+        assert "hello.py" in status["staged"]
+        assert "hello.py" in status["unstaged"]
+
 
 # --- list_patches -----------------------------------------------------------
 

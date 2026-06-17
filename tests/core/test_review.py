@@ -56,9 +56,13 @@ def workspace(tmp_path) -> Workspace:
 
 
 @pytest.fixture(autouse=True)
-def quiet_analyzers(monkeypatch):
-    """Default all analyzers to no findings — no bandit subprocess, no radon."""
-    monkeypatch.setattr(ComplexityAnalyzer, "analyze_file", lambda self, p: [])
+def quiet_heavy_analyzers(monkeypatch):
+    """Silence the analyzers that shell out / are heavy (bandit, OWASP regex).
+
+    The in-process radon-based ComplexityAnalyzer is left REAL so the default
+    path exercises a real analyzer (it returns [] for trivial files); individual
+    tests override it via monkeypatch when they need controlled findings.
+    """
     monkeypatch.setattr(SecurityScanner, "analyze_file", lambda self, p: [])
     monkeypatch.setattr(OWASPPatterns, "check_file", lambda self, p: [])
 
@@ -172,6 +176,25 @@ class TestReviewFiles:
         result = review_files(workspace, [name])
         assert isinstance(result, ReviewResult)
         assert result.findings == []
+
+    def test_real_complexity_analyzer_integration(self, workspace):
+        """Smoke test against the REAL ComplexityAnalyzer (no mock) to lock the
+        finding attribute contract review.py depends on (category/severity/
+        line_number/message/suggestion)."""
+        complex_src = "def m(a, b, c, d, e):\n" + "".join(
+            f"    if a == {i}:\n        return b if c else d\n" for i in range(15)
+        ) + "    return e\n"
+        (workspace.repo_path / "complex.py").write_text(complex_src)
+
+        result = review_files(workspace, ["complex.py"])
+
+        assert result.findings, "real analyzer should flag a high-complexity function"
+        flagged = result.findings[0]
+        assert flagged.category == "complexity"
+        assert flagged.file_path == "complex.py"
+        assert flagged.severity in {"critical", "high", "medium", "low", "info"}
+        # A real complexity finding lowers the score below perfect.
+        assert result.overall_score < 100.0
 
 
 # --- review_task ------------------------------------------------------------
