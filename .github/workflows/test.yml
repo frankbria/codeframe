@@ -236,12 +236,12 @@ jobs:
           uv pip install -e .
           echo "✅ Package installed in editable mode"
 
-      - name: Run pytest (v2 suite) with coverage
-        timeout-minutes: 15
+      - name: Run pytest (full non-e2e suite) with coverage
+        timeout-minutes: 20
         run: |
           uv run pytest tests/ \
             --ignore=tests/e2e \
-            -m v2 \
+            -m "not lifecycle" \
             -q \
             --tb=short \
             --cov=codeframe \
@@ -249,7 +249,8 @@ jobs:
             --cov-report=xml \
             --cov-report=html
           echo "Coverage measured for reporting purposes."
-          echo "Note: -m v2 covers v2 code paths only; legacy v1 modules are excluded."
+          echo "Note: gate runs every non-e2e test except 'lifecycle' (real-LLM,"
+          echo "      run locally via scripts/lifecycle before opening a PR)."
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
