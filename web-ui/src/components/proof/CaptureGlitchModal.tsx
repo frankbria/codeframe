@@ -168,7 +168,7 @@ export function CaptureGlitchModal({
               <button
                 type="button"
                 aria-label="Close"
-                className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                className="rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2"
               >
                 <Cancel01Icon className="h-4 w-4" aria-hidden="true" />
               </button>

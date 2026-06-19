@@ -42,7 +42,7 @@ export function PipelineProgressBar() {
   return (
     <nav
       aria-label="Pipeline progress"
-      className="sticky top-0 z-10 flex items-center justify-center gap-0 border-b bg-card px-4 py-2 shadow-sm"
+      className="sticky top-0 z-10 flex items-center justify-center gap-0 border-b bg-card px-4 py-2 shadow-xs"
     >
       {PHASES.map((phase, index) => {
         const phaseStatus = status[phase.key];

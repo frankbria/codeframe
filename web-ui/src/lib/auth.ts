@@ -14,6 +14,8 @@
  */
 import axios from 'axios';
 
+import { redirectTo } from './navigation';
+
 const TOKEN_KEY = 'auth_token';
 
 // Login/register hit the API origin directly. Mirror the axios client base URL.
@@ -96,9 +98,7 @@ export async function register(email: string, password: string): Promise<void> {
  */
 export function logout(): void {
   clearToken();
-  if (typeof window !== 'undefined') {
-    window.location.href = '/login';
-  }
+  redirectTo('/login');
 }
 
 // ── SSE helper ──────────────────────────────────────────────────────────

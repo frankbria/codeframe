@@ -36,7 +36,7 @@ function GateEvidenceRow({ ev }: GateEvidenceRowProps) {
         type="button"
         aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
         <span className="font-mono text-xs text-muted-foreground w-16 shrink-0 capitalize">{ev.gate}</span>
         <span

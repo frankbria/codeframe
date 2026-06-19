@@ -14,7 +14,9 @@ on:
 
 env:
   PYTHON_VERSION: '3.11'
-  NODE_VERSION: '20'
+  # ESLint 10's deps require Node ^20.19 || ^22.13 || >=24; pin the minimum
+  # explicitly so a floating '20' tag can't resolve to an older 20.x patch.
+  NODE_VERSION: '20.19'
 
 jobs:
   # ============================================

@@ -93,7 +93,7 @@ export function WorkspaceSelector({
                   value={inputPath}
                   onChange={(e) => setInputPath(e.target.value)}
                   placeholder="/home/user/projects/my-app"
-                  className="w-full px-3 py-2 border rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full px-3 py-2 border rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring"
                   disabled={isLoading}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -161,7 +161,7 @@ export function WorkspaceSelector({
                           handleSelectRecent(workspace.repo_path);
                         }
                       }}
-                      className={`w-full flex items-center justify-between p-3 rounded-md border hover:bg-accent transition-colors text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring aria-disabled:opacity-50 aria-disabled:cursor-not-allowed${
+                      className={`w-full flex items-center justify-between p-3 rounded-md border hover:bg-accent transition-colors text-left cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-ring aria-disabled:opacity-50 aria-disabled:cursor-not-allowed${
                         isStale ? ' opacity-60' : ''
                       }`}
                       aria-disabled={isLoading}
@@ -200,7 +200,7 @@ export function WorkspaceSelector({
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
                           }}
-                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive focus:outline-none focus:ring-2 focus:ring-ring"
+                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive focus:outline-hidden focus:ring-2 focus:ring-ring"
                           title="Remove from recent"
                           aria-label={`Remove ${displayName} from recent projects`}
                         >

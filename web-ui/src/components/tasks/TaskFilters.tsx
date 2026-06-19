@@ -66,7 +66,7 @@ export function TaskFilters({
             <button
               key={value}
               onClick={() => onStatusFilter(isActive ? null : value)}
-              className="focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring rounded-md"
+              className="focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring rounded-md"
             >
               <Badge
                 variant={variant as never}

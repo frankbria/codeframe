@@ -134,7 +134,7 @@ export function UploadPRDModal({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Extracted from content if not provided"
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
           />
         </div>
 
@@ -157,7 +157,7 @@ export function UploadPRDModal({
               }}
               placeholder="Paste your PRD markdown here..."
               rows={12}
-              className="w-full rounded-md border bg-background px-3 py-2 font-mono text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+              className="w-full rounded-md border bg-background px-3 py-2 font-mono text-sm placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
             />
           </TabsContent>
 

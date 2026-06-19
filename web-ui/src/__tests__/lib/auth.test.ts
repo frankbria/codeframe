@@ -11,6 +11,13 @@ import axios from 'axios';
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
+// jsdom 30 makes window.location non-configurable; mock the navigation seam so
+// logout's redirect is observable without emitting a jsdom navigation error.
+jest.mock('@/lib/navigation', () => ({
+  currentPathname: jest.fn(() => ''),
+  redirectTo: jest.fn(),
+}));
+
 import {
   getToken,
   setToken,
@@ -20,6 +27,9 @@ import {
   logout,
   withTokenParam,
 } from '@/lib/auth';
+import { redirectTo } from '@/lib/navigation';
+
+const mockRedirectTo = redirectTo as jest.MockedFunction<typeof redirectTo>;
 
 describe('auth token storage', () => {
   beforeEach(() => {
@@ -120,12 +130,14 @@ describe('register', () => {
 describe('logout', () => {
   beforeEach(() => {
     localStorage.clear();
+    mockRedirectTo.mockClear();
   });
 
-  it('clears the token', () => {
+  it('clears the token and redirects to /login', () => {
     setToken('jwt-abc');
     logout();
     expect(getToken()).toBeNull();
+    expect(mockRedirectTo).toHaveBeenCalledWith('/login');
   });
 });
 

@@ -77,7 +77,7 @@ export function RunHistoryPanel({ workspacePath, onSelectRun, selectedRunId }: R
                         onSelectRun(run.run_id);
                       }
                     }}
-                    className={`cursor-pointer border-b last:border-0 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset${
+                    className={`cursor-pointer border-b last:border-0 hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset${
                       isSelected ? ' bg-muted/60' : ''
                     }`}
                   >

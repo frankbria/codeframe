@@ -71,7 +71,7 @@ export function BlockerEvent({ event, workspacePath, onAnswered }: BlockerEventP
 
       {/* Answer form */}
       <textarea
-        className="mb-2 w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        className="mb-2 w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring"
         rows={3}
         placeholder="Type your answer..."
         aria-label="Your answer to the blocker question"

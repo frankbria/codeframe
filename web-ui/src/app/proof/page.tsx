@@ -367,7 +367,7 @@ function ProofPageContent() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 aria-label="Search requirements"
-                className="h-8 rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                className="h-8 rounded-md border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-1"
               />
 
               <label className="sr-only" htmlFor="filter-status">Status</label>
@@ -376,7 +376,7 @@ function ProofPageContent() {
                 aria-label="Status"
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as '' | ProofReqStatus)}
-                className="h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                className="h-8 rounded-md border bg-background px-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-1"
               >
                 <option value="">All statuses</option>
                 {STATUS_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -388,7 +388,7 @@ function ProofPageContent() {
                 aria-label="Severity"
                 value={filterSeverity}
                 onChange={(e) => setFilterSeverity(e.target.value as '' | ProofSeverity)}
-                className="h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                className="h-8 rounded-md border bg-background px-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-1"
               >
                 <option value="">All severities</option>
                 {SEVERITY_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -400,7 +400,7 @@ function ProofPageContent() {
                 aria-label="Glitch Type"
                 value={filterGlitch}
                 onChange={(e) => setFilterGlitch(e.target.value)}
-                className="h-8 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                className="h-8 rounded-md border bg-background px-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-1"
               >
                 <option value="">All glitch types</option>
                 {glitchTypes.map((g) => (
@@ -430,7 +430,7 @@ function ProofPageContent() {
                         Glitch Type
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button type="button" aria-label="Explain Glitch Type" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                            <button type="button" aria-label="Explain Glitch Type" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                               <InformationCircleIcon className="h-3.5 w-3.5" aria-hidden="true" />
                             </button>
                           </TooltipTrigger>
@@ -443,7 +443,7 @@ function ProofPageContent() {
                         <SortHeader col="severity" label="Severity" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button type="button" aria-label="Explain Severity" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                            <button type="button" aria-label="Explain Severity" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                               <InformationCircleIcon className="h-3.5 w-3.5" aria-hidden="true" />
                             </button>
                           </TooltipTrigger>
@@ -456,7 +456,7 @@ function ProofPageContent() {
                         Gates
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button type="button" aria-label="Explain Gates" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                            <button type="button" aria-label="Explain Gates" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                               <InformationCircleIcon className="h-3.5 w-3.5" aria-hidden="true" />
                             </button>
                           </TooltipTrigger>

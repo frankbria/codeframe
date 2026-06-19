@@ -53,7 +53,7 @@ export function MarkdownEditor({
               value={changeSummary}
               onChange={(e) => setChangeSummary(e.target.value)}
               placeholder="Change summary (optional)"
-              className="h-8 w-56 rounded-md border bg-background px-2 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+              className="h-8 w-56 rounded-md border bg-background px-2 text-xs placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
             />
             <Button size="sm" onClick={handleSave} disabled={isSaving}>
               {isSaving ? (
@@ -73,7 +73,7 @@ export function MarkdownEditor({
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          className="min-h-[400px] w-full rounded-md border bg-background px-4 py-3 font-mono text-sm leading-relaxed placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+          className="min-h-[400px] w-full rounded-md border bg-background px-4 py-3 font-mono text-sm leading-relaxed placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
           placeholder="Write your PRD in markdown..."
         />
       )}

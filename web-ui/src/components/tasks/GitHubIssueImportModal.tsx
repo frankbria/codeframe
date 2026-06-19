@@ -149,7 +149,7 @@ export function GitHubIssueImportModal({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+            className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
           >
             <Cancel01Icon className="h-4 w-4" />
           </button>
