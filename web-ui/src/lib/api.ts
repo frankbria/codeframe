@@ -7,6 +7,7 @@
  */
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { getToken, clearToken } from './auth';
+import { currentPathname, redirectTo } from './navigation';
 import type {
   WorkspaceResponse,
   WorkspaceExistsResponse,
@@ -147,8 +148,8 @@ const createApiClient = (): AxiosInstance => {
       // avoid a redirect loop on a failed login request (#336).
       if (error.response?.status === 401 && typeof window !== 'undefined') {
         clearToken();
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
+        if (currentPathname() !== '/login') {
+          redirectTo('/login');
         }
       }
 

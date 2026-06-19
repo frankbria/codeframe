@@ -13,6 +13,17 @@ import { AxiosHeaders } from 'axios';
 
 import api from '@/lib/api';
 import { setToken, getToken } from '@/lib/auth';
+import { currentPathname, redirectTo } from '@/lib/navigation';
+
+// jsdom 30 makes window.location non-configurable, so we mock the navigation
+// seam (src/lib/navigation) to control pathname and observe redirects instead.
+jest.mock('@/lib/navigation', () => ({
+  currentPathname: jest.fn(() => '/tasks'),
+  redirectTo: jest.fn(),
+}));
+
+const mockCurrentPathname = currentPathname as jest.MockedFunction<typeof currentPathname>;
+const mockRedirectTo = redirectTo as jest.MockedFunction<typeof redirectTo>;
 
 // Pull the registered handlers off the axios instance interceptor stacks.
 function getRequestHandler() {
@@ -55,24 +66,10 @@ describe('api request interceptor — Authorization header', () => {
 });
 
 describe('api response interceptor — 401 handling', () => {
-  const originalLocation = window.location;
-
   beforeEach(() => {
     localStorage.clear();
-    // Replace window.location with a writable stub so we can observe href set.
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      writable: true,
-      value: { ...originalLocation, href: '', pathname: '/tasks' },
-    });
-  });
-
-  afterEach(() => {
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      writable: true,
-      value: originalLocation,
-    });
+    mockRedirectTo.mockClear();
+    mockCurrentPathname.mockReturnValue('/tasks');
   });
 
   it('clears token and redirects to /login on 401', async () => {
@@ -87,11 +84,11 @@ describe('api response interceptor — 401 handling', () => {
     ).rejects.toMatchObject({ status_code: 401 });
 
     expect(getToken()).toBeNull();
-    expect(window.location.href).toBe('/login');
+    expect(mockRedirectTo).toHaveBeenCalledWith('/login');
   });
 
   it('does NOT redirect when already on /login', async () => {
-    (window.location as Location & { pathname: string }).pathname = '/login';
+    mockCurrentPathname.mockReturnValue('/login');
     setToken('jwt-123');
     const handler = getResponseRejectHandler();
 
@@ -102,7 +99,7 @@ describe('api response interceptor — 401 handling', () => {
       } as AxiosError)
     ).rejects.toBeDefined();
 
-    expect(window.location.href).toBe('');
+    expect(mockRedirectTo).not.toHaveBeenCalled();
   });
 
   it('preserves error normalization for non-401 errors', async () => {
@@ -113,6 +110,6 @@ describe('api response interceptor — 401 handling', () => {
         response: { status: 500, data: { detail: 'Boom' } },
       } as AxiosError)
     ).rejects.toMatchObject({ detail: 'Boom', status_code: 500 });
-    expect(window.location.href).toBe('');
+    expect(mockRedirectTo).not.toHaveBeenCalled();
   });
 });

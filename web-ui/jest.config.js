@@ -25,6 +25,9 @@ const customJestConfig = {
     '!src/**/*.d.ts',
     '!src/types/**/*',
   ],
+  // Jest 30 dropped 'json-summary' from the default reporters; CI's coverage
+  // threshold gate reads coverage/coverage-summary.json, so request it explicitly.
+  coverageReporters: ['json', 'json-summary', 'lcov', 'text', 'clover'],
 };
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
