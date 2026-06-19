@@ -153,7 +153,7 @@ tests/
 ### Python / CLI
 ```bash
 uv run pytest                            # All tests
-uv run pytest --ignore=tests/e2e -m "not lifecycle"  # The CI gate (every non-e2e, non-real-LLM test)
+uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle"  # The CI gate (every non-e2e, non-real-LLM test)
 uv run pytest tests/core/                # Core module tests
 scripts/lifecycle --mode cli|api|web|all # Real-LLM lifecycle tests (run locally before a PR)
 uv run ruff check .
