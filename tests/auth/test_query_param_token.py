@@ -15,8 +15,9 @@ import pytest
 from fastapi import FastAPI, Depends, Request
 from fastapi.testclient import TestClient
 
+from codeframe.auth import manager
 from codeframe.auth.dependencies import get_current_user, get_current_user_optional
-from codeframe.auth.manager import SECRET, JWT_ALGORITHM, reset_auth_engine
+from codeframe.auth.manager import JWT_ALGORITHM, reset_auth_engine
 from codeframe.platform_store.database import Database
 
 pytestmark = pytest.mark.v2
@@ -27,7 +28,13 @@ SSE_PATH = "/api/v2/tasks/abc/stream"
 PLAIN_PATH = "/whoami"
 
 
-def _make_token(user_id: int = 1, secret: str = SECRET) -> str:
+def _make_token(user_id: int = 1, secret: str = None) -> str:
+    # Read manager.SECRET live, not at import. get_current_user verifies against
+    # the live global, and any test that starts the app via TestClient refreshes
+    # it from .env (lifespan -> refresh_secret). Binding at import would make
+    # these tokens unverifiable once that happens — an order-dependent flake.
+    if secret is None:
+        secret = manager.SECRET
     payload = {
         "sub": str(user_id),
         "aud": ["fastapi-users:auth"],
