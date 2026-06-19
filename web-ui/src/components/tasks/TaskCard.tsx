@@ -102,7 +102,7 @@ export function TaskCard({
   const showCostBadge = costEntry !== undefined && costEntry.total_cost_usd > 0;
   return (
     <Card
-      className="cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+      className="cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
       onClick={() => onClick(task.id)}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;

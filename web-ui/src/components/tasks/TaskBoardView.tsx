@@ -451,7 +451,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
           <button
             onClick={() => setImportSummary(null)}
             aria-label="Dismiss import summary"
-            className="ml-2 rounded p-0.5 hover:opacity-70 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+            className="ml-2 rounded p-0.5 hover:opacity-70 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
           >
             <Cancel01Icon className="h-4 w-4" />
           </button>
@@ -465,7 +465,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="ml-2 rounded p-0.5 text-destructive hover:text-destructive/80 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+            className="ml-2 rounded p-0.5 text-destructive hover:text-destructive/80 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
           >
             <Cancel01Icon className="h-4 w-4" />
           </button>

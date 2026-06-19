@@ -112,7 +112,7 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
                 <button
                   type="button"
                   onClick={() => toggleExpand(pr.number)}
-                  className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left transition-all rounded-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+                  className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left transition-all rounded-md focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
                   aria-expanded={expandedPR === pr.number}
                 >
                   {/* Left side */}
@@ -159,7 +159,7 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
                   href={pr.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0 text-muted-foreground transition-all hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring rounded"
+                  className="shrink-0 text-muted-foreground transition-all hover:text-foreground focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring rounded"
                   aria-label={`Open PR #${pr.number} on GitHub`}
                 >
                   <ArrowUpRight01Icon className="h-4 w-4" />

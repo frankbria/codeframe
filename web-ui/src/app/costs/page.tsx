@@ -91,7 +91,7 @@ export default function CostsPage() {
               data-testid="time-range-select"
               value={days}
               onChange={(e) => setDays(Number(e.target.value))}
-              className="rounded-md border bg-background px-2 py-1 text-sm shadow-sm"
+              className="rounded-md border bg-background px-2 py-1 text-sm shadow-xs"
             >
               {DAY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>

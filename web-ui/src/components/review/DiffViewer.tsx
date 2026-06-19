@@ -152,7 +152,7 @@ export function DiffViewer({ diffFiles, selectedFile, tasks, contextTask, change
               )}
             >
               {/* File header row */}
-              <div className="sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-muted/50 backdrop-blur-sm">
+              <div className="sticky top-0 z-10 flex w-full items-center gap-2 border-b bg-muted/50 backdrop-blur-xs">
                 <button
                   type="button"
                   className="flex flex-1 items-center gap-2 px-4 py-2 text-left transition-all hover:bg-muted/70"

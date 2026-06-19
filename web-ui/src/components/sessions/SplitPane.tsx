@@ -279,7 +279,7 @@ export function SplitPane({
           tabIndex={0}
           className={cn(
             'w-full h-full bg-border hover:bg-primary cursor-col-resize',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
           )}
         />
 

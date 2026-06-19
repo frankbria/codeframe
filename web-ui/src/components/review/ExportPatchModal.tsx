@@ -67,7 +67,7 @@ export function ExportPatchModal({
 
         <textarea
           readOnly
-          className="h-64 w-full resize-none rounded-md border bg-muted p-3 font-mono text-xs transition-all focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+          className="h-64 w-full resize-none rounded-md border bg-muted p-3 font-mono text-xs transition-all focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
           value={patchContent}
         />
 
