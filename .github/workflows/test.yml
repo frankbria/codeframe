@@ -6,11 +6,10 @@ on:
   pull_request:
     branches: [main, develop]
   workflow_call:  # Allow this workflow to be called by other workflows
-  # Nightly browser-E2E schedule is intentionally OFF: the Playwright E2E suite is
-  # deferred pending a rewrite against the current Phase-3+ UI (tracked in #684).
-  # Re-enable this cron once those jobs are green.
-  # schedule:
-  #   - cron: '0 2 * * *'
+  # Nightly browser-E2E schedule: runs the full Playwright suite (all browsers,
+  # all specs) against the current Phase-3+ UI. Rewritten in #684.
+  schedule:
+    - cron: '0 2 * * *'
 
 env:
   PYTHON_VERSION: '3.11'
@@ -431,15 +430,137 @@ jobs:
           retention-days: 7
 
   # ============================================
-  # E2E Browser Tests (Playwright) — DEFERRED (see #684)
+  # E2E Browser Tests (Playwright) — rewritten for the Phase-3+ UI (#684)
   # ============================================
-  # The browser-level Playwright E2E jobs (Chromium smoke + all-browsers) are
-  # intentionally deferred, not abandoned. The tests/e2e/*.spec.ts suite targets a
-  # /projects/[id] route architecture that the current Phase-3+ workspace UI no
-  # longer has (pages are /tasks, /execution, /proof, etc.), so it cannot pass
-  # as-is and needs a rewrite. Tracked in issue #684. The nightly `schedule:` cron
-  # at the top of this file stays off until that rewrite lands and the jobs are
-  # green. The prior (stale) job definitions remain available in git history.
+  # `playwright.config.ts` (tests/e2e) starts the backend (uv uvicorn) and the
+  # frontend (next build + start) itself via its `webServer` block, and
+  # `global-setup.ts` seeds a workspace + login user. So these jobs only install
+  # deps + browsers and run Playwright.
+  #
+  #   - smoke: chromium, @smoke only, on every PR/push (gates merges via summary)
+  #   - full:  all browsers, all specs, nightly schedule
+  e2e-browser-smoke:
+    name: E2E Browser Smoke (Chromium)
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          enable-cache: true
+
+      - name: Install Python deps
+        run: |
+          uv venv
+          uv sync --extra dev
+          uv pip install -e .
+
+      - name: Configure git (review diff needs a repo)
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'web-ui/package-lock.json'
+
+      - name: Install frontend deps
+        working-directory: web-ui
+        run: npm ci
+
+      - name: Install E2E deps
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Install Playwright browser (chromium)
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright smoke suite
+        working-directory: tests/e2e
+        run: npx playwright test --project=chromium --grep @smoke
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-browser-smoke-report
+          path: tests/e2e/playwright-report/
+          retention-days: 7
+
+  e2e-browser-full:
+    name: E2E Browser Full (All Browsers)
+    runs-on: ubuntu-latest
+    # Nightly only — the full cross-browser sweep is too heavy for every PR.
+    if: github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          enable-cache: true
+
+      - name: Install Python deps
+        run: |
+          uv venv
+          uv sync --extra dev
+          uv pip install -e .
+
+      - name: Configure git (review diff needs a repo)
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'web-ui/package-lock.json'
+
+      - name: Install frontend deps
+        working-directory: web-ui
+        run: npm ci
+
+      - name: Install E2E deps
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Install Playwright browsers (all)
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps
+
+      - name: Run full Playwright suite
+        working-directory: tests/e2e
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-browser-full-report
+          path: tests/e2e/playwright-report/
+          retention-days: 7
 
   # ============================================
   # TestSprite E2E Tests (Optional)
@@ -498,7 +619,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests, code-quality, check-hardcoded-urls]
+    needs: [backend-tests, frontend-tests, code-quality, check-hardcoded-urls, e2e-browser-smoke]
     if: always()
 
     steps:
@@ -512,10 +633,12 @@ jobs:
           echo "| Hardcoded URLs | ${{ needs.check-hardcoded-urls.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Backend Tests | ${{ needs.backend-tests.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend Tests | ${{ needs.frontend-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| E2E Browser Smoke | ${{ needs.e2e-browser-smoke.result }} |" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.code-quality.result }}" == "failure" ] || \
              [ "${{ needs.check-hardcoded-urls.result }}" == "failure" ] || \
              [ "${{ needs.backend-tests.result }}" == "failure" ] || \
+             [ "${{ needs.e2e-browser-smoke.result }}" == "failure" ] || \
              [ "${{ needs.frontend-tests.result }}" == "failure" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "❌ Some checks failed. Please review the logs above." >> $GITHUB_STEP_SUMMARY
