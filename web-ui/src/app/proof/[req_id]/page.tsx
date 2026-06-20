@@ -85,7 +85,7 @@ export default function ProofDetailPage() {
     setFilterGate(saved.gate);
     setFilterResult(saved.result);
     setSearch(saved.search);
-  }, []);
+  }, [reqId]);
 
   const { data: req, error: reqError, isLoading: reqLoading, mutate: mutateReq } =
     useSWR<ProofRequirement>(
