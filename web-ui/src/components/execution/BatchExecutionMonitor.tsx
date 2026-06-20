@@ -88,15 +88,16 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
   }, [batchId, workspacePath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll every 5 seconds while batch is active
+  const batchStatus = batch?.status;
   useEffect(() => {
-    const isActive = batch && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(batch.status);
+    const isActive = batchStatus && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(batchStatus);
     if (isActive) {
       pollRef.current = setInterval(fetchBatch, 5000);
     }
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [batch?.status, fetchBatch]);
+  }, [batchStatus, fetchBatch]);
 
   // Note: batch.completed / blocker.created notifications are dispatched by the
   // cross-page background watcher in NotificationProvider (issue #652), so they

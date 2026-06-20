@@ -48,6 +48,28 @@ export function DiscoveryPanel({
   const [error, setError] = useState<string | null>(null);
   const [pendingSession, setPendingSession] = useState<PendingSession | null>(null);
 
+  // ─── Start a brand-new session ─────────────────────────────────
+  // Declared before initSession so it can be a stable dependency of it.
+  const startNewSession = useCallback(async () => {
+    setError(null);
+    setPendingSession(null);
+    try {
+      const resp = await discoveryApi.start(workspacePath);
+      setSessionId(resp.session_id);
+      setState('discovering');
+      setMessages([
+        {
+          role: 'assistant',
+          content: questionText(resp.question),
+          timestamp: now(),
+        },
+      ]);
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setError(apiErr.detail || 'Failed to start discovery session');
+    }
+  }, [workspacePath]);
+
   // ─── Initialise: check for existing session before starting ────
   const initSession = useCallback(async () => {
     setIsThinking(true);
@@ -80,28 +102,7 @@ export function DiscoveryPanel({
     } finally {
       setIsThinking(false);
     }
-  }, [workspacePath]);
-
-  // ─── Start a brand-new session ─────────────────────────────────
-  const startNewSession = useCallback(async () => {
-    setError(null);
-    setPendingSession(null);
-    try {
-      const resp = await discoveryApi.start(workspacePath);
-      setSessionId(resp.session_id);
-      setState('discovering');
-      setMessages([
-        {
-          role: 'assistant',
-          content: questionText(resp.question),
-          timestamp: now(),
-        },
-      ]);
-    } catch (err) {
-      const apiErr = err as ApiError;
-      setError(apiErr.detail || 'Failed to start discovery session');
-    }
-  }, [workspacePath]);
+  }, [workspacePath, startNewSession]);
 
   // ─── Resume an existing session ────────────────────────────────
   const resumeSession = useCallback(() => {
