@@ -17,12 +17,12 @@ test.describe('Costs page', () => {
     errors.assertClean();
   });
 
-  test('time-range selector is interactive', async ({ page }) => {
+  test('time-range selector switches the range', async ({ page }) => {
     await gotoPage(page, '/costs');
+    // Native <select data-testid="time-range-select"> (costs/page.tsx).
     const select = page.getByTestId('time-range-select');
     await expect(select).toBeVisible();
-    await select.selectOption('7').catch(() => {
-      /* if it isn't a native <select>, just confirm it's present */
-    });
+    await select.selectOption('7');
+    await expect(select).toHaveValue('7');
   });
 });

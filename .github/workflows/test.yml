@@ -443,10 +443,14 @@ jobs:
     name: E2E Browser Smoke (Chromium)
     runs-on: ubuntu-latest
     needs: code-quality
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -505,10 +509,14 @@ jobs:
     runs-on: ubuntu-latest
     # Nightly only — the full cross-browser sweep is too heavy for every PR.
     if: github.event_name == 'schedule'
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -635,10 +643,15 @@ jobs:
           echo "| Frontend Tests | ${{ needs.frontend-tests.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| E2E Browser Smoke | ${{ needs.e2e-browser-smoke.result }} |" >> $GITHUB_STEP_SUMMARY
 
+          # The smoke job is a merge gate: treat any non-success terminal state
+          # (failure / cancelled / timed_out) as a gate failure, not just
+          # "failure". Other jobs keep the file's existing "failure"-only check.
           if [ "${{ needs.code-quality.result }}" == "failure" ] || \
              [ "${{ needs.check-hardcoded-urls.result }}" == "failure" ] || \
              [ "${{ needs.backend-tests.result }}" == "failure" ] || \
              [ "${{ needs.e2e-browser-smoke.result }}" == "failure" ] || \
+             [ "${{ needs.e2e-browser-smoke.result }}" == "cancelled" ] || \
+             [ "${{ needs.e2e-browser-smoke.result }}" == "timed_out" ] || \
              [ "${{ needs.frontend-tests.result }}" == "failure" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "❌ Some checks failed. Please review the logs above." >> $GITHUB_STEP_SUMMARY
