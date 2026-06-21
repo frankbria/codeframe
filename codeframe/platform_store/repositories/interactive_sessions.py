@@ -23,6 +23,7 @@ class InteractiveSessionRepository(BaseRepository):
         task_id: Optional[str] = None,
         agent_type: str = "claude",
         model: Optional[str] = None,
+        user_id: Optional[int] = None,
     ) -> dict:
         now = datetime.now(UTC).isoformat()
         session_id = str(uuid.uuid4())
@@ -30,10 +31,11 @@ class InteractiveSessionRepository(BaseRepository):
             """
             INSERT INTO interactive_sessions
                 (id, workspace_path, task_id, state, agent_type, model,
-                 cost_usd, input_tokens, output_tokens, created_at, updated_at, ended_at)
-            VALUES (?, ?, ?, 'active', ?, ?, 0.0, 0, 0, ?, ?, NULL)
+                 cost_usd, input_tokens, output_tokens, created_at, updated_at,
+                 ended_at, user_id)
+            VALUES (?, ?, ?, 'active', ?, ?, 0.0, 0, 0, ?, ?, NULL, ?)
             """,
-            (session_id, workspace_path, task_id, agent_type, model, now, now),
+            (session_id, workspace_path, task_id, agent_type, model, now, now, user_id),
         )
         self._commit()
         return self.get(session_id)

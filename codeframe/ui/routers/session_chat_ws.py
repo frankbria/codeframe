@@ -108,7 +108,7 @@ async def _run_streaming_adapter(
 async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
     """Bidirectional WebSocket for streaming agent chat on an interactive session."""
     # --- Auth ---
-    authenticated, _user_id = await _authenticate_websocket(websocket)
+    authenticated, user_id = await _authenticate_websocket(websocket)
     if not authenticated:
         return
 
@@ -121,6 +121,19 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
     session = await asyncio.to_thread(db.interactive_sessions.get, session_id)
     if session is None or session.get("state") == "ended":
         await websocket.close(code=4008, reason="Session not found or ended")
+        return
+
+    # --- Ownership check (issue #655) ---
+    # The chat agent runs file-system tools scoped to the session's workspace, so
+    # one authenticated user must not drive another user's session. Skipped in
+    # no-auth mode (user_id is None), matching terminal_ws / REST behavior.
+    # Fail closed: when auth is enabled (user_id is not None), an ownerless
+    # (NULL, e.g. pre-#655 migrated) or mismatched session is rejected.
+    session_user_id = session.get("user_id")
+    if user_id is not None and (
+        session_user_id is None or int(session_user_id) != user_id
+    ):
+        await websocket.close(code=1008, reason="Forbidden: session belongs to another user")
         return
 
     # --- Accept connection; everything after this point must run inside the

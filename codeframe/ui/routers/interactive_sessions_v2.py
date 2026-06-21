@@ -10,17 +10,21 @@ Routes:
     POST   /api/v2/sessions/{id}/messages          - Add message to session
     GET    /api/v2/sessions/{id}/messages          - Get message history (?limit=&offset=)
 
-Auth note: auth is a project-wide gap tracked in #336. All other v2 routers also
-lack auth — adding it only here would be inconsistent with the rest of the API.
+Auth: enforced project-wide via router-level ``require_auth`` (#336). Session
+creation additionally validates ``workspace_path`` against the workspace
+allowlist (#655) since the stored path becomes a terminal shell ``cwd``.
 """
 
 import logging
-from typing import Optional
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, field_validator
 
+from codeframe.auth.dependencies import require_auth
 from codeframe.lib.rate_limiter import rate_limit_standard
+from codeframe.ui.dependencies import enforce_workspace_allowlist
 
 logger = logging.getLogger(__name__)
 
@@ -136,14 +140,27 @@ def _session_to_response(row: dict) -> SessionResponse:
 
 @router.post("", status_code=201, response_model=SessionResponse)
 @rate_limit_standard()
-def create_session(body: SessionCreate, request: Request):
-    """Create a new interactive agent session."""
+def create_session(
+    body: SessionCreate,
+    request: Request,
+    auth: Dict[str, Any] = Depends(require_auth),
+):
+    """Create a new interactive agent session.
+
+    The stored ``workspace_path`` later becomes a terminal shell's ``cwd``
+    (terminal_ws / session_chat_ws), so it must clear the same allowlist as
+    REST workspace access (issue #655) — validated and resolved here.
+    """
     repo = _get_repo(request)
+    workspace_path = enforce_workspace_allowlist(
+        Path(body.workspace_path), auth.get("user_id")
+    )
     session = repo.create(
-        workspace_path=body.workspace_path,
+        workspace_path=str(workspace_path),
         task_id=body.task_id,
         agent_type=body.agent_type,
         model=body.model,
+        user_id=auth.get("user_id"),
     )
     return _session_to_response(session)
 

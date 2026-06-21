@@ -76,9 +76,13 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
 
     # --- Ownership check ---
     # Skipped in no-auth mode (user_id is None): there is no identity to enforce,
-    # matching REST behavior under CODEFRAME_AUTH_REQUIRED=false.
+    # matching REST behavior under CODEFRAME_AUTH_REQUIRED=false. When auth IS
+    # enabled, fail closed — an ownerless (NULL, e.g. pre-#655 migrated) or
+    # mismatched session is rejected.
     session_user_id = session.get("user_id")
-    if user_id is not None and session_user_id is not None and int(session_user_id) != user_id:
+    if user_id is not None and (
+        session_user_id is None or int(session_user_id) != user_id
+    ):
         await websocket.close(code=4003, reason="Forbidden: session belongs to another user")
         return
 
