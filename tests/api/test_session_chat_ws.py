@@ -71,9 +71,10 @@ def test_chat_ws_ownership_mismatch_closes():
         "codeframe.ui.routers.session_chat_ws._authenticate_websocket",
         new=AsyncMock(return_value=(True, 1)),
     ):
-        with pytest.raises(Exception):
+        with pytest.raises(WebSocketDisconnect) as exc:
             with client.websocket_connect("/ws/sessions/s1/chat?token=x"):
                 pass
+        assert exc.value.code == 1008
 
 
 # ---------------------------------------------------------------------------
