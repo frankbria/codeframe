@@ -267,6 +267,16 @@ ANTHROPIC_API_KEY=sk-ant-...          # Required for Anthropic provider (default
 E2B_API_KEY=e2b_...                   # Required for --engine cloud
 DATABASE_PATH=./codeframe.db          # Optional
 
+# Server deployment + workspace allowlist (#655)
+CODEFRAME_DEPLOYMENT_MODE=self_hosted # self_hosted (default) or hosted (multi-tenant)
+WORKSPACE_ROOT=/srv/workspaces        # os.pathsep-separated allowlist of permitted
+                                      # workspace roots. Any client-supplied workspace
+                                      # path (REST, workspace init, session create) must
+                                      # resolve inside a root, else 403. Unset = no
+                                      # allowlist (single-operator self-hosted default).
+                                      # In hosted mode it is MANDATORY (fail closed) and
+                                      # each user is confined to <root>/<user_id>.
+
 # LLM Provider selection (multi-provider support)
 # Priority: CLI flag > env var > .codeframe/config.yaml > default (anthropic)
 CODEFRAME_LLM_PROVIDER=anthropic      # Provider: anthropic (default), openai, ollama, vllm, compatible
