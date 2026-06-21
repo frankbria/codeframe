@@ -136,10 +136,61 @@ class TestUpdateNotificationSettings:
         assert r.status_code == 200
 
     def test_accepts_http(self, client):
-        """Plain http is allowed for local testing / internal endpoints."""
+        """Plain http is allowed for public endpoints."""
+        r = client.put(
+            "/api/v2/settings/notifications",
+            json={"webhook_url": "http://example.com:9876/h", "webhook_enabled": True},
+        )
+        assert r.status_code == 200
+
+    # --- SSRF host validation (#656) ---------------------------------------
+
+    def test_rejects_metadata_ip(self, client):
+        """Cloud IMDS (169.254.169.254) must be rejected — the core SSRF target."""
+        r = client.put(
+            "/api/v2/settings/notifications",
+            json={
+                "webhook_url": "http://169.254.169.254/latest/meta-data/",
+                "webhook_enabled": True,
+            },
+        )
+        assert r.status_code == 400
+
+    def test_rejects_localhost(self, client):
+        """localhost resolves to a loopback address → blocked by default."""
         r = client.put(
             "/api/v2/settings/notifications",
             json={"webhook_url": "http://localhost:9876/h", "webhook_enabled": True},
+        )
+        assert r.status_code == 400
+
+    def test_rejects_loopback_ip(self, client):
+        r = client.put(
+            "/api/v2/settings/notifications",
+            json={"webhook_url": "http://127.0.0.1:8000/h", "webhook_enabled": True},
+        )
+        assert r.status_code == 400
+
+    def test_rejects_rfc1918_ip(self, client):
+        r = client.put(
+            "/api/v2/settings/notifications",
+            json={"webhook_url": "http://10.0.0.5/h", "webhook_enabled": True},
+        )
+        assert r.status_code == 400
+
+    def test_rejects_ipv6_loopback(self, client):
+        r = client.put(
+            "/api/v2/settings/notifications",
+            json={"webhook_url": "http://[::1]:8000/h", "webhook_enabled": True},
+        )
+        assert r.status_code == 400
+
+    def test_allows_private_host_when_opted_in(self, client, monkeypatch):
+        """CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1 is the documented escape hatch."""
+        monkeypatch.setenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", "1")
+        r = client.put(
+            "/api/v2/settings/notifications",
+            json={"webhook_url": "http://127.0.0.1:8000/h", "webhook_enabled": True},
         )
         assert r.status_code == 200
 
@@ -214,6 +265,17 @@ class TestNotificationWebhookTest:
         path = workspace.state_dir / "notifications_config.json"
         path.write_text(
             '{"webhook_url": "file:///etc/passwd", "webhook_enabled": true}'
+        )
+        r = client.post("/api/v2/settings/notifications/test")
+        assert r.status_code == 400
+
+    def test_rejects_metadata_ip_at_test_time(self, client, workspace):
+        """SSRF (#656): a hand-edited config pointing at IMDS must be refused
+        by /test, not fired."""
+        path = workspace.state_dir / "notifications_config.json"
+        path.write_text(
+            '{"webhook_url": "http://169.254.169.254/latest/meta-data/", '
+            '"webhook_enabled": true}'
         )
         r = client.post("/api/v2/settings/notifications/test")
         assert r.status_code == 400
