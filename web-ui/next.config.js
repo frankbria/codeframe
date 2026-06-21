@@ -1,5 +1,12 @@
+const { securityHeaders } = require('./security-headers');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Defense-in-depth CSP + hardening headers (#657): contains any future XSS
+  // so an injected script can't exfiltrate the localStorage JWT.
+  async headers() {
+    return [{ source: '/:path*', headers: securityHeaders() }];
+  },
   async rewrites() {
     return {
       beforeFiles: [
