@@ -136,10 +136,12 @@ class TestUpdateNotificationSettings:
         assert r.status_code == 200
 
     def test_accepts_http(self, client):
-        """Plain http is allowed for public endpoints."""
+        """Plain http is allowed for public endpoints. Uses a global IP literal
+        (no DNS lookup) so the test is hermetic — TEST-NET ranges count as
+        private under ipaddress, so a real routable global IP is used."""
         r = client.put(
             "/api/v2/settings/notifications",
-            json={"webhook_url": "http://example.com:9876/h", "webhook_enabled": True},
+            json={"webhook_url": "http://8.8.8.8:9876/h", "webhook_enabled": True},
         )
         assert r.status_code == 200
 
@@ -157,10 +159,31 @@ class TestUpdateNotificationSettings:
         assert r.status_code == 400
 
     def test_rejects_localhost(self, client):
-        """localhost resolves to a loopback address → blocked by default."""
+        """A DNS name resolving to loopback → blocked. getaddrinfo is mocked so
+        the test doesn't depend on how the CI image resolves ``localhost``
+        (some return ::1, some 127.0.0.1, hardened ones not at all)."""
+        with patch(
+            "codeframe.ui.routers.settings_v2.socket.getaddrinfo",
+            return_value=[(2, 1, 6, "", ("127.0.0.1", 0))],
+        ):
+            r = client.put(
+                "/api/v2/settings/notifications",
+                json={
+                    "webhook_url": "http://localhost:9876/h",
+                    "webhook_enabled": True,
+                },
+            )
+        assert r.status_code == 400
+
+    def test_rejects_ipv4_mapped_ipv6_metadata(self, client):
+        """::ffff:169.254.169.254 must be unwrapped to its IPv4 and rejected —
+        the trickiest case, easy to silently break in a refactor."""
         r = client.put(
             "/api/v2/settings/notifications",
-            json={"webhook_url": "http://localhost:9876/h", "webhook_enabled": True},
+            json={
+                "webhook_url": "http://[::ffff:169.254.169.254]/h",
+                "webhook_enabled": True,
+            },
         )
         assert r.status_code == 400
 
@@ -188,11 +211,12 @@ class TestUpdateNotificationSettings:
     def test_allows_private_host_when_opted_in(self, client, monkeypatch):
         """CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1 is the documented escape hatch."""
         monkeypatch.setenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", "1")
-        r = client.put(
-            "/api/v2/settings/notifications",
-            json={"webhook_url": "http://127.0.0.1:8000/h", "webhook_enabled": True},
-        )
-        assert r.status_code == 200
+        for host in ("http://127.0.0.1:8000/h", "http://10.0.0.5/h"):
+            r = client.put(
+                "/api/v2/settings/notifications",
+                json={"webhook_url": host, "webhook_enabled": True},
+            )
+            assert r.status_code == 200, host
 
 
 class TestNotificationWebhookTest:

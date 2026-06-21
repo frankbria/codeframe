@@ -477,9 +477,10 @@ def _assert_webhook_host_is_public(hostname: str) -> None:
     checked. A host that cannot be resolved is allowed through — it isn't
     reachable right now, and we don't want to block saving a not-yet-live URL.
 
-    ponytail: resolve-and-check, not a request-time pinned connector, so DNS
-    rebinding (public at save, private at fire) is out of scope. Upgrade path:
-    pin the resolved IP through a custom aiohttp connector in ``send_event``.
+    Known limitation: resolve-and-check, not a request-time pinned connector,
+    so DNS rebinding (public at save, private at fire) is out of scope.
+    Upgrade path: pin the resolved IP through a custom aiohttp connector in
+    ``send_event``.
     """
     if _allow_private_webhook_hosts():
         return
