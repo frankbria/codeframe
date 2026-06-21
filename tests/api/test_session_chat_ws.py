@@ -9,6 +9,8 @@ but not interactive_sessions — we rely on the class_temp_db_path isolation
 and explicit teardown within tests where needed.
 """
 
+import os
+
 import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
@@ -25,8 +27,14 @@ pytestmark = pytest.mark.v2
 # ---------------------------------------------------------------------------
 
 
-def _create_session(client: TestClient, workspace_path: str = "/tmp/ws-test") -> str:
-    """Create an interactive session and return its ID."""
+def _create_session(client: TestClient, workspace_path: str | None = None) -> str:
+    """Create an interactive session and return its ID.
+
+    Defaults to a path under the test ``WORKSPACE_ROOT`` (set by the api
+    conftest) so it clears the workspace allowlist (#655).
+    """
+    if workspace_path is None:
+        workspace_path = os.path.join(os.environ.get("WORKSPACE_ROOT", "/tmp"), "ws-test")
     resp = client.post(
         "/api/v2/sessions",
         json={"workspace_path": workspace_path, "agent_type": "claude"},
@@ -37,6 +45,36 @@ def _create_session(client: TestClient, workspace_path: str = "/tmp/ws-test") ->
 
 def _ws_url(session_id: str, token: str) -> str:
     return f"/ws/sessions/{session_id}/chat?token={token}"
+
+
+def test_chat_ws_ownership_mismatch_closes():
+    """A session owned by another user is refused (issue #655)."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from codeframe.ui.routers.session_chat_ws import router
+
+    app = FastAPI()
+    app.include_router(router)
+    fake_db = MagicMock()
+    fake_db.interactive_sessions.get.return_value = {
+        "state": "active",
+        "workspace_path": "/tmp",
+        "user_id": 999,
+    }
+    app.state.db = fake_db
+    client = TestClient(app)
+
+    with patch(
+        "codeframe.ui.routers.session_chat_ws._authenticate_websocket",
+        new=AsyncMock(return_value=(True, 1)),
+    ):
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/ws/sessions/s1/chat?token=x"):
+                pass
+        assert exc.value.code == 1008
 
 
 # ---------------------------------------------------------------------------
