@@ -5,11 +5,7 @@
  * object-src / base-uri / frame-ancestors — these tests pin that lockdown so a
  * future edit can't silently widen it (e.g. to `connect-src *`).
  */
-const {
-  buildCsp,
-  buildConnectSrc,
-  securityHeaders,
-} = require('../security-headers');
+import { buildCsp, buildConnectSrc, securityHeaders } from '../security-headers';
 
 describe('security headers (#657)', () => {
   test('CSP locks down the exfil-relevant directives', () => {
