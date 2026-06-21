@@ -1,195 +1,83 @@
 import { defineConfig, devices } from '@playwright/test';
-import { TEST_DB_PATH, FRONTEND_URL } from './e2e-config';
-import { BROWSER_TIMEOUTS } from './browser-config';
+import {
+  BACKEND_PORT,
+  BACKEND_URL,
+  CENTRAL_DB_PATH,
+  FRONTEND_URL,
+  STORAGE_STATE_PATH,
+} from './e2e-env';
 
 /**
- * Playwright configuration for E2E tests.
+ * Playwright config for the rewritten browser E2E suite (issue #684).
  *
- * Cross-Browser Compatibility Notes:
- * - Chromium: Baseline browser, default timeouts
- * - Firefox: +50% timeouts for CSS rendering, filter NS_BINDING_ABORTED errors
- * - WebKit: +40% timeouts for element stabilization, retry on flaky tests
- * - Mobile: Touch events, scroll handling, extended timeouts for network
+ * Targets the current Phase-3+ workspace UI. `global-setup.ts` seeds a workspace
+ * and writes an authenticated storageState that authenticated specs reuse.
  *
- * See https://playwright.dev/docs/test-configuration
+ * Selection:
+ *   - PR smoke:  playwright test --project=chromium --grep @smoke
+ *   - Nightly:   playwright test            (all projects, all specs)
  */
 
-// Environment variable to filter specific browsers (e.g., E2E_BROWSER_FILTER=chromium,firefox)
-const browserFilter = process.env.E2E_BROWSER_FILTER?.split(',').map((b) => b.trim().toLowerCase());
+const frontendPort = new URL(FRONTEND_URL).port || '3001';
+const AUTH_SECRET = 'e2e-test-secret-not-a-real-credential';
+
+// Point ALL client transports at the test backend at build time (Next.js bakes
+// NEXT_PUBLIC_* into client code). Without SSE/WS, streaming hooks fall back to
+// :8000 and fail cross-origin.
+const WS_URL = BACKEND_URL.replace(/^http/, 'ws');
+const FRONTEND_BUILD_ENV =
+  `NEXT_PUBLIC_API_URL=${BACKEND_URL} NEXT_PUBLIC_SSE_URL=${BACKEND_URL} NEXT_PUBLIC_WS_URL=${WS_URL} PORT=${frontendPort}`;
 
 export default defineConfig({
   testDir: './',
   testMatch: '*.spec.ts',
-
-  /* Exclude debug tests from CI runs */
-  testIgnore: process.env.CI ? ['debug-error.spec.ts'] : [],
-
-  /* Global setup - creates test project */
   globalSetup: './global-setup.ts',
 
-  /* Run tests in files in parallel */
   fullyParallel: true,
-
-  /* Fail the build on CI if you accidentally left test.only in the source code */
   forbidOnly: !!process.env.CI,
-
-  /* Retry on CI only - Firefox and WebKit get extra retries */
   retries: process.env.CI ? 2 : 0,
-
-  /* SQLite doesn't handle concurrent writes well, so always use 1 worker.
-   * Multiple workers cause "database is locked" errors during parallel tests. */
+  // SQLite (workspace + central DB) doesn't love concurrent writers.
   workers: 1,
 
-  /* Reporter to use */
   reporter: [
-    ['html', { outputFolder: 'playwright-report' }],
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['list'],
-    ['json', { outputFile: 'playwright-report/results.json' }]
+    ['json', { outputFile: 'playwright-report/results.json' }],
   ],
 
-  /* Shared settings for all the projects below */
-  use: {
-    /* Base URL to use in actions like `await page.goto('/')` */
-    baseURL: FRONTEND_URL,
-
-    /* Collect trace when retrying the failed test */
-    trace: 'on-first-retry',
-
-    /* Screenshot on failure */
-    screenshot: 'only-on-failure',
-
-    /* Video on failure */
-    video: 'retain-on-failure',
-
-    /* Maximum time each action such as `click()` can take */
-    actionTimeout: BROWSER_TIMEOUTS.chromium.action,
-
-    /* Don't ignore HTTPS errors - catch certificate issues */
-    ignoreHTTPSErrors: false,
-
-    /* Enable strict mode in CI to catch selector ambiguity issues */
-    ...(process.env.CI && {
-      strictSelectors: true,
-    }),
-  },
-
-  /* Configure projects for major browsers with browser-specific settings */
-  projects: [
-    // =========================================================================
-    // CHROMIUM (Baseline)
-    // =========================================================================
-    {
-      name: 'chromium',
-      use: {
-        ...devices['Desktop Chrome'],
-      },
-    },
-
-    // =========================================================================
-    // FIREFOX - Slower CSS rendering, NS_BINDING_ABORTED during navigation
-    // =========================================================================
-    {
-      name: 'firefox',
-      use: {
-        ...devices['Desktop Firefox'],
-        // Extended timeouts for Firefox's slower CSS rendering
-        actionTimeout: BROWSER_TIMEOUTS.firefox.action,
-        // Reduce motion to avoid animation timing issues
-        contextOptions: {
-          reducedMotion: 'reduce',
-        },
-      },
-      // Firefox gets extra retries due to timing-sensitive failures
-      retries: process.env.CI ? 3 : 1,
-    },
-
-    // =========================================================================
-    // WEBKIT - Delayed element rendering, localStorage timing issues
-    // =========================================================================
-    {
-      name: 'webkit',
-      use: {
-        ...devices['Desktop Safari'],
-        // Extended timeouts for WebKit's delayed rendering
-        actionTimeout: BROWSER_TIMEOUTS.webkit.action,
-      },
-      // WebKit gets extra retries due to element stability issues
-      retries: process.env.CI ? 3 : 1,
-    },
-
-    // =========================================================================
-    // MOBILE CHROME - Touch events, smaller viewports
-    // =========================================================================
-    {
-      name: 'Mobile Chrome',
-      use: {
-        ...devices['Pixel 5'],
-        // Ensure touch mode is enabled
-        isMobile: true,
-        hasTouch: true,
-        // Extended timeouts for mobile network and touch handling
-        actionTimeout: BROWSER_TIMEOUTS.mobile.action,
-      },
-      // Mobile gets extra retries due to viewport/touch issues
-      retries: process.env.CI ? 2 : 1,
-    },
-
-    // =========================================================================
-    // MOBILE SAFARI - Touch events, WebKit quirks on mobile
-    // =========================================================================
-    {
-      name: 'Mobile Safari',
-      use: {
-        ...devices['iPhone 12'],
-        // Ensure touch mode is enabled
-        isMobile: true,
-        hasTouch: true,
-        // Extended timeouts (mobile + WebKit)
-        actionTimeout: BROWSER_TIMEOUTS.mobile.action,
-      },
-      // Mobile Safari gets most retries (mobile + WebKit quirks)
-      retries: process.env.CI ? 3 : 1,
-    },
-  ].filter((project) => {
-    // Filter projects if E2E_BROWSER_FILTER is set
-    if (!browserFilter) return true;
-    const projectName = project.name.toLowerCase();
-    return browserFilter.some(
-      (filter) => projectName.includes(filter) || filter.includes(projectName)
-    );
-  }),
-
-  /* Run local dev server before starting the tests */
-  webServer: process.env.CI
-    ? undefined // On CI, servers are started separately
-    : [
-        // Backend FastAPI server
-        {
-          // AUTH_SECRET: auth is ON by default and the server refuses to start
-          // on the default JWT secret (issue #643). Throwaway local-E2E value.
-          command: `cd ../.. && AUTH_SECRET=local-e2e-test-secret-not-a-real-credential DATABASE_PATH=${TEST_DB_PATH} uv run uvicorn codeframe.ui.server:app --port 8080`,
-          url: 'http://localhost:8080/ws/health',
-          reuseExistingServer: !process.env.CI,
-          timeout: 120000,
-        },
-        // Frontend Next.js production server (on port 3001 to avoid conflicts)
-        // Note: NEXT_PUBLIC_API_URL must be set at BUILD TIME for Next.js to bake it into client code
-        {
-          command: `cd ../../web-ui && rm -rf .next && TEST_DB_PATH=${TEST_DB_PATH} NEXT_PUBLIC_API_URL=http://localhost:8080 PORT=3001 npm run build && TEST_DB_PATH=${TEST_DB_PATH} NEXT_PUBLIC_API_URL=http://localhost:8080 PORT=3001 npm start`,
-          url: FRONTEND_URL,
-          reuseExistingServer: !process.env.CI,
-          timeout: 120000,
-        },
-      ],
-
-  /* Global timeout for each test - increased for CI */
   timeout: process.env.CI ? 60000 : 30000,
+  expect: { timeout: process.env.CI ? 15000 : 10000 },
 
-  /* Expect timeout - increased for CI
-   * Note: Browser-specific expect timeouts are handled via getBrowserTimeout() in test-utils.ts
-   * This is the base timeout; Firefox and WebKit tests use 1.5x and 1.4x multipliers respectively
-   */
-  expect: {
-    timeout: process.env.CI ? 10000 : BROWSER_TIMEOUTS.chromium.expect,
+  use: {
+    baseURL: FRONTEND_URL,
+    storageState: STORAGE_STATE_PATH,
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
   },
+
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+  ],
+
+  // Start backend + frontend for local runs; in CI the workflow can reuse an
+  // already-running pair (reuseExistingServer is true off-CI only).
+  webServer: [
+    {
+      command: `AUTH_SECRET=${AUTH_SECRET} DATABASE_PATH=${CENTRAL_DB_PATH} uv run uvicorn codeframe.ui.server:app --port ${BACKEND_PORT}`,
+      cwd: '../..',
+      url: `${BACKEND_URL}/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120000,
+    },
+    {
+      command: `${FRONTEND_BUILD_ENV} npm run build && ${FRONTEND_BUILD_ENV} npm start`,
+      cwd: '../../web-ui',
+      url: FRONTEND_URL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 300000,
+    },
+  ],
 });

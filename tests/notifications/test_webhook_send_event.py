@@ -56,6 +56,17 @@ async def test_send_event_returns_not_ok_on_5xx():
 
 
 @pytest.mark.asyncio
+async def test_send_event_does_not_follow_redirects():
+    """SSRF (#656): redirects must not be followed — a public target could
+    302 → 169.254.169.254 / localhost and bypass the save-time host check."""
+    svc = WebhookNotificationService(webhook_url="https://example.com/hook", timeout=5)
+    session = _mock_post(200)
+    with patch("aiohttp.ClientSession", return_value=session):
+        await svc.send_event(format_test_payload())
+    assert session.post.call_args.kwargs["allow_redirects"] is False
+
+
+@pytest.mark.asyncio
 async def test_send_event_no_url_returns_error():
     svc = WebhookNotificationService(webhook_url=None, timeout=5)
     result = await svc.send_event({"event": "test"})

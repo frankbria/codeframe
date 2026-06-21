@@ -25,6 +25,7 @@ from typing import Optional, Tuple
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from codeframe.auth.dependencies import authenticate_websocket
+from codeframe.ui.dependencies import revalidate_workspace_path
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +77,13 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
 
     # --- Ownership check ---
     # Skipped in no-auth mode (user_id is None): there is no identity to enforce,
-    # matching REST behavior under CODEFRAME_AUTH_REQUIRED=false.
+    # matching REST behavior under CODEFRAME_AUTH_REQUIRED=false. When auth IS
+    # enabled, fail closed — an ownerless (NULL, e.g. pre-#655 migrated) or
+    # mismatched session is rejected.
     session_user_id = session.get("user_id")
-    if user_id is not None and session_user_id is not None and int(session_user_id) != user_id:
+    if user_id is not None and (
+        session_user_id is None or int(session_user_id) != user_id
+    ):
         await websocket.close(code=4003, reason="Forbidden: session belongs to another user")
         return
 
@@ -87,6 +92,22 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
         logger.error("session_id=%s has no workspace_path; refusing terminal spawn", session_id)
         await websocket.close(code=4008, reason="Session has no workspace configured")
         return
+
+    # --- Revalidate the stored path against the allowlist (TOCTOU, #704) ---
+    # The path cleared the allowlist at create time, but a tenant could have
+    # swapped a dir for a symlink pointing outside its root before connecting.
+    # Re-resolve and re-check now; spawn with the freshly resolved path.
+    revalidated = await asyncio.to_thread(
+        revalidate_workspace_path, workspace_path, user_id
+    )
+    if revalidated is None:
+        logger.error(
+            "session_id=%s workspace_path no longer within allowlist; refusing terminal spawn",
+            session_id,
+        )
+        await websocket.close(code=4008, reason="Workspace path no longer permitted")
+        return
+    workspace_path = str(revalidated)
 
     # --- Per-user connection cap ---
     current = _user_terminal_counts.get(user_id, 0)
