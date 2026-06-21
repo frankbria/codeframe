@@ -18,6 +18,27 @@ import pytest
 
 SAMPLE_PROJECT_DIR = Path(__file__).parent / "sample_project"
 
+# Map the CODEFRAME_LIFECYCLE_MODEL shorthand (haiku/sonnet) to actual model IDs.
+# These are passed to all `cf` subprocesses via per-purpose env vars so the agent
+# uses the requested model class instead of the compiled-in defaults.
+_LIFECYCLE_MODEL_MAP: dict[str, str] = {
+    "haiku": "claude-haiku-4-5",
+    "sonnet": "claude-sonnet-4-5",
+}
+
+
+def _lifecycle_model_env() -> dict[str, str]:
+    """Return per-purpose model env vars based on CODEFRAME_LIFECYCLE_MODEL."""
+    alias = os.getenv("CODEFRAME_LIFECYCLE_MODEL", "haiku")
+    model = _LIFECYCLE_MODEL_MAP.get(alias, "claude-haiku-4-5")
+    return {
+        "CODEFRAME_PLANNING_MODEL": model,
+        "CODEFRAME_EXECUTION_MODEL": model,
+        "CODEFRAME_GENERATION_MODEL": model,
+        "CODEFRAME_CORRECTION_MODEL": model,
+        "CODEFRAME_SUPERVISION_MODEL": model,
+    }
+
 
 def pytest_configure(config):
     config.addinivalue_line(
@@ -83,7 +104,7 @@ def cf(target_project_dir):
             capture_output=True,
             text=True,
             timeout=timeout,
-            env={**os.environ},
+            env={**os.environ, **_lifecycle_model_env()},
         )
     return run
 

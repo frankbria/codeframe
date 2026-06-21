@@ -44,11 +44,11 @@ class Purpose(str, Enum):
 
 
 # Default model aliases (use valid Anthropic model identifiers)
-DEFAULT_PLANNING_MODEL = "claude-sonnet-4-20250514"
-DEFAULT_EXECUTION_MODEL = "claude-sonnet-4-20250514"
-DEFAULT_GENERATION_MODEL = "claude-3-5-haiku-20241022"
-DEFAULT_CORRECTION_MODEL = "claude-opus-4-20250514"  # Step up for fixing errors
-DEFAULT_SUPERVISION_MODEL = "claude-opus-4-20250514"  # Strong model for supervisor decisions
+DEFAULT_PLANNING_MODEL = "claude-sonnet-4-5"
+DEFAULT_EXECUTION_MODEL = "claude-sonnet-4-5"
+DEFAULT_GENERATION_MODEL = "claude-haiku-4-5"
+DEFAULT_CORRECTION_MODEL = "claude-sonnet-4-5"  # Use same tier; override via CODEFRAME_CORRECTION_MODEL for a stronger model
+DEFAULT_SUPERVISION_MODEL = "claude-sonnet-4-5"  # Use same tier; override via CODEFRAME_SUPERVISION_MODEL for a stronger model
 
 
 @dataclass
