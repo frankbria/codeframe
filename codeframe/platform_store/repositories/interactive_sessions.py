@@ -51,9 +51,15 @@ class InteractiveSessionRepository(BaseRepository):
         workspace_path: Optional[str] = None,
         state: Optional[str] = None,
         limit: int = 50,
+        user_id: Optional[int] = None,
     ) -> list[dict]:
         query = "SELECT * FROM interactive_sessions WHERE 1=1"
         params: list = []
+        # Owner-scoping (#704): filter only when a user_id is supplied. None means
+        # no-auth mode (CODEFRAME_AUTH_REQUIRED=false) → return all, unchanged.
+        if user_id is not None:
+            query += " AND user_id = ?"
+            params.append(user_id)
         if workspace_path is not None:
             query += " AND workspace_path = ?"
             params.append(workspace_path)

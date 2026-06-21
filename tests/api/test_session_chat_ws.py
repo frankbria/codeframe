@@ -77,6 +77,45 @@ def test_chat_ws_ownership_mismatch_closes():
         assert exc.value.code == 1008
 
 
+def test_chat_ws_symlink_escape_rejected(tmp_path, monkeypatch):
+    """TOCTOU: stored path swapped to a symlink outside the root → WS closes (#704)."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from codeframe.ui.routers.session_chat_ws import router
+
+    base = tmp_path / "allowed"
+    base.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    swapped = base / "proj"
+    swapped.symlink_to(outside)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(base))
+    monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "self_hosted")
+
+    app = FastAPI()
+    app.include_router(router)
+    fake_db = MagicMock()
+    fake_db.interactive_sessions.get.return_value = {
+        "state": "active",
+        "workspace_path": str(swapped),
+        "user_id": 1,
+    }
+    app.state.db = fake_db
+    client = TestClient(app)
+
+    with patch(
+        "codeframe.ui.routers.session_chat_ws._authenticate_websocket",
+        new=AsyncMock(return_value=(True, 1)),
+    ):
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/ws/sessions/s1/chat?token=x"):
+                pass
+        assert exc.value.code == 1008
+
+
 # ---------------------------------------------------------------------------
 # Auth tests
 # ---------------------------------------------------------------------------

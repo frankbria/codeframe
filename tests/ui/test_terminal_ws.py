@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from codeframe.ui.routers.terminal_ws import router
 
@@ -102,6 +103,74 @@ class TestTerminalWsAuth:
 # ---------------------------------------------------------------------------
 # Relay tests
 # ---------------------------------------------------------------------------
+
+
+class TestTerminalWsRevalidation:
+    """TOCTOU: the stored path is re-checked against the allowlist at connect (#704)."""
+
+    def test_symlink_escape_rejected(self, tmp_path, monkeypatch):
+        """A dir swapped for a symlink pointing outside the root → WS closes."""
+        base = tmp_path / "allowed"
+        base.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        swapped = base / "proj"
+        swapped.symlink_to(outside)  # tenant replaced proj -> outside after create
+        monkeypatch.setenv("WORKSPACE_ROOT", str(base))
+        monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "self_hosted")
+
+        app = _make_app(
+            session_data={
+                "state": "active",
+                "workspace_path": str(swapped),
+                "user_id": 1,
+            }
+        )
+        client = TestClient(app)
+        with patch(
+            "codeframe.ui.routers.terminal_ws._authenticate_websocket",
+            new=AsyncMock(return_value=(True, 1)),
+        ):
+            with pytest.raises(WebSocketDisconnect) as exc:
+                with client.websocket_connect("/ws/sessions/s1/terminal?token=x"):
+                    pass
+            # 4008 == revalidation reject (the session DOES have a workspace_path,
+            # so this code can only come from the allowlist re-check, not "no cwd").
+            assert exc.value.code == 4008
+
+    def test_path_inside_root_still_connects(self, tmp_path, monkeypatch):
+        """Revalidation does not break a legit path inside the root."""
+        base = tmp_path / "allowed"
+        proj = base / "proj"
+        proj.mkdir(parents=True)
+        monkeypatch.setenv("WORKSPACE_ROOT", str(base))
+        monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "self_hosted")
+
+        app = _make_app(
+            session_data={"state": "active", "workspace_path": str(proj), "user_id": 1}
+        )
+        mock_proc = MagicMock()
+        mock_proc.stdin = AsyncMock()
+        mock_proc.stdout = AsyncMock()
+        mock_proc.stdout.read = AsyncMock(return_value=b"$ ")
+        mock_proc.terminate = MagicMock()
+        mock_proc.wait = AsyncMock()
+
+        with (
+            patch(
+                "codeframe.ui.routers.terminal_ws._authenticate_websocket",
+                new=AsyncMock(return_value=(True, 1)),
+            ),
+            patch(
+                "asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=mock_proc),
+            ) as spawn,
+        ):
+            client = TestClient(app)
+            with client.websocket_connect("/ws/sessions/s1/terminal?token=x"):
+                pass
+        # Shell spawned with the resolved, allowlisted path.
+        assert spawn.call_args.kwargs["cwd"] == str(proj.resolve())
 
 
 class TestTerminalWsRelay:

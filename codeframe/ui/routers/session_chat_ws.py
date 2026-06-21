@@ -40,6 +40,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from codeframe.auth.dependencies import authenticate_websocket
 from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
+from codeframe.ui.dependencies import revalidate_workspace_path
 from codeframe.ui.shared import session_chat_manager
 
 logger = logging.getLogger(__name__)
@@ -135,6 +136,21 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
     ):
         await websocket.close(code=1008, reason="Forbidden: session belongs to another user")
         return
+
+    # --- Revalidate the stored path against the allowlist (TOCTOU, #704) ---
+    # The chat agent runs file-system tools scoped to this path. It cleared the
+    # allowlist at create time, but a tenant could have swapped a dir for a
+    # symlink pointing outside its root before connecting. Re-resolve and
+    # re-check now; use the freshly resolved path for the rest of the session.
+    raw_workspace = session.get("workspace_path")
+    validated_workspace: Optional[Path] = None
+    if raw_workspace:
+        validated_workspace = await asyncio.to_thread(
+            revalidate_workspace_path, raw_workspace, user_id
+        )
+        if validated_workspace is None:
+            await websocket.close(code=1008, reason="Workspace path no longer permitted")
+            return
 
     # --- Accept connection; everything after this point must run inside the
     #     try/finally so unregister() and close() always execute even if
@@ -282,14 +298,13 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             break
 
                     interrupt_event = await session_chat_manager.get_interrupt_event(session_id)
-                    raw_workspace = session.get("workspace_path")
-                    if not raw_workspace:
+                    if validated_workspace is None:
                         logger.warning(
                             "session_id=%s has no workspace_path set; "
                             "file tools will scope to server CWD",
                             session_id,
                         )
-                    workspace_path = Path(raw_workspace or ".")
+                    workspace_path = validated_workspace or Path(".")
                     adapter_task[0] = asyncio.create_task(
                         _run_streaming_adapter(
                             session_id,
