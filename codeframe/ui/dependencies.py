@@ -79,6 +79,26 @@ def enforce_workspace_allowlist(path: Path, user_id: Optional[int]) -> Path:
     return path
 
 
+def revalidate_workspace_path(workspace_path: str, user_id: Optional[int]) -> Optional[Path]:
+    """Re-check a stored session workspace path against the allowlist at use time (#704).
+
+    ``create_session`` validates the path once, but the terminal/chat WebSockets
+    open later — a tenant could swap a dir (or ancestor) for a symlink pointing
+    outside its allowed root in between (TOCTOU). ``enforce_workspace_allowlist``
+    calls ``.resolve()``, which follows symlinks, so a swapped-in escape is caught
+    here. Returns the freshly resolved path, or ``None`` if it no longer passes
+    (the WS caller closes the socket instead of raising HTTP).
+
+    ponytail: closes the practical window; a sub-millisecond race remains between
+    this check and the shell spawn. True TOCTOU-proof isolation needs a per-tenant
+    container/chroot or openat2(RESOLVE_NO_SYMLINKS) — infra-level, deferred.
+    """
+    try:
+        return enforce_workspace_allowlist(Path(workspace_path), user_id)
+    except HTTPException:
+        return None
+
+
 def get_workspace_manager(request: Request) -> WorkspaceManager:
     """Get workspace manager from application state.
 

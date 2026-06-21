@@ -115,6 +115,22 @@ def _get_repo(request: Request):
     return db.interactive_sessions
 
 
+def _get_owned_session(repo, session_id: str, auth: Dict[str, Any]) -> dict:
+    """Fetch a session, enforcing owner-scoping (#704).
+
+    Returns the row, or raises 404 if it is missing OR owned by another user.
+    404 (not 403) so a tenant can't probe which session IDs exist. In no-auth
+    mode ``user_id`` is None → ownership is not enforced (matches REST/#655).
+    """
+    session = repo.get(session_id)
+    user_id = auth.get("user_id")
+    if session is None or (
+        user_id is not None and session.get("user_id") != user_id
+    ):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
 def _session_to_response(row: dict) -> SessionResponse:
     """Convert a DB row dict to a SessionResponse."""
     return SessionResponse(
@@ -172,6 +188,7 @@ def list_sessions(
     workspace_path: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    auth: Dict[str, Any] = Depends(require_auth),
 ):
     """List sessions with optional filters by workspace_path and state."""
     if state is not None and state not in VALID_STATES:
@@ -180,39 +197,55 @@ def list_sessions(
             detail=f"Invalid state '{state}'. Must be one of {sorted(VALID_STATES)}",
         )
     repo = _get_repo(request)
-    sessions = repo.list(workspace_path=workspace_path, state=state, limit=limit)
+    sessions = repo.list(
+        workspace_path=workspace_path,
+        state=state,
+        limit=limit,
+        user_id=auth.get("user_id"),
+    )
     return [_session_to_response(s) for s in sessions]
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
 @rate_limit_standard()
-def get_session(session_id: str, request: Request):
+def get_session(
+    session_id: str,
+    request: Request,
+    auth: Dict[str, Any] = Depends(require_auth),
+):
     """Get a session by ID."""
     repo = _get_repo(request)
-    session = repo.get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return _session_to_response(session)
+    return _session_to_response(_get_owned_session(repo, session_id, auth))
 
 
 @router.delete("/{session_id}", response_model=SessionResponse)
 @rate_limit_standard()
-def end_session(session_id: str, request: Request):
+def end_session(
+    session_id: str,
+    request: Request,
+    auth: Dict[str, Any] = Depends(require_auth),
+):
     """End a session (sets state to 'ended' and records ended_at)."""
     repo = _get_repo(request)
+    _get_owned_session(repo, session_id, auth)
     updated = repo.end(session_id)
     if updated is None:
+        # Vanished between the ownership check and end() (concurrent delete).
         raise HTTPException(status_code=404, detail="Session not found")
     return _session_to_response(updated)
 
 
 @router.post("/{session_id}/messages", status_code=201, response_model=MessageResponse)
 @rate_limit_standard()
-def add_message(session_id: str, body: MessageCreate, request: Request):
+def add_message(
+    session_id: str,
+    body: MessageCreate,
+    request: Request,
+    auth: Dict[str, Any] = Depends(require_auth),
+):
     """Add a message to a session's history."""
     repo = _get_repo(request)
-    if repo.get(session_id) is None:
-        raise HTTPException(status_code=404, detail="Session not found")
+    _get_owned_session(repo, session_id, auth)
     message = repo.add_message(
         session_id=session_id,
         role=body.role,
@@ -236,11 +269,11 @@ def get_messages(
     request: Request,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    auth: Dict[str, Any] = Depends(require_auth),
 ):
     """Get paginated message history for a session."""
     repo = _get_repo(request)
-    if repo.get(session_id) is None:
-        raise HTTPException(status_code=404, detail="Session not found")
+    _get_owned_session(repo, session_id, auth)
     messages = repo.get_messages(session_id, limit=limit, offset=offset)
     return [
         MessageResponse(
