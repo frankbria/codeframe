@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # Default model (matches DEFAULT_PLANNING_MODEL in base.py)
 # ---------------------------------------------------------------------------
 
-_DEFAULT_MODEL = "claude-sonnet-4-20250514"
+_DEFAULT_MODEL = "claude-sonnet-4-5"
 
 # Maximum token budget for conversation history passed to the API.
 # claude-sonnet-4 context window is 200k; leave 20k for response headroom.
@@ -465,15 +465,16 @@ class StreamingChatAdapter:
 def _estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
     """Rough cost estimate in USD.
 
-    Uses approximate pricing for claude-sonnet-4. Returns 0.0 for unknown models
+    Uses approximate pricing for claude-sonnet-4-5. Returns 0.0 for unknown models
     rather than raising — cost tracking is best-effort.
     """
     # Per-million-token pricing (input, output) in USD.
-    # Last verified: 2026-03-31. Anthropic pricing changes without notice —
+    # Last verified: 2026-06-21. Anthropic pricing changes without notice —
     # treat these as best-effort estimates, not billing-accurate figures.
     _PRICING: dict[str, tuple[float, float]] = {
-        "claude-sonnet-4-20250514": (3.0, 15.0),
-        "claude-opus-4-20250514": (15.0, 75.0),
+        "claude-sonnet-4-5": (3.0, 15.0),
+        "claude-opus-4-5": (15.0, 75.0),
+        "claude-haiku-4-5": (0.8, 4.0),
         "claude-3-5-haiku-20241022": (0.8, 4.0),
     }
     # Match by prefix to handle minor model variant suffixes
