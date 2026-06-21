@@ -260,6 +260,10 @@ class WebhookNotificationService:
                     target_url,
                     json=payload,
                     timeout=aiohttp.ClientTimeout(total=self.timeout),
+                    # SSRF (#656): the URL host is validated before saving, but
+                    # a public target could 302 → 169.254.169.254 / localhost.
+                    # Webhook delivery never needs to follow redirects, so don't.
+                    allow_redirects=False,
                 ) as response:
                     ok = 200 <= response.status < 300
                     if not ok:
