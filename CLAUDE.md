@@ -304,6 +304,15 @@ REDIS_URL=redis://localhost:6379
 
 CODEFRAME_API_KEY_SECRET=<secret>     # API key hashing
 
+# Outbound webhook SSRF guard (#656) — default OFF (block)
+CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1    # Allow webhook URLs whose host resolves to
+                                      # private/loopback/link-local/metadata IPs.
+                                      # Off by default: such hosts are rejected by
+                                      # the notifications save + test endpoints to
+                                      # prevent SSRF (e.g. 169.254.169.254 IMDS).
+                                      # Set for self-hosted ops with legit internal
+                                      # webhook targets (localhost, RFC1918).
+
 # Telemetry (default: off — must be explicitly opted in)
 CODEFRAME_TELEMETRY=on|off            # Force telemetry on or off; overrides ~/.codeframe/telemetry.json
 CODEFRAME_TELEMETRY_ENDPOINT=<url>    # Override collector URL (default: https://telemetry.codeframe.dev/v1/events)
