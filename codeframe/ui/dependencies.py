@@ -89,7 +89,7 @@ def revalidate_workspace_path(workspace_path: str, user_id: Optional[int]) -> Op
     here. Returns the freshly resolved path, or ``None`` if it no longer passes
     (the WS caller closes the socket instead of raising HTTP).
 
-    ponytail: closes the practical window; a sub-millisecond race remains between
+    Note: this closes the practical window; a sub-millisecond race remains between
     this check and the shell spawn. True TOCTOU-proof isolation needs a per-tenant
     container/chroot or openat2(RESOLVE_NO_SYMLINKS) — infra-level, deferred.
     """

@@ -25,6 +25,7 @@ from typing import Optional, Tuple
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from codeframe.auth.dependencies import authenticate_websocket
+from codeframe.ui.dependencies import revalidate_workspace_path
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +97,6 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
     # The path cleared the allowlist at create time, but a tenant could have
     # swapped a dir for a symlink pointing outside its root before connecting.
     # Re-resolve and re-check now; spawn with the freshly resolved path.
-    from codeframe.ui.dependencies import revalidate_workspace_path
-
     revalidated = await asyncio.to_thread(
         revalidate_workspace_path, workspace_path, user_id
     )

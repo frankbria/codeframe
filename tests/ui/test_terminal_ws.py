@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from codeframe.ui.routers.terminal_ws import router
 
@@ -130,9 +131,12 @@ class TestTerminalWsRevalidation:
             "codeframe.ui.routers.terminal_ws._authenticate_websocket",
             new=AsyncMock(return_value=(True, 1)),
         ):
-            with pytest.raises(Exception):
+            with pytest.raises(WebSocketDisconnect) as exc:
                 with client.websocket_connect("/ws/sessions/s1/terminal?token=x"):
                     pass
+            # 4008 == revalidation reject (the session DOES have a workspace_path,
+            # so this code can only come from the allowlist re-check, not "no cwd").
+            assert exc.value.code == 4008
 
     def test_path_inside_root_still_connects(self, tmp_path, monkeypatch):
         """Revalidation does not break a legit path inside the root."""

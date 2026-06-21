@@ -40,6 +40,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from codeframe.auth.dependencies import authenticate_websocket
 from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
+from codeframe.ui.dependencies import revalidate_workspace_path
 from codeframe.ui.shared import session_chat_manager
 
 logger = logging.getLogger(__name__)
@@ -141,8 +142,6 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
     # allowlist at create time, but a tenant could have swapped a dir for a
     # symlink pointing outside its root before connecting. Re-resolve and
     # re-check now; use the freshly resolved path for the rest of the session.
-    from codeframe.ui.dependencies import revalidate_workspace_path
-
     raw_workspace = session.get("workspace_path")
     validated_workspace: Optional[Path] = None
     if raw_workspace:
