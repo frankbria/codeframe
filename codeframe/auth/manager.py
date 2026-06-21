@@ -68,7 +68,7 @@ def refresh_secret() -> str:
 # These must match the JWTStrategy defaults from FastAPI Users
 JWT_ALGORITHM = "HS256"
 JWT_AUDIENCE = ["fastapi-users:auth"]
-JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "604800"))  # 7 days
+JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "86400"))  # 24h (#657)
 
 # NOTE: The default-secret warning is intentionally NOT emitted at import time.
 # Importing this module must stay silent so it never leaks onto the CLI (the

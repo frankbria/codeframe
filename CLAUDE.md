@@ -304,6 +304,15 @@ REDIS_URL=redis://localhost:6379
 
 CODEFRAME_API_KEY_SECRET=<secret>     # API key hashing
 
+# Session token lifetime (#657 — defense-in-depth)
+JWT_LIFETIME_SECONDS=86400            # JWT validity window; default 24h (was 7d).
+                                      # Shorter window limits exposure of the
+                                      # localStorage-stored web-UI token. No
+                                      # refresh token, so users re-login after
+                                      # expiry. The web UI also ships a CSP
+                                      # (web-ui/security-headers.js) to contain
+                                      # XSS-based token exfiltration.
+
 # Outbound webhook SSRF guard (#656) — default OFF (block)
 CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1    # Allow webhook URLs whose host resolves to
                                       # private/loopback/link-local/metadata IPs.
