@@ -179,10 +179,23 @@ class SchemaManager:
                 output_tokens INTEGER DEFAULT 0,
                 created_at  TEXT NOT NULL,
                 updated_at  TEXT NOT NULL,
-                ended_at    TEXT
+                ended_at    TEXT,
+                -- Owning user; the terminal/chat WebSockets reject a session
+                -- whose owner != the authenticated user (issue #655). NULL in
+                -- no-auth mode, where ownership is intentionally not enforced.
+                user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL
             )
             """
         )
+        # Migrate pre-#655 databases that created the table without user_id.
+        existing_cols = {
+            row[1] for row in cursor.execute("PRAGMA table_info(interactive_sessions)")
+        }
+        if "user_id" not in existing_cols:
+            cursor.execute(
+                "ALTER TABLE interactive_sessions ADD COLUMN user_id INTEGER "
+                "REFERENCES users(id) ON DELETE SET NULL"
+            )
 
         cursor.execute(
             """

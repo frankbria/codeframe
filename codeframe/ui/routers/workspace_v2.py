@@ -19,7 +19,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from codeframe.core import workspace as ws
 from codeframe.lib.rate_limiter import rate_limit_standard
-from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.auth.dependencies import require_auth
+from codeframe.ui.dependencies import enforce_workspace_allowlist, get_v2_workspace
 from codeframe.core.workspace import WORKSPACE_CONFIG_FILENAME, Workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
 from codeframe.ui.routers._helpers import atomic_write_json
@@ -225,6 +226,7 @@ async def list_workspaces(request: Request) -> WorkspaceListResponse:
 async def init_workspace(
     request: Request,
     body: InitWorkspaceRequest,
+    auth: dict = Depends(require_auth),
 ) -> WorkspaceResponse:
     """Initialize a new workspace for a repository.
 
@@ -244,7 +246,13 @@ async def init_workspace(
             - 404: Repository path not found
     """
     try:
-        repo_path = Path(body.repo_path).resolve()
+        # Enforce the workspace allowlist before touching disk (issue #655):
+        # initializing a workspace writes a .codeframe/ marker, so an arbitrary
+        # repo_path would let an authenticated user seed workspaces anywhere on
+        # the host.
+        repo_path = enforce_workspace_allowlist(
+            Path(body.repo_path), auth.get("user_id")
+        )
 
         # Validate path exists
         if not repo_path.exists():
