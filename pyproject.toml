@@ -119,7 +119,6 @@ target-version = ['py311']
 line-length = 100
 target-version = "py311"
 exclude = [
-    "testsprite_tests/",
     ".venv/",
     "build/",
     "dist/",
