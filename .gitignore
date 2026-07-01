@@ -85,9 +85,6 @@ Thumbs.db
 # web-ui/src/components/tasks/.
 /tasks/
 
-# TestSprite Specific
-testsprite_tests/tmp/config.json
-
 # Playwright Test Artifacts
 tests/e2e/playwright-report/
 tests/e2e/test-results/
