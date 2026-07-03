@@ -90,6 +90,8 @@ def _create_token_usage_schema(cursor: sqlite3.Cursor) -> None:
     Shared by initial creation and the upgrade path so the two never drift.
     Columns match the repository INSERT (token_repository.save_token_usage);
     task_id/agent_id/project_id are TEXT because v2 task IDs are UUID strings.
+    Columns are intentionally nullable: the INSERT omits some (e.g.
+    actual_cost_usd) — do not add NOT NULL constraints back.
     """
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS token_usage (
