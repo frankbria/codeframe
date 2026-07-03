@@ -3,8 +3,8 @@
  *
  * Covers token storage (localStorage key `auth_token`, SSR-safe),
  * login (form-encoded POST /auth/jwt/login), register (bootstrap-first-user),
- * logout (clear + redirect), the `withTokenParam` SSE helper, and friendly
- * error normalization for bad credentials / closed registration.
+ * logout (clear + redirect), the `withStreamTicket` SSE/WS helper (#745), and
+ * friendly error normalization for bad credentials / closed registration.
  */
 import axios from 'axios';
 
@@ -25,7 +25,7 @@ import {
   login,
   register,
   logout,
-  withTokenParam,
+  withStreamTicket,
 } from '@/lib/auth';
 import { redirectTo } from '@/lib/navigation';
 
@@ -141,33 +141,42 @@ describe('logout', () => {
   });
 });
 
-describe('withTokenParam', () => {
-  beforeEach(() => {
-    localStorage.clear();
+describe('withStreamTicket', () => {
+  it('returns the URL unchanged when the injected fetcher resolves null', async () => {
+    const fetchTicket = jest.fn().mockResolvedValue(null);
+    await expect(
+      withStreamTicket('http://x/api/v2/stream', fetchTicket)
+    ).resolves.toBe('http://x/api/v2/stream');
   });
 
-  it('returns the URL unchanged when no token is stored', () => {
-    expect(withTokenParam('http://x/api/v2/stream')).toBe(
-      'http://x/api/v2/stream'
+  it('appends ticket with `?` when URL has no query string', async () => {
+    const fetchTicket = jest.fn().mockResolvedValue('tk-xyz');
+    await expect(
+      withStreamTicket('http://x/api/v2/stream', fetchTicket)
+    ).resolves.toBe('http://x/api/v2/stream?ticket=tk-xyz');
+  });
+
+  it('appends ticket with `&` when URL already has a query string', async () => {
+    const fetchTicket = jest.fn().mockResolvedValue('tk-xyz');
+    await expect(
+      withStreamTicket(
+        'http://x/api/v2/stream?workspace_path=%2Ftmp',
+        fetchTicket
+      )
+    ).resolves.toBe('http://x/api/v2/stream?workspace_path=%2Ftmp&ticket=tk-xyz');
+  });
+
+  it('URL-encodes the ticket value', async () => {
+    const fetchTicket = jest.fn().mockResolvedValue('a b/c');
+    await expect(withStreamTicket('http://x/s', fetchTicket)).resolves.toBe(
+      'http://x/s?ticket=a%20b%2Fc'
     );
   });
 
-  it('appends token with `?` when URL has no query string', () => {
-    setToken('jwt-xyz');
-    expect(withTokenParam('http://x/api/v2/stream')).toBe(
-      'http://x/api/v2/stream?token=jwt-xyz'
-    );
-  });
-
-  it('appends token with `&` when URL already has a query string', () => {
-    setToken('jwt-xyz');
-    expect(withTokenParam('http://x/api/v2/stream?workspace_path=%2Ftmp')).toBe(
-      'http://x/api/v2/stream?workspace_path=%2Ftmp&token=jwt-xyz'
-    );
-  });
-
-  it('URL-encodes the token value', () => {
-    setToken('a b/c');
-    expect(withTokenParam('http://x/s')).toBe('http://x/s?token=a%20b%2Fc');
+  it('calls the injected fetcher fresh on every invocation (single-use tickets)', async () => {
+    const fetchTicket = jest.fn().mockResolvedValue('tk-1');
+    await withStreamTicket('http://x/s', fetchTicket);
+    await withStreamTicket('http://x/s', fetchTicket);
+    expect(fetchTicket).toHaveBeenCalledTimes(2);
   });
 });

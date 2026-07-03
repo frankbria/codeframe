@@ -201,6 +201,38 @@ export async function verifyAuthAfterStreamFailure(): Promise<void> {
 }
 
 /**
+ * Fetch a short-lived, single-use ticket for SSE/WebSocket stream auth
+ * (issue #745). EventSource/WebSocket cannot send an Authorization header,
+ * so callers append the ticket as `?ticket=` instead of the long-lived JWT
+ * (`?token=`) that was previously exposed in server logs and browser
+ * history. Tickets expire in ~60s and are consumed on first use, so callers
+ * must call this fresh for every (re)connect attempt — never reuse a
+ * previously built URL.
+ *
+ * Returns `null` on ANY failure so callers can fall back to a bare URL
+ * (the server allows streams with no credential when auth is disabled):
+ * - No token stored at all (auth-off dev mode): skip the network call
+ *   entirely. Calling the endpoint anyway would 401, and the response
+ *   interceptor redirects to /login on every 401 — a guaranteed loop for a
+ *   client that was never authenticated in the first place.
+ * - Token present but expired/invalid: the request 401s and the response
+ *   interceptor's existing redirect-to-login handles it (mirrors
+ *   `verifyAuthAfterStreamFailure`) — that redirect is desired here.
+ * - Network error or 5xx: swallowed, same fallback as the other cases.
+ */
+export async function fetchStreamTicket(): Promise<string | null> {
+  if (!getToken()) return null;
+  try {
+    const response = await api.post<{ ticket: string; expires_in: number }>(
+      '/auth/stream-ticket'
+    );
+    return response.data.ticket;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Proactive route-guard probe (#651). Determines whether the current client may
  * access protected pages, WITHOUT triggering the global 401 redirect — the
  * caller (AppLayout) decides what to do. Uses a bare axios call (not the shared

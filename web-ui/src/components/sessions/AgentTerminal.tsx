@@ -1,25 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useTerminalSocket, type TerminalSocketStatus } from '@/hooks/useTerminalSocket';
+import { fetchStreamTicket } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token');
-}
-
-function buildWsUrl(sessionId: string): string | null {
-  const token = getToken();
-  if (!token) return null;
+function wsBase(): string {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  const base =
-    process.env.NEXT_PUBLIC_WS_URL ||
-    apiBase.replace(/^http/, 'ws');
-  return `${base}/ws/sessions/${sessionId}/terminal?token=${encodeURIComponent(token)}`;
+  return process.env.NEXT_PUBLIC_WS_URL || apiBase.replace(/^http/, 'ws');
 }
 
 // ---------------------------------------------------------------------------
@@ -72,12 +63,24 @@ export function AgentTerminal({ sessionId, className }: AgentTerminalProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fitAddonRef = useRef<any>(null);
 
-  // Build the WS URL once per sessionId. useMemo avoids a render-time side
-  // effect and is safe under React StrictMode's double-invoke.
-  const wsUrl = useMemo(() => buildWsUrl(sessionId), [sessionId]);
+  // Tickets are single-use (issue #745), so this must be re-resolved for the
+  // initial connect AND every retry — useTerminalSocket calls it fresh each
+  // time. Unlike the old token-based URL — which stayed unbuildable (null)
+  // forever when no JWT was stored — a failed/absent ticket still falls back
+  // to a bare URL, since the server allows streams with no credential when
+  // auth is disabled.
+  const buildUrl = useCallback(async (): Promise<string | null> => {
+    const ticket = await fetchStreamTicket();
+    const ticketParam = ticket ? `?ticket=${encodeURIComponent(ticket)}` : '';
+    return `${wsBase()}/ws/sessions/${sessionId}/terminal${ticketParam}`;
+  }, [sessionId]);
 
   const { status, sendInput, sendResize } = useTerminalSocket({
-    url: wsUrl,
+    enabled: true,
+    // Forces a fresh (re)connect — and thus a fresh ticket — when the
+    // session changes, even though `enabled` itself stays `true`.
+    connectionKey: sessionId,
+    buildUrl,
     onData: (data) => {
       if (terminalRef.current) {
         terminalRef.current.write(data);

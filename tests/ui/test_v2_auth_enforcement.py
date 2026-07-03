@@ -138,6 +138,28 @@ def test_valid_api_key_not_401(auth_app, monkeypatch, tmp_path):
     assert resp.status_code == 401
 
 
+class TestSSEStreamTicketAuth:
+    """The SSE stream path accepts ?ticket=, not the retired ?token=<JWT> (#745)."""
+
+    def test_query_jwt_token_401s_on_sse_path(self, auth_app):
+        client = TestClient(auth_app, raise_server_exceptions=False)
+        token = create_test_jwt_token(user_id=1)
+        resp = client.get(f"/api/v2/tasks/abc/stream?token={token}")
+        assert resp.status_code == 401
+
+    def test_freshly_minted_ticket_not_401_on_sse_path(self, auth_app):
+        from codeframe.auth.stream_tickets import mint_ticket, reset_stream_tickets
+
+        reset_stream_tickets()
+        ticket = mint_ticket(user_id=1)
+        client = TestClient(auth_app, raise_server_exceptions=False)
+        resp = client.get(f"/api/v2/tasks/abc/stream?ticket={ticket}")
+        # The task itself may 404 (no such task "abc") — the point is the auth
+        # dependency let the request through instead of rejecting it with 401.
+        assert resp.status_code != 401, resp.text
+        reset_stream_tickets()
+
+
 def test_test_broadcast_requires_auth(auth_app):
     client = TestClient(auth_app, raise_server_exceptions=False)
     resp = client.post("/test/broadcast", json={"message": {"x": 1}})

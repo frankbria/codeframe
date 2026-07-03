@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from codeframe.auth.stream_tickets import reset_stream_tickets
 from codeframe.ui.routers.terminal_ws import router
 
 pytestmark = pytest.mark.v2
@@ -34,31 +35,38 @@ def _make_app(session_data: dict | None = None, user_data=None):
     return app
 
 
+@pytest.fixture(autouse=True)
+def _reset_tickets():
+    reset_stream_tickets()
+    yield
+    reset_stream_tickets()
+
+
 # ---------------------------------------------------------------------------
 # Auth tests
 # ---------------------------------------------------------------------------
 
 
 class TestTerminalWsAuth:
-    def test_missing_token_closes_4001(self, monkeypatch):
+    def test_missing_ticket_closes_4001(self, monkeypatch):
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         app = _make_app()
         client = TestClient(app)
         with pytest.raises(Exception):
-            # No token → closed before accepting; TestClient raises on non-101
+            # No ticket → closed before accepting; TestClient raises on non-101
             with client.websocket_connect("/ws/sessions/s1/terminal"):
                 pass
 
-    def test_invalid_token_closes_4001(self, monkeypatch):
+    def test_unknown_ticket_closes_4001(self, monkeypatch):
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         app = _make_app()
         client = TestClient(app)
         with pytest.raises(Exception):
-            with client.websocket_connect("/ws/sessions/s1/terminal?token=not-a-jwt"):
+            with client.websocket_connect("/ws/sessions/s1/terminal?ticket=not-a-real-ticket"):
                 pass
 
-    def test_valid_token_session_not_found(self):
-        """Valid token but session does not exist → closed."""
+    def test_valid_ticket_session_not_found(self):
+        """Valid ticket but session does not exist → closed."""
         app = _make_app(session_data=None)
         client = TestClient(app)
 
@@ -68,11 +76,11 @@ class TestTerminalWsAuth:
             new=AsyncMock(return_value=(True, 1)),
         ):
             with pytest.raises(Exception):
-                with client.websocket_connect("/ws/sessions/missing/terminal?token=x"):
+                with client.websocket_connect("/ws/sessions/missing/terminal?ticket=x"):
                     pass
 
-    def test_valid_token_ended_session(self):
-        """Valid token but session is ended → closed."""
+    def test_valid_ticket_ended_session(self):
+        """Valid ticket but session is ended → closed."""
         app = _make_app(session_data={"state": "ended", "workspace_path": "/tmp"})
         client = TestClient(app)
 
@@ -81,11 +89,11 @@ class TestTerminalWsAuth:
             new=AsyncMock(return_value=(True, 1)),
         ):
             with pytest.raises(Exception):
-                with client.websocket_connect("/ws/sessions/s1/terminal?token=x"):
+                with client.websocket_connect("/ws/sessions/s1/terminal?ticket=x"):
                     pass
 
     def test_ownership_mismatch_closes(self):
-        """Token user_id does not match session user_id → closed."""
+        """Ticket user_id does not match session user_id → closed."""
         app = _make_app(
             session_data={"state": "active", "workspace_path": "/tmp", "user_id": 999}
         )
@@ -96,7 +104,7 @@ class TestTerminalWsAuth:
             new=AsyncMock(return_value=(True, 1)),
         ):
             with pytest.raises(Exception):
-                with client.websocket_connect("/ws/sessions/s1/terminal?token=x"):
+                with client.websocket_connect("/ws/sessions/s1/terminal?ticket=x"):
                     pass
 
 
@@ -132,7 +140,7 @@ class TestTerminalWsRevalidation:
             new=AsyncMock(return_value=(True, 1)),
         ):
             with pytest.raises(WebSocketDisconnect) as exc:
-                with client.websocket_connect("/ws/sessions/s1/terminal?token=x"):
+                with client.websocket_connect("/ws/sessions/s1/terminal?ticket=x"):
                     pass
             # 4008 == revalidation reject (the session DOES have a workspace_path,
             # so this code can only come from the allowlist re-check, not "no cwd").
@@ -167,7 +175,7 @@ class TestTerminalWsRevalidation:
             ) as spawn,
         ):
             client = TestClient(app)
-            with client.websocket_connect("/ws/sessions/s1/terminal?token=x"):
+            with client.websocket_connect("/ws/sessions/s1/terminal?ticket=x"):
                 pass
         # Shell spawned with the resolved, allowlisted path.
         assert spawn.call_args.kwargs["cwd"] == str(proj.resolve())
@@ -206,13 +214,13 @@ class TestTerminalWsRelay:
             ),
         ):
             client = TestClient(app)
-            with client.websocket_connect("/ws/sessions/s1/terminal?token=x") as ws:
+            with client.websocket_connect("/ws/sessions/s1/terminal?ticket=x") as ws:
                 # Connection was accepted; we can receive bytes
                 # (mock stdout.read returns b"$ " then b"" to end relay)
                 pass  # Just verify it connected without error
 
-    def test_no_auth_mode_connects_without_token(self, monkeypatch):
-        """With CODEFRAME_AUTH_REQUIRED=false, the terminal WS connects with no token."""
+    def test_no_auth_mode_connects_without_ticket(self, monkeypatch):
+        """With CODEFRAME_AUTH_REQUIRED=false, the terminal WS connects with no ticket."""
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
         # Session has a user_id, but in no-auth mode (user_id=None) ownership is skipped.
         app = _make_app(
@@ -231,7 +239,7 @@ class TestTerminalWsRelay:
             new=AsyncMock(return_value=mock_proc),
         ):
             client = TestClient(app)
-            # No ?token= and no auth patch — real auth helper must admit it.
+            # No ?ticket= and no auth patch — real auth helper must admit it.
             with client.websocket_connect("/ws/sessions/s1/terminal") as ws:
                 pass  # Connected without error → no-auth path works
 
@@ -260,6 +268,6 @@ class TestTerminalWsRelay:
             ),
         ):
             client = TestClient(app)
-            with client.websocket_connect("/ws/sessions/s1/terminal?token=x") as ws:
+            with client.websocket_connect("/ws/sessions/s1/terminal?ticket=x") as ws:
                 # Sending a resize message should not raise
                 ws.send_text(json.dumps({"type": "resize", "cols": 80, "rows": 24}))

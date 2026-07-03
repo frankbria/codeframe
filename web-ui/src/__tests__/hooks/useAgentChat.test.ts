@@ -2,12 +2,19 @@
 
 import { renderHook, act } from '@testing-library/react';
 import { useAgentChat } from '@/hooks/useAgentChat';
-import { verifyAuthAfterStreamFailure } from '@/lib/api';
+import { fetchStreamTicket, verifyAuthAfterStreamFailure } from '@/lib/api';
 
-// The session-chat WS fires the re-auth probe on a 1008 auth close (#651).
-jest.mock('@/lib/api', () => ({ verifyAuthAfterStreamFailure: jest.fn() }));
+// The session-chat WS fires the re-auth probe on a 1008 auth close (#651),
+// and fetches a fresh single-use stream ticket per (re)connect attempt (#745).
+jest.mock('@/lib/api', () => ({
+  fetchStreamTicket: jest.fn(),
+  verifyAuthAfterStreamFailure: jest.fn(),
+}));
 const mockVerify = verifyAuthAfterStreamFailure as jest.MockedFunction<
   typeof verifyAuthAfterStreamFailure
+>;
+const mockFetchTicket = fetchStreamTicket as jest.MockedFunction<
+  typeof fetchStreamTicket
 >;
 
 // ── WebSocket mock ────────────────────────────────────────────────────
@@ -71,6 +78,18 @@ function flushRaf() {
   cbs.forEach((cb) => cb(performance.now()));
 }
 
+// `connectRef.current()` is async (it awaits `fetchStreamTicket()` before
+// opening the WebSocket, issue #745) — flush the microtask queue so the
+// pending connect finishes creating the WS instance before a test inspects
+// `MockWebSocket.instances` or calls `getLatestWs()`. Unaffected by fake
+// timers: only macrotasks (setTimeout/setInterval) are faked, not promises.
+async function flushConnect() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 // ── Setup / teardown ──────────────────────────────────────────────────
 
 let originalWebSocket: typeof WebSocket;
@@ -89,6 +108,8 @@ beforeEach(() => {
   MockWebSocket.instances = [];
   rafCallbacks = [];
   mockVerify.mockClear();
+  mockFetchTicket.mockReset();
+  mockFetchTicket.mockResolvedValue('test-ticket');
   jest.useFakeTimers();
 
   // Set RAF mock AFTER useFakeTimers() — jest.useFakeTimers() replaces
@@ -98,16 +119,6 @@ beforeEach(() => {
     return rafCallbacks.length;
   };
   global.cancelAnimationFrame = () => {};
-
-  // Set a fake auth token
-  Object.defineProperty(window, 'localStorage', {
-    value: {
-      getItem: jest.fn().mockReturnValue('test-jwt-token'),
-      setItem: jest.fn(),
-      removeItem: jest.fn(),
-    },
-    writable: true,
-  });
 });
 
 afterEach(() => {
@@ -123,51 +134,72 @@ function getLatestWs(): MockWebSocket {
   return ws;
 }
 
+/** Render the hook and flush the initial (async) connect attempt. */
+async function renderConnected(sessionId: string | null) {
+  const rendered = renderHook(
+    ({ id }: { id: string | null }) => useAgentChat(id),
+    { initialProps: { id: sessionId } }
+  );
+  await flushConnect();
+  return rendered;
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────
 
 describe('useAgentChat', () => {
   describe('connection lifecycle', () => {
-    it('does not connect when sessionId is null', () => {
+    it('does not connect when sessionId is null', async () => {
       renderHook(() => useAgentChat(null));
+      await flushConnect();
       expect(MockWebSocket.instances).toHaveLength(0);
+      expect(mockFetchTicket).not.toHaveBeenCalled();
     });
 
-    it('connects to correct URL when sessionId is provided', () => {
-      const { result } = renderHook(() => useAgentChat('session-123'));
+    it('connects to correct URL when sessionId is provided', async () => {
+      await renderConnected('session-123');
       expect(MockWebSocket.instances).toHaveLength(1);
       expect(getLatestWs().url).toContain('/ws/sessions/session-123/chat');
-      expect(getLatestWs().url).toContain('token=test-jwt-token');
-      expect(result.current.state.status).toBe('connecting');
+      expect(getLatestWs().url).toContain('ticket=test-ticket');
+      expect(getLatestWs().url).not.toContain('token=');
     });
 
-    it('sets connected=true and status=idle on open', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('falls back to the bare URL (no ticket, no token) when the ticket fetch fails', async () => {
+      mockFetchTicket.mockResolvedValue(null);
+      await renderConnected('session-123');
+      expect(getLatestWs().url).toContain('/ws/sessions/session-123/chat');
+      expect(getLatestWs().url).not.toContain('ticket=');
+      expect(getLatestWs().url).not.toContain('token=');
+    });
+
+    it('sets connected=true and status=idle on open', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
       expect(result.current.state.connected).toBe(true);
       expect(result.current.state.status).toBe('idle');
     });
 
-    it('disconnects on unmount', () => {
-      const { unmount } = renderHook(() => useAgentChat('session-1'));
+    it('disconnects on unmount', async () => {
+      const { unmount } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
       unmount();
       expect(getLatestWs().readyState).toBe(MockWebSocket.CLOSED);
     });
 
-    it('sets connected=false and status=disconnected on close', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('sets connected=false and status=disconnected on close', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
       act(() => { getLatestWs().simulateClose(); });
       expect(result.current.state.connected).toBe(false);
       expect(result.current.state.status).toBe('disconnected');
     });
 
-    it('reconnects when sessionId changes', () => {
-      const { rerender } = renderHook(({ id }) => useAgentChat(id), {
-        initialProps: { id: 'session-1' as string | null },
-      });
+    it('reconnects when sessionId changes', async () => {
+      const { rerender } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
+
       rerender({ id: 'session-2' });
+      await flushConnect();
+
       expect(MockWebSocket.instances).toHaveLength(2);
       expect(getLatestWs().url).toContain('session-2');
     });
@@ -178,8 +210,8 @@ describe('useAgentChat', () => {
     // browser reports an expired token as 1006 (abnormal), not 1008. The probe
     // must therefore fire on any non-normal close; it self-filters (only a
     // genuine 401 redirects), so transient closes still reconnect.
-    it('fires the re-auth probe on an abnormal (1006) close', () => {
-      renderHook(() => useAgentChat('session-1'));
+    it('fires the re-auth probe on an abnormal (1006) close', async () => {
+      await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => { getLatestWs().simulateClose(1006); });
@@ -187,8 +219,8 @@ describe('useAgentChat', () => {
       expect(mockVerify).toHaveBeenCalledTimes(1);
     });
 
-    it('fires the re-auth probe on an explicit 1008 auth close', () => {
-      renderHook(() => useAgentChat('session-1'));
+    it('fires the re-auth probe on an explicit 1008 auth close', async () => {
+      await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => { getLatestWs().simulateClose(1008); });
@@ -196,8 +228,8 @@ describe('useAgentChat', () => {
       expect(mockVerify).toHaveBeenCalledTimes(1);
     });
 
-    it('does not fire the probe on a clean (1000) close', () => {
-      renderHook(() => useAgentChat('session-1'));
+    it('does not fire the probe on a clean (1000) close', async () => {
+      await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => { getLatestWs().simulateClose(1000); });
@@ -207,22 +239,39 @@ describe('useAgentChat', () => {
   });
 
   describe('reconnect with exponential backoff', () => {
-    it('auto-reconnects after disconnect (first attempt)', () => {
-      renderHook(() => useAgentChat('session-1'));
+    it('auto-reconnects after disconnect (first attempt)', async () => {
+      await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
       act(() => { getLatestWs().simulateClose(); });
       act(() => { jest.advanceTimersByTime(1000); }); // BASE_RETRY_DELAY_MS * 2^0
+      await flushConnect();
       expect(MockWebSocket.instances).toHaveLength(2);
     });
 
-    it('stops reconnecting after 5 attempts and sets error status', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('mints a fresh ticket for each reconnect attempt (issue #745)', async () => {
+      mockFetchTicket.mockResolvedValueOnce('tk-1').mockResolvedValueOnce('tk-2');
+      await renderConnected('session-1');
+      expect(getLatestWs().url).toContain('ticket=tk-1');
+
+      act(() => { getLatestWs().simulateOpen(); });
+      act(() => { getLatestWs().simulateClose(); });
+      act(() => { jest.advanceTimersByTime(1000); });
+      await flushConnect();
+
+      expect(MockWebSocket.instances).toHaveLength(2);
+      expect(getLatestWs().url).toContain('ticket=tk-2');
+      expect(mockFetchTicket).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops reconnecting after 5 attempts and sets error status', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       // Trigger 5 retries (closes 1-5 schedule retries, each advance fires the retry)
       for (let i = 0; i < 5; i++) {
         act(() => { getLatestWs().simulateClose(); });
         act(() => { jest.advanceTimersByTime(1000 * 2 ** i); });
+        await flushConnect();
       }
       // retriesRef = 5; close the final retry connection to hit the error path
       act(() => { getLatestWs().simulateClose(); });
@@ -233,8 +282,8 @@ describe('useAgentChat', () => {
   });
 
   describe('keepalive ping', () => {
-    it('sends ping every 30 seconds after open', () => {
-      renderHook(() => useAgentChat('session-1'));
+    it('sends ping every 30 seconds after open', async () => {
+      await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
       const ws = getLatestWs();
       act(() => { jest.advanceTimersByTime(30000); });
@@ -243,8 +292,8 @@ describe('useAgentChat', () => {
   });
 
   describe('message handling', () => {
-    it('accumulates text_delta into streaming assistant message', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('accumulates text_delta into streaming assistant message', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => {
@@ -260,8 +309,8 @@ describe('useAgentChat', () => {
       expect(result.current.state.status).toBe('streaming');
     });
 
-    it('finalizes assistant message on done event', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('finalizes assistant message on done event', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => {
@@ -273,8 +322,8 @@ describe('useAgentChat', () => {
       expect(result.current.state.status).toBe('idle');
     });
 
-    it('pushes tool_use message with toolName and toolInput', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('pushes tool_use message with toolName and toolInput', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => {
@@ -293,8 +342,8 @@ describe('useAgentChat', () => {
       expect(msgs[0].toolInput).toEqual({ path: '/foo.ts' });
     });
 
-    it('pushes tool_result message', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('pushes tool_result message', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => {
@@ -308,8 +357,8 @@ describe('useAgentChat', () => {
       expect(msgs[0].content).toBe('file contents');
     });
 
-    it('pushes thinking message', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('pushes thinking message', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => {
@@ -322,8 +371,8 @@ describe('useAgentChat', () => {
       expect(msgs[0].role).toBe('thinking');
     });
 
-    it('updates cost on cost_update event', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('updates cost on cost_update event', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => {
@@ -340,8 +389,8 @@ describe('useAgentChat', () => {
       expect(result.current.state.outputTokens).toBe(500);
     });
 
-    it('sets error status on error event', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('sets error status on error event', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => {
@@ -354,8 +403,8 @@ describe('useAgentChat', () => {
   });
 
   describe('sendMessage', () => {
-    it('pushes optimistic user message immediately', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('pushes optimistic user message immediately', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => { result.current.sendMessage('hello agent'); });
@@ -366,8 +415,8 @@ describe('useAgentChat', () => {
       expect(msgs[0].content).toBe('hello agent');
     });
 
-    it('sends message over WebSocket', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('sends message over WebSocket', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => { result.current.sendMessage('hello agent'); });
@@ -378,8 +427,8 @@ describe('useAgentChat', () => {
       expect(JSON.parse(sent!)).toEqual({ type: 'message', content: 'hello agent' });
     });
 
-    it('sets status to thinking after sendMessage', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('sets status to thinking after sendMessage', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => { result.current.sendMessage('hello'); });
@@ -387,8 +436,8 @@ describe('useAgentChat', () => {
       expect(result.current.state.status).toBe('thinking');
     });
 
-    it('does not send when WS is not open', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('does not send when WS is not open', async () => {
+      const { result } = await renderConnected('session-1');
       // Do not call simulateOpen — ws is in CONNECTING state by default
       getLatestWs().readyState = MockWebSocket.CLOSED;
 
@@ -399,8 +448,8 @@ describe('useAgentChat', () => {
   });
 
   describe('interrupt', () => {
-    it('sends interrupt message over WebSocket', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('sends interrupt message over WebSocket', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => { result.current.interrupt(); });
@@ -411,8 +460,8 @@ describe('useAgentChat', () => {
   });
 
   describe('clearMessages', () => {
-    it('clears all messages and resets error', () => {
-      const { result } = renderHook(() => useAgentChat('session-1'));
+    it('clears all messages and resets error', async () => {
+      const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });
 
       act(() => { result.current.sendMessage('hello'); });

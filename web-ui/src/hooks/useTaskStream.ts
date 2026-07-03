@@ -2,7 +2,8 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useEventSource } from './useEventSource';
-import { withTokenParam } from '@/lib/auth';
+import { withStreamTicket } from '@/lib/auth';
+import { fetchStreamTicket } from '@/lib/api';
 
 // ── Event types matching backend ExecutionEvent models ──────────────────
 
@@ -115,12 +116,18 @@ export function useTaskStream({
   // SSE must connect directly to the backend — the Next.js rewrite proxy
   // buffers chunked responses, which prevents SSE events from streaming.
   const sseBase = process.env.NEXT_PUBLIC_SSE_URL || 'http://localhost:8000';
-  const url =
-    taskId && workspacePath
-      ? withTokenParam(
-          `${sseBase}/api/v2/tasks/${taskId}/stream?workspace_path=${encodeURIComponent(workspacePath)}`
-        )
-      : null;
+  const enabled = Boolean(taskId && workspacePath);
+  // Distinct identity of "what to connect to" so a task/workspace change
+  // forces a fresh (re)connect even though `enabled` itself doesn't change.
+  const connectionKey = `${taskId ?? ''}:${workspacePath ?? ''}`;
+
+  // Tickets are single-use (issue #745), so this must be re-resolved for the
+  // initial connect AND every retry — useEventSource calls it fresh each time.
+  const buildUrl = useCallback(async (): Promise<string | null> => {
+    if (!taskId || !workspacePath) return null;
+    const base = `${sseBase}/api/v2/tasks/${taskId}/stream?workspace_path=${encodeURIComponent(workspacePath)}`;
+    return withStreamTicket(base, fetchStreamTicket);
+  }, [taskId, workspacePath, sseBase]);
 
   const handleMessage = useCallback(
     (data: string) => {
@@ -159,7 +166,9 @@ export function useTaskStream({
   );
 
   const { status, close } = useEventSource({
-    url,
+    enabled,
+    connectionKey,
+    buildUrl,
     onMessage: handleMessage,
   });
 

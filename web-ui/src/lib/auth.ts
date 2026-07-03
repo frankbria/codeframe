@@ -7,8 +7,10 @@
  * - `login()` against fastapi-users' form-encoded `/auth/jwt/login`.
  * - `register()` for the bootstrap-first-user flow (`/auth/register`).
  * - `logout()` clears the token and redirects to `/login`.
- * - `withTokenParam()` appends `?token=<jwt>` to SSE/EventSource URLs, which
- *   cannot send an Authorization header.
+ * - `withStreamTicket()` appends `?ticket=<ticket>` to SSE/WebSocket URLs,
+ *   which cannot send an Authorization header. The ticket is a short-lived,
+ *   single-use credential fetched via an injected callback (issue #745) —
+ *   this replaces the long-lived JWT previously exposed as `?token=`.
  *
  * Error messages are normalized to friendly, user-facing strings.
  */
@@ -101,18 +103,31 @@ export function logout(): void {
   redirectTo('/login');
 }
 
-// ── SSE helper ──────────────────────────────────────────────────────────
+// ── Stream ticket helper ────────────────────────────────────────────────
 
 /**
- * Append the JWT as a `?token=` query param so EventSource (which cannot set
- * an Authorization header) can authenticate. Handles URLs that already carry
- * a query string. Returns the URL unchanged when no token is stored.
+ * Append a single-use stream ticket as `?ticket=` so EventSource/WebSocket
+ * (neither can set an Authorization header) can authenticate (issue #745).
+ *
+ * `fetchTicket` is injected rather than imported directly from `./api`:
+ * `api.ts` already imports `getToken`/`clearToken` from this module (for the
+ * Bearer interceptor), so importing it back here would create a circular
+ * dependency. Callers pass `fetchStreamTicket` from `@/lib/api`.
+ *
+ * Tickets are single-use and expire in ~60s, so this — and thus the injected
+ * fetcher — must be called fresh for every (re)connect attempt; never reuse
+ * a previously built URL. Handles URLs that already carry a query string.
+ * Returns the URL unchanged (no ticket param) when no ticket is available
+ * (fetch failed, or auth is disabled).
  */
-export function withTokenParam(url: string): string {
-  const token = getToken();
-  if (!token) return url;
+export async function withStreamTicket(
+  url: string,
+  fetchTicket: () => Promise<string | null>
+): Promise<string> {
+  const ticket = await fetchTicket();
+  if (!ticket) return url;
   const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}token=${encodeURIComponent(token)}`;
+  return `${url}${separator}ticket=${encodeURIComponent(ticket)}`;
 }
 
 // ── Error normalization ─────────────────────────────────────────────────
