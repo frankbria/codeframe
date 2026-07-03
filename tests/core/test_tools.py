@@ -723,6 +723,46 @@ class TestRunCommand:
         assert "hello" in result.content
         assert "Exit code: 0" in result.content
 
+    def test_credentials_not_exposed_to_command(self, workspace: Path, monkeypatch):
+        """Issue #721: an LLM-authored command must not be able to read host
+        secrets — the child env is a minimal credential-free allowlist."""
+        secret = "sk-ant-SUPERSECRET-should-not-leak"
+        monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-secret")
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_secret")
+        monkeypatch.setenv("DATABASE_URL", "postgres://secret")
+        result = _call(
+            "run_command",
+            {"command": "echo \"[$ANTHROPIC_API_KEY][$OPENAI_API_KEY][$GITHUB_TOKEN][$DATABASE_URL]\""},
+            workspace,
+        )
+        assert not result.is_error
+        assert secret not in result.content
+        for leaked in ("sk-openai-secret", "ghp_secret", "postgres://secret"):
+            assert leaked not in result.content
+        # The variables expand to empty — they simply aren't in the child env.
+        assert "[][][][]" in result.content
+
+    def test_safe_env_still_available(self, workspace: Path):
+        """PATH (needed to find binaries) is still passed through."""
+        result = _call("run_command", {"command": "printenv PATH"}, workspace)
+        assert not result.is_error
+        assert "Exit code: 0" in result.content
+        assert "/" in result.content  # a non-empty PATH
+
+    def test_venv_activation_layers_on_allowlist(self, workspace: Path):
+        """A .venv/ in the workspace still sets VIRTUAL_ENV and prepends its bin
+        to PATH, on top of the credential-free allowlist env (#721)."""
+        venv_bin = workspace / ".venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        result = _call(
+            "run_command", {"command": "printenv VIRTUAL_ENV"}, workspace
+        )
+        assert not result.is_error
+        assert str(workspace / ".venv") in result.content
+        path_res = _call("run_command", {"command": "printenv PATH"}, workspace)
+        assert str(venv_bin) in path_res.content
+
     def test_shell_operators_and(self, workspace: Path):
         """Shell && operator works (subsumes shell operator rejection bug)."""
         result = _call(
