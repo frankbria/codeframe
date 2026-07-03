@@ -17,36 +17,20 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from codeframe.core.workspace import _create_token_usage_schema
+
 pytestmark = pytest.mark.v2
 
 
 def _ensure_token_usage_table(db_path: Path) -> None:
-    """Create token_usage on the workspace DB without invoking SchemaManager.
+    """Create token_usage on the workspace DB via the real schema builder (#712).
 
-    The router opens the workspace DB directly and tolerates the table
-    being absent. Tests that exercise real data need to create the table
-    inline to mirror what an agent run would produce.
+    Delegates to the production DDL so this fixture can never drift from the
+    columns the app actually reads/writes.
     """
     conn = sqlite3.connect(str(db_path))
     try:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS token_usage (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id INTEGER,
-                agent_id TEXT NOT NULL,
-                project_id INTEGER NOT NULL,
-                model_name TEXT NOT NULL,
-                input_tokens INTEGER NOT NULL,
-                output_tokens INTEGER NOT NULL,
-                estimated_cost_usd REAL NOT NULL,
-                actual_cost_usd REAL,
-                call_type TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                session_id TEXT DEFAULT NULL
-            )
-            """
-        )
+        _create_token_usage_schema(conn.cursor())
         conn.commit()
     finally:
         conn.close()
