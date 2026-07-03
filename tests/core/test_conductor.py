@@ -305,6 +305,57 @@ class TestCancelBatch:
         assert cancelled.completed_at is not None
 
 
+class TestCancellationIsAuthoritative:
+    """#726 / P0.15: a concurrent cancel must not be resurrected by a
+    still-running worker's whole-row save."""
+
+    def _running_batch(self, workspace, task_ids):
+        from datetime import datetime, timezone
+
+        batch = BatchRun(
+            id="test-cancel-race",
+            workspace_id=workspace.id,
+            task_ids=task_ids,
+            status=BatchStatus.RUNNING,
+            strategy="serial",
+            max_parallel=4,
+            on_failure=OnFailure.CONTINUE,
+            started_at=datetime.now(timezone.utc),
+            completed_at=None,
+            results={},
+        )
+        _save_batch(workspace, batch)
+        return batch
+
+    def test_worker_save_does_not_resurrect_cancelled(self, workspace_with_tasks):
+        workspace, task_list = workspace_with_tasks
+        worker_view = self._running_batch(workspace, [task_list[0].id])
+
+        # A concurrent cancel marks the persisted batch CANCELLED.
+        cancel_batch(workspace, worker_view.id)
+
+        # The still-running worker finishes a task and saves the whole row with
+        # its stale RUNNING in-memory status.
+        worker_view.status = BatchStatus.RUNNING
+        worker_view.results = {task_list[0].id: "COMPLETED"}
+        _save_batch(workspace, worker_view)
+
+        # Persisted status stays CANCELLED (not resurrected), and the in-memory
+        # view is flipped so the execution loop will stop.
+        assert get_batch(workspace, worker_view.id).status == BatchStatus.CANCELLED
+        assert worker_view.status == BatchStatus.CANCELLED
+
+    def test_resume_can_still_transition_cancelled_to_running(self, workspace_with_tasks):
+        workspace, task_list = workspace_with_tasks
+        batch = self._running_batch(workspace, [task_list[0].id])
+        cancel_batch(workspace, batch.id)
+
+        # resume_batch bypasses the guard (preserve_terminal_cancel=False).
+        batch.status = BatchStatus.RUNNING
+        _save_batch(workspace, batch, preserve_terminal_cancel=False)
+        assert get_batch(workspace, batch.id).status == BatchStatus.RUNNING
+
+
 class TestStopBatch:
     """Tests for stop_batch function."""
 
