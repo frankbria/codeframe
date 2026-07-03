@@ -148,3 +148,50 @@ class TestDelete:
 
     def test_delete_missing_returns_false(self, db):
         assert db.workspace_registry.delete("does-not-exist") is False
+
+
+@pytest.fixture
+def db_two_users(db):
+    """Registry DB with two real users (owner_user_id FKs to users.id)."""
+    db.conn.execute(
+        """
+        INSERT OR REPLACE INTO users (
+            id, email, name, hashed_password,
+            is_active, is_superuser, is_verified, email_verified
+        ) VALUES
+            (1, 'a@x.co', 'A', '!DISABLED!', 1, 0, 1, 1),
+            (2, 'b@x.co', 'B', '!DISABLED!', 1, 0, 1, 1)
+        """
+    )
+    db.conn.commit()
+    return db
+
+
+class TestOwnerScoping:
+    """Issue #720 / P0.9: registry must be owner-scoped so one tenant cannot
+    enumerate or delete another's workspaces, and a refresh must not null the
+    recorded owner."""
+
+    def test_upsert_preserves_owner_on_ownerless_refresh(self, db_two_users):
+        db = db_two_users
+        db.workspace_registry.upsert(repo_path="/p/alpha", name="alpha", owner_user_id=1)
+        # A later refresh that omits the owner (None) must keep owner=1.
+        db.workspace_registry.upsert(repo_path="/p/alpha", name="alpha", owner_user_id=None)
+        assert db.workspace_registry.get_by_path("/p/alpha")["owner_user_id"] == 1
+
+    def test_delete_is_owner_scoped(self, db_two_users):
+        db = db_two_users
+        entry = db.workspace_registry.upsert(repo_path="/p/a", name="a", owner_user_id=1)
+        wid = entry["id"]
+        # User 2 cannot delete user 1's entry.
+        assert db.workspace_registry.delete(wid, owner_user_id=2) is False
+        assert db.workspace_registry.get_by_id(wid) is not None
+        # Owner 1 can.
+        assert db.workspace_registry.delete(wid, owner_user_id=1) is True
+        assert db.workspace_registry.get_by_id(wid) is None
+
+    def test_delete_without_owner_filter_unchanged(self, db_two_users):
+        db = db_two_users
+        entry = db.workspace_registry.upsert(repo_path="/p/a", name="a", owner_user_id=1)
+        # auth-off path (owner_user_id=None): no filter, deletes by id.
+        assert db.workspace_registry.delete(entry["id"]) is True

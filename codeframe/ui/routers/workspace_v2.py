@@ -188,7 +188,10 @@ def _register_workspace(
 
 @router.get("", response_model=WorkspaceListResponse)
 @rate_limit_standard()
-async def list_workspaces(request: Request) -> WorkspaceListResponse:
+async def list_workspaces(
+    request: Request,
+    auth: dict = Depends(require_auth),
+) -> WorkspaceListResponse:
     """List all registered workspaces (issue #601).
 
     Returns server-side registry entries ordered by recency, each annotated with
@@ -210,7 +213,9 @@ async def list_workspaces(request: Request) -> WorkspaceListResponse:
             ),
         )
 
-    entries = registry.list_all()
+    # Owner-scope the listing when auth is enabled (#720): a tenant sees only
+    # its own registered workspaces. auth off → user_id None → all entries.
+    entries = registry.list_all(owner_user_id=auth.get("user_id"))
     # path_exists is a per-entry blocking stat() inside an async handler. The
     # registry is recency-scoped and small in practice, so the event-loop cost is
     # negligible; revisit (e.g. run_in_executor) only if the list grows large.
@@ -511,6 +516,7 @@ async def check_workspace_exists(
 async def deregister_workspace(
     request: Request,
     workspace_id: str,
+    auth: dict = Depends(require_auth),
 ) -> Response:
     """Deregister a workspace from the server-side registry (issue #601).
 
@@ -536,7 +542,9 @@ async def deregister_workspace(
             ),
         )
 
-    deleted = registry.delete(workspace_id)
+    # Owner-scope the delete (#720): a tenant cannot deregister another's entry.
+    # auth off → user_id None → no owner filter (unchanged local behavior).
+    deleted = registry.delete(workspace_id, owner_user_id=auth.get("user_id"))
     if not deleted:
         raise HTTPException(
             status_code=404,
