@@ -152,7 +152,7 @@ class TestUnverifiableRollup:
 
         with patch(
             "codeframe.core.proof.runner._run_gate",
-            side_effect=lambda ws, gate: (
+            side_effect=lambda ws, gate, rules=(): (
                 (GateOutcome.PASSED, "ok")
                 if gate == Gate.UNIT
                 else (GateOutcome.UNVERIFIABLE, "cannot verify")
@@ -203,7 +203,7 @@ class TestRealFailureStillFails:
         save_requirement(workspace, _make_req("REQ-F3", [Gate.UNIT, Gate.E2E]))
         with patch(
             "codeframe.core.proof.runner._run_gate",
-            side_effect=lambda ws, gate: (
+            side_effect=lambda ws, gate, rules=(): (
                 (GateOutcome.FAILED, "boom")
                 if gate == Gate.UNIT
                 else (GateOutcome.UNVERIFIABLE, "cannot verify")

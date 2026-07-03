@@ -12,7 +12,7 @@ _TEMPLATES: dict[Gate, str] = {
 import pytest
 
 
-def test_{slug}():
+def test_unit_{slug}():
     """Proves: {description}"""
     # Arrange
     # TODO: Set up test data
@@ -128,10 +128,13 @@ Attach screenshots or notes below when complete.
 
 
 def _slugify(text: str) -> str:
-    """Create a safe identifier from text."""
-    import re
-    slug = re.sub(r"[^a-z0-9]+", "_", text.lower().strip())[:50].strip("_")
-    return slug or "unnamed"
+    """Create a safe identifier from text.
+
+    Delegates to obligations.slugify so stub function names always match the
+    evidence-rule test_ids that enforce them (issue #729).
+    """
+    from codeframe.core.proof.obligations import slugify
+    return slugify(text)
 
 
 def generate_stubs(req: Requirement) -> dict[Gate, str]:

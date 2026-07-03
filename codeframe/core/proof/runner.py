@@ -9,12 +9,13 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Sequence
 
 from codeframe.core.proof import ledger
 from codeframe.core.proof.evidence import attach_evidence
 from codeframe.core.proof.models import (
     PROOF_CONFIG_FILENAME,
+    EvidenceRule,
     Gate,
     GateOutcome,
     ProofRun,
@@ -80,12 +81,26 @@ _OUTCOME_TO_OBLIGATION_STATUS: dict[GateOutcome, str] = {
 }
 
 
-def _run_gate(workspace: Workspace, gate: Gate) -> tuple[GateOutcome, str]:
+def _run_gate(
+    workspace: Workspace,
+    gate: Gate,
+    rules: Sequence[EvidenceRule] = (),
+) -> tuple[GateOutcome, str]:
     """Execute a single gate and return (outcome, output).
 
     Uses core/gates.py for gates that have direct tool support. Gates without
     an automated runner return UNVERIFIABLE — the obligation could not be
     checked, which is distinct from running and failing.
+
+    For pytest-backed gates, each ``must_pass`` evidence rule is enforced
+    individually: pytest runs scoped to the rule's ``test_id`` (via ``-k``),
+    and a named test that doesn't exist is a FAILED obligation — a green
+    whole-suite run proves nothing about a test that was never written.
+    Rules with ``must_pass=False`` are informational only.
+
+    Each enforced rule deliberately gets its own pytest subprocess — do not
+    collapse them into one ``-k "a or b"`` run; per-rule exit codes are what
+    distinguish "named test missing" from "collected but failing".
     """
     core_gate_name = _GATE_TO_CORE.get(gate)
     if not core_gate_name:
@@ -95,13 +110,61 @@ def _run_gate(workspace: Workspace, gate: Gate) -> tuple[GateOutcome, str]:
         )
 
     try:
-        from codeframe.core.gates import run as run_gates
-        result = run_gates(workspace, gates=[core_gate_name], verbose=False)
-        output_parts = [
-            f"{check.name}: {check.status.value}" for check in result.checks
-        ]
-        outcome = GateOutcome.PASSED if result.passed else GateOutcome.FAILED
-        return outcome, "\n".join(output_parts)
+        from codeframe.core import gates as core_gates
+
+        # Only pytest-style test_ids can be enforced by a scoped pytest run;
+        # e.g. SEC's test_sec_* rules are pytest tests even though the SEC
+        # gate's own runner is ruff.
+        enforced = [r for r in rules if r.must_pass and r.test_id.startswith("test_")]
+        unenforceable = [r for r in rules if r.must_pass and not r.test_id.startswith("test_")]
+
+        lines: list[str] = []
+        all_passed = True
+
+        for rule in enforced:
+            result = core_gates.run(
+                workspace,
+                gates=["pytest"],
+                verbose=False,
+                test_selector=rule.test_id,
+            )
+            check = result.checks[0] if result.checks else None
+            if check is None:
+                lines.append(f"{rule.test_id}: FAILED — no gate check returned")
+                all_passed = False
+            elif check.exit_code == 5:
+                lines.append(f"{rule.test_id}: FAILED — named test missing (not collected)")
+                all_passed = False
+            elif check.status == core_gates.GateStatus.PASSED:
+                lines.append(f"{rule.test_id}: passed")
+            else:
+                # SKIPPED (pytest unavailable) and ERROR (timeout) are not
+                # proof — enforcement needs a positive pass, unlike the
+                # whole-suite path where SKIPPED counts as passing.
+                lines.append(f"{rule.test_id}: FAILED ({check.status.value})")
+                all_passed = False
+
+        # A must_pass rule we cannot enforce must not silently count as
+        # satisfied — that is the exact bug this module exists to prevent.
+        for rule in unenforceable:
+            lines.append(f"{rule.test_id}: FAILED — must_pass rule has no pytest-style test_id")
+            all_passed = False
+
+        # Run the gate's own runner unless it is pytest and the enforced rules
+        # already covered it (scoped runs replace the whole-suite run).
+        if core_gate_name != "pytest" or not enforced:
+            result = core_gates.run(workspace, gates=[core_gate_name], verbose=False)
+            lines.extend(
+                f"{check.name}: {check.status.value}" for check in result.checks
+            )
+            all_passed = all_passed and result.passed
+
+        for rule in rules:
+            if not rule.must_pass:
+                lines.append(f"{rule.test_id}: informational (must_pass=False, not enforced)")
+
+        outcome = GateOutcome.PASSED if all_passed else GateOutcome.FAILED
+        return outcome, "\n".join(lines)
     except Exception as exc:
         logger.warning("Gate %s failed to run: %s", gate.value, exc)
         return GateOutcome.FAILED, str(exc)
@@ -183,6 +246,13 @@ def run_proof(
 
         req_results: list[tuple[Gate, GateOutcome]] = []
 
+        unresolved = [r.test_id for r in req.evidence_rules if r.gate is None]
+        if unresolved:
+            logger.warning(
+                "REQ %s: %d evidence rule(s) with no resolvable gate are not enforced: %s",
+                req.id, len(unresolved), unresolved,
+            )
+
         for obl in req.obligations:
             # Apply gate filter
             if gate_filter and obl.gate != gate_filter:
@@ -192,8 +262,9 @@ def run_proof(
             if enabled_gates is not None and obl.gate not in enabled_gates:
                 continue
 
-            # Run the gate
-            outcome, output = _run_gate(workspace, obl.gate)
+            # Run the gate, enforcing this requirement's evidence rules for it
+            gate_rules = [r for r in req.evidence_rules if r.gate == obl.gate]
+            outcome, output = _run_gate(workspace, obl.gate, gate_rules)
 
             # Write artifact
             artifact_path = artifact_dir / f"{req.id}_{obl.gate.value}_{run_id}.txt"
