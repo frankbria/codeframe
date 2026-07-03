@@ -97,6 +97,10 @@ def _run_gate(
     and a named test that doesn't exist is a FAILED obligation — a green
     whole-suite run proves nothing about a test that was never written.
     Rules with ``must_pass=False`` are informational only.
+
+    Each enforced rule deliberately gets its own pytest subprocess — do not
+    collapse them into one ``-k "a or b"`` run; per-rule exit codes are what
+    distinguish "named test missing" from "collected but failing".
     """
     core_gate_name = _GATE_TO_CORE.get(gate)
     if not core_gate_name:
@@ -124,7 +128,10 @@ def _run_gate(
                 test_selector=rule.test_id,
             )
             check = result.checks[0] if result.checks else None
-            if check is not None and check.exit_code == 5:
+            if check is None:
+                lines.append(f"{rule.test_id}: FAILED — no gate check returned")
+                all_passed = False
+            elif check.exit_code == 5:
                 lines.append(f"{rule.test_id}: FAILED — named test missing (not collected)")
                 all_passed = False
             elif result.passed:
@@ -228,6 +235,13 @@ def run_proof(
                 continue
 
         req_results: list[tuple[Gate, GateOutcome]] = []
+
+        unresolved = [r.test_id for r in req.evidence_rules if r.gate is None]
+        if unresolved:
+            logger.warning(
+                "REQ %s: %d evidence rule(s) with no resolvable gate are not enforced: %s",
+                req.id, len(unresolved), unresolved,
+            )
 
         for obl in req.obligations:
             # Apply gate filter

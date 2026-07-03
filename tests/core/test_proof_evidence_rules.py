@@ -294,6 +294,32 @@ class TestRunProofEnforcement:
         assert req.status == ReqStatus.OPEN
 
     @patch("codeframe.core.gates.run")
+    def test_gate_none_rules_are_ignored_not_errored(self, mock_run, workspace):
+        """A rule whose gate could not be resolved (legacy, unknown prefix) is
+        skipped: whole-suite behavior, no enforcement, no crash."""
+        from codeframe.core.proof import ledger
+        from codeframe.core.proof.capture import capture_requirement
+        from codeframe.core.proof.runner import run_proof
+
+        req, _ = capture_requirement(
+            workspace, title="Bug", description="Logic error in calculation",
+            where="src/calc.py", severity=Severity.MEDIUM, source=Source.QA,
+        )
+        # Unknown prefix → prefix-derivation on load also yields None
+        for i, rule in enumerate(req.evidence_rules):
+            rule.gate = None
+            rule.test_id = f"regression_check_{i}"
+        ledger.save_requirement(workspace, req)
+
+        mock_run.return_value = _gate_result(GateStatus.PASSED, 0, "suite green")
+        results = run_proof(workspace, full=True)
+        assert all(o == GateOutcome.PASSED for _, o in results[req.id])
+        # No scoped runs happened — every call was a whole-suite invocation
+        assert all(
+            c.kwargs.get("test_selector") is None for c in mock_run.call_args_list
+        )
+
+    @patch("codeframe.core.gates.run")
     def test_named_tests_passing_satisfies(self, mock_run, workspace):
         from codeframe.core.proof.capture import capture_requirement
         from codeframe.core.proof.runner import run_proof
