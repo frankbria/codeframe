@@ -208,3 +208,45 @@ class TestBatchRunExitCodes:
             )
 
         assert result.exit_code == 1, f"Expected 1 for BLOCKED batch: {result.output}"
+
+
+class TestIsolationRejection:
+    """Issue #714: `--isolation worktree` must be rejected up front (exit 1)
+    before any run/batch is created — worktree isolation would silently discard
+    agent work. Covers the branch CodeRabbit flagged as untested."""
+
+    def _workspace_with_task(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        ws = create_or_load_workspace(repo)
+        task = tasks.create(ws, title="t", description="d", status=TaskStatus.READY)
+        return repo, ws, task
+
+    def test_work_start_rejects_worktree(self, tmp_path):
+        repo, ws, task = self._workspace_with_task(tmp_path)
+        result = runner.invoke(
+            app,
+            ["work", "start", task.id[:8], "--execute", "--isolation", "worktree", "-w", str(repo)],
+        )
+        assert result.exit_code == 1
+        assert "worktree isolation is temporarily disabled" in result.output
+        # No run was created; the task was not moved to IN_PROGRESS.
+        assert tasks.get(ws, task.id).status != TaskStatus.IN_PROGRESS
+
+    def test_work_batch_run_rejects_worktree(self, tmp_path):
+        repo, ws, task = self._workspace_with_task(tmp_path)
+        result = runner.invoke(
+            app,
+            ["work", "batch", "run", task.id[:8], "--isolation", "worktree", "-w", str(repo)],
+        )
+        assert result.exit_code == 1
+        assert "worktree isolation is temporarily disabled" in result.output
+
+    def test_work_start_allows_none(self, tmp_path):
+        """--isolation none must NOT hit the rejection path (sanity)."""
+        repo, ws, task = self._workspace_with_task(tmp_path)
+        result = runner.invoke(
+            app,
+            ["work", "start", task.id[:8], "--isolation", "none", "-w", str(repo)],
+        )
+        assert "worktree isolation is temporarily disabled" not in result.output
