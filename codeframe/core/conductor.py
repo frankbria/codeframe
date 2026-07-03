@@ -992,10 +992,11 @@ def resume_batch(
     if on_event:
         on_event("batch_resumed", {"batch_id": batch_id, "task_count": len(tasks_to_run)})
 
-    # Update status to running
+    # Update status to running. This is the one intentional CANCELLED->RUNNING
+    # transition, so bypass the terminal-cancel guard (#726).
     batch.status = BatchStatus.RUNNING
     batch.completed_at = None  # Clear completed_at since we're running again
-    _save_batch(workspace, batch)
+    _save_batch(workspace, batch, preserve_terminal_cancel=False)
 
     # Execute the tasks
     _execute_serial_resume(workspace, batch, tasks_to_run, on_event)
@@ -2185,11 +2186,22 @@ def _execute_task_subprocess(
         return RunStatus.FAILED.value
 
 
-def _save_batch(workspace: Workspace, batch: BatchRun) -> None:
+def _save_batch(
+    workspace: Workspace,
+    batch: BatchRun,
+    preserve_terminal_cancel: bool = True,
+) -> None:
     """Save or update a batch record in the database.
 
     Uses a thread lock to prevent SQLite "database is locked" errors
     when multiple workers try to update batch status concurrently.
+
+    When ``preserve_terminal_cancel`` is True (the default), a whole-row write
+    that would resurrect a persisted CANCELLED batch back to a live status is
+    refused (#726): a task-completion save from a still-running worker must not
+    undo a concurrent cancel. The in-memory ``batch.status`` is also flipped to
+    CANCELLED so the execution loop stops launching tasks. ``resume_batch``
+    passes ``preserve_terminal_cancel=False`` to intentionally re-run.
     """
     task_ids_json = json.dumps(batch.task_ids)
     results_json = json.dumps(batch.results) if batch.results else None
@@ -2207,6 +2219,20 @@ def _save_batch(workspace: Workspace, batch: BatchRun) -> None:
                 conn.commit()
             except Exception:
                 pass  # Column already exists
+
+            # Cancellation is authoritative (#726): don't let a whole-row write
+            # from a still-running worker resurrect a batch a concurrent
+            # cancel_batch/stop_batch already marked CANCELLED.
+            if preserve_terminal_cancel and batch.status != BatchStatus.CANCELLED:
+                cursor.execute(
+                    "SELECT status FROM batch_runs WHERE id = ?", (batch.id,)
+                )
+                existing = cursor.fetchone()
+                if existing and existing[0] == BatchStatus.CANCELLED.value:
+                    # Reflect the cancel into the in-memory batch so the loop
+                    # stops, and leave the persisted terminal record untouched.
+                    batch.status = BatchStatus.CANCELLED
+                    return
 
             cursor.execute(
                 """
