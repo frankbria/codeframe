@@ -760,6 +760,23 @@ _RUN_COMMAND_SCHEMA: dict = {
 _RUN_COMMAND_MAX_OUTPUT = 4000
 _RUN_COMMAND_MAX_TIMEOUT = 300
 
+# Allowlist of environment variables passed to LLM-driven `run_command` (#721).
+# `command` is steered by task/PRD text and imported GitHub-issue bodies, so
+# inheriting the operator's full env (os.environ.copy) is an indirect-prompt-
+# injection path to exfiltrating ANTHROPIC/OPENAI/GITHUB/E2B keys, DATABASE_URL,
+# AUTH_SECRET, etc. We pass ONLY these non-secret vars needed to run typical
+# build/test/git commands; every credential is excluded by construction. PATH
+# and VIRTUAL_ENV are set explicitly below for venv activation.
+_RUN_COMMAND_SAFE_ENV_VARS = frozenset({
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "PWD", "TERM", "TZ",
+    "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE",
+    "TMPDIR", "TMP", "TEMP",
+    "PYTHONPATH", "PYTHONUNBUFFERED", "PYTHONDONTWRITEBYTECODE", "VIRTUAL_ENV",
+    "NODE_ENV", "NODE_PATH", "GOPATH", "GOCACHE", "CARGO_HOME", "RUSTUP_HOME",
+    "JAVA_HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
+    "SYSTEMROOT", "SYSTEMDRIVE", "COMSPEC",  # Windows shell essentials
+})
+
 
 def _execute_run_command(
     input_data: dict, workspace_path: Path, tool_call_id: str
@@ -784,8 +801,10 @@ def _execute_run_command(
             is_error=True,
         )
 
-    # Build env with venv activation if present
-    env = os.environ.copy()
+    # Build a minimal, credential-free env from the allowlist (#721), then
+    # layer venv activation on top. Never os.environ.copy() here — that would
+    # hand every host secret to an LLM-authored shell command.
+    env = {k: os.environ[k] for k in _RUN_COMMAND_SAFE_ENV_VARS if k in os.environ}
     for venv_dir in (".venv", "venv"):
         venv_bin = workspace_path / venv_dir / "bin"
         if venv_bin.is_dir():
