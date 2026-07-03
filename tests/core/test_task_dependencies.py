@@ -192,3 +192,34 @@ class TestDatabaseMigration:
         task = tasks.create(workspace, title="Test task")
         retrieved = tasks.get(workspace, task.id)
         assert retrieved.depends_on == []
+
+
+class TestDeleteCascade:
+    """#724 / P0.13: deleting a task must strip its id from dependents'
+    depends_on, or they strand (a dangling dep can never be satisfied)."""
+
+    def test_delete_strips_id_from_dependents(self, workspace):
+        a = tasks.create(workspace, title="A")
+        b = tasks.create(workspace, title="B", depends_on=[a.id])
+        assert a.id in tasks.get(workspace, b.id).depends_on
+
+        assert tasks.delete(workspace, a.id) is True
+
+        b2 = tasks.get(workspace, b.id)
+        assert a.id not in b2.depends_on
+        assert b2.depends_on == []  # no dangling reference → not stranded
+
+    def test_delete_keeps_other_dependencies(self, workspace):
+        a = tasks.create(workspace, title="A")
+        c = tasks.create(workspace, title="C")
+        b = tasks.create(workspace, title="B", depends_on=[a.id, c.id])
+
+        tasks.delete(workspace, a.id)
+
+        b2 = tasks.get(workspace, b.id)
+        assert b2.depends_on == [c.id]  # only the deleted dep is removed
+
+    def test_delete_task_without_dependents(self, workspace):
+        a = tasks.create(workspace, title="A")
+        assert tasks.delete(workspace, a.id) is True
+        assert tasks.get(workspace, a.id) is None
