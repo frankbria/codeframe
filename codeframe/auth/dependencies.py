@@ -222,7 +222,19 @@ async def _authenticate_stream_ticket(ticket: str) -> User:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return await _load_active_user(user_id)
+    try:
+        return await _load_active_user(user_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Unexpected DB/session failures must degrade to 401, not 500 —
+        # matching the bearer path and authenticate_websocket.
+        logger.error(f"Stream ticket user lookup error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 async def get_current_user_optional(

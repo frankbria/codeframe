@@ -164,3 +164,22 @@ class TestQueryParamTicketRejectedElsewhere:
         resp = client.get(f"/maybe?ticket={ticket}")
         assert resp.status_code == 200
         assert resp.json()["id"] is None
+
+
+class TestTicketUserLookupFailure:
+    def test_db_error_during_user_load_degrades_to_401_not_500(
+        self, app_with_user, monkeypatch
+    ):
+        """An unexpected DB failure while loading the ticket's user must be a
+        controlled 401 (like the bearer path and authenticate_websocket), not
+        an unhandled 500 (CodeRabbit PR #800 Major)."""
+        from codeframe.auth import dependencies
+
+        async def boom(user_id):
+            raise RuntimeError("db exploded")
+
+        monkeypatch.setattr(dependencies, "_load_active_user", boom)
+        client = TestClient(app_with_user, raise_server_exceptions=False)
+        ticket = mint_ticket(user_id=1)
+        resp = client.get(f"{SSE_PATH}?ticket={ticket}")
+        assert resp.status_code == 401
