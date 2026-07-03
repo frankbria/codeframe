@@ -23,6 +23,12 @@ def app_with_user_a_workspace(tmp_path, monkeypatch):
     db_path = tmp_path / "state.db"
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
     monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+    # The `with TestClient(app)` below runs the lifespan startup, which rejects
+    # the default JWT secret unless this escape hatch is set (self-hosted only).
+    # create_test_jwt_token signs with the same default secret the server then
+    # validates with, so tokens stay valid.
+    monkeypatch.setenv("CODEFRAME_ALLOW_INSECURE_SECRET", "1")
+    monkeypatch.delenv("AUTH_SECRET", raising=False)
     reset_auth_engine()
 
     db = Database(db_path)
