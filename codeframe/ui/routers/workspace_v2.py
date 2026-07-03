@@ -482,22 +482,30 @@ async def update_workspace_config(
 async def check_workspace_exists(
     request: Request,
     repo_path: str = Query(..., description="Path to check for workspace"),
+    auth: dict = Depends(require_auth),
 ) -> dict:
     """Check if a workspace exists at a given path.
 
     Args:
         request: HTTP request for rate limiting
         repo_path: Path to check
+        auth: Authenticated principal (for the workspace allowlist)
 
     Returns:
         Whether workspace exists and path info
     """
-    path = Path(repo_path).resolve()
+    # Enforce the workspace allowlist (#719): without this any authenticated
+    # user could probe arbitrary host paths for existence and get the fully
+    # resolved absolute path back. enforce_workspace_allowlist resolves the
+    # path and raises 403 for anything outside the permitted roots (so the
+    # resolved path is never echoed for out-of-allowlist inputs).
+    path = enforce_workspace_allowlist(Path(repo_path), auth.get("user_id"))
+    exists = ws.workspace_exists(path)
 
     return {
-        "exists": ws.workspace_exists(path),
+        "exists": exists,
         "path": str(path),
-        "state_dir": str(path / ".codeframe") if ws.workspace_exists(path) else None,
+        "state_dir": str(path / ".codeframe") if exists else None,
     }
 
 
