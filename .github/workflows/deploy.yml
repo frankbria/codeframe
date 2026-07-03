@@ -491,7 +491,9 @@ jobs:
             echo "🐍 Setting up Python backend..."
             if ! command -v uv &> /dev/null; then
               curl -LsSf https://astral.sh/uv/install.sh | sh
-              export PATH="$HOME/.cargo/bin:$PATH"
+              # uv installs to ~/.local/bin, and \$HOME must expand on the host
+              # (not the runner) — mirror the staging job (#727).
+              export PATH="\$HOME/.local/bin:\$PATH"
             fi
             uv venv --clear
             source .venv/bin/activate
