@@ -4,7 +4,20 @@ Generates skeleton test files for each proof gate obligation.
 Uses inline templates (no Jinja2 dependency for simplicity).
 """
 
+from pathlib import Path
+from typing import Optional
+
 from codeframe.core.proof.models import Gate, Requirement
+from codeframe.core.workspace import Workspace
+
+# Per-gate file extension for written stubs. Pytest gates default to .py;
+# E2E stubs are Playwright TypeScript, DEMO/MANUAL are markdown-ish scripts.
+_EXTENSIONS: dict[Gate, str] = {
+    Gate.E2E: ".ts",
+    Gate.DEMO: ".md",
+    Gate.MANUAL: ".md",
+}
+_DEFAULT_EXTENSION = ".py"
 
 _TEMPLATES: dict[Gate, str] = {
     Gate.UNIT: '''\
@@ -157,3 +170,29 @@ def generate_stubs(req: Requirement) -> dict[Gate, str]:
         result[obligation.gate] = content
 
     return result
+
+
+def write_stub_files(
+    workspace: Workspace,
+    req: Requirement,
+    stubs: dict[Gate, str],
+    out_dir: Optional[Path] = None,
+) -> dict[Gate, Path]:
+    """Write generated stub content to disk under tests/proof/<req_id>/.
+
+    Existing files are never overwritten (they may hold developer edits).
+    Returns a mapping of Gate → path for every stub file that now exists.
+    """
+    target = out_dir or workspace.repo_path / "tests" / "proof" / req.id
+    target.mkdir(parents=True, exist_ok=True)
+
+    slug = _slugify(req.title)
+    paths: dict[Gate, Path] = {}
+    for gate, content in stubs.items():
+        ext = _EXTENSIONS.get(gate, _DEFAULT_EXTENSION)
+        path = target / f"test_{slug}_{gate.value}{ext}"
+        if not path.exists():
+            path.write_text(content, encoding="utf-8")
+        paths[gate] = path
+
+    return paths

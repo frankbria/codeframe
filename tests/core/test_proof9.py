@@ -449,6 +449,61 @@ class TestStubs:
         assert Gate.UNIT in stubs
         assert Gate.E2E in stubs
 
+    def _req(self, gates):
+        from codeframe.core.proof.models import (
+            Requirement, Severity, Source, RequirementScope, Obligation,
+        )
+        return Requirement(
+            id="REQ-0001", title="Login rejects empty password",
+            description="Empty passwords should fail validation",
+            severity=Severity.HIGH, source=Source.QA,
+            scope=RequirementScope(),
+            obligations=[Obligation(gate=g) for g in gates],
+            evidence_rules=[],
+        )
+
+    def test_write_stub_files_creates_files(self, workspace):
+        from codeframe.core.proof.stubs import generate_stubs, write_stub_files
+        from codeframe.core.proof.models import Gate
+
+        req = self._req([Gate.UNIT, Gate.E2E, Gate.MANUAL])
+        stubs = generate_stubs(req)
+        paths = write_stub_files(workspace, req, stubs)
+
+        stub_dir = workspace.repo_path / "tests" / "proof" / req.id
+        assert set(paths) == {Gate.UNIT, Gate.E2E, Gate.MANUAL}
+        for gate, path in paths.items():
+            assert path.parent == stub_dir
+            assert path.exists()
+            assert req.id in path.read_text(encoding="utf-8")
+        assert paths[Gate.UNIT].suffix == ".py"
+        assert paths[Gate.E2E].suffix == ".ts"
+        assert paths[Gate.MANUAL].suffix == ".md"
+
+    def test_write_stub_files_skips_existing(self, workspace):
+        from codeframe.core.proof.stubs import generate_stubs, write_stub_files
+        from codeframe.core.proof.models import Gate
+
+        req = self._req([Gate.UNIT])
+        stubs = generate_stubs(req)
+        paths = write_stub_files(workspace, req, stubs)
+
+        # Developer edits the stub; a re-run must not overwrite it
+        paths[Gate.UNIT].write_text("# my real test", encoding="utf-8")
+        paths2 = write_stub_files(workspace, req, stubs)
+        assert paths2[Gate.UNIT] == paths[Gate.UNIT]
+        assert paths[Gate.UNIT].read_text(encoding="utf-8") == "# my real test"
+
+    def test_write_stub_files_out_dir_override(self, workspace, tmp_path):
+        from codeframe.core.proof.stubs import generate_stubs, write_stub_files
+        from codeframe.core.proof.models import Gate
+
+        req = self._req([Gate.UNIT])
+        out = tmp_path / "custom"
+        paths = write_stub_files(workspace, req, generate_stubs(req), out_dir=out)
+        assert paths[Gate.UNIT].parent == out
+        assert paths[Gate.UNIT].exists()
+
 
 # --- Capture Tests ---
 
@@ -471,7 +526,13 @@ class TestCapture:
         assert req.id == "REQ-0001"
         assert req.glitch_type is not None
         assert len(req.obligations) > 0
+
+        # Stubs are written to disk under tests/proof/<req_id>/ (#730)
         assert len(stubs) > 0
+        for path in stubs.values():
+            assert path.parent == workspace.repo_path / "tests" / "proof" / req.id
+            assert path.exists()
+            assert req.id in path.read_text(encoding="utf-8")
 
         # Verify persisted
         loaded = ledger.get_requirement(workspace, "REQ-0001")

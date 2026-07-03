@@ -115,10 +115,13 @@ def capture(
     console.print(f"  Scope routes: {', '.join(req.scope.routes) or 'none'}")
 
     if stubs:
-        console.print("\n[bold]Generated test stubs:[/bold]")
-        for gate, content in stubs.items():
-            lines = len(content.splitlines())
-            console.print(f"  [cyan]{gate.value}[/cyan]: {lines} lines")
+        console.print("\n[bold]Test stubs written:[/bold]")
+        for gate, path in stubs.items():
+            try:
+                shown = path.relative_to(workspace.repo_path)
+            except ValueError:
+                shown = path
+            console.print(f"  [cyan]{gate.value}[/cyan]: {shown}")
 
 
 @proof_app.command("run")
