@@ -52,12 +52,26 @@ class TestCredentialEndpointHostedBlock:
         r = self._client().delete("/api/v2/settings/keys/openai")
         assert r.status_code == 403
 
+    def test_github_connect_blocked_in_hosted_mode(self, monkeypatch):
+        monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "hosted")
+        # The guard fires before workspace-allowlist resolution, so no
+        # WORKSPACE_ROOT setup is needed.
+        r = self._client().post(
+            "/api/v2/integrations/github/connect", json={"repo": "o/r", "pat": "ghp_x"}
+        )
+        assert r.status_code == 403
+
+    def test_github_disconnect_blocked_in_hosted_mode(self, monkeypatch):
+        monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "hosted")
+        r = self._client().delete("/api/v2/integrations/github/disconnect")
+        assert r.status_code == 403
+
     def test_store_key_not_hosted_blocked_in_self_hosted(self, monkeypatch):
         monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "self_hosted")
         r = self._client().put("/api/v2/settings/keys/openai", json={"value": "sk-x"})
-        # self-hosted: the hosted guard is a no-op; may 400 on value format, but
-        # never the hosted-mode 403.
-        assert not (r.status_code == 403 and "hosted mode" in r.json().get("detail", "").lower())
+        # self-hosted: the hosted guard is a no-op; the request passes it and hits
+        # value-format validation (400). It must never be the hosted-mode 403.
+        assert r.status_code != 403, f"unexpected hosted-mode 403 in self-hosted: {r.json()}"
 
 
 class TestOwnerPersistence:

@@ -111,6 +111,8 @@ def forbid_shared_credentials_in_hosted_mode() -> None:
     per-instance environment variables instead. Per-user credential scoping is a
     tracked follow-up; until then hosted mode fails closed.
     """
+    # Deferred import: codeframe.ui.server imports from this module at module
+    # level, so importing it at the top would be circular.
     from codeframe.ui.server import is_hosted_mode
 
     if is_hosted_mode():
