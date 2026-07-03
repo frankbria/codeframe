@@ -132,8 +132,9 @@ async def create_stream_ticket(
     authenticate the SSE routes with ``X-API-Key`` directly.
     """
     from codeframe.auth.api_keys import SCOPE_WRITE
+    from codeframe.auth.scopes import has_scope
 
-    if SCOPE_WRITE not in auth.get("scopes", []):
+    if not has_scope(auth, SCOPE_WRITE):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Stream tickets require write scope",

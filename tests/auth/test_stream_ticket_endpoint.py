@@ -97,7 +97,7 @@ class TestStreamTicketScopeEnforcement:
 
     @pytest.fixture
     def api_keys(self, auth_client, tmp_path):
-        from codeframe.auth.api_keys import SCOPE_READ, SCOPE_WRITE
+        from codeframe.auth.api_keys import SCOPE_ADMIN, SCOPE_READ, SCOPE_WRITE
         from codeframe.core.api_key_service import ApiKeyService
 
         db = Database(tmp_path / "state.db")
@@ -108,6 +108,7 @@ class TestStreamTicketScopeEnforcement:
             "write": svc.create_api_key(
                 user_id=1, name="w", scopes=[SCOPE_READ, SCOPE_WRITE]
             ).key,
+            "admin": svc.create_api_key(user_id=1, name="a", scopes=[SCOPE_ADMIN]).key,
         }
         db.close()
         return keys
@@ -123,6 +124,16 @@ class TestStreamTicketScopeEnforcement:
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         resp = auth_client.post(
             "/auth/stream-ticket", headers={"X-API-Key": api_keys["write"]}
+        )
+        assert resp.status_code == 200, resp.text
+        assert redeem_ticket(resp.json()["ticket"]) == 1
+
+    def test_admin_only_api_key_returns_ticket(self, auth_client, api_keys, monkeypatch):
+        # admin implies write via the scope hierarchy (has_scope), so an
+        # admin-only key must not be rejected by the write-scope gate.
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+        resp = auth_client.post(
+            "/auth/stream-ticket", headers={"X-API-Key": api_keys["admin"]}
         )
         assert resp.status_code == 200, resp.text
         assert redeem_ticket(resp.json()["ticket"]) == 1
