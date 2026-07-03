@@ -1846,12 +1846,14 @@ def tasks_generate(
             console.print("Add one first: codeframe prd add <file.md>")
             raise typer.Exit(1)
 
-        # Handle --overwrite
-        if overwrite:
-            existing = tasks.list_tasks(workspace)
-            if existing:
-                deleted = tasks.delete_all(workspace)
-                console.print(f"[dim]Cleared {deleted} existing tasks[/dim]")
+        # --overwrite must not lose the existing tasks if generation fails
+        # (#725). Generation persists new tasks alongside the old ones; we only
+        # delete the originals *after* it succeeds. On failure the originals are
+        # untouched and any partially-created new tasks are rolled back, so a
+        # transient LLM error (rate limit / timeout / bad response) is a no-op.
+        original_ids = (
+            {t.id for t in tasks.list_tasks(workspace)} if overwrite else set()
+        )
 
         console.print(f"Generating tasks from PRD: [bold]{prd_record.title}[/bold]")
 
@@ -1859,27 +1861,41 @@ def tasks_generate(
             from codeframe.cli.validators import require_anthropic_api_key
             require_anthropic_api_key()
 
-        if recursive:
-            console.print(f"[dim]Using recursive decomposition (max depth: {max_depth})...[/dim]")
+        try:
+            if recursive:
+                console.print(f"[dim]Using recursive decomposition (max depth: {max_depth})...[/dim]")
 
-            from codeframe.adapters.llm import get_provider
-            from codeframe.core.task_tree import generate_task_tree, flatten_task_tree
+                from codeframe.adapters.llm import get_provider
+                from codeframe.core.task_tree import generate_task_tree, flatten_task_tree
 
-            provider = get_provider()
-            tree = generate_task_tree(
-                provider,
-                prd_record.content,
-                lineage=[],
-                depth=0,
-                max_depth=max_depth,
-            )
-            created = flatten_task_tree(tree, workspace, prd_id=prd_record.id)
-        elif no_llm:
-            console.print("[dim]Using simple extraction (--no-llm)[/dim]")
-            created = tasks.generate_from_prd(workspace, prd_record, use_llm=False)
-        else:
-            console.print("[dim]Using LLM for task generation...[/dim]")
-            created = tasks.generate_from_prd(workspace, prd_record, use_llm=True)
+                provider = get_provider()
+                tree = generate_task_tree(
+                    provider,
+                    prd_record.content,
+                    lineage=[],
+                    depth=0,
+                    max_depth=max_depth,
+                )
+                created = flatten_task_tree(tree, workspace, prd_id=prd_record.id)
+            elif no_llm:
+                console.print("[dim]Using simple extraction (--no-llm)[/dim]")
+                created = tasks.generate_from_prd(workspace, prd_record, use_llm=False)
+            else:
+                console.print("[dim]Using LLM for task generation...[/dim]")
+                created = tasks.generate_from_prd(workspace, prd_record, use_llm=True)
+        except Exception:
+            # Roll back any partial new tasks; the originals were never deleted.
+            if overwrite:
+                for t in tasks.list_tasks(workspace):
+                    if t.id not in original_ids:
+                        tasks.delete(workspace, t.id)
+            raise
+
+        # Generation succeeded — now it is safe to clear the old tasks.
+        if overwrite and original_ids:
+            for tid in original_ids:
+                tasks.delete(workspace, tid)
+            console.print(f"[dim]Cleared {len(original_ids)} existing tasks[/dim]")
 
         # Emit event
         emit_for_workspace(
