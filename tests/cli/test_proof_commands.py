@@ -96,7 +96,9 @@ class TestCapture:
         assert "REQ-0001" in result.output
         req = ledger.get_requirement(workspace, "REQ-0001")
         assert req is not None
+        # Both repaired Choice prompts (severity + source) took effect.
         assert req.severity.value == "high"
+        assert req.source.value == "qa"
 
     def test_capture_second_req_increments_id(self, ws_with_req):
         """A second capture should produce REQ-0002."""
