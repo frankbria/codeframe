@@ -99,6 +99,32 @@ def revalidate_workspace_path(workspace_path: str, user_id: Optional[int]) -> Op
         return None
 
 
+def forbid_shared_credentials_in_hosted_mode() -> None:
+    """Block shared machine-wide credential mutation in hosted mode (#718).
+
+    CodeFRAME's credential store (``CredentialManager``) is machine-wide — one
+    set of LLM keys and one GitHub PAT per host. That is fine for a *self-hosted*
+    deployment, which is a single trust domain (one operator/team). In *hosted*
+    (multi-tenant) mode it would let any tenant view (last-4), overwrite, or
+    delete another tenant's secrets, so credential storage/deletion and GitHub
+    connect/disconnect are disabled there — hosted tenants supply credentials via
+    per-instance environment variables instead. Per-user credential scoping is a
+    tracked follow-up; until then hosted mode fails closed.
+    """
+    # Deferred import: codeframe.ui.server imports from this module at module
+    # level, so importing it at the top would be circular.
+    from codeframe.ui.server import is_hosted_mode
+
+    if is_hosted_mode():
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Shared credential storage is disabled in hosted mode. Provide "
+                "credentials via environment variables per deployment (#718)."
+            ),
+        )
+
+
 def get_workspace_manager(request: Request) -> WorkspaceManager:
     """Get workspace manager from application state.
 

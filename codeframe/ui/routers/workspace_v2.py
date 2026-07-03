@@ -157,8 +157,16 @@ def _get_registry(request: Request):
     return getattr(db, "workspace_registry", None)
 
 
-def _register_workspace(request: Request, workspace: Workspace) -> None:
-    """Best-effort upsert of a workspace into the server-side registry."""
+def _register_workspace(
+    request: Request, workspace: Workspace, owner_user_id: Optional[int] = None
+) -> None:
+    """Best-effort upsert of a workspace into the server-side registry.
+
+    ``owner_user_id`` is the authenticated principal's id (#718) — recorded for
+    defense-in-depth so the registry knows who owns each workspace. Owner-scoped
+    list/delete enforcement is #720; hosted-mode tenant isolation is path-based
+    (#655).
+    """
     registry = _get_registry(request)
     if registry is None:
         return
@@ -167,7 +175,7 @@ def _register_workspace(request: Request, workspace: Workspace) -> None:
             repo_path=str(workspace.repo_path),
             name=workspace.repo_path.name,
             tech_stack=workspace.tech_stack,
-            owner_user_id=None,  # Until auth is enforced on v2 routers.
+            owner_user_id=owner_user_id,
         )
     except Exception as e:  # noqa: BLE001 - tracking must never break the request
         logger.warning("Failed to register workspace in registry: %s", e)
@@ -292,7 +300,7 @@ async def init_workspace(
             workspace = ws.create_or_load_workspace(repo_path, tech_stack=tech_stack)
 
         # Register (or refresh) the workspace in the server-side registry (#601).
-        _register_workspace(request, workspace)
+        _register_workspace(request, workspace, auth.get("user_id"))
 
         return _workspace_to_response(workspace)
 
@@ -311,6 +319,7 @@ async def init_workspace(
 async def get_current_workspace(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> WorkspaceResponse:
     """Get information about the current workspace.
 
@@ -332,7 +341,7 @@ async def get_current_workspace(
             if entry is not None:
                 registry.update_last_opened(entry["id"])
             else:
-                _register_workspace(request, workspace)
+                _register_workspace(request, workspace, auth.get("user_id"))
         except Exception as e:  # noqa: BLE001 - tracking must never break the request
             logger.warning("Failed to track workspace access: %s", e)
 
@@ -345,6 +354,7 @@ async def update_current_workspace(
     request: Request,
     body: UpdateWorkspaceRequest,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> WorkspaceResponse:
     """Update the current workspace.
 
@@ -368,7 +378,7 @@ async def update_current_workspace(
         if body.tech_stack is not None:
             updated = ws.update_workspace_tech_stack(workspace.repo_path, body.tech_stack)
             # Keep the registry's cached metadata (tech_stack) in sync (#601).
-            _register_workspace(request, updated)
+            _register_workspace(request, updated, auth.get("user_id"))
 
         return _workspace_to_response(updated)
 

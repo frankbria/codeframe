@@ -44,7 +44,10 @@ from codeframe.core.github_integration_config import (
 from codeframe.core import tasks
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
-from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.dependencies import (
+    forbid_shared_credentials_in_hosted_mode,
+    get_v2_workspace,
+)
 from codeframe.ui.response_models import ErrorCodes, api_error
 
 logger = logging.getLogger(__name__)
@@ -171,7 +174,11 @@ async def get_status(
     )
 
 
-@router.post("/connect", response_model=ConnectResponse)
+@router.post(
+    "/connect",
+    response_model=ConnectResponse,
+    dependencies=[Depends(forbid_shared_credentials_in_hosted_mode)],  # shared PAT, not cross-tenant (#718)
+)
 @rate_limit_ai()
 async def connect(
     request: Request,
@@ -277,7 +284,11 @@ async def connect(
     )
 
 
-@router.delete("/disconnect", status_code=204)
+@router.delete(
+    "/disconnect",
+    status_code=204,
+    dependencies=[Depends(forbid_shared_credentials_in_hosted_mode)],  # shared PAT, not cross-tenant (#718)
+)
 @rate_limit_standard()
 async def disconnect(
     request: Request,

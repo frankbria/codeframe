@@ -30,6 +30,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from codeframe.auth.api_keys import SCOPE_ADMIN
 from codeframe.auth.dependencies import require_scope
+from codeframe.ui.dependencies import forbid_shared_credentials_in_hosted_mode
 from openai import AuthenticationError as _OpenAIAuthError
 from openai import OpenAI as _OpenAIClient
 from pydantic import BaseModel, Field
@@ -241,7 +242,10 @@ async def list_key_status(
 @router.put(
     "/keys/{provider}",
     response_model=KeyStatusResponse,
-    dependencies=[Depends(require_scope(SCOPE_ADMIN))],  # credential storage is admin-only (#717)
+    dependencies=[
+        Depends(require_scope(SCOPE_ADMIN)),  # credential storage is admin-only (#717)
+        Depends(forbid_shared_credentials_in_hosted_mode),  # not shareable across tenants (#718)
+    ],
 )
 @rate_limit_standard()
 async def store_key(
@@ -278,7 +282,10 @@ async def store_key(
 @router.delete(
     "/keys/{provider}",
     status_code=204,
-    dependencies=[Depends(require_scope(SCOPE_ADMIN))],  # credential deletion is admin-only (#717)
+    dependencies=[
+        Depends(require_scope(SCOPE_ADMIN)),  # credential deletion is admin-only (#717)
+        Depends(forbid_shared_credentials_in_hosted_mode),  # not shareable across tenants (#718)
+    ],
 )
 @rate_limit_standard()
 async def delete_key(
