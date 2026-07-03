@@ -588,7 +588,7 @@ function ProofPageContent() {
                   <dt className="font-medium text-foreground">Gate Results</dt>
                   <dd>
                     A gate can <strong>pass</strong> (green), <strong>fail</strong> (red), or be{' '}
-                    <span className="text-amber-700 dark:text-amber-400">could not be verified</span> (amber) —
+                    <span className="text-amber-700 dark:text-amber-400">unverifiable</span> (amber) —
                     the check couldn&apos;t run, so it never fails a run and stays waivable.
                   </dd>
                 </div>
