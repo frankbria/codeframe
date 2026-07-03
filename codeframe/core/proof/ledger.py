@@ -190,12 +190,25 @@ def _obligations_from_json(raw: str) -> list[Obligation]:
 
 
 def _evidence_rules_to_json(rules: list[EvidenceRule]) -> str:
-    return json.dumps([{"test_id": r.test_id, "must_pass": r.must_pass} for r in rules])
+    return json.dumps([
+        {"test_id": r.test_id, "must_pass": r.must_pass, "gate": r.gate.value if r.gate else None}
+        for r in rules
+    ])
 
 
 def _evidence_rules_from_json(raw: str) -> list[EvidenceRule]:
+    from codeframe.core.proof.obligations import gate_from_test_id
+
     data = json.loads(raw)
-    return [EvidenceRule(test_id=d["test_id"], must_pass=d.get("must_pass", True)) for d in data]
+    return [
+        EvidenceRule(
+            test_id=d["test_id"],
+            must_pass=d.get("must_pass", True),
+            # Legacy rows lack "gate" — derive from the test_id prefix convention
+            gate=Gate(d["gate"]) if d.get("gate") else gate_from_test_id(d["test_id"]),
+        )
+        for d in data
+    ]
 
 
 def _waiver_to_json(waiver: Optional[Waiver]) -> Optional[str]:

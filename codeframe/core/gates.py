@@ -287,6 +287,7 @@ def run(
     gates: Optional[list[str]] = None,
     verbose: bool = False,
     auto_install_deps: bool = True,
+    test_selector: Optional[str] = None,
 ) -> GateResult:
     """Run verification gates.
 
@@ -295,6 +296,8 @@ def run(
         gates: Specific gates to run (None = all available)
         verbose: Whether to capture full output
         auto_install_deps: Whether to auto-install missing dependencies before test gates (default: True)
+        test_selector: Optional pytest ``-k`` keyword expression; only applies to
+            the pytest gate. With a selector, "no tests matched" is a failure.
 
     Returns:
         GateResult with all check results
@@ -358,7 +361,7 @@ def run(
     # Run each gate
     for gate_name in gates:
         if gate_name == "pytest":
-            check = _run_pytest(repo_path, verbose)
+            check = _run_pytest(repo_path, verbose, test_selector=test_selector)
         elif gate_name == "ruff":
             check = _run_ruff(repo_path, verbose)
         elif gate_name == "mypy":
@@ -476,8 +479,10 @@ def _detect_available_gates(repo_path: Path) -> list[str]:
     return gates
 
 
-def _run_pytest(repo_path: Path, verbose: bool = False) -> GateCheck:
-    """Run pytest."""
+def _run_pytest(
+    repo_path: Path, verbose: bool = False, test_selector: Optional[str] = None
+) -> GateCheck:
+    """Run pytest, optionally scoped to a ``-k`` keyword expression."""
     import time
 
     start = time.time()
@@ -496,6 +501,8 @@ def _run_pytest(repo_path: Path, verbose: bool = False) -> GateCheck:
             cmd = ["uv", "run", "pytest", "-v", "--tb=short"]
         else:
             cmd = ["pytest", "-v", "--tb=short"]
+        if test_selector:
+            cmd += ["-k", test_selector]
 
         result = subprocess.run(
             cmd,
@@ -535,9 +542,12 @@ def _run_pytest(repo_path: Path, verbose: bool = False) -> GateCheck:
             status = GateStatus.FAILED
         elif result.returncode == 5:
             # Exit code 5: no tests collected
-            # Check if this is a clean "no tests" or an error during collection
+            # With an explicit selector, "nothing matched" means the named
+            # test doesn't exist — that is a failure, not an empty suite.
             output_lower = output.lower()
-            if "error" in output_lower or "importerror" in output_lower or "modulenotfounderror" in output_lower:
+            if test_selector:
+                status = GateStatus.FAILED
+            elif "error" in output_lower or "importerror" in output_lower or "modulenotfounderror" in output_lower:
                 # Collection error disguised as "no tests collected"
                 status = GateStatus.FAILED
             elif "no tests ran" in output_lower or "collected 0 items" in output_lower:

@@ -110,6 +110,7 @@ class EvidenceRule:
 
     test_id: str
     must_pass: bool = True
+    gate: Optional[Gate] = None  # owning gate; None on legacy rows without a derivable prefix
 
 
 @dataclass

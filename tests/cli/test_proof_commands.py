@@ -212,7 +212,7 @@ class TestRun:
             ),
         )
 
-        def _outcome(_ws, gate):
+        def _outcome(_ws, gate, _rules=()):
             if gate == Gate.UNIT:
                 return (GateOutcome.FAILED, "assertion failed")
             return (GateOutcome.UNVERIFIABLE, "cannot verify")
