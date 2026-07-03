@@ -380,7 +380,9 @@ class ReactAgent:
                     call_type=record["call_type"],
                 )
         except Exception:
-            logger.debug(
+            # Log at WARNING (issue #712): silent debug-level swallowing hid the
+            # missing token_usage table and dropped all cost data unnoticed.
+            logger.warning(
                 "Token usage persistence failed for task %s", task_id, exc_info=True,
             )
         finally:

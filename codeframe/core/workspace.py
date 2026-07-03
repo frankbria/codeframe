@@ -84,6 +84,33 @@ def _open_db(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def _create_token_usage_schema(cursor: sqlite3.Cursor) -> None:
+    """Create the per-workspace `token_usage` table + indexes (issue #712).
+
+    Shared by initial creation and the upgrade path so the two never drift.
+    Columns match the repository INSERT (token_repository.save_token_usage);
+    task_id/agent_id/project_id are TEXT because v2 task IDs are UUID strings.
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS token_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            agent_id TEXT,
+            project_id TEXT,
+            model_name TEXT,
+            input_tokens INTEGER DEFAULT 0,
+            output_tokens INTEGER DEFAULT 0,
+            estimated_cost_usd REAL DEFAULT 0,
+            actual_cost_usd REAL,
+            call_type TEXT,
+            timestamp TEXT
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_task_id ON token_usage(task_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_agent_id ON token_usage(agent_id)")
+
+
 def _init_database(db_path: Path) -> None:
     """Initialize the workspace SQLite database with v2 schema.
 
@@ -392,6 +419,10 @@ def _init_database(db_path: Path) -> None:
         )
     """)
 
+    # Per-workspace token/cost tracking (issue #712 — was never created here,
+    # so every save_token_usage() raised "no such table" and cost data dropped).
+    _create_token_usage_schema(cursor)
+
     # Create indexes for common queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
@@ -435,6 +466,11 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
     """
     conn = _open_db(db_path)
     cursor = conn.cursor()
+
+    # token_usage was added after the initial schema (issue #712); create it for
+    # existing workspaces. CREATE TABLE IF NOT EXISTS keeps this idempotent.
+    _create_token_usage_schema(cursor)
+    conn.commit()
 
     # Check if batch_runs table exists, if not create it
     cursor.execute(
