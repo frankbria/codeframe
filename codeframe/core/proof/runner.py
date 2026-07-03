@@ -116,6 +116,7 @@ def _run_gate(
         # e.g. SEC's test_sec_* rules are pytest tests even though the SEC
         # gate's own runner is ruff.
         enforced = [r for r in rules if r.must_pass and r.test_id.startswith("test_")]
+        unenforceable = [r for r in rules if r.must_pass and not r.test_id.startswith("test_")]
 
         lines: list[str] = []
         all_passed = True
@@ -134,11 +135,20 @@ def _run_gate(
             elif check.exit_code == 5:
                 lines.append(f"{rule.test_id}: FAILED — named test missing (not collected)")
                 all_passed = False
-            elif result.passed:
+            elif check.status == core_gates.GateStatus.PASSED:
                 lines.append(f"{rule.test_id}: passed")
             else:
-                lines.append(f"{rule.test_id}: FAILED")
+                # SKIPPED (pytest unavailable) and ERROR (timeout) are not
+                # proof — enforcement needs a positive pass, unlike the
+                # whole-suite path where SKIPPED counts as passing.
+                lines.append(f"{rule.test_id}: FAILED ({check.status.value})")
                 all_passed = False
+
+        # A must_pass rule we cannot enforce must not silently count as
+        # satisfied — that is the exact bug this module exists to prevent.
+        for rule in unenforceable:
+            lines.append(f"{rule.test_id}: FAILED — must_pass rule has no pytest-style test_id")
+            all_passed = False
 
         # Run the gate's own runner unless it is pytest and the enforced rules
         # already covered it (scoped runs replace the whole-suite run).

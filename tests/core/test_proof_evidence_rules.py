@@ -91,6 +91,12 @@ class TestEvidenceRuleGateField:
         assert rules[1].gate == Gate.CONTRACT
         assert rules[2].gate is None
 
+    def test_invalid_persisted_gate_falls_back_to_prefix(self):
+        from codeframe.core.proof.ledger import _evidence_rules_from_json
+
+        raw = json.dumps([{"test_id": "test_unit_foo", "must_pass": True, "gate": "bogus"}])
+        assert _evidence_rules_from_json(raw)[0].gate == Gate.UNIT
+
 
 # --- gates.py selector threading ---
 
@@ -261,6 +267,29 @@ class TestRunGateEnforcement:
         for gate in (Gate.UNIT, Gate.SEC):
             rule = suggest_evidence_rules(gate, title)[0]
             assert f"def {rule.test_id}(" in stubs[gate]
+
+    @patch("codeframe.core.gates.run")
+    def test_skipped_pytest_check_fails_enforcement(self, mock_run, workspace):
+        """pytest unavailable (SKIPPED) is not proof — the rule fails."""
+        from codeframe.core.proof.runner import _run_gate
+
+        mock_run.return_value = _gate_result(GateStatus.SKIPPED, None, "pytest not found")
+        outcome, output = _run_gate(workspace, Gate.UNIT, [self._rule()])
+        assert outcome == GateOutcome.FAILED
+        assert "SKIPPED" in output
+
+    @patch("codeframe.core.gates.run")
+    def test_non_pytest_style_must_pass_rule_fails(self, mock_run, workspace):
+        """A must_pass rule that cannot be enforced must not silently pass."""
+        from codeframe.core.proof.runner import _run_gate
+
+        mock_run.return_value = _gate_result(GateStatus.PASSED, 0)
+        outcome, output = _run_gate(
+            workspace, Gate.UNIT, [self._rule("custom_check_foo")]
+        )
+        assert outcome == GateOutcome.FAILED
+        assert "custom_check_foo" in output
+        assert "no pytest-style test_id" in output
 
     def test_unmapped_gate_still_unverifiable(self, workspace):
         from codeframe.core.proof.runner import _run_gate

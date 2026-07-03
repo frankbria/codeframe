@@ -199,13 +199,20 @@ def _evidence_rules_to_json(rules: list[EvidenceRule]) -> str:
 def _evidence_rules_from_json(raw: str) -> list[EvidenceRule]:
     from codeframe.core.proof.obligations import gate_from_test_id
 
+    def _resolve_gate(d: dict) -> Optional[Gate]:
+        # Legacy rows lack "gate"; invalid persisted values (schema drift,
+        # manual edits) also fall back to test_id prefix derivation.
+        try:
+            return Gate(d["gate"])
+        except (KeyError, ValueError):
+            return gate_from_test_id(d["test_id"])
+
     data = json.loads(raw)
     return [
         EvidenceRule(
             test_id=d["test_id"],
             must_pass=d.get("must_pass", True),
-            # Legacy rows lack "gate" — derive from the test_id prefix convention
-            gate=Gate(d["gate"]) if d.get("gate") else gate_from_test_id(d["test_id"]),
+            gate=_resolve_gate(d),
         )
         for d in data
     ]
