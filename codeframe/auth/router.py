@@ -1,16 +1,27 @@
 """Auth router configuration."""
 import asyncio
+from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from codeframe.auth.schemas import UserCreate, UserRead, UserUpdate
 from codeframe.auth.manager import auth_backend, fastapi_users, get_async_session_maker
 from codeframe.auth.models import User
 from codeframe.auth.api_key_router import router as api_key_router
+from codeframe.auth.dependencies import require_auth
+from codeframe.auth.stream_tickets import TICKET_TTL_SECONDS, mint_ticket
 from codeframe.lib.rate_limiter import enforce_auth_rate_limit
 
 router = APIRouter()
+
+
+class StreamTicketResponse(BaseModel):
+    """Response body for POST /auth/stream-ticket."""
+
+    ticket: str
+    expires_in: int
 
 
 # Placeholder password for the seeded bootstrap admin (id=1). It cannot match
@@ -95,3 +106,24 @@ router.include_router(
 
 # API key management routes at /api/auth/api-keys
 router.include_router(api_key_router)
+
+
+@router.post(
+    "/auth/stream-ticket",
+    response_model=StreamTicketResponse,
+    dependencies=[Depends(enforce_auth_rate_limit)],
+)
+async def create_stream_ticket(
+    auth: Dict[str, Any] = Depends(require_auth),
+) -> StreamTicketResponse:
+    """Mint a short-lived, single-use ticket for SSE/WS stream authentication (#745).
+
+    Browser ``EventSource`` (SSE) and WebSocket clients cannot send a custom
+    ``Authorization`` header, so streaming routes accept a ``?ticket=<value>``
+    query parameter instead of a long-lived JWT. Call this endpoint first
+    (authenticated the normal way, via JWT Bearer or ``X-API-Key``), then open
+    the stream with the returned ticket. The ticket is single-use and expires
+    after ``expires_in`` seconds.
+    """
+    ticket = mint_ticket(auth.get("user_id"))
+    return StreamTicketResponse(ticket=ticket, expires_in=TICKET_TTL_SECONDS)

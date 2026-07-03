@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { getToken } from '@/lib/auth';
-import { verifyAuthAfterStreamFailure } from '@/lib/api';
+import { fetchStreamTicket, verifyAuthAfterStreamFailure } from '@/lib/api';
 import type { AgentChatState, ChatMessage, MessageRole } from '@/types';
 
 export type { AgentChatState, ChatMessage, MessageRole };
@@ -57,6 +56,9 @@ export interface UseAgentChat {
 export function useAgentChat(sessionId: string | null): UseAgentChat {
   // ── Refs ──────────────────────────────────────────────────────────
   const wsRef = useRef<WebSocket | null>(null);
+  // Bumped by disconnect(); lets an in-flight async connect() detect that it
+  // was superseded while awaiting the ticket fetch and bail out.
+  const connectEpochRef = useRef(0);
   const retriesRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -96,6 +98,7 @@ export function useAgentChat(sessionId: string | null): UseAgentChat {
 
   // ── Disconnect cleanup ────────────────────────────────────────────
   const disconnect = useCallback(() => {
+    connectEpochRef.current += 1;
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -121,15 +124,24 @@ export function useAgentChat(sessionId: string | null): UseAgentChat {
   }, []);
 
   // ── connect (defined via ref to avoid stale closures) ────────────
-  const connectRef = useRef<() => void>(() => {});
+  const connectRef = useRef<() => Promise<void>>(async () => {});
 
-  connectRef.current = () => {
+  connectRef.current = async () => {
     if (!sessionId) return;
 
     updateState({ status: 'connecting' });
 
-    const token = getToken() ?? '';
-    const url = `${WS_BASE_URL}/ws/sessions/${sessionId}/chat?token=${encodeURIComponent(token)}`;
+    // Tickets are single-use (issue #745) — fetch fresh for this attempt so
+    // reconnects (retry below, or a session-id change) don't replay one
+    // already consumed by a prior handshake.
+    const epoch = connectEpochRef.current;
+    const ticket = await fetchStreamTicket();
+    // disconnect() (unmount / session change) may have run while the ticket
+    // request was in flight; bail rather than opening a stale connection.
+    if (connectEpochRef.current !== epoch) return;
+
+    const ticketParam = ticket ? `?ticket=${encodeURIComponent(ticket)}` : '';
+    const url = `${WS_BASE_URL}/ws/sessions/${sessionId}/chat${ticketParam}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
 

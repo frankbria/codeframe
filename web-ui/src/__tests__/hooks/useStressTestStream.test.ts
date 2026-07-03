@@ -1,5 +1,15 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useStressTestStream } from '@/hooks/useStressTestStream';
+import { fetchStreamTicket } from '@/lib/api';
+
+jest.mock('@/lib/api', () => ({
+  fetchStreamTicket: jest.fn(),
+  verifyAuthAfterStreamFailure: jest.fn(),
+}));
+
+const mockFetchTicket = fetchStreamTicket as jest.MockedFunction<
+  typeof fetchStreamTicket
+>;
 
 // ── EventSource mock ──────────────────────────────────────────────────────
 
@@ -44,10 +54,16 @@ class MockEventSource {
 beforeEach(() => {
   MockEventSource.instances = [];
   (global as unknown as { EventSource: unknown }).EventSource = MockEventSource;
-  localStorage.clear();
+  mockFetchTicket.mockReset();
+  mockFetchTicket.mockResolvedValue('tk-default');
 });
 
 const WORKSPACE = '/tmp/test-workspace';
+
+/** Wait for the (async, ticket-fetching) connect to produce N instances. */
+async function waitForInstanceCount(n: number) {
+  await waitFor(() => expect(MockEventSource.instances).toHaveLength(n));
+}
 
 describe('useStressTestStream', () => {
   it('starts idle and does not open a connection', () => {
@@ -56,7 +72,7 @@ describe('useStressTestStream', () => {
     expect(MockEventSource.instances).toHaveLength(0);
   });
 
-  it('opens a connection on start() and transitions to streaming', () => {
+  it('opens a connection on start() and transitions to streaming', async () => {
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
 
     act(() => {
@@ -64,33 +80,39 @@ describe('useStressTestStream', () => {
     });
 
     expect(result.current.status).toBe('streaming');
-    expect(MockEventSource.instances).toHaveLength(1);
+    await waitForInstanceCount(1);
     expect(MockEventSource.latest().url).toContain('/api/v2/prd/stress-test');
     expect(MockEventSource.latest().url).toContain(
       `workspace_path=${encodeURIComponent(WORKSPACE)}`
     );
   });
 
-  it('appends the auth token as a query param when authenticated (#336)', () => {
-    localStorage.setItem('auth_token', 'jwt-sse');
+  it('appends a stream ticket as `?ticket=` (issue #745)', async () => {
+    mockFetchTicket.mockResolvedValue('tk-sse');
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
 
     act(() => result.current.start());
 
-    expect(MockEventSource.latest().url).toContain('token=jwt-sse');
-  });
-
-  it('omits the token param when not authenticated', () => {
-    const { result } = renderHook(() => useStressTestStream(WORKSPACE));
-
-    act(() => result.current.start());
-
+    await waitForInstanceCount(1);
+    expect(MockEventSource.latest().url).toContain('ticket=tk-sse');
     expect(MockEventSource.latest().url).not.toContain('token=');
   });
 
-  it('accumulates human-readable lines from progress events', () => {
+  it('falls back to the bare URL (no ticket, no token) when the ticket fetch fails', async () => {
+    mockFetchTicket.mockResolvedValue(null);
+    const { result } = renderHook(() => useStressTestStream(WORKSPACE));
+
+    act(() => result.current.start());
+
+    await waitForInstanceCount(1);
+    expect(MockEventSource.latest().url).not.toContain('ticket=');
+    expect(MockEventSource.latest().url).not.toContain('token=');
+  });
+
+  it('accumulates human-readable lines from progress events', async () => {
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
     act(() => result.current.start());
+    await waitForInstanceCount(1);
 
     act(() => {
       MockEventSource.latest().emit({
@@ -114,9 +136,10 @@ describe('useStressTestStream', () => {
     expect(result.current.status).toBe('streaming');
   });
 
-  it('transitions to complete and exposes results', () => {
+  it('transitions to complete and exposes results', async () => {
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
     act(() => result.current.start());
+    await waitForInstanceCount(1);
 
     const ambiguities = [
       {
@@ -151,9 +174,10 @@ describe('useStressTestStream', () => {
     expect(MockEventSource.latest().readyState).toBe(MockEventSource.CLOSED);
   });
 
-  it('transitions to error and captures the message', () => {
+  it('transitions to error and captures the message', async () => {
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
     act(() => result.current.start());
+    await waitForInstanceCount(1);
 
     act(() => {
       MockEventSource.latest().emit({
@@ -168,9 +192,11 @@ describe('useStressTestStream', () => {
     );
   });
 
-  it('retries with a fresh connection after an error', () => {
+  it('retries with a fresh connection and a fresh ticket after an error', async () => {
+    mockFetchTicket.mockResolvedValueOnce('tk-1').mockResolvedValueOnce('tk-2');
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
     act(() => result.current.start());
+    await waitForInstanceCount(1);
     act(() => {
       MockEventSource.latest().emit({ type: 'error', message: 'boom' });
     });
@@ -180,15 +206,20 @@ describe('useStressTestStream', () => {
 
     expect(result.current.status).toBe('streaming');
     expect(result.current.error).toBeNull();
-    // A second, distinct EventSource should have been created.
-    expect(MockEventSource.instances.length).toBeGreaterThanOrEqual(2);
+    // A second, distinct EventSource should have been created, minted with a
+    // fresh ticket (single-use — reusing the first would 401 on replay).
+    await waitForInstanceCount(2);
+    expect(MockEventSource.instances[0].url).toContain('ticket=tk-1');
+    expect(MockEventSource.instances[1].url).toContain('ticket=tk-2');
     const urls = MockEventSource.instances.map((es) => es.url);
     expect(new Set(urls).size).toBe(urls.length);
+    expect(mockFetchTicket).toHaveBeenCalledTimes(2);
   });
 
-  it('reports a transport failure (closed connection, no data) as an error', () => {
+  it('reports a transport failure (closed connection, no data) as an error', async () => {
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
     act(() => result.current.start());
+    await waitForInstanceCount(1);
 
     // EventSource fails before any `data:` frame and ends up CLOSED.
     act(() => {
@@ -199,9 +230,10 @@ describe('useStressTestStream', () => {
     expect(result.current.error).toMatch(/connection to the stress-test stream failed/i);
   });
 
-  it('ignores transient (non-closed) connection errors while streaming', () => {
+  it('ignores transient (non-closed) connection errors while streaming', async () => {
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
     act(() => result.current.start());
+    await waitForInstanceCount(1);
 
     // A transient error where the browser will reconnect (readyState CONNECTING).
     act(() => {
@@ -212,9 +244,10 @@ describe('useStressTestStream', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('does not overwrite a backend error event with a transport error', () => {
+  it('does not overwrite a backend error event with a transport error', async () => {
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
     act(() => result.current.start());
+    await waitForInstanceCount(1);
 
     act(() => {
       MockEventSource.latest().emit({ type: 'error', message: 'boom from server' });
@@ -228,19 +261,21 @@ describe('useStressTestStream', () => {
     expect(result.current.error).toBe('boom from server');
   });
 
-  it('fails fast (no connection) when workspacePath is null', () => {
+  it('fails fast (no connection) when workspacePath is null', async () => {
     const { result } = renderHook(() => useStressTestStream(null));
 
     act(() => result.current.start());
 
     expect(result.current.status).toBe('error');
     expect(result.current.error).toMatch(/no workspace selected/i);
+    expect(mockFetchTicket).not.toHaveBeenCalled();
     expect(MockEventSource.instances).toHaveLength(0);
   });
 
-  it('reset() closes the connection and returns to idle', () => {
+  it('reset() closes the connection and returns to idle', async () => {
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
     act(() => result.current.start());
+    await waitForInstanceCount(1);
     const es = MockEventSource.latest();
 
     act(() => result.current.reset());

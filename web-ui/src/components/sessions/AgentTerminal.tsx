@@ -1,25 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTerminalSocket, type TerminalSocketStatus } from '@/hooks/useTerminalSocket';
+import { fetchStreamTicket } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token');
-}
-
-function buildWsUrl(sessionId: string): string | null {
-  const token = getToken();
-  if (!token) return null;
+function wsBase(): string {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  const base =
-    process.env.NEXT_PUBLIC_WS_URL ||
-    apiBase.replace(/^http/, 'ws');
-  return `${base}/ws/sessions/${sessionId}/terminal?token=${encodeURIComponent(token)}`;
+  return process.env.NEXT_PUBLIC_WS_URL || apiBase.replace(/^http/, 'ws');
 }
 
 // ---------------------------------------------------------------------------
@@ -72,9 +63,29 @@ export function AgentTerminal({ sessionId, className }: AgentTerminalProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fitAddonRef = useRef<any>(null);
 
-  // Build the WS URL once per sessionId. useMemo avoids a render-time side
-  // effect and is safe under React StrictMode's double-invoke.
-  const wsUrl = useMemo(() => buildWsUrl(sessionId), [sessionId]);
+  // Fetch a fresh single-use stream ticket (issue #745) and build the WS URL
+  // per sessionId. Unlike the old token-based URL — which stayed `null`
+  // (never connecting) when no JWT was stored — a failed/absent ticket still
+  // falls back to a bare URL, since the server allows streams with no
+  // credential when auth is disabled. `wsUrl` stays `null` while the fetch is
+  // in flight, matching useTerminalSocket's existing "no URL yet" idle state.
+  const [wsUrl, setWsUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setWsUrl(null);
+
+    (async () => {
+      const ticket = await fetchStreamTicket();
+      if (cancelled) return;
+      const ticketParam = ticket ? `?ticket=${encodeURIComponent(ticket)}` : '';
+      setWsUrl(`${wsBase()}/ws/sessions/${sessionId}/terminal${ticketParam}`);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   const { status, sendInput, sendResize } = useTerminalSocket({
     url: wsUrl,

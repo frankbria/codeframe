@@ -16,7 +16,8 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from tests.api.conftest import create_test_jwt_token
+from codeframe.auth.stream_tickets import mint_ticket, reset_stream_tickets
+import codeframe.auth.stream_tickets as stream_tickets
 
 
 pytestmark = pytest.mark.v2
@@ -43,8 +44,15 @@ def _create_session(client: TestClient, workspace_path: str | None = None) -> st
     return resp.json()["id"]
 
 
-def _ws_url(session_id: str, token: str) -> str:
-    return f"/ws/sessions/{session_id}/chat?token={token}"
+def _ws_url(session_id: str, ticket: str) -> str:
+    return f"/ws/sessions/{session_id}/chat?ticket={ticket}"
+
+
+@pytest.fixture(autouse=True)
+def _reset_tickets():
+    reset_stream_tickets()
+    yield
+    reset_stream_tickets()
 
 
 def test_chat_ws_ownership_mismatch_closes():
@@ -72,7 +80,7 @@ def test_chat_ws_ownership_mismatch_closes():
         new=AsyncMock(return_value=(True, 1)),
     ):
         with pytest.raises(WebSocketDisconnect) as exc:
-            with client.websocket_connect("/ws/sessions/s1/chat?token=x"):
+            with client.websocket_connect("/ws/sessions/s1/chat?ticket=x"):
                 pass
         assert exc.value.code == 1008
 
@@ -111,7 +119,7 @@ def test_chat_ws_symlink_escape_rejected(tmp_path, monkeypatch):
         new=AsyncMock(return_value=(True, 1)),
     ):
         with pytest.raises(WebSocketDisconnect) as exc:
-            with client.websocket_connect("/ws/sessions/s1/chat?token=x"):
+            with client.websocket_connect("/ws/sessions/s1/chat?ticket=x"):
                 pass
         assert exc.value.code == 1008
 
@@ -124,7 +132,7 @@ def test_chat_ws_symlink_escape_rejected(tmp_path, monkeypatch):
 class TestSessionChatWSAuth:
     """WebSocket endpoint rejects unauthenticated and invalid connections."""
 
-    def test_rejects_missing_token(self, api_client: TestClient, monkeypatch):
+    def test_rejects_missing_ticket(self, api_client: TestClient, monkeypatch):
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         session_id = _create_session(api_client)
         with pytest.raises(WebSocketDisconnect) as exc_info:
@@ -132,39 +140,32 @@ class TestSessionChatWSAuth:
                 ws.receive_json()
         assert exc_info.value.code == 1008
 
-    def test_rejects_invalid_token(self, api_client: TestClient, monkeypatch):
+    def test_rejects_unknown_ticket(self, api_client: TestClient, monkeypatch):
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         session_id = _create_session(api_client)
         with pytest.raises(WebSocketDisconnect) as exc_info:
             with api_client.websocket_connect(
-                f"/ws/sessions/{session_id}/chat?token=not-a-valid-jwt"
+                f"/ws/sessions/{session_id}/chat?ticket=not-a-real-ticket"
             ) as ws:
                 ws.receive_json()
         assert exc_info.value.code == 1008
 
-    def test_rejects_expired_token(self, api_client: TestClient, monkeypatch):
+    def test_rejects_expired_ticket(self, api_client: TestClient, monkeypatch):
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
-        from datetime import datetime, timedelta, timezone
-        from codeframe.auth.manager import SECRET
-        import jwt as pyjwt
+        current = [1_000.0]
+        monkeypatch.setattr(stream_tickets, "_now", lambda: current[0])
 
-        payload = {
-            "sub": "1",
-            "aud": ["fastapi-users:auth"],
-            "exp": datetime.now(timezone.utc) - timedelta(seconds=1),
-        }
-        expired_token = pyjwt.encode(payload, SECRET, algorithm="HS256")
+        ticket = mint_ticket(user_id=1)
+        current[0] += stream_tickets.TICKET_TTL_SECONDS + 1
 
         session_id = _create_session(api_client)
         with pytest.raises(WebSocketDisconnect) as exc_info:
-            with api_client.websocket_connect(
-                f"/ws/sessions/{session_id}/chat?token={expired_token}"
-            ) as ws:
+            with api_client.websocket_connect(_ws_url(session_id, ticket)) as ws:
                 ws.receive_json()
         assert exc_info.value.code == 1008
 
-    def test_no_auth_mode_connects_without_token(self, api_client: TestClient, monkeypatch):
-        """With CODEFRAME_AUTH_REQUIRED=false, the chat WS connects with no token (matches REST)."""
+    def test_no_auth_mode_connects_without_ticket(self, api_client: TestClient, monkeypatch):
+        """With CODEFRAME_AUTH_REQUIRED=false, the chat WS connects with no ticket (matches REST)."""
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
         session_id = _create_session(api_client)
         with api_client.websocket_connect(f"/ws/sessions/{session_id}/chat") as ws:
@@ -172,11 +173,12 @@ class TestSessionChatWSAuth:
             data = ws.receive_json()
             assert data["type"] == "pong"
 
-    def test_accepts_valid_token(self, api_client: TestClient):
-        """A valid JWT connects successfully (responds to ping)."""
+    def test_accepts_valid_ticket(self, api_client: TestClient, monkeypatch):
+        """A valid, freshly minted ticket connects successfully (responds to ping)."""
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         session_id = _create_session(api_client)
-        token = create_test_jwt_token(user_id=1)
-        with api_client.websocket_connect(_ws_url(session_id, token)) as ws:
+        ticket = mint_ticket(user_id=1)
+        with api_client.websocket_connect(_ws_url(session_id, ticket)) as ws:
             ws.send_json({"type": "ping"})
             data = ws.receive_json()
             assert data["type"] == "pong"
@@ -191,10 +193,10 @@ class TestSessionChatWSSession:
     """WebSocket endpoint validates session state before accepting."""
 
     def test_rejects_nonexistent_session(self, api_client: TestClient):
-        token = create_test_jwt_token(user_id=1)
+        ticket = mint_ticket(user_id=1)
         with pytest.raises(WebSocketDisconnect) as exc_info:
             with api_client.websocket_connect(
-                f"/ws/sessions/does-not-exist/chat?token={token}"
+                f"/ws/sessions/does-not-exist/chat?ticket={ticket}"
             ) as ws:
                 ws.receive_json()
         assert exc_info.value.code == 4008
@@ -205,16 +207,16 @@ class TestSessionChatWSSession:
         resp = api_client.delete(f"/api/v2/sessions/{session_id}")
         assert resp.status_code == 200
 
-        token = create_test_jwt_token(user_id=1)
+        ticket = mint_ticket(user_id=1)
         with pytest.raises(WebSocketDisconnect) as exc_info:
-            with api_client.websocket_connect(_ws_url(session_id, token)) as ws:
+            with api_client.websocket_connect(_ws_url(session_id, ticket)) as ws:
                 ws.receive_json()
         assert exc_info.value.code == 4008
 
     def test_accepts_active_session(self, api_client: TestClient):
         session_id = _create_session(api_client)
-        token = create_test_jwt_token(user_id=1)
-        with api_client.websocket_connect(_ws_url(session_id, token)) as ws:
+        ticket = mint_ticket(user_id=1)
+        with api_client.websocket_connect(_ws_url(session_id, ticket)) as ws:
             ws.send_json({"type": "ping"})
             data = ws.receive_json()
             assert data["type"] == "pong"
@@ -230,8 +232,8 @@ class TestSessionChatWSProtocol:
 
     def test_ping_returns_pong(self, api_client: TestClient):
         session_id = _create_session(api_client)
-        token = create_test_jwt_token(user_id=1)
-        with api_client.websocket_connect(_ws_url(session_id, token)) as ws:
+        ticket = mint_ticket(user_id=1)
+        with api_client.websocket_connect(_ws_url(session_id, ticket)) as ws:
             ws.send_json({"type": "ping"})
             data = ws.receive_json()
             assert data == {"type": "pong"}
@@ -239,7 +241,7 @@ class TestSessionChatWSProtocol:
     def test_message_streams_text_delta_events(self, api_client: TestClient):
         """Sending a message triggers streaming text_delta events followed by done."""
         session_id = _create_session(api_client)
-        token = create_test_jwt_token(user_id=1)
+        ticket = mint_ticket(user_id=1)
 
         async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path):
             await token_queue.put({"type": "text_delta", "content": "Hello"})
@@ -251,7 +253,7 @@ class TestSessionChatWSProtocol:
             "codeframe.ui.routers.session_chat_ws._run_streaming_adapter",
             side_effect=fake_adapter,
         ):
-            with api_client.websocket_connect(_ws_url(session_id, token)) as ws:
+            with api_client.websocket_connect(_ws_url(session_id, ticket)) as ws:
                 ws.send_json({"type": "message", "content": "Hi"})
 
                 events = []
@@ -276,7 +278,7 @@ class TestSessionChatWSProtocol:
         import asyncio
 
         session_id = _create_session(api_client)
-        token = create_test_jwt_token(user_id=1)
+        ticket = mint_ticket(user_id=1)
 
         async def slow_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path):
             for i in range(10):
@@ -291,7 +293,7 @@ class TestSessionChatWSProtocol:
             "codeframe.ui.routers.session_chat_ws._run_streaming_adapter",
             side_effect=slow_adapter,
         ):
-            with api_client.websocket_connect(_ws_url(session_id, token)) as ws:
+            with api_client.websocket_connect(_ws_url(session_id, ticket)) as ws:
                 ws.send_json({"type": "message", "content": "stream lots"})
                 # Receive first delta
                 first = ws.receive_json()
@@ -315,7 +317,7 @@ class TestSessionChatWSProtocol:
     def test_cost_update_written_to_db(self, api_client: TestClient):
         """Cost/token update from adapter is persisted to DB after each turn."""
         session_id = _create_session(api_client)
-        token = create_test_jwt_token(user_id=1)
+        ticket = mint_ticket(user_id=1)
 
         async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path):
             await token_queue.put(
@@ -327,7 +329,7 @@ class TestSessionChatWSProtocol:
             "codeframe.ui.routers.session_chat_ws._run_streaming_adapter",
             side_effect=fake_adapter,
         ):
-            with api_client.websocket_connect(_ws_url(session_id, token)) as ws:
+            with api_client.websocket_connect(_ws_url(session_id, ticket)) as ws:
                 ws.send_json({"type": "message", "content": "Hi"})
                 while True:
                     msg = ws.receive_json()
@@ -355,9 +357,9 @@ class TestSessionChatWSCleanup:
         from codeframe.ui.routers.session_chat_ws import session_chat_manager
 
         session_id = _create_session(api_client)
-        token = create_test_jwt_token(user_id=1)
+        ticket = mint_ticket(user_id=1)
 
-        with api_client.websocket_connect(_ws_url(session_id, token)) as ws:
+        with api_client.websocket_connect(_ws_url(session_id, ticket)) as ws:
             ws.send_json({"type": "ping"})
             ws.receive_json()
             # At this point the session should be registered

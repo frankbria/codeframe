@@ -35,21 +35,23 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 # Truthy/falsy values for CODEFRAME_AUTH_REQUIRED (case-insensitive).
 _AUTH_FALSY = {"0", "false", "no", "off"}
 
-# Routes allowed to authenticate via a ?token=<JWT> query parameter. Browser
-# EventSource (SSE) cannot send an Authorization header, so these streaming
-# routes accept the token in the URL — the same trade-off the WebSocket
-# routes already make. Keep this list tight: query-string credentials can
-# leak via proxy/access logs and browser history, so the fallback must NOT
-# apply to the rest of the API (codex review P2, issue #336).
-_QUERY_TOKEN_PATHS = (
+# Routes allowed to authenticate via a ?ticket=<value> query parameter.
+# Browser EventSource (SSE) cannot send an Authorization header, so these
+# streaming routes accept a short-lived, single-use ticket in the URL instead
+# — the same trade-off the WebSocket routes already make. Keep this list
+# tight: query-string credentials can leak via proxy/access logs and browser
+# history, so the fallback must NOT apply to the rest of the API (codex
+# review P2, issue #336). Tickets (not long-lived JWTs) close that exposure
+# window to TICKET_TTL_SECONDS and single use (issue #745).
+_QUERY_TICKET_PATHS = (
     re.compile(r"^/api/v2/tasks/[^/]+/stream$"),  # task event stream (SSE)
     re.compile(r"^/api/v2/prd/stress-test$"),  # PRD stress-test stream (SSE)
 )
 
 
-def _query_token_allowed(path: str) -> bool:
-    """Whether this request path may authenticate via ?token= (SSE only)."""
-    return any(pattern.match(path) for pattern in _QUERY_TOKEN_PATHS)
+def _query_ticket_allowed(path: str) -> bool:
+    """Whether this request path may authenticate via ?ticket= (SSE only)."""
+    return any(pattern.match(path) for pattern in _QUERY_TICKET_PATHS)
 
 
 def auth_required() -> bool:
@@ -73,11 +75,13 @@ async def get_current_user(
 ) -> User:
     """Get currently authenticated user.
 
-    Requires a valid JWT, supplied as an ``Authorization: Bearer`` header.
-    On the allowlisted SSE routes only (``_QUERY_TOKEN_PATHS``), a
-    ``?token=<JWT>`` query parameter is accepted when no header is present
-    (browser EventSource cannot send headers; mirrors the WebSocket
-    auth pattern).
+    Requires a valid JWT, supplied as an ``Authorization: Bearer`` header. On
+    the allowlisted SSE routes only (``_QUERY_TICKET_PATHS``), a
+    ``?ticket=<value>`` query parameter is accepted when no header is present
+    (browser EventSource cannot send headers; mirrors the WebSocket auth
+    pattern). The ticket is a short-lived, single-use value minted by
+    ``POST /auth/stream-ticket`` — not a JWT (issue #745) — so it is redeemed
+    rather than decoded.
 
     Args:
         request: FastAPI request object
@@ -89,33 +93,27 @@ async def get_current_user(
     Raises:
         HTTPException: 401 if authentication not provided or invalid
     """
-    # Resolve the bearer token from the Authorization header. Only the
-    # allowlisted SSE routes may fall back to a ?token= query parameter
-    # (EventSource cannot send headers); everywhere else query-string
-    # credentials are rejected to keep them out of logs/history.
-    token: Optional[str] = None
     if credentials and getattr(credentials, "credentials", None):
-        token = credentials.credentials
-    elif request is not None and _query_token_allowed(request.url.path):
-        token = request.query_params.get("token")
+        return await _authenticate_bearer_token(credentials.credentials)
 
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    if request is not None and _query_ticket_allowed(request.url.path):
+        ticket = request.query_params.get("ticket")
+        if ticket:
+            return await _authenticate_stream_ticket(ticket)
 
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def _authenticate_bearer_token(token: str) -> User:
+    """Decode a JWT bearer token and load the active user it names."""
     # Validate JWT token
     try:
         import jwt as pyjwt
-        from codeframe.auth.manager import (
-            SECRET,
-            JWT_ALGORITHM,
-            JWT_AUDIENCE,
-            get_async_session_maker,
-        )
-        from sqlalchemy import select
+        from codeframe.auth.manager import SECRET, JWT_ALGORITHM, JWT_AUDIENCE
 
         # Decode JWT token directly using PyJWT
         # Note: We use direct PyJWT decoding instead of JWTStrategy.read_token()
@@ -151,27 +149,7 @@ async def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Get user from database
-        async_session_maker = get_async_session_maker()
-        async with async_session_maker() as session:
-            result = await session.execute(select(User).where(User.id == user_id))
-            user = result.scalar_one_or_none()
-
-            if user is None:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User not found",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-
-            if not user.is_active:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User is inactive",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-
-            return user
+        return await _load_active_user(user_id)
 
     except HTTPException:
         raise
@@ -184,6 +162,67 @@ async def get_current_user(
             detail="Authentication failed",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+async def _load_active_user(user_id: int) -> User:
+    """Load a user by id, raising 401 if not found or inactive.
+
+    Shared by the JWT bearer path and the stream-ticket path so both apply
+    the same active-user check.
+    """
+    from codeframe.auth.manager import get_async_session_maker
+    from sqlalchemy import select
+
+    async_session_maker = get_async_session_maker()
+    async with async_session_maker() as session:
+        result = await session.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User is inactive",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        return user
+
+
+async def _authenticate_stream_ticket(ticket: str) -> User:
+    """Redeem a stream ticket (issue #745) and load the active user it names.
+
+    Raises 401 for an unknown/expired/already-used ticket, and for a ticket
+    that redeems to ``user_id=None`` (only mintable while auth is disabled —
+    there is no real user to load; ``require_auth``'s auth-disabled fallback
+    is what admits that case).
+    """
+    from codeframe.auth.stream_tickets import TicketRedemptionError, redeem_ticket
+
+    try:
+        user_id = redeem_ticket(ticket)
+    except TicketRedemptionError as e:
+        logger.debug(f"Stream ticket redemption failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired ticket",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return await _load_active_user(user_id)
 
 
 async def get_current_user_optional(
@@ -363,11 +402,13 @@ async def authenticate_websocket(
     session-chat sockets cannot drift from the REST behavior of ``require_auth()``:
 
     - When auth is disabled (``CODEFRAME_AUTH_REQUIRED`` falsy), returns
-      ``(True, None)`` without requiring a token — the same synthetic local
+      ``(True, None)`` without requiring a ticket — the same synthetic local
       principal (``user_id=None``) REST admits in no-auth mode.
-    - Otherwise validates the ``?token=<JWT>`` query parameter (decode → subject
-      → active DB user). On success returns ``(True, user_id)``. On any failure
-      the socket is closed with ``close_code`` and ``(False, None)`` is returned.
+    - Otherwise redeems the ``?ticket=<value>`` query parameter — a short-lived,
+      single-use value minted by ``POST /auth/stream-ticket`` (issue #745), not
+      a JWT — then loads the active DB user it names. On success returns
+      ``(True, user_id)``. On any failure the socket is closed with
+      ``close_code`` and ``(False, None)`` is returned.
 
     Args:
         websocket: The incoming WebSocket connection (not yet accepted).
@@ -382,51 +423,31 @@ async def authenticate_websocket(
     if not auth_required():
         return True, None
 
-    token = websocket.query_params.get("token")
-    if not token:
-        await websocket.close(code=close_code, reason="Authentication required: missing token")
+    ticket = websocket.query_params.get("ticket")
+    if not ticket:
+        await websocket.close(code=close_code, reason="Authentication required: missing ticket")
         return False, None
 
-    import jwt as pyjwt
-    from sqlalchemy import select
-
-    from codeframe.auth import manager
-    from codeframe.auth.manager import (
-        JWT_ALGORITHM,
-        JWT_AUDIENCE,
-        get_async_session_maker,
-    )
+    from codeframe.auth.stream_tickets import TicketRedemptionError, redeem_ticket
 
     try:
-        # Read manager.SECRET live: it may be refreshed from .env at server
-        # startup (after import), so binding the value at import would stale it.
-        payload = pyjwt.decode(
-            token, manager.SECRET, algorithms=[JWT_ALGORITHM], audience=JWT_AUDIENCE
-        )
-        user_id_str = payload.get("sub")
-        if not user_id_str:
-            await websocket.close(code=close_code, reason="Invalid token: missing subject")
-            return False, None
-        user_id = int(user_id_str)
-    except pyjwt.ExpiredSignatureError:
-        await websocket.close(code=close_code, reason="Token expired")
+        user_id = redeem_ticket(ticket)
+    except TicketRedemptionError as exc:
+        logger.debug("WebSocket ticket redemption failed: %s", exc)
+        await websocket.close(code=close_code, reason="Invalid or expired ticket")
         return False, None
-    except (pyjwt.InvalidTokenError, ValueError) as exc:
-        logger.debug("WebSocket JWT decode error: %s", exc)
-        await websocket.close(code=close_code, reason="Invalid authentication token")
+
+    if user_id is None:
+        # Only mintable while auth was disabled at mint time; auth is required
+        # here, so there is no real user to admit.
+        await websocket.close(code=close_code, reason="Authentication required")
         return False, None
 
     try:
-        async_session_maker = get_async_session_maker()
-        async with async_session_maker() as session:
-            result = await session.execute(select(User).where(User.id == user_id))
-            user = result.scalar_one_or_none()
-            if user is None:
-                await websocket.close(code=close_code, reason="User not found")
-                return False, None
-            if not user.is_active:
-                await websocket.close(code=close_code, reason="User is inactive")
-                return False, None
+        await _load_active_user(user_id)
+    except HTTPException:
+        await websocket.close(code=close_code, reason="Authentication failed")
+        return False, None
     except Exception as exc:
         logger.error("WebSocket user lookup error: %s", exc)
         await websocket.close(code=close_code, reason="Authentication failed")

@@ -2,7 +2,8 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useEventSource } from './useEventSource';
-import { withTokenParam } from '@/lib/auth';
+import { withStreamTicket } from '@/lib/auth';
+import { fetchStreamTicket } from '@/lib/api';
 import type { StressTestEvent, StressTestAmbiguity } from '@/types';
 
 // ── Hook state ────────────────────────────────────────────────────────────
@@ -64,12 +65,18 @@ export function useStressTestStream(
   const terminalRef = useRef(false);
 
   const sseBase = process.env.NEXT_PUBLIC_SSE_URL || 'http://localhost:8000';
-  const url =
-    active && workspacePath
-      ? withTokenParam(
-          `${sseBase}/api/v2/prd/stress-test?workspace_path=${encodeURIComponent(workspacePath)}&run=${runId}`
-        )
-      : null;
+  const enabled = active && Boolean(workspacePath);
+  // `runId` (bumped on every start()) forces a fresh (re)connect even when a
+  // retry-after-error keeps `enabled` at `true` throughout.
+  const connectionKey = runId;
+
+  // Tickets are single-use (issue #745), so this must be re-resolved for the
+  // initial connect AND every retry — useEventSource calls it fresh each time.
+  const buildUrl = useCallback(async (): Promise<string | null> => {
+    if (!workspacePath) return null;
+    const base = `${sseBase}/api/v2/prd/stress-test?workspace_path=${encodeURIComponent(workspacePath)}&run=${runId}`;
+    return withStreamTicket(base, fetchStreamTicket);
+  }, [workspacePath, sseBase, runId]);
 
   const handleMessage = useCallback((data: string) => {
     let event: StressTestEvent;
@@ -139,7 +146,9 @@ export function useStressTestStream(
   }, []);
 
   const { close } = useEventSource({
-    url,
+    enabled,
+    connectionKey,
+    buildUrl,
     onMessage: handleMessage,
     onError: handleError,
     // The stress-test is a one-shot stream; don't auto-reconnect when the
