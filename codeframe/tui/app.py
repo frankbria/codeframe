@@ -221,6 +221,7 @@ class DashboardApp(App):
         "satisfied": "✅",
         "failed": "❌",
         "pending": "⏳",
+        "unverifiable": "❓",
     }
 
     def _update_proof_panel(self, data: DashboardData) -> None:

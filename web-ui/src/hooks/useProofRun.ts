@@ -94,7 +94,10 @@ export function useProofRun(): UseProofRunReturn {
                   .flat()
                   .map((item) => ({
                     gate: item.gate,
-                    status: item.satisfied ? ('passed' as GateRunStatus) : ('failed' as GateRunStatus),
+                    // Prefer the tri-state `status` field; fall back to the
+                    // `satisfied` boolean for legacy cached runs that omit it.
+                    status: (item.status ??
+                      (item.satisfied ? 'passed' : 'failed')) as GateRunStatus,
                   }))
               );
 

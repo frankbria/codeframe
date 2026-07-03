@@ -18,6 +18,8 @@ const badgeVariants = cva(
         // Task status variants
         ready: 'border-transparent bg-blue-100 text-blue-900',
         'in-progress': 'border-transparent bg-amber-100 text-amber-900',
+        // Distinct from in-progress amber so a running gate visibly flips
+        unverifiable: 'border-amber-300 bg-amber-50 text-amber-800',
         done: 'border-transparent bg-green-100 text-green-900',
         blocked: 'border-transparent bg-red-100 text-red-900',
         failed: 'border-transparent bg-red-200 text-red-900',

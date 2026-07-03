@@ -20,7 +20,7 @@ from typer.testing import CliRunner
 
 from codeframe.cli.app import app
 from codeframe.core.proof import ledger
-from codeframe.core.proof.models import ReqStatus
+from codeframe.core.proof.models import GateOutcome, ReqStatus
 from codeframe.core.workspace import create_or_load_workspace
 
 pytestmark = pytest.mark.v2
@@ -146,7 +146,7 @@ class TestRun:
     @patch("codeframe.core.proof.runner._run_gate")
     def test_run_with_passing_obligations(self, mock_run_gate, ws_with_req):
         """run --full with all gates passing should exit 0 and print PASS."""
-        mock_run_gate.return_value = (True, "All tests passed")
+        mock_run_gate.return_value = (GateOutcome.PASSED, "All tests passed")
         _, workspace_path = ws_with_req
 
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_path), "--full"])
@@ -158,11 +158,68 @@ class TestRun:
     @patch("codeframe.core.proof.runner._run_gate")
     def test_run_with_failing_obligations(self, mock_run_gate, ws_with_req):
         """run --full with any gate failing should exit 1 and print FAIL."""
-        mock_run_gate.return_value = (False, "assertion failed")
+        mock_run_gate.return_value = (GateOutcome.FAILED, "assertion failed")
         _, workspace_path = ws_with_req
 
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_path), "--full"])
 
+        assert result.exit_code == 1, result.output
+        assert "FAIL" in result.output
+
+    def test_run_unverifiable_only_prints_unverifiable_and_exits_zero(self, ws):
+        """A REQ whose only obligations are unrunnable gates (e2e/demo) should
+        print UNVERIFIABLE, exit 0, and tell the user the gates can be waived."""
+        workspace, workspace_path = ws
+        # "button click" classifies as UI_WIRING_BUG → obligations [E2E, DEMO],
+        # both without an automated runner → unverifiable.
+        result = runner.invoke(app, [
+            "proof", "capture", "-w", str(workspace_path),
+            "--title", "Button click does nothing",
+            "--description", "Submit button click handler never fires the callback",
+            "--where", "src/ui/form.tsx",
+            "--severity", "medium", "--source", "qa",
+        ])
+        assert result.exit_code == 0, result.output
+
+        result = runner.invoke(app, ["proof", "run", "-w", str(workspace_path), "--full"])
+        assert result.exit_code == 0, result.output
+        assert "UNVERIFIABLE" in result.output
+        assert "waive" in result.output.lower()
+        # The requirement stays open (unverifiable never satisfies).
+        req = ledger.get_requirement(workspace, "REQ-0001")
+        assert req.status == ReqStatus.OPEN
+
+    @patch("codeframe.core.proof.runner._run_gate")
+    def test_run_mixed_fail_and_unverifiable_exits_one(self, mock_run_gate, ws):
+        """A real FAIL alongside unverifiable gates still exits 1."""
+        from datetime import datetime, timezone
+
+        from codeframe.core.proof.models import (
+            Gate, GateOutcome, Obligation, Requirement, RequirementScope,
+            ReqStatus, Severity, Source,
+        )
+
+        workspace, workspace_path = ws
+        ledger.save_requirement(
+            workspace,
+            Requirement(
+                id="REQ-0001", title="Mixed", description="mixed gates",
+                severity=Severity.MEDIUM, source=Source.QA,
+                scope=RequirementScope(files=["x.py"]),
+                obligations=[Obligation(gate=Gate.UNIT), Obligation(gate=Gate.E2E)],
+                evidence_rules=[], status=ReqStatus.OPEN,
+                created_at=datetime.now(timezone.utc),
+            ),
+        )
+
+        def _outcome(_ws, gate):
+            if gate == Gate.UNIT:
+                return (GateOutcome.FAILED, "assertion failed")
+            return (GateOutcome.UNVERIFIABLE, "cannot verify")
+
+        mock_run_gate.side_effect = _outcome
+
+        result = runner.invoke(app, ["proof", "run", "-w", str(workspace_path), "--full"])
         assert result.exit_code == 1, result.output
         assert "FAIL" in result.output
 
@@ -318,7 +375,7 @@ class TestClosedLoop:
         assert "REQ-0001" in result.output
 
         # Step 2 — run with obligations failing
-        mock_run_gate.return_value = (False, "assertion failed")
+        mock_run_gate.return_value = (GateOutcome.FAILED, "assertion failed")
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_path), "--full"])
         assert result.exit_code == 1, result.output
         assert "FAIL" in result.output
@@ -330,7 +387,7 @@ class TestClosedLoop:
         assert "Open" in result.output
 
         # Step 4 — run with all obligations passing
-        mock_run_gate.return_value = (True, "all green")
+        mock_run_gate.return_value = (GateOutcome.PASSED, "all green")
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_path), "--full"])
         assert result.exit_code == 0, result.output
         assert "PASS" in result.output

@@ -365,7 +365,7 @@ class TestScope:
 class TestEvidence:
     def test_attach_evidence(self, workspace, tmp_path):
         from codeframe.core.proof.evidence import attach_evidence
-        from codeframe.core.proof.models import Gate
+        from codeframe.core.proof.models import Gate, GateOutcome
         from codeframe.core.proof import ledger
 
         # Create artifact file
@@ -374,9 +374,10 @@ class TestEvidence:
 
         ev = attach_evidence(
             workspace, "REQ-0001", Gate.UNIT,
-            str(artifact), True, "run-1",
+            str(artifact), GateOutcome.PASSED, "run-1",
         )
         assert ev.satisfied is True
+        assert ev.status == "passed"
         assert ev.artifact_checksum != ""
         assert len(ev.artifact_checksum) == 64  # SHA-256
 
@@ -387,7 +388,7 @@ class TestEvidence:
     def test_check_obligation_satisfied(self, workspace, tmp_path):
         from codeframe.core.proof.evidence import attach_evidence, check_obligation_satisfied
         from codeframe.core.proof.models import (
-            Gate, Requirement, Severity, Source, RequirementScope, Obligation,
+            Gate, GateOutcome, Requirement, Severity, Source, RequirementScope, Obligation,
         )
 
         req = Requirement(
@@ -403,7 +404,7 @@ class TestEvidence:
         # Attach passing evidence
         artifact = tmp_path / "out.txt"
         artifact.write_text("passed")
-        attach_evidence(workspace, "REQ-0001", Gate.UNIT, str(artifact), True, "run-1")
+        attach_evidence(workspace, "REQ-0001", Gate.UNIT, str(artifact), GateOutcome.PASSED, "run-1")
 
         assert check_obligation_satisfied(workspace, req, Gate.UNIT) is True
 
@@ -501,7 +502,7 @@ class TestRunner:
     def test_run_proof_full(self, mock_run_gate, workspace):
         from codeframe.core.proof.runner import run_proof
         from codeframe.core.proof.capture import capture_requirement
-        from codeframe.core.proof.models import Severity, Source
+        from codeframe.core.proof.models import GateOutcome, Severity, Source
 
         # Capture a requirement first
         capture_requirement(
@@ -509,30 +510,30 @@ class TestRunner:
             where="src/calc.py", severity=Severity.MEDIUM, source=Source.QA,
         )
 
-        mock_run_gate.return_value = (True, "All tests passed")
+        mock_run_gate.return_value = (GateOutcome.PASSED, "All tests passed")
 
         results = run_proof(workspace, full=True)
         assert len(results) == 1
         req_id = list(results.keys())[0]
-        assert all(passed for _, passed in results[req_id])
+        assert all(o == GateOutcome.PASSED for _, o in results[req_id])
 
     @patch("codeframe.core.proof.runner._run_gate")
     def test_run_proof_with_failure(self, mock_run_gate, workspace):
         from codeframe.core.proof.runner import run_proof
         from codeframe.core.proof.capture import capture_requirement
-        from codeframe.core.proof.models import Severity, Source
+        from codeframe.core.proof.models import GateOutcome, Severity, Source
 
         capture_requirement(
             workspace, title="Test bug", description="Logic error",
             where="src/calc.py", severity=Severity.MEDIUM, source=Source.QA,
         )
 
-        mock_run_gate.return_value = (False, "Tests failed")
+        mock_run_gate.return_value = (GateOutcome.FAILED, "Tests failed")
 
         results = run_proof(workspace, full=True)
         assert len(results) == 1
         req_id = list(results.keys())[0]
-        assert not all(passed for _, passed in results[req_id])
+        assert not all(o == GateOutcome.PASSED for _, o in results[req_id])
 
 
 # --- CLI Tests ---
@@ -619,3 +620,127 @@ class TestCLI:
         result = runner.invoke(app, ["proof", "status", "-w", str(tmp_path)])
         assert result.exit_code == 0
         assert "1" in result.output  # 1 requirement
+
+
+# --- Evidence status (tri-state UNVERIFIABLE, #728) ---
+
+
+class TestEvidenceStatus:
+    def test_evidence_status_round_trip(self, workspace, tmp_path):
+        """Evidence.status persists and reads back through the ledger."""
+        from codeframe.core.proof.ledger import save_evidence, list_evidence
+        from codeframe.core.proof.models import Evidence, Gate
+
+        ev = Evidence(
+            req_id="REQ-0001", gate=Gate.E2E, satisfied=False,
+            artifact_path="/tmp/e2e.txt", artifact_checksum="abc",
+            timestamp=datetime.now(timezone.utc), run_id="run-1",
+            status="unverifiable",
+        )
+        save_evidence(workspace, ev)
+
+        loaded = list_evidence(workspace, "REQ-0001")
+        assert len(loaded) == 1
+        assert loaded[0].status == "unverifiable"
+        assert loaded[0].satisfied is False
+
+    def test_evidence_status_defaults_none(self, workspace, tmp_path):
+        """Evidence saved without an explicit status reads back status=None."""
+        from codeframe.core.proof.ledger import save_evidence, list_evidence
+        from codeframe.core.proof.models import Evidence, Gate
+
+        ev = Evidence(
+            req_id="REQ-0002", gate=Gate.UNIT, satisfied=True,
+            artifact_path="/tmp/unit.txt", artifact_checksum="def",
+            timestamp=datetime.now(timezone.utc), run_id="run-2",
+        )
+        save_evidence(workspace, ev)
+
+        loaded = list_evidence(workspace, "REQ-0002")
+        assert loaded[0].status is None
+
+    def test_legacy_db_without_status_column_migrates(self, tmp_path):
+        """A pre-existing proof_evidence table lacking the status column is
+        migrated (ALTER TABLE ADD COLUMN) and old rows read back status=None."""
+        from codeframe.core.workspace import create_or_load_workspace, get_db_connection
+        from codeframe.core.proof.ledger import list_evidence, save_evidence
+        from codeframe.core.proof.models import Evidence, Gate
+
+        ws = create_or_load_workspace(tmp_path)
+
+        # Create the legacy schema (no status column) and insert a row directly.
+        conn = get_db_connection(ws)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE proof_evidence (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                req_id TEXT NOT NULL,
+                gate TEXT NOT NULL,
+                satisfied INTEGER NOT NULL,
+                artifact_path TEXT NOT NULL,
+                artifact_checksum TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL
+            )
+            """
+        )
+        cur.execute(
+            """INSERT INTO proof_evidence
+               (req_id, gate, satisfied, artifact_path, artifact_checksum,
+                timestamp, run_id, workspace_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "REQ-0009", "unit", 1, "/tmp/old.txt", "old",
+                datetime.now(timezone.utc).isoformat(), "old-run", ws.id,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        # Old row reads back with status=None despite the missing column.
+        loaded = list_evidence(ws, "REQ-0009")
+        assert len(loaded) == 1
+        assert loaded[0].status is None
+
+        # New writes with a status also work after migration.
+        save_evidence(
+            ws,
+            Evidence(
+                req_id="REQ-0009", gate=Gate.E2E, satisfied=False,
+                artifact_path="/tmp/new.txt", artifact_checksum="new",
+                timestamp=datetime.now(timezone.utc), run_id="new-run",
+                status="unverifiable",
+            ),
+        )
+        loaded = list_evidence(ws, "REQ-0009")
+        statuses = {e.status for e in loaded}
+        assert "unverifiable" in statuses
+        assert None in statuses
+
+    def test_check_obligation_not_satisfied_by_unverifiable(self, workspace, tmp_path):
+        """Unverifiable evidence must NOT satisfy an obligation."""
+        from codeframe.core.proof.evidence import (
+            attach_evidence, check_obligation_satisfied,
+        )
+        from codeframe.core.proof.models import (
+            Gate, GateOutcome, Requirement, Severity, Source,
+            RequirementScope, Obligation,
+        )
+
+        req = Requirement(
+            id="REQ-0003", title="Test", description="Test",
+            severity=Severity.MEDIUM, source=Source.QA,
+            scope=RequirementScope(), obligations=[Obligation(gate=Gate.E2E)],
+            evidence_rules=[],
+        )
+
+        artifact = tmp_path / "e2e.txt"
+        artifact.write_text("cannot verify")
+        attach_evidence(
+            workspace, "REQ-0003", Gate.E2E, str(artifact),
+            GateOutcome.UNVERIFIABLE, "run-1",
+        )
+
+        assert check_obligation_satisfied(workspace, req, Gate.E2E) is False

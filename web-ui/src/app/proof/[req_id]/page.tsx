@@ -16,6 +16,23 @@ function sessionKey(reqId: string) {
   return `proof-evidence-filters:${reqId}`;
 }
 
+// Tri-state evidence result: 'unverifiable' is not a failure. Legacy rows
+// (status absent/null) fall back to the satisfied boolean.
+type EvidenceResult = 'pass' | 'fail' | 'unverifiable';
+
+function evidenceResult(ev: ProofEvidence): EvidenceResult {
+  if (ev.status === 'unverifiable') return 'unverifiable';
+  return ev.satisfied ? 'pass' : 'fail';
+}
+
+const RESULT_RANK: Record<EvidenceResult, number> = { fail: 0, unverifiable: 1, pass: 2 };
+
+const RESULT_CLASS: Record<EvidenceResult, string> = {
+  pass: 'text-green-600',
+  fail: 'text-red-600',
+  unverifiable: 'text-amber-600 dark:text-amber-400',
+};
+
 function loadSessionFilters(reqId: string): { gate: string; result: string; search: string } {
   if (typeof window === 'undefined') return { gate: '', result: '', search: '' };
   try {
@@ -140,8 +157,7 @@ export default function ProofDetailPage() {
     let rows = [...evidence];
 
     if (filterGate) rows = rows.filter((e) => e.gate === filterGate);
-    if (filterResult === 'pass') rows = rows.filter((e) => e.satisfied);
-    if (filterResult === 'fail') rows = rows.filter((e) => !e.satisfied);
+    if (filterResult) rows = rows.filter((e) => evidenceResult(e) === filterResult);
     if (search) {
       const q = search.toLowerCase();
       rows = rows.filter(
@@ -155,7 +171,7 @@ export default function ProofDetailPage() {
       let cmp = 0;
       switch (sortCol) {
         case 'gate':      cmp = a.gate.localeCompare(b.gate); break;
-        case 'result':    cmp = Number(a.satisfied) - Number(b.satisfied); break;
+        case 'result':    cmp = RESULT_RANK[evidenceResult(a)] - RESULT_RANK[evidenceResult(b)]; break;
         case 'run_id':    cmp = a.run_id.localeCompare(b.run_id); break;
         case 'timestamp': cmp = a.timestamp.localeCompare(b.timestamp); break;
         case 'artifact':  cmp = (a.artifact_path ?? '').localeCompare(b.artifact_path ?? ''); break;
@@ -326,7 +342,9 @@ export default function ProofDetailPage() {
                       {req.obligations.map((ob, i) => {
                         const latestEv = latestRunByGate[ob.gate];
                         const effectiveStatus = latestEv
-                          ? latestEv.satisfied ? 'satisfied' : 'failed'
+                          ? latestEv.status === 'unverifiable'
+                            ? 'unverifiable'
+                            : latestEv.satisfied ? 'satisfied' : 'failed'
                           : ob.status;
                         return (
                           <tr key={i} className="border-b last:border-0">
@@ -337,6 +355,8 @@ export default function ProofDetailPage() {
                                   ? 'text-green-600'
                                   : effectiveStatus === 'failed'
                                   ? 'text-red-600'
+                                  : effectiveStatus === 'unverifiable'
+                                  ? 'text-amber-600 dark:text-amber-400'
                                   : 'text-muted-foreground'
                               }>
                                 {effectiveStatus}
@@ -348,7 +368,11 @@ export default function ProofDetailPage() {
                                   type="button"
                                   title="Filter evidence history to this run"
                                   onClick={() => focusRun(latestEv.run_id)}
-                                  className={`cursor-pointer underline-offset-2 hover:underline ${latestEv.satisfied ? 'text-green-600' : 'text-red-600'}`}
+                                  className={`cursor-pointer underline-offset-2 hover:underline ${
+                                    latestEv.status === 'unverifiable'
+                                      ? 'text-amber-600 dark:text-amber-400'
+                                      : latestEv.satisfied ? 'text-green-600' : 'text-red-600'
+                                  }`}
                                 >
                                   {latestEv.run_id}
                                 </button>
@@ -404,6 +428,7 @@ export default function ProofDetailPage() {
                       <option value="">All</option>
                       <option value="pass">Pass</option>
                       <option value="fail">Fail</option>
+                      <option value="unverifiable">Cannot verify</option>
                     </select>
                   </label>
 
@@ -476,15 +501,17 @@ export default function ProofDetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredEvidence.map((ev) => (
+                      {filteredEvidence.map((ev) => {
+                        const result = evidenceResult(ev);
+                        return (
                         <tr
                           key={`${ev.req_id}:${ev.run_id}:${ev.timestamp}:${ev.gate}:${ev.artifact_path}`}
                           className="border-b last:border-0"
                         >
                           <td className="px-4 py-2 font-mono text-xs">{ev.gate}</td>
                           <td className="px-4 py-2">
-                            <span className={ev.satisfied ? 'text-green-600' : 'text-red-600'}>
-                              {ev.satisfied ? 'pass' : 'fail'}
+                            <span className={RESULT_CLASS[result]}>
+                              {result === 'unverifiable' ? 'cannot verify' : result}
                             </span>
                           </td>
                           <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{ev.run_id}</td>
@@ -495,7 +522,8 @@ export default function ProofDetailPage() {
                             <span className="line-clamp-1">{ev.artifact_path || '—'}</span>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

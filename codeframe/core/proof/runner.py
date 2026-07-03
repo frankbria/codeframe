@@ -16,6 +16,7 @@ from codeframe.core.proof.evidence import attach_evidence
 from codeframe.core.proof.models import (
     PROOF_CONFIG_FILENAME,
     Gate,
+    GateOutcome,
     ProofRun,
     ReqStatus,
 )
@@ -71,16 +72,27 @@ _GATE_TO_CORE: dict[Gate, str] = {
     Gate.SEC: "ruff",
 }
 
+# Map a gate outcome to the persisted obligation status string.
+_OUTCOME_TO_OBLIGATION_STATUS: dict[GateOutcome, str] = {
+    GateOutcome.PASSED: "satisfied",
+    GateOutcome.FAILED: "failed",
+    GateOutcome.UNVERIFIABLE: "unverifiable",
+}
 
-def _run_gate(workspace: Workspace, gate: Gate) -> tuple[bool, str]:
-    """Execute a single gate and return (passed, output).
 
-    Uses core/gates.py for gates that have direct tool support.
-    Returns (True, "") for gates without automated tooling yet.
+def _run_gate(workspace: Workspace, gate: Gate) -> tuple[GateOutcome, str]:
+    """Execute a single gate and return (outcome, output).
+
+    Uses core/gates.py for gates that have direct tool support. Gates without
+    an automated runner return UNVERIFIABLE — the obligation could not be
+    checked, which is distinct from running and failing.
     """
     core_gate_name = _GATE_TO_CORE.get(gate)
     if not core_gate_name:
-        return False, f"Gate {gate.value} has no automated runner — cannot verify"
+        return (
+            GateOutcome.UNVERIFIABLE,
+            f"Gate {gate.value} has no automated runner — cannot verify",
+        )
 
     try:
         from codeframe.core.gates import run as run_gates
@@ -88,10 +100,11 @@ def _run_gate(workspace: Workspace, gate: Gate) -> tuple[bool, str]:
         output_parts = [
             f"{check.name}: {check.status.value}" for check in result.checks
         ]
-        return result.passed, "\n".join(output_parts)
+        outcome = GateOutcome.PASSED if result.passed else GateOutcome.FAILED
+        return outcome, "\n".join(output_parts)
     except Exception as exc:
         logger.warning("Gate %s failed to run: %s", gate.value, exc)
-        return False, str(exc)
+        return GateOutcome.FAILED, str(exc)
 
 
 def run_proof(
@@ -100,7 +113,7 @@ def run_proof(
     full: bool = False,
     gate_filter: Optional[Gate] = None,
     run_id: Optional[str] = None,
-) -> dict[str, list[tuple[Gate, bool]]]:
+) -> dict[str, list[tuple[Gate, GateOutcome]]]:
     """Execute proof obligations and collect evidence.
 
     Args:
@@ -110,7 +123,7 @@ def run_proof(
         run_id: Unique run identifier (auto-generated if not provided)
 
     Returns:
-        Dict mapping req_id → list of (Gate, satisfied) tuples
+        Dict mapping req_id → list of (Gate, GateOutcome) tuples
     """
     if not run_id:
         run_id = str(uuid.uuid4())[:8]
@@ -157,7 +170,7 @@ def run_proof(
     if not full:
         changed_scope = get_changed_scope(workspace)
 
-    results: dict[str, list[tuple[Gate, bool]]] = {}
+    results: dict[str, list[tuple[Gate, GateOutcome]]] = {}
     artifact_dir = workspace.state_dir / "proof_artifacts"
     artifact_dir.mkdir(exist_ok=True)
 
@@ -168,7 +181,7 @@ def run_proof(
             if not intersects(req.scope, changed_scope):
                 continue
 
-        req_results: list[tuple[Gate, bool]] = []
+        req_results: list[tuple[Gate, GateOutcome]] = []
 
         for obl in req.obligations:
             # Apply gate filter
@@ -180,7 +193,7 @@ def run_proof(
                 continue
 
             # Run the gate
-            passed, output = _run_gate(workspace, obl.gate)
+            outcome, output = _run_gate(workspace, obl.gate)
 
             # Write artifact
             artifact_path = artifact_dir / f"{req.id}_{obl.gate.value}_{run_id}.txt"
@@ -189,25 +202,35 @@ def run_proof(
             # Attach evidence
             attach_evidence(
                 workspace, req.id, obl.gate,
-                str(artifact_path), passed, run_id,
+                str(artifact_path), outcome, run_id,
             )
 
             # Update obligation status
-            obl.status = "satisfied" if passed else "failed"
-            req_results.append((obl.gate, passed))
+            obl.status = _OUTCOME_TO_OBLIGATION_STATUS[outcome]
+            req_results.append((obl.gate, outcome))
 
         if req_results:
             results[req.id] = req_results
 
-            # Always persist obligation status updates
-            all_satisfied = all(passed for _, passed in req_results)
-            if all_satisfied and len(req_results) == len(req.obligations):
+            # Always persist obligation status updates. A requirement is only
+            # SATISFIED when every obligation PASSED and all obligations ran —
+            # an unverifiable obligation leaves it OPEN (and waivable).
+            all_passed = all(o == GateOutcome.PASSED for _, o in req_results)
+            if all_passed and len(req_results) == len(req.obligations):
                 req.status = ReqStatus.SATISFIED
             ledger.save_requirement(workspace, req)
 
     completed_at = datetime.now(timezone.utc)
     duration_ms = int((completed_at - started_at).total_seconds() * 1000)
-    executed = [passed for gate_results in results.values() for _, passed in gate_results]
+    # Only gates that actually ran (passed or failed) count toward the tally;
+    # unverifiable gates neither pass nor fail, so a run with only unverifiable
+    # outcomes passes.
+    executed = [
+        outcome == GateOutcome.PASSED
+        for gate_results in results.values()
+        for _, outcome in gate_results
+        if outcome != GateOutcome.UNVERIFIABLE
+    ]
     all_passed = all(executed) if executed else True
     if not all_passed and strictness == "warn":
         logger.warning(

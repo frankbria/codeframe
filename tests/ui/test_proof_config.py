@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from codeframe.core.proof.ledger import save_requirement
 from codeframe.core.proof.models import (
     Gate,
+    GateOutcome,
     Obligation,
     Requirement,
     RequirementScope,
@@ -209,7 +210,7 @@ class TestRunCachePassedSemantics:
 
         with patch(
             "codeframe.core.proof.runner._run_gate",
-            return_value=(False, "boom"),
+            return_value=(GateOutcome.FAILED, "boom"),
         ):
             run_resp = test_client.post("/api/v2/proof/run", json={"full": True})
 
