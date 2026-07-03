@@ -750,6 +750,19 @@ class TestRunCommand:
         assert "Exit code: 0" in result.content
         assert "/" in result.content  # a non-empty PATH
 
+    def test_venv_activation_layers_on_allowlist(self, workspace: Path):
+        """A .venv/ in the workspace still sets VIRTUAL_ENV and prepends its bin
+        to PATH, on top of the credential-free allowlist env (#721)."""
+        venv_bin = workspace / ".venv" / "bin"
+        venv_bin.mkdir(parents=True)
+        result = _call(
+            "run_command", {"command": "printenv VIRTUAL_ENV"}, workspace
+        )
+        assert not result.is_error
+        assert str(workspace / ".venv") in result.content
+        path_res = _call("run_command", {"command": "printenv PATH"}, workspace)
+        assert str(venv_bin) in path_res.content
+
     def test_shell_operators_and(self, workspace: Path):
         """Shell && operator works (subsumes shell operator rejection bug)."""
         result = _call(

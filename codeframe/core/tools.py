@@ -775,6 +775,13 @@ _RUN_COMMAND_SAFE_ENV_VARS = frozenset({
     "NODE_ENV", "NODE_PATH", "GOPATH", "GOCACHE", "CARGO_HOME", "RUSTUP_HOME",
     "JAVA_HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
     "SYSTEMROOT", "SYSTEMDRIVE", "COMSPEC",  # Windows shell essentials
+    # Proxy config + CI signal (infra, not secrets) so npm/pip/curl and
+    # CI-aware test runners work; git identity for agent commits (#721 review).
+    "HTTP_PROXY", "HTTPS_PROXY", "FTP_PROXY", "ALL_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "ftp_proxy", "all_proxy", "no_proxy",
+    "CI",
+    "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+    "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL",
 })
 
 
