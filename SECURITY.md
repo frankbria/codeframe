@@ -60,6 +60,26 @@ respective maintainers. Issues that require a user to run an untrusted PRD,
 task, or repository are expected behavior for an agent that executes code on
 your behalf; sandbox-escape findings, however, are in scope.
 
+## Deployment trust model
+
+CodeFRAME has two deployment modes (`CODEFRAME_DEPLOYMENT_MODE`):
+
+- **`self_hosted` (default) — a single trust domain.** One operator or team runs
+  the instance and shares its **machine-wide** credential store (one LLM key set,
+  one GitHub PAT). Do **not** expose a self-hosted instance to mutually
+  distrusting users: any authenticated user can act within the configured
+  workspace(s), and credentials are shared by design. Multiple untrusting users
+  require separate instances (or hosted mode).
+- **`hosted` — multi-tenant.** `WORKSPACE_ROOT` is mandatory (the server fails
+  closed if unset) and each user is confined to `<WORKSPACE_ROOT>/<user_id>`, so
+  tenants cannot reach each other's workspaces. Because the credential store is
+  machine-wide and cannot yet be safely shared across tenants, the shared
+  credential and GitHub-PAT **mutation** endpoints (`PUT`/`DELETE
+  /api/v2/settings/keys/*`, `POST /connect`, `DELETE /disconnect`) are **disabled
+  (HTTP 403)** in hosted mode — provide provider keys via per-instance
+  environment variables instead. Per-user credential scoping is tracked as a
+  follow-up.
+
 ## Handling secrets
 
 Never include API keys, tokens, or other credentials in a report. CodeFRAME
