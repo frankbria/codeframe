@@ -1885,13 +1885,24 @@ def tasks_generate(
                 created = tasks.generate_from_prd(workspace, prd_record, use_llm=True)
         except Exception:
             # Roll back any partial new tasks; the originals were never deleted.
+            # A failure *during* rollback must not mask the original generation
+            # error, so guard it and always re-raise the original.
             if overwrite:
-                for t in tasks.list_tasks(workspace):
-                    if t.id not in original_ids:
-                        tasks.delete(workspace, t.id)
+                try:
+                    for t in tasks.list_tasks(workspace):
+                        if t.id not in original_ids:
+                            tasks.delete(workspace, t.id)
+                except Exception:
+                    console.print(
+                        "[yellow]Warning:[/yellow] could not fully roll back "
+                        "partially-generated tasks; run `cf tasks list` to check."
+                    )
             raise
 
-        # Generation succeeded — now it is safe to clear the old tasks.
+        # Generation succeeded — now it is safe to clear the old tasks. Each
+        # delete() re-scans the workspace to strip dependents (#724), so this is
+        # O(N^2); fine for typical task counts, revisit with a bulk delete if a
+        # workspace ever holds thousands of tasks.
         if overwrite and original_ids:
             for tid in original_ids:
                 tasks.delete(workspace, tid)

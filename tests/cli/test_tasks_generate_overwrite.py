@@ -49,6 +49,26 @@ def test_overwrite_preserves_tasks_when_generation_fails(ws_with_prd_and_tasks):
     assert after == before
 
 
+def test_overwrite_preserves_tasks_when_recursive_generation_fails(ws_with_prd_and_tasks):
+    """The --recursive path (generate_task_tree) shares the same rollback."""
+    import codeframe.core.task_tree as task_tree
+    import codeframe.cli.validators as validators
+
+    ws, path = ws_with_prd_and_tasks
+    before = {t.id for t in tasks.list_tasks(ws)}
+
+    with patch.object(validators, "require_anthropic_api_key", lambda: None), patch.object(
+        task_tree, "generate_task_tree", side_effect=RuntimeError("LLM timeout")
+    ):
+        result = runner.invoke(
+            app,
+            ["tasks", "generate", "--overwrite", "--recursive", "-w", str(path)],
+        )
+
+    assert result.exit_code != 0
+    assert {t.id for t in tasks.list_tasks(ws)} == before
+
+
 def test_overwrite_replaces_tasks_on_success(ws_with_prd_and_tasks):
     ws, path = ws_with_prd_and_tasks
     before = {t.id for t in tasks.list_tasks(ws)}
