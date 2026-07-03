@@ -343,21 +343,29 @@ class ReactAgent:
     def _persist_token_usage(self, task_id: str) -> None:
         """Persist accumulated token records to the workspace database.
 
-        Uses MetricsTracker.record_token_usage_sync for synchronous writes.
+        Writes through a plain per-workspace TokenRepository (issue #713): the
+        control-plane Database.initialize() runs SchemaManager, which seeds
+        users/api_keys/sessions + an admin row into the domain DB. The
+        token_usage table itself is created by workspace._init_database (#712).
         Failures are logged but never propagated to the caller.
-        The database connection is always closed via try/finally.
+        The connection is always closed via try/finally.
         """
         if not self._token_records:
             return
 
-        db = None
+        conn = None
         try:
-            from codeframe.lib.metrics_tracker import MetricsTracker
-            from codeframe.platform_store.database import Database
+            import sqlite3
 
-            db = Database(str(self.workspace.db_path))
-            db.initialize()
-            tracker = MetricsTracker(db=db)
+            from codeframe.lib.metrics_tracker import MetricsTracker
+            from codeframe.platform_store.repositories.token_repository import (
+                TokenRepository,
+            )
+
+            conn = sqlite3.connect(str(self.workspace.db_path))
+            # TokenRepository exposes save_token_usage, the only method
+            # MetricsTracker needs; no control-plane schema is created.
+            tracker = MetricsTracker(db=TokenRepository(sync_conn=conn))
 
             # v1 tasks have integer PKs; v2 workspaces use UUID strings.
             # Pass the raw value — SQLite preserves the type, and downstream
@@ -386,9 +394,9 @@ class ReactAgent:
                 "Token usage persistence failed for task %s", task_id, exc_info=True,
             )
         finally:
-            if db is not None:
+            if conn is not None:
                 try:
-                    db.close()
+                    conn.close()
                 except Exception:
                     pass
 
