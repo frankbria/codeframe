@@ -703,6 +703,19 @@ async def start_single_task(
                     )
                 except Exception as exc:
                     logger.error(f"Background agent failed for task {task_id}: {exc}", exc_info=True)
+                    # Reset the run so the task doesn't stay IN_PROGRESS forever
+                    # (#722). execute_agent handles errors raised inside its own
+                    # try, but common misconfig (missing ANTHROPIC_API_KEY /
+                    # unknown provider) raises up front, before that try — this
+                    # is the only place that can fail the run. Guarded so an
+                    # already-FAILED run (double-fail) can't break the handler.
+                    try:
+                        runtime.fail_run(workspace, run.id, reason=str(exc))
+                    except Exception:
+                        logger.debug(
+                            "fail_run skipped for task %s (run not active)",
+                            task_id, exc_info=True,
+                        )
                     publisher.publish_sync(
                         task_id,
                         ErrorEvent(
