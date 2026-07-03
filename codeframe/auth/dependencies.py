@@ -454,6 +454,10 @@ def require_scope(required_scope: str) -> Callable:
     Returns:
         Dependency function that validates scope
     """
+    # Depends on require_auth directly (not require_method_scope): on admin
+    # routes both run, but FastAPI caches require_auth within a request, so
+    # there is exactly one authentication call — the method guard checks
+    # write and this checks admin against the same principal (#717).
     async def check_scope(auth: Dict[str, Any] = Depends(require_auth)) -> Dict[str, Any]:
         """Verify principal has required scope."""
         if not has_scope(auth, required_scope):

@@ -116,3 +116,22 @@ class TestAdminScope:
             "/api/v2/pr/1/merge", headers=_hdr(keys["write"]), json={}
         )
         assert r.status_code == 403
+
+    def test_admin_key_allowed_on_pr_merge(self, scoped_app):
+        app, keys = scoped_app
+        r = TestClient(app).post(
+            "/api/v2/pr/1/merge", headers=_hdr(keys["admin"]), json={}
+        )
+        # admin passes the scope gate; may 400/404/422 on body/logic, never 403.
+        assert r.status_code != 403
+        assert r.status_code != 401
+
+
+class TestPatchIsMutating:
+    def test_read_key_forbidden_on_patch(self, scoped_app):
+        app, keys = scoped_app
+        # PATCH is not a safe method → needs write; a read key must 403.
+        r = TestClient(app).patch(
+            "/api/v2/tasks/abc", headers=_hdr(keys["read"]), json={}
+        )
+        assert r.status_code == 403
