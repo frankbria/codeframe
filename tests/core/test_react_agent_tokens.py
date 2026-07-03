@@ -341,8 +341,10 @@ class TestPersistDoesNotPolluteWorkspaceDb:
 
         # The record was written...
         assert row_count == 1
-        # ...and no control-plane/auth tables (nor the admin row they carry)
-        # were seeded into the per-workspace domain DB.
+        # ...and none of the control-plane/auth tables (nor the admin row they
+        # carry) were seeded into the per-workspace domain DB.
         assert "users" not in tables
+        assert "accounts" not in tables
         assert "api_keys" not in tables
         assert "sessions" not in tables
+        assert "audit_logs" not in tables

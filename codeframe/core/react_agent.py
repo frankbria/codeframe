@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
 import threading
 from pathlib import Path
 from datetime import datetime, timezone
@@ -355,8 +356,6 @@ class ReactAgent:
 
         conn = None
         try:
-            import sqlite3
-
             from codeframe.lib.metrics_tracker import MetricsTracker
             from codeframe.platform_store.repositories.token_repository import (
                 TokenRepository,
