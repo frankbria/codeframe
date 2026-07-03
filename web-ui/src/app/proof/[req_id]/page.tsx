@@ -501,15 +501,17 @@ export default function ProofDetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredEvidence.map((ev) => (
+                      {filteredEvidence.map((ev) => {
+                        const result = evidenceResult(ev);
+                        return (
                         <tr
                           key={`${ev.req_id}:${ev.run_id}:${ev.timestamp}:${ev.gate}:${ev.artifact_path}`}
                           className="border-b last:border-0"
                         >
                           <td className="px-4 py-2 font-mono text-xs">{ev.gate}</td>
                           <td className="px-4 py-2">
-                            <span className={RESULT_CLASS[evidenceResult(ev)]}>
-                              {evidenceResult(ev) === 'unverifiable' ? 'cannot verify' : evidenceResult(ev)}
+                            <span className={RESULT_CLASS[result]}>
+                              {result === 'unverifiable' ? 'cannot verify' : result}
                             </span>
                           </td>
                           <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{ev.run_id}</td>
@@ -520,7 +522,8 @@ export default function ProofDetailPage() {
                             <span className="line-clamp-1">{ev.artifact_path || '—'}</span>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

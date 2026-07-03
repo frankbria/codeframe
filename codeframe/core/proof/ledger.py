@@ -5,6 +5,7 @@ Tables live in the workspace's state.db alongside PRDs and tasks.
 """
 
 import json
+import sqlite3
 from datetime import date, datetime, timezone
 from typing import Optional
 
@@ -125,19 +126,35 @@ def _ensure_tables(workspace: Workspace) -> None:
     _migrate_evidence_status_column(workspace)
 
 
+# Workspaces already checked for the #728 status column this process —
+# skips the per-call PRAGMA once the migration is known to have run.
+_status_migrated_workspaces: set[str] = set()
+
+
 def _migrate_evidence_status_column(workspace: Workspace) -> None:
     """Add proof_evidence.status to pre-existing DBs that predate #728.
 
     The column is nullable; old rows read back status=None. No-op once present.
     """
+    if workspace.id in _status_migrated_workspaces:
+        return
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-    cursor.execute("PRAGMA table_info(proof_evidence)")
-    columns = {row[1] for row in cursor.fetchall()}
-    if columns and "status" not in columns:
-        cursor.execute("ALTER TABLE proof_evidence ADD COLUMN status TEXT")
-        conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(proof_evidence)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if columns and "status" not in columns:
+            try:
+                cursor.execute("ALTER TABLE proof_evidence ADD COLUMN status TEXT")
+                conn.commit()
+            except sqlite3.OperationalError as exc:
+                # Concurrent first-run: another worker added the column
+                # between our check and the ALTER.
+                if "duplicate column" not in str(exc).lower():
+                    raise
+        _status_migrated_workspaces.add(workspace.id)
+    finally:
+        conn.close()
 
 
 # --- Serialization helpers ---
