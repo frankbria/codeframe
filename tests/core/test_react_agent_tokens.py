@@ -294,3 +294,57 @@ class TestReactAgentTokenPersistenceFailure:
         # Token records should still be available in-memory
         records = agent.get_token_usage()
         assert len(records) == 1
+
+
+class TestPersistDoesNotPolluteWorkspaceDb:
+    """Issue #713 / P0.2: _persist_token_usage must write through the
+    per-workspace schema, NOT the control-plane Database (which seeds
+    users/api_keys/sessions + an admin row into the workspace DB)."""
+
+    def _real_workspace(self, tmp_path):
+        from codeframe.core.workspace import create_or_load_workspace
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        return create_or_load_workspace(repo)
+
+    def test_persists_token_usage_without_control_plane_tables(self, tmp_path):
+        import sqlite3
+
+        from codeframe.core.react_agent import ReactAgent
+
+        ws = self._real_workspace(tmp_path)
+        agent = ReactAgent(workspace=ws, llm_provider=MockProvider())
+        agent._token_records = [
+            {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "model": "claude-sonnet-4-5",
+                "call_type": "task_execution",
+                "iteration": 1,
+            }
+        ]
+
+        agent._persist_token_usage("a1b2c3d4-uuid-task")
+
+        conn = sqlite3.connect(str(ws.db_path))
+        try:
+            row_count = conn.execute("SELECT COUNT(*) FROM token_usage").fetchone()[0]
+            tables = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+        finally:
+            conn.close()
+
+        # The record was written...
+        assert row_count == 1
+        # ...and none of the control-plane/auth tables (nor the admin row they
+        # carry) were seeded into the per-workspace domain DB.
+        assert "users" not in tables
+        assert "accounts" not in tables
+        assert "api_keys" not in tables
+        assert "sessions" not in tables
+        assert "audit_logs" not in tables
