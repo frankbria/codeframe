@@ -45,7 +45,7 @@ from codeframe.ui.routers import (
     workspace_v2,
 )
 from codeframe.auth import router as auth_router
-from codeframe.auth.dependencies import require_auth
+from codeframe.auth.dependencies import require_auth, require_method_scope
 from codeframe.platform_store.database import Database
 from codeframe.lib.rate_limiter import (
     get_rate_limiter,
@@ -742,13 +742,15 @@ app.include_router(auth_router.router)
 # v2 API routers - all delegate to codeframe.core modules
 #
 # Auth enforcement (issue #336): every v2 REST router is mounted with a
-# blanket ``require_auth`` dependency. With CODEFRAME_AUTH_REQUIRED disabled
-# (local opt-out) require_auth returns a synthetic principal instead of
-# raising, so behavior is unchanged for local/dev use. The two WebSocket
-# routers (session_chat_ws, terminal_ws) are intentionally excluded — they
-# perform their own ?token= JWT auth and cannot use an HTTP 401 dependency.
-# The auth_router (login/register) stays public.
-_AUTH = [Depends(require_auth)]
+# blanket scope-aware auth dependency. ``require_method_scope`` first resolves
+# ``require_auth`` (honoring CODEFRAME_AUTH_REQUIRED — disabled returns a
+# synthetic all-scopes principal, so local/dev/tests are unchanged), then
+# enforces scope by HTTP method (#717): safe methods need ``read``, mutating
+# methods need ``write``. Admin-only routes (credential storage, PR merge) add
+# their own ``Depends(require_scope("admin"))``. The two WebSocket routers
+# (session_chat_ws, terminal_ws) are intentionally excluded — they perform
+# their own ?token= JWT auth. The auth_router (login/register) stays public.
+_AUTH = [Depends(require_method_scope)]
 app.include_router(batches_v2.router, dependencies=_AUTH)       # /api/v2/batches
 app.include_router(blockers_v2.router, dependencies=_AUTH)      # /api/v2/blockers
 app.include_router(checkpoints_v2.router, dependencies=_AUTH)   # /api/v2/checkpoints
