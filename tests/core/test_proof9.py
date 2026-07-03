@@ -480,6 +480,14 @@ class TestStubs:
         assert paths[Gate.E2E].suffix == ".ts"
         assert paths[Gate.MANUAL].suffix == ".md"
 
+        # Pytest stubs must stay outside pytest discovery (test_*.py /
+        # *_test.py) so their placeholder assert False bodies don't poison
+        # the user's plain pytest run
+        unit_name = paths[Gate.UNIT].name
+        assert unit_name.startswith("draft_")
+        assert not unit_name.startswith("test_")
+        assert not unit_name.endswith("_test.py")
+
     def test_write_stub_files_skips_existing(self, workspace):
         from codeframe.core.proof.stubs import generate_stubs, write_stub_files
         from codeframe.core.proof.models import Gate
