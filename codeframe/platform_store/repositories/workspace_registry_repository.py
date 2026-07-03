@@ -61,7 +61,9 @@ class WorkspaceRegistryRepository(BaseRepository):
                 -- COALESCE so a refresh that omits name/tech_stack (None) keeps the
                 -- previously-stored value instead of nulling it.
                 name = COALESCE(excluded.name, workspaces_registry.name),
-                owner_user_id = excluded.owner_user_id,
+                -- COALESCE so a refresh that omits the owner (None) keeps the
+                -- recorded owner instead of nulling it (#720).
+                owner_user_id = COALESCE(excluded.owner_user_id, workspaces_registry.owner_user_id),
                 tech_stack = COALESCE(excluded.tech_stack, workspaces_registry.tech_stack),
                 last_opened_at = excluded.last_opened_at
             """,
@@ -149,16 +151,30 @@ class WorkspaceRegistryRepository(BaseRepository):
         )
         self._commit()
 
-    def delete(self, workspace_id: str) -> bool:
+    def delete(self, workspace_id: str, owner_user_id: Optional[int] = None) -> bool:
         """Deregister a workspace (registry-only — never touches disk files).
 
+        Args:
+            workspace_id: Registry entry id to remove.
+            owner_user_id: When provided (auth enabled), only an entry owned by
+                this user is removed — a tenant cannot delete another's entry
+                (#720). When ``None`` (auth disabled/local), no owner filter is
+                applied and behavior is unchanged.
+
         Returns:
-            True if a row was removed, False if the id was not found.
+            True if a row was removed, False if the id was not found (or not
+            owned by ``owner_user_id`` when supplied).
         """
-        cursor = self._execute(
-            "DELETE FROM workspaces_registry WHERE id = ?",
-            (workspace_id,),
-        )
+        if owner_user_id is not None:
+            cursor = self._execute(
+                "DELETE FROM workspaces_registry WHERE id = ? AND owner_user_id = ?",
+                (workspace_id, owner_user_id),
+            )
+        else:
+            cursor = self._execute(
+                "DELETE FROM workspaces_registry WHERE id = ?",
+                (workspace_id,),
+            )
         self._commit()
         return cursor.rowcount > 0
 
