@@ -62,7 +62,10 @@ class WorkspaceRegistryRepository(BaseRepository):
                 -- previously-stored value instead of nulling it.
                 name = COALESCE(excluded.name, workspaces_registry.name),
                 -- COALESCE so a refresh that omits the owner (None) keeps the
-                -- recorded owner instead of nulling it (#720).
+                -- recorded owner instead of nulling it (#720). A refresh with a
+                -- *different* non-None owner still overwrites; that's safe only
+                -- because path-based tenant isolation (#655) stops user B from
+                -- re-registering a path they don't own.
                 owner_user_id = COALESCE(excluded.owner_user_id, workspaces_registry.owner_user_id),
                 tech_stack = COALESCE(excluded.tech_stack, workspaces_registry.tech_stack),
                 last_opened_at = excluded.last_opened_at
