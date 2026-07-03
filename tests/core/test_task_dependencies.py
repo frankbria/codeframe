@@ -208,6 +208,20 @@ class TestDeleteCascade:
         b2 = tasks.get(workspace, b.id)
         assert a.id not in b2.depends_on
         assert b2.depends_on == []  # no dangling reference → not stranded
+        # updated_at is bumped so caches/UI detect the cascade edit.
+        assert b2.updated_at >= b.updated_at
+
+    def test_delete_missing_task_does_not_touch_dependents(self, workspace):
+        """A delete that finds nothing (returns False) must not mutate dependents."""
+        a = tasks.create(workspace, title="A")
+        b = tasks.create(workspace, title="B", depends_on=[a.id])
+        before = tasks.get(workspace, b.id).updated_at
+
+        assert tasks.delete(workspace, "does-not-exist") is False
+
+        b2 = tasks.get(workspace, b.id)
+        assert b2.depends_on == [a.id]  # untouched
+        assert b2.updated_at == before
 
     def test_delete_keeps_other_dependencies(self, workspace):
         a = tasks.create(workspace, title="A")

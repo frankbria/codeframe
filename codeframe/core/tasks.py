@@ -744,23 +744,6 @@ def delete(workspace: Workspace, task_id: str) -> bool:
     try:
         cursor = conn.cursor()
 
-        # Strip this task from dependents' depends_on lists first, in the same
-        # transaction as the delete so we never leave a dangling reference.
-        now = _utc_now().isoformat()
-        cursor.execute(
-            "SELECT id, depends_on FROM tasks WHERE workspace_id = ?",
-            (workspace.id,),
-        )
-        for dep_row_id, dep_json in cursor.fetchall():
-            deps = json.loads(dep_json or "[]")
-            if task_id in deps:
-                deps = [d for d in deps if d != task_id]
-                cursor.execute(
-                    "UPDATE tasks SET depends_on = ?, updated_at = ? "
-                    "WHERE workspace_id = ? AND id = ?",
-                    (json.dumps(deps), now, workspace.id, dep_row_id),
-                )
-
         cursor.execute(
             """
             DELETE FROM tasks
@@ -769,6 +752,30 @@ def delete(workspace: Workspace, task_id: str) -> bool:
             (workspace.id, task_id),
         )
         deleted = cursor.rowcount > 0
+
+        # Only cascade if the task actually existed, and only after the DELETE
+        # so the deleted row can't appear in the scan below. Same transaction
+        # (single commit) so no dangling reference can survive a rollback.
+        # (This is the write-side counterpart to get_dependents()'s read: the
+        # tasks that carry task_id in their depends_on JSON.) The full-workspace
+        # scan is fine for typical task counts; add a LIKE pre-filter if a
+        # workspace ever holds thousands of tasks.
+        if deleted:
+            now = _utc_now().isoformat()
+            cursor.execute(
+                "SELECT id, depends_on FROM tasks WHERE workspace_id = ?",
+                (workspace.id,),
+            )
+            for dep_row_id, dep_json in cursor.fetchall():
+                deps = json.loads(dep_json or "[]")
+                if task_id in deps:
+                    deps = [d for d in deps if d != task_id]
+                    cursor.execute(
+                        "UPDATE tasks SET depends_on = ?, updated_at = ? "
+                        "WHERE workspace_id = ? AND id = ?",
+                        (json.dumps(deps), now, workspace.id, dep_row_id),
+                    )
+
         conn.commit()
     finally:
         conn.close()
