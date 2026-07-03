@@ -5,7 +5,7 @@ conductor.py and agent adapters to run tasks in isolated environments.
 
 Isolation levels:
   NONE     — shared filesystem, preserves current behavior (default)
-  WORKTREE — git worktree per task, safe for parallel execution
+  WORKTREE — git worktree per task (DISABLED — discarded agent work; see #714)
   CLOUD    — E2B Linux VM per task (reserved, raises NotImplementedError)
 """
 
@@ -62,6 +62,11 @@ def validate_isolation(isolation: IsolationLevel) -> None:
         ValueError: If ``isolation`` is WORKTREE (see #714). Callers (CLI,
             server, conductor) should surface this to the user *before*
             creating a run so no task is stranded IN_PROGRESS.
+
+    Note:
+        The server path needs no explicit guard today — no ``ui/routers/`` route
+        accepts an ``isolation`` parameter — but ``create_execution_context``
+        calls this, so any future server/programmatic caller is covered too.
     """
     if isolation == IsolationLevel.WORKTREE:
         raise ValueError(_WORKTREE_DISABLED_MSG)
