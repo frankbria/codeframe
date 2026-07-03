@@ -8,6 +8,7 @@ from codeframe.core.sandbox.context import (
     ExecutionContext,
     IsolationLevel,
     create_execution_context,
+    validate_isolation,
 )
 from codeframe.core.sandbox.worktree import (
     MergeResult,
@@ -20,6 +21,7 @@ __all__ = [
     "ExecutionContext",
     "IsolationLevel",
     "create_execution_context",
+    "validate_isolation",
     "MergeResult",
     "TaskWorktree",
     "WorktreeRegistry",
