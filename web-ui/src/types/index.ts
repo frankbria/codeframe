@@ -385,6 +385,8 @@ export interface ProofEvidence {
   req_id: string;
   gate: string;
   satisfied: boolean;
+  // Tri-state gate outcome. Absent/null on legacy rows → fall back to `satisfied`.
+  status?: 'passed' | 'failed' | 'unverifiable' | null;
   artifact_path: string;
   artifact_checksum: string;
   timestamp: string;
@@ -428,14 +430,14 @@ export interface RunProofRequest {
 export interface RunProofResponse {
   success: boolean;
   run_id: string;
-  results: Record<string, Array<{ gate: string; satisfied: boolean }>>;
+  results: Record<string, Array<{ gate: string; satisfied: boolean; status?: 'passed' | 'failed' | 'unverifiable' }>>;
   message: string;
 }
 
 export interface RunStatusResponse {
   run_id: string;
   status: 'running' | 'complete';
-  results: Record<string, Array<{ gate: string; satisfied: boolean }>>;
+  results: Record<string, Array<{ gate: string; satisfied: boolean; status?: 'passed' | 'failed' | 'unverifiable' }>>;
   passed: boolean;
   message: string;
 }
@@ -459,7 +461,7 @@ export interface ProofRunDetail extends ProofRunSummary {
 }
 
 // UI-only types for per-gate display in the Run Gates panel
-export type GateRunStatus = 'pending' | 'running' | 'passed' | 'failed';
+export type GateRunStatus = 'pending' | 'running' | 'passed' | 'failed' | 'unverifiable';
 
 export interface GateRunEntry {
   gate: string;

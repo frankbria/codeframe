@@ -19,6 +19,7 @@ from codeframe.core.proof.ledger import get_run, init_proof_tables, save_require
 from codeframe.core.proof.models import (
     PROOF_CONFIG_FILENAME,
     Gate,
+    GateOutcome,
     Obligation,
     Requirement,
     RequirementScope,
@@ -68,7 +69,7 @@ class TestRunnerEnabledGatesFilter:
         # Patch _run_gate so we can see which gates were invoked
         with patch(
             "codeframe.core.proof.runner._run_gate",
-            return_value=(True, ""),
+            return_value=(GateOutcome.PASSED, ""),
         ) as mock_gate:
             run_proof(workspace, full=True)
 
@@ -82,7 +83,7 @@ class TestRunnerEnabledGatesFilter:
 
         with patch(
             "codeframe.core.proof.runner._run_gate",
-            return_value=(True, ""),
+            return_value=(GateOutcome.PASSED, ""),
         ) as mock_gate:
             run_proof(workspace, full=True)
 
@@ -103,7 +104,7 @@ class TestEmptyEnabledGates:
 
         with caplog.at_level(logging.WARNING, logger="codeframe.core.proof.runner"), patch(
             "codeframe.core.proof.runner._run_gate",
-            return_value=(True, ""),
+            return_value=(GateOutcome.PASSED, ""),
         ) as mock_gate:
             run_proof(workspace, full=True, run_id="empty-gates")
 
@@ -131,7 +132,7 @@ class TestRunnerStrictness:
 
         with patch(
             "codeframe.core.proof.runner._run_gate",
-            return_value=(False, "boom"),
+            return_value=(GateOutcome.FAILED, "boom"),
         ):
             run_proof(workspace, full=True, run_id="strict-run")
 
@@ -149,7 +150,7 @@ class TestRunnerStrictness:
 
         with patch(
             "codeframe.core.proof.runner._run_gate",
-            return_value=(False, "boom"),
+            return_value=(GateOutcome.FAILED, "boom"),
         ):
             run_proof(workspace, full=True, run_id="warn-run")
 

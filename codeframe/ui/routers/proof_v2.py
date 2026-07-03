@@ -37,6 +37,7 @@ from codeframe.core.proof.models import (
     PROOF9_GATE_ORDER,
     PROOF_CONFIG_FILENAME,
     Gate,
+    GateOutcome,
     ReqStatus,
     Severity,
     Source,
@@ -220,6 +221,7 @@ class EvidenceResponse(BaseModel):
     artifact_checksum: str
     timestamp: str
     run_id: str
+    status: Optional[str] = None
 
 
 class EvidenceWithContentResponse(EvidenceResponse):
@@ -411,9 +413,18 @@ async def run_proof_endpoint(
             gate_filter=body.gate,
             run_id=run_id,
         )
-        # Serialize: dict[req_id → list[tuple[Gate, bool]]] → JSON-safe
+        # Serialize: dict[req_id → list[tuple[Gate, GateOutcome]]] → JSON-safe.
+        # `satisfied` is kept for compatibility; `status` carries the tri-state
+        # outcome (passed / failed / unverifiable).
         serialized = {
-            req_id: [{"gate": gate.value, "satisfied": satisfied} for gate, satisfied in gate_results]
+            req_id: [
+                {
+                    "gate": gate.value,
+                    "satisfied": outcome == GateOutcome.PASSED,
+                    "status": outcome.value,
+                }
+                for gate, outcome in gate_results
+            ]
             for req_id, gate_results in results.items()
         }
 
@@ -426,11 +437,15 @@ async def run_proof_endpoint(
         if persisted_run is not None:
             passed = persisted_run.overall_passed
         else:
-            passed = all(
-                satisfied
+            # Mirror the runner rule: unverifiable outcomes neither pass nor
+            # fail, so a run with only unverifiable gates passes.
+            executed = [
+                outcome == GateOutcome.PASSED
                 for gate_results in results.values()
-                for _, satisfied in gate_results
-            )
+                for _, outcome in gate_results
+                if outcome != GateOutcome.UNVERIFIABLE
+            ]
+            passed = all(executed) if executed else True
         response = RunProofResponse(
             success=True,
             run_id=run_id,
@@ -602,6 +617,7 @@ async def get_run_evidence_endpoint(
                     req_id=req_id,
                     gate=gate_result["gate"],
                     satisfied=gate_result["satisfied"],
+                    status=gate_result.get("status"),
                     artifact_path="",
                     artifact_checksum="",
                     timestamp="",
@@ -628,6 +644,7 @@ async def get_run_evidence_endpoint(
             req_id=e.req_id,
             gate=e.gate.value,
             satisfied=e.satisfied,
+            status=e.status,
             artifact_path=e.artifact_path,
             artifact_checksum=e.artifact_checksum,
             timestamp=e.timestamp.isoformat(),
@@ -746,6 +763,7 @@ async def list_evidence_endpoint(
             req_id=e.req_id,
             gate=e.gate.value,
             satisfied=e.satisfied,
+            status=e.status,
             artifact_path=e.artifact_path,
             artifact_checksum=e.artifact_checksum,
             timestamp=e.timestamp.isoformat(),

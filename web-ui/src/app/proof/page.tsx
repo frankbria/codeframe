@@ -301,7 +301,12 @@ function ProofPageContent() {
               <GateRunPanel gateEntries={gateEntries} />
             )}
             {runState === 'complete' && passed !== null && (
-              <GateRunBanner passed={passed} message={runMessage ?? ''} onRetry={retry} />
+              <GateRunBanner
+                passed={passed}
+                message={runMessage ?? ''}
+                onRetry={retry}
+                unverifiableCount={gateEntries.filter((e) => e.status === 'unverifiable').length}
+              />
             )}
             {runState === 'error' && errorMessage && (
               <div
@@ -578,6 +583,14 @@ function ProofPageContent() {
                 <div>
                   <dt className="font-medium text-foreground">Gates / Obligations</dt>
                   <dd>Evidence rules — specific tests or checks that must pass to satisfy a requirement.</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-foreground">Gate Results</dt>
+                  <dd>
+                    A gate can <strong>pass</strong> (green), <strong>fail</strong> (red), or be{' '}
+                    <span className="text-amber-700 dark:text-amber-400">could not be verified</span> (amber) —
+                    the check couldn&apos;t run, so it never fails a run and stays waivable.
+                  </dd>
                 </div>
               </dl>
             </div>

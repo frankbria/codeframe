@@ -320,6 +320,51 @@ class TestRunProof:
         data = response.json()
         assert isinstance(data["results"], dict)
 
+    def test_run_results_carry_status(self, test_client):
+        """Each gate result carries a tri-state status alongside satisfied."""
+        test_client.post(
+            "/api/v2/proof/requirements",
+            json={
+                "title": "Logic bug for status test",
+                "description": "Calculation returns the wrong value",
+                "where": "core/tasks.py",
+                "severity": "medium",
+                "source": "qa",
+            },
+        )
+        data = test_client.post("/api/v2/proof/run", json={"full": True}).json()
+        gate_results = [gr for reqs in data["results"].values() for gr in reqs]
+        assert gate_results, "expected at least one gate result"
+        for gr in gate_results:
+            assert "satisfied" in gr
+            assert "status" in gr
+            assert gr["status"] in ("passed", "failed", "unverifiable")
+
+    def test_unverifiable_only_run_passes(self, test_client):
+        """A run whose only obligations are unrunnable gates passes (not failed)."""
+        # "button click" → UI_WIRING_BUG → obligations [e2e, demo], both
+        # without an automated runner → unverifiable.
+        test_client.post(
+            "/api/v2/proof/requirements",
+            json={
+                "title": "Button click does nothing",
+                "description": "Submit button click handler never fires the callback",
+                "where": "web-ui/components/Form.tsx",
+                "severity": "medium",
+                "source": "qa",
+            },
+        )
+        post = test_client.post("/api/v2/proof/run", json={"full": True}).json()
+        run_id = post["run_id"]
+
+        gate_results = [gr for reqs in post["results"].values() for gr in reqs]
+        assert gate_results
+        assert all(gr["status"] == "unverifiable" for gr in gate_results)
+        assert all(gr["satisfied"] is False for gr in gate_results)
+
+        status = test_client.get(f"/api/v2/proof/runs/{run_id}").json()
+        assert status["passed"] is True
+
 
 # ============================================================================
 # GET /api/v2/proof/runs/{run_id} — poll run status
@@ -653,3 +698,22 @@ class TestGetRunEvidence:
         data = test_client.get(f"/api/v2/proof/runs/{run_id}/evidence").json()
         for ev in data["evidence"]:
             assert "artifact_text" in ev, "Evidence item missing artifact_text"
+
+    def test_run_evidence_carries_status(self, test_client):
+        """Unverifiable gates surface status='unverifiable' on run evidence."""
+        test_client.post(
+            "/api/v2/proof/requirements",
+            json={
+                "title": "Button click does nothing",
+                "description": "Submit button click handler never fires the callback",
+                "where": "web-ui/components/Form.tsx",
+                "severity": "medium",
+                "source": "qa",
+            },
+        )
+        run_id = test_client.post("/api/v2/proof/run", json={"full": True}).json()["run_id"]
+        data = test_client.get(f"/api/v2/proof/runs/{run_id}/evidence").json()
+        assert data["evidence"], "expected evidence records"
+        for ev in data["evidence"]:
+            assert "status" in ev
+            assert ev["status"] == "unverifiable"

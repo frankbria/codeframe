@@ -187,6 +187,25 @@ describe('ProofDetailPage — result filter', () => {
     expect(rows).toHaveLength(2);
     rows.forEach((r) => expect(r.querySelectorAll('td')[1].textContent?.trim()).toBe('fail'));
   });
+
+  it('unverifiable evidence renders "cannot verify" and is excluded from the fail filter', () => {
+    setup([
+      ...EVIDENCE,
+      { req_id: 'REQ-001', gate: 'e2e', satisfied: false, status: 'unverifiable', artifact_path: '/a/e2e.log', artifact_checksum: '', timestamp: '2026-01-05T10:00:00Z', run_id: 'run-005' },
+    ]);
+    // Rendered as its own tri-state, not as a red fail
+    expect(evidenceRows()[0].querySelectorAll('td')[1].textContent?.trim()).toBe('cannot verify');
+
+    fireEvent.change(screen.getByRole('combobox', { name: /result/i }), { target: { value: 'fail' } });
+    const failRows = evidenceRows();
+    expect(failRows).toHaveLength(2);
+    failRows.forEach((r) => expect(r.querySelectorAll('td')[1].textContent?.trim()).toBe('fail'));
+
+    fireEvent.change(screen.getByRole('combobox', { name: /result/i }), { target: { value: 'unverifiable' } });
+    const unvRows = evidenceRows();
+    expect(unvRows).toHaveLength(1);
+    expect(unvRows[0].querySelectorAll('td')[1].textContent?.trim()).toBe('cannot verify');
+  });
 });
 
 describe('ProofDetailPage — search filter', () => {

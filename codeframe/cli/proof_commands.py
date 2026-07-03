@@ -144,7 +144,7 @@ def run(
         codeframe proof run --gate unit
     """
     from codeframe.core.workspace import get_workspace
-    from codeframe.core.proof.models import Gate
+    from codeframe.core.proof.models import Gate, GateOutcome
     from codeframe.core.proof.runner import run_proof
 
     workspace_path = repo_path or Path.cwd()
@@ -178,21 +178,41 @@ def run(
     table.add_column("Gate", style="blue")
     table.add_column("Result", style="bold")
 
-    all_pass = True
+    _CELL = {
+        GateOutcome.PASSED: "[green]PASS[/green]",
+        GateOutcome.FAILED: "[red]FAIL[/red]",
+        GateOutcome.UNVERIFIABLE: "[yellow]UNVERIFIABLE[/yellow]",
+    }
+    any_failed = False
+    unverifiable_gates: set[str] = set()
     for req_id, gate_results in results.items():
-        for g, passed in gate_results:
-            status = "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
-            if not passed:
-                all_pass = False
-            table.add_row(req_id, g.value, status)
+        for g, outcome in gate_results:
+            if outcome == GateOutcome.FAILED:
+                any_failed = True
+            elif outcome == GateOutcome.UNVERIFIABLE:
+                unverifiable_gates.add(g.value)
+            table.add_row(req_id, g.value, _CELL[outcome])
 
     console.print(table)
 
-    if all_pass:
-        console.print("\n[green]All obligations satisfied.[/green]")
-    else:
+    if unverifiable_gates:
+        gates = ", ".join(sorted(unverifiable_gates))
+        console.print(
+            f"\n[yellow]Could not verify {len(unverifiable_gates)} gate(s):[/yellow] "
+            f"{gates} — no automated runner. "
+            "Waive with 'cf proof waive <REQ> --reason \"...\"'."
+        )
+
+    if any_failed:
         console.print("\n[red]Some obligations failed.[/red] Fix issues and re-run.")
         raise typer.Exit(1)
+    elif unverifiable_gates:
+        console.print(
+            "\n[green]No obligations failed[/green] "
+            "[dim](some gates could not be verified).[/dim]"
+        )
+    else:
+        console.print("\n[green]All obligations satisfied.[/green]")
 
 
 @proof_app.command("list")
@@ -319,7 +339,13 @@ def show(
     if evidence_list:
         console.print(f"\n[bold]Evidence ({len(evidence_list)}):[/bold]")
         for ev in evidence_list[:10]:
-            status = "[green]PASS[/green]" if ev.satisfied else "[red]FAIL[/red]"
+            if ev.status == "unverifiable":
+                status = "[yellow]UNVERIFIABLE[/yellow]"
+            elif ev.satisfied:
+                status = "[green]PASS[/green]"
+            else:
+                # Legacy rows (status=None) fall back to the satisfied bool.
+                status = "[red]FAIL[/red]"
             console.print(f"  {ev.gate.value} {status} — {ev.artifact_path}")
 
 

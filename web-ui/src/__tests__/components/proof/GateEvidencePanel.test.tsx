@@ -43,6 +43,23 @@ describe('GateEvidencePanel', () => {
     expect(screen.getByText('fail')).toBeInTheDocument();
   });
 
+  it('shows "cannot verify" pill for unverifiable evidence', () => {
+    render(<GateEvidencePanel evidence={[makeEvidence({ gate: 'e2e', satisfied: false, status: 'unverifiable' })]} />);
+    expect(screen.getByText('cannot verify')).toBeInTheDocument();
+    expect(screen.queryByText('fail')).not.toBeInTheDocument();
+  });
+
+  it('shows pass pill when status is passed', () => {
+    render(<GateEvidencePanel evidence={[makeEvidence({ satisfied: true, status: 'passed' })]} />);
+    expect(screen.getByText('pass')).toBeInTheDocument();
+  });
+
+  it('falls back to satisfied bool for legacy evidence without status', () => {
+    render(<GateEvidencePanel evidence={[makeEvidence({ satisfied: false, status: null })]} />);
+    expect(screen.getByText('fail')).toBeInTheDocument();
+    expect(screen.queryByText('cannot verify')).not.toBeInTheDocument();
+  });
+
   it('expands to show artifact text on click', () => {
     const ev = makeEvidence({ artifact_text: 'hello output' });
     render(<GateEvidencePanel evidence={[ev]} />);

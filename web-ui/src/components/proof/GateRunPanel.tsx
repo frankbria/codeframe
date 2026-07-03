@@ -8,11 +8,12 @@ interface GateRunPanelProps {
 }
 
 // Map GateRunStatus to Badge variant names from the shared design system
-const STATUS_VARIANT: Record<GateRunStatus, 'backlog' | 'in-progress' | 'done' | 'failed'> = {
+const STATUS_VARIANT: Record<GateRunStatus, 'backlog' | 'in-progress' | 'done' | 'failed' | 'unverifiable'> = {
   pending: 'backlog',
   running: 'in-progress',
   passed: 'done',
   failed: 'failed',
+  unverifiable: 'unverifiable',
 };
 
 export function GateRunPanel({ gateEntries }: GateRunPanelProps) {

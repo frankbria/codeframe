@@ -39,15 +39,21 @@ function GateEvidenceRow({ ev }: GateEvidenceRowProps) {
         className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
         <span className="font-mono text-xs text-muted-foreground w-16 shrink-0 capitalize">{ev.gate}</span>
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-            ev.satisfied
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-          }`}
-        >
-          {ev.satisfied ? 'pass' : 'fail'}
-        </span>
+        {ev.status === 'unverifiable' ? (
+          <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+            cannot verify
+          </span>
+        ) : (
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+              ev.satisfied
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+            }`}
+          >
+            {ev.satisfied ? 'pass' : 'fail'}
+          </span>
+        )}
         <span className="ml-auto text-xs text-muted-foreground">{expanded ? '▲' : '▼'}</span>
       </button>
 

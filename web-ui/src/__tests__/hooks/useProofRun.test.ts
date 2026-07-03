@@ -185,6 +185,67 @@ describe('useProofRun', () => {
     expect(result.current.errorMessage).toBeTruthy();
   });
 
+  it('maps status:"unverifiable" entries to gate status "unverifiable" (not "failed")', async () => {
+    const startResponse = {
+      success: true,
+      run_id: 'unv-test',
+      results: {
+        'req-1': [
+          { gate: 'unit', satisfied: true, status: 'passed' as const },
+          { gate: 'e2e', satisfied: false, status: 'unverifiable' as const },
+        ],
+      },
+      message: 'done',
+    };
+    const getResponse = {
+      run_id: 'unv-test',
+      status: 'complete' as const,
+      results: {
+        'req-1': [
+          { gate: 'unit', satisfied: true, status: 'passed' as const },
+          { gate: 'e2e', satisfied: false, status: 'unverifiable' as const },
+        ],
+      },
+      // Backend owns the rule: unverifiable is not a real failure → passed=true.
+      passed: true,
+      message: 'done',
+    };
+    mockStartRun.mockResolvedValue(startResponse);
+    mockGetRun.mockResolvedValue(getResponse);
+
+    const { result } = renderHook(() => useProofRun());
+    act(() => { result.current.startRun(WORKSPACE); });
+    await waitFor(() => expect(result.current.runState).toBe('polling'));
+
+    await act(async () => { jest.advanceTimersByTime(2000); });
+    await waitFor(() => expect(result.current.runState).toBe('complete'));
+
+    const e2e = result.current.gateEntries.find((e) => e.gate === 'e2e');
+    expect(e2e?.status).toBe('unverifiable');
+    const unit = result.current.gateEntries.find((e) => e.gate === 'unit');
+    expect(unit?.status).toBe('passed');
+    // Unverifiable-only-vs-passing run still completes as passed.
+    expect(result.current.passed).toBe(true);
+  });
+
+  it('falls back to satisfied bool when legacy entries omit status', async () => {
+    // No `status` field → legacy cached run; map via satisfied boolean.
+    mockStartRun.mockResolvedValue(makeStartRunResponse(false));
+    mockGetRun.mockResolvedValue(makeGetRunResponse(false));
+
+    const { result } = renderHook(() => useProofRun());
+    act(() => { result.current.startRun(WORKSPACE); });
+    await waitFor(() => expect(result.current.runState).toBe('polling'));
+
+    await act(async () => { jest.advanceTimersByTime(2000); });
+    await waitFor(() => expect(result.current.runState).toBe('complete'));
+
+    const unit = result.current.gateEntries.find((e) => e.gate === 'unit');
+    expect(unit?.status).toBe('failed');
+    const sec = result.current.gateEntries.find((e) => e.gate === 'sec');
+    expect(sec?.status).toBe('passed');
+  });
+
   it('retry() resets state to idle', async () => {
     mockStartRun.mockRejectedValue(new Error('fail'));
 

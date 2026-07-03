@@ -67,6 +67,7 @@ def init_proof_tables(workspace: Workspace) -> None:
             timestamp TEXT NOT NULL,
             run_id TEXT NOT NULL,
             workspace_id TEXT NOT NULL,
+            status TEXT,
             FOREIGN KEY (req_id) REFERENCES proof_requirements(id)
         )
     """)
@@ -121,6 +122,22 @@ def _ensure_tables(workspace: Workspace) -> None:
     conn.close()
     if missing:
         init_proof_tables(workspace)
+    _migrate_evidence_status_column(workspace)
+
+
+def _migrate_evidence_status_column(workspace: Workspace) -> None:
+    """Add proof_evidence.status to pre-existing DBs that predate #728.
+
+    The column is nullable; old rows read back status=None. No-op once present.
+    """
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(proof_evidence)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if columns and "status" not in columns:
+        cursor.execute("ALTER TABLE proof_evidence ADD COLUMN status TEXT")
+        conn.commit()
+    conn.close()
 
 
 # --- Serialization helpers ---
@@ -315,12 +332,13 @@ def save_evidence(workspace: Workspace, evidence: Evidence) -> None:
     cursor.execute(
         """INSERT INTO proof_evidence
            (req_id, gate, satisfied, artifact_path, artifact_checksum,
-            timestamp, run_id, workspace_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            timestamp, run_id, workspace_id, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             evidence.req_id, evidence.gate.value, int(evidence.satisfied),
             evidence.artifact_path, evidence.artifact_checksum,
             evidence.timestamp.isoformat(), evidence.run_id, workspace.id,
+            evidence.status,
         ),
     )
     conn.commit()
@@ -334,7 +352,7 @@ def list_evidence(workspace: Workspace, req_id: str) -> list[Evidence]:
     cursor = conn.cursor()
     cursor.execute(
         """SELECT req_id, gate, satisfied, artifact_path, artifact_checksum,
-                  timestamp, run_id
+                  timestamp, run_id, status
            FROM proof_evidence WHERE req_id = ? AND workspace_id = ?
            ORDER BY timestamp DESC""",
         (req_id, workspace.id),
@@ -346,6 +364,7 @@ def list_evidence(workspace: Workspace, req_id: str) -> list[Evidence]:
             req_id=r[0], gate=Gate(r[1]), satisfied=bool(r[2]),
             artifact_path=r[3], artifact_checksum=r[4],
             timestamp=datetime.fromisoformat(r[5]), run_id=r[6],
+            status=r[7],
         )
         for r in rows
     ]
@@ -460,7 +479,7 @@ def get_run_evidence(workspace: Workspace, run_id: str) -> list[Evidence]:
     cursor = conn.cursor()
     cursor.execute(
         """SELECT req_id, gate, satisfied, artifact_path, artifact_checksum,
-                  timestamp, run_id
+                  timestamp, run_id, status
            FROM proof_evidence WHERE run_id = ? AND workspace_id = ?
            ORDER BY timestamp ASC""",
         (run_id, workspace.id),
@@ -472,6 +491,7 @@ def get_run_evidence(workspace: Workspace, run_id: str) -> list[Evidence]:
             req_id=r[0], gate=Gate(r[1]), satisfied=bool(r[2]),
             artifact_path=r[3], artifact_checksum=r[4],
             timestamp=datetime.fromisoformat(r[5]), run_id=r[6],
+            status=r[7],
         )
         for r in rows
     ]

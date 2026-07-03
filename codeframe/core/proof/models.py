@@ -33,6 +33,19 @@ class Gate(str, Enum):
 PROOF9_GATE_ORDER: tuple[str, ...] = tuple(g.value for g in Gate)
 
 
+class GateOutcome(str, Enum):
+    """Outcome of running a single proof obligation's gate.
+
+    UNVERIFIABLE is distinct from FAILED: the gate has no automated runner
+    (e.g. e2e, visual, a11y, perf, demo, manual), so the obligation could not
+    be checked at all. It never satisfies a requirement and never fails a run.
+    """
+
+    PASSED = "passed"
+    FAILED = "failed"
+    UNVERIFIABLE = "unverifiable"
+
+
 class GlitchType(str, Enum):
     """Classification of the glitch that produced a requirement."""
 
@@ -88,7 +101,7 @@ class Obligation:
     """A single proof obligation attached to a requirement."""
 
     gate: Gate
-    status: str = "pending"  # pending, satisfied, failed
+    status: str = "pending"  # pending, satisfied, failed, unverifiable
 
 
 @dataclass
@@ -121,6 +134,7 @@ class Evidence:
     artifact_checksum: str
     timestamp: datetime
     run_id: str
+    status: Optional[str] = None  # passed, failed, unverifiable (None for legacy rows)
 
 
 @dataclass
