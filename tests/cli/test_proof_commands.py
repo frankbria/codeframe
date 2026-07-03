@@ -78,6 +78,26 @@ class TestCapture:
         assert req.title == "Login rejects valid credentials"
         assert req.status == ReqStatus.OPEN
 
+    def test_capture_interactive_prompts_do_not_crash(self, ws):
+        """#723: severity/source were prompted with the nonexistent typer.Choice,
+        so any interactive `cf proof capture` (no --severity/--source) raised
+        AttributeError. Drive the interactive branch via stdin and assert it
+        captures cleanly."""
+        workspace, workspace_path = ws
+        result = runner.invoke(
+            app,
+            [
+                "proof", "capture", "-w", str(workspace_path),
+                "--title", "T", "--description", "D", "--where", "src/x.py",
+            ],
+            input="high\nqa\n",  # severity Choice, then source Choice
+        )
+        assert result.exit_code == 0, result.output
+        assert "REQ-0001" in result.output
+        req = ledger.get_requirement(workspace, "REQ-0001")
+        assert req is not None
+        assert req.severity.value == "high"
+
     def test_capture_second_req_increments_id(self, ws_with_req):
         """A second capture should produce REQ-0002."""
         workspace, workspace_path = ws_with_req

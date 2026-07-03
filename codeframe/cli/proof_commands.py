@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+import click
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -75,12 +76,14 @@ def capture(
     if not severity:
         severity = typer.prompt(
             "Severity", default="medium",
-            type=typer.Choice(["critical", "high", "medium", "low"]),
+            # click.Choice — typer has no Choice; typer.prompt delegates to
+            # click.prompt, so this constrains the interactive input (#723).
+            type=click.Choice(["critical", "high", "medium", "low"]),
         )
     if not source:
         source = typer.prompt(
             "Source", default="qa",
-            type=typer.Choice(["production", "qa", "dogfooding", "monitoring", "user_report"]),
+            type=click.Choice(["production", "qa", "dogfooding", "monitoring", "user_report"]),
         )
 
     try:
