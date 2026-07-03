@@ -3788,6 +3788,15 @@ def batch_run(
             console.print("[red]Error:[/red] Specify task IDs or use --all-ready/--all-blocked")
             raise typer.Exit(1)
 
+        # Reject unsupported isolation up front (#714) — before the API-key
+        # check and before any run is created (worktree would discard work).
+        from codeframe.core.sandbox.context import IsolationLevel, validate_isolation
+        try:
+            validate_isolation(IsolationLevel(isolation))
+        except ValueError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(1)
+
         # Show execution plan
         console.print("\n[bold]Batch Execution Plan[/bold]")
         console.print(f"  Strategy: {strategy}")
@@ -3813,14 +3822,6 @@ def batch_run(
         elif not is_external_engine(engine):
             from codeframe.cli.validators import require_anthropic_api_key
             require_anthropic_api_key()
-
-        # Reject unsupported isolation before creating any runs (#714).
-        from codeframe.core.sandbox.context import IsolationLevel, validate_isolation
-        try:
-            validate_isolation(IsolationLevel(isolation))
-        except ValueError as exc:
-            console.print(f"[red]Error:[/red] {exc}")
-            raise typer.Exit(1)
 
         # Execute batch
         if max_retries > 0:
