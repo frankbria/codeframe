@@ -327,6 +327,31 @@ async def require_auth(
     )
 
 
+# HTTP methods that only read state — everything else mutates (#717).
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+async def require_method_scope(
+    request: Request,
+    auth: Dict[str, Any] = Depends(require_auth),
+) -> Dict[str, Any]:
+    """Router-level guard that enforces scope by HTTP method (issue #717).
+
+    Safe methods (GET/HEAD/OPTIONS) require the ``read`` scope; mutating
+    methods (POST/PUT/PATCH/DELETE) require ``write``. Admin-only routes layer
+    their own ``Depends(require_scope("admin"))`` on top. JWT principals and the
+    auth-disabled synthetic principal both carry all scopes, so this only
+    constrains scoped API keys — a read-only key can no longer mutate state.
+    """
+    required = SCOPE_READ if request.method.upper() in _SAFE_METHODS else SCOPE_WRITE
+    if not has_scope(auth, required):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Insufficient permissions: '{required}' scope required",
+        )
+    return auth
+
+
 async def authenticate_websocket(
     websocket: WebSocket,
     *,
@@ -429,6 +454,10 @@ def require_scope(required_scope: str) -> Callable:
     Returns:
         Dependency function that validates scope
     """
+    # Depends on require_auth directly (not require_method_scope): on admin
+    # routes both run, but FastAPI caches require_auth within a request, so
+    # there is exactly one authentication call — the method guard checks
+    # write and this checks admin against the same principal (#717).
     async def check_scope(auth: Dict[str, Any] = Depends(require_auth)) -> Dict[str, Any]:
         """Verify principal has required scope."""
         if not has_scope(auth, required_scope):

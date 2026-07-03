@@ -18,6 +18,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from codeframe.auth.api_keys import SCOPE_ADMIN
+from codeframe.auth.dependencies import require_scope
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.git.github_integration import GitHubIntegration, GitHubAPIError, PRDetails
@@ -599,7 +601,11 @@ async def create_pull_request(
         await client.close()
 
 
-@router.post("/{pr_number}/merge", response_model=MergeResponse)
+@router.post(
+    "/{pr_number}/merge",
+    response_model=MergeResponse,
+    dependencies=[Depends(require_scope(SCOPE_ADMIN))],  # merging to the repo is admin-only (#717)
+)
 @rate_limit_standard()
 async def merge_pull_request(
     request: Request,

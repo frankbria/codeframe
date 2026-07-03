@@ -27,6 +27,9 @@ from anthropic import Anthropic as _AnthropicClient
 from anthropic import AuthenticationError as _AnthropicAuthError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
+
+from codeframe.auth.api_keys import SCOPE_ADMIN
+from codeframe.auth.dependencies import require_scope
 from openai import AuthenticationError as _OpenAIAuthError
 from openai import OpenAI as _OpenAIClient
 from pydantic import BaseModel, Field
@@ -235,7 +238,11 @@ async def list_key_status(
     return [_build_status(p, manager) for p in KEY_PROVIDERS]
 
 
-@router.put("/keys/{provider}", response_model=KeyStatusResponse)
+@router.put(
+    "/keys/{provider}",
+    response_model=KeyStatusResponse,
+    dependencies=[Depends(require_scope(SCOPE_ADMIN))],  # credential storage is admin-only (#717)
+)
 @rate_limit_standard()
 async def store_key(
     provider: str,
@@ -268,7 +275,11 @@ async def store_key(
     return _build_status(cast(KeyProvider, provider), manager)
 
 
-@router.delete("/keys/{provider}", status_code=204)
+@router.delete(
+    "/keys/{provider}",
+    status_code=204,
+    dependencies=[Depends(require_scope(SCOPE_ADMIN))],  # credential deletion is admin-only (#717)
+)
 @rate_limit_standard()
 async def delete_key(
     provider: str,
