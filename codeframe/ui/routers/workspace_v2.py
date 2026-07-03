@@ -494,11 +494,8 @@ async def check_workspace_exists(
     Returns:
         Whether workspace exists and path info
     """
-    # Enforce the workspace allowlist (#719): without this any authenticated
-    # user could probe arbitrary host paths for existence and get the fully
-    # resolved absolute path back. enforce_workspace_allowlist resolves the
-    # path and raises 403 for anything outside the permitted roots (so the
-    # resolved path is never echoed for out-of-allowlist inputs).
+    # Enforce the allowlist (#719): else this leaks existence + resolved paths
+    # for arbitrary host paths. Raises 403 (path not echoed) for out-of-root.
     path = enforce_workspace_allowlist(Path(repo_path), auth.get("user_id"))
     exists = ws.workspace_exists(path)
 

@@ -51,6 +51,17 @@ class TestExistsAllowlist:
         )
         assert r.status_code == 403
 
+    def test_hosted_mode_rejects_probe(self, tmp_path, monkeypatch):
+        """Hosted mode confines each user to <root>/<user_id>; with auth off in
+        the test suite (user_id=None) any probe fails closed with 403."""
+        base = tmp_path / "roots"
+        (base / "proj").mkdir(parents=True)
+        create_or_load_workspace(base / "proj")
+        monkeypatch.setenv("WORKSPACE_ROOT", str(base))
+        monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "hosted")
+        r = _client().get("/api/v2/workspaces/exists", params={"repo_path": str(base / "proj")})
+        assert r.status_code == 403
+
     def test_no_root_self_hosted_unchanged(self, tmp_path, monkeypatch):
         """Self-hosted default (no WORKSPACE_ROOT): still works (single trust domain)."""
         proj = tmp_path / "proj"
