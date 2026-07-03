@@ -86,3 +86,43 @@ class TestStreamTicketEndpointAuthDisabled:
         resp = auth_client.post("/auth/stream-ticket")
         ticket = resp.json()["ticket"]
         assert redeem_ticket(ticket) is None
+
+
+class TestStreamTicketScopeEnforcement:
+    """A ticket redeems as a full user session on WS routes (terminal input
+    mutates state), so minting requires write scope. Read-only API keys must
+    not be able to escalate to WS access via a ticket (codex review P1); they
+    never need tickets anyway -- header-capable clients authenticate SSE with
+    X-API-Key directly."""
+
+    @pytest.fixture
+    def api_keys(self, auth_client, tmp_path):
+        from codeframe.auth.api_keys import SCOPE_READ, SCOPE_WRITE
+        from codeframe.core.api_key_service import ApiKeyService
+
+        db = Database(tmp_path / "state.db")
+        db.initialize()
+        svc = ApiKeyService(db)
+        keys = {
+            "read": svc.create_api_key(user_id=1, name="r", scopes=[SCOPE_READ]).key,
+            "write": svc.create_api_key(
+                user_id=1, name="w", scopes=[SCOPE_READ, SCOPE_WRITE]
+            ).key,
+        }
+        db.close()
+        return keys
+
+    def test_read_only_api_key_returns_403(self, auth_client, api_keys, monkeypatch):
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+        resp = auth_client.post(
+            "/auth/stream-ticket", headers={"X-API-Key": api_keys["read"]}
+        )
+        assert resp.status_code == 403
+
+    def test_write_api_key_returns_ticket(self, auth_client, api_keys, monkeypatch):
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+        resp = auth_client.post(
+            "/auth/stream-ticket", headers={"X-API-Key": api_keys["write"]}
+        )
+        assert resp.status_code == 200, resp.text
+        assert redeem_ticket(resp.json()["ticket"]) == 1

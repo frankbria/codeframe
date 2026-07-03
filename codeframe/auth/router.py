@@ -124,6 +124,19 @@ async def create_stream_ticket(
     (authenticated the normal way, via JWT Bearer or ``X-API-Key``), then open
     the stream with the returned ticket. The ticket is single-use and expires
     after ``expires_in`` seconds.
+
+    Minting requires **write** scope: a redeemed ticket acts as a full user
+    session on the WebSocket routes (terminal input / chat both mutate state),
+    so a read-only API key must not be able to escalate through it (codex
+    review P1). Read-only keys don't need tickets — header-capable clients
+    authenticate the SSE routes with ``X-API-Key`` directly.
     """
+    from codeframe.auth.api_keys import SCOPE_WRITE
+
+    if SCOPE_WRITE not in auth.get("scopes", []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Stream tickets require write scope",
+        )
     ticket = mint_ticket(auth.get("user_id"))
     return StreamTicketResponse(ticket=ticket, expires_in=TICKET_TTL_SECONDS)
