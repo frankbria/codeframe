@@ -2421,6 +2421,15 @@ def work_start(
 
         task = matching[0]
 
+        # Reject unsupported isolation first (#714): worktree would silently
+        # discard agent work. Fails closed before any run is created.
+        from codeframe.core.sandbox.context import IsolationLevel, validate_isolation
+        try:
+            validate_isolation(IsolationLevel(isolation))
+        except ValueError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(1)
+
         # Validate API key before creating run record (avoids dangling IN_PROGRESS state)
         if execute:
             from codeframe.core.engine_registry import is_external_engine
@@ -3804,6 +3813,14 @@ def batch_run(
         elif not is_external_engine(engine):
             from codeframe.cli.validators import require_anthropic_api_key
             require_anthropic_api_key()
+
+        # Reject unsupported isolation before creating any runs (#714).
+        from codeframe.core.sandbox.context import IsolationLevel, validate_isolation
+        try:
+            validate_isolation(IsolationLevel(isolation))
+        except ValueError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(1)
 
         # Execute batch
         if max_retries > 0:

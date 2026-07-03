@@ -42,6 +42,31 @@ class ExecutionContext:
     cleanup: Callable[[], None]
 
 
+# worktree isolation is disabled until real merge-back ships (issue #714).
+# It force-deleted the per-task branch/worktree in cleanup() WITHOUT ever
+# merging the agent's work back to the base branch — silently discarding all
+# changes. Re-enable once merge-back (+ auto-commit of worktree changes) lands;
+# that work is gated behind #715 (builtin engines ignore the worktree path) and
+# #716 (verification runs against the wrong tree).
+_WORKTREE_DISABLED_MSG = (
+    "worktree isolation is temporarily disabled: it discards agent work without "
+    "merging it back to the base branch (silent data loss — see issue #714). "
+    "Use --isolation none (the default) until merge-back ships."
+)
+
+
+def validate_isolation(isolation: IsolationLevel) -> None:
+    """Reject isolation levels that are not currently safe to run.
+
+    Raises:
+        ValueError: If ``isolation`` is WORKTREE (see #714). Callers (CLI,
+            server, conductor) should surface this to the user *before*
+            creating a run so no task is stranded IN_PROGRESS.
+    """
+    if isolation == IsolationLevel.WORKTREE:
+        raise ValueError(_WORKTREE_DISABLED_MSG)
+
+
 def create_execution_context(
     task_id: str,
     isolation: IsolationLevel,
@@ -58,9 +83,12 @@ def create_execution_context(
         ExecutionContext with workspace_path and cleanup configured.
 
     Raises:
+        ValueError: If isolation is WORKTREE (disabled until merge-back — #714).
         NotImplementedError: If isolation is CLOUD (future E2B phase).
-        subprocess.CalledProcessError: If git worktree creation fails.
     """
+    # Fail closed before creating anything: WORKTREE would destroy agent work.
+    validate_isolation(isolation)
+
     if isolation == IsolationLevel.NONE:
         return ExecutionContext(
             task_id=task_id,
@@ -69,30 +97,10 @@ def create_execution_context(
             cleanup=lambda: None,
         )
 
-    if isolation == IsolationLevel.WORKTREE:
-        from codeframe.core.worktrees import TaskWorktree, WorktreeRegistry, get_base_branch
-
-        worktree = TaskWorktree()
-        registry = WorktreeRegistry()
-        base_branch = get_base_branch(repo_path)
-        worktree_path = worktree.create(repo_path, task_id, base_branch=base_branch)
-        registry.register(repo_path, task_id, batch_id="unknown")
-
-        def cleanup() -> None:
-            worktree.cleanup(repo_path, task_id)
-            registry.unregister(repo_path, task_id)
-
-        return ExecutionContext(
-            task_id=task_id,
-            isolation=isolation,
-            workspace_path=worktree_path,
-            cleanup=cleanup,
-        )
-
     if isolation == IsolationLevel.CLOUD:
         raise NotImplementedError(
             "IsolationLevel.CLOUD is reserved for the future E2B agent adapter phase. "
-            "Use 'none' or 'worktree' instead."
+            "Use 'none' instead."
         )
 
     raise ValueError(f"Unknown isolation level: {isolation}")

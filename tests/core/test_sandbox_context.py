@@ -112,43 +112,37 @@ class TestCreateExecutionContextNone:
 
 
 class TestCreateExecutionContextWorktree:
-    def test_creates_worktree_directory(self, git_repo: Path):
-        ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
-        assert ctx.workspace_path.exists()
-        assert ctx.workspace_path.is_dir()
-        ctx.cleanup()
+    """Issue #714 / P0.3: worktree isolation is disabled until merge-back ships
+    because cleanup() force-deleted the branch/worktree without merging agent
+    work back — silent data loss. create_execution_context must fail closed and
+    create NOTHING (no worktree dir, no branch)."""
 
-    def test_workspace_path_differs_from_repo_path(self, git_repo: Path):
-        ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
-        assert ctx.workspace_path != git_repo
-        ctx.cleanup()
+    def test_worktree_is_rejected(self, git_repo: Path):
+        with pytest.raises(ValueError, match="worktree isolation is temporarily disabled"):
+            create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
 
-    def test_workspace_path_is_inside_worktrees_dir(self, git_repo: Path):
-        ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
-        assert ".codeframe/worktrees" in str(ctx.workspace_path)
-        ctx.cleanup()
+    def test_reject_message_points_at_the_issue(self, git_repo: Path):
+        with pytest.raises(ValueError, match="#714"):
+            create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
 
-    def test_cleanup_removes_worktree(self, git_repo: Path):
-        ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
-        worktree_path = ctx.workspace_path
-        assert worktree_path.exists()
-        ctx.cleanup()
-        assert not worktree_path.exists()
+    def test_no_worktree_created_on_reject(self, git_repo: Path):
+        with pytest.raises(ValueError):
+            create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
+        # Nothing was created before the guard fired.
+        assert not (git_repo / ".codeframe" / "worktrees" / "task-abc").exists()
 
-    def test_isolation_level_stored(self, git_repo: Path):
-        ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
-        assert ctx.isolation == IsolationLevel.WORKTREE
-        ctx.cleanup()
 
-    def test_task_id_stored(self, git_repo: Path):
-        ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
-        assert ctx.task_id == "task-abc"
-        ctx.cleanup()
+class TestValidateIsolation:
+    def test_none_is_allowed(self):
+        from codeframe.core.sandbox.context import validate_isolation
 
-    def test_worktree_contains_repo_files(self, git_repo: Path):
-        ctx = create_execution_context("task-wt", IsolationLevel.WORKTREE, git_repo)
-        assert (ctx.workspace_path / "README.md").exists()
-        ctx.cleanup()
+        validate_isolation(IsolationLevel.NONE)  # no raise
+
+    def test_worktree_raises(self):
+        from codeframe.core.sandbox.context import validate_isolation
+
+        with pytest.raises(ValueError, match="#714"):
+            validate_isolation(IsolationLevel.WORKTREE)
 
 
 class TestCreateExecutionContextCloud:
