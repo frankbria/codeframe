@@ -67,8 +67,11 @@ export function useStressTestStream(
   const sseBase = process.env.NEXT_PUBLIC_SSE_URL || 'http://localhost:8000';
   const enabled = active && Boolean(workspacePath);
   // `runId` (bumped on every start()) forces a fresh (re)connect even when a
-  // retry-after-error keeps `enabled` at `true` throughout.
-  const connectionKey = runId;
+  // retry-after-error keeps `enabled` at `true` throughout. `workspacePath` is
+  // included too so switching workspaces while `active` stays `true` also
+  // reconnects — otherwise the stream would stay attached to the stale
+  // workspace until the next explicit start().
+  const connectionKey = `${runId}:${workspacePath ?? ''}`;
 
   // Tickets are single-use (issue #745), so this must be re-resolved for the
   // initial connect AND every retry — useEventSource calls it fresh each time.

@@ -192,6 +192,31 @@ describe('useStressTestStream', () => {
     );
   });
 
+  it('reconnects with a fresh EventSource when workspacePath changes while active', async () => {
+    mockFetchTicket.mockResolvedValueOnce('tk-1').mockResolvedValueOnce('tk-2');
+    const { result, rerender } = renderHook(
+      ({ wp }: { wp: string | null }) => useStressTestStream(wp),
+      { initialProps: { wp: WORKSPACE } }
+    );
+    act(() => result.current.start());
+    await waitForInstanceCount(1);
+    expect(MockEventSource.latest().url).toContain(
+      `workspace_path=${encodeURIComponent(WORKSPACE)}`
+    );
+
+    // Switch workspace without calling reset()/start() again — the stream
+    // must not stay attached to the stale workspace (connectionKey must
+    // include workspacePath, not just runId).
+    const OTHER_WORKSPACE = '/tmp/other-workspace';
+    rerender({ wp: OTHER_WORKSPACE });
+
+    await waitForInstanceCount(2);
+    expect(MockEventSource.latest().url).toContain(
+      `workspace_path=${encodeURIComponent(OTHER_WORKSPACE)}`
+    );
+    expect(mockFetchTicket).toHaveBeenCalledTimes(2);
+  });
+
   it('retries with a fresh connection and a fresh ticket after an error', async () => {
     mockFetchTicket.mockResolvedValueOnce('tk-1').mockResolvedValueOnce('tk-2');
     const { result } = renderHook(() => useStressTestStream(WORKSPACE));
