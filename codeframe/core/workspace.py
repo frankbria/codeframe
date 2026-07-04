@@ -24,6 +24,12 @@ def _utc_now() -> datetime:
 CODEFRAME_DIR = ".codeframe"
 STATE_DB_NAME = "state.db"
 
+# Stamped into ``PRAGMA user_version`` after ``_init_database`` /
+# ``_ensure_schema_upgrades``. Bump by 1 whenever either function gains a new
+# table/column/index so existing workspaces re-enter the (idempotent)
+# migration path exactly once. Gates #733: steady-state loads skip all DDL.
+SCHEMA_VERSION = 1
+
 # Per-workspace config file written by the Settings page (issue #556).
 # Owned by the UI layer today; kept here so a future core consumer can
 # read it without importing from codeframe/ui/.
@@ -52,13 +58,6 @@ class Workspace:
     def db_path(self) -> Path:
         """Path to the SQLite state database."""
         return self.state_dir / STATE_DB_NAME
-
-
-# Stamped into ``PRAGMA user_version`` after ``_init_database`` /
-# ``_ensure_schema_upgrades``. Bump by 1 whenever either function gains a new
-# table/column/index so existing workspaces re-enter the (idempotent)
-# migration path exactly once. Gates #733: steady-state loads skip all DDL.
-SCHEMA_VERSION = 1
 
 
 def _get_state_dir(repo_path: Path) -> Path:
@@ -463,6 +462,7 @@ def _init_database(db_path: Path) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_run ON file_operations(run_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_step ON file_operations(step_id)")
 
+    # PRAGMA doesn't accept ? placeholders; SCHEMA_VERSION is a module int constant.
     cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
     conn.close()
@@ -479,11 +479,16 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
     zero DDL, zero write commits — so per-request workspace loads are cheap.
     """
     conn = _open_db(db_path)
-    cursor = conn.cursor()
-
-    if cursor.execute("PRAGMA user_version").fetchone()[0] >= SCHEMA_VERSION:
+    try:
+        current_version = conn.execute("PRAGMA user_version").fetchone()[0]
+    except Exception:
+        conn.close()
+        raise
+    if current_version >= SCHEMA_VERSION:
         conn.close()
         return
+
+    cursor = conn.cursor()
 
     # token_usage was added after the initial schema (issue #712); create it for
     # existing workspaces. CREATE TABLE IF NOT EXISTS keeps this idempotent.
@@ -799,6 +804,7 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             created_at TEXT NOT NULL
         )
     """)
+    # PRAGMA doesn't accept ? placeholders; SCHEMA_VERSION is a module int constant.
     cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
 
