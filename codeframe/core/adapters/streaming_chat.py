@@ -365,6 +365,7 @@ class StreamingChatAdapter:
 
         while True:
             pending_tool_calls: list[dict] = []  # {id, name, input}
+            assistant_text = ""  # text emitted by the model this API turn
             stop_reason = "end_turn"
 
             async for chunk in self._provider.async_stream(
@@ -380,6 +381,7 @@ class StreamingChatAdapter:
                     return
 
                 if chunk.type == "text_delta":
+                    assistant_text += chunk.text or ""
                     yield ChatEvent(type=ChatEventType.TEXT_DELTA, content=chunk.text)
 
                 elif chunk.type == "thinking_delta":
@@ -451,9 +453,26 @@ class StreamingChatAdapter:
                     }
                 )
 
-            # Append the tool results as a user message for the next turn
+            # Replay the assistant turn (text + tool_use blocks) followed by the
+            # tool results. The Anthropic API rejects (400) a tool_result user
+            # message that isn't immediately preceded by the assistant message
+            # carrying the matching tool_use blocks.
+            assistant_content: list[dict] = []
+            if assistant_text:
+                assistant_content.append({"type": "text", "text": assistant_text})
+            for tc in pending_tool_calls:
+                assistant_content.append(
+                    {
+                        "type": "tool_use",
+                        "id": tc["id"],
+                        "name": tc["name"],
+                        "input": tc.get("input") or {},
+                    }
+                )
+
             current_messages = current_messages + [
-                {"role": "user", "content": tool_result_blocks}
+                {"role": "assistant", "content": assistant_content},
+                {"role": "user", "content": tool_result_blocks},
             ]
 
 
