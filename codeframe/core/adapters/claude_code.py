@@ -17,21 +17,37 @@ class ClaudeCodeAdapter(SubprocessAdapter):
     https://docs.anthropic.com/en/docs/claude-code
     """
 
-    def __init__(self, allowlist: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        allowlist: list[str] | None = None,
+        require_file_changes: bool = True,
+    ) -> None:
         """Initialize the Claude Code adapter.
 
         Args:
             allowlist: Optional list of allowed tools/permissions.
                        If provided, uses ``--allowedTools`` flag for each tool.
-                       When omitted, no permission flags are added (the caller
-                       is responsible for configuring permissions externally).
+                       When omitted, the adapter runs with
+                       ``--permission-mode bypassPermissions`` so Edit/Write/Bash
+                       are auto-approved in non-interactive ``--print`` mode.
+                       Without this, ``--print`` silently denies those tools and
+                       the delegated agent can analyze but never modify files. (#739)
+            require_file_changes: If True (default), a run that exits 0 but touches
+                       no files is downgraded to ``failed`` — a coding task that
+                       writes nothing is a false completion.
         """
         cli_args = ["--print"]
         if allowlist:
             for tool in allowlist:
                 cli_args.extend(["--allowedTools", tool])
+        else:
+            cli_args.extend(["--permission-mode", "bypassPermissions"])
 
-        super().__init__(binary="claude", cli_args=cli_args)
+        super().__init__(
+            binary="claude",
+            cli_args=cli_args,
+            require_file_changes=require_file_changes,
+        )
         self._allowlist = allowlist
 
     @property

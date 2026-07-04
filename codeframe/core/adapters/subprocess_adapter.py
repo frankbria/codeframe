@@ -33,6 +33,7 @@ class SubprocessAdapter:
         binary: str,
         cli_args: list[str] | None = None,
         timeout_s: int | None = None,
+        require_file_changes: bool = False,
     ) -> None:
         """Initialize with the binary name and default CLI args.
 
@@ -40,6 +41,13 @@ class SubprocessAdapter:
             binary: Name of the CLI binary (e.g., 'claude', 'opencode')
             cli_args: Default CLI arguments appended to every invocation
             timeout_s: Max execution time in seconds (default: 1800, None = no limit)
+            require_file_changes: If True, a run that exits 0 without producing any
+                work — no modified/untracked files and no new commit — is downgraded
+                to ``failed`` instead of ``completed``. Guards against a delegated
+                coding agent that "succeeds" without writing any code (e.g. edits
+                silently denied), which downstream gates would otherwise pass on the
+                unchanged tree. Only fires inside a resolvable git repo (a non-git
+                workspace can't be judged). Default False (analysis-capable agents).
 
         Raises:
             EnvironmentError: If the binary is not found on PATH
@@ -47,6 +55,7 @@ class SubprocessAdapter:
         self._binary = binary
         self._cli_args = cli_args or []
         self._timeout_s = timeout_s if timeout_s is not None else self.DEFAULT_TIMEOUT_S
+        self._require_file_changes = require_file_changes
 
         resolved = shutil.which(binary)
         if resolved is None:
@@ -94,6 +103,12 @@ class SubprocessAdapter:
         """Execute the agent subprocess and return the result."""
         cmd = self.build_command(prompt, workspace_path)
         stdin_content = self.get_stdin(prompt)
+
+        # Baseline HEAD so a run that *commits* its work (bypassPermissions allows
+        # Bash) still counts as work despite an empty `git diff HEAD`. (#739)
+        head_before = (
+            self._git_head(workspace_path) if self._require_file_changes else None
+        )
 
         stdout_lines: list[str] = []
         stderr_chunks: list[str] = []
@@ -202,6 +217,38 @@ class SubprocessAdapter:
             workspace_path=workspace_path,
         )
         result.modified_files = modified_files
+
+        # A coding task that "succeeds" without touching any file is a false
+        # completion: edits were likely denied or the agent only analyzed. Fail
+        # hard so downstream gates don't pass on the unchanged tree. (#739)
+        # Only fire when we can *positively* confirm no work: a resolvable git
+        # repo whose HEAD didn't advance (self-committed work) and whose tree has
+        # no changes. A non-git workspace can't be judged, so we don't fail it.
+        if (
+            self._require_file_changes
+            and result.status == "completed"
+            and not modified_files
+        ):
+            head_after = self._git_head(workspace_path)
+            in_git_repo = head_after is not None
+            # Require a known baseline to credit a commit: if the pre-run HEAD
+            # read failed (head_before is None) we must not let `None != sha`
+            # masquerade as "committed" and silently pass a real zero-file run.
+            # Bias toward failing loudly. (ponytail: a rare `git init` mid-run
+            # false-fails here — acceptable; a false COMPLETED is worse.)
+            committed = (
+                head_before is not None
+                and head_after is not None
+                and head_after != head_before
+            )
+            if in_git_repo and not committed:
+                result.status = "failed"
+                result.error = (
+                    f"'{self._binary}' exited successfully but modified no files. "
+                    "A coding task must change at least one file; the agent likely "
+                    "lacked write permission or produced no edits."
+                )
+
         return result
 
     def _map_result(
@@ -243,6 +290,26 @@ class SubprocessAdapter:
     def _detect_modified_files(self, workspace_path: Path) -> list[str]:
         """Detect files modified by the subprocess via git diff."""
         return detect_modified_files(workspace_path)
+
+    def _git_head(self, workspace_path: Path) -> str | None:
+        """Return the current HEAD commit sha, or None if HEAD is unresolvable.
+
+        None means "not a git repo, git unavailable, or an unborn HEAD" — i.e.
+        a state where modified-file detection can't judge whether work happened.
+        """
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(workspace_path),
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return None
+            return result.stdout.strip() or None
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+            return None
 
     def _extract_blocker_question(self, output: str) -> str:
         """Extract a meaningful blocker question from output."""
