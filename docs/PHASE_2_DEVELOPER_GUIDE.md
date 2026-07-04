@@ -141,6 +141,21 @@ async def get_resource(
     )
 ```
 
+**Blocking core calls must be offloaded.** Handlers are `async def`, so a
+synchronous core call that takes more than a few milliseconds (test-suite/gate
+runs, LLM calls, subprocess installs) freezes the event loop — `/health`, SSE,
+and WebSockets all stall until it returns (#732). Wrap the heavy call:
+
+```python
+from fastapi.concurrency import run_in_threadpool
+
+result = await run_in_threadpool(core_module.heavy_call, workspace, arg, kwarg=value)
+```
+
+Fast SQLite reads/writes can stay inline. Core opens a fresh WAL connection per
+call in the executing thread (`workspace._open_db`), so core functions are safe
+to run from pool workers.
+
 ### 5. Error Handling
 
 Use standard error format from `response_models.py`:

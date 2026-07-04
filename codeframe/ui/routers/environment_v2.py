@@ -13,6 +13,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
@@ -216,7 +217,8 @@ async def install_tool(
             )
 
         # Attempt installation (confirm=False for non-interactive server usage)
-        result = installer.install_tool(body.tool_name, confirm=False)
+        # Offload: subprocess package installs — blocks for minutes (#732).
+        result = await run_in_threadpool(installer.install_tool, body.tool_name, confirm=False)
 
         return InstallResultResponse(
             success=result.success,

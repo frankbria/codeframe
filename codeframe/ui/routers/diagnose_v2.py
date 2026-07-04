@@ -12,6 +12,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
@@ -164,7 +165,8 @@ async def diagnose_task(
 
         # Run diagnostic analysis
         agent = DiagnosticAgent(workspace)
-        report = agent.analyze(task.id, latest_run.id)
+        # Offload: synchronous LLM analysis (#732).
+        report = await run_in_threadpool(agent.analyze, task.id, latest_run.id)
 
         return _report_to_response(report)
 
