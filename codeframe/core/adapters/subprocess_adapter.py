@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
 import threading
@@ -11,6 +12,8 @@ from typing import Callable
 from codeframe.core.adapters.agent_adapter import AgentEvent, AgentResult
 from codeframe.core.adapters.git_utils import detect_modified_files
 from codeframe.core.blocker_detection import classify_error_for_blocker
+
+logger = logging.getLogger(__name__)
 
 
 class SubprocessAdapter:
@@ -120,25 +123,44 @@ class SubprocessAdapter:
             stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
             stderr_thread.start()
 
-            # Stream stdout line-by-line
-            if process.stdout:
-                for line in process.stdout:
-                    stripped = line.rstrip("\n")
-                    stdout_lines.append(stripped)
-                    if on_event:
-                        on_event(AgentEvent(type="output", data={"line": stripped}))
+            # Stream stdout line-by-line in a background thread so the timeout
+            # below bounds the *whole* run. Reading stdout inline would block
+            # forever on a hung child that keeps stdout open, never reaching
+            # process.wait(timeout=...). (#736)
+            def _stream_stdout() -> None:
+                if process.stdout:
+                    for line in process.stdout:
+                        stripped = line.rstrip("\n")
+                        stdout_lines.append(stripped)
+                        if on_event:
+                            on_event(AgentEvent(type="output", data={"line": stripped}))
 
-            # Wait for stderr thread and process to finish
-            stderr_thread.join(timeout=10)
+            stdout_thread = threading.Thread(target=_stream_stdout, daemon=True)
+            stdout_thread.start()
+
+            # Bound the entire read+exit window. On expiry the child is killed,
+            # which closes its stdout and unblocks the reader thread.
             try:
                 process.wait(timeout=self._timeout_s)
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
+                stdout_thread.join(timeout=5)
+                stderr_thread.join(timeout=5)
                 return AgentResult(
                     status="failed",
                     output="\n".join(stdout_lines),
                     error=f"Process timed out after {self._timeout_s}s",
+                )
+
+            # Process exited on its own; drain any buffered output.
+            stdout_thread.join(timeout=10)
+            stderr_thread.join(timeout=10)
+            if stdout_thread.is_alive() or stderr_thread.is_alive():
+                logger.warning(
+                    "Output drain timed out for '%s' after exit; "
+                    "trailing output may be truncated.",
+                    self._binary,
                 )
 
         except FileNotFoundError:
