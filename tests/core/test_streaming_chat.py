@@ -318,6 +318,69 @@ class TestToolCallEvents:
         result = next(e for e in collected if e.type == ChatEventType.TOOL_RESULT)
         assert result.content == "file contents here"
 
+    async def test_second_turn_pairs_tool_use_with_tool_result(self, tmp_path):
+        """Contract: the assistant tool_use message must precede the tool_result
+        user message, or the Anthropic API rejects the second turn with a 400.
+
+        Asserts on the message list actually sent to the provider (via
+        MockProvider.calls) rather than only the emitted events.
+        """
+        tool_id = "tool_abc"
+        tool_input = {"path": "README.md"}
+
+        provider = MockProvider()
+        provider.add_stream_chunks([
+            StreamChunk(type="text_delta", text="Let me read that."),
+            StreamChunk(
+                type="tool_use_start",
+                tool_id=tool_id,
+                tool_name="read_file",
+                tool_input=tool_input,
+            ),
+            StreamChunk(type="tool_use_stop"),
+            _stop_chunk(
+                stop_reason="tool_use",
+                tool_inputs_by_id={tool_id: tool_input},
+            ),
+        ])
+        provider.add_stream_chunks([
+            StreamChunk(type="text_delta", text="Here is the file content."),
+            _stop_chunk(),
+        ])
+
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
+
+        with patch.object(adapter, "_execute_tool", new_callable=AsyncMock) as mock_tool:
+            mock_tool.return_value = "file contents here"
+            _ = [e async for e in adapter.send_message("read README", [])]
+
+        # Two API turns: initial + after tool results
+        assert len(provider.calls) == 2
+        second_turn = provider.calls[1]["messages"]
+
+        # Find the assistant tool_use message and the following tool_result message
+        assistant_idx = next(
+            i for i, m in enumerate(second_turn)
+            if m["role"] == "assistant"
+            and isinstance(m["content"], list)
+            and any(b.get("type") == "tool_use" for b in m["content"])
+        )
+        tool_use_block = next(
+            b for b in second_turn[assistant_idx]["content"]
+            if b["type"] == "tool_use"
+        )
+        assert tool_use_block["id"] == tool_id
+        assert tool_use_block["name"] == "read_file"
+        assert tool_use_block["input"] == tool_input
+
+        # The very next message pairs the matching tool_result
+        result_msg = second_turn[assistant_idx + 1]
+        assert result_msg["role"] == "user"
+        result_block = next(
+            b for b in result_msg["content"] if b["type"] == "tool_result"
+        )
+        assert result_block["tool_use_id"] == tool_id
+
 
 # ---------------------------------------------------------------------------
 # Interrupt support
