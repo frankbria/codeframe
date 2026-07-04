@@ -125,6 +125,9 @@ class TestTaskRequirementIdsField:
             FROM tasks_old
         """)
         conn.execute("DROP TABLE tasks_old")
+        # A genuine pre-migration DB predates the schema-version stamp (#733);
+        # reset it so re-opening actually enters the migration path.
+        conn.execute("PRAGMA user_version = 0")
         conn.commit()
         conn.close()
 
