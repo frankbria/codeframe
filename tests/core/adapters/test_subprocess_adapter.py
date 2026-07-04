@@ -267,6 +267,29 @@ class TestSubprocessAdapterRun:
         assert f"RECEIVED {len(big_prompt)}" in result.output
         assert elapsed < 30  # completed promptly, not bounded by the timeout
 
+    def test_child_exiting_before_reading_stdin_is_handled(self, tmp_path):
+        """A child that exits before draining a large stdin must not crash run().
+
+        Writing a >64KB payload to a pipe whose read end the child already closed
+        raises BrokenPipeError in the stdin thread; run() must swallow it and
+        still return a result based on the exit code. (#737)
+        """
+        # Exit immediately without reading stdin, so the write end breaks.
+        script = "import sys; sys.exit(0)"
+        big_prompt = "z" * (128 * 1024)
+
+        class _PyAdapter(SubprocessAdapter):
+            def build_command(self, prompt, workspace_path):
+                return [sys.executable, "-c", script]
+
+        with patch("shutil.which", return_value=sys.executable):
+            adapter = _PyAdapter("python", timeout_s=30)
+
+        with patch.object(SubprocessAdapter, "_detect_modified_files", return_value=[]):
+            result = adapter.run("task-1", big_prompt, tmp_path)
+
+        assert result.status == "completed"  # exit 0, BrokenPipeError swallowed
+
 
 class TestSubprocessAdapterBuildCommand:
     """Tests for command building."""
