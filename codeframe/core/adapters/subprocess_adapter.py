@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
 import threading
@@ -11,6 +12,8 @@ from typing import Callable
 from codeframe.core.adapters.agent_adapter import AgentEvent, AgentResult
 from codeframe.core.adapters.git_utils import detect_modified_files
 from codeframe.core.blocker_detection import classify_error_for_blocker
+
+logger = logging.getLogger(__name__)
 
 
 class SubprocessAdapter:
@@ -153,6 +156,12 @@ class SubprocessAdapter:
             # Process exited on its own; drain any buffered output.
             stdout_thread.join(timeout=10)
             stderr_thread.join(timeout=10)
+            if stdout_thread.is_alive() or stderr_thread.is_alive():
+                logger.warning(
+                    "Output drain timed out for '%s' after exit; "
+                    "trailing output may be truncated.",
+                    self._binary,
+                )
 
         except FileNotFoundError:
             return AgentResult(
