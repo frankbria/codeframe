@@ -83,6 +83,17 @@ def create(
         Created Blocker
     """
     origin = BlockerOrigin(created_by)
+
+    # Dedupe on (task_id, question, OPEN) — issue #735. An adapter (react/plan/
+    # verification_wrapper) persists the blocker, then runtime.execute_agent creates
+    # a second one from result.blocker_question. Return the existing OPEN blocker so
+    # one escalation yields one blocker and one webhook; first writer's origin wins.
+    # ponytail: read-then-insert, no UNIQUE index — safe here because the two callers
+    # run sequentially in the same process for one run, not concurrently.
+    existing = _find_open_duplicate(workspace, task_id, question)
+    if existing is not None:
+        return existing
+
     blocker_id = str(uuid.uuid4())
     now = _utc_now().isoformat()
 
@@ -124,6 +135,33 @@ def create(
     _dispatch_blocker_webhook(workspace, blocker_id, task_id)
 
     return blocker
+
+
+def _find_open_duplicate(
+    workspace: Workspace, task_id: Optional[str], question: str
+) -> Optional[Blocker]:
+    """Return an existing OPEN blocker with the same (task_id, question), if any."""
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    select = (
+        "SELECT id, workspace_id, task_id, question, answer, status, created_at, "
+        "answered_at, COALESCE(created_by, 'human') as created_by FROM blockers "
+        "WHERE workspace_id = ? AND question = ? AND status = ?"
+    )
+    params: list = [workspace.id, question, BlockerStatus.OPEN.value]
+    # SQL `task_id = NULL` never matches; use `IS NULL` for workspace-level blockers.
+    if task_id is None:
+        select += " AND task_id IS NULL"
+    else:
+        select += " AND task_id = ?"
+        params.append(task_id)
+
+    cursor.execute(select, params)
+    row = cursor.fetchone()
+    conn.close()
+
+    return _row_to_blocker(row) if row else None
 
 
 def _dispatch_blocker_webhook(

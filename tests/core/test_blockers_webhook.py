@@ -80,3 +80,55 @@ def test_webhook_failure_does_not_break_blocker_create(workspace):
     ):
         blocker = blockers.create(workspace, question="why?")
     assert blocker.id  # still got created
+
+
+def test_duplicate_open_blocker_is_deduped(workspace):
+    """One escalation → exactly one OPEN blocker and one webhook (issue #735).
+
+    Adapter + runtime each call create() with the same (task_id, question); the
+    second must return the existing OPEN blocker without a new row or webhook.
+    """
+    save_notifications_config(
+        workspace,
+        {"webhook_url": "https://example.com/h", "webhook_enabled": True},
+    )
+    with patch(
+        "codeframe.notifications.webhook.WebhookNotificationService"
+    ) as MockSvc:
+        instance = MockSvc.return_value
+        first = blockers.create(
+            workspace, question="Gates failing?", task_id="t-1", created_by="agent"
+        )
+        second = blockers.create(
+            workspace, question="Gates failing?", task_id="t-1"
+        )
+
+    assert second.id == first.id  # same blocker, not a duplicate
+    assert second.created_by == first.created_by  # first writer (agent) wins
+    assert len(blockers.list_open(workspace)) == 1
+    instance.send_event_background.assert_called_once()  # only one webhook
+
+
+def test_dedupe_does_not_collapse_distinct_questions(workspace):
+    """Different questions on the same task remain separate blockers."""
+    a = blockers.create(workspace, question="Q1?", task_id="t-1")
+    b = blockers.create(workspace, question="Q2?", task_id="t-1")
+    assert a.id != b.id
+    assert len(blockers.list_open(workspace)) == 2
+
+
+def test_dedupe_scoped_to_open_status(workspace):
+    """An answered blocker does not suppress a new one with the same question."""
+    first = blockers.create(workspace, question="Same?", task_id="t-1")
+    blockers.answer(workspace, first.id, "resolved")
+    second = blockers.create(workspace, question="Same?", task_id="t-1")
+    assert second.id != first.id
+    assert len(blockers.list_open(workspace)) == 1
+
+
+def test_dedupe_handles_null_task_id(workspace):
+    """Workspace-level (task_id=None) duplicates are deduped too."""
+    first = blockers.create(workspace, question="Global?")
+    second = blockers.create(workspace, question="Global?")
+    assert second.id == first.id
+    assert len(blockers.list_open(workspace)) == 1
