@@ -1,10 +1,11 @@
 """PROOF9 capture logic.
 
 Orchestrates the creation of a new requirement from a glitch report:
-classify → obligations → scope → save → generate stubs.
+classify → obligations → scope → save → generate stubs → write stubs to disk.
 """
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from codeframe.core.proof import ledger
@@ -20,7 +21,7 @@ from codeframe.core.proof.obligations import (
     suggest_evidence_rules,
 )
 from codeframe.core.proof.scope import build_scope_from_capture
-from codeframe.core.proof.stubs import generate_stubs
+from codeframe.core.proof.stubs import generate_stubs, write_stub_files
 from codeframe.core.workspace import Workspace
 
 
@@ -34,10 +35,11 @@ def capture_requirement(
     source: Source,
     created_by: str = "human",
     source_issue: Optional[str] = None,
-) -> tuple[Requirement, dict[Gate, str]]:
+) -> tuple[Requirement, dict[Gate, Path]]:
     """Create a new requirement from a glitch report.
 
-    Returns the saved Requirement and a dict of Gate → stub content.
+    Returns the saved Requirement and a dict of Gate → written stub file path
+    (stubs are persisted under tests/proof/<req_id>/).
     """
     # 1. Classify the glitch
     glitch_type = classify_glitch(description)
@@ -70,10 +72,13 @@ def capture_requirement(
         glitch_type=glitch_type,
     )
 
-    # 6. Persist
+    # 6. Generate test stubs and write them to disk BEFORE persisting the
+    # requirement: if the write fails, no REQ id is burned (next_req_id is
+    # MAX-based) and a retry reuses the same id + files (skip-if-exists).
+    stubs = generate_stubs(req)
+    stub_paths = write_stub_files(workspace, req, stubs)
+
+    # 7. Persist
     ledger.save_requirement(workspace, req)
 
-    # 7. Generate test stubs
-    stubs = generate_stubs(req)
-
-    return req, stubs
+    return req, stub_paths

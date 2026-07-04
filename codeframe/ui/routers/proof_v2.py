@@ -164,9 +164,12 @@ class RequirementResponse(BaseModel):
 
 
 class CaptureRequirementResponse(RequirementResponse):
-    """Capture response adds stubs_count."""
+    """Capture response adds the written stub files."""
 
-    stubs_count: int = Field(description="Number of test stub files generated")
+    stubs_count: int = Field(description="Number of test stub files written")
+    stub_paths: list[str] = Field(
+        description="Repo-relative paths of the written test stub files"
+    )
 
 
 class RequirementListResponse(BaseModel):
@@ -314,8 +317,8 @@ async def capture_requirement_endpoint(
 ) -> CaptureRequirementResponse:
     """Capture a requirement from a glitch report.
 
-    Classifies the glitch, derives proof obligations, generates test stubs,
-    and persists the requirement to the ledger.
+    Classifies the glitch, derives proof obligations, writes test stubs to
+    disk under tests/proof/<req_id>/, and persists the requirement to the ledger.
     """
     try:
         req, stubs = capture_requirement(
@@ -329,7 +332,12 @@ async def capture_requirement_endpoint(
             source_issue=body.source_issue,
         )
         resp = _req_to_response(req)
-        return CaptureRequirementResponse(**resp.model_dump(), stubs_count=len(stubs))
+        stub_paths = sorted(
+            str(p.relative_to(workspace.repo_path)) for p in stubs.values()
+        )
+        return CaptureRequirementResponse(
+            **resp.model_dump(), stubs_count=len(stub_paths), stub_paths=stub_paths
+        )
     except Exception as e:
         logger.error("Failed to capture requirement: %s", e, exc_info=True)
         raise HTTPException(

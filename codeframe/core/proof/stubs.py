@@ -4,11 +4,31 @@ Generates skeleton test files for each proof gate obligation.
 Uses inline templates (no Jinja2 dependency for simplicity).
 """
 
+import logging
+from pathlib import Path
+from typing import Optional
+
 from codeframe.core.proof.models import Gate, Requirement
+from codeframe.core.workspace import Workspace
+
+logger = logging.getLogger(__name__)
+
+# Per-gate file extension for written stubs. Pytest gates default to .py;
+# E2E stubs are Playwright TypeScript, DEMO/MANUAL are markdown-ish scripts.
+_EXTENSIONS: dict[Gate, str] = {
+    Gate.E2E: ".ts",
+    Gate.DEMO: ".md",
+    Gate.MANUAL: ".md",
+}
+_DEFAULT_EXTENSION = ".py"
 
 _TEMPLATES: dict[Gate, str] = {
     Gate.UNIT: '''\
-"""Unit test for {req_id}: {title}"""
+"""Unit test for {req_id}: {title}
+
+Draft stub — rename this file to {filename}.py once implemented so pytest
+collects it (draft_* files are deliberately outside pytest discovery).
+"""
 import pytest
 
 
@@ -25,7 +45,11 @@ def test_unit_{slug}():
     assert False, "Not implemented yet — replace with real assertions"
 ''',
     Gate.CONTRACT: '''\
-"""Contract test for {req_id}: {title}"""
+"""Contract test for {req_id}: {title}
+
+Draft stub — rename this file to {filename}.py once implemented so pytest
+collects it (draft_* files are deliberately outside pytest discovery).
+"""
 import pytest
 
 
@@ -36,10 +60,10 @@ def test_contract_{slug}():
     assert False, "Not implemented yet — replace with real assertions"
 ''',
     Gate.E2E: '''\
-"""E2E test for {req_id}: {title}
-
-Run with: npx playwright test {filename}
-"""
+// E2E test for {req_id}: {title}
+//
+// Draft stub — rename to {filename}.spec.ts once implemented so Playwright
+// collects it, then run: npx playwright test tests/proof/{req_id}/{filename}.spec.ts
 import {{ test, expect }} from '@playwright/test';
 
 test('{title}', async ({{ page }}) => {{
@@ -51,7 +75,11 @@ test('{title}', async ({{ page }}) => {{
 }});
 ''',
     Gate.VISUAL: '''\
-"""Visual snapshot test for {req_id}: {title}"""
+"""Visual snapshot test for {req_id}: {title}
+
+Draft stub — rename this file to {filename}.py once implemented so pytest
+collects it (draft_* files are deliberately outside pytest discovery).
+"""
 import pytest
 
 
@@ -62,7 +90,11 @@ def test_visual_{slug}():
     assert False, "Not implemented yet — add snapshot comparison"
 ''',
     Gate.A11Y: '''\
-"""Accessibility test for {req_id}: {title}"""
+"""Accessibility test for {req_id}: {title}
+
+Draft stub — rename this file to {filename}.py once implemented so pytest
+collects it (draft_* files are deliberately outside pytest discovery).
+"""
 import pytest
 
 
@@ -73,7 +105,11 @@ def test_a11y_{slug}():
     assert False, "Not implemented yet — add a11y assertions"
 ''',
     Gate.PERF: '''\
-"""Performance test for {req_id}: {title}"""
+"""Performance test for {req_id}: {title}
+
+Draft stub — rename this file to {filename}.py once implemented so pytest
+collects it (draft_* files are deliberately outside pytest discovery).
+"""
 import pytest
 import time
 
@@ -86,7 +122,11 @@ def test_perf_{slug}():
     assert elapsed < 1.0, f"Took {{elapsed:.2f}}s — exceeds budget"
 ''',
     Gate.SEC: '''\
-"""Security check for {req_id}: {title}"""
+"""Security check for {req_id}: {title}
+
+Draft stub — rename this file to {filename}.py once implemented so pytest
+collects it (draft_* files are deliberately outside pytest discovery).
+"""
 import pytest
 
 
@@ -97,17 +137,16 @@ def test_sec_{slug}():
     assert False, "Not implemented yet — add security assertions"
 ''',
     Gate.DEMO: '''\
-"""Demo walkthrough for {req_id}: {title}
+# Demo walkthrough for {req_id}: {title}
 
-This is an automated demo script that proves the feature works.
-Run with: showboat exec {filename}
-"""
+An automated demo script that proves the feature works.
+Run with: showboat exec tests/proof/{req_id}/{filename}.md
 
-# Steps:
-# 1. TODO: Navigate to the feature
-# 2. TODO: Perform the action
-# 3. TODO: Capture screenshot/output as evidence
-# 4. TODO: Verify expected outcome
+## Steps
+1. TODO: Navigate to the feature
+2. TODO: Perform the action
+3. TODO: Capture screenshot/output as evidence
+4. TODO: Verify expected outcome
 ''',
     Gate.MANUAL: '''\
 # Manual Verification Checklist: {req_id}
@@ -157,3 +196,37 @@ def generate_stubs(req: Requirement) -> dict[Gate, str]:
         result[obligation.gate] = content
 
     return result
+
+
+def write_stub_files(
+    workspace: Workspace,
+    req: Requirement,
+    stubs: dict[Gate, str],
+    out_dir: Optional[Path] = None,
+) -> dict[Gate, Path]:
+    """Write generated stub content to disk under tests/proof/<req_id>/.
+
+    Pytest stubs get a ``draft_`` filename prefix so plain ``pytest`` never
+    collects their placeholder ``assert False`` bodies; the proof runner's
+    scoped ``-k test_id`` run then reports "named test missing" (FAILED) until
+    the developer implements the stub and renames it to ``test_*.py``.
+
+    Existing files are never overwritten (they may hold developer edits).
+    Returns a mapping of Gate → path for every stub file that now exists.
+    """
+    target = out_dir or workspace.repo_path / "tests" / "proof" / req.id
+    target.mkdir(parents=True, exist_ok=True)
+
+    slug = _slugify(req.title)
+    paths: dict[Gate, Path] = {}
+    for gate, content in stubs.items():
+        ext = _EXTENSIONS.get(gate, _DEFAULT_EXTENSION)
+        prefix = "draft_" if ext == ".py" else ""
+        path = target / f"{prefix}test_{slug}_{gate.value}{ext}"
+        if path.exists():
+            logger.debug("stub already exists, not overwriting: %s", path)
+        else:
+            path.write_text(content, encoding="utf-8")
+        paths[gate] = path
+
+    return paths

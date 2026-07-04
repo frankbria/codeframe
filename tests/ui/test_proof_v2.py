@@ -100,8 +100,24 @@ class TestCaptureRequirement:
         )
         data = response.json()
         for field in ["id", "title", "description", "severity", "source", "status",
-                      "obligations", "evidence_rules", "created_at", "stubs_count"]:
+                      "obligations", "evidence_rules", "created_at", "stubs_count",
+                      "stub_paths"]:
             assert field in data, f"Missing field: {field}"
+
+    def test_capture_writes_stub_files_and_returns_paths(self, test_client):
+        """stub_paths lists repo-relative files that really exist on disk (#730)."""
+        response = test_client.post(
+            "/api/v2/proof/requirements",
+            json=self._valid_body(),
+        )
+        data = response.json()
+        assert data["stub_paths"], "no stub paths returned"
+        assert data["stubs_count"] == len(data["stub_paths"])
+        repo = test_client.workspace.repo_path
+        for rel in data["stub_paths"]:
+            assert not Path(rel).is_absolute()
+            assert rel.startswith("tests/proof/")
+            assert (repo / rel).exists()
 
     def test_capture_with_optional_fields(self, test_client):
         """Optional fields (created_by, source_issue) are accepted."""

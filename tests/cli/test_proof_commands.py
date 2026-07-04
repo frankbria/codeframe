@@ -78,6 +78,23 @@ class TestCapture:
         assert req.title == "Login rejects valid credentials"
         assert req.status == ReqStatus.OPEN
 
+    def test_capture_writes_stub_files_and_prints_paths(self, ws):
+        """Stubs are written under tests/proof/<req_id>/ and paths printed (#730)."""
+        workspace, workspace_path = ws
+        result = runner.invoke(
+            app, ["proof", "capture", "-w", str(workspace_path)] + _CAPTURE_ARGS
+        )
+
+        assert result.exit_code == 0, result.output
+        stub_dir = workspace_path / "tests" / "proof" / "REQ-0001"
+        stub_files = list(stub_dir.iterdir())
+        assert stub_files, "no stub files written"
+        for f in stub_files:
+            assert "REQ-0001" in f.read_text(encoding="utf-8")
+            assert str(f.relative_to(workspace_path)) in result.output
+        # No false "line count" claims — output names real files
+        assert "lines" not in result.output
+
     def test_capture_interactive_prompts_do_not_crash(self, ws):
         """#723: severity/source were prompted with the nonexistent typer.Choice,
         so any interactive `cf proof capture` (no --severity/--source) raised
