@@ -88,8 +88,10 @@ def create(
     # verification_wrapper) persists the blocker, then runtime.execute_agent creates
     # a second one from result.blocker_question. Return the existing OPEN blocker so
     # one escalation yields one blocker and one webhook; first writer's origin wins.
-    # ponytail: read-then-insert, no UNIQUE index — safe here because the two callers
-    # run sequentially in the same process for one run, not concurrently.
+    # NOTE: read-then-insert with no UNIQUE index — safe here because the two callers
+    # (adapter + runtime) run sequentially in the same process for one run, not
+    # concurrently. A partial UNIQUE index on (workspace_id, task_id, question) WHERE
+    # status='OPEN' would make it atomic against cross-process races.
     existing = _find_open_duplicate(workspace, task_id, question)
     if existing is not None:
         return existing

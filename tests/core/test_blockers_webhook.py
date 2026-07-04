@@ -132,3 +132,24 @@ def test_dedupe_handles_null_task_id(workspace):
     second = blockers.create(workspace, question="Global?")
     assert second.id == first.id
     assert len(blockers.list_open(workspace)) == 1
+
+
+def test_dedupe_scoped_to_task_id(workspace):
+    """Same question on different tasks stays as separate blockers."""
+    a = blockers.create(workspace, question="Q?", task_id="t-1")
+    b = blockers.create(workspace, question="Q?", task_id="t-2")
+    assert a.id != b.id
+    assert len(blockers.list_open(workspace)) == 2
+
+
+def test_dedupe_does_not_cross_workspaces(tmp_path):
+    """The same question in two workspaces produces two distinct blockers."""
+    questions = "Cross?"
+    ids = []
+    for name in ("ws-a", "ws-b"):
+        ws_path = tmp_path / name
+        ws_path.mkdir(parents=True, exist_ok=True)
+        ws = create_or_load_workspace(ws_path)
+        ids.append(blockers.create(ws, question=questions, task_id="t-1").id)
+        assert len(blockers.list_open(ws)) == 1
+    assert ids[0] != ids[1]
