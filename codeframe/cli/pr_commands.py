@@ -24,7 +24,10 @@ import os
 import subprocess
 from dataclasses import asdict
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from codeframe.core.workspace import Workspace
 
 import typer
 from rich.table import Table
@@ -386,7 +389,9 @@ def get_pr(
         raise typer.Exit(1)
 
 
-def _check_merge_gate(override: bool, override_reason: Optional[str]):
+def _check_merge_gate(
+    override: bool, override_reason: Optional[str]
+) -> Optional[tuple["Workspace", list[dict]]]:
     """PROOF9 merge gate (#731): block on open requirements in the cwd workspace.
 
     No workspace in cwd → nothing to gate. Open requirements → exit unless

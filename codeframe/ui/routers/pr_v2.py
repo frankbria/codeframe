@@ -673,7 +673,6 @@ async def merge_pull_request(
     from codeframe.core.proof import ledger as proof_ledger
 
     try:
-        proof_ledger.init_proof_tables(workspace)
         open_reqs = proof_ledger.list_requirements(workspace, status=ReqStatus.OPEN)
     except Exception as e:
         logger.error(f"PROOF9 gate check failed for PR #{pr_number}: {e}", exc_info=True)
@@ -710,10 +709,15 @@ async def merge_pull_request(
             # audit write itself fails, the merge is already done: log loudly
             # but report the merge result truthfully.
             try:
+                # "local-admin" only when auth is explicitly disabled; an
+                # authenticated principal without a user_id stays "unknown".
+                actor = auth.get("user_id") or (
+                    "local-admin" if auth.get("type") == "disabled" else "unknown"
+                )
                 proof_ledger.save_merge_override(
                     workspace,
                     pr_number=pr_number,
-                    actor=auth.get("user_id") or "local-admin",
+                    actor=actor,
                     reason=override_reason,
                     bypassed=bypassed,
                 )

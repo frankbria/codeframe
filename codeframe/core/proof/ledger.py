@@ -100,13 +100,13 @@ def init_proof_tables(workspace: Workspace) -> None:
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pr_merge_overrides (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             pr_number INTEGER NOT NULL,
             workspace_id TEXT NOT NULL,
             actor TEXT NOT NULL,
             reason TEXT NOT NULL,
             bypassed TEXT NOT NULL,
-            overridden_at TEXT NOT NULL,
-            PRIMARY KEY (pr_number, workspace_id)
+            overridden_at TEXT NOT NULL
         )
     """)
 
@@ -661,13 +661,14 @@ def save_merge_override(
     """Record an audited override of the PROOF9 merge gate.
 
     ``bypassed`` is a list of {"id", "title"} summaries of the open
-    requirements the merge proceeded past.
+    requirements the merge proceeded past. Records accumulate (append-only
+    audit trail) — they are never overwritten.
     """
     _ensure_tables(workspace)
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
     cursor.execute(
-        """INSERT OR REPLACE INTO pr_merge_overrides
+        """INSERT INTO pr_merge_overrides
            (pr_number, workspace_id, actor, reason, bypassed, overridden_at)
            VALUES (?, ?, ?, ?, ?, ?)""",
         (
@@ -684,13 +685,14 @@ def save_merge_override(
 
 
 def get_pr_merge_override(workspace: Workspace, pr_number: int) -> Optional[dict]:
-    """Fetch the merge-gate override record for a PR, if any."""
+    """Fetch the latest merge-gate override record for a PR, if any."""
     _ensure_tables(workspace)
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
     cursor.execute(
         """SELECT pr_number, actor, reason, bypassed, overridden_at
-           FROM pr_merge_overrides WHERE pr_number = ? AND workspace_id = ?""",
+           FROM pr_merge_overrides WHERE pr_number = ? AND workspace_id = ?
+           ORDER BY id DESC LIMIT 1""",
         (pr_number, workspace.id),
     )
     row = cursor.fetchone()

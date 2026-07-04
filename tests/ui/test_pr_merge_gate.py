@@ -207,6 +207,28 @@ class TestMergeGate:
         assert resp.json()["merged"] is False
         assert get_pr_merge_override(test_workspace, 42) is None
 
+    def test_override_records_accumulate(self, test_workspace):
+        """Audit trail is append-only; get returns the latest record."""
+        from codeframe.core.proof.ledger import save_merge_override
+
+        save_merge_override(test_workspace, 7, actor="a1", reason="first", bypassed=[])
+        save_merge_override(test_workspace, 7, actor="a2", reason="second", bypassed=[])
+
+        record = get_pr_merge_override(test_workspace, 7)
+        assert record["reason"] == "second"
+
+        import sqlite3
+
+        from codeframe.core.workspace import get_db_connection
+
+        conn = get_db_connection(test_workspace)
+        assert isinstance(conn, sqlite3.Connection)
+        count = conn.execute(
+            "SELECT COUNT(*) FROM pr_merge_overrides WHERE pr_number = 7"
+        ).fetchone()[0]
+        conn.close()
+        assert count == 2
+
     def test_clean_merge_writes_no_override_record(self, test_client, test_workspace):
         mock = _make_mock_client()
         with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
