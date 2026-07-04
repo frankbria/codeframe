@@ -163,7 +163,7 @@ class TestUpdateNotificationSettings:
         the test doesn't depend on how the CI image resolves ``localhost``
         (some return ::1, some 127.0.0.1, hardened ones not at all)."""
         with patch(
-            "codeframe.ui.routers.settings_v2.socket.getaddrinfo",
+            "codeframe.core.notifications_config.socket.getaddrinfo",
             return_value=[(2, 1, 6, "", ("127.0.0.1", 0))],
         ):
             r = client.put(
@@ -220,6 +220,18 @@ class TestUpdateNotificationSettings:
 
 
 class TestNotificationWebhookTest:
+    @pytest.fixture(autouse=True)
+    def _public_dns(self):
+        """Hermetic DNS: ``hooks.example.com`` must resolve to a public IP so
+        the save-time check and the #746 dispatch-time guard in ``send_event``
+        both pass without real lookups. IP-literal and scheme rejection tests
+        in this class never reach getaddrinfo, so the stub is safe for all."""
+        with patch(
+            "codeframe.core.notifications_config.socket.getaddrinfo",
+            return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
+        ):
+            yield
+
     def test_returns_400_when_no_url_configured(self, client):
         r = client.post("/api/v2/settings/notifications/test")
         assert r.status_code == 400

@@ -18,12 +18,14 @@ endpoint validates too — never trust just one layer.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
+import socket
 import tempfile
 from pathlib import Path
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, Union
 
 from codeframe.core.workspace import Workspace
 
@@ -50,6 +52,90 @@ def _config_path(workspace: Workspace) -> Path:
     return workspace.state_dir / NOTIFICATIONS_CONFIG_FILENAME
 
 
+def allow_private_webhook_hosts() -> bool:
+    """Opt-out for the SSRF host check (issues #656/#746).
+
+    Off by default (block private/internal targets). Self-hosted operators
+    who legitimately point webhooks at ``localhost`` or an internal service
+    set ``CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1`` — read at call time so it can
+    be toggled without a restart.
+    """
+    return os.getenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+class UnsafeWebhookHostError(Exception):
+    """A webhook host is (or resolves to) a private/internal/metadata IP."""
+
+    def __init__(
+        self,
+        hostname: str,
+        ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address],
+    ):
+        self.hostname = hostname
+        self.ip = ip
+        super().__init__(
+            f"Webhook host {hostname!r} resolves to a private/internal "
+            f"address ({ip}); refusing to avoid SSRF. Set "
+            f"CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1 to allow internal targets."
+        )
+
+
+def _is_disallowed_ip(
+    ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address],
+) -> bool:
+    # ::ffff:169.254.169.254 — judge by the embedded IPv4 address.
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    # ``not is_global`` is the primary rule: it covers private/loopback/
+    # link-local/reserved/unspecified AND CGNAT 100.64.0.0/10, which none of
+    # the individual flags report. Multicast (224.0.0.1) reports
+    # ``is_global=True``, so check it explicitly.
+    return (not ip.is_global) or ip.is_multicast
+
+
+def vet_webhook_host(hostname: str) -> list[str]:
+    """Check a webhook host against private/internal IP ranges (issue #746).
+
+    IP literals are checked directly; DNS names are resolved (blocking —
+    call off the event loop) and **every** returned address is checked.
+    Returns the vetted IP strings so callers can pin them into the connector
+    (closing the resolve-to-connect DNS-rebinding window), or ``[]`` when the
+    host is unresolvable — the caller decides whether that blocks (save-time
+    allows a not-yet-live URL; dispatch-time refuses).
+
+    Raises ``UnsafeWebhookHostError`` on any private/loopback/link-local/
+    metadata address. Does NOT consult ``allow_private_webhook_hosts()`` —
+    callers gate on that first.
+    """
+    try:
+        literal = ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        if _is_disallowed_ip(literal):
+            raise UnsafeWebhookHostError(hostname, literal)
+        return [str(literal)]
+
+    try:
+        infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return []
+
+    ips: list[str] = []
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if _is_disallowed_ip(ip):
+            raise UnsafeWebhookHostError(hostname, ip)
+        if str(ip) not in ips:
+            ips.append(str(ip))
+    return ips
+
+
 def _is_safe_webhook_url(url: str) -> bool:
     """Defence-in-depth: scheme/host check on a stored URL before we POST.
 
@@ -57,11 +143,10 @@ def _is_safe_webhook_url(url: str) -> bool:
     file could carry a ``file://`` or schemeless URL. Used by
     ``is_webhook_active`` to fail-safe to ``None``.
 
-    TODO: This does NOT block RFC-1918 (10/8, 172.16/12, 192.168/16) or
-    loopback (127/8) addresses. For a self-hosted single-user tool that is
-    intentional — users want to point at local receivers. If CodeFRAME ever
-    runs as a shared / multi-tenant service, add a socket-level check here
-    that resolves the host and rejects private/loopback ranges.
+    Private/loopback ranges are NOT checked here — dispatch-time enforcement
+    (resolve-and-check + IP pinning, #746) lives in
+    ``WebhookNotificationService.send_event``, the single choke point every
+    outbound event webhook goes through.
     """
     from urllib.parse import urlparse
 

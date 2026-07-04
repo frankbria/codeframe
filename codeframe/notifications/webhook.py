@@ -10,16 +10,64 @@ but never break the triggering operation.
 
 import asyncio
 import logging
+import socket
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlparse
 
 import aiohttp
 
 from codeframe.core.models import BlockerType
+from codeframe.core.notifications_config import (
+    UnsafeWebhookHostError,
+    allow_private_webhook_hosts,
+    vet_webhook_host,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class _PinnedResolver(aiohttp.abc.AbstractResolver):
+    """Resolver that only ever answers with pre-vetted addresses for one host.
+
+    SSRF (#746): ``send_event`` resolves and checks the target host before
+    connecting. Pinning those exact addresses into the connector closes the
+    check-to-connect DNS-rebinding window — the socket can only dial IPs
+    that passed the private-range check.
+    """
+
+    def __init__(self, hostname: str, ips: list[str]):
+        self._hostname = hostname
+        self._ips = ips
+
+    async def resolve(self, host, port=0, family=socket.AF_INET):
+        if host != self._hostname:
+            raise OSError(f"refusing to resolve unexpected host {host!r}")
+        entries = [
+            {
+                "hostname": host,
+                "host": ip,
+                "port": port,
+                "family": socket.AF_INET6 if ":" in ip else socket.AF_INET,
+                "proto": 0,
+                "flags": 0,
+            }
+            for ip in self._ips
+        ]
+        # Honor an explicit address-family request; fail closed rather than
+        # hand an AF_INET-restricted socket an IPv6 address (or vice versa).
+        if family in (socket.AF_INET, socket.AF_INET6):
+            entries = [e for e in entries if e["family"] == family]
+            if not entries:
+                raise OSError(
+                    f"no vetted addresses of requested family for {host!r}"
+                )
+        return entries
+
+    async def close(self) -> None:
+        pass
 
 
 @dataclass
@@ -254,8 +302,62 @@ class WebhookNotificationService:
                 ok=False, status_code=None, error="No webhook URL configured"
             )
 
+        # SSRF (#746): the save-time host check is not enough — the config
+        # file can be hand-edited, and a host can rebind after save. Resolve
+        # and check here, then pin the vetted IPs into the connector. The
+        # whole vetting block must uphold send_event's never-raises contract:
+        # urlparse can raise on malformed IPv6 brackets, getaddrinfo can
+        # raise UnicodeError on bad IDN labels, and a hung resolver must not
+        # stall the caller past self.timeout.
+        session_kwargs: dict = {}
+        if not allow_private_webhook_hosts():
+            try:
+                hostname = urlparse(target_url).hostname
+                if not hostname:
+                    return WebhookSendResult(
+                        ok=False, status_code=None, error="Webhook URL has no host"
+                    )
+                # Blocking DNS — keep it off the event loop, bounded by the
+                # same timeout as the HTTP request.
+                vetted = await asyncio.wait_for(
+                    asyncio.get_running_loop().run_in_executor(
+                        None, vet_webhook_host, hostname
+                    ),
+                    timeout=self.timeout,
+                )
+                if not vetted:
+                    return WebhookSendResult(
+                        ok=False,
+                        status_code=None,
+                        error=f"Could not resolve webhook host {hostname!r}",
+                    )
+                session_kwargs["connector"] = aiohttp.TCPConnector(
+                    resolver=_PinnedResolver(hostname, vetted), use_dns_cache=False
+                )
+            except UnsafeWebhookHostError as e:
+                logger.warning(
+                    "Refusing webhook dispatch for event %s: %s",
+                    payload.get("event"),
+                    e,
+                )
+                return WebhookSendResult(ok=False, status_code=None, error=str(e))
+            except asyncio.TimeoutError:
+                return WebhookSendResult(
+                    ok=False,
+                    status_code=None,
+                    error=f"Timed out resolving webhook host after {self.timeout}s",
+                )
+            except Exception as e:
+                logger.error(
+                    "Webhook host vetting failed for event %s: %s",
+                    payload.get("event"),
+                    e,
+                    exc_info=True,
+                )
+                return WebhookSendResult(ok=False, status_code=None, error=str(e))
+
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(**session_kwargs) as session:
                 async with session.post(
                     target_url,
                     json=payload,
@@ -293,6 +395,12 @@ class WebhookNotificationService:
                 exc_info=True,
             )
             return WebhookSendResult(ok=False, status_code=None, error=str(e))
+        finally:
+            # The session owns and closes the pinned connector on normal exit;
+            # this covers the construction-failure path. close() is idempotent.
+            connector = session_kwargs.get("connector")
+            if connector is not None and not connector.closed:
+                await connector.close()
 
     def send_event_background(self, payload: dict, url: Optional[str] = None) -> None:
         """Fire-and-forget wrapper for ``send_event``.
