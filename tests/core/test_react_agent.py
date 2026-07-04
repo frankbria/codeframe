@@ -2129,10 +2129,14 @@ class TestLoopDetection:
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.TaskContextPackager")
-    def test_loop_detected_returns_completed(
+    def test_loop_detected_returns_failed(
         self, mock_loader, mock_gates, workspace, provider, mock_context
     ):
-        """3 identical tool call patterns -> COMPLETED (not FAILED)."""
+        """3 identical tool call patterns -> FAILED, not COMPLETED (#740).
+
+        A stuck loop implemented nothing, so it must not run final
+        verification against the already-green repo and mark the task DONE.
+        """
         from codeframe.core.react_agent import ReactAgent
 
         mock_loader.return_value.load_context.return_value = mock_context
@@ -2153,9 +2157,13 @@ class TestLoopDetection:
         ):
             status = agent.run("task-1")
 
-        assert status == AgentStatus.COMPLETED
+        assert status == AgentStatus.FAILED
+        # The run result distinguishes a loop from plain exhaustion.
+        assert agent._early_termination_reason == "loop_detected"
         # Should have been detected in 3 iterations, not 10
         assert provider.call_count <= 4
+        # Final verification must NOT run for a stuck loop.
+        mock_gates.run.assert_not_called()
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.TaskContextPackager")

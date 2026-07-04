@@ -170,6 +170,10 @@ class ReactAgent:
         # Debug logging setup
         self._debug_log_path: Optional[Path] = None
         self._failure_count = 0
+        # Set when the ReAct loop terminates early for a specific reason
+        # (e.g. a stuck loop) so FAILED can be reported distinctly from a
+        # plain max-iterations exhaustion. Reset per run().
+        self._early_termination_reason: Optional[str] = None
         if debug:
             self._setup_debug_log()
 
@@ -191,6 +195,7 @@ class ReactAgent:
             AgentStatus.FAILED — max iterations or verification exhausted.
         """
         self._current_task_id = task_id
+        self._early_termination_reason = None
         self._verbose_print(f"[ReactAgent] Starting task {task_id}")
         self._emit(EventType.AGENT_STARTED, {"task_id": task_id})
 
@@ -225,7 +230,12 @@ class ReactAgent:
             try:
                 status = self._react_loop(system_prompt)
                 if status == AgentStatus.FAILED:
-                    reason = _REASON_STALL_DETECTED if self._stall_triggered.is_set() else "max_iterations_reached"
+                    if self._early_termination_reason:
+                        reason = self._early_termination_reason
+                    elif self._stall_triggered.is_set():
+                        reason = _REASON_STALL_DETECTED
+                    else:
+                        reason = "max_iterations_reached"
                     self._emit(EventType.AGENT_FAILED, {
                         "task_id": task_id,
                         "reason": reason,
@@ -652,7 +662,12 @@ class ReactAgent:
                         "reason": "loop_detected",
                         "pattern": list(sig),
                     })
-                    return AgentStatus.COMPLETED
+                    # A stuck loop is a failure, not completion: returning
+                    # COMPLETED here would run final verification against the
+                    # already-green repo and mark a task DONE that implemented
+                    # nothing (#740).
+                    self._early_termination_reason = "loop_detected"
+                    return AgentStatus.FAILED
 
             # Add tool results as user message
             messages.append({"role": "user", "content": "", "tool_results": tool_results})
