@@ -18,6 +18,7 @@ Usage:
 """
 
 import asyncio
+import getpass
 import json
 import logging
 import os
@@ -413,7 +414,12 @@ def _check_merge_gate(
     except FileNotFoundError:
         return None
 
-    open_reqs = proof_ledger.list_requirements(workspace, status=ReqStatus.OPEN)
+    try:
+        open_reqs = proof_ledger.list_requirements(workspace, status=ReqStatus.OPEN)
+    except Exception as e:
+        # Fail closed, like the API path: a broken ledger blocks the merge.
+        console.print(f"[red]PROOF9 gate check failed:[/red] {e} — merge blocked")
+        raise typer.Exit(1)
     if not open_reqs:
         return None
 
@@ -499,11 +505,15 @@ def merge_pr(
                 # Audit only a merge that actually happened (#731).
                 from codeframe.core.proof.ledger import save_merge_override
 
+                try:
+                    actor = getpass.getuser()
+                except OSError:
+                    actor = "cli"
                 gate_workspace, bypassed = pending_override
                 save_merge_override(
                     gate_workspace,
                     pr_number=pr_number,
-                    actor=os.environ.get("USER") or "cli",
+                    actor=actor,
                     reason=(override_reason or "").strip(),
                     bypassed=bypassed,
                 )

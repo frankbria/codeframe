@@ -666,37 +666,38 @@ def save_merge_override(
     """
     _ensure_tables(workspace)
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-    cursor.execute(
-        """INSERT INTO pr_merge_overrides
-           (pr_number, workspace_id, actor, reason, bypassed, overridden_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (
-            pr_number,
-            workspace.id,
-            actor,
-            reason,
-            json.dumps(bypassed),
-            _utc_now().isoformat(),
-        ),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute(
+            """INSERT INTO pr_merge_overrides
+               (pr_number, workspace_id, actor, reason, bypassed, overridden_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                pr_number,
+                workspace.id,
+                actor,
+                reason,
+                json.dumps(bypassed),
+                _utc_now().isoformat(),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_pr_merge_override(workspace: Workspace, pr_number: int) -> Optional[dict]:
     """Fetch the latest merge-gate override record for a PR, if any."""
     _ensure_tables(workspace)
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-    cursor.execute(
-        """SELECT pr_number, actor, reason, bypassed, overridden_at
-           FROM pr_merge_overrides WHERE pr_number = ? AND workspace_id = ?
-           ORDER BY id DESC LIMIT 1""",
-        (pr_number, workspace.id),
-    )
-    row = cursor.fetchone()
-    conn.close()
+    try:
+        row = conn.execute(
+            """SELECT pr_number, actor, reason, bypassed, overridden_at
+               FROM pr_merge_overrides WHERE pr_number = ? AND workspace_id = ?
+               ORDER BY id DESC LIMIT 1""",
+            (pr_number, workspace.id),
+        ).fetchone()
+    finally:
+        conn.close()
     if not row:
         return None
     return {

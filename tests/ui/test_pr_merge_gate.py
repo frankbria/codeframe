@@ -5,10 +5,7 @@ caller supplies an explicit, audited override. GitHubIntegration is mocked so
 no real GitHub calls are made.
 """
 
-import shutil
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -39,19 +36,15 @@ pytestmark = pytest.mark.v2
 
 
 @pytest.fixture
-def test_workspace():
-    temp_dir = Path(tempfile.mkdtemp())
-    workspace_path = temp_dir / "test_ws"
-    workspace_path.mkdir(parents=True, exist_ok=True)
+def test_workspace(tmp_path):
+    workspace_path = tmp_path / "test_ws"
+    workspace_path.mkdir()
 
     from codeframe.core.workspace import create_or_load_workspace
 
     workspace = create_or_load_workspace(workspace_path)
     init_proof_tables(workspace)
-
-    yield workspace
-
-    shutil.rmtree(temp_dir, ignore_errors=True)
+    return workspace
 
 
 @pytest.fixture
