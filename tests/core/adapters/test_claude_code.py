@@ -40,17 +40,23 @@ class TestClaudeCodeAdapter:
             assert cmd[0] == "/usr/bin/claude"
             assert "--print" in cmd
 
-    def test_build_command_without_allowlist(self) -> None:
+    def test_build_command_without_allowlist_grants_permissions(self) -> None:
+        """Default (no allowlist) must pass a permission config so --print mode
+        does not silently deny Edit/Write/Bash. (#739)"""
         with patch("shutil.which", return_value="/usr/bin/claude"):
             adapter = ClaudeCodeAdapter()
             cmd = adapter.build_command("prompt", Path("/tmp"))
             assert "--allowedTools" not in cmd
+            idx = cmd.index("--permission-mode")
+            assert cmd[idx + 1] == "bypassPermissions"
 
     def test_build_command_with_allowlist(self) -> None:
         with patch("shutil.which", return_value="/usr/bin/claude"):
             adapter = ClaudeCodeAdapter(allowlist=["Edit", "Write"])
             cmd = adapter.build_command("prompt", Path("/tmp"))
             assert "--allowedTools" in cmd
+            # Explicit allowlist path keeps its own permissions — no bypass mode.
+            assert "--permission-mode" not in cmd
             # Verify both tools are present after their respective flags
             idx_edit = cmd.index("Edit")
             idx_write = cmd.index("Write")
@@ -76,11 +82,58 @@ class TestClaudeCodeAdapter:
         mock_process.returncode = 0
         mock_process.wait.return_value = None
 
-        with patch("subprocess.Popen", return_value=mock_process):
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch.object(
+                ClaudeCodeAdapter,
+                "_detect_modified_files",
+                return_value=["src/main.py"],
+            ),
+        ):
             result = adapter.run("task-1", "fix the bug", Path("/tmp/repo"))
 
         assert result.status == "completed"
         assert "All tests pass" in result.output
+        assert result.modified_files == ["src/main.py"]
+
+    def test_zero_modified_files_is_failed(self) -> None:
+        """A coding run that exits 0 but changes no files must fail, not
+        report a false completion. (#739)"""
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            adapter = ClaudeCodeAdapter()
+
+        mock_process = MagicMock()
+        mock_process.stdout = iter(["I analyzed the code but made no changes\n"])
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = ""
+        mock_process.stdin = MagicMock()
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        # _no_git fixture already patches _detect_modified_files -> []
+        with patch("subprocess.Popen", return_value=mock_process):
+            result = adapter.run("task-1", "fix the bug", Path("/tmp/repo"))
+
+        assert result.status == "failed"
+        assert "modified no files" in result.error
+
+    def test_require_file_changes_can_be_disabled(self) -> None:
+        """Opting out restores plain exit-code mapping for analysis-only runs."""
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            adapter = ClaudeCodeAdapter(require_file_changes=False)
+
+        mock_process = MagicMock()
+        mock_process.stdout = iter(["analysis complete\n"])
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = ""
+        mock_process.stdin = MagicMock()
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            result = adapter.run("task-1", "analyze", Path("/tmp/repo"))
+
+        assert result.status == "completed"
 
     def test_failed_execution(self) -> None:
         with patch("shutil.which", return_value="/usr/bin/claude"):

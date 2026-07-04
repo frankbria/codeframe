@@ -416,6 +416,46 @@ class TestSubprocessAdapterModifiedFiles:
         assert result.status == "completed"
         assert result.modified_files == []
 
+    def test_require_file_changes_fails_on_empty_diff(self, tmp_path):
+        """With require_file_changes=True, exit 0 + no changed files -> failed. (#739)"""
+        with patch("shutil.which", return_value="/usr/bin/test-agent"):
+            adapter = SubprocessAdapter("test-agent", require_file_changes=True)
+        mock_process = self._make_mock_process(stdout_lines=["done\n"], returncode=0)
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    MagicMock(returncode=0, stdout=""),
+                    MagicMock(returncode=0, stdout=""),
+                ],
+            ),
+        ):
+            result = adapter.run("task-1", "fix", tmp_path)
+
+        assert result.status == "failed"
+        assert "modified no files" in result.error
+
+    def test_require_file_changes_passes_when_files_changed(self, tmp_path):
+        """require_file_changes must not disturb a run that did change files."""
+        with patch("shutil.which", return_value="/usr/bin/test-agent"):
+            adapter = SubprocessAdapter("test-agent", require_file_changes=True)
+        mock_process = self._make_mock_process(stdout_lines=["done\n"], returncode=0)
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch(
+                "subprocess.run",
+                side_effect=[
+                    MagicMock(returncode=0, stdout="src/main.py\n"),
+                    MagicMock(returncode=0, stdout=""),
+                ],
+            ),
+        ):
+            result = adapter.run("task-1", "fix", tmp_path)
+
+        assert result.status == "completed"
+        assert result.modified_files == ["src/main.py"]
+
     def test_graceful_when_git_fails(self, adapter, tmp_path):
         """Should return empty modified_files if git diff fails."""
         mock_process = self._make_mock_process(

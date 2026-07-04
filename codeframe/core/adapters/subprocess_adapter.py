@@ -33,6 +33,7 @@ class SubprocessAdapter:
         binary: str,
         cli_args: list[str] | None = None,
         timeout_s: int | None = None,
+        require_file_changes: bool = False,
     ) -> None:
         """Initialize with the binary name and default CLI args.
 
@@ -40,6 +41,11 @@ class SubprocessAdapter:
             binary: Name of the CLI binary (e.g., 'claude', 'opencode')
             cli_args: Default CLI arguments appended to every invocation
             timeout_s: Max execution time in seconds (default: 1800, None = no limit)
+            require_file_changes: If True, a run that exits 0 but modifies no files
+                is downgraded to ``failed`` instead of ``completed``. Guards against
+                a delegated coding agent that "succeeds" without writing any code
+                (e.g. edits silently denied), which downstream gates would otherwise
+                pass on the unchanged tree. Default False (analysis-capable agents).
 
         Raises:
             EnvironmentError: If the binary is not found on PATH
@@ -47,6 +53,7 @@ class SubprocessAdapter:
         self._binary = binary
         self._cli_args = cli_args or []
         self._timeout_s = timeout_s if timeout_s is not None else self.DEFAULT_TIMEOUT_S
+        self._require_file_changes = require_file_changes
 
         resolved = shutil.which(binary)
         if resolved is None:
@@ -202,6 +209,22 @@ class SubprocessAdapter:
             workspace_path=workspace_path,
         )
         result.modified_files = modified_files
+
+        # A coding task that "succeeds" without touching any file is a false
+        # completion: edits were likely denied or the agent only analyzed. Fail
+        # hard so downstream gates don't pass on the unchanged tree. (#739)
+        if (
+            self._require_file_changes
+            and result.status == "completed"
+            and not modified_files
+        ):
+            result.status = "failed"
+            result.error = (
+                f"'{self._binary}' exited successfully but modified no files. "
+                "A coding task must change at least one file; the agent likely "
+                "lacked write permission or produced no edits."
+            )
+
         return result
 
     def _map_result(
