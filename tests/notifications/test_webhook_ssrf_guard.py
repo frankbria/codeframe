@@ -198,6 +198,19 @@ async def test_send_event_pins_vetted_ips_into_connector(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_pinned_resolver_honors_address_family():
+    """An AF_INET-restricted socket must never be handed an IPv6 address
+    (and vice versa) — fail closed instead."""
+    from codeframe.notifications.webhook import _PinnedResolver
+
+    resolver = _PinnedResolver("hooks.example.com", ["93.184.216.34"])
+    entries = await resolver.resolve("hooks.example.com", port=443, family=socket.AF_INET)
+    assert [e["host"] for e in entries] == ["93.184.216.34"]
+    with pytest.raises(OSError):
+        await resolver.resolve("hooks.example.com", port=443, family=socket.AF_INET6)
+
+
+@pytest.mark.asyncio
 async def test_send_event_refuses_url_without_host():
     svc = WebhookNotificationService(webhook_url="http:///hook", timeout=5)
     session = _mock_session()

@@ -45,7 +45,7 @@ class _PinnedResolver(aiohttp.abc.AbstractResolver):
     async def resolve(self, host, port=0, family=socket.AF_INET):
         if host != self._hostname:
             raise OSError(f"refusing to resolve unexpected host {host!r}")
-        return [
+        entries = [
             {
                 "hostname": host,
                 "host": ip,
@@ -56,6 +56,15 @@ class _PinnedResolver(aiohttp.abc.AbstractResolver):
             }
             for ip in self._ips
         ]
+        # Honor an explicit address-family request; fail closed rather than
+        # hand an AF_INET-restricted socket an IPv6 address (or vice versa).
+        if family in (socket.AF_INET, socket.AF_INET6):
+            entries = [e for e in entries if e["family"] == family]
+            if not entries:
+                raise OSError(
+                    f"no vetted addresses of requested family for {host!r}"
+                )
+        return entries
 
     async def close(self) -> None:
         pass
@@ -364,6 +373,12 @@ class WebhookNotificationService:
                 exc_info=True,
             )
             return WebhookSendResult(ok=False, status_code=None, error=str(e))
+        finally:
+            # The session owns and closes the pinned connector on normal exit;
+            # this covers the construction-failure path. close() is idempotent.
+            connector = session_kwargs.get("connector")
+            if connector is not None and not connector.closed:
+                await connector.close()
 
     def send_event_background(self, payload: dict, url: Optional[str] = None) -> None:
         """Fire-and-forget wrapper for ``send_event``.
