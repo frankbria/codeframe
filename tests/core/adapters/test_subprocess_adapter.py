@@ -416,45 +416,67 @@ class TestSubprocessAdapterModifiedFiles:
         assert result.status == "completed"
         assert result.modified_files == []
 
-    def test_require_file_changes_fails_on_empty_diff(self, tmp_path):
-        """With require_file_changes=True, exit 0 + no changed files -> failed. (#739)"""
-        with patch("shutil.which", return_value="/usr/bin/test-agent"):
-            adapter = SubprocessAdapter("test-agent", require_file_changes=True)
+    def _run_with(self, adapter, tmp_path, *, modified, head_before, head_after):
+        """Run with _detect_modified_files and _git_head stubbed.
+
+        head_before/head_after become the two _git_head() return values (pre-run
+        baseline, then the guard's post-run check).
+        """
         mock_process = self._make_mock_process(stdout_lines=["done\n"], returncode=0)
         with (
             patch("subprocess.Popen", return_value=mock_process),
-            patch(
-                "subprocess.run",
-                side_effect=[
-                    MagicMock(returncode=0, stdout=""),
-                    MagicMock(returncode=0, stdout=""),
-                ],
+            patch.object(
+                type(adapter), "_detect_modified_files", return_value=modified
+            ),
+            patch.object(
+                type(adapter), "_git_head", side_effect=[head_before, head_after]
             ),
         ):
-            result = adapter.run("task-1", "fix", tmp_path)
+            return adapter.run("task-1", "fix", tmp_path)
 
+    def test_require_file_changes_fails_on_empty_diff(self, tmp_path):
+        """require_file_changes=True: exit 0, no changed files, HEAD unmoved -> failed. (#739)"""
+        with patch("shutil.which", return_value="/usr/bin/test-agent"):
+            adapter = SubprocessAdapter("test-agent", require_file_changes=True)
+        result = self._run_with(
+            adapter, tmp_path, modified=[], head_before="sha1", head_after="sha1"
+        )
         assert result.status == "failed"
         assert "modified no files" in result.error
 
     def test_require_file_changes_passes_when_files_changed(self, tmp_path):
-        """require_file_changes must not disturb a run that did change files."""
+        """A run that changed working-tree files stays completed."""
         with patch("shutil.which", return_value="/usr/bin/test-agent"):
             adapter = SubprocessAdapter("test-agent", require_file_changes=True)
-        mock_process = self._make_mock_process(stdout_lines=["done\n"], returncode=0)
-        with (
-            patch("subprocess.Popen", return_value=mock_process),
-            patch(
-                "subprocess.run",
-                side_effect=[
-                    MagicMock(returncode=0, stdout="src/main.py\n"),
-                    MagicMock(returncode=0, stdout=""),
-                ],
-            ),
-        ):
-            result = adapter.run("task-1", "fix", tmp_path)
-
+        result = self._run_with(
+            adapter,
+            tmp_path,
+            modified=["src/main.py"],
+            head_before="sha1",
+            head_after="sha1",
+        )
         assert result.status == "completed"
         assert result.modified_files == ["src/main.py"]
+
+    def test_require_file_changes_accepts_self_committed_work(self, tmp_path):
+        """An agent that commits its own work (HEAD advances) is not a false
+        completion even though `git diff HEAD` is empty. (#739 review)"""
+        with patch("shutil.which", return_value="/usr/bin/test-agent"):
+            adapter = SubprocessAdapter("test-agent", require_file_changes=True)
+        result = self._run_with(
+            adapter, tmp_path, modified=[], head_before="sha1", head_after="sha2"
+        )
+        assert result.status == "completed"
+
+    def test_require_file_changes_skips_non_git_workspace(self, tmp_path):
+        """Outside a git repo, HEAD is unresolvable and we cannot judge work —
+        do not fail the run. (#739 review)"""
+        with patch("shutil.which", return_value="/usr/bin/test-agent"):
+            adapter = SubprocessAdapter("test-agent", require_file_changes=True)
+        result = self._run_with(
+            adapter, tmp_path, modified=[], head_before=None, head_after=None
+        )
+        assert result.status == "completed"
 
     def test_graceful_when_git_fails(self, adapter, tmp_path):
         """Should return empty modified_files if git diff fails."""

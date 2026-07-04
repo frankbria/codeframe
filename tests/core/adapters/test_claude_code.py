@@ -14,8 +14,15 @@ class TestClaudeCodeAdapter:
 
     @pytest.fixture(autouse=True)
     def _no_git(self):
-        """Prevent _detect_modified_files from calling real git."""
-        with patch.object(ClaudeCodeAdapter, "_detect_modified_files", return_value=[]):
+        """Prevent git introspection from calling real git / the patched Popen.
+
+        _git_head -> None simulates a non-git workspace (guard won't fire);
+        tests that need the guard override it with an explicit sha.
+        """
+        with (
+            patch.object(ClaudeCodeAdapter, "_detect_modified_files", return_value=[]),
+            patch.object(ClaudeCodeAdapter, "_git_head", return_value=None),
+        ):
             yield
 
     def test_name(self) -> None:
@@ -110,8 +117,13 @@ class TestClaudeCodeAdapter:
         mock_process.returncode = 0
         mock_process.wait.return_value = None
 
-        # _no_git fixture already patches _detect_modified_files -> []
-        with patch("subprocess.Popen", return_value=mock_process):
+        # _no_git fixture already patches _detect_modified_files -> [].
+        # Stub HEAD to a stable sha so the guard sees a git repo with no new
+        # commit (before == after) and no working-tree changes.
+        with (
+            patch("subprocess.Popen", return_value=mock_process),
+            patch.object(ClaudeCodeAdapter, "_git_head", return_value="sha1"),
+        ):
             result = adapter.run("task-1", "fix the bug", Path("/tmp/repo"))
 
         assert result.status == "failed"
