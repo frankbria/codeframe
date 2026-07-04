@@ -231,6 +231,22 @@ class TestGetPrStatusErrors:
 
         assert resp.status_code == 503
 
+    def test_upstream_401_maps_to_502_upstream_auth_failed(self, test_client):
+        """A GitHub 401 (bad/revoked PAT) must NOT surface as our 401 (#734).
+
+        The web UI's axios interceptor treats any 401 as CodeFRAME session
+        expiry and force-logs the user out.
+        """
+        from codeframe.git.github_integration import GitHubAPIError
+
+        mock_client = _make_mock_client(raise_error=GitHubAPIError(401, "Bad credentials"))
+
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock_client):
+            resp = test_client.get("/api/v2/pr/status?workspace_path=/tmp&pr_number=42")
+
+        assert resp.status_code == 502
+        assert resp.json()["detail"]["code"] == "UPSTREAM_AUTH_FAILED"
+
     def test_missing_required_fields_returns_502(self, test_client):
         """PR payload missing head.sha / html_url / state returns 502."""
         # Simulate a partial/unexpected GitHub response.
