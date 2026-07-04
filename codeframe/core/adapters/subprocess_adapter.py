@@ -230,8 +230,17 @@ class SubprocessAdapter:
             and not modified_files
         ):
             head_after = self._git_head(workspace_path)
-            committed = head_after is not None and head_after != head_before
             in_git_repo = head_after is not None
+            # Require a known baseline to credit a commit: if the pre-run HEAD
+            # read failed (head_before is None) we must not let `None != sha`
+            # masquerade as "committed" and silently pass a real zero-file run.
+            # Bias toward failing loudly. (ponytail: a rare `git init` mid-run
+            # false-fails here — acceptable; a false COMPLETED is worse.)
+            committed = (
+                head_before is not None
+                and head_after is not None
+                and head_after != head_before
+            )
             if in_git_repo and not committed:
                 result.status = "failed"
                 result.error = (

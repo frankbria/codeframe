@@ -468,6 +468,17 @@ class TestSubprocessAdapterModifiedFiles:
         )
         assert result.status == "completed"
 
+    def test_require_file_changes_fails_when_pre_run_head_unavailable(self, tmp_path):
+        """A transient pre-run HEAD read failure must not let `None != sha` fake
+        a commit and pass a real zero-file run. Fail safe. (#739 re-review)"""
+        with patch("shutil.which", return_value="/usr/bin/test-agent"):
+            adapter = SubprocessAdapter("test-agent", require_file_changes=True)
+        # head_before=None (pre-run read failed), head_after="sha1" (post succeeds).
+        result = self._run_with(
+            adapter, tmp_path, modified=[], head_before=None, head_after="sha1"
+        )
+        assert result.status == "failed"
+
     def test_require_file_changes_skips_non_git_workspace(self, tmp_path):
         """Outside a git repo, HEAD is unresolvable and we cannot judge work —
         do not fail the run. (#739 review)"""
