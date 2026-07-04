@@ -229,6 +229,67 @@ class TestSubprocessAdapterRun:
         assert "working" in result.output  # streamed output before the stall
         assert elapsed < 30  # bounded by the timeout, not the 60s sleep
 
+    def test_large_stdin_with_early_child_output_does_not_deadlock(self, tmp_path):
+        """A >64KB prompt must not deadlock against a child that writes before
+
+        reading stdin (#737).
+
+        Regression: stdin was written+closed inline BEFORE the drain threads
+        started. If the child emitted output larger than the pipe buffer before
+        consuming stdin, both sides blocked forever on full pipes — and the write
+        blocked before process.wait(timeout=...) was ever reached, so the #736
+        timeout could not fire either.
+        """
+        # Child fills its stdout pipe (>64KB) BEFORE reading any stdin, then
+        # echoes how many bytes of stdin it received.
+        script = (
+            "import sys\n"
+            "sys.stdout.write('x' * (128 * 1024) + '\\n'); sys.stdout.flush()\n"
+            "data = sys.stdin.read()\n"
+            "print('RECEIVED', len(data))\n"
+        )
+        big_prompt = "y" * (128 * 1024)
+
+        class _PyAdapter(SubprocessAdapter):
+            def build_command(self, prompt, workspace_path):
+                return [sys.executable, "-c", script]
+
+        with patch("shutil.which", return_value=sys.executable):
+            # Bound the run so a regression fails (times out) instead of hanging CI.
+            adapter = _PyAdapter("python", timeout_s=30)
+
+        with patch.object(SubprocessAdapter, "_detect_modified_files", return_value=[]):
+            start = time.monotonic()
+            result = adapter.run("task-1", big_prompt, tmp_path)
+            elapsed = time.monotonic() - start
+
+        assert result.status == "completed"
+        assert f"RECEIVED {len(big_prompt)}" in result.output
+        assert elapsed < 30  # completed promptly, not bounded by the timeout
+
+    def test_child_exiting_before_reading_stdin_is_handled(self, tmp_path):
+        """A child that exits before draining a large stdin must not crash run().
+
+        Writing a >64KB payload to a pipe whose read end the child already closed
+        raises BrokenPipeError in the stdin thread; run() must swallow it and
+        still return a result based on the exit code. (#737)
+        """
+        # Exit immediately without reading stdin, so the write end breaks.
+        script = "import sys; sys.exit(0)"
+        big_prompt = "z" * (128 * 1024)
+
+        class _PyAdapter(SubprocessAdapter):
+            def build_command(self, prompt, workspace_path):
+                return [sys.executable, "-c", script]
+
+        with patch("shutil.which", return_value=sys.executable):
+            adapter = _PyAdapter("python", timeout_s=30)
+
+        with patch.object(SubprocessAdapter, "_detect_modified_files", return_value=[]):
+            result = adapter.run("task-1", big_prompt, tmp_path)
+
+        assert result.status == "completed"  # exit 0, BrokenPipeError swallowed
+
 
 class TestSubprocessAdapterBuildCommand:
     """Tests for command building."""

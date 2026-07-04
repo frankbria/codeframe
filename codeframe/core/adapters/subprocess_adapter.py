@@ -108,11 +108,6 @@ class SubprocessAdapter:
                 text=True,
             )
 
-            # Write stdin and close
-            if stdin_content and process.stdin:
-                process.stdin.write(stdin_content)
-                process.stdin.close()
-
             # Drain stderr in a background thread to prevent deadlock.
             # Without this, if the child fills the stderr pipe buffer (~64KB)
             # before finishing stdout, both processes block indefinitely.
@@ -138,6 +133,26 @@ class SubprocessAdapter:
             stdout_thread = threading.Thread(target=_stream_stdout, daemon=True)
             stdout_thread.start()
 
+            # Feed stdin from its own thread AFTER the drain threads start, so a
+            # large prompt (> ~64KB pipe buffer) can't deadlock against a child
+            # that writes output before consuming all of stdin. Writing inline
+            # here would also block before process.wait(timeout=...) is reached,
+            # defeating the #736 timeout. (#737)
+            def _write_stdin() -> None:
+                if stdin_content and process.stdin:
+                    try:
+                        process.stdin.write(stdin_content)
+                    except (BrokenPipeError, OSError):
+                        pass  # child exited/closed stdin early
+                    finally:
+                        try:
+                            process.stdin.close()
+                        except (BrokenPipeError, OSError):
+                            pass
+
+            stdin_thread = threading.Thread(target=_write_stdin, daemon=True)
+            stdin_thread.start()
+
             # Bound the entire read+exit window. On expiry the child is killed,
             # which closes its stdout and unblocks the reader thread.
             try:
@@ -145,6 +160,7 @@ class SubprocessAdapter:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
+                stdin_thread.join(timeout=5)
                 stdout_thread.join(timeout=5)
                 stderr_thread.join(timeout=5)
                 return AgentResult(
@@ -154,6 +170,7 @@ class SubprocessAdapter:
                 )
 
             # Process exited on its own; drain any buffered output.
+            stdin_thread.join(timeout=10)
             stdout_thread.join(timeout=10)
             stderr_thread.join(timeout=10)
             if stdout_thread.is_alive() or stderr_thread.is_alive():
