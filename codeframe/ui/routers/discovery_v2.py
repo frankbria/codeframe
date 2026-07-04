@@ -18,6 +18,7 @@ import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
@@ -267,7 +268,9 @@ async def generate_prd(
     """
     try:
         template_id = body.template_id if body else None
-        prd_record = prd_discovery.generate_prd_from_discovery(
+        # Offload: synchronous LLM call (#732).
+        prd_record = await run_in_threadpool(
+            prd_discovery.generate_prd_from_discovery,
             workspace,
             session_id,
             template_id=template_id,

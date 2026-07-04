@@ -12,6 +12,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
@@ -113,7 +114,8 @@ async def run_gates(
     verbose = body.verbose if body else False
 
     try:
-        result = gates.run(workspace, gates=gate_list, verbose=verbose)
+        # Offload: runs pytest/ruff — blocks for minutes (#732).
+        result = await run_in_threadpool(gates.run, workspace, gates=gate_list, verbose=verbose)
         return _result_to_response(result)
 
     except Exception as e:

@@ -21,6 +21,7 @@ from datetime import date
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from codeframe.core.proof.capture import capture_requirement
@@ -415,7 +416,9 @@ async def run_proof_endpoint(
     try:
         # Generate run_id before calling run_proof so the response ID matches evidence records
         run_id = str(uuid.uuid4())[:8]
-        results = run_proof(
+        # Offload: runs pytest/ruff etc. — blocks for minutes (#732).
+        results = await run_in_threadpool(
+            run_proof,
             workspace,
             full=body.full,
             gate_filter=body.gate,
