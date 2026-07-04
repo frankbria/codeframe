@@ -54,6 +54,13 @@ class Workspace:
         return self.state_dir / STATE_DB_NAME
 
 
+# Stamped into ``PRAGMA user_version`` after ``_init_database`` /
+# ``_ensure_schema_upgrades``. Bump by 1 whenever either function gains a new
+# table/column/index so existing workspaces re-enter the (idempotent)
+# migration path exactly once. Gates #733: steady-state loads skip all DDL.
+SCHEMA_VERSION = 1
+
+
 def _get_state_dir(repo_path: Path) -> Path:
     """Get the .codeframe/ directory path for a repository."""
     return repo_path / CODEFRAME_DIR
@@ -456,6 +463,7 @@ def _init_database(db_path: Path) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_run ON file_operations(run_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_step ON file_operations(step_id)")
 
+    cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
     conn.close()
 
@@ -465,9 +473,17 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
 
     This function is idempotent and adds any new tables/columns
     that were added after the initial schema creation.
+
+    Gated behind ``PRAGMA user_version`` (#733): once a database is stamped
+    with the current ``SCHEMA_VERSION``, this returns after a single read —
+    zero DDL, zero write commits — so per-request workspace loads are cheap.
     """
     conn = _open_db(db_path)
     cursor = conn.cursor()
+
+    if cursor.execute("PRAGMA user_version").fetchone()[0] >= SCHEMA_VERSION:
+        conn.close()
+        return
 
     # token_usage was added after the initial schema (issue #712); create it for
     # existing workspaces. CREATE TABLE IF NOT EXISTS keeps this idempotent.
@@ -783,6 +799,7 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             created_at TEXT NOT NULL
         )
     """)
+    cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
 
     conn.close()
