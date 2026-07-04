@@ -173,6 +173,40 @@ class TestMergeGate:
         assert resp.status_code == 500
         mock.merge_pull_request.assert_not_called()
 
+    def test_failed_merge_writes_no_override_record(self, test_client, test_workspace):
+        """Override audit must only exist for merges that actually happened."""
+        from codeframe.git.github_integration import GitHubAPIError
+
+        save_requirement(test_workspace, _req("REQ-1"))
+
+        mock = _make_mock_client()
+        mock.merge_pull_request = AsyncMock(side_effect=GitHubAPIError(405, "not mergeable"))
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(
+                test_client,
+                {"method": "squash", "override": True, "override_reason": "hotfix"},
+            )
+
+        assert resp.status_code == 400
+        assert get_pr_merge_override(test_workspace, 42) is None
+
+    def test_unmerged_result_writes_no_override_record(self, test_client, test_workspace):
+        save_requirement(test_workspace, _req("REQ-1"))
+
+        mock = _make_mock_client()
+        mock.merge_pull_request = AsyncMock(
+            return_value=MergeResult(sha=None, merged=False, message="nope")
+        )
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(
+                test_client,
+                {"method": "squash", "override": True, "override_reason": "hotfix"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["merged"] is False
+        assert get_pr_merge_override(test_workspace, 42) is None
+
     def test_clean_merge_writes_no_override_record(self, test_client, test_workspace):
         mock = _make_mock_client()
         with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):

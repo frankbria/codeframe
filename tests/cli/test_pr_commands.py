@@ -500,6 +500,25 @@ class TestPRMergeGateCLI:
         assert result.exit_code == 0
         mock_gh.merge_pull_request.assert_called_once()
 
+    def test_failed_merge_writes_no_override_record(self, mock_github_token, mock_pr_details, gated_workspace):
+        """Override audit must only exist for merges that actually happened."""
+        from codeframe.cli.pr_commands import pr_app
+        from codeframe.core.proof.ledger import get_pr_merge_override
+        from codeframe.git.github_integration import MergeResult
+
+        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
+            mock_gh = self._mock_gh(mock_pr_details)
+            mock_gh.merge_pull_request = AsyncMock(
+                return_value=MergeResult(sha=None, merged=False, message="nope")
+            )
+            MockGH.return_value = mock_gh
+            result = runner.invoke(
+                pr_app, ["merge", "42", "--override", "--reason", "hotfix"]
+            )
+
+        assert result.exit_code != 0
+        assert get_pr_merge_override(gated_workspace, 42) is None
+
 class TestPRCloseCommand:
     """Tests for 'codeframe pr close' command."""
 

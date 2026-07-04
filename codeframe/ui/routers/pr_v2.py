@@ -686,6 +686,7 @@ async def merge_pull_request(
             ),
         )
 
+    bypassed: list[dict] = []
     if open_reqs:
         bypassed = [{"id": r.id, "title": r.title} for r in open_reqs]
         if not override:
@@ -698,17 +699,29 @@ async def merge_pull_request(
                     f"{summary}. Satisfy or waive them, or pass override=true with a reason.",
                 ),
             )
-        proof_ledger.save_merge_override(
-            workspace,
-            pr_number=pr_number,
-            actor=auth.get("user_id") or "local-admin",
-            reason=override_reason,
-            bypassed=bypassed,
-        )
 
     client = _get_github_client()
     try:
         result = await client.merge_pull_request(pr_number, method=method)
+
+        if result.merged and bypassed:
+            # Persist the audited override only after the merge actually
+            # happened — a failed merge must not leave a bypass record. If the
+            # audit write itself fails, the merge is already done: log loudly
+            # but report the merge result truthfully.
+            try:
+                proof_ledger.save_merge_override(
+                    workspace,
+                    pr_number=pr_number,
+                    actor=auth.get("user_id") or "local-admin",
+                    reason=override_reason,
+                    bypassed=bypassed,
+                )
+            except Exception as audit_err:
+                logger.error(
+                    f"Merge of PR #{pr_number} succeeded but override audit write failed: {audit_err}",
+                    exc_info=True,
+                )
 
         # Outbound webhook for pr.merged (issue #560) — only on successful
         # merge, never raises into the caller.
