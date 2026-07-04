@@ -201,7 +201,8 @@ def _github_error_http(e: GitHubAPIError) -> HTTPException:
 
     A 401 from GitHub means our stored credential was rejected upstream, not
     that the caller's CodeFRAME session expired — and the web UI logs the user
-    out on any 401 response (#734). Other statuses propagate verbatim.
+    out on any 401 response (#734). Other statuses propagate verbatim (with
+    the generic EXECUTION_FAILED error code).
     """
     if e.status_code == 401:
         return HTTPException(

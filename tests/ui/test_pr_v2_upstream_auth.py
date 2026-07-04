@@ -56,6 +56,7 @@ def _client_raising_401() -> MagicMock:
     ("method", "url", "body"),
     [
         ("GET", "/api/v2/pr", None),
+        ("GET", "/api/v2/pr/history", None),
         ("GET", "/api/v2/pr/5/files", None),
         ("GET", "/api/v2/pr/5", None),
         ("POST", "/api/v2/pr", {"branch": "feat", "title": "t"}),
