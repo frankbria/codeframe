@@ -92,7 +92,7 @@ This is quality compounding interest. Over time, the system becomes harder to br
 The SHIP layer connects verified code to production:
 
 - Pull requests carry a proof report showing which obligations passed, which were waived, and what evidence was produced.
-- Merge is gated on PROOF9 pass (configurable strictness).
+- Merge is gated on PROOF9 pass — enforced at both the merge API and `cf pr merge`; open (non-waived) requirements block the merge unless a human supplies an explicit, audited override (actor + reason recorded).
 - Deployment hooks run post-merge.
 - If a glitch is found after deployment, the capture loop feeds it back to PROVE, which generates a new REQ, which is enforced on every subsequent build.
 

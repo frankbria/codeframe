@@ -19,7 +19,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from codeframe.auth.api_keys import SCOPE_ADMIN
-from codeframe.auth.dependencies import require_scope
+from codeframe.auth.dependencies import require_auth, require_scope
+from codeframe.core.proof.models import ReqStatus
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.git.github_integration import GitHubIntegration, GitHubAPIError, PRDetails
@@ -70,6 +71,12 @@ class MergePRRequest(BaseModel):
     """Request for merging a pull request."""
 
     method: str = Field("squash", description="Merge method: merge, squash, or rebase")
+    override: bool = Field(
+        False, description="Explicitly bypass the PROOF9 merge gate (audited)"
+    )
+    override_reason: Optional[str] = Field(
+        None, description="Why the gate is being bypassed (required when override=true)"
+    )
 
 
 class MergeResponse(BaseModel):
@@ -113,6 +120,15 @@ class ProofSnapshotOut(BaseModel):
     gate_breakdown: list[GateBreakdownItem]
 
 
+class MergeOverrideOut(BaseModel):
+    """Audited PROOF9 merge-gate override record (#731)."""
+
+    actor: str
+    reason: str
+    bypassed_count: int
+    overridden_at: str
+
+
 class PRHistoryItem(BaseModel):
     """A single merged PR with optional proof snapshot."""
 
@@ -122,6 +138,7 @@ class PRHistoryItem(BaseModel):
     author: Optional[str]
     url: str
     proof_snapshot: Optional[ProofSnapshotOut]
+    merge_override: Optional[MergeOverrideOut] = None
 
 
 class PRFilesResponse(BaseModel):
@@ -382,7 +399,7 @@ async def get_pr_history(
     Returns:
         PRHistoryResponse with merged PRs and proof snapshots
     """
-    from codeframe.core.proof.ledger import get_pr_proof_snapshot
+    from codeframe.core.proof.ledger import get_pr_merge_override, get_pr_proof_snapshot
 
     client = _get_github_client()
     try:
@@ -405,6 +422,7 @@ async def get_pr_history(
                         GateBreakdownItem(**g) for g in snapshot["gate_breakdown"]
                     ],
                 )
+            override = get_pr_merge_override(workspace, pr.number)
             items.append(
                 PRHistoryItem(
                     number=pr.number,
@@ -413,6 +431,12 @@ async def get_pr_history(
                     author=pr.author,
                     url=pr.url,
                     proof_snapshot=proof_snapshot,
+                    merge_override=MergeOverrideOut(
+                        actor=override["actor"],
+                        reason=override["reason"],
+                        bypassed_count=len(override["bypassed"]),
+                        overridden_at=override["overridden_at"],
+                    ) if override else None,
                 )
             )
 
@@ -612,19 +636,75 @@ async def merge_pull_request(
     pr_number: int,
     body: MergePRRequest = None,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> MergeResponse:
     """Merge a pull request.
+
+    The PROOF9 merge gate (#731) runs first: open (non-waived) requirements
+    block the merge unless the caller sets override=true with a reason, which
+    is persisted as an audit record.
 
     Args:
         request: HTTP request for rate limiting
         pr_number: PR number to merge
         body: Merge options
         workspace: v2 Workspace (for context)
+        auth: Authenticated principal (override audit actor)
 
     Returns:
         Merge result
     """
     method = body.method if body else "squash"
+    override = bool(body and body.override)
+    override_reason = (body.override_reason or "").strip() if body else ""
+
+    if override and not override_reason:
+        raise HTTPException(
+            status_code=422,
+            detail=api_error(
+                "override_reason is required when override=true",
+                ErrorCodes.VALIDATION_ERROR,
+                "Provide a reason for bypassing the PROOF9 merge gate",
+            ),
+        )
+
+    # PROOF9 merge gate: a ledger failure blocks the merge (explicit 500)
+    # rather than silently allowing an ungated merge.
+    from codeframe.core.proof import ledger as proof_ledger
+
+    try:
+        proof_ledger.init_proof_tables(workspace)
+        open_reqs = proof_ledger.list_requirements(workspace, status=ReqStatus.OPEN)
+    except Exception as e:
+        logger.error(f"PROOF9 gate check failed for PR #{pr_number}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=api_error(
+                "PROOF9 gate check failed — merge blocked",
+                ErrorCodes.EXECUTION_FAILED,
+                str(e),
+            ),
+        )
+
+    if open_reqs:
+        bypassed = [{"id": r.id, "title": r.title} for r in open_reqs]
+        if not override:
+            summary = ", ".join(f"{b['id']}: {b['title']}" for b in bypassed[:10])
+            raise HTTPException(
+                status_code=409,
+                detail=api_error(
+                    f"PROOF9 merge gate: {len(open_reqs)} open requirement(s) block this merge",
+                    ErrorCodes.INVALID_STATE,
+                    f"{summary}. Satisfy or waive them, or pass override=true with a reason.",
+                ),
+            )
+        proof_ledger.save_merge_override(
+            workspace,
+            pr_number=pr_number,
+            actor=auth.get("user_id") or "local-admin",
+            reason=override_reason,
+            bypassed=bypassed,
+        )
 
     client = _get_github_client()
     try:

@@ -386,6 +386,52 @@ def get_pr(
         raise typer.Exit(1)
 
 
+def _check_merge_gate(pr_number: int, override: bool, override_reason: Optional[str]) -> None:
+    """PROOF9 merge gate (#731): block on open requirements in the cwd workspace.
+
+    No workspace in cwd → nothing to gate. Open requirements → exit unless
+    --override with a --reason is given, in which case an audit record is
+    persisted before the merge proceeds.
+    """
+    from codeframe.core.proof import ledger as proof_ledger
+    from codeframe.core.proof.models import ReqStatus
+    from codeframe.core.workspace import get_workspace
+
+    reason = (override_reason or "").strip()
+    if override and not reason:
+        console.print("[red]Error:[/red] --reason is required with --override")
+        raise typer.Exit(1)
+
+    try:
+        workspace = get_workspace(Path.cwd())
+    except FileNotFoundError:
+        return
+
+    open_reqs = proof_ledger.list_requirements(workspace, status=ReqStatus.OPEN)
+    if not open_reqs:
+        return
+
+    if not override:
+        console.print(
+            f"[red]PROOF9 merge gate:[/red] {len(open_reqs)} open requirement(s) block this merge:"
+        )
+        for r in open_reqs[:10]:
+            console.print(f"  - {r.id}: {r.title}")
+        console.print('Satisfy or waive them, or pass --override --reason "...".')
+        raise typer.Exit(1)
+
+    proof_ledger.save_merge_override(
+        workspace,
+        pr_number=pr_number,
+        actor=os.environ.get("USER") or "cli",
+        reason=reason,
+        bypassed=[{"id": r.id, "title": r.title} for r in open_reqs],
+    )
+    console.print(
+        f"[yellow]PROOF9 merge gate overridden[/yellow] ({len(open_reqs)} open requirement(s) bypassed — audited)"
+    )
+
+
 @pr_app.command("merge")
 def merge_pr(
     pr_number: int = typer.Argument(..., help="PR number to merge"),
@@ -395,10 +441,22 @@ def merge_pr(
         "-s",
         help="Merge strategy: squash, merge, rebase",
     ),
+    override: bool = typer.Option(
+        False,
+        "--override",
+        help="Bypass the PROOF9 merge gate (recorded in the audit ledger)",
+    ),
+    override_reason: Optional[str] = typer.Option(
+        None,
+        "--reason",
+        help="Why the gate is bypassed (required with --override)",
+    ),
 ):
     """Merge a pull request.
 
-    Merges the specified PR using the chosen merge strategy.
+    Merges the specified PR using the chosen merge strategy. Open (non-waived)
+    PROOF9 requirements in the current workspace block the merge unless
+    --override with --reason is given.
 
     Examples:
 
@@ -406,6 +464,8 @@ def merge_pr(
 
         codeframe pr merge 42 --strategy rebase
     """
+    _check_merge_gate(pr_number, override, override_reason)
+
     try:
         token, repo = _get_github_config()
 

@@ -812,13 +812,15 @@ codeframe pr get 42 --format json
 
 ---
 
-### `codeframe pr merge <pr-number> [--strategy squash|merge|rebase]`
-**Purpose:** Merge pull request with specified strategy.
+### `codeframe pr merge <pr-number> [--strategy squash|merge|rebase] [--override --reason "..."]`
+**Purpose:** Merge pull request with specified strategy. The PROOF9 merge gate (#731) blocks the merge while the workspace has open (non-waived) requirements; `--override --reason "..."` bypasses it and records an audit entry.
 
 **CLI module:**
 - `codeframe/cli/pr_commands.py`
 
 **Core calls:**
+- `proof.ledger.list_requirements(workspace, status=OPEN)` (merge gate)
+- `proof.ledger.save_merge_override(...)` (when overridden)
 - `GitHubIntegration.get_pull_request(pr_number)` (validate state)
 - `GitHubIntegration.merge_pull_request(pr_number, method)`
 
@@ -826,6 +828,7 @@ codeframe pr get 42 --format json
 ```bash
 codeframe pr merge 42
 codeframe pr merge 42 --strategy rebase
+codeframe pr merge 42 --override --reason "hotfix: gate requirement is stale"
 ```
 
 ---

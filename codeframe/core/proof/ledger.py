@@ -98,6 +98,18 @@ def init_proof_tables(workspace: Workspace) -> None:
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pr_merge_overrides (
+            pr_number INTEGER NOT NULL,
+            workspace_id TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            bypassed TEXT NOT NULL,
+            overridden_at TEXT NOT NULL,
+            PRIMARY KEY (pr_number, workspace_id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -118,6 +130,11 @@ def _ensure_tables(workspace: Workspace) -> None:
     if not missing:
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='pr_proof_snapshots'"
+        )
+        missing = not cursor.fetchone()
+    if not missing:
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='pr_merge_overrides'"
         )
         missing = not cursor.fetchone()
     conn.close()
@@ -628,4 +645,62 @@ def get_pr_proof_snapshot(
         "gates_total": row[2],
         "gate_breakdown": json.loads(row[3]),
         "snapshotted_at": row[4],
+    }
+
+
+# --- PR Merge-Gate Overrides (#731) ---
+
+
+def save_merge_override(
+    workspace: Workspace,
+    pr_number: int,
+    actor: str,
+    reason: str,
+    bypassed: list[dict],
+) -> None:
+    """Record an audited override of the PROOF9 merge gate.
+
+    ``bypassed`` is a list of {"id", "title"} summaries of the open
+    requirements the merge proceeded past.
+    """
+    _ensure_tables(workspace)
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+    cursor.execute(
+        """INSERT OR REPLACE INTO pr_merge_overrides
+           (pr_number, workspace_id, actor, reason, bypassed, overridden_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (
+            pr_number,
+            workspace.id,
+            actor,
+            reason,
+            json.dumps(bypassed),
+            _utc_now().isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_pr_merge_override(workspace: Workspace, pr_number: int) -> Optional[dict]:
+    """Fetch the merge-gate override record for a PR, if any."""
+    _ensure_tables(workspace)
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+    cursor.execute(
+        """SELECT pr_number, actor, reason, bypassed, overridden_at
+           FROM pr_merge_overrides WHERE pr_number = ? AND workspace_id = ?""",
+        (pr_number, workspace.id),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "pr_number": row[0],
+        "actor": row[1],
+        "reason": row[2],
+        "bypassed": json.loads(row[3]),
+        "overridden_at": row[4],
     }
