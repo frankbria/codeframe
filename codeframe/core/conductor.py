@@ -964,8 +964,9 @@ def resume_batch(
         tasks_to_run = batch.task_ids
         logger.info(f"Resuming batch {batch_id[:8]}... (force mode: re-running all {len(tasks_to_run)} tasks)")
     else:
-        # Only re-run failed/blocked tasks
-        failed_statuses = {"FAILED", "BLOCKED"}
+        # Only re-run failed/blocked tasks. "RUNNING" is a stale result left by
+        # a crashed/killed subprocess (#742) — treat it as retryable too.
+        failed_statuses = {"FAILED", "BLOCKED", "RUNNING"}
         tasks_to_run = [
             tid for tid in batch.task_ids
             if batch.results.get(tid) in failed_statuses or tid not in batch.results
@@ -2159,6 +2160,21 @@ def _execute_task_subprocess(
         # The subprocess should have updated the run record
         run = get_active_run(workspace, task_id)
         if run:
+            # Child crashed/was SIGTERMed before finalizing its run row, so the
+            # run is still RUNNING. Returning "RUNNING" would record a stale
+            # terminal result (never retried by resume) and leave an active run
+            # that blocks the next start_task_run. Reconcile to FAILED (#742).
+            if run.status == RunStatus.RUNNING and returncode != 0:
+                from codeframe.core.runtime import fail_run
+                try:
+                    fail_run(
+                        workspace,
+                        run.id,
+                        reason=f"subprocess exited {returncode} with run still RUNNING",
+                    )
+                except ValueError:
+                    pass  # Raced to terminal elsewhere; FAILED is still correct.
+                return RunStatus.FAILED.value
             return run.status.value
 
         # If no active run, check if there's a recent completed/failed run
