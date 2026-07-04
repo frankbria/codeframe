@@ -20,6 +20,15 @@ from codeframe.notifications.webhook import (
 pytestmark = pytest.mark.v2
 
 
+@pytest.fixture(autouse=True)
+def _skip_ssrf_guard(monkeypatch):
+    """These tests cover transport behavior with fake hosts (example.com) and
+    a fully mocked ClientSession — opt out of the #746 dispatch-time host
+    check so no real DNS resolution happens. The guard itself is covered in
+    test_webhook_ssrf_guard.py."""
+    monkeypatch.setenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", "1")
+
+
 def _mock_post(status: int):
     """Build the AsyncMock chain that mirrors aiohttp's session.post() context."""
     mock_response = AsyncMock()

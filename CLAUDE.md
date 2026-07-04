@@ -315,12 +315,16 @@ JWT_LIFETIME_SECONDS=86400            # JWT validity window; default 24h (was 7d
                                       # (web-ui/security-headers.js) to contain
                                       # XSS-based token exfiltration.
 
-# Outbound webhook SSRF guard (#656) — default OFF (block)
+# Outbound webhook SSRF guard (#656, #746) — default OFF (block)
 CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1    # Allow webhook URLs whose host resolves to
-                                      # private/loopback/link-local/metadata IPs.
-                                      # Off by default: such hosts are rejected by
-                                      # the notifications save + test endpoints to
-                                      # prevent SSRF (e.g. 169.254.169.254 IMDS).
+                                      # private/loopback/link-local/metadata/CGNAT
+                                      # IPs. Off by default: such hosts are
+                                      # rejected at save time (notifications save
+                                      # + test endpoints) AND at dispatch time
+                                      # (#746): send_event resolves-and-checks
+                                      # the host and pins the vetted IPs into the
+                                      # connector (defeats hand-edited config and
+                                      # DNS rebinding; e.g. 169.254.169.254 IMDS).
                                       # Set for self-hosted ops with legit internal
                                       # webhook targets (localhost, RFC1918).
 

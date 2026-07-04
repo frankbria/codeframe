@@ -16,10 +16,7 @@ require a workspace. Env vars take precedence at read time. Notifications
 config is per-workspace and persisted under .codeframe/notifications_config.json.
 """
 
-import ipaddress
 import logging
-import os
-import socket
 
 from typing import Optional, cast
 
@@ -48,8 +45,11 @@ from codeframe.core.credentials import (
     validate_credential_format,
 )
 from codeframe.core.notifications_config import (
+    UnsafeWebhookHostError,
+    allow_private_webhook_hosts,
     load_notifications_config,
     save_notifications_config,
+    vet_webhook_host,
 )
 from codeframe.core.workspace import Workspace
 from codeframe.notifications.webhook import (
@@ -468,75 +468,27 @@ async def get_notification_settings(
 _ALLOWED_WEBHOOK_SCHEMES = frozenset({"http", "https"})
 
 
-def _allow_private_webhook_hosts() -> bool:
-    """Opt-out for the SSRF host check.
-
-    Off by default (block private/internal targets). Self-hosted operators who
-    legitimately point webhooks at ``localhost`` or an internal service set
-    ``CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1`` — read at request time so it can be
-    toggled without a restart.
-    """
-    return os.getenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-
-
 def _assert_webhook_host_is_public(hostname: str) -> None:
     """Reject webhook hosts that resolve to internal/metadata/private IPs.
 
     Blocks the SSRF vector where an authenticated user points the webhook at
     ``169.254.169.254`` (cloud IMDS), ``127.0.0.1``, or an RFC1918 address —
     the ``/notifications/test`` endpoint fires the URL immediately and returns
-    the HTTP status, a blind-to-semi-blind SSRF primitive. IP literals are
-    checked directly; DNS names are resolved and every returned address is
-    checked. A host that cannot be resolved is allowed through — it isn't
+    the HTTP status, a blind-to-semi-blind SSRF primitive. Delegates to the
+    core guard (``vet_webhook_host``, shared with the #746 dispatch-time
+    check in ``send_event``, which also pins the resolved IPs to defeat DNS
+    rebinding). A host that cannot be resolved is allowed through — it isn't
     reachable right now, and we don't want to block saving a not-yet-live URL.
-
-    Known limitation: resolve-and-check, not a request-time pinned connector,
-    so DNS rebinding (public at save, private at fire) is out of scope.
-    Upgrade path: pin the resolved IP through a custom aiohttp connector in
-    ``send_event``.
     """
-    if _allow_private_webhook_hosts():
+    if allow_private_webhook_hosts():
         return
-
     try:
-        candidates = [ipaddress.ip_address(hostname)]
-    except ValueError:
-        try:
-            candidates = [
-                ipaddress.ip_address(info[4][0])
-                for info in socket.getaddrinfo(
-                    hostname, None, proto=socket.IPPROTO_TCP
-                )
-            ]
-        except socket.gaierror:
-            return  # unresolvable now → not reachable now; don't block the save
-
-    for ip in candidates:
-        # ::ffff:169.254.169.254 — judge by the embedded IPv4 address.
-        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-            ip = ip.ipv4_mapped
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=api_error(
-                    f"Webhook host resolves to a private/internal address "
-                    f"({ip}); refusing to avoid SSRF. Set "
-                    f"CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1 to allow internal targets.",
-                    ErrorCodes.VALIDATION_ERROR,
-                ),
-            )
+        vet_webhook_host(hostname)
+    except UnsafeWebhookHostError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR),
+        )
 
 
 def _validate_webhook_url(url: Optional[str]) -> Optional[str]:
