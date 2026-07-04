@@ -1,6 +1,8 @@
 """Tests for SubprocessAdapter base class."""
 
 import subprocess
+import sys
+import time
 
 import pytest
 from pathlib import Path
@@ -196,6 +198,36 @@ class TestSubprocessAdapterRun:
         assert result.status == "failed"
         assert "timed out" in result.error
         mock_process.kill.assert_called_once()
+
+    def test_real_child_stalling_with_stdout_open_is_killed_at_timeout(self, tmp_path):
+        """A real child that keeps stdout open past the timeout must be killed (#736).
+
+        Regression: previously stdout was read inline, so a child that wrote a
+        line then blocked with stdout open hung the run forever — the
+        process.wait(timeout=...) was never reached.
+        """
+        # Print one line, then block far longer than the timeout with stdout open.
+        script = "import sys, time; print('working', flush=True); time.sleep(60)"
+
+        class _PyAdapter(SubprocessAdapter):
+            def build_command(self, prompt, workspace_path):
+                return [sys.executable, "-c", script]
+
+            def get_stdin(self, prompt):
+                return None
+
+        with patch("shutil.which", return_value=sys.executable):
+            adapter = _PyAdapter("python", timeout_s=1)
+
+        with patch.object(SubprocessAdapter, "_detect_modified_files", return_value=[]):
+            start = time.monotonic()
+            result = adapter.run("task-1", "go", tmp_path)
+            elapsed = time.monotonic() - start
+
+        assert result.status == "failed"
+        assert "timed out" in result.error
+        assert "working" in result.output  # streamed output before the stall
+        assert elapsed < 30  # bounded by the timeout, not the 60s sleep
 
 
 class TestSubprocessAdapterBuildCommand:
