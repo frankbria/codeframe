@@ -449,7 +449,8 @@ class TestStubs:
         assert Gate.UNIT in stubs
         assert Gate.E2E in stubs
 
-    def _req(self, gates):
+    @staticmethod
+    def _req(gates):
         from codeframe.core.proof.models import (
             Requirement, Severity, Source, RequirementScope, Obligation,
         )

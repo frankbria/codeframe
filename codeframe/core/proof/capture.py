@@ -72,11 +72,13 @@ def capture_requirement(
         glitch_type=glitch_type,
     )
 
-    # 6. Persist
-    ledger.save_requirement(workspace, req)
-
-    # 7. Generate test stubs and write them to disk
+    # 6. Generate test stubs and write them to disk BEFORE persisting the
+    # requirement: if the write fails, no REQ id is burned (next_req_id is
+    # MAX-based) and a retry reuses the same id + files (skip-if-exists).
     stubs = generate_stubs(req)
     stub_paths = write_stub_files(workspace, req, stubs)
+
+    # 7. Persist
+    ledger.save_requirement(workspace, req)
 
     return req, stub_paths

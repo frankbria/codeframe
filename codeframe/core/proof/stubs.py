@@ -4,11 +4,14 @@ Generates skeleton test files for each proof gate obligation.
 Uses inline templates (no Jinja2 dependency for simplicity).
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 from codeframe.core.proof.models import Gate, Requirement
 from codeframe.core.workspace import Workspace
+
+logger = logging.getLogger(__name__)
 
 # Per-gate file extension for written stubs. Pytest gates default to .py;
 # E2E stubs are Playwright TypeScript, DEMO/MANUAL are markdown-ish scripts.
@@ -60,7 +63,7 @@ def test_contract_{slug}():
 // E2E test for {req_id}: {title}
 //
 // Draft stub — rename to {filename}.spec.ts once implemented so Playwright
-// collects it, then run: npx playwright test {filename}.spec.ts
+// collects it, then run: npx playwright test tests/proof/{req_id}/{filename}.spec.ts
 import {{ test, expect }} from '@playwright/test';
 
 test('{title}', async ({{ page }}) => {{
@@ -137,7 +140,7 @@ def test_sec_{slug}():
 # Demo walkthrough for {req_id}: {title}
 
 An automated demo script that proves the feature works.
-Run with: showboat exec {filename}.md
+Run with: showboat exec tests/proof/{req_id}/{filename}.md
 
 ## Steps
 1. TODO: Navigate to the feature
@@ -220,7 +223,9 @@ def write_stub_files(
         ext = _EXTENSIONS.get(gate, _DEFAULT_EXTENSION)
         prefix = "draft_" if ext == ".py" else ""
         path = target / f"{prefix}test_{slug}_{gate.value}{ext}"
-        if not path.exists():
+        if path.exists():
+            logger.debug("stub already exists, not overwriting: %s", path)
+        else:
             path.write_text(content, encoding="utf-8")
         paths[gate] = path
 
