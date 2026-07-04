@@ -18,13 +18,17 @@ Usage:
 """
 
 import asyncio
+import getpass
 import json
 import logging
 import os
 import subprocess
 from dataclasses import asdict
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from codeframe.core.workspace import Workspace
 
 import typer
 from rich.table import Table
@@ -386,6 +390,54 @@ def get_pr(
         raise typer.Exit(1)
 
 
+def _check_merge_gate(
+    override: bool, override_reason: Optional[str]
+) -> Optional[tuple["Workspace", list[dict]]]:
+    """PROOF9 merge gate (#731): block on open requirements in the cwd workspace.
+
+    No workspace in cwd → nothing to gate. Open requirements → exit unless
+    --override with a --reason is given. Returns (workspace, bypassed) when an
+    override is pending so the caller can persist the audit record after the
+    merge actually succeeds, or None when nothing was bypassed.
+    """
+    from codeframe.core.proof import ledger as proof_ledger
+    from codeframe.core.proof.models import ReqStatus
+    from codeframe.core.workspace import get_workspace
+
+    reason = (override_reason or "").strip()
+    if override and not reason:
+        console.print("[red]Error:[/red] --reason is required with --override")
+        raise typer.Exit(1)
+
+    try:
+        workspace = get_workspace(Path.cwd())
+    except FileNotFoundError:
+        return None
+
+    try:
+        open_reqs = proof_ledger.list_requirements(workspace, status=ReqStatus.OPEN)
+    except Exception as e:
+        # Fail closed, like the API path: a broken ledger blocks the merge.
+        console.print(f"[red]PROOF9 gate check failed:[/red] {e} — merge blocked")
+        raise typer.Exit(1)
+    if not open_reqs:
+        return None
+
+    if not override:
+        console.print(
+            f"[red]PROOF9 merge gate:[/red] {len(open_reqs)} open requirement(s) block this merge:"
+        )
+        for r in open_reqs[:10]:
+            console.print(f"  - {r.id}: {r.title}")
+        console.print('Satisfy or waive them, or pass --override --reason "...".')
+        raise typer.Exit(1)
+
+    console.print(
+        f"[yellow]PROOF9 merge gate overridden[/yellow] ({len(open_reqs)} open requirement(s) bypassed — audited)"
+    )
+    return workspace, [{"id": r.id, "title": r.title} for r in open_reqs]
+
+
 @pr_app.command("merge")
 def merge_pr(
     pr_number: int = typer.Argument(..., help="PR number to merge"),
@@ -395,10 +447,22 @@ def merge_pr(
         "-s",
         help="Merge strategy: squash, merge, rebase",
     ),
+    override: bool = typer.Option(
+        False,
+        "--override",
+        help="Bypass the PROOF9 merge gate (recorded in the audit ledger)",
+    ),
+    override_reason: Optional[str] = typer.Option(
+        None,
+        "--reason",
+        help="Why the gate is bypassed (required with --override)",
+    ),
 ):
     """Merge a pull request.
 
-    Merges the specified PR using the chosen merge strategy.
+    Merges the specified PR using the chosen merge strategy. Open (non-waived)
+    PROOF9 requirements in the current workspace block the merge unless
+    --override with --reason is given.
 
     Examples:
 
@@ -406,6 +470,8 @@ def merge_pr(
 
         codeframe pr merge 42 --strategy rebase
     """
+    pending_override = _check_merge_gate(override, override_reason)
+
     try:
         token, repo = _get_github_config()
 
@@ -435,6 +501,22 @@ def merge_pr(
             raise typer.Exit(0)
 
         if result.merged:
+            if pending_override:
+                # Audit only a merge that actually happened (#731).
+                from codeframe.core.proof.ledger import save_merge_override
+
+                try:
+                    actor = getpass.getuser()
+                except OSError:
+                    actor = "cli"
+                gate_workspace, bypassed = pending_override
+                save_merge_override(
+                    gate_workspace,
+                    pr_number=pr_number,
+                    actor=actor,
+                    reason=(override_reason or "").strip(),
+                    bypassed=bypassed,
+                )
             console.print(f"[green]✓ PR #{pr_number} merged successfully[/green]")
             if result.sha:
                 console.print(f"[bold]Merge commit:[/bold] {result.sha[:7]}")

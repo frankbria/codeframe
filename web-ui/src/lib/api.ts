@@ -916,7 +916,12 @@ export const prApi = {
   ): Promise<MergeResponse> => {
     const response = await api.post<MergeResponse>(
       `/api/v2/pr/${prNumber}/merge`,
-      { method: request.method ?? 'squash' },
+      {
+        method: request.method ?? 'squash',
+        ...(request.override
+          ? { override: true, override_reason: request.override_reason }
+          : {}),
+      },
       { params: { workspace_path: workspacePath } }
     );
     return response.data;

@@ -304,6 +304,10 @@ export interface CreatePRRequest {
 
 export interface MergePRRequest {
   method?: 'squash' | 'merge' | 'rebase';
+  /** Explicitly bypass the PROOF9 merge gate (audited server-side). */
+  override?: boolean;
+  /** Required when override is true. */
+  override_reason?: string;
 }
 
 export interface MergeResponse {
@@ -481,6 +485,13 @@ export interface ProofSnapshot {
   gate_breakdown: GateBreakdownItem[];
 }
 
+export interface MergeOverride {
+  actor: string;
+  reason: string;
+  bypassed_count: number;
+  overridden_at: string;
+}
+
 export interface PRHistoryItem {
   number: number;
   title: string;
@@ -488,6 +499,7 @@ export interface PRHistoryItem {
   author: string | null;
   url: string;
   proof_snapshot: ProofSnapshot | null;
+  merge_override?: MergeOverride | null;
 }
 
 export interface PRHistoryResponse {

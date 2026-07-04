@@ -327,7 +327,7 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - [x] Quality compounding: every failure becomes a permanent proof obligation
 - [ ] Run gates from the web UI (backend ready, frontend pending)
 - [ ] Glitch capture web UI
-- [ ] Merge gating on PROOF9 pass (web UI)
+- [x] Merge gating on PROOF9 pass -- enforced server-side at the merge API, with an explicit audited override (actor + reason)
 
 ### SHIP (delivery confidence)
 - [ ] PR status tracking + CI check display in web UI
@@ -343,7 +343,7 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - [x] Interactive Agent Sessions — chat panel (tool calls, thinking blocks), XTerm.js terminal, SplitPane layout
 - [x] Run gates button, live gate progress, per-gate evidence display, run history panel (PROOF9 page)
 - [ ] Glitch capture form and REQ detail view
-- [ ] PR status panel with PROOF9-gated merge button
+- [x] PR status panel with PROOF9-gated merge button (gate also enforced server-side)
 
 ---
 

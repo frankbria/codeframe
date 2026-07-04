@@ -199,7 +199,7 @@ These are items that were considered and excluded because they do not serve the 
 | 3.5A | Bidirectional agent chat | ✅ Complete | #500–509 |
 | 3.5B | Run gates from the web UI | ✅ Complete | #566, #567, #574, #575 |
 | 3.5C | Glitch capture UI | ✅ Complete | #568, #569 |
-| 4A | PR status + PROOF9 merge gate | ❌ Not started | — |
+| 4A | PR status + PROOF9 merge gate | 🚧 In progress (PR status panel + gated merge button #583; server-side merge gate with audited override #731) | #571, #731 |
 | 4B | Post-merge glitch capture loop | ❌ Not started | — |
 | 5.1 | Settings page (skeleton + agent config + PROOF9/workspace tabs) | ✅ Complete | #554–556 |
 | 5.2 | Cost analytics | ✅ Complete | #557–558 |
@@ -207,6 +207,6 @@ These are items that were considered and excluded because they do not serve the 
 | 5.4 | PRD stress-test web UI | ✅ Complete (trigger + streaming #561; results view + refinement #562) | #561–562 |
 | 5.5 | GitHub Issues import | 🚧 In progress (repo connection via PAT #563) | #563–565 |
 
-**Current focus**: Phase 4A — PR status tracking + PROOF9 merge gate.
+**Current focus**: Phase 4A — PR status tracking + PROOF9 merge gate. The merge gate is now enforced (#731): open (non-waived) requirements block `POST /api/v2/pr/{n}/merge` and `cf pr merge` unless an explicit override + reason is supplied, which is persisted as an audit record and surfaced in PR history. Remaining 4A follow-ups (not blockers): per-branch scope filtering of requirements, and the `vacuous_pass` distinction from #556.
 
 The ordering within Phase 5 is by onboarding impact. Settings (5.1) and cost (5.2) block new users earliest.

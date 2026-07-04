@@ -7,6 +7,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+- Server-side PROOF9 merge gate (#731): `POST /api/v2/pr/{n}/merge` now blocks while open (non-waived) requirements exist. An explicit `override: true` + `override_reason` bypasses the gate and records an audit entry (actor, reason, bypassed requirements, timestamp), surfaced as `merge_override` in `GET /api/v2/pr/history`. A proof-ledger failure blocks the merge (explicit 500) rather than silently allowing it.
+- The same gate applies to `cf pr merge`: open requirements in the cwd workspace block the merge unless `--override --reason "..."` is given, which persists the same audit record.
+
 ## [0.9.1] - 2026-06-13
 
 ### Added

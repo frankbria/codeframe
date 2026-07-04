@@ -290,8 +290,9 @@ class TestPRGetCommand:
 class TestPRMergeCommand:
     """Tests for 'codeframe pr merge' command."""
 
-    def test_merge_pr_success(self, mock_github_token, mock_pr_details):
+    def test_merge_pr_success(self, mock_github_token, mock_pr_details, tmp_path, monkeypatch):
         """Merge PR should call GitHub API."""
+        monkeypatch.chdir(tmp_path)  # isolate from any real workspace (merge gate)
         from codeframe.cli.pr_commands import pr_app
         from codeframe.git.github_integration import MergeResult
 
@@ -316,8 +317,9 @@ class TestPRMergeCommand:
         assert "merged" in result.output.lower()
         mock_gh.merge_pull_request.assert_called_once()
 
-    def test_merge_pr_with_strategy(self, mock_github_token, mock_pr_details):
+    def test_merge_pr_with_strategy(self, mock_github_token, mock_pr_details, tmp_path, monkeypatch):
         """Merge PR with specific strategy."""
+        monkeypatch.chdir(tmp_path)  # isolate from any real workspace (merge gate)
         from codeframe.cli.pr_commands import pr_app
         from codeframe.git.github_integration import MergeResult
 
@@ -341,8 +343,9 @@ class TestPRMergeCommand:
         assert result.exit_code == 0
         mock_gh.merge_pull_request.assert_called_once_with(42, method="rebase")
 
-    def test_merge_pr_not_found(self, mock_github_token):
+    def test_merge_pr_not_found(self, mock_github_token, tmp_path, monkeypatch):
         """Merge PR that doesn't exist shows error."""
+        monkeypatch.chdir(tmp_path)  # isolate from any real workspace (merge gate)
         from codeframe.cli.pr_commands import pr_app
         from codeframe.git.github_integration import GitHubAPIError
 
@@ -361,8 +364,9 @@ class TestPRMergeCommand:
         assert result.exit_code != 0
         assert "not found" in result.output.lower() or "error" in result.output.lower()
 
-    def test_merge_pr_already_merged(self, mock_github_token, mock_pr_details):
+    def test_merge_pr_already_merged(self, mock_github_token, mock_pr_details, tmp_path, monkeypatch):
         """Merge PR that's already merged shows appropriate message."""
+        monkeypatch.chdir(tmp_path)  # isolate from any real workspace (merge gate)
         from codeframe.cli.pr_commands import pr_app
         from codeframe.git.github_integration import PRDetails
 
@@ -391,6 +395,129 @@ class TestPRMergeCommand:
         # Should fail or show message that PR is already merged
         assert "merged" in result.output.lower() or "closed" in result.output.lower()
 
+
+class TestPRMergeGateCLI:
+    """PROOF9 merge gate on 'codeframe pr merge' (#731)."""
+
+    @pytest.fixture
+    def gated_workspace(self, tmp_path, monkeypatch):
+        """A workspace in cwd with one open requirement."""
+        from datetime import timezone
+
+        from codeframe.core.proof.ledger import init_proof_tables, save_requirement
+        from codeframe.core.proof.models import (
+            Gate,
+            Obligation,
+            ReqStatus,
+            Requirement,
+            RequirementScope,
+            Severity,
+            Source,
+        )
+        from codeframe.core.workspace import create_or_load_workspace
+
+        monkeypatch.chdir(tmp_path)
+        workspace = create_or_load_workspace(tmp_path)
+        init_proof_tables(workspace)
+        save_requirement(
+            workspace,
+            Requirement(
+                id="REQ-CLI-1",
+                title="cli gate req",
+                description="d",
+                severity=Severity.LOW,
+                source=Source.QA,
+                scope=RequirementScope(files=["x.py"]),
+                obligations=[Obligation(gate=Gate.UNIT)],
+                evidence_rules=[],
+                status=ReqStatus.OPEN,
+                created_at=datetime.now(timezone.utc),
+            ),
+        )
+        return workspace
+
+    def _mock_gh(self, mock_pr_details):
+        from codeframe.git.github_integration import MergeResult
+
+        mock_gh = AsyncMock()
+        mock_gh.get_pull_request = AsyncMock(return_value=mock_pr_details)
+        mock_gh.merge_pull_request = AsyncMock(
+            return_value=MergeResult(sha="abc", merged=True, message="ok")
+        )
+        mock_gh.close = AsyncMock()
+        return mock_gh
+
+    def test_open_requirements_block_merge(self, mock_github_token, mock_pr_details, gated_workspace):
+        from codeframe.cli.pr_commands import pr_app
+
+        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
+            mock_gh = self._mock_gh(mock_pr_details)
+            MockGH.return_value = mock_gh
+            result = runner.invoke(pr_app, ["merge", "42"])
+
+        assert result.exit_code != 0
+        assert "REQ-CLI-1" in result.output
+        mock_gh.merge_pull_request.assert_not_called()
+
+    def test_override_with_reason_merges_and_records(self, mock_github_token, mock_pr_details, gated_workspace):
+        from codeframe.cli.pr_commands import pr_app
+        from codeframe.core.proof.ledger import get_pr_merge_override
+
+        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
+            mock_gh = self._mock_gh(mock_pr_details)
+            MockGH.return_value = mock_gh
+            result = runner.invoke(
+                pr_app, ["merge", "42", "--override", "--reason", "hotfix"]
+            )
+
+        assert result.exit_code == 0
+        mock_gh.merge_pull_request.assert_called_once()
+        record = get_pr_merge_override(gated_workspace, 42)
+        assert record is not None
+        assert record["reason"] == "hotfix"
+        assert any(b["id"] == "REQ-CLI-1" for b in record["bypassed"])
+
+    def test_override_without_reason_rejected(self, mock_github_token, mock_pr_details, gated_workspace):
+        from codeframe.cli.pr_commands import pr_app
+
+        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
+            mock_gh = self._mock_gh(mock_pr_details)
+            MockGH.return_value = mock_gh
+            result = runner.invoke(pr_app, ["merge", "42", "--override"])
+
+        assert result.exit_code != 0
+        mock_gh.merge_pull_request.assert_not_called()
+
+    def test_no_workspace_merges_normally(self, mock_github_token, mock_pr_details, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        from codeframe.cli.pr_commands import pr_app
+
+        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
+            mock_gh = self._mock_gh(mock_pr_details)
+            MockGH.return_value = mock_gh
+            result = runner.invoke(pr_app, ["merge", "42"])
+
+        assert result.exit_code == 0
+        mock_gh.merge_pull_request.assert_called_once()
+
+    def test_failed_merge_writes_no_override_record(self, mock_github_token, mock_pr_details, gated_workspace):
+        """Override audit must only exist for merges that actually happened."""
+        from codeframe.cli.pr_commands import pr_app
+        from codeframe.core.proof.ledger import get_pr_merge_override
+        from codeframe.git.github_integration import MergeResult
+
+        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
+            mock_gh = self._mock_gh(mock_pr_details)
+            mock_gh.merge_pull_request = AsyncMock(
+                return_value=MergeResult(sha=None, merged=False, message="nope")
+            )
+            MockGH.return_value = mock_gh
+            result = runner.invoke(
+                pr_app, ["merge", "42", "--override", "--reason", "hotfix"]
+            )
+
+        assert result.exit_code != 0
+        assert get_pr_merge_override(gated_workspace, 42) is None
 
 class TestPRCloseCommand:
     """Tests for 'codeframe pr close' command."""
