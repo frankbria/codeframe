@@ -365,10 +365,11 @@ class TestToolCallEvents:
             and isinstance(m["content"], list)
             and any(b.get("type") == "tool_use" for b in m["content"])
         )
-        tool_use_block = next(
-            b for b in second_turn[assistant_idx]["content"]
-            if b["type"] == "tool_use"
-        )
+        blocks = second_turn[assistant_idx]["content"]
+        # Any preceding text block must come before the tool_use block
+        types = [b["type"] for b in blocks]
+        assert types == ["text", "tool_use"]
+        tool_use_block = next(b for b in blocks if b["type"] == "tool_use")
         assert tool_use_block["id"] == tool_id
         assert tool_use_block["name"] == "read_file"
         assert tool_use_block["input"] == tool_input
@@ -380,6 +381,43 @@ class TestToolCallEvents:
             b for b in result_msg["content"] if b["type"] == "tool_result"
         )
         assert result_block["tool_use_id"] == tool_id
+
+    async def test_tool_use_with_no_preceding_text(self, tmp_path):
+        """The model may emit tool_use with no leading text. The assistant
+        message must then carry only the tool_use block (a valid pairing)."""
+        tool_id = "tool_xyz"
+        tool_input = {"path": "main.py"}
+
+        provider = MockProvider()
+        provider.add_stream_chunks([
+            StreamChunk(
+                type="tool_use_start",
+                tool_id=tool_id,
+                tool_name="read_file",
+                tool_input=tool_input,
+            ),
+            StreamChunk(type="tool_use_stop"),
+            _stop_chunk(stop_reason="tool_use", tool_inputs_by_id={tool_id: tool_input}),
+        ])
+        provider.add_stream_chunks([
+            StreamChunk(type="text_delta", text="Done."),
+            _stop_chunk(),
+        ])
+
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
+
+        with patch.object(adapter, "_execute_tool", new_callable=AsyncMock) as mock_tool:
+            mock_tool.return_value = "contents"
+            _ = [e async for e in adapter.send_message("read main", [])]
+
+        second_turn = provider.calls[1]["messages"]
+        assistant_msg = next(
+            m for m in second_turn
+            if m["role"] == "assistant" and isinstance(m["content"], list)
+            and any(b.get("type") == "tool_use" for b in m["content"])
+        )
+        # Only the tool_use block, no empty text block
+        assert [b["type"] for b in assistant_msg["content"]] == ["tool_use"]
 
 
 # ---------------------------------------------------------------------------
