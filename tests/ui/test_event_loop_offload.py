@@ -4,6 +4,11 @@ A long-blocking core call (e.g. run_proof running a full test suite) executed
 directly inside an ``async def`` handler freezes the event loop — SSE
 heartbeats, WebSockets, and /health all stall. These tests assert the heavy
 handlers offload to a worker thread so concurrent requests stay responsive.
+
+Only the proof-run path is exercised here — it is the criterion named in the
+issue, and the other four handlers (gates_v2, discovery_v2, diagnose_v2,
+environment_v2) use the identical ``run_in_threadpool`` wrapper, so one
+regression test pins the mechanism without duplicating it five times.
 """
 
 import asyncio
@@ -26,6 +31,8 @@ MAX_HEALTH_SECONDS = 1.0
 
 @pytest.fixture
 def test_workspace():
+    # Minimal on purpose: the test monkeypatches run_proof wholesale, so no
+    # proof tables or seed data are ever touched.
     temp_dir = Path(tempfile.mkdtemp())
     workspace_path = temp_dir / "test_workspace"
     workspace_path.mkdir(parents=True, exist_ok=True)
