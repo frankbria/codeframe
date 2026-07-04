@@ -210,9 +210,11 @@ async def connect(
             detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR),
         )
     except InvalidTokenError as e:
+        # 400, never 401: a 401 here would make the web UI log the user out
+        # of CodeFRAME itself (#734). The supplied PAT is bad client input.
         raise HTTPException(
-            status_code=401,
-            detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR),
+            status_code=400,
+            detail=api_error(str(e), ErrorCodes.UPSTREAM_AUTH_FAILED),
         )
     except RepoNotFoundError as e:
         raise HTTPException(
@@ -362,9 +364,11 @@ async def get_issues(
             detail=api_error(str(e), ErrorCodes.CONFLICT),
         )
     except InvalidTokenError as e:
+        # 502, never 401: the stored PAT was rejected upstream — the caller's
+        # CodeFRAME session is fine (#734).
         raise HTTPException(
-            status_code=401,
-            detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR),
+            status_code=502,
+            detail=api_error(str(e), ErrorCodes.UPSTREAM_AUTH_FAILED),
         )
     except InsufficientScopeError as e:
         raise HTTPException(
@@ -412,8 +416,9 @@ def _require_connection(
 def _map_github_error(e: Exception) -> HTTPException:
     """Map a typed GitHub service error to an HTTPException (shared mapping)."""
     if isinstance(e, InvalidTokenError):
+        # 502, never 401: upstream credential failure, not session expiry (#734).
         return HTTPException(
-            status_code=401, detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR)
+            status_code=502, detail=api_error(str(e), ErrorCodes.UPSTREAM_AUTH_FAILED)
         )
     if isinstance(e, InsufficientScopeError):
         return HTTPException(

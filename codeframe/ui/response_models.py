@@ -162,6 +162,10 @@ class ErrorCodes:
     # Execution errors
     EXECUTION_FAILED = "EXECUTION_FAILED"
     TIMEOUT = "TIMEOUT"
+    # An upstream service (e.g. GitHub) rejected OUR stored credential.
+    # Distinct from UNAUTHORIZED so it is never carried on a 401 — the web UI
+    # treats any 401 as CodeFRAME session expiry and logs the user out (#734).
+    UPSTREAM_AUTH_FAILED = "UPSTREAM_AUTH_FAILED"
 
     # Server errors (5xx)
     INTERNAL_ERROR = "INTERNAL_ERROR"

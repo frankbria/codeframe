@@ -196,6 +196,29 @@ def _get_github_client() -> GitHubIntegration:
         )
 
 
+def _github_error_http(e: GitHubAPIError) -> HTTPException:
+    """Map a GitHubAPIError to an HTTPException without leaking GitHub's 401.
+
+    A 401 from GitHub means our stored credential was rejected upstream, not
+    that the caller's CodeFRAME session expired — and the web UI logs the user
+    out on any 401 response (#734). Other statuses propagate verbatim (with
+    the generic EXECUTION_FAILED error code).
+    """
+    if e.status_code == 401:
+        return HTTPException(
+            status_code=502,
+            detail=api_error(
+                "GitHub rejected the stored credential",
+                ErrorCodes.UPSTREAM_AUTH_FAILED,
+                e.message,
+            ),
+        )
+    return HTTPException(
+        status_code=e.status_code,
+        detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
+    )
+
+
 def _dispatch_pr_merged_webhook(workspace: Workspace, pr_number: int) -> None:
     """Best-effort outbound webhook for ``pr.merged`` (issue #560).
 
@@ -322,10 +345,7 @@ async def get_pr_status(
                 status_code=404,
                 detail=api_error("PR not found", ErrorCodes.NOT_FOUND, f"No PR #{pr_number}"),
             )
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
-        )
+        raise _github_error_http(e)
     except HTTPException:
         raise
     except Exception as e:
@@ -364,10 +384,7 @@ async def list_pull_requests(
         )
 
     except GitHubAPIError as e:
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
-        )
+        raise _github_error_http(e)
     except HTTPException:
         raise
     except Exception as e:
@@ -443,10 +460,7 @@ async def get_pr_history(
         return PRHistoryResponse(pull_requests=items, total=len(items))
 
     except GitHubAPIError as e:
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
-        )
+        raise _github_error_http(e)
     except HTTPException:
         raise
     except Exception as e:
@@ -485,10 +499,7 @@ async def get_pr_files(
                 status_code=404,
                 detail=api_error("PR not found", ErrorCodes.NOT_FOUND, f"No PR #{pr_number}"),
             )
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
-        )
+        raise _github_error_http(e)
     except HTTPException:
         raise
     except Exception as e:
@@ -529,10 +540,7 @@ async def get_pull_request(
                 status_code=404,
                 detail=api_error("PR not found", ErrorCodes.NOT_FOUND, f"No PR #{pr_number}"),
             )
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
-        )
+        raise _github_error_http(e)
     except HTTPException:
         raise
     except Exception as e:
@@ -609,10 +617,7 @@ async def create_pull_request(
         return _pr_to_response(pr)
 
     except GitHubAPIError as e:
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
-        )
+        raise _github_error_http(e)
     except HTTPException:
         raise
     except Exception as e:
@@ -749,10 +754,7 @@ async def merge_pull_request(
                 status_code=400,
                 detail=api_error("Cannot merge", ErrorCodes.INVALID_STATE, e.message),
             )
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
-        )
+        raise _github_error_http(e)
     except HTTPException:
         raise
     except Exception as e:
@@ -796,10 +798,7 @@ async def close_pull_request(
                 status_code=404,
                 detail=api_error("PR not found", ErrorCodes.NOT_FOUND, f"No PR #{pr_number}"),
             )
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=api_error("GitHub API error", ErrorCodes.EXECUTION_FAILED, e.message),
-        )
+        raise _github_error_http(e)
     except HTTPException:
         raise
     except Exception as e:

@@ -146,7 +146,9 @@ class TestConnect:
         )
         assert r.status_code == 400
 
-    def test_invalid_token_returns_401(self, client, monkeypatch):
+    def test_invalid_token_returns_400_upstream_auth_failed(self, client, monkeypatch):
+        # Never a raw 401 — the web-UI interceptor treats 401 as CodeFRAME
+        # session expiry and logs the user out (#734).
         from codeframe.core.github_connect_service import InvalidTokenError
 
         _mock_validate(monkeypatch, exc=InvalidTokenError("Invalid GitHub token."))
@@ -154,7 +156,8 @@ class TestConnect:
             "/api/v2/integrations/github/connect",
             json={"pat": "ghp_bad1234567890", "repo": "acme/app"},
         )
-        assert r.status_code == 401
+        assert r.status_code == 400
+        assert r.json()["detail"]["code"] == "UPSTREAM_AUTH_FAILED"
 
     def test_repo_not_found_returns_404(self, client, monkeypatch):
         from codeframe.core.github_connect_service import RepoNotFoundError
@@ -338,14 +341,16 @@ class TestListIssues:
         # Second identical request served from the 60s cache → no 2nd call.
         assert len(calls) == 1
 
-    def test_invalid_token_maps_to_401(self, client, monkeypatch):
+    def test_invalid_token_maps_to_502_upstream_auth_failed(self, client, monkeypatch):
+        # Revoked stored PAT is an upstream credential failure, never our 401 (#734).
         _clear_issue_cache()
         _connect(client, monkeypatch)
         from codeframe.core.github_connect_service import InvalidTokenError
 
         _mock_list_issues(monkeypatch, exc=InvalidTokenError("bad"))
         r = client.get("/api/v2/integrations/github/issues")
-        assert r.status_code == 401
+        assert r.status_code == 502
+        assert r.json()["detail"]["code"] == "UPSTREAM_AUTH_FAILED"
 
     def test_insufficient_scope_maps_to_403(self, client, monkeypatch):
         _clear_issue_cache()
@@ -396,6 +401,18 @@ class TestImport:
             "/api/v2/integrations/github/import", json={"issue_numbers": [1]}
         )
         assert r.status_code == 409
+
+    def test_invalid_token_maps_to_502_upstream_auth_failed(self, client, monkeypatch):
+        # Import with a revoked stored PAT → 502 UPSTREAM_AUTH_FAILED, not 401 (#734).
+        _connect(client, monkeypatch)
+        from codeframe.core.github_connect_service import InvalidTokenError
+
+        _mock_get_issue(monkeypatch, {}, exc=InvalidTokenError("bad"))
+        r = client.post(
+            "/api/v2/integrations/github/import", json={"issue_numbers": [1]}
+        )
+        assert r.status_code == 502
+        assert r.json()["detail"]["code"] == "UPSTREAM_AUTH_FAILED"
 
     def test_imports_create_tasks(self, client, monkeypatch, workspace):
         _connect(client, monkeypatch)
