@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from codeframe.core.workspace import (
+    SCHEMA_VERSION,
     Workspace,
     create_or_load_workspace,
     get_workspace,
@@ -261,3 +262,58 @@ class TestConcurrentWriters:
         finally:
             verify.close()
         assert count == 2
+
+
+class TestSchemaVersionGate:
+    """Issue #733: migrations run once, gated behind PRAGMA user_version."""
+
+    def _user_version(self, ws: Workspace) -> int:
+        conn = sqlite3.connect(ws.db_path)
+        try:
+            return conn.execute("PRAGMA user_version").fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_fresh_workspace_is_stamped(self, initialized_workspace: Workspace):
+        assert self._user_version(initialized_workspace) == SCHEMA_VERSION
+
+    def test_steady_state_load_issues_zero_writes(self, initialized_workspace: Workspace, temp_repo: Path):
+        # Warm load: stamps the version if needed.
+        get_workspace(temp_repo)
+
+        # PRAGMA data_version increments when any other connection commits a
+        # write to the database — steady-state loads must not move it.
+        monitor = sqlite3.connect(initialized_workspace.db_path)
+        try:
+            before = monitor.execute("PRAGMA data_version").fetchone()[0]
+            get_workspace(temp_repo)
+            get_workspace(temp_repo)
+            after = monitor.execute("PRAGMA data_version").fetchone()[0]
+        finally:
+            monitor.close()
+        assert after == before
+
+    def test_legacy_db_is_migrated_and_stamped(self, initialized_workspace: Workspace, temp_repo: Path):
+        # Simulate a legacy DB: drop a migrated column's table state by
+        # resetting user_version and removing a late-added column's index.
+        conn = sqlite3.connect(initialized_workspace.db_path)
+        conn.execute("PRAGMA user_version = 0")
+        conn.execute("DROP INDEX IF EXISTS idx_tasks_external_url")
+        conn.commit()
+        conn.close()
+
+        ws = get_workspace(temp_repo)
+        assert ws.id == initialized_workspace.id
+        assert self._user_version(ws) == SCHEMA_VERSION
+
+        conn = sqlite3.connect(ws.db_path)
+        try:
+            indexes = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index'"
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+        assert "idx_tasks_external_url" in indexes
