@@ -304,18 +304,35 @@ class WebhookNotificationService:
 
         # SSRF (#746): the save-time host check is not enough — the config
         # file can be hand-edited, and a host can rebind after save. Resolve
-        # and check here, then pin the vetted IPs into the connector.
+        # and check here, then pin the vetted IPs into the connector. The
+        # whole vetting block must uphold send_event's never-raises contract:
+        # urlparse can raise on malformed IPv6 brackets, getaddrinfo can
+        # raise UnicodeError on bad IDN labels, and a hung resolver must not
+        # stall the caller past self.timeout.
         session_kwargs: dict = {}
         if not allow_private_webhook_hosts():
-            hostname = urlparse(target_url).hostname
-            if not hostname:
-                return WebhookSendResult(
-                    ok=False, status_code=None, error="Webhook URL has no host"
-                )
             try:
-                # Blocking DNS — keep it off the event loop.
-                vetted = await asyncio.get_running_loop().run_in_executor(
-                    None, vet_webhook_host, hostname
+                hostname = urlparse(target_url).hostname
+                if not hostname:
+                    return WebhookSendResult(
+                        ok=False, status_code=None, error="Webhook URL has no host"
+                    )
+                # Blocking DNS — keep it off the event loop, bounded by the
+                # same timeout as the HTTP request.
+                vetted = await asyncio.wait_for(
+                    asyncio.get_running_loop().run_in_executor(
+                        None, vet_webhook_host, hostname
+                    ),
+                    timeout=self.timeout,
+                )
+                if not vetted:
+                    return WebhookSendResult(
+                        ok=False,
+                        status_code=None,
+                        error=f"Could not resolve webhook host {hostname!r}",
+                    )
+                session_kwargs["connector"] = aiohttp.TCPConnector(
+                    resolver=_PinnedResolver(hostname, vetted), use_dns_cache=False
                 )
             except UnsafeWebhookHostError as e:
                 logger.warning(
@@ -324,15 +341,20 @@ class WebhookNotificationService:
                     e,
                 )
                 return WebhookSendResult(ok=False, status_code=None, error=str(e))
-            if not vetted:
+            except asyncio.TimeoutError:
                 return WebhookSendResult(
                     ok=False,
                     status_code=None,
-                    error=f"Could not resolve webhook host {hostname!r}",
+                    error=f"Timed out resolving webhook host after {self.timeout}s",
                 )
-            session_kwargs["connector"] = aiohttp.TCPConnector(
-                resolver=_PinnedResolver(hostname, vetted), use_dns_cache=False
-            )
+            except Exception as e:
+                logger.error(
+                    "Webhook host vetting failed for event %s: %s",
+                    payload.get("event"),
+                    e,
+                    exc_info=True,
+                )
+                return WebhookSendResult(ok=False, status_code=None, error=str(e))
 
         try:
             async with aiohttp.ClientSession(**session_kwargs) as session:

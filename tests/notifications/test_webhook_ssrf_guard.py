@@ -218,3 +218,44 @@ async def test_send_event_refuses_url_without_host():
         result = await svc.send_event({"event": "test"})
     assert result.ok is False
     session.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_event_bounds_slow_dns_by_timeout():
+    """A hung resolver must not stall send_event past self.timeout — the
+    /notifications/test endpoint awaits this call directly."""
+    import time
+
+    svc = WebhookNotificationService(webhook_url="https://slow.example.com/hook", timeout=1)
+    svc.timeout = 0.1  # keep the test fast; int constructor arg, float works fine
+    session = _mock_session()
+    with patch(
+        "codeframe.notifications.webhook.vet_webhook_host",
+        side_effect=lambda h: time.sleep(5),
+    ):
+        with patch("aiohttp.ClientSession", return_value=session):
+            result = await svc.send_event({"event": "test"})
+    assert result.ok is False
+    assert "timed out resolving" in (result.error or "").lower()
+    session.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_event_never_raises_on_vetting_error():
+    """send_event's contract is never-raises: malformed IPv6 brackets
+    (urlparse ValueError) and bad IDN labels (getaddrinfo UnicodeError)
+    must come back as error results, not exceptions."""
+    svc = WebhookNotificationService(webhook_url="http://[::1/hook", timeout=5)
+    result = await svc.send_event({"event": "test"})
+    assert result.ok is False
+
+    svc2 = WebhookNotificationService(webhook_url="https://ok.example.com/hook", timeout=5)
+    session = _mock_session()
+    with patch(
+        "codeframe.notifications.webhook.vet_webhook_host",
+        side_effect=UnicodeError("label too long"),
+    ):
+        with patch("aiohttp.ClientSession", return_value=session):
+            result2 = await svc2.send_event({"event": "test"})
+    assert result2.ok is False
+    session.post.assert_not_called()
