@@ -909,6 +909,26 @@ class TestResumeBatch:
         assert get_active_run(workspace, task.id) is None  # no stale active run
         assert get_run(workspace, run.id).status == RunStatus.FAILED
 
+    def test_subprocess_reconcile_survives_non_valueerror(self, workspace_with_tasks):
+        """If reconcile's task-status transition raises a non-ValueError (e.g.
+        InvalidTransitionError after a checkpoint restore desync), the run row is
+        still cleared and 'FAILED' is returned rather than propagating (#742)."""
+        from codeframe.core.conductor import _execute_task_subprocess
+        from codeframe.core.runtime import start_task_run, RunStatus
+
+        workspace, task_list = workspace_with_tasks
+        task = task_list[0]
+        run = start_task_run(workspace, task.id)
+        assert run.status == RunStatus.RUNNING
+
+        fake_proc = MagicMock()
+        fake_proc.wait.return_value = 1
+        with patch('codeframe.core.conductor.subprocess.Popen', return_value=fake_proc), \
+             patch('codeframe.core.runtime.fail_run', side_effect=RuntimeError("transition boom")):
+            result = _execute_task_subprocess(workspace, task.id)
+
+        assert result == "FAILED"  # did not propagate
+
     def test_resume_failed_batch(self, workspace_with_tasks):
         """Should resume a FAILED batch."""
         workspace, task_list = workspace_with_tasks

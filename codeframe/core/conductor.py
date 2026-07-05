@@ -2172,8 +2172,13 @@ def _execute_task_subprocess(
                         run.id,
                         reason=f"subprocess exited {returncode} with run still RUNNING",
                     )
-                except ValueError:
-                    pass  # Raced to terminal elsewhere; FAILED is still correct.
+                except Exception as e:
+                    # fail_run writes the run row to FAILED before transitioning
+                    # the task, so the stale active run is cleared even if the
+                    # task-status transition raises (e.g. InvalidTransitionError
+                    # after a checkpoint restore desynced the task, or a race to
+                    # terminal). FAILED is still the correct batch result.
+                    logger.debug(f"Reconcile of run {run.id} raised (benign): {e}")
                 return RunStatus.FAILED.value
             return run.status.value
 
