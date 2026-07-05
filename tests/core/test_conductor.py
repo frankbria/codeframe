@@ -862,6 +862,82 @@ class TestResumeBatch:
         assert resumed.status == BatchStatus.COMPLETED
         assert resumed.results[task_ids[1]] == "COMPLETED"
 
+    def test_resume_reruns_stale_running_task(self, workspace_with_tasks):
+        """A 'RUNNING' result left by a crashed subprocess is retryable on resume (#742)."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        def mock_first_run(ws, tid, batch_id=None, **kwargs):
+            if tid == task_ids[1]:
+                return "RUNNING"  # stale terminal result from a crashed child
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_first_run):
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+
+        assert batch.results[task_ids[1]] == "RUNNING"
+        assert batch.status == BatchStatus.PARTIAL
+
+        # Resume should re-run the stale RUNNING task (and only it).
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "COMPLETED"
+            resumed = resume_batch(workspace, batch.id)
+
+        assert mock_exec.call_count == 1
+        assert resumed.results[task_ids[1]] == "COMPLETED"
+        assert resumed.status == BatchStatus.COMPLETED
+
+    def test_subprocess_reconciles_stale_running_run_to_failed(self, workspace_with_tasks):
+        """A crashed subprocess (nonzero exit, run still RUNNING) is reconciled to
+        FAILED so no stale active run blocks the next start_task_run (#742)."""
+        from codeframe.core.conductor import _execute_task_subprocess
+        from codeframe.core.runtime import start_task_run, get_active_run, get_run, RunStatus
+
+        workspace, task_list = workspace_with_tasks
+        task = task_list[0]
+
+        # Child started a run then crashed without finalizing it.
+        run = start_task_run(workspace, task.id)
+        assert run.status == RunStatus.RUNNING
+
+        fake_proc = MagicMock()
+        fake_proc.wait.return_value = 1  # nonzero exit == crash/SIGTERM
+        with patch('codeframe.core.conductor.subprocess.Popen', return_value=fake_proc):
+            result = _execute_task_subprocess(workspace, task.id)
+
+        assert result == "FAILED"
+        assert get_active_run(workspace, task.id) is None  # no stale active run
+        assert get_run(workspace, run.id).status == RunStatus.FAILED
+
+    def test_subprocess_reconcile_survives_non_valueerror(self, workspace_with_tasks):
+        """If reconcile's task-status transition raises a non-ValueError (e.g.
+        InvalidTransitionError after a checkpoint restore desync), the run row is
+        still cleared to FAILED and 'FAILED' is returned rather than propagating.
+
+        Lets fail_run run for real and makes only the task-status transition
+        raise, so this exercises the ordering guarantee (run row committed to
+        FAILED *before* the task transition) that makes broadening the catch
+        safe — not just the swallow-and-return behavior (#742)."""
+        from codeframe.core.conductor import _execute_task_subprocess
+        from codeframe.core.runtime import start_task_run, get_active_run, get_run, RunStatus
+
+        workspace, task_list = workspace_with_tasks
+        task = task_list[0]
+        run = start_task_run(workspace, task.id)
+        assert run.status == RunStatus.RUNNING
+
+        fake_proc = MagicMock()
+        fake_proc.wait.return_value = 1
+        with patch('codeframe.core.conductor.subprocess.Popen', return_value=fake_proc), \
+             patch('codeframe.core.runtime.tasks.update_status',
+                   side_effect=RuntimeError("transition boom")):
+            result = _execute_task_subprocess(workspace, task.id)
+
+        assert result == "FAILED"  # did not propagate
+        # fail_run's run-row write committed before the task transition raised.
+        assert get_run(workspace, run.id).status == RunStatus.FAILED
+        assert get_active_run(workspace, task.id) is None  # no stale active run
+
     def test_resume_failed_batch(self, workspace_with_tasks):
         """Should resume a FAILED batch."""
         workspace, task_list = workspace_with_tasks
