@@ -912,9 +912,14 @@ class TestResumeBatch:
     def test_subprocess_reconcile_survives_non_valueerror(self, workspace_with_tasks):
         """If reconcile's task-status transition raises a non-ValueError (e.g.
         InvalidTransitionError after a checkpoint restore desync), the run row is
-        still cleared and 'FAILED' is returned rather than propagating (#742)."""
+        still cleared to FAILED and 'FAILED' is returned rather than propagating.
+
+        Lets fail_run run for real and makes only the task-status transition
+        raise, so this exercises the ordering guarantee (run row committed to
+        FAILED *before* the task transition) that makes broadening the catch
+        safe — not just the swallow-and-return behavior (#742)."""
         from codeframe.core.conductor import _execute_task_subprocess
-        from codeframe.core.runtime import start_task_run, RunStatus
+        from codeframe.core.runtime import start_task_run, get_active_run, get_run, RunStatus
 
         workspace, task_list = workspace_with_tasks
         task = task_list[0]
@@ -924,10 +929,14 @@ class TestResumeBatch:
         fake_proc = MagicMock()
         fake_proc.wait.return_value = 1
         with patch('codeframe.core.conductor.subprocess.Popen', return_value=fake_proc), \
-             patch('codeframe.core.runtime.fail_run', side_effect=RuntimeError("transition boom")):
+             patch('codeframe.core.runtime.tasks.update_status',
+                   side_effect=RuntimeError("transition boom")):
             result = _execute_task_subprocess(workspace, task.id)
 
         assert result == "FAILED"  # did not propagate
+        # fail_run's run-row write committed before the task transition raised.
+        assert get_run(workspace, run.id).status == RunStatus.FAILED
+        assert get_active_run(workspace, task.id) is None  # no stale active run
 
     def test_resume_failed_batch(self, workspace_with_tasks):
         """Should resume a FAILED batch."""
