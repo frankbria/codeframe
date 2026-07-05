@@ -317,3 +317,34 @@ class TestSchemaVersionGate:
         finally:
             conn.close()
         assert "idx_tasks_external_url" in indexes
+
+    def test_legacy_db_without_batch_runs_gets_full_v2_schema(
+        self, initialized_workspace: Workspace, temp_repo: Path
+    ):
+        """A legacy DB missing batch_runs must be recreated with the #741 columns.
+
+        The table-missing branch of _ensure_schema_upgrades creates the table
+        fresh; it must include isolation/stall/provider/concurrency columns so a
+        subsequent _save_batch doesn't fail with "no column named ...".
+        """
+        conn = sqlite3.connect(initialized_workspace.db_path)
+        conn.execute("DROP TABLE IF EXISTS batch_runs")
+        conn.execute("PRAGMA user_version = 0")
+        conn.commit()
+        conn.close()
+
+        ws = get_workspace(temp_repo)
+
+        conn = sqlite3.connect(ws.db_path)
+        try:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(batch_runs)")}
+        finally:
+            conn.close()
+        assert {
+            "isolation",
+            "stall_timeout_s",
+            "stall_action",
+            "concurrency_by_status",
+            "llm_provider",
+            "llm_model",
+        } <= cols

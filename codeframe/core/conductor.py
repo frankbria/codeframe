@@ -753,7 +753,9 @@ def get_batch(workspace: Workspace, batch_id: str) -> Optional[BatchRun]:
     cursor.execute(
         """
         SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
-               on_failure, started_at, completed_at, results, engine
+               on_failure, started_at, completed_at, results, engine,
+               isolation, stall_timeout_s, stall_action, concurrency_by_status,
+               llm_provider, llm_model
         FROM batch_runs
         WHERE workspace_id = ? AND id = ?
         """,
@@ -790,7 +792,9 @@ def list_batches(
         cursor.execute(
             """
             SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
-                   on_failure, started_at, completed_at, results, engine
+                   on_failure, started_at, completed_at, results, engine,
+                   isolation, stall_timeout_s, stall_action, concurrency_by_status,
+                   llm_provider, llm_model
             FROM batch_runs
             WHERE workspace_id = ? AND status = ?
             ORDER BY started_at DESC
@@ -802,7 +806,9 @@ def list_batches(
         cursor.execute(
             """
             SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
-                   on_failure, started_at, completed_at, results, engine
+                   on_failure, started_at, completed_at, results, engine,
+                   isolation, stall_timeout_s, stall_action, concurrency_by_status,
+                   llm_provider, llm_model
             FROM batch_runs
             WHERE workspace_id = ?
             ORDER BY started_at DESC
@@ -2227,19 +2233,19 @@ def _save_batch(
     task_ids_json = json.dumps(batch.task_ids)
     results_json = json.dumps(batch.results) if batch.results else None
     completed_at = batch.completed_at.isoformat() if batch.completed_at else None
+    # by_status is the only ConcurrencyConfig field not already a column
+    # (max_parallel is). Persist it so resume restores per-status limits (#741).
+    concurrency_json = (
+        json.dumps(batch.concurrency.by_status) if batch.concurrency.by_status else None
+    )
 
     with _batch_db_lock:
         conn = get_db_connection(workspace)
         try:
             cursor = conn.cursor()
-            # Ensure isolation column exists (migration for existing databases)
-            try:
-                cursor.execute(
-                    "ALTER TABLE batch_runs ADD COLUMN isolation TEXT DEFAULT 'none'"
-                )
-                conn.commit()
-            except Exception:
-                pass  # Column already exists
+            # Schema columns (engine/isolation/stall/provider/concurrency) are
+            # guaranteed by workspace._ensure_schema_upgrades, which runs on
+            # get_workspace before any batch op.
 
             # Cancellation is authoritative (#726): don't let a whole-row write
             # from a still-running worker resurrect a batch a concurrent
@@ -2259,8 +2265,10 @@ def _save_batch(
                 """
                 INSERT OR REPLACE INTO batch_runs
                 (id, workspace_id, task_ids, status, strategy, max_parallel, on_failure,
-                 started_at, completed_at, results, engine, isolation)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 started_at, completed_at, results, engine, isolation,
+                 stall_timeout_s, stall_action, concurrency_by_status,
+                 llm_provider, llm_model)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     batch.id,
@@ -2275,6 +2283,11 @@ def _save_batch(
                     results_json,
                     batch.engine,
                     batch.isolation,
+                    batch.stall_timeout_s,
+                    batch.stall_action,
+                    concurrency_json,
+                    batch.llm_provider,
+                    batch.llm_model,
                 ),
             )
             conn.commit()
@@ -2283,18 +2296,34 @@ def _save_batch(
 
 
 def _row_to_batch(row: tuple) -> BatchRun:
-    """Convert a database row to a BatchRun object."""
+    """Convert a database row to a BatchRun object.
+
+    len() guards keep this tolerant of short rows from pre-#741 SELECTs and unit
+    tests. NULL engine defaults to "react" to match the new-batch default (a
+    legacy NULL previously restored as "plan", silently changing the engine).
+    """
+    max_parallel = row[5]
+    concurrency_by_status = (
+        json.loads(row[14]) if len(row) > 14 and row[14] else {}
+    )
     return BatchRun(
         id=row[0],
         workspace_id=row[1],
         task_ids=json.loads(row[2]),
         status=BatchStatus(row[3]),
         strategy=row[4],
-        max_parallel=row[5],
+        max_parallel=max_parallel,
         on_failure=OnFailure(row[6]),
         started_at=datetime.fromisoformat(row[7]),
         completed_at=datetime.fromisoformat(row[8]) if row[8] else None,
         results=json.loads(row[9]) if row[9] else {},
-        engine=row[10] if len(row) > 10 and row[10] else "plan",
+        engine=row[10] if len(row) > 10 and row[10] else "react",
         isolation=row[11] if len(row) > 11 and row[11] else "none",
+        stall_timeout_s=row[12] if len(row) > 12 and row[12] is not None else 300,
+        stall_action=row[13] if len(row) > 13 and row[13] else "blocker",
+        concurrency=ConcurrencyConfig(
+            max_parallel=max_parallel, by_status=concurrency_by_status
+        ),
+        llm_provider=row[15] if len(row) > 15 else None,
+        llm_model=row[16] if len(row) > 16 else None,
     )

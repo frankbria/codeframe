@@ -573,7 +573,12 @@ class TestRowToBatch:
         assert batch.engine == "plan"
 
     def test_handles_missing_engine_column(self):
-        """Should default engine to 'plan' when column is absent (migration)."""
+        """Should default engine to 'react' when column is absent (migration).
+
+        A NULL/absent engine now restores as 'react' to match the new-batch
+        default; it previously defaulted to 'plan', silently switching the
+        engine on resume (#741).
+        """
         row = (
             "batch-id",
             "workspace-id",
@@ -588,7 +593,7 @@ class TestRowToBatch:
         )
 
         batch = _row_to_batch(row)
-        assert batch.engine == "plan"
+        assert batch.engine == "react"
 
 
 class TestBatchExecution:
@@ -812,6 +817,40 @@ class TestSaveBatch:
         assert loaded.status == BatchStatus.COMPLETED
         assert loaded.results[task_list[0].id] == "COMPLETED"
 
+    def test_persists_provider_stall_and_concurrency(self, workspace_with_tasks):
+        """Non-default provider/model/stall/concurrency survive a save+load (#741).
+
+        Before the fix these were dropped by _save_batch and reconstructed from
+        dataclass defaults on read, so a resume silently reran on default
+        Anthropic with default stall settings.
+        """
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        batch = start_batch(
+            workspace,
+            task_ids,
+            strategy="parallel",
+            max_parallel=2,
+            engine="react",
+            stall_timeout_s=120,
+            stall_action="retry",
+            concurrency_by_status={"READY": 3},
+            isolation="none",
+            llm_provider="openai",
+            llm_model="gpt-4o",
+            dry_run=True,
+        )
+
+        loaded = get_batch(workspace, batch.id)
+        assert loaded.llm_provider == "openai"
+        assert loaded.llm_model == "gpt-4o"
+        assert loaded.stall_timeout_s == 120
+        assert loaded.stall_action == "retry"
+        assert loaded.engine == "react"
+        assert loaded.concurrency.by_status == {"READY": 3}
+        assert loaded.concurrency.max_parallel == 2
+
 
 class TestResumeBatch:
     """Tests for resume_batch function."""
@@ -861,6 +900,42 @@ class TestResumeBatch:
         assert mock_exec.call_count == 1
         assert resumed.status == BatchStatus.COMPLETED
         assert resumed.results[task_ids[1]] == "COMPLETED"
+
+    def test_resume_reuses_original_provider_and_stall(self, workspace_with_tasks):
+        """Resume must reuse the batch's original provider/model/stall (#741).
+
+        The first run fails one task on ``openai``/``gpt-4o`` with a non-default
+        stall timeout; resuming (which reloads the batch from the DB) must pass
+        those same values to the subprocess, not silently fall back to defaults.
+        """
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        def mock_first_run(ws, tid, batch_id=None, **kwargs):
+            return "FAILED" if tid == task_ids[1] else "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_first_run):
+            batch = start_batch(
+                workspace,
+                task_ids,
+                on_failure="continue",
+                llm_provider="openai",
+                llm_model="gpt-4o",
+                stall_timeout_s=120,
+                stall_action="retry",
+            )
+        assert batch.status == BatchStatus.PARTIAL
+
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "COMPLETED"
+            resume_batch(workspace, batch.id)
+
+        assert mock_exec.call_count == 1
+        _, kwargs = mock_exec.call_args
+        assert kwargs["llm_provider"] == "openai"
+        assert kwargs["llm_model"] == "gpt-4o"
+        assert kwargs["stall_timeout_s"] == 120
+        assert kwargs["stall_action"] == "retry"
 
     def test_resume_reruns_stale_running_task(self, workspace_with_tasks):
         """A 'RUNNING' result left by a crashed subprocess is retryable on resume (#742)."""
