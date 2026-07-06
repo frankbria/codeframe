@@ -28,7 +28,7 @@ STATE_DB_NAME = "state.db"
 # ``_ensure_schema_upgrades``. Bump by 1 whenever either function gains a new
 # table/column/index so existing workspaces re-enter the (idempotent)
 # migration path exactly once. Gates #733: steady-state loads skip all DDL.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Per-workspace config file written by the Settings page (issue #556).
 # Owned by the UI layer today; kept here so a future core consumer can
@@ -297,6 +297,12 @@ def _init_database(db_path: Path) -> None:
             completed_at TEXT,
             results TEXT,
             engine TEXT NOT NULL DEFAULT 'plan',
+            isolation TEXT NOT NULL DEFAULT 'none',
+            stall_timeout_s INTEGER NOT NULL DEFAULT 300,
+            stall_action TEXT NOT NULL DEFAULT 'blocker',
+            concurrency_by_status TEXT,
+            llm_provider TEXT,
+            llm_model TEXT,
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
             CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'))
         )
@@ -513,6 +519,12 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
                 completed_at TEXT,
                 results TEXT,
                 engine TEXT NOT NULL DEFAULT 'plan',
+                isolation TEXT NOT NULL DEFAULT 'none',
+                stall_timeout_s INTEGER NOT NULL DEFAULT 300,
+                stall_action TEXT NOT NULL DEFAULT 'blocker',
+                concurrency_by_status TEXT,
+                llm_provider TEXT,
+                llm_model TEXT,
                 FOREIGN KEY (workspace_id) REFERENCES workspace(id),
                 CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'))
             )
@@ -521,12 +533,26 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_status ON batch_runs(status)")
         conn.commit()
     else:
-        # Add engine column if it doesn't exist (migration for existing databases)
+        # Add columns that were introduced after the initial batch_runs schema
+        # (migration for existing databases). Each ALTER is guarded by a column
+        # existence check so this is idempotent. isolation + stall/provider/
+        # concurrency columns were added for #741 so `batch resume` restores the
+        # original run settings instead of silently falling back to defaults.
         cursor.execute("PRAGMA table_info(batch_runs)")
         batch_columns = {row[1] for row in cursor.fetchall()}
-        if "engine" not in batch_columns:
-            cursor.execute("ALTER TABLE batch_runs ADD COLUMN engine TEXT NOT NULL DEFAULT 'plan'")
-            conn.commit()
+        batch_migrations = (
+            ("engine", "ALTER TABLE batch_runs ADD COLUMN engine TEXT NOT NULL DEFAULT 'plan'"),
+            ("isolation", "ALTER TABLE batch_runs ADD COLUMN isolation TEXT NOT NULL DEFAULT 'none'"),
+            ("stall_timeout_s", "ALTER TABLE batch_runs ADD COLUMN stall_timeout_s INTEGER NOT NULL DEFAULT 300"),
+            ("stall_action", "ALTER TABLE batch_runs ADD COLUMN stall_action TEXT NOT NULL DEFAULT 'blocker'"),
+            ("concurrency_by_status", "ALTER TABLE batch_runs ADD COLUMN concurrency_by_status TEXT"),
+            ("llm_provider", "ALTER TABLE batch_runs ADD COLUMN llm_provider TEXT"),
+            ("llm_model", "ALTER TABLE batch_runs ADD COLUMN llm_model TEXT"),
+        )
+        for column, ddl in batch_migrations:
+            if column not in batch_columns:
+                cursor.execute(ddl)
+        conn.commit()
 
     # Add tech_stack column to workspace table if it doesn't exist
     # First check if workspace table exists
