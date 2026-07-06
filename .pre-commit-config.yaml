@@ -13,7 +13,13 @@ repos:
     hooks:
       - id: pytest-check
         name: Run last failed tests (fast feedback)
-        entry: bash -c 'if [ -f venv/bin/activate ]; then source venv/bin/activate && pytest --lf -x; elif [ -f .venv/bin/activate ]; then source .venv/bin/activate && pytest --lf -x; else pytest --lf -x; fi'
+        # --lfnf none: when no tests failed previously (or no cache), run
+        # NOTHING instead of the whole suite. Keeps this a fast-feedback hook
+        # that only re-runs what you just broke; full validation is CI's job.
+        # uv run: the project's canonical invocation (no fragile venv-activate
+        # guessing / bare `pytest` that may not be on PATH).
+        # exit 5 = "no tests collected" (the deselect-all no-op) → treat as pass.
+        entry: bash -c 'uv run pytest --lf --lfnf none -x; code=$?; [ "$code" -eq 5 ] && code=0; exit $code'
         language: system
         pass_filenames: false
         files: \.py$
@@ -30,7 +36,8 @@ repos:
 
       - id: skip-detector
         name: Detect skip decorator abuse
-        entry: python scripts/detect-skip-abuse.py
+        # python3, not python: this environment has no `python` on PATH.
+        entry: python3 scripts/detect-skip-abuse.py
         language: system
         files: ^tests/.*\.py$
         pass_filenames: false

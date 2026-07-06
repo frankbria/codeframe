@@ -63,37 +63,65 @@ class SkipDetectorVisitor(ast.NodeVisitor):
 
     def _check_decorator_for_skip(self, decorator: ast.expr) -> Optional[Dict[str, any]]:
         """
-        Check if a decorator is a skip decorator.
+        Check if a decorator is an *abusive* skip decorator.
+
+        Only flags patterns that unconditionally disable a test — that is the
+        abuse this tool targets (hiding a failure). A conditional
+        ``skipif(<runtime condition>, ...)`` is legitimate portability gating
+        (platform, optional-dependency availability) and is allowed. The one
+        exception is ``skipif`` with a constant-true literal (e.g.
+        ``skipif(True)``), which disables the test unconditionally in disguise.
 
         Returns:
-            Dict with decorator info if it's a skip, None otherwise
+            Dict with decorator info if it's abusive, None otherwise
         """
+        kind: Optional[str] = None  # "skip" or "skipif"
+        call: Optional[ast.Call] = None
+        label: Optional[str] = None
+
         # Case 1: @skip or @skipif (bare names)
         if isinstance(decorator, ast.Name):
             if decorator.id in ("skip", "skipif"):
-                return {"decorator": f"@{decorator.id}", "reason": None}
+                kind, label = decorator.id, f"@{decorator.id}"
 
-        # Case 2: @skip(reason="...") or @skipif(condition, reason="...")
+        # Case 2: @skip(...) / @skipif(...) or @pytest.mark.skip(...) / .skipif(...)
         elif isinstance(decorator, ast.Call):
-            if isinstance(decorator.func, ast.Name):
-                if decorator.func.id in ("skip", "skipif"):
-                    reason = self._extract_reason(decorator)
-                    return {"decorator": f"@{decorator.func.id}", "reason": reason}
+            if isinstance(decorator.func, ast.Name) and decorator.func.id in ("skip", "skipif"):
+                kind, call, label = decorator.func.id, decorator, f"@{decorator.func.id}"
+            elif isinstance(decorator.func, ast.Attribute) and self._is_pytest_mark_skip(
+                decorator.func
+            ):
+                kind, call = decorator.func.attr, decorator
+                label = f"@pytest.mark.{decorator.func.attr}"
 
-            # Case 3: @pytest.mark.skip or @pytest.mark.skipif
-            elif isinstance(decorator.func, ast.Attribute):
-                if self._is_pytest_mark_skip(decorator.func):
-                    reason = self._extract_reason(decorator)
-                    decorator_name = f"@pytest.mark.{decorator.func.attr}"
-                    return {"decorator": decorator_name, "reason": reason}
-
-        # Case 4: @pytest.mark.skip (without call)
+        # Case 3: @pytest.mark.skip / @pytest.mark.skipif (without call)
         elif isinstance(decorator, ast.Attribute):
             if self._is_pytest_mark_skip(decorator):
-                decorator_name = f"@pytest.mark.{decorator.attr}"
-                return {"decorator": decorator_name, "reason": None}
+                kind, label = decorator.attr, f"@pytest.mark.{decorator.attr}"
 
-        return None
+        if kind is None:
+            return None
+
+        # Conditional skipif is legitimate unless its condition is constant-true.
+        if kind == "skipif" and not self._is_constant_true_condition(call):
+            return None
+
+        reason = self._extract_reason(call) if call is not None else None
+        return {"decorator": label, "reason": reason}
+
+    def _is_constant_true_condition(self, call: Optional[ast.Call]) -> bool:
+        """True if a skipif's condition arg is a truthy non-string literal.
+
+        ``skipif(True)`` / ``skipif(1)`` unconditionally disable a test. A string
+        condition (``skipif("sys.platform == 'win32'")``) is evaluated by pytest
+        and is legitimate, as is any non-literal expression.
+        """
+        if call is None or not call.args:
+            return False
+        cond = call.args[0]
+        if isinstance(cond, ast.Constant) and not isinstance(cond.value, str):
+            return bool(cond.value)
+        return False
 
     def _is_pytest_mark_skip(self, attr: ast.Attribute) -> bool:
         """Check if an attribute is pytest.mark.skip or pytest.mark.skipif."""
