@@ -4,7 +4,7 @@ Extracted from monolithic Database class for better maintainability.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional, Dict, Any, Union, TYPE_CHECKING
 import logging
 
 
@@ -164,11 +164,11 @@ class TokenRepository(BaseRepository):
 
 
 
-    def get_task_token_summary(self, task_id: int) -> Dict[str, Any]:
+    def get_task_token_summary(self, task_id: Union[int, str]) -> Dict[str, Any]:
         """Get aggregated token usage summary for a single task.
 
         Args:
-            task_id: Task ID to summarize
+            task_id: Task ID to summarize (v2 UUID string or legacy int)
 
         Returns:
             Dictionary with aggregated token data:
@@ -208,14 +208,14 @@ class TokenRepository(BaseRepository):
 
     def get_batch_token_usage(
         self,
-        task_ids: List[int],
+        task_ids: List[Union[int, str]],
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
     ) -> List[Dict[str, Any]]:
         """Get token usage records filtered by a list of task IDs.
 
         Args:
-            task_ids: List of task IDs to filter by
+            task_ids: List of task IDs to filter by (v2 UUID strings or legacy ints)
             start_date: Optional start of date range (inclusive)
             end_date: Optional end of date range (inclusive)
 

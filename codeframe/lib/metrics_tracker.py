@@ -296,7 +296,7 @@ class MetricsTracker:
 
         return usage_id
 
-    def get_task_token_summary(self, task_id: int) -> Dict[str, Any]:
+    def get_task_token_summary(self, task_id: Union[int, str]) -> Dict[str, Any]:
         """Get aggregated token usage summary for a single task.
 
         Args:
