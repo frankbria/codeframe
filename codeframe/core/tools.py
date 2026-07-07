@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 from codeframe.adapters.llm.base import Tool, ToolCall, ToolResult
@@ -607,6 +608,26 @@ _RUN_TESTS_SCHEMA: dict = {
 }
 
 
+def _is_uv_project(repo_path: Path) -> bool:
+    """True when ``uv run`` can execute in this workspace.
+
+    uv errors on a ``pyproject.toml`` that has no ``[project]`` table, so only
+    prefer ``uv run pytest`` when the workspace is a real uv-runnable project
+    (has a ``[project]`` table or a ``uv.lock``); otherwise callers fall back to
+    plain ``pytest``.
+    """
+    if (repo_path / "uv.lock").exists():
+        return True
+    pyproject = repo_path / "pyproject.toml"
+    if not pyproject.exists():
+        return False
+    try:
+        with pyproject.open("rb") as fh:
+            return "project" in tomllib.load(fh)
+    except (OSError, tomllib.TOMLDecodeError):
+        return False
+
+
 def _execute_run_tests(
     input_data: dict, workspace_path: Path, tool_call_id: str
 ) -> ToolResult:
@@ -625,8 +646,10 @@ def _execute_run_tests(
     gates = _detect_available_gates(workspace_path)
 
     if "pytest" in gates:
-        # Build pytest command, preferring uv if available
-        if shutil.which("uv"):
+        # Prefer `uv run` only for an actual uv-runnable project. uv refuses a
+        # pyproject.toml with no [project] table ("No `project` table found"),
+        # so a bare test dir must fall back to plain pytest.
+        if shutil.which("uv") and _is_uv_project(workspace_path):
             cmd = ["uv", "run", "pytest"]
         else:
             cmd = ["pytest"]
