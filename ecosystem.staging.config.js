@@ -12,7 +12,10 @@ module.exports = {
     {
       name: 'codeframe-staging-backend',
       script: path.join(PROJECT_ROOT, '.venv/bin/python'),
-      args: '-m codeframe.ui.server --port 14200',
+      // Bind loopback explicitly — do not rely on HOST in .env.staging, so an
+      // existing deploy with a stale HOST=0.0.0.0 can't leave the backend
+      // exposed behind the TLS proxy (issue #747).
+      args: '-m codeframe.ui.server --host 127.0.0.1 --port 14200',
       cwd: PROJECT_ROOT,
       env: {
         ...envConfig,

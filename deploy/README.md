@@ -36,7 +36,10 @@ ever travel over HTTPS/WSS between the browser and Caddy. Plaintext
 
 ## Routing
 
-Caddy path-routes a single public origin (no CORS needed — same origin):
+Caddy path-routes a single public origin, so browser traffic is same-origin and
+CORS pre-flight never fires. Keep `CORS_ALLOWED_ORIGINS` set to that domain
+anyway — the backend's CORS middleware still validates it, and it's the fallback
+if you later split the API onto a separate subdomain.
 
 - `/api/*`, `/auth/*`, `/ws/*`, `/health`, `/docs`, `/redoc`, `/openapi.json`
   → backend `127.0.0.1:14200`
@@ -48,4 +51,6 @@ WebSocket upgrades are handled transparently by Caddy's `reverse_proxy`.
 
 For an IP-only or internal host, use the IP as the site address and add
 `tls internal` (Caddy's local CA) — see the commented example in
-`Caddyfile.example`.
+`Caddyfile.example`. Browsers reject the local CA
+(`NET::ERR_CERT_AUTHORITY_INVALID`) until its root cert is trusted on the client
+(`caddy trust`) or the warning is accepted — this is expected, not a broken deploy.

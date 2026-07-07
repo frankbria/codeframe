@@ -19,6 +19,9 @@
 #       ...
 #   }
 #
+# Note: browsers reject Caddy's local CA (NET::ERR_CERT_AUTHORITY_INVALID) until
+# you install its root cert on the client (`caddy trust`) or accept the warning.
+#
 # Ports below match the staging deploy (14100 frontend / 14200 backend). For the
 # production ecosystem, set them to your FRONTEND_PORT / BACKEND_PORT
 # (defaults 3000 / 8000).

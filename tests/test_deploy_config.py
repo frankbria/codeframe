@@ -84,6 +84,19 @@ def test_frontend_binds_loopback(cfg):
     assert "-H 0.0.0.0" not in text, f"{cfg.name}: frontend must not bind 0.0.0.0"
 
 
+@pytest.mark.parametrize("cfg", [PROD_ECOSYSTEM, STAGING_ECOSYSTEM], ids=["prod", "staging"])
+def test_backend_binds_loopback(cfg):
+    """The backend must be started with an explicit loopback --host, so binding
+    doesn't silently depend on an operator's (possibly stale) HOST env var."""
+    text = cfg.read_text()
+    assert "--host 127.0.0.1" in text or "--host ${HOST}" in text, (
+        f"{cfg.name}: backend must pass an explicit loopback --host"
+    )
+    # If it parametrizes HOST, the default must be loopback.
+    if "--host ${HOST}" in text:
+        assert "|| '127.0.0.1'" in text, f"{cfg.name}: HOST must default to 127.0.0.1"
+
+
 def test_env_examples_bind_backend_loopback():
     """HOST in the deploy env templates must pin the backend to loopback."""
     for env in (STAGING_ENV, PROD_ENV):
