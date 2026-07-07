@@ -2246,8 +2246,9 @@ def tasks_delete(
         workspace = get_workspace(workspace_path)
 
         if all_tasks_flag:
-            # Delete all tasks
-            task_list = tasks.list_tasks(workspace)
+            # Delete all tasks — limit=None so the confirm count matches the
+            # uncapped delete_all() below (#743)
+            task_list = tasks.list_tasks(workspace, limit=None)
             if not task_list:
                 console.print("[yellow]No tasks to delete[/yellow]")
                 raise typer.Exit(0)
@@ -3772,7 +3773,8 @@ def batch_run(
 
         # Determine which tasks to execute
         if all_ready:
-            ready_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.READY)
+            # limit=None so batches include READY tasks beyond the cap (#743)
+            ready_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.READY, limit=None)
             if not ready_tasks:
                 console.print("[yellow]No READY tasks found[/yellow]")
                 return
@@ -3780,7 +3782,7 @@ def batch_run(
             console.print(f"Found {len(ids_to_execute)} READY tasks")
         elif all_blocked:
             from codeframe.core import runtime
-            blocked_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.BLOCKED)
+            blocked_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.BLOCKED, limit=None)
             if not blocked_tasks:
                 console.print("[yellow]No BLOCKED tasks found[/yellow]")
                 return

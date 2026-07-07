@@ -50,10 +50,11 @@ class TestResolutionBypassesLimit:
         """Ambiguity detection still works — callers report >1 match."""
         a = tasks.create(workspace, title="a")
         b = tasks.create(workspace, title="b")
-        shared = a.id[:1]
-        matches = tasks.find_by_prefix(workspace, shared)
+        # Empty prefix matches every id (LIKE '%'), so ambiguity is guaranteed
+        # rather than left to a ~1/16 first-hex-char collision.
+        matches = tasks.find_by_prefix(workspace, "")
         ids = {t.id for t in matches}
-        assert a.id in ids and (b.id in ids or b.id[0] != shared)
+        assert a.id in ids and b.id in ids
 
     def test_find_by_prefix_no_match_returns_empty(self, workspace):
         tasks.create(workspace, title="x")
