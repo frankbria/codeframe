@@ -1,0 +1,39 @@
+# CodeFRAME reverse proxy — terminates TLS in front of the app processes (#747).
+#
+# The backend (127.0.0.1:14200) and frontend (127.0.0.1:14100) bind loopback
+# only; this proxy is the sole public listener. Caddy automatically provisions
+# and renews Let's Encrypt certificates for a real domain, so JWT bearer tokens
+# and API keys never travel in cleartext.
+#
+# Setup on the VPS:
+#   1. Point your domain's A/AAAA record at this server.
+#   2. Replace codeframe.example.com below with your domain.
+#   3. sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile
+#   4. sudo systemctl reload caddy
+#
+# No public domain (IP-only / internal host)? Replace the site address with the
+# IP and add `tls internal` to serve with Caddy's local CA:
+#
+#   203.0.113.10 {
+#       tls internal
+#       ...
+#   }
+#
+# Note: browsers reject Caddy's local CA (NET::ERR_CERT_AUTHORITY_INVALID) until
+# you install its root cert on the client (`caddy trust`) or accept the warning.
+#
+# Ports below match the staging deploy (14100 frontend / 14200 backend). For the
+# production ecosystem, set them to your FRONTEND_PORT / BACKEND_PORT
+# (defaults 3000 / 8000).
+
+codeframe.example.com {
+	encode zstd gzip
+
+	# Backend: REST API, auth, WebSockets, health, and API docs. Caddy proxies
+	# WebSocket upgrades (/ws/*) transparently — no extra config needed.
+	@backend path /api/* /auth/* /ws/* /health /docs /redoc /openapi.json
+	reverse_proxy @backend 127.0.0.1:14200
+
+	# Everything else → Next.js frontend.
+	reverse_proxy 127.0.0.1:14100
+}

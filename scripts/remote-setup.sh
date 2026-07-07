@@ -100,6 +100,27 @@ else
     echo -e "${GREEN}✓ lsof already installed${NC}"
 fi
 
+# Install Caddy — the TLS-terminating reverse proxy that fronts the app (#747).
+# The app processes bind 127.0.0.1; Caddy is the only public listener and
+# auto-provisions/renews Let's Encrypt certificates.
+if ! command -v caddy &> /dev/null; then
+    echo "Installing Caddy (reverse proxy for TLS termination)..."
+    sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+        | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+        | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+    sudo apt update
+    sudo apt install -y caddy
+    echo -e "${GREEN}✓ Caddy installed${NC}"
+else
+    echo -e "${GREEN}✓ Caddy already installed${NC}"
+fi
+
+# Verify Caddy installation
+CADDY_VERSION=$(caddy version 2>/dev/null || echo "not found")
+echo "  Caddy version: $CADDY_VERSION"
+
 # ============================================================================
 # PHASE 2: PROJECT DIRECTORY SETUP
 # ============================================================================
@@ -195,34 +216,35 @@ echo ""
 echo -e "${BLUE}[4/5] Firewall Configuration${NC}"
 echo ""
 
-# Check if ufw is active
+# Only 80/443 (Caddy) are exposed. The app ports 14100/14200 stay loopback-only
+# — Caddy reaches them over 127.0.0.1, so they must NOT be opened to the network
+# (#747). If a legacy rule exposed them, deny it.
 if sudo ufw status | grep -q "Status: active"; then
     echo "UFW firewall is active."
 
-    # Check if ports are already allowed
-    if ! sudo ufw status | grep -q "14100/tcp"; then
-        read -p "Allow port 14100 (frontend) through firewall? (Y/n): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-            sudo ufw allow 14100/tcp comment 'CodeFRAME Frontend'
-            echo -e "${GREEN}✓ Port 14100 allowed${NC}"
+    for port in 80 443; do
+        if ! sudo ufw status | grep -q "${port}/tcp"; then
+            read -p "Allow port ${port} (Caddy reverse proxy) through firewall? (Y/n): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                sudo ufw allow ${port}/tcp comment 'CodeFRAME Caddy proxy'
+                echo -e "${GREEN}✓ Port ${port} allowed${NC}"
+            fi
+        else
+            echo -e "${GREEN}✓ Port ${port} already allowed${NC}"
         fi
-    else
-        echo -e "${GREEN}✓ Port 14100 already allowed${NC}"
-    fi
+    done
 
-    if ! sudo ufw status | grep -q "14200/tcp"; then
-        read -p "Allow port 14200 (backend) through firewall? (Y/n): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-            sudo ufw allow 14200/tcp comment 'CodeFRAME Backend API'
-            echo -e "${GREEN}✓ Port 14200 allowed${NC}"
+    # App ports must never be public — Caddy proxies them over loopback.
+    for port in 14100 14200; do
+        if sudo ufw status | grep -q "${port}/tcp.*ALLOW"; then
+            echo -e "${YELLOW}⚠ Port ${port} is exposed — denying (must be loopback-only)${NC}"
+            sudo ufw delete allow ${port}/tcp 2>/dev/null || true
         fi
-    else
-        echo -e "${GREEN}✓ Port 14200 already allowed${NC}"
-    fi
+    done
 else
-    echo "UFW firewall is not active. Skipping firewall configuration."
+    echo "UFW firewall is not active."
+    echo -e "${YELLOW}⚠ Expose only 80/443. The app ports 14100/14200 must stay loopback-only.${NC}"
 fi
 
 # ============================================================================
@@ -252,22 +274,28 @@ echo ""
 
 echo -e "${BLUE}Next Steps:${NC}"
 echo ""
-echo "1. Verify your .env.staging configuration:"
-echo "   cat .env.staging | grep ANTHROPIC_API_KEY"
+echo "1. Verify your .env.staging configuration (loopback host + https origins):"
+echo "   grep -E 'ANTHROPIC_API_KEY|HOST|NEXT_PUBLIC_' .env.staging"
 echo ""
-echo "2. Run the deployment script:"
+echo "2. Configure the Caddy reverse proxy (TLS termination):"
+echo "   sudo cp deploy/Caddyfile.example /etc/caddy/Caddyfile"
+echo "   sudo \$EDITOR /etc/caddy/Caddyfile   # set your domain"
+echo "   sudo systemctl reload caddy"
+echo "   (See deploy/README.md for details.)"
+echo ""
+echo "3. Run the deployment script:"
 echo "   cd ~/projects/codeframe"
 echo "   ./scripts/deploy-staging.sh"
 echo ""
-echo "3. After deployment, access the dashboard:"
-echo "   Frontend: http://YOUR_STAGING_SERVER:14100"
-echo "   Backend:  http://YOUR_STAGING_SERVER:14200"
+echo "4. After deployment, access the dashboard over TLS via Caddy:"
+echo "   https://your-domain"
+echo "   (The app ports 14100/14200 are loopback-only — not public.)"
 echo ""
-echo "4. (Optional) Enable auto-start on boot:"
+echo "5. (Optional) Enable auto-start on boot:"
 echo "   pm2 save"
 echo "   pm2 startup"
 echo ""
 
 echo -e "${BLUE}Documentation:${NC}"
-echo "  See docs/REMOTE_STAGING_DEPLOYMENT.md for full guide"
+echo "  See deploy/README.md for the TLS reverse-proxy setup guide"
 echo ""

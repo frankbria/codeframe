@@ -17,13 +17,17 @@ const FRONTEND_NAME =
   process.env.PM2_FRONTEND_NAME || envConfig.PM2_FRONTEND_NAME || 'codeframe-production-frontend';
 const BACKEND_PORT = process.env.BACKEND_PORT || envConfig.BACKEND_PORT || '8000';
 const FRONTEND_PORT = process.env.FRONTEND_PORT || envConfig.FRONTEND_PORT || '3000';
+// Bind loopback by default — the Caddy reverse proxy is the sole public listener
+// (#747). Defaults to 127.0.0.1 so a stale HOST in .env.production can't expose
+// the backend; override only for a proxy on a separate host.
+const HOST = process.env.HOST || envConfig.HOST || '127.0.0.1';
 
 module.exports = {
   apps: [
     {
       name: BACKEND_NAME,
       script: path.join(PROJECT_ROOT, '.venv/bin/python'),
-      args: `-m codeframe.ui.server --port ${BACKEND_PORT}`,
+      args: `-m codeframe.ui.server --host ${HOST} --port ${BACKEND_PORT}`,
       cwd: PROJECT_ROOT,
       env: {
         ...envConfig,
@@ -42,7 +46,9 @@ module.exports = {
     {
       name: FRONTEND_NAME,
       script: path.join(PROJECT_ROOT, 'web-ui/node_modules/.bin/next'),
-      args: `start -H 0.0.0.0 -p ${FRONTEND_PORT}`,
+      // Bind loopback only — the Caddy reverse proxy terminates TLS and is the
+      // sole public listener (issue #747).
+      args: `start -H 127.0.0.1 -p ${FRONTEND_PORT}`,
       cwd: path.join(PROJECT_ROOT, 'web-ui'),
       env: {
         ...envConfig
