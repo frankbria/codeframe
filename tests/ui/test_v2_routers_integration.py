@@ -769,8 +769,12 @@ class TestTasksV2Execution:
             f"Expected COMPLETED for the mock-driven BUILD path, got {status}"
         )
 
-        # The BUILD path produced output events (the whole point of dispatching).
-        assert streaming.run_output_exists(workspace, run_id) is True
+        # The BUILD path emitted output events (the whole point of dispatching).
+        # Assert on file *content*, not mere existence: RunOutputLogger creates the
+        # output file at execute_agent start, so path.exists() only proves the run
+        # started — a non-empty file proves the agent actually wrote output.
+        output_path = streaming.get_run_output_path(workspace, run_id)
+        assert output_path.stat().st_size > 0, "BUILD path produced no output"
 
     def test_get_task_run(self, test_client_with_task):
         """Get task run status after starting."""
