@@ -31,7 +31,9 @@ module.exports = {
     {
       name: 'codeframe-staging-frontend',
       script: path.join(PROJECT_ROOT, 'web-ui/node_modules/.bin/next'),
-      args: 'start -H 0.0.0.0 -p 14100',
+      // Bind loopback only — the Caddy reverse proxy terminates TLS and is the
+      // sole public listener (issue #747).
+      args: 'start -H 127.0.0.1 -p 14100',
       cwd: path.join(PROJECT_ROOT, 'web-ui'),
       env: {
         ...envConfig
