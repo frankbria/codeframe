@@ -190,6 +190,46 @@ def get(workspace: Workspace, task_id: str) -> Optional[Task]:
     return _row_to_task(row)
 
 
+def find_by_prefix(workspace: Workspace, prefix: str) -> list[Task]:
+    """Resolve tasks whose id starts with ``prefix`` (SQL ``LIKE``, no cap).
+
+    The CLI accepts partial task ids. Doing that in Python over ``list_tasks``
+    truncated matching to the first 100 (priority-ordered) tasks, so any task
+    beyond the cap was unreachable (#743). This resolves at the SQL layer with
+    no ``LIMIT`` so every matching task is addressable.
+
+    Returns all matches (possibly >1) so callers can report ambiguity.
+
+    Args:
+        workspace: Workspace to query
+        prefix: Task id prefix (user-typed; may be partial)
+
+    Returns:
+        List of matching Tasks, ordered like ``list_tasks``.
+    """
+    # ponytail: task ids are UUIDs (no _/% ), but the prefix is user-typed —
+    # escape LIKE metachars so a stray wildcard can't over-match and resolve
+    # the wrong task before a status change.
+    escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    conn = get_db_connection(workspace)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
+            FROM tasks
+            WHERE workspace_id = ? AND id LIKE ? ESCAPE '\\'
+            ORDER BY priority ASC, created_at ASC
+            """,
+            (workspace.id, f"{escaped}%"),
+        )
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    return [_row_to_task(row) for row in rows]
+
+
 def get_by_external_url(
     workspace: Workspace, external_url: str
 ) -> Optional[Task]:
@@ -277,43 +317,54 @@ def update_auto_close(
 def list_tasks(
     workspace: Workspace,
     status: Optional[TaskStatus] = None,
-    limit: int = 100,
+    limit: Optional[int] = 100,
 ) -> list[Task]:
     """List tasks in a workspace.
 
     Args:
         workspace: Workspace to query
         status: Optional status filter
-        limit: Maximum tasks to return
+        limit: Maximum tasks to return. ``None`` returns every task (uncapped)
+            so listing/bulk ops can address tasks beyond the default cap (#743).
 
     Returns:
         List of Tasks
     """
+    # ponytail: default stays 100 for backward-compat (API pagination relies on
+    # it); pass limit=None to opt into an uncapped list.
+    limit_clause = "" if limit is None else "LIMIT ?"
+
     conn = get_db_connection(workspace)
     try:
         cursor = conn.cursor()
 
         if status:
+            params: tuple = (workspace.id, status.value)
+            if limit is not None:
+                params += (limit,)
             cursor.execute(
-                """
+                f"""
                 SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
                 FROM tasks
                 WHERE workspace_id = ? AND status = ?
                 ORDER BY priority ASC, created_at ASC
-                LIMIT ?
+                {limit_clause}
                 """,
-                (workspace.id, status.value, limit),
+                params,
             )
         else:
+            params = (workspace.id,)
+            if limit is not None:
+                params += (limit,)
             cursor.execute(
-                """
+                f"""
                 SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at, github_issue_number, parent_id, lineage, is_leaf, hierarchical_id, requirement_ids, external_url, auto_close_github_issue
                 FROM tasks
                 WHERE workspace_id = ?
                 ORDER BY priority ASC, created_at ASC
-                LIMIT ?
+                {limit_clause}
                 """,
-                (workspace.id, limit),
+                params,
             )
 
         rows = cursor.fetchall()

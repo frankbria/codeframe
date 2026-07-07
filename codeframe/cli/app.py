@@ -1993,7 +1993,8 @@ def tasks_list(
         if status:
             status_filter = parse_status(status)
 
-        task_list = tasks.list_tasks(workspace, status=status_filter)
+        # limit=None so tasks beyond the default cap are listed/counted (#743)
+        task_list = tasks.list_tasks(workspace, status=status_filter, limit=None)
 
         if not task_list:
             if status_filter:
@@ -2127,11 +2128,12 @@ def tasks_set(
             actual_task_id = task_id
 
         new_status = parse_status(actual_value)
-        all_workspace_tasks = tasks.list_tasks(workspace)
 
         # Determine which tasks to update
         if all_tasks_flag:
-            # Bulk update mode
+            # Bulk update mode — limit=None so tasks beyond the default cap are
+            # not silently skipped (#743)
+            all_workspace_tasks = tasks.list_tasks(workspace, limit=None)
             if from_status:
                 filter_status = parse_status(from_status)
                 matching = [t for t in all_workspace_tasks if t.status == filter_status]
@@ -2145,7 +2147,7 @@ def tasks_set(
                     raise typer.Exit(0)
         elif actual_task_id:
             # Single task mode
-            matching = [t for t in all_workspace_tasks if t.id.startswith(actual_task_id)]
+            matching = tasks.find_by_prefix(workspace, actual_task_id)
             if not matching:
                 console.print(f"[red]Error:[/red] No task found matching '{actual_task_id}'")
                 raise typer.Exit(1)
@@ -2244,8 +2246,9 @@ def tasks_delete(
         workspace = get_workspace(workspace_path)
 
         if all_tasks_flag:
-            # Delete all tasks
-            task_list = tasks.list_tasks(workspace)
+            # Delete all tasks — limit=None so the confirm count matches the
+            # uncapped delete_all() below (#743)
+            task_list = tasks.list_tasks(workspace, limit=None)
             if not task_list:
                 console.print("[yellow]No tasks to delete[/yellow]")
                 raise typer.Exit(0)
@@ -2263,8 +2266,7 @@ def tasks_delete(
 
         elif task_id:
             # Delete single task
-            all_tasks = tasks.list_tasks(workspace)
-            matching = [t for t in all_tasks if t.id.startswith(task_id)]
+            matching = tasks.find_by_prefix(workspace, task_id)
 
             if not matching:
                 console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
@@ -2433,8 +2435,7 @@ def work_start(
         workspace = get_workspace(path)
 
         # Find task by partial ID
-        all_tasks = tasks_module.list_tasks(workspace)
-        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+        matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
             console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
@@ -2567,8 +2568,7 @@ def work_resume(
         workspace = get_workspace(path)
 
         # Find task by partial ID
-        all_tasks = tasks_module.list_tasks(workspace)
-        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+        matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
             console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
@@ -2624,8 +2624,7 @@ def work_stop(
         workspace = get_workspace(path)
 
         # Find task by partial ID
-        all_tasks = tasks_module.list_tasks(workspace)
-        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+        matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
             console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
@@ -2833,8 +2832,7 @@ def work_diagnose(
         workspace = get_workspace(path)
 
         # Find task by partial ID
-        all_tasks = tasks_module.list_tasks(workspace)
-        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+        matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
             console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
@@ -2982,8 +2980,7 @@ def work_retry(
         workspace = get_workspace(path)
 
         # Find task by partial ID
-        all_tasks = tasks_module.list_tasks(workspace)
-        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+        matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
             console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
@@ -3090,8 +3087,7 @@ def work_update_description(
         workspace = get_workspace(path)
 
         # Find task by partial ID
-        all_tasks = tasks_module.list_tasks(workspace)
-        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+        matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
             console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
@@ -3169,8 +3165,7 @@ def work_follow(
         workspace = get_workspace(path)
 
         # Find task by partial ID
-        all_tasks = tasks_module.list_tasks(workspace)
-        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+        matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
             console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
@@ -3778,7 +3773,8 @@ def batch_run(
 
         # Determine which tasks to execute
         if all_ready:
-            ready_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.READY)
+            # limit=None so batches include READY tasks beyond the cap (#743)
+            ready_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.READY, limit=None)
             if not ready_tasks:
                 console.print("[yellow]No READY tasks found[/yellow]")
                 return
@@ -3786,7 +3782,7 @@ def batch_run(
             console.print(f"Found {len(ids_to_execute)} READY tasks")
         elif all_blocked:
             from codeframe.core import runtime
-            blocked_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.BLOCKED)
+            blocked_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.BLOCKED, limit=None)
             if not blocked_tasks:
                 console.print("[yellow]No BLOCKED tasks found[/yellow]")
                 return
@@ -3798,10 +3794,9 @@ def batch_run(
                 runtime.reset_blocked_run(workspace, task_id)
         elif task_ids:
             # Resolve partial IDs
-            all_tasks = tasks_module.list_tasks(workspace)
             ids_to_execute = []
             for partial_id in task_ids:
-                matching = [t for t in all_tasks if t.id.startswith(partial_id)]
+                matching = tasks_module.find_by_prefix(workspace, partial_id)
                 if not matching:
                     console.print(f"[red]Error:[/red] No task found matching '{partial_id}'")
                     raise typer.Exit(1)
