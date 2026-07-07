@@ -297,5 +297,5 @@ echo "   pm2 startup"
 echo ""
 
 echo -e "${BLUE}Documentation:${NC}"
-echo "  See docs/REMOTE_STAGING_DEPLOYMENT.md for full guide"
+echo "  See deploy/README.md for the TLS reverse-proxy setup guide"
 echo ""
