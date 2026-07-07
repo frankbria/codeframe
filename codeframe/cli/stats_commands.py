@@ -77,7 +77,7 @@ def _format_number(n: int) -> str:
 
 @stats_app.command()
 def tokens(
-    task: Optional[int] = typer.Option(
+    task: Optional[str] = typer.Option(
         None, "--task", "-t", help="Filter by task ID for per-task breakdown"
     ),
 ):
@@ -275,7 +275,7 @@ def export_data(
     output: str = typer.Option(
         ..., "--output", "-o", help="Output file path"
     ),
-    task: Optional[int] = typer.Option(
+    task: Optional[str] = typer.Option(
         None, "--task", "-t", help="Filter by task ID"
     ),
 ):
