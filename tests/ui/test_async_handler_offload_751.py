@@ -55,6 +55,10 @@ STREAMING_OR_ORCHESTRATION_HANDLERS = [
     "stream_task_output_lines",
     "stream_task_events",
     "start_single_task",
+    "start_execution",
+    "stop_task",
+    "resume_task",
+    "approve_tasks_endpoint",
 ]
 
 
