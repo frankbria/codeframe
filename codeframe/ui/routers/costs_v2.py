@@ -231,7 +231,9 @@ def _query_top_tasks(
         titles = tasks_module.get_titles(workspace, task_id_strs)
     except Exception:
         # Lookup failure is non-fatal — every row falls back to a placeholder.
-        logger.debug("costs/tasks: batch title lookup failed", exc_info=True)
+        # Log at warning (not debug): a batch failure degrades ALL titles, so an
+        # operator should see it — parity with the sqlite3.Error path above.
+        logger.warning("costs/tasks: batch title lookup failed", exc_info=True)
         titles = {}
 
     entries: List[Dict[str, Any]] = []
