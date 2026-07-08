@@ -293,6 +293,62 @@ class TestCostsByAgentWithData:
         assert agents[1]["agent_id"] == "codex"
 
 
+class TestCostsTasksDominantAgent:
+    """Dominant-agent selection is now a single windowed query (#750)."""
+
+    def test_reports_most_used_agent_per_task(self, test_client):
+        from codeframe.core import tasks as tasks_module
+
+        workspace = test_client.workspace
+        task = tasks_module.create(workspace, title="Multi-agent", description="")
+        # codex made 3 calls, claude-code made 1 → codex is dominant.
+        for _ in range(3):
+            _record_usage_text_task(workspace, task_id=task.id, agent_id="codex", cost=0.01)
+        _record_usage_text_task(workspace, task_id=task.id, agent_id="claude-code", cost=0.01)
+
+        response = test_client.get("/api/v2/costs/tasks")
+        entry = response.json()["tasks"][0]
+        assert entry["task_id"] == task.id
+        assert entry["agent_id"] == "codex"
+
+    def test_multiple_tasks_each_get_own_dominant_agent(self, test_client):
+        from codeframe.core import tasks as tasks_module
+
+        workspace = test_client.workspace
+        t1 = tasks_module.create(workspace, title="Task one", description="")
+        t2 = tasks_module.create(workspace, title="Task two", description="")
+        _record_usage_text_task(workspace, task_id=t1.id, agent_id="codex", cost=1.00)
+        _record_usage_text_task(workspace, task_id=t2.id, agent_id="claude-code", cost=0.50)
+
+        response = test_client.get("/api/v2/costs/tasks")
+        by_id = {e["task_id"]: e for e in response.json()["tasks"]}
+        assert by_id[t1.id]["agent_id"] == "codex"
+        assert by_id[t2.id]["agent_id"] == "claude-code"
+        assert by_id[t1.id]["task_title"] == "Task one"
+        assert by_id[t2.id]["task_title"] == "Task two"
+
+
+class TestGetTitlesBatch:
+    """tasks.get_titles resolves many ids in one query (#750)."""
+
+    def test_batch_resolves_existing_and_omits_missing(self, test_workspace):
+        from codeframe.core import tasks as tasks_module
+
+        a = tasks_module.create(test_workspace, title="Alpha", description="")
+        b = tasks_module.create(test_workspace, title="Beta", description="")
+
+        titles = tasks_module.get_titles(
+            test_workspace, [a.id, b.id, "does-not-exist"]
+        )
+        assert titles == {a.id: "Alpha", b.id: "Beta"}
+
+    def test_empty_input_returns_empty_dict(self, test_workspace):
+        from codeframe.core import tasks as tasks_module
+
+        assert tasks_module.get_titles(test_workspace, []) == {}
+        assert tasks_module.get_titles(test_workspace, [""]) == {}
+
+
 class TestCostsTasksDaysValidation:
     def test_below_minimum_rejected(self, test_client):
         response = test_client.get("/api/v2/costs/tasks?days=0")

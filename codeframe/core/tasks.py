@@ -190,6 +190,41 @@ def get(workspace: Workspace, task_id: str) -> Optional[Task]:
     return _row_to_task(row)
 
 
+def get_titles(workspace: Workspace, task_ids) -> dict[str, str]:
+    """Batch-resolve task titles by id in a single query (#750).
+
+    Avoids the N+1 of calling ``get()`` per id (each opens its own SQLite
+    connection). Returns a dict mapping id -> title for the ids that exist;
+    missing ids are simply absent so callers supply their own placeholder.
+
+    Args:
+        workspace: Workspace to query
+        task_ids: Iterable of task ids (falsy entries are ignored)
+
+    Returns:
+        {task_id: title} for every id that resolves to a task
+    """
+    # Preserve order-free dedupe; drop empties so a bad id can't skew the IN().
+    ids = list(dict.fromkeys(tid for tid in task_ids if tid))
+    if not ids:
+        return {}
+    # ponytail: limit is capped at 1000 upstream, well under SQLite's 32766
+    # bound-variable ceiling (3.32+), so one IN() is safe without chunking.
+    placeholders = ",".join("?" * len(ids))
+    conn = get_db_connection(workspace)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT id, title FROM tasks WHERE workspace_id = ? AND id IN ({placeholders})",
+            (workspace.id, *ids),
+        )
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    return {row[0]: row[1] for row in rows}
+
+
 def find_by_prefix(workspace: Workspace, prefix: str) -> list[Task]:
     """Resolve tasks whose id starts with ``prefix`` (SQL ``LIKE``, no cap).
 

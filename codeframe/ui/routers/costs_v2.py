@@ -223,18 +223,26 @@ def _query_top_tasks(
     finally:
         conn.close()
 
+    # Batch-resolve titles in one query instead of one connection per row (#750).
+    task_id_strs = [
+        str(row["task_id"]) if row["task_id"] is not None else "" for row in rows
+    ]
+    try:
+        titles = tasks_module.get_titles(workspace, task_id_strs)
+    except Exception:
+        # Lookup failure is non-fatal — every row falls back to a placeholder.
+        # Log at warning (not debug): a batch failure degrades ALL titles, so an
+        # operator should see it — parity with the sqlite3.Error path above.
+        logger.warning("costs/tasks: batch title lookup failed", exc_info=True)
+        titles = {}
+
     entries: List[Dict[str, Any]] = []
-    for row in rows:
-        raw_id = row["task_id"]
-        task_id_str = str(raw_id) if raw_id is not None else ""
-        title = _placeholder_task_title(task_id_str)
-        try:
-            task = tasks_module.get(workspace, task_id_str)
-            if task is not None:
-                title = task.title
-        except Exception:
-            # Lookup failures are non-fatal — keep the placeholder title.
-            logger.debug("costs/tasks: task lookup failed for %s", task_id_str, exc_info=True)
+    for row, task_id_str in zip(rows, task_id_strs):
+        title = (
+            titles[task_id_str]
+            if task_id_str in titles
+            else _placeholder_task_title(task_id_str)
+        )
 
         entries.append({
             "task_id": task_id_str,
