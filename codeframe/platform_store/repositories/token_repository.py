@@ -396,52 +396,61 @@ class TokenRepository(BaseRepository):
             raise ValueError("limit must be a positive integer")
         start_iso, end_iso = self._window_iso_bounds(days)
 
+        # Single windowed query — the dominant agent per task is picked with
+        # ROW_NUMBER() instead of an N+1 per-task subquery (#750). O(1) queries
+        # regardless of `limit`. Ties on call count break on agent_id for a
+        # deterministic result (previously "arbitrary").
         cursor = self.conn.cursor()
         cursor.execute(
             """
+            WITH per_task AS (
+                SELECT
+                    task_id,
+                    COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                    COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                    COALESCE(SUM(estimated_cost_usd), 0.0) AS total_cost_usd
+                FROM token_usage
+                WHERE task_id IS NOT NULL
+                  AND timestamp >= ?
+                  AND timestamp < ?
+                GROUP BY task_id
+                ORDER BY total_cost_usd DESC
+                LIMIT ?
+            ),
+            agent_ranked AS (
+                SELECT
+                    task_id,
+                    agent_id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY task_id
+                        ORDER BY COUNT(*) DESC, agent_id ASC
+                    ) AS rn
+                FROM token_usage
+                WHERE task_id IS NOT NULL
+                  AND timestamp >= ?
+                  AND timestamp < ?
+                GROUP BY task_id, agent_id
+            )
             SELECT
-                task_id,
-                COALESCE(SUM(input_tokens), 0) AS input_tokens,
-                COALESCE(SUM(output_tokens), 0) AS output_tokens,
-                COALESCE(SUM(estimated_cost_usd), 0.0) AS total_cost_usd
-            FROM token_usage
-            WHERE task_id IS NOT NULL
-              AND timestamp >= ?
-              AND timestamp < ?
-            GROUP BY task_id
-            ORDER BY total_cost_usd DESC
-            LIMIT ?
+                p.task_id AS task_id,
+                COALESCE(a.agent_id, '') AS agent_id,
+                p.input_tokens AS input_tokens,
+                p.output_tokens AS output_tokens,
+                p.total_cost_usd AS total_cost_usd
+            FROM per_task p
+            LEFT JOIN agent_ranked a
+                ON a.task_id = p.task_id AND a.rn = 1
+            ORDER BY p.total_cost_usd DESC
             """,
-            (start_iso, end_iso, limit),
+            (start_iso, end_iso, limit, start_iso, end_iso),
         )
         rows = cursor.fetchall()
 
-        # TODO(perf): the dominant-agent lookup is N+1 against the limit.
-        # Acceptable at limit=10 (analytics view) and even limit=1000 (badge
-        # map for a board). Fold into a single CTE if the cap grows further.
         result: List[Dict[str, Any]] = []
         for row in rows:
-            task_id = row["task_id"]
-            # Find the most-used agent for this task in the same window.
-            cursor.execute(
-                """
-                SELECT agent_id, COUNT(*) AS calls
-                FROM token_usage
-                WHERE task_id = ?
-                  AND timestamp >= ?
-                  AND timestamp < ?
-                GROUP BY agent_id
-                ORDER BY calls DESC
-                LIMIT 1
-                """,
-                (task_id, start_iso, end_iso),
-            )
-            agent_row = cursor.fetchone()
-            agent_id = agent_row["agent_id"] if agent_row else ""
-
             result.append({
-                "task_id": task_id,
-                "agent_id": agent_id,
+                "task_id": row["task_id"],
+                "agent_id": row["agent_id"],
                 "input_tokens": int(row["input_tokens"] or 0),
                 "output_tokens": int(row["output_tokens"] or 0),
                 "total_cost_usd": float(row["total_cost_usd"] or 0.0),
