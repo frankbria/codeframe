@@ -202,7 +202,7 @@ class UpdateTaskRequest(BaseModel):
 
 @router.get("", response_model=TaskListResponse)
 @rate_limit_standard()
-async def list_tasks(
+def list_tasks(
     request: Request,
     status: Optional[str] = Query(None, description="Filter by status (BACKLOG, READY, IN_PROGRESS, DONE, BLOCKED, FAILED)"),
     limit: int = Query(100, ge=1, le=1000),
@@ -248,7 +248,7 @@ async def list_tasks(
 
 @router.get("/{task_id}", response_model=TaskResponse)
 @rate_limit_standard()
-async def get_task(
+def get_task(
     request: Request,
     task_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
@@ -277,7 +277,7 @@ async def get_task(
 
 @router.patch("/{task_id}", response_model=TaskResponse)
 @rate_limit_standard()
-async def update_task(
+def update_task(
     request: Request,
     task_id: str,
     body: UpdateTaskRequest,
@@ -420,7 +420,7 @@ async def update_task(
 
 @router.delete("/{task_id}")
 @rate_limit_standard()
-async def delete_task(
+def delete_task(
     request: Request,
     task_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
@@ -533,7 +533,7 @@ async def approve_tasks_endpoint(
 
 @router.get("/assignment-status", response_model=AssignmentStatusResponse)
 @rate_limit_standard()
-async def get_assignment_status(
+def get_assignment_status(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> AssignmentStatusResponse:
@@ -1053,7 +1053,7 @@ async def stream_task_events(
 
 @router.get("/{task_id}/run")
 @rate_limit_standard()
-async def get_task_run(
+def get_task_run(
     request: Request,
     task_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
