@@ -107,7 +107,7 @@ def _query_costs(db_path: str, days: int) -> Dict:
 
 @router.get("/summary", response_model=CostSummaryResponse)
 @rate_limit_standard()
-async def get_costs_summary(
+def get_costs_summary(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
     days: int = Query(30, ge=7, le=90, description="Window size in days (7-90)"),
@@ -279,7 +279,7 @@ def _query_costs_by_agent(db_path: str, days: int) -> Dict[str, Any]:
 
 @router.get("/tasks", response_model=TaskCostsResponse)
 @rate_limit_standard()
-async def get_costs_by_task(
+def get_costs_by_task(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
     days: int = Query(30, ge=1, le=365, description="Window size in days (1-365)"),
@@ -311,7 +311,7 @@ async def get_costs_by_task(
 
 @router.get("/by-agent", response_model=AgentCostsResponse)
 @rate_limit_standard()
-async def get_costs_by_agent_endpoint(
+def get_costs_by_agent_endpoint(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
     days: int = Query(30, ge=1, le=365, description="Window size in days (1-365)"),
