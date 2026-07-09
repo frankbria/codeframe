@@ -271,6 +271,14 @@ class Database:
         """Delegate to token_usage.get_workspace_token_usage()."""
         return self.token_usage.get_workspace_token_usage(*args, **kwargs)
 
+    def get_token_usage_iter(self, *args, **kwargs):
+        """Delegate to token_usage.get_token_usage_iter()."""
+        return self.token_usage.get_token_usage_iter(*args, **kwargs)
+
+    def get_costs_by_model(self, *args, **kwargs):
+        """Delegate to token_usage.get_costs_by_model()."""
+        return self.token_usage.get_costs_by_model(*args, **kwargs)
+
     # ----- Audit log -----
     def create_audit_log(self, *args, **kwargs):
         """Delegate to audit_logs.create_audit_log()."""

@@ -112,32 +112,14 @@ def tokens(
 
             console.print(table)
         else:
-            # Workspace-wide summary
-            records = db.get_workspace_token_usage()
+            # Workspace-wide summary — aggregated in SQL, then totals
+            # derived from the handful of per-model rows.
+            by_model = db.get_costs_by_model()
 
-            total_input = 0
-            total_output = 0
-            total_cost = 0.0
-            model_stats: dict[str, dict] = {}
-
-            for record in records:
-                total_input += record["input_tokens"]
-                total_output += record["output_tokens"]
-                total_cost += record["estimated_cost_usd"]
-
-                model = record["model_name"]
-                if model not in model_stats:
-                    model_stats[model] = {
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cost_usd": 0.0,
-                        "calls": 0,
-                    }
-                model_stats[model]["input_tokens"] += record["input_tokens"]
-                model_stats[model]["output_tokens"] += record["output_tokens"]
-                model_stats[model]["cost_usd"] += record["estimated_cost_usd"]
-                model_stats[model]["calls"] += 1
-
+            total_input = sum(m["input_tokens"] for m in by_model)
+            total_output = sum(m["output_tokens"] for m in by_model)
+            total_cost = sum(m["total_cost_usd"] for m in by_model)
+            total_calls = sum(m["call_count"] for m in by_model)
             total_tokens = total_input + total_output
 
             console.print("\n[bold]Workspace Token Usage Summary[/bold]\n")
@@ -150,11 +132,11 @@ def tokens(
             summary_table.add_row("Input Tokens", _format_number(total_input))
             summary_table.add_row("Output Tokens", _format_number(total_output))
             summary_table.add_row("Total Cost", f"${total_cost:.4f}")
-            summary_table.add_row("LLM Calls", str(len(records)))
+            summary_table.add_row("LLM Calls", str(total_calls))
 
             console.print(summary_table)
 
-            if model_stats:
+            if by_model:
                 console.print("\n[bold]By Model:[/bold]")
                 model_table = Table(show_header=True)
                 model_table.add_column("Model", style="cyan")
@@ -162,12 +144,12 @@ def tokens(
                 model_table.add_column("Cost", justify="right")
                 model_table.add_column("Calls", justify="right")
 
-                for model_name, stats in model_stats.items():
+                for m in by_model:
                     model_table.add_row(
-                        model_name,
-                        _format_number(stats["input_tokens"] + stats["output_tokens"]),
-                        f"${stats['cost_usd']:.4f}",
-                        str(stats["calls"]),
+                        m["model_name"],
+                        _format_number(m["input_tokens"] + m["output_tokens"]),
+                        f"${m['total_cost_usd']:.4f}",
+                        str(m["call_count"]),
                     )
 
                 console.print(model_table)
@@ -214,24 +196,13 @@ def costs(
             )
             raise typer.Exit(1)
 
-        # Single fetch: get raw records and compute summary + per-model breakdown in one pass
-        records = db.get_workspace_token_usage(start_date=start_date, end_date=end_date)
+        # Per-model rollup aggregated in SQL; totals summed over the
+        # small per-model result set.
+        by_model = db.get_costs_by_model(start_date=start_date, end_date=end_date)
 
-        total_cost = 0.0
-        total_tokens = 0
-        model_costs: dict[str, dict] = {}
-        for record in records:
-            cost = record["estimated_cost_usd"]
-            tokens = record["input_tokens"] + record["output_tokens"]
-            total_cost += cost
-            total_tokens += tokens
-
-            model = record["model_name"]
-            if model not in model_costs:
-                model_costs[model] = {"cost_usd": 0.0, "tokens": 0, "calls": 0}
-            model_costs[model]["cost_usd"] += cost
-            model_costs[model]["tokens"] += tokens
-            model_costs[model]["calls"] += 1
+        total_cost = sum(m["total_cost_usd"] for m in by_model)
+        total_tokens = sum(m["input_tokens"] + m["output_tokens"] for m in by_model)
+        total_calls = sum(m["call_count"] for m in by_model)
 
         period_label = f" ({period})" if period else " (all time)"
         console.print(f"\n[bold]Cost Report{period_label}[/bold]\n")
@@ -242,11 +213,11 @@ def costs(
 
         table.add_row("Total Cost", f"${total_cost:.4f}")
         table.add_row("Total Tokens", _format_number(total_tokens))
-        table.add_row("LLM Calls", str(len(records)))
+        table.add_row("LLM Calls", str(total_calls))
 
         console.print(table)
 
-        if model_costs:
+        if by_model:
             console.print("\n[bold]By Model:[/bold]")
             model_table = Table(show_header=True)
             model_table.add_column("Model", style="cyan")
@@ -254,12 +225,12 @@ def costs(
             model_table.add_column("Tokens", justify="right")
             model_table.add_column("Calls", justify="right")
 
-            for model_name, stats in model_costs.items():
+            for m in by_model:
                 model_table.add_row(
-                    model_name,
-                    f"${stats['cost_usd']:.4f}",
-                    _format_number(stats["tokens"]),
-                    str(stats["calls"]),
+                    m["model_name"],
+                    f"${m['total_cost_usd']:.4f}",
+                    _format_number(m["input_tokens"] + m["output_tokens"]),
+                    str(m["call_count"]),
                 )
 
             console.print(model_table)
@@ -293,19 +264,21 @@ def export_data(
 
     db = _get_db()
     try:
-        if task is not None:
-            records = db.get_batch_token_usage(task_ids=[task])
-        else:
-            records = db.get_workspace_token_usage()
-
-        if format == "csv":
-            MetricsTracker.export_to_csv(records, output)
-        elif format == "json":
-            MetricsTracker.export_to_json(records, output)
-        else:
+        if format not in ("csv", "json"):
             console.print(f"[red]Error:[/red] Unknown format '{format}'. Use 'csv' or 'json'.")
             raise typer.Exit(1)
 
-        console.print(f"Exported {len(records)} records to {output}")
+        if task is not None:
+            records = db.get_batch_token_usage(task_ids=[task])
+        else:
+            # Stream the workspace table — never buffered into a list.
+            records = db.get_token_usage_iter()
+
+        if format == "csv":
+            n = MetricsTracker.export_to_csv(records, output)
+        else:
+            n = MetricsTracker.export_to_json(records, output)
+
+        console.print(f"Exported {n} records to {output}")
     finally:
         db.close()

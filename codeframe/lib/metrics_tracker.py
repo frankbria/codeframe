@@ -38,9 +38,11 @@ Example:
 import csv
 import json
 import logging
+import os
 import re
+import tempfile
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, Optional, TextIO, Union
 from codeframe.core.models import CallType, TokenUsage
 from codeframe.platform_store.database import Database
 
@@ -334,30 +336,70 @@ class MetricsTracker:
                 "total_calls": int,
             }
         """
-        records = self.db.get_workspace_token_usage(
-            start_date=start_date, end_date=end_date
-        )
+        # Aggregation is pushed into SQL: the per-model rollup returns a
+        # handful of rows; summing those in Python is O(models), not O(records).
+        by_model = self.db.get_costs_by_model(start_date=start_date, end_date=end_date)
 
-        result: Dict[str, Any] = {
-            "total_cost_usd": 0.0,
-            "total_tokens": 0,
-            "total_calls": len(records),
+        total_cost = sum(m["total_cost_usd"] for m in by_model)
+        total_tokens = sum(m["input_tokens"] + m["output_tokens"] for m in by_model)
+        total_calls = sum(m["call_count"] for m in by_model)
+
+        return {
+            "total_cost_usd": round(total_cost, 6),
+            "total_tokens": total_tokens,
+            "total_calls": total_calls,
         }
 
-        for record in records:
-            result["total_cost_usd"] += record["estimated_cost_usd"]
-            result["total_tokens"] += record["input_tokens"] + record["output_tokens"]
-
-        result["total_cost_usd"] = round(result["total_cost_usd"], 6)
-        return result
-
     @staticmethod
-    def export_to_csv(records: List[Dict[str, Any]], output_path: str) -> None:
-        """Export token usage records to a CSV file.
+    def _atomic_stream_write(
+        output_path: str, write_fn: Callable[[TextIO], int]
+    ) -> int:
+        """Stream through a temp file in the same dir, then ``os.replace``.
+
+        The exporters write incrementally, so a mid-stream failure (source
+        iterator raises, disk fills) must not leave a truncated file at
+        ``output_path``. Writing to a sibling temp file and atomically renaming
+        on success means readers only ever see a complete export; the temp file
+        is unlinked on any failure.
 
         Args:
-            records: List of token usage record dictionaries
-            output_path: Path to write the CSV file
+            output_path: Final destination path.
+            write_fn: Callback that writes to the open file and returns a count.
+
+        Returns:
+            Whatever ``write_fn`` returns (the record count).
+        """
+        directory = os.path.dirname(os.path.abspath(output_path))
+        # mkstemp creates the temp file 0600 and os.replace preserves that mode,
+        # so exports land owner-only (not umask-derived 0644). Intentional: token
+        # spend data is mildly sensitive and this file is the user's named output.
+        fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".export-", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", newline="") as f:
+                count = write_fn(f)
+            os.replace(tmp_path, output_path)
+            return count
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    @staticmethod
+    def export_to_csv(records: Iterable[Dict[str, Any]], output_path: str) -> int:
+        """Stream token usage records to a CSV file.
+
+        Consumes ``records`` lazily (accepts the ``get_token_usage_iter``
+        generator) so a large table is never buffered into a list. Written
+        atomically — a partial write never lands at ``output_path``.
+
+        Args:
+            records: Iterable of token usage record dictionaries.
+            output_path: Path to write the CSV file.
+
+        Returns:
+            Number of rows written.
         """
         fieldnames = [
             "id", "task_id", "agent_id", "project_id", "model_name",
@@ -365,40 +407,54 @@ class MetricsTracker:
             "actual_cost_usd", "call_type", "session_id", "timestamp",
         ]
 
-        with open(output_path, "w", newline="") as f:
+        def _write(f: TextIO) -> int:
             writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
+            count = 0
             for record in records:
                 writer.writerow(record)
+                count += 1
+            return count
+
+        return MetricsTracker._atomic_stream_write(output_path, _write)
 
     @staticmethod
-    def export_to_json(records: List[Dict[str, Any]], output_path: str) -> None:
-        """Export token usage records to a JSON file with metadata.
+    def export_to_json(records: Iterable[Dict[str, Any]], output_path: str) -> int:
+        """Stream token usage records to a JSON file with metadata.
+
+        Writes the ``records`` array incrementally as it consumes the iterator,
+        so the whole table is never held in memory at once. ``metadata`` (with
+        ``record_count``) is written last; JSON object key order is not
+        semantically meaningful, so consumers using ``json.load`` are unaffected.
+        Written atomically — a partial write never lands at ``output_path``.
 
         Args:
-            records: List of token usage record dictionaries
-            output_path: Path to write the JSON file
+            records: Iterable of token usage record dictionaries.
+            output_path: Path to write the JSON file.
+
+        Returns:
+            Number of records written.
         """
-        # Convert sqlite3.Row objects to plain dicts if needed
-        serializable_records = []
-        for record in records:
-            row = dict(record)
-            # Ensure all values are JSON-serializable
-            for key, value in row.items():
-                if isinstance(value, datetime):
-                    row[key] = value.isoformat()
-            serializable_records.append(row)
-
-        data = {
-            "metadata": {
+        def _write(f: TextIO) -> int:
+            count = 0
+            f.write('{\n  "records": [')
+            for record in records:
+                row = {
+                    k: (v.isoformat() if isinstance(v, datetime) else v)
+                    for k, v in dict(record).items()
+                }
+                f.write("\n    " if count == 0 else ",\n    ")
+                f.write(json.dumps(row, default=str))
+                count += 1
+            f.write("\n  ],\n")
+            metadata = {
                 "exported_at": datetime.now(timezone.utc).isoformat(),
-                "record_count": len(serializable_records),
-            },
-            "records": serializable_records,
-        }
+                "record_count": count,
+            }
+            f.write('  "metadata": ' + json.dumps(metadata) + "\n}\n")
+            return count
 
-        with open(output_path, "w") as f:
-            json.dump(data, f, indent=2, default=str)
+        return MetricsTracker._atomic_stream_write(output_path, _write)
 
     async def get_project_costs(
         self,
