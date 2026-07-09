@@ -40,7 +40,7 @@ import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterable, Optional, Union
 from codeframe.core.models import CallType, TokenUsage
 from codeframe.platform_store.database import Database
 
@@ -334,30 +334,33 @@ class MetricsTracker:
                 "total_calls": int,
             }
         """
-        records = self.db.get_workspace_token_usage(
-            start_date=start_date, end_date=end_date
-        )
+        # Aggregation is pushed into SQL (#752): the per-model rollup returns a
+        # handful of rows; summing those in Python is O(models), not O(records).
+        by_model = self.db.get_costs_by_model(start_date=start_date, end_date=end_date)
 
-        result: Dict[str, Any] = {
-            "total_cost_usd": 0.0,
-            "total_tokens": 0,
-            "total_calls": len(records),
+        total_cost = sum(m["total_cost_usd"] for m in by_model)
+        total_tokens = sum(m["input_tokens"] + m["output_tokens"] for m in by_model)
+        total_calls = sum(m["call_count"] for m in by_model)
+
+        return {
+            "total_cost_usd": round(total_cost, 6),
+            "total_tokens": total_tokens,
+            "total_calls": total_calls,
         }
 
-        for record in records:
-            result["total_cost_usd"] += record["estimated_cost_usd"]
-            result["total_tokens"] += record["input_tokens"] + record["output_tokens"]
-
-        result["total_cost_usd"] = round(result["total_cost_usd"], 6)
-        return result
-
     @staticmethod
-    def export_to_csv(records: List[Dict[str, Any]], output_path: str) -> None:
-        """Export token usage records to a CSV file.
+    def export_to_csv(records: Iterable[Dict[str, Any]], output_path: str) -> int:
+        """Stream token usage records to a CSV file.
+
+        Consumes ``records`` lazily (accepts the ``get_token_usage_iter``
+        generator) so a large table is never buffered into a list (#752).
 
         Args:
-            records: List of token usage record dictionaries
-            output_path: Path to write the CSV file
+            records: Iterable of token usage record dictionaries.
+            output_path: Path to write the CSV file.
+
+        Returns:
+            Number of rows written.
         """
         fieldnames = [
             "id", "task_id", "agent_id", "project_id", "model_name",
@@ -365,40 +368,49 @@ class MetricsTracker:
             "actual_cost_usd", "call_type", "session_id", "timestamp",
         ]
 
+        count = 0
         with open(output_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             for record in records:
                 writer.writerow(record)
+                count += 1
+        return count
 
     @staticmethod
-    def export_to_json(records: List[Dict[str, Any]], output_path: str) -> None:
-        """Export token usage records to a JSON file with metadata.
+    def export_to_json(records: Iterable[Dict[str, Any]], output_path: str) -> int:
+        """Stream token usage records to a JSON file with metadata.
+
+        Writes the ``records`` array incrementally as it consumes the iterator,
+        so the whole table is never held in memory at once (#752). ``metadata``
+        (with ``record_count``) is written last; JSON object key order is not
+        semantically meaningful, so consumers using ``json.load`` are unaffected.
 
         Args:
-            records: List of token usage record dictionaries
-            output_path: Path to write the JSON file
+            records: Iterable of token usage record dictionaries.
+            output_path: Path to write the JSON file.
+
+        Returns:
+            Number of records written.
         """
-        # Convert sqlite3.Row objects to plain dicts if needed
-        serializable_records = []
-        for record in records:
-            row = dict(record)
-            # Ensure all values are JSON-serializable
-            for key, value in row.items():
-                if isinstance(value, datetime):
-                    row[key] = value.isoformat()
-            serializable_records.append(row)
-
-        data = {
-            "metadata": {
-                "exported_at": datetime.now(timezone.utc).isoformat(),
-                "record_count": len(serializable_records),
-            },
-            "records": serializable_records,
-        }
-
+        count = 0
         with open(output_path, "w") as f:
-            json.dump(data, f, indent=2, default=str)
+            f.write('{\n  "records": [')
+            for record in records:
+                row = {
+                    k: (v.isoformat() if isinstance(v, datetime) else v)
+                    for k, v in dict(record).items()
+                }
+                f.write("\n    " if count == 0 else ",\n    ")
+                f.write(json.dumps(row, default=str))
+                count += 1
+            f.write("\n  ],\n")
+            metadata = {
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "record_count": count,
+            }
+            f.write('  "metadata": ' + json.dumps(metadata) + "\n}\n")
+        return count
 
     async def get_project_costs(
         self,

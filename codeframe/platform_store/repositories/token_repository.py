@@ -4,7 +4,7 @@ Extracted from monolithic Database class for better maintainability.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Dict, Any, Union, TYPE_CHECKING
+from typing import List, Optional, Dict, Any, Union, Iterator, TYPE_CHECKING
 import logging
 
 
@@ -273,6 +273,106 @@ class TokenRepository(BaseRepository):
 
         cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
+
+    def get_token_usage_iter(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        batch_size: int = 1000,
+    ) -> "Iterator[Dict[str, Any]]":
+        """Stream workspace token_usage rows without materialising the whole table.
+
+        Yields records one at a time, pulling from SQLite in ``batch_size``
+        chunks via ``fetchmany`` so an export of a large table never loads the
+        entire result set into a Python list (#752).
+
+        Args:
+            start_date: Optional start of date range (inclusive).
+            end_date: Optional end of date range (inclusive).
+            batch_size: Rows fetched per round-trip.
+
+        Yields:
+            Token usage records as dictionaries, newest first.
+
+        # ponytail: uses a dedicated cursor on the shared connection; the export
+        # path is single-threaded, so no other query interleaves mid-iteration.
+        """
+        query = "SELECT * FROM token_usage WHERE 1=1"
+        params: list = []
+        if start_date is not None:
+            query += " AND timestamp >= ?"
+            params.append(start_date.isoformat())
+        if end_date is not None:
+            query += " AND timestamp <= ?"
+            params.append(end_date.isoformat())
+        query += " ORDER BY timestamp DESC"
+
+        cursor = self.conn.cursor()
+        cursor.execute(query, params)
+        while True:
+            batch = cursor.fetchmany(batch_size)
+            if not batch:
+                break
+            for row in batch:
+                yield dict(row)
+
+    def get_costs_by_model(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        """Aggregate spend per model in SQL, honouring an optional date window.
+
+        Replaces the old ``SELECT *`` + Python for-loop rollup used by
+        ``cf stats`` (#752): the SUM/COUNT/GROUP BY runs in SQLite and only a
+        handful of per-model rows come back.
+
+        Args:
+            start_date: Optional start of date range (inclusive).
+            end_date: Optional end of date range (inclusive).
+
+        Returns:
+            List of dicts sorted by total_cost_usd DESC::
+
+                {
+                    "model_name": str,
+                    "input_tokens": int,
+                    "output_tokens": int,
+                    "total_cost_usd": float,
+                    "call_count": int,
+                }
+        """
+        query = """
+            SELECT
+                model_name,
+                COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) AS total_cost_usd,
+                COUNT(*) AS call_count
+            FROM token_usage
+            WHERE 1=1
+        """
+        params: list = []
+        if start_date is not None:
+            query += " AND timestamp >= ?"
+            params.append(start_date.isoformat())
+        if end_date is not None:
+            query += " AND timestamp <= ?"
+            params.append(end_date.isoformat())
+        query += " GROUP BY model_name ORDER BY total_cost_usd DESC"
+
+        cursor = self.conn.cursor()
+        cursor.execute(query, params)
+        return [
+            {
+                "model_name": row["model_name"],
+                "input_tokens": int(row["input_tokens"] or 0),
+                "output_tokens": int(row["output_tokens"] or 0),
+                "total_cost_usd": float(row["total_cost_usd"] or 0.0),
+                "call_count": int(row["call_count"] or 0),
+            }
+            for row in cursor.fetchall()
+        ]
 
     def get_costs_summary(self, days: int) -> Dict[str, Any]:
         """Aggregate token_usage costs into daily buckets for analytics.
