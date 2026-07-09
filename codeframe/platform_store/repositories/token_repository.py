@@ -293,10 +293,9 @@ class TokenRepository(BaseRepository):
 
         Yields:
             Token usage records as dictionaries, newest first.
-
+        """
         # ponytail: uses a dedicated cursor on the shared connection; the export
         # path is single-threaded, so no other query interleaves mid-iteration.
-        """
         query = "SELECT * FROM token_usage WHERE 1=1"
         params: list = []
         if start_date is not None:
