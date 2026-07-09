@@ -6,7 +6,7 @@ Python). These tests lock in that:
 
 1. `get_costs_by_model()` pushes the per-model rollup into SQL (SUM/GROUP BY),
    honours the [start, end] window, and orders by cost DESC.
-2. `iter_workspace_token_usage()` is a lazy generator (streams rows) and honours
+2. `get_token_usage_iter()` is a lazy generator (streams rows) and honours
    the same window.
 3. `MetricsTracker.get_workspace_costs()` derives its totals from the SQL rollup.
 4. `export_to_csv` / `export_to_json` consume an iterator (no full-table list),
@@ -140,3 +140,24 @@ class TestStreamingExport:
         data = json.loads(out.read_text())
         assert data["metadata"]["record_count"] == 3
         assert len(data["records"]) == 3
+
+    def test_json_empty_records_is_valid_json(self, tmp_path: Path):
+        out = tmp_path / "empty.json"
+        n = MetricsTracker.export_to_json(iter([]), str(out))
+        assert n == 0
+        data = json.loads(out.read_text())  # must not raise
+        assert data["records"] == []
+        assert data["metadata"]["record_count"] == 0
+
+    def test_mid_stream_failure_leaves_no_partial_file(self, tmp_path: Path):
+        out = tmp_path / "partial.csv"
+
+        def boom():
+            yield {"id": 1, "input_tokens": 1, "output_tokens": 1}
+            raise RuntimeError("source blew up mid-stream")
+
+        with pytest.raises(RuntimeError):
+            MetricsTracker.export_to_csv(boom(), str(out))
+        # Atomic write: the destination must not exist, and no temp junk remains.
+        assert not out.exists()
+        assert list(tmp_path.iterdir()) == []

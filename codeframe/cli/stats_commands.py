@@ -112,7 +112,7 @@ def tokens(
 
             console.print(table)
         else:
-            # Workspace-wide summary — aggregated in SQL (#752), then totals
+            # Workspace-wide summary — aggregated in SQL, then totals
             # derived from the handful of per-model rows.
             by_model = db.get_costs_by_model()
 
@@ -196,7 +196,7 @@ def costs(
             )
             raise typer.Exit(1)
 
-        # Per-model rollup aggregated in SQL (#752); totals summed over the
+        # Per-model rollup aggregated in SQL; totals summed over the
         # small per-model result set.
         by_model = db.get_costs_by_model(start_date=start_date, end_date=end_date)
 
@@ -271,7 +271,7 @@ def export_data(
         if task is not None:
             records = db.get_batch_token_usage(task_ids=[task])
         else:
-            # Stream the workspace table (#752) — never buffered into a list.
+            # Stream the workspace table — never buffered into a list.
             records = db.get_token_usage_iter()
 
         if format == "csv":

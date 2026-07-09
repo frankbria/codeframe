@@ -38,7 +38,9 @@ Example:
 import csv
 import json
 import logging
+import os
 import re
+import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, Optional, Union
 from codeframe.core.models import CallType, TokenUsage
@@ -334,7 +336,7 @@ class MetricsTracker:
                 "total_calls": int,
             }
         """
-        # Aggregation is pushed into SQL (#752): the per-model rollup returns a
+        # Aggregation is pushed into SQL: the per-model rollup returns a
         # handful of rows; summing those in Python is O(models), not O(records).
         by_model = self.db.get_costs_by_model(start_date=start_date, end_date=end_date)
 
@@ -349,11 +351,43 @@ class MetricsTracker:
         }
 
     @staticmethod
+    def _atomic_stream_write(output_path: str, write_fn) -> int:
+        """Stream through a temp file in the same dir, then ``os.replace``.
+
+        The exporters write incrementally, so a mid-stream failure (source
+        iterator raises, disk fills) must not leave a truncated file at
+        ``output_path``. Writing to a sibling temp file and atomically renaming
+        on success means readers only ever see a complete export; the temp file
+        is unlinked on any failure.
+
+        Args:
+            output_path: Final destination path.
+            write_fn: Callback that writes to the open file and returns a count.
+
+        Returns:
+            Whatever ``write_fn`` returns (the record count).
+        """
+        directory = os.path.dirname(os.path.abspath(output_path))
+        fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".export-", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", newline="") as f:
+                count = write_fn(f)
+            os.replace(tmp_path, output_path)
+            return count
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    @staticmethod
     def export_to_csv(records: Iterable[Dict[str, Any]], output_path: str) -> int:
         """Stream token usage records to a CSV file.
 
         Consumes ``records`` lazily (accepts the ``get_token_usage_iter``
-        generator) so a large table is never buffered into a list (#752).
+        generator) so a large table is never buffered into a list. Written
+        atomically — a partial write never lands at ``output_path``.
 
         Args:
             records: Iterable of token usage record dictionaries.
@@ -368,23 +402,26 @@ class MetricsTracker:
             "actual_cost_usd", "call_type", "session_id", "timestamp",
         ]
 
-        count = 0
-        with open(output_path, "w", newline="") as f:
+        def _write(f) -> int:
             writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
+            count = 0
             for record in records:
                 writer.writerow(record)
                 count += 1
-        return count
+            return count
+
+        return MetricsTracker._atomic_stream_write(output_path, _write)
 
     @staticmethod
     def export_to_json(records: Iterable[Dict[str, Any]], output_path: str) -> int:
         """Stream token usage records to a JSON file with metadata.
 
         Writes the ``records`` array incrementally as it consumes the iterator,
-        so the whole table is never held in memory at once (#752). ``metadata``
-        (with ``record_count``) is written last; JSON object key order is not
+        so the whole table is never held in memory at once. ``metadata`` (with
+        ``record_count``) is written last; JSON object key order is not
         semantically meaningful, so consumers using ``json.load`` are unaffected.
+        Written atomically — a partial write never lands at ``output_path``.
 
         Args:
             records: Iterable of token usage record dictionaries.
@@ -393,8 +430,8 @@ class MetricsTracker:
         Returns:
             Number of records written.
         """
-        count = 0
-        with open(output_path, "w") as f:
+        def _write(f) -> int:
+            count = 0
             f.write('{\n  "records": [')
             for record in records:
                 row = {
@@ -410,7 +447,9 @@ class MetricsTracker:
                 "record_count": count,
             }
             f.write('  "metadata": ' + json.dumps(metadata) + "\n}\n")
-        return count
+            return count
+
+        return MetricsTracker._atomic_stream_write(output_path, _write)
 
     async def get_project_costs(
         self,

@@ -284,7 +284,7 @@ class TokenRepository(BaseRepository):
 
         Yields records one at a time, pulling from SQLite in ``batch_size``
         chunks via ``fetchmany`` so an export of a large table never loads the
-        entire result set into a Python list (#752).
+        entire result set into a Python list.
 
         Args:
             start_date: Optional start of date range (inclusive).
@@ -308,12 +308,17 @@ class TokenRepository(BaseRepository):
 
         cursor = self.conn.cursor()
         cursor.execute(query, params)
-        while True:
-            batch = cursor.fetchmany(batch_size)
-            if not batch:
-                break
-            for row in batch:
-                yield dict(row)
+        # try/finally closes the cursor even if the consumer breaks or raises
+        # mid-stream (GeneratorExit), rather than leaving it open until GC.
+        try:
+            while True:
+                batch = cursor.fetchmany(batch_size)
+                if not batch:
+                    break
+                for row in batch:
+                    yield dict(row)
+        finally:
+            cursor.close()
 
     def get_costs_by_model(
         self,
@@ -323,7 +328,7 @@ class TokenRepository(BaseRepository):
         """Aggregate spend per model in SQL, honouring an optional date window.
 
         Replaces the old ``SELECT *`` + Python for-loop rollup used by
-        ``cf stats`` (#752): the SUM/COUNT/GROUP BY runs in SQLite and only a
+        ``cf stats``: the SUM/COUNT/GROUP BY runs in SQLite and only a
         handful of per-model rows come back.
 
         Args:
