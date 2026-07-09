@@ -42,7 +42,7 @@ import os
 import re
 import tempfile
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, Optional, Union
+from typing import Any, Callable, Dict, Iterable, Optional, TextIO, Union
 from codeframe.core.models import CallType, TokenUsage
 from codeframe.platform_store.database import Database
 
@@ -351,7 +351,9 @@ class MetricsTracker:
         }
 
     @staticmethod
-    def _atomic_stream_write(output_path: str, write_fn) -> int:
+    def _atomic_stream_write(
+        output_path: str, write_fn: Callable[[TextIO], int]
+    ) -> int:
         """Stream through a temp file in the same dir, then ``os.replace``.
 
         The exporters write incrementally, so a mid-stream failure (source
@@ -402,7 +404,7 @@ class MetricsTracker:
             "actual_cost_usd", "call_type", "session_id", "timestamp",
         ]
 
-        def _write(f) -> int:
+        def _write(f: TextIO) -> int:
             writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             count = 0
@@ -430,7 +432,7 @@ class MetricsTracker:
         Returns:
             Number of records written.
         """
-        def _write(f) -> int:
+        def _write(f: TextIO) -> int:
             count = 0
             f.write('{\n  "records": [')
             for record in records:
