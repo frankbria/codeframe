@@ -370,6 +370,9 @@ class MetricsTracker:
             Whatever ``write_fn`` returns (the record count).
         """
         directory = os.path.dirname(os.path.abspath(output_path))
+        # mkstemp creates the temp file 0600 and os.replace preserves that mode,
+        # so exports land owner-only (not umask-derived 0644). Intentional: token
+        # spend data is mildly sensitive and this file is the user's named output.
         fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".export-", suffix=".tmp")
         try:
             with os.fdopen(fd, "w", newline="") as f:
