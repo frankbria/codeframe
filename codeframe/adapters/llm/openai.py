@@ -463,11 +463,25 @@ class OpenAIProvider(LLMProvider):
 
         if message.tool_calls:
             for tc in message.tool_calls:
+                raw_args = tc.function.arguments or "{}"
+                try:
+                    tool_input = json.loads(raw_args)
+                except json.JSONDecodeError:
+                    # Local models (Ollama/vLLM) often emit truncated tool args;
+                    # substitute {} so the tool layer returns a recoverable error
+                    # instead of crashing the run. Mirrors the streaming path.
+                    logger.warning(
+                        "Failed to parse tool arguments for tool '%s' (id=%s): %r",
+                        tc.function.name,
+                        tc.id,
+                        raw_args,
+                    )
+                    tool_input = {}
                 tool_calls.append(
                     ToolCall(
                         id=tc.id,
                         name=tc.function.name,
-                        input=json.loads(tc.function.arguments),
+                        input=tool_input,
                     )
                 )
 

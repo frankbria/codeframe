@@ -167,6 +167,36 @@ class TestOpenAIProviderComplete:
         assert response.tool_calls[0].name == "read_file"
         assert response.tool_calls[0].input == {"path": "/foo.py"}
 
+    def test_malformed_tool_arguments_recovered(self):
+        """Truncated/invalid tool-call JSON substitutes {} instead of crashing (#755).
+
+        Mirrors the streaming path so local Ollama/vLLM models that emit
+        malformed tool args let the tool layer return a recoverable error.
+        """
+        from codeframe.adapters.llm.openai import OpenAIProvider
+        from codeframe.adapters.llm.base import Tool
+
+        provider = OpenAIProvider(api_key="sk-test")
+        tc = _make_tool_call("id1", "read_file", {"path": "/foo.py"})
+        tc.function.arguments = '{"path": "/foo.py'  # truncated, invalid JSON
+        mock_resp = _make_completion(tool_calls=[tc], finish_reason="tool_calls")
+
+        with patch.object(provider, "_client", None):
+            with patch("openai.OpenAI") as mock_cls:
+                mock_client = MagicMock()
+                mock_cls.return_value = mock_client
+                mock_client.chat.completions.create.return_value = mock_resp
+
+                tools = [Tool(name="read_file", description="Read a file", input_schema={"type": "object"})]
+                response = provider.complete(
+                    [{"role": "user", "content": "Read /foo.py"}],
+                    tools=tools,
+                )
+
+        assert response.has_tool_calls
+        assert response.tool_calls[0].name == "read_file"
+        assert response.tool_calls[0].input == {}
+
     def test_system_prompt_prepended(self):
         """System prompt is prepended as system role message."""
         from codeframe.adapters.llm.openai import OpenAIProvider
