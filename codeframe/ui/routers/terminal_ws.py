@@ -116,8 +116,6 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
         return
     _user_terminal_counts[user_id] = current + 1
 
-    await websocket.accept()
-
     # --- Spawn bash with a minimal, explicit environment ---
     # Do NOT use os.environ.copy() — it would expose server secrets (API keys, DB creds)
     # to the subprocess. Only pass variables required for a functional terminal.
@@ -137,6 +135,11 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
     stdout_to_ws_task: asyncio.Task | None = None
 
     try:
+        # Accept inside the try so a failed handshake (client aborts) still hits
+        # the finally that releases the reserved per-user slot — otherwise the
+        # slot leaks and three aborts lock the user out (#756).
+        await websocket.accept()
+
         process = await asyncio.create_subprocess_exec(
             shell_exe,
             stdin=asyncio.subprocess.PIPE,

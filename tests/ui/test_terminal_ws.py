@@ -243,6 +243,42 @@ class TestTerminalWsRelay:
             with client.websocket_connect("/ws/sessions/s1/terminal") as ws:
                 pass  # Connected without error → no-auth path works
 
+    async def test_accept_failure_releases_per_user_slot(self):
+        """If the WS handshake (accept) raises, the reserved slot must be freed (#756).
+
+        A client aborting the handshake after the cap check would otherwise leak the
+        per-user slot permanently; three leaks lock the user out.
+        """
+        from codeframe.ui.routers import terminal_ws
+
+        terminal_ws._user_terminal_counts.clear()
+
+        ws = MagicMock()
+        ws.accept = AsyncMock(side_effect=RuntimeError("client aborted handshake"))
+        ws.close = AsyncMock()
+        fake_db = MagicMock()
+        fake_db.interactive_sessions.get.return_value = {
+            "state": "active",
+            "workspace_path": "/tmp",
+            "user_id": 1,
+        }
+        ws.app.state.db = fake_db
+
+        with (
+            patch(
+                "codeframe.ui.routers.terminal_ws._authenticate_websocket",
+                new=AsyncMock(return_value=(True, 1)),
+            ),
+            patch(
+                "codeframe.ui.routers.terminal_ws.revalidate_workspace_path",
+                return_value="/tmp",
+            ),
+        ):
+            await terminal_ws.session_terminal_ws("s1", ws)
+
+        # Slot released despite the failed handshake — no leak.
+        assert terminal_ws._user_terminal_counts.get(1, 0) == 0
+
     def test_resize_message_does_not_crash(self):
         """Sending a resize JSON message should be silently ignored."""
         app = self._make_authenticated_app()
