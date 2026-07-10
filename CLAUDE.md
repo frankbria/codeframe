@@ -279,6 +279,15 @@ WORKSPACE_ROOT=/srv/workspaces        # os.pathsep-separated allowlist of permit
                                       # In hosted mode it is MANDATORY (fail closed) and
                                       # each user is confined to <root>/<user_id>.
 
+# Test-only endpoints (#753) — default OFF
+CODEFRAME_ENABLE_TEST_ENDPOINTS=1     # Registers the integration-test-only
+                                      # POST /test/broadcast route (pushes a WS
+                                      # broadcast to all subscribers). Read once
+                                      # at import time; unset = route absent
+                                      # (404, not in OpenAPI). Never set in
+                                      # production — leave unset except in CI /
+                                      # WebSocket integration test runs.
+
 # LLM Provider selection (multi-provider support)
 # Priority: CLI flag > env var > .codeframe/config.yaml > default (anthropic)
 CODEFRAME_LLM_PROVIDER=anthropic      # Provider: anthropic (default), openai, ollama, vllm, compatible
