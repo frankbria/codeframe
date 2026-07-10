@@ -4,6 +4,7 @@ Tests for SSE event formatting, publisher management, and
 the event_stream_generator used by /api/v2/tasks/{task_id}/stream.
 """
 
+import asyncio
 import json
 
 from codeframe.core.models import (
@@ -12,6 +13,17 @@ from codeframe.core.models import (
     CompletionEvent,
     HeartbeatEvent,
 )
+
+
+class _ConnectedRequest:
+    """Fake Request that never reports a disconnect."""
+
+    async def is_disconnected(self) -> bool:
+        return False
+
+
+def _parse_sse(chunk: str) -> dict:
+    return json.loads(chunk[len("data:"):].strip())
 
 
 class TestSSEEventFormat:
@@ -156,3 +168,71 @@ class TestEventPublisherGlobal:
 
         # Clean up
         set_event_publisher(None)
+
+
+class TestStreamCompletionRaceGuard:
+    """Race guard for GET /api/v2/tasks/{task_id}/stream (#757).
+
+    The terminal-run check must happen *after* the subscription is registered,
+    otherwise a completion published in the window between "not terminal yet"
+    and "subscribed" is dropped (EventPublisher has no buffering) and the client
+    hangs on heartbeats forever.
+    """
+
+    async def test_after_subscribe_terminal_emits_synthetic_and_stops(self):
+        """If the run is already terminal, emit a synthetic completion and end."""
+        from codeframe.core.streaming import EventPublisher
+        from codeframe.ui.routers.streaming_v2 import event_stream_generator
+
+        publisher = EventPublisher()
+        terminal = CompletionEvent(task_id="t1", status="completed", duration_seconds=1.0)
+
+        chunks = [
+            chunk
+            async for chunk in event_stream_generator(
+                "t1", publisher, _ConnectedRequest(), after_subscribe=lambda: terminal
+            )
+        ]
+
+        assert len(chunks) == 1
+        parsed = _parse_sse(chunks[0])
+        assert parsed["event_type"] == "completion"
+        assert parsed["data"]["status"] == "completed"
+        # Subscription is cleaned up on exit.
+        assert "t1" not in publisher._subscribers
+
+    async def test_completion_published_after_subscribe_is_delivered(self):
+        """A completion racing in right after subscribe must reach the client.
+
+        Reproduces the #757 window: the callback returns None ("still live"),
+        then a completion is published — because we already subscribed, it lands
+        in the queue and is delivered instead of being lost.
+        """
+        from codeframe.core.streaming import EventPublisher
+        from codeframe.ui.routers.streaming_v2 import event_stream_generator
+
+        publisher = EventPublisher()
+        gen = event_stream_generator(
+            "t2", publisher, _ConnectedRequest(),
+            heartbeat_interval=5.0, after_subscribe=lambda: None,
+        )
+
+        first = asyncio.ensure_future(gen.__anext__())
+        # Let the generator subscribe and reach its queue-wait.
+        for _ in range(100):
+            await asyncio.sleep(0)
+            if publisher._subscribers.get("t2"):
+                break
+        assert publisher._subscribers.get("t2"), "generator never subscribed"
+
+        await publisher.publish(
+            "t2", CompletionEvent(task_id="t2", status="completed", duration_seconds=0.0)
+        )
+
+        # On regression (event lost) this awaits the full heartbeat and yields a
+        # comment instead — fail fast rather than hang.
+        chunk = await asyncio.wait_for(first, timeout=2.0)
+        parsed = _parse_sse(chunk)
+        assert parsed["event_type"] == "completion"
+
+        await gen.aclose()

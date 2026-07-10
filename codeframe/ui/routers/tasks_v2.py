@@ -994,15 +994,39 @@ async def stream_task_events(
 
     publisher = get_event_publisher()
 
-    # Check if the task already has a terminal run — if so, send a synthetic
-    # completion event immediately instead of waiting for events that will
-    # never arrive (the agent is done, the EventPublisher has no buffering).
-    run = runtime.get_active_run(workspace, task_id)
-    latest_run = runtime.get_latest_run(workspace, task_id) if not run else None
-    already_terminal = (
-        latest_run is not None
-        and latest_run.status in (RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.BLOCKED)
-    ) if not run else False
+    def _terminal_completion() -> Optional[CompletionEvent]:
+        """Race guard (#757): checked *after* the SSE subscription is live.
+
+        If the run already reached a terminal state, emit a synthetic completion
+        so a client that connected just after the agent finished isn't left
+        hanging on heartbeats (the EventPublisher has no buffering). Running this
+        after subscribing — rather than before — closes the window where a
+        completion published between the check and the subscribe would be lost.
+        Returns None while the run is still live; real events then flow through
+        the subscription.
+        """
+        if runtime.get_active_run(workspace, task_id):
+            return None
+        latest_run = runtime.get_latest_run(workspace, task_id)
+        if latest_run is None or latest_run.status not in (
+            RunStatus.COMPLETED,
+            RunStatus.FAILED,
+            RunStatus.BLOCKED,
+        ):
+            return None
+        status_map = {
+            RunStatus.COMPLETED: "completed",
+            RunStatus.FAILED: "failed",
+            RunStatus.BLOCKED: "blocked",
+        }
+        duration = 0.0
+        if latest_run.started_at and latest_run.completed_at:
+            duration = (latest_run.completed_at - latest_run.started_at).total_seconds()
+        return CompletionEvent(
+            task_id=task_id,
+            status=status_map[latest_run.status],
+            duration_seconds=duration,
+        )
 
     async def _generate():
         # Always send an initial progress event so the browser's EventSource
@@ -1017,27 +1041,10 @@ async def stream_task_events(
             )
         )
 
-        if already_terminal:
-            # Task already finished — emit a synthetic completion event.
-            status_map = {
-                RunStatus.COMPLETED: "completed",
-                RunStatus.FAILED: "failed",
-                RunStatus.BLOCKED: "blocked",
-            }
-            duration = 0.0
-            if latest_run.started_at and latest_run.completed_at:
-                duration = (latest_run.completed_at - latest_run.started_at).total_seconds()
-            yield format_sse_event(
-                CompletionEvent(
-                    task_id=task_id,
-                    status=status_map[latest_run.status],
-                    duration_seconds=duration,
-                )
-            )
-            return
-
-        # Live stream — subscribe to the EventPublisher for real-time events.
-        async for chunk in event_stream_generator(task_id, publisher, request):
+        # Subscribe first, then check for an already-terminal run (see #757).
+        async for chunk in event_stream_generator(
+            task_id, publisher, request, after_subscribe=_terminal_completion
+        ):
             yield chunk
 
     return StreamingResponse(
