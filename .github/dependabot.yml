@@ -2,11 +2,10 @@ version: 2
 updates:
   # Keep GitHub Actions SHA pins current (security patches to pinned actions).
   - package-ecosystem: github-actions
+    # Note: semver-*-days cooldown keys are unsupported for the github-actions
+    # ecosystem — only default-days is valid here.
     cooldown:
       default-days: 14
-      semver-major-days: 14
-      semver-minor-days: 7
-      semver-patch-days: 7
     directory: /
     schedule:
       interval: weekly
