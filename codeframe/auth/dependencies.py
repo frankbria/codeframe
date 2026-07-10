@@ -330,6 +330,7 @@ async def get_api_key_auth(
 
 
 async def require_auth(
+    request: Request = None,
     api_key_auth: Optional[Dict[str, Any]] = Depends(get_api_key_auth),
     jwt_user: Optional[User] = Depends(get_current_user_optional),
 ) -> Dict[str, Any]:
@@ -337,7 +338,14 @@ async def require_auth(
 
     API keys take precedence if both are present.
 
+    The resolved principal is also published to ``request.state.user`` so the
+    rate limiter's key function can key limits per user (issue #754). Without
+    this, ``request.state.user`` is never set and every rate limit — including
+    auth brute-force protection — collapses to per-IP, sharing one bucket
+    behind a NAT/proxy.
+
     Args:
+        request: FastAPI request object (injected; used to publish the principal)
         api_key_auth: Result from get_api_key_auth (if API key provided)
         jwt_user: Result from get_current_user_optional (if JWT provided)
 
@@ -347,28 +355,35 @@ async def require_auth(
     Raises:
         HTTPException: 401 if no valid authentication provided
     """
+
+    def _resolve(principal: Dict[str, Any]) -> Dict[str, Any]:
+        # Publish the principal for the rate limiter's key func (issue #754).
+        if request is not None:
+            request.state.user = principal
+        return principal
+
     # Prefer API key if provided
     if api_key_auth is not None:
-        return api_key_auth
+        return _resolve(api_key_auth)
 
     # Fall back to JWT
     if jwt_user is not None:
-        return {
+        return _resolve({
             "type": "jwt",
             "user_id": jwt_user.id,
             # JWT users get all scopes for backward compatibility
             "scopes": [SCOPE_READ, SCOPE_WRITE, SCOPE_ADMIN],
             "user": jwt_user,
-        }
+        })
 
     # Auth disabled (local opt-out): return a synthetic local-admin principal
     # instead of raising. Real credentials above always take precedence.
     if not auth_required():
-        return {
+        return _resolve({
             "type": "disabled",
             "user_id": None,
             "scopes": [SCOPE_READ, SCOPE_WRITE, SCOPE_ADMIN],
-        }
+        })
 
     # No authentication provided
     raise HTTPException(
