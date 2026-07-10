@@ -49,18 +49,25 @@ V2_GET_ENDPOINTS = [
 ]
 
 
-@pytest.fixture
-def auth_app(tmp_path, monkeypatch):
-    """Import the real server app with auth enforcement enabled.
+def _build_auth_app(tmp_path, monkeypatch, *, enable_test_endpoints):
+    """Reload the real server app with auth enforcement enabled.
 
     Provisions a dedicated initialized database with a test user (id=1) so
     the JWT lookup path works in any environment — never rely on a dev
     machine's ambient DATABASE_PATH (this fixture originally did, and passed
     locally while failing in CI with "no such table: users").
+
+    ``enable_test_endpoints`` controls CODEFRAME_ENABLE_TEST_ENDPOINTS (#753),
+    which the server reads at import time to decide whether to register the
+    test-only ``/test/broadcast`` route.
     """
     db_path = tmp_path / "state.db"
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
     monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+    if enable_test_endpoints:
+        monkeypatch.setenv("CODEFRAME_ENABLE_TEST_ENDPOINTS", "1")
+    else:
+        monkeypatch.delenv("CODEFRAME_ENABLE_TEST_ENDPOINTS", raising=False)
     reset_auth_engine()
 
     db = Database(db_path)
@@ -77,13 +84,28 @@ def auth_app(tmp_path, monkeypatch):
     db.conn.commit()
     db.close()
 
-    # server module is import-time; the app object already exists. The
-    # require_auth dependency reads the env at request time, so a freshly
-    # constructed TestClient over the existing app honors the monkeypatch.
+    # server module is import-time; reload it so the CODEFRAME_ENABLE_TEST_ENDPOINTS
+    # gate is re-evaluated. The require_auth dependency reads the env at request
+    # time, so a freshly constructed TestClient over the app honors the monkeypatch.
     from codeframe.ui import server
 
     importlib.reload(server)
-    yield server.app
+    return server.app
+
+
+@pytest.fixture
+def auth_app(tmp_path, monkeypatch):
+    """Real server app with auth enforcement and test endpoints enabled."""
+    app = _build_auth_app(tmp_path, monkeypatch, enable_test_endpoints=True)
+    yield app
+    reset_auth_engine()
+
+
+@pytest.fixture
+def auth_app_no_test_endpoints(tmp_path, monkeypatch):
+    """Real server app with auth enforcement but NO test endpoints (#753)."""
+    app = _build_auth_app(tmp_path, monkeypatch, enable_test_endpoints=False)
+    yield app
     reset_auth_engine()
 
 
@@ -161,9 +183,23 @@ class TestSSEStreamTicketAuth:
 
 
 def test_test_broadcast_requires_auth(auth_app):
+    # When the flag enables the endpoint, it still enforces auth.
     client = TestClient(auth_app, raise_server_exceptions=False)
     resp = client.post("/test/broadcast", json={"message": {"x": 1}})
     assert resp.status_code == 401
+
+
+def test_test_broadcast_gated_off_without_flag(auth_app_no_test_endpoints):
+    """#753: without CODEFRAME_ENABLE_TEST_ENDPOINTS the route is not registered,
+    so even a valid authenticated principal cannot trigger a broadcast."""
+    client = TestClient(auth_app_no_test_endpoints, raise_server_exceptions=False)
+    token = create_test_jwt_token(user_id=1)
+    resp = client.post(
+        "/test/broadcast",
+        json={"message": {"x": 1}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 404
 
 
 class TestPublicEndpointsStayOpen:
