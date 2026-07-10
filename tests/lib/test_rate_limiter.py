@@ -178,6 +178,45 @@ class TestRateLimiterKeyGeneration:
         key = get_rate_limit_key(mock_request)
         assert key == "user:user_12345"
 
+    def test_key_for_principal_dict(self):
+        """Key func reads require_auth's principal dict on state.user (#754)."""
+        from codeframe.lib.rate_limiter import get_rate_limit_key
+
+        mock_request = MagicMock(spec=Request)
+        mock_request.client.host = "192.168.1.100"
+        mock_request.headers = {}
+        mock_request.state = MagicMock()
+        mock_request.state.user = {"type": "api_key", "user_id": 42, "scopes": []}
+        mock_request.url.path = "/test"
+
+        assert get_rate_limit_key(mock_request) == "user:42"
+
+    def test_key_for_disabled_principal_falls_back_to_ip(self):
+        """The auth-disabled synthetic principal (user_id=None) keys by IP (#754)."""
+        from codeframe.lib.rate_limiter import get_rate_limit_key
+
+        mock_request = MagicMock(spec=Request)
+        mock_request.client.host = "192.168.1.100"
+        mock_request.headers = {}
+        mock_request.state = MagicMock()
+        mock_request.state.user = {"type": "disabled", "user_id": None, "scopes": []}
+        mock_request.url.path = "/test"
+
+        assert get_rate_limit_key(mock_request) == "ip:192.168.1.100"
+
+    def test_auth_key_for_principal_dict(self):
+        """The auth-tier key func also reads the principal dict (#754)."""
+        from codeframe.lib.rate_limiter import get_auth_rate_limit_key
+
+        mock_request = MagicMock(spec=Request)
+        mock_request.client.host = "192.168.1.100"
+        mock_request.headers = {}
+        mock_request.state = MagicMock()
+        mock_request.state.user = {"type": "jwt", "user_id": 7, "scopes": []}
+        mock_request.url.path = "/auth/jwt/login"
+
+        assert get_auth_rate_limit_key(mock_request) == "user:7"
+
     def test_key_for_unknown_ip_is_unique(self):
         """Unknown IPs should get unique keys to prevent shared bucket DoS."""
         from codeframe.lib.rate_limiter import get_rate_limit_key

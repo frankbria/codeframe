@@ -20,7 +20,7 @@ Security:
 """
 
 import logging
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -99,6 +99,22 @@ def get_client_ip(request: Request) -> str:
     return "unknown"
 
 
+def _principal_id(principal: object) -> Any:
+    """Extract the user id from a resolved auth principal (native type).
+
+    ``require_auth`` publishes its principal dict (``{"user_id": ...}``) on
+    ``request.state.user`` (issue #754); direct/mocked call sites may instead
+    store an object exposing an ``.id`` attribute. Returns the id unchanged
+    (int for real users — so the audit log keeps its native type), or ``None``
+    when there is no authenticated user: unauthenticated, or the auth-disabled
+    synthetic principal whose ``user_id`` is ``None``.
+    """
+    if principal is None:
+        return None
+    uid = principal.get("user_id") if isinstance(principal, dict) else getattr(principal, "id", None)
+    return uid or None
+
+
 def get_rate_limit_key(request: Request) -> str:
     """Generate rate limit key for a request.
 
@@ -111,11 +127,10 @@ def get_rate_limit_key(request: Request) -> str:
     Returns:
         Rate limit key string in format "user:{id}" or "ip:{address}"
     """
-    # Check if user is authenticated (set by auth middleware)
-    user = getattr(getattr(request, "state", None), "user", None)
-
-    if user and hasattr(user, "id") and user.id:
-        return f"user:{user.id}"
+    # Prefer the resolved principal published by require_auth (issue #754).
+    user_id = _principal_id(getattr(getattr(request, "state", None), "user", None))
+    if user_id:
+        return f"user:{user_id}"
 
     # Fall back to IP address
     client_ip = get_client_ip(request)
@@ -182,8 +197,7 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) 
     """
     # Extract request info
     client_ip = get_client_ip(request)
-    user = getattr(getattr(request, "state", None), "user", None)
-    user_id = user.id if user and hasattr(user, "id") and user.id else None
+    user_id = _principal_id(getattr(getattr(request, "state", None), "user", None))
     endpoint = request.url.path
 
     # Log to standard logger
@@ -320,9 +334,9 @@ def get_auth_rate_limit_key(request: Request) -> str:
         "ip:{address}" — including a stable "ip:unknown" when the client IP cannot
         be determined.
     """
-    user = getattr(getattr(request, "state", None), "user", None)
-    if user and getattr(user, "id", None):
-        return f"user:{user.id}"
+    user_id = _principal_id(getattr(getattr(request, "state", None), "user", None))
+    if user_id:
+        return f"user:{user_id}"
     return f"ip:{get_client_ip(request)}"
 
 
