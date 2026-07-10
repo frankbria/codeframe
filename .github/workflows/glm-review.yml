@@ -13,7 +13,7 @@ jobs:
       github.event.pull_request.changed_files >= 5 ||
       github.event.pull_request.additions >= 20 ||
       github.event.pull_request.deletions >= 20
-    uses: frankbria/glm-review/.github/workflows/review.yml@main
+    uses: frankbria/glm-review/.github/workflows/review.yml@b877d15a0f8c0855d0d2ebdcce32ae09cec1bb2d # main
     permissions:
       contents: read
       pull-requests: write
