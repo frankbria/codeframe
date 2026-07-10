@@ -2,6 +2,11 @@ version: 2
 updates:
   # Keep GitHub Actions SHA pins current (security patches to pinned actions).
   - package-ecosystem: github-actions
+    cooldown:
+      default-days: 14
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
     directory: /
     schedule:
       interval: weekly
@@ -12,6 +17,8 @@ updates:
 
   # Python dependencies (pyproject.toml).
   - package-ecosystem: pip
+    cooldown:
+      default-days: 14
     directory: /
     schedule:
       interval: weekly
@@ -22,6 +29,11 @@ updates:
 
   # Web UI dependencies.
   - package-ecosystem: npm
+    cooldown:
+      default-days: 14
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 7
     directory: /web-ui
     schedule:
       interval: weekly
