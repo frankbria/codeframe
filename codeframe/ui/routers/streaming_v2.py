@@ -9,7 +9,7 @@ The actual SSE endpoint for tasks is in tasks_v2.py:
 
 import asyncio
 import logging
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Callable, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse  # noqa: F401 — re-exported
@@ -86,6 +86,7 @@ async def event_stream_generator(
     publisher: EventPublisher,
     request: Request,
     heartbeat_interval: float = 15.0,
+    after_subscribe: Optional[Callable[[], Optional[ExecutionEvent]]] = None,
 ) -> AsyncGenerator[str, None]:
     """Generate SSE events for a task with heartbeat keep-alive.
 
@@ -98,6 +99,11 @@ async def event_stream_generator(
         publisher: EventPublisher to subscribe to
         request: FastAPI request (for disconnect detection)
         heartbeat_interval: Seconds between heartbeat comments
+        after_subscribe: Optional callback run *after* the subscription is
+            registered. If it returns an ExecutionEvent, that event is emitted
+            and the stream ends — used to backstop the race where a run finished
+            just before we subscribed (see #757). Returning None means "still
+            live"; real events then flow through the subscription.
 
     Yields:
         SSE-formatted event strings or comment heartbeats
@@ -114,6 +120,18 @@ async def event_stream_generator(
         publisher._subscribers[task_id].append(subscription)
 
     try:
+        # Race guard (#757): now that we're subscribed, any completion published
+        # from here on lands in `queue`. This callback backstops one published
+        # just *before* the subscribe (the EventPublisher has no buffering, so
+        # such an event would otherwise be lost and the client would hang on
+        # heartbeats). A duplicate completion is harmless — the loop below stops
+        # on the first one it sees.
+        if after_subscribe is not None:
+            terminal_event = after_subscribe()
+            if terminal_event is not None:
+                yield format_sse_event(terminal_event)
+                return
+
         while True:
             if await request.is_disconnected():
                 logger.info(f"Client disconnected from task {task_id} stream")
