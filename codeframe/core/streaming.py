@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import (
     AsyncIterator,
+    Awaitable,
+    Callable,
     Dict,
     Iterator,
     List,
@@ -245,6 +247,62 @@ def tail_run_output(
 
         time.sleep(poll_interval)
         iterations += 1
+
+
+async def atail_run_output(
+    workspace: Workspace,
+    run_id: str,
+    since_line: int = 0,
+    poll_interval: float = 0.5,
+    max_wait: Optional[float] = None,
+    should_stop: Optional["Callable[[], Awaitable[bool]]"] = None,
+) -> AsyncIterator[str]:
+    """Async counterpart to :func:`tail_run_output` for SSE endpoints (#758).
+
+    The sync tailer blocks its thread on ``time.sleep`` for the whole poll loop
+    (up to ``max_wait``). When driven by Starlette's ``StreamingResponse`` that
+    thread comes from the shared threadpool, so abandoned tabs pin threads and
+    starve every other sync handler. This variant runs on the event loop and
+    ``await``s ``asyncio.sleep`` instead, so no threadpool thread is held.
+
+    Args:
+        workspace: Target workspace
+        run_id: Run identifier
+        since_line: Start after this line number (0-based)
+        poll_interval: How often to check for new lines (seconds)
+        max_wait: Maximum total wait time in seconds (None = no limit)
+        should_stop: Optional async predicate checked each poll (e.g.
+            ``request.is_disconnected``); when it returns True the loop exits
+            promptly, releasing the connection instead of waiting out max_wait.
+
+    Yields:
+        Lines from the log file as they appear
+    """
+    log_path = get_run_output_path(workspace, run_id)
+    current_line = since_line
+    start_time = time.monotonic()
+
+    while True:
+        if max_wait is not None and (time.monotonic() - start_time) >= max_wait:
+            break
+
+        if should_stop is not None and await should_stop():
+            break
+
+        # ponytail: full-file readlines each poll (same as the sync tailer);
+        # fine for agent logs. Switch to incremental seek reads if they grow large.
+        if log_path.exists():
+            try:
+                with open(log_path, "r", encoding="utf-8") as f:
+                    all_lines = f.readlines()
+
+                while current_line < len(all_lines):
+                    yield all_lines[current_line]
+                    current_line += 1
+            except Exception:
+                pass  # File might be temporarily unavailable
+
+        await asyncio.sleep(poll_interval)
 
 
 # =============================================================================

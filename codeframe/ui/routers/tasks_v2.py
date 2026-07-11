@@ -909,8 +909,14 @@ async def stream_task_output_lines(
             ),
         )
 
-    def generate_events():
-        """Generator that yields SSE events."""
+    async def generate_events():
+        """Async generator that yields SSE events.
+
+        Async (not sync) so the 5-minute poll loop runs on the event loop and
+        does not pin a shared threadpool thread; abandoned tabs previously
+        starved the pool (#758). ``request.is_disconnected`` is checked each
+        poll so a closed connection is released promptly.
+        """
         run_id = run.id
         current_line = 0
 
@@ -932,14 +938,14 @@ async def stream_task_output_lines(
 
                 current_line = total
 
-        # Stream new lines as they appear
-        # Use a reasonable timeout to allow the connection to close gracefully
-        for line in streaming.tail_run_output(
+        # Stream new lines as they appear, bailing when the client disconnects.
+        async for line in streaming.atail_run_output(
             workspace,
             run_id,
             since_line=current_line,
             poll_interval=0.5,
             max_wait=300.0,  # 5 minute timeout
+            should_stop=request.is_disconnected,
         ):
             yield f"event: line\ndata: {line.rstrip()}\n\n"
 
