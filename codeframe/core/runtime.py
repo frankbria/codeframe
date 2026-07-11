@@ -142,18 +142,20 @@ def get_run(workspace: Workspace, run_id: str) -> Optional[Run]:
         Run if found, None otherwise
     """
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT id, workspace_id, task_id, status, started_at, completed_at
-        FROM runs
-        WHERE workspace_id = ? AND id = ?
-        """,
-        (workspace.id, run_id),
-    )
-    row = cursor.fetchone()
-    conn.close()
+        cursor.execute(
+            """
+            SELECT id, workspace_id, task_id, status, started_at, completed_at
+            FROM runs
+            WHERE workspace_id = ? AND id = ?
+            """,
+            (workspace.id, run_id),
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
 
     if not row:
         return None
@@ -172,20 +174,22 @@ def get_active_run(workspace: Workspace, task_id: str) -> Optional[Run]:
         Run if found, None otherwise
     """
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT id, workspace_id, task_id, status, started_at, completed_at
-        FROM runs
-        WHERE workspace_id = ? AND task_id = ? AND status IN ('RUNNING', 'BLOCKED')
-        ORDER BY started_at DESC
-        LIMIT 1
-        """,
-        (workspace.id, task_id),
-    )
-    row = cursor.fetchone()
-    conn.close()
+        cursor.execute(
+            """
+            SELECT id, workspace_id, task_id, status, started_at, completed_at
+            FROM runs
+            WHERE workspace_id = ? AND task_id = ? AND status IN ('RUNNING', 'BLOCKED')
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            (workspace.id, task_id),
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
 
     if not row:
         return None
@@ -204,20 +208,22 @@ def get_latest_run(workspace: Workspace, task_id: str) -> Optional[Run]:
         Run if found, None otherwise
     """
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT id, workspace_id, task_id, status, started_at, completed_at
-        FROM runs
-        WHERE workspace_id = ? AND task_id = ?
-        ORDER BY started_at DESC
-        LIMIT 1
-        """,
-        (workspace.id, task_id),
-    )
-    row = cursor.fetchone()
-    conn.close()
+        cursor.execute(
+            """
+            SELECT id, workspace_id, task_id, status, started_at, completed_at
+            FROM runs
+            WHERE workspace_id = ? AND task_id = ?
+            ORDER BY started_at DESC
+            LIMIT 1
+            """,
+            (workspace.id, task_id),
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
 
     if not row:
         return None
@@ -239,26 +245,28 @@ def reset_blocked_run(workspace: Workspace, task_id: str) -> bool:
         True if a blocked run was reset, False if no blocked run existed
     """
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    # Find and update blocked run
-    cursor.execute(
-        """
-        UPDATE runs
-        SET status = ?, completed_at = ?
-        WHERE workspace_id = ? AND task_id = ? AND status = ?
-        """,
-        (
-            RunStatus.FAILED.value,
-            _utc_now().isoformat(),
-            workspace.id,
-            task_id,
-            RunStatus.BLOCKED.value,
-        ),
-    )
-    updated = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
+        # Find and update blocked run
+        cursor.execute(
+            """
+            UPDATE runs
+            SET status = ?, completed_at = ?
+            WHERE workspace_id = ? AND task_id = ? AND status = ?
+            """,
+            (
+                RunStatus.FAILED.value,
+                _utc_now().isoformat(),
+                workspace.id,
+                task_id,
+                RunStatus.BLOCKED.value,
+            ),
+        )
+        updated = cursor.rowcount > 0
+        conn.commit()
+    finally:
+        conn.close()
 
     if updated:
         # Reset task status to READY
@@ -287,29 +295,31 @@ def list_runs(
         List of Runs, newest first
     """
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    query = """
-        SELECT id, workspace_id, task_id, status, started_at, completed_at
-        FROM runs
-        WHERE workspace_id = ?
-    """
-    params: list = [workspace.id]
+        query = """
+            SELECT id, workspace_id, task_id, status, started_at, completed_at
+            FROM runs
+            WHERE workspace_id = ?
+        """
+        params: list = [workspace.id]
 
-    if task_id:
-        query += " AND task_id = ?"
-        params.append(task_id)
+        if task_id:
+            query += " AND task_id = ?"
+            params.append(task_id)
 
-    if status:
-        query += " AND status = ?"
-        params.append(status.value)
+        if status:
+            query += " AND status = ?"
+            params.append(status.value)
 
-    query += " ORDER BY started_at DESC LIMIT ?"
-    params.append(limit)
+        query += " ORDER BY started_at DESC LIMIT ?"
+        params.append(limit)
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
 
     return [_row_to_run(row) for row in rows]
 
@@ -339,18 +349,20 @@ def complete_run(workspace: Workspace, run_id: str) -> Run:
     now = _utc_now().isoformat()
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        UPDATE runs
-        SET status = ?, completed_at = ?
-        WHERE id = ?
-        """,
-        (RunStatus.COMPLETED.value, now, run_id),
-    )
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            """
+            UPDATE runs
+            SET status = ?, completed_at = ?
+            WHERE id = ?
+            """,
+            (RunStatus.COMPLETED.value, now, run_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     # Transition task to DONE
     tasks.update_status(workspace, run.task_id, TaskStatus.DONE)
@@ -394,18 +406,20 @@ def fail_run(workspace: Workspace, run_id: str, reason: str = "") -> Run:
     now = _utc_now().isoformat()
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        UPDATE runs
-        SET status = ?, completed_at = ?
-        WHERE id = ?
-        """,
-        (RunStatus.FAILED.value, now, run_id),
-    )
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            """
+            UPDATE runs
+            SET status = ?, completed_at = ?
+            WHERE id = ?
+            """,
+            (RunStatus.FAILED.value, now, run_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     # Emit run failed event
     events.emit_for_workspace(
@@ -447,18 +461,20 @@ def block_run(workspace: Workspace, run_id: str, blocker_id: str) -> Run:
         raise ValueError(f"Run is not running: {run.status}")
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        UPDATE runs
-        SET status = ?
-        WHERE id = ?
-        """,
-        (RunStatus.BLOCKED.value, run_id),
-    )
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            """
+            UPDATE runs
+            SET status = ?
+            WHERE id = ?
+            """,
+            (RunStatus.BLOCKED.value, run_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     # Transition task to BLOCKED
     tasks.update_status(workspace, run.task_id, TaskStatus.BLOCKED)
@@ -488,18 +504,20 @@ def resume_run(workspace: Workspace, task_id: str) -> Run:
         raise ValueError(f"Run is not blocked: {run.status}")
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        UPDATE runs
-        SET status = ?
-        WHERE id = ?
-        """,
-        (RunStatus.RUNNING.value, run.id),
-    )
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            """
+            UPDATE runs
+            SET status = ?
+            WHERE id = ?
+            """,
+            (RunStatus.RUNNING.value, run.id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     # Transition task back to IN_PROGRESS
     tasks.update_status(workspace, task_id, TaskStatus.IN_PROGRESS)
@@ -530,18 +548,20 @@ def stop_run(workspace: Workspace, task_id: str) -> Run:
     now = _utc_now().isoformat()
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        UPDATE runs
-        SET status = ?, completed_at = ?
-        WHERE id = ?
-        """,
-        (RunStatus.FAILED.value, now, run.id),
-    )
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            """
+            UPDATE runs
+            SET status = ?, completed_at = ?
+            WHERE id = ?
+            """,
+            (RunStatus.FAILED.value, now, run.id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     # Transition task back to READY so it can be restarted (if not already)
     task = tasks.get(workspace, task_id)

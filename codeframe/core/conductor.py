@@ -748,21 +748,23 @@ def get_batch(workspace: Workspace, batch_id: str) -> Optional[BatchRun]:
         BatchRun if found, None otherwise
     """
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
-               on_failure, started_at, completed_at, results, engine,
-               isolation, stall_timeout_s, stall_action, concurrency_by_status,
-               llm_provider, llm_model
-        FROM batch_runs
-        WHERE workspace_id = ? AND id = ?
-        """,
-        (workspace.id, batch_id),
-    )
-    row = cursor.fetchone()
-    conn.close()
+        cursor.execute(
+            """
+            SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
+                   on_failure, started_at, completed_at, results, engine,
+                   isolation, stall_timeout_s, stall_action, concurrency_by_status,
+                   llm_provider, llm_model
+            FROM batch_runs
+            WHERE workspace_id = ? AND id = ?
+            """,
+            (workspace.id, batch_id),
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
 
     if not row:
         return None
@@ -786,39 +788,41 @@ def list_batches(
         List of BatchRuns, newest first
     """
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    if status:
-        cursor.execute(
-            """
-            SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
-                   on_failure, started_at, completed_at, results, engine,
-                   isolation, stall_timeout_s, stall_action, concurrency_by_status,
-                   llm_provider, llm_model
-            FROM batch_runs
-            WHERE workspace_id = ? AND status = ?
-            ORDER BY started_at DESC
-            LIMIT ?
-            """,
-            (workspace.id, status.value, limit),
-        )
-    else:
-        cursor.execute(
-            """
-            SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
-                   on_failure, started_at, completed_at, results, engine,
-                   isolation, stall_timeout_s, stall_action, concurrency_by_status,
-                   llm_provider, llm_model
-            FROM batch_runs
-            WHERE workspace_id = ?
-            ORDER BY started_at DESC
-            LIMIT ?
-            """,
-            (workspace.id, limit),
-        )
+        if status:
+            cursor.execute(
+                """
+                SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
+                       on_failure, started_at, completed_at, results, engine,
+                       isolation, stall_timeout_s, stall_action, concurrency_by_status,
+                       llm_provider, llm_model
+                FROM batch_runs
+                WHERE workspace_id = ? AND status = ?
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (workspace.id, status.value, limit),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
+                       on_failure, started_at, completed_at, results, engine,
+                       isolation, stall_timeout_s, stall_action, concurrency_by_status,
+                       llm_provider, llm_model
+                FROM batch_runs
+                WHERE workspace_id = ?
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (workspace.id, limit),
+            )
 
-    rows = cursor.fetchall()
-    conn.close()
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
 
     return [_row_to_batch(row) for row in rows]
 
