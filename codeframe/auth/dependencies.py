@@ -273,13 +273,15 @@ async def get_api_key_auth(
     if not api_key:
         return None
 
+    fallback_db = None
     try:
         # Get database from app state (singleton) or request state
         db = getattr(request.app.state, "db", None)
         if db is None:
             db = getattr(request.state, "db", None)
         if db is None:
-            # Fallback: create database connection
+            # Fallback: create a short-lived connection. There is no request
+            # cleanup middleware, so it is closed in the finally below (#760).
             logger.warning("No db in app.state, creating fallback connection for API key auth")
             import os
             from codeframe.platform_store.database import Database
@@ -288,11 +290,9 @@ async def get_api_key_auth(
                 "DATABASE_PATH",
                 os.path.join(os.getcwd(), ".codeframe", "state.db")
             )
-            db = Database(db_path)
-            db.initialize()
-            # Store on request state so it can be cleaned up by middleware
-            if request is not None:
-                request.state.db = db
+            fallback_db = Database(db_path)
+            fallback_db.initialize()
+            db = fallback_db
 
         # Extract prefix and look up key
         try:
@@ -324,9 +324,18 @@ async def get_api_key_auth(
             "key_id": key_record["id"],
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.debug(f"API key authentication error: {e}")
+        # Unexpected failure (e.g. transient DB error). Surface it loudly — a
+        # valid key must not silently degrade to 401 with the cause hidden at
+        # debug level (#760). Matches the bearer path's logging; still degrades
+        # to no-auth (returns None) per this module's degrade-to-401 policy.
+        logger.error(f"API key authentication error: {e}", exc_info=True)
         return None
+    finally:
+        if fallback_db is not None:
+            fallback_db.close()
 
 
 async def require_auth(
