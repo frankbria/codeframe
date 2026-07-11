@@ -275,6 +275,37 @@ def _clear_issue_cache():
     github_integrations_v2._ISSUE_CACHE.clear()
 
 
+class TestIssueCacheEviction:
+    """Bound the issue-browse cache: sweep expired + cap size (#761)."""
+
+    def test_expired_entries_swept_on_set(self, monkeypatch):
+        from codeframe.ui.routers import github_integrations_v2 as gi
+
+        _clear_issue_cache()
+        # An expired entry under a key never re-requested lingers until any set.
+        gi._ISSUE_CACHE["stale|1"] = (gi.time.monotonic() - 1.0, "old")
+        gi._issue_cache_set("fresh|1", "new")
+        assert "stale|1" not in gi._ISSUE_CACHE
+        assert gi._issue_cache_get("fresh|1") == "new"
+
+    def test_size_capped_evicting_oldest(self, monkeypatch):
+        from codeframe.ui.routers import github_integrations_v2 as gi
+
+        _clear_issue_cache()
+        monkeypatch.setattr(gi, "_ISSUE_CACHE_MAX_SIZE", 3)
+        # Distinct, non-expired keys (search text is an unbounded key space).
+        # Real inserts share one TTL, so expiry order == insertion order;
+        # mirror that with ascending expiries all below the real set below.
+        base = gi.time.monotonic()
+        for i in range(6):
+            gi._ISSUE_CACHE[f"repo|{i}"] = (base + 1.0 + i, i)
+        gi._issue_cache_set("repo|new", "n")  # real expiry ~base+60 → newest
+        # Cap holds; the newest survives; the oldest is gone.
+        assert len(gi._ISSUE_CACHE) == 3
+        assert "repo|new" in gi._ISSUE_CACHE
+        assert "repo|0" not in gi._ISSUE_CACHE
+
+
 class TestListIssues:
     def test_requires_connection(self, client, monkeypatch):
         _clear_issue_cache()
