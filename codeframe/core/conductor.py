@@ -1438,6 +1438,7 @@ def _execute_serial(
     completed_count = 0
     failed_count = 0
     blocked_count = 0
+    batch_finalized = False  # True once a terminal status is persisted (#763)
 
     try:
         for i, task_id in enumerate(batch.task_ids):
@@ -1575,6 +1576,7 @@ def _execute_serial(
 
         batch.completed_at = _utc_now()
         _save_batch(workspace, batch)
+        batch_finalized = True  # terminal status persisted — don't override below
 
         # Emit batch completion event
         events.emit_for_workspace(
@@ -1599,19 +1601,21 @@ def _execute_serial(
             logger.info(f"Blocked: {blocked_count}")
     except Exception:
         # An unexpected worker/setup error (e.g. create_execution_context
-        # failing) must not leave the batch RUNNING forever (#763). Mark it
-        # FAILED, emit the terminal event, then re-raise so callers keep their
-        # existing propagation/fallback behavior.
+        # failing) must not leave the batch RUNNING forever (#763). Only mark it
+        # FAILED when no terminal status was persisted yet — an error in the
+        # finalization tail (after COMPLETED/PARTIAL is saved) must NOT overwrite
+        # that correct record. Re-raise so callers keep their propagation/fallback.
         logger.exception("Batch execution failed unexpectedly")
-        batch.status = BatchStatus.FAILED
-        batch.completed_at = _utc_now()
-        _save_batch(workspace, batch)
-        events.emit_for_workspace(
-            workspace,
-            events.EventType.BATCH_FAILED,
-            {"batch_id": batch.id, "error": "unexpected execution error"},
-            print_event=True,
-        )
+        if not batch_finalized:
+            batch.status = BatchStatus.FAILED
+            batch.completed_at = _utc_now()
+            _save_batch(workspace, batch)
+            events.emit_for_workspace(
+                workspace,
+                events.EventType.BATCH_FAILED,
+                {"batch_id": batch.id, "error": "unexpected execution error"},
+                print_event=True,
+            )
         raise
     finally:
         # Always stop the reconciliation thread — otherwise the polling daemon
@@ -1680,6 +1684,7 @@ def _execute_parallel(
     failed_count = 0
     blocked_count = 0
     task_index = 0  # Global task counter for progress display
+    batch_finalized = False  # True once a terminal status is persisted (#763)
 
     try:
         for group_idx, group in enumerate(plan.groups):
@@ -1781,6 +1786,7 @@ def _execute_parallel(
 
         batch.completed_at = _utc_now()
         _save_batch(workspace, batch)
+        batch_finalized = True  # terminal status persisted — don't override below
 
         # Emit batch completion event
         events.emit_for_workspace(
@@ -1808,18 +1814,21 @@ def _execute_parallel(
             logger.info(f"Blocked: {blocked_count}")
     except Exception:
         # An unexpected worker/setup error must not leave the batch RUNNING
-        # forever (#763). Mark it FAILED, emit the terminal event, then re-raise
-        # so callers keep their existing propagation/fallback behavior.
+        # forever (#763). Only mark it FAILED when no terminal status was
+        # persisted yet — an error in the finalization tail (after
+        # COMPLETED/PARTIAL is saved) must NOT overwrite that correct record.
+        # Re-raise so callers keep their existing propagation/fallback behavior.
         logger.exception("Batch execution failed unexpectedly")
-        batch.status = BatchStatus.FAILED
-        batch.completed_at = _utc_now()
-        _save_batch(workspace, batch)
-        events.emit_for_workspace(
-            workspace,
-            events.EventType.BATCH_FAILED,
-            {"batch_id": batch.id, "error": "unexpected execution error", "strategy": "parallel"},
-            print_event=True,
-        )
+        if not batch_finalized:
+            batch.status = BatchStatus.FAILED
+            batch.completed_at = _utc_now()
+            _save_batch(workspace, batch)
+            events.emit_for_workspace(
+                workspace,
+                events.EventType.BATCH_FAILED,
+                {"batch_id": batch.id, "error": "unexpected execution error", "strategy": "parallel"},
+                print_event=True,
+            )
         raise
     finally:
         # Always stop the reconciliation thread — otherwise the polling daemon
