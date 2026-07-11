@@ -119,9 +119,25 @@ class ImportResponse(BaseModel):
 # In-process TTL cache for issue listings (#564). Keyed by the full query
 # (repo + page + per_page + search + label); entries expire after 60s to avoid
 # hammering GitHub's rate limit on repeated browses. Module-level so it is
-# shared across requests within the same server process.
+# shared across requests within the same server process. Bounded to
+# _ISSUE_CACHE_MAX_SIZE entries and swept on every set so search text (an
+# unbounded key space) can't accumulate stale payloads forever (#761).
 _ISSUE_CACHE_TTL_SECONDS = 60.0
+_ISSUE_CACHE_MAX_SIZE = 256
 _ISSUE_CACHE: dict[str, tuple[float, Any]] = {}
+
+
+def _evict_issue_cache() -> None:
+    """Drop expired entries and trim to max size (oldest expiry first)."""
+    now = time.monotonic()
+    for key in [k for k, (exp, _) in _ISSUE_CACHE.items() if now >= exp]:
+        del _ISSUE_CACHE[key]
+    if len(_ISSUE_CACHE) > _ISSUE_CACHE_MAX_SIZE:
+        # expires_at == insert_time + constant TTL, so it doubles as an
+        # insertion-order stamp — smallest expiry == oldest entry.
+        oldest = sorted(_ISSUE_CACHE, key=lambda k: _ISSUE_CACHE[k][0])
+        for key in oldest[: len(_ISSUE_CACHE) - _ISSUE_CACHE_MAX_SIZE]:
+            del _ISSUE_CACHE[key]
 
 
 def _issue_cache_get(key: str) -> Optional[Any]:
@@ -137,6 +153,7 @@ def _issue_cache_get(key: str) -> Optional[Any]:
 
 def _issue_cache_set(key: str, payload: Any) -> None:
     _ISSUE_CACHE[key] = (time.monotonic() + _ISSUE_CACHE_TTL_SECONDS, payload)
+    _evict_issue_cache()
 
 
 def _issue_cache_invalidate(repo: str) -> None:
