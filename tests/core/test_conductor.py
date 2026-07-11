@@ -668,6 +668,38 @@ class TestBatchExecution:
         assert len(batch.results) == 3
         assert all(status == "FAILED" for status in batch.results.values())
 
+    def test_unexpected_exception_marks_failed_and_stops_reconcile(self, workspace_with_tasks):
+        """A raised worker error marks the batch FAILED and stops the reconcile thread (#763).
+
+        Regression: reconcile_stop.set() used to live on the success path only, so
+        an exception leaked the polling daemon and left the batch stuck RUNNING.
+        """
+        from codeframe.core import conductor
+
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        captured = {}
+        real_start = conductor._start_reconciliation_thread
+
+        def capture_start(ws, batch, **kwargs):
+            ev = real_start(ws, batch, **kwargs)
+            captured["event"] = ev
+            return ev
+
+        with patch('codeframe.core.conductor._start_reconciliation_thread', side_effect=capture_start), \
+             patch('codeframe.core.conductor._execute_task_subprocess', side_effect=RuntimeError("boom")):
+            with pytest.raises(RuntimeError, match="boom"):
+                start_batch(workspace, task_ids, strategy="serial")
+
+        # Reconciliation thread was signalled to stop — no daemon leak.
+        assert captured["event"].is_set()
+
+        # Batch is terminal FAILED, not stuck RUNNING.
+        assert list_batches(workspace, status=BatchStatus.RUNNING) == []
+        failed = list_batches(workspace, status=BatchStatus.FAILED)
+        assert len(failed) == 1
+
     def test_task_blocked(self, workspace_with_tasks):
         """Batch should handle BLOCKED tasks and continue."""
         workspace, task_list = workspace_with_tasks

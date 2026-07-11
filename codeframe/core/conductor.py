@@ -1591,16 +1591,32 @@ def _execute_serial(
         )
         _dispatch_batch_completed_webhook(workspace, event_type, batch.id, completed_count)
 
-        # Stop reconciliation thread
-        reconcile_stop.set()
-
         # Print summary
         logger.info(f"Batch {batch.status.value.lower()}: {completed_count}/{total} tasks completed")
         if failed_count > 0:
             logger.warning(f"Failed: {failed_count}")
         if blocked_count > 0:
             logger.info(f"Blocked: {blocked_count}")
+    except Exception:
+        # An unexpected worker/setup error (e.g. create_execution_context
+        # failing) must not leave the batch RUNNING forever (#763). Mark it
+        # FAILED, emit the terminal event, then re-raise so callers keep their
+        # existing propagation/fallback behavior.
+        logger.exception("Batch execution failed unexpectedly")
+        batch.status = BatchStatus.FAILED
+        batch.completed_at = _utc_now()
+        _save_batch(workspace, batch)
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.BATCH_FAILED,
+            {"batch_id": batch.id, "error": "unexpected execution error"},
+            print_event=True,
+        )
+        raise
     finally:
+        # Always stop the reconciliation thread — otherwise the polling daemon
+        # leaks in the long-lived server when execution raises (#763).
+        reconcile_stop.set()
         if config_watcher is not None:
             config_watcher.stop()
 
@@ -1783,9 +1799,6 @@ def _execute_parallel(
         )
         _dispatch_batch_completed_webhook(workspace, event_type, batch.id, completed_count)
 
-        # Stop reconciliation thread
-        _reconcile_stop_p.set()
-
         # Print summary
         logger.info(f"Batch {batch.status.value.lower()}: {completed_count}/{total} tasks completed")
         logger.info(f"Execution: {plan.num_groups} groups (parallel strategy)")
@@ -1793,7 +1806,25 @@ def _execute_parallel(
             logger.warning(f"Failed: {failed_count}")
         if blocked_count > 0:
             logger.info(f"Blocked: {blocked_count}")
+    except Exception:
+        # An unexpected worker/setup error must not leave the batch RUNNING
+        # forever (#763). Mark it FAILED, emit the terminal event, then re-raise
+        # so callers keep their existing propagation/fallback behavior.
+        logger.exception("Batch execution failed unexpectedly")
+        batch.status = BatchStatus.FAILED
+        batch.completed_at = _utc_now()
+        _save_batch(workspace, batch)
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.BATCH_FAILED,
+            {"batch_id": batch.id, "error": "unexpected execution error", "strategy": "parallel"},
+            print_event=True,
+        )
+        raise
     finally:
+        # Always stop the reconciliation thread — otherwise the polling daemon
+        # leaks in the long-lived server when execution raises (#763).
+        _reconcile_stop_p.set()
         if config_watcher_p is not None:
             config_watcher_p.stop()
 
