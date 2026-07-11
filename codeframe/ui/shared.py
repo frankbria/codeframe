@@ -193,11 +193,22 @@ class SessionChatManager:
         self._token_queues: Dict[str, asyncio.Queue] = {}
         self._lock = asyncio.Lock()
 
-    async def register(self, session_id: str, websocket: "WebSocket") -> None:
+    async def register(self, session_id: str, websocket: "WebSocket") -> bool:
+        """Register websocket as the active connection for session_id.
+
+        Returns True if registered. Returns False when another live socket
+        already owns this session_id (the caller should reject with close code
+        4009) — the existing connection's interrupt event and token queue are
+        left untouched so it stays interruptible (#759).
+        """
         async with self._lock:
+            existing = self._connections.get(session_id)
+            if existing is not None and existing is not websocket:
+                return False
             self._connections[session_id] = websocket
             self._interrupt_events[session_id] = asyncio.Event()
             self._token_queues[session_id] = asyncio.Queue()
+            return True
 
     async def unregister(self, session_id: str, websocket: "WebSocket" = None) -> None:
         """Remove tracking state for session_id.

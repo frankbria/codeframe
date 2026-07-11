@@ -162,7 +162,14 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
 
     try:
         await asyncio.to_thread(db.interactive_sessions.update_state, session_id, "active")
-        await session_chat_manager.register(session_id, websocket)
+        # Reject a second concurrent socket for the same session instead of
+        # overwriting the first's interrupt/queue state (#759). unregister() in
+        # the finally is identity-guarded, so it won't tear down the incumbent.
+        if not await session_chat_manager.register(session_id, websocket):
+            await websocket.close(
+                code=4009, reason="Session already has an active chat connection"
+            )
+            return
 
         token_queue = await session_chat_manager.get_token_queue(session_id)
 
