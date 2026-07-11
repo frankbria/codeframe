@@ -221,6 +221,29 @@ class TestSessionChatWSSession:
             data = ws.receive_json()
             assert data["type"] == "pong"
 
+    def test_rejects_second_concurrent_connection(self, api_client: TestClient):
+        """A second socket for the same session_id is refused with 4009 (#759).
+
+        The first connection's interrupt event / token queue must NOT be
+        overwritten — the second is rejected instead, leaving tab 1 intact.
+        """
+        session_id = _create_session(api_client)
+        ticket1 = mint_ticket(user_id=1)
+        ticket2 = mint_ticket(user_id=1)
+        with api_client.websocket_connect(_ws_url(session_id, ticket1)) as ws1:
+            ws1.send_json({"type": "ping"})
+            assert ws1.receive_json()["type"] == "pong"
+
+            # Second connection to the same session is rejected with 4009.
+            with pytest.raises(WebSocketDisconnect) as exc_info:
+                with api_client.websocket_connect(_ws_url(session_id, ticket2)) as ws2:
+                    ws2.receive_json()
+            assert exc_info.value.code == 4009
+
+            # First connection is unaffected and still responsive.
+            ws1.send_json({"type": "ping"})
+            assert ws1.receive_json()["type"] == "pong"
+
 
 # ---------------------------------------------------------------------------
 # Protocol tests
