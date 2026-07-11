@@ -668,6 +668,63 @@ class TestBatchExecution:
         assert len(batch.results) == 3
         assert all(status == "FAILED" for status in batch.results.values())
 
+    def test_unexpected_exception_marks_failed_and_stops_reconcile(self, workspace_with_tasks):
+        """A raised worker error marks the batch FAILED and stops the reconcile thread (#763).
+
+        Regression: reconcile_stop.set() used to live on the success path only, so
+        an exception leaked the polling daemon and left the batch stuck RUNNING.
+        """
+        from codeframe.core import conductor
+
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        captured = {}
+        real_start = conductor._start_reconciliation_thread
+
+        def capture_start(ws, batch, **kwargs):
+            ev = real_start(ws, batch, **kwargs)
+            captured["event"] = ev
+            return ev
+
+        with patch('codeframe.core.conductor._start_reconciliation_thread', side_effect=capture_start), \
+             patch('codeframe.core.conductor._execute_task_subprocess', side_effect=RuntimeError("boom")):
+            with pytest.raises(RuntimeError, match="boom"):
+                start_batch(workspace, task_ids, strategy="serial")
+
+        # Reconciliation thread was signalled to stop — no daemon leak.
+        assert captured["event"].is_set()
+
+        # Batch is terminal FAILED, not stuck RUNNING.
+        assert list_batches(workspace, status=BatchStatus.RUNNING) == []
+        failed = list_batches(workspace, status=BatchStatus.FAILED)
+        assert len(failed) == 1
+
+    def test_finalization_tail_error_preserves_terminal_status(self, workspace_with_tasks):
+        """An error AFTER the terminal status is saved must not flip it to FAILED (#763).
+
+        Regression: the FAILED-override except used to wrap the whole finalization
+        tail, so e.g. a `database is locked` in the completion-event emit would
+        overwrite a correct COMPLETED/PARTIAL record.
+        """
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # All tasks succeed (→ terminal status saved), then the post-save webhook
+        # dispatch raises — simulating a finalization-tail failure.
+        with patch('codeframe.core.conductor._execute_task_subprocess', return_value="COMPLETED"), \
+             patch('codeframe.core.conductor._dispatch_batch_completed_webhook',
+                   side_effect=RuntimeError("tail boom")):
+            with pytest.raises(RuntimeError, match="tail boom"):
+                start_batch(workspace, task_ids, strategy="serial")
+
+        # The correct terminal record must survive — not overwritten with FAILED.
+        assert list_batches(workspace, status=BatchStatus.FAILED) == []
+        assert list_batches(workspace, status=BatchStatus.RUNNING) == []
+        terminal = (list_batches(workspace, status=BatchStatus.COMPLETED)
+                    + list_batches(workspace, status=BatchStatus.PARTIAL))
+        assert len(terminal) == 1
+
     def test_task_blocked(self, workspace_with_tasks):
         """Batch should handle BLOCKED tasks and continue."""
         workspace, task_list = workspace_with_tasks
