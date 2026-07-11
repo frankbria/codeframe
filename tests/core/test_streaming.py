@@ -221,6 +221,100 @@ class TestTailRunOutput:
         assert len(lines) == 0  # No lines, but no exception
 
 
+class TestATailRunOutput:
+    """Tests for the async tailer (#758) used by the SSE /output endpoint."""
+
+    async def test_atail_yields_existing_lines(
+        self, temp_workspace: Workspace, run_id: str
+    ):
+        """Async tail should yield lines already in the file, then stop at max_wait."""
+        from codeframe.core.streaming import RunOutputLogger, atail_run_output
+
+        with RunOutputLogger(temp_workspace, run_id) as logger:
+            logger.write("Line 1\n")
+            logger.write("Line 2\n")
+
+        lines = [
+            line
+            async for line in atail_run_output(
+                temp_workspace, run_id, poll_interval=0.01, max_wait=0.05
+            )
+        ]
+
+        assert len(lines) == 2
+        assert "Line 1" in lines[0]
+        assert "Line 2" in lines[1]
+
+    async def test_atail_since_line_skips_seen_content(
+        self, temp_workspace: Workspace, run_id: str
+    ):
+        """since_line should skip already-streamed lines."""
+        from codeframe.core.streaming import RunOutputLogger, atail_run_output
+
+        with RunOutputLogger(temp_workspace, run_id) as logger:
+            logger.write("Line 1\n")
+            logger.write("Line 2\n")
+            logger.write("Line 3\n")
+
+        lines = [
+            line
+            async for line in atail_run_output(
+                temp_workspace, run_id, since_line=2, poll_interval=0.01, max_wait=0.05
+            )
+        ]
+
+        assert len(lines) == 1
+        assert "Line 3" in lines[0]
+
+    async def test_atail_stops_when_should_stop_true(
+        self, temp_workspace: Workspace, run_id: str
+    ):
+        """A truthy should_stop (e.g. request.is_disconnected) ends the poll loop
+        promptly instead of waiting out max_wait — this is what frees the thread/loop
+        when a browser tab is abandoned."""
+        from codeframe.core.streaming import RunOutputLogger, atail_run_output
+
+        with RunOutputLogger(temp_workspace, run_id) as logger:
+            logger.write("Line 1\n")
+
+        # Stay connected for the first poll (drain the buffered line), then drop.
+        calls = {"n": 0}
+
+        async def disconnected() -> bool:
+            calls["n"] += 1
+            return calls["n"] > 1
+
+        start = time.monotonic()
+        lines = [
+            line
+            async for line in atail_run_output(
+                temp_workspace,
+                run_id,
+                poll_interval=0.01,
+                max_wait=300.0,
+                should_stop=disconnected,
+            )
+        ]
+        elapsed = time.monotonic() - start
+
+        # Existing line delivered, then loop exits on disconnect — nowhere near max_wait.
+        assert any("Line 1" in line for line in lines)
+        assert elapsed < 5.0
+
+    async def test_atail_handles_missing_file(self, temp_workspace: Workspace):
+        """Missing file should not raise; loop simply exits at max_wait."""
+        from codeframe.core.streaming import atail_run_output
+
+        lines = [
+            line
+            async for line in atail_run_output(
+                temp_workspace, "nonexistent-run", poll_interval=0.01, max_wait=0.05
+            )
+        ]
+
+        assert lines == []
+
+
 class TestGetLatestRunLines:
     """Tests for reading buffered output (--tail N functionality)."""
 
