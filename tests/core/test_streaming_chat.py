@@ -131,6 +131,46 @@ class TestLoadHistory:
             {"role": "assistant", "content": "Hi there"},
         ]
 
+    def test_normalizes_rich_roles_to_user_assistant(self):
+        # REST persists richer display roles for the transcript UI; the replay
+        # list handed to Anthropic must only ever contain user/assistant, or the
+        # next turn 400s (#765).
+        stored = [
+            {"role": "user", "content": "Read foo.py"},
+            {"role": "thinking", "content": "I should read the file"},
+            {"role": "tool_use", "content": "read_file(foo.py)"},
+            {"role": "tool_result", "content": "print('hi')"},
+            {"role": "assistant", "content": "It prints hi"},
+        ]
+        repo = _make_db_repo(stored)
+        adapter = _make_adapter(db_repo=repo)
+        history = adapter._load_history()
+        assert {m["role"] for m in history} <= {"user", "assistant"}
+        assert history == [
+            {"role": "user", "content": "Read foo.py"},
+            {"role": "assistant", "content": "I should read the file"},
+            {"role": "assistant", "content": "read_file(foo.py)"},
+            {"role": "user", "content": "print('hi')"},
+            {"role": "assistant", "content": "It prints hi"},
+        ]
+
+    def test_drops_non_conversational_roles(self):
+        # system/error rows are UI-only artifacts and must be dropped from the
+        # replay list entirely — they are not valid Anthropic message roles.
+        stored = [
+            {"role": "system", "content": "Session started"},
+            {"role": "user", "content": "Hi"},
+            {"role": "error", "content": "stream failed"},
+            {"role": "assistant", "content": "Hello"},
+        ]
+        repo = _make_db_repo(stored)
+        adapter = _make_adapter(db_repo=repo)
+        history = adapter._load_history()
+        assert history == [
+            {"role": "user", "content": "Hi"},
+            {"role": "assistant", "content": "Hello"},
+        ]
+
 
 # ---------------------------------------------------------------------------
 # History truncation
