@@ -47,6 +47,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
 
+# Maps a session ``agent_type`` (agent vocabulary: "claude", "codex", ...) to an
+# LLM ``provider_type`` understood by ``get_provider`` ("anthropic", ...). Only
+# agent types backed by a real streaming ``LLMProvider`` can be served through
+# ``StreamingChatAdapter``; CLI agents (codex, opencode) have no streaming
+# provider, so they are absent here and rejected at chat time with a clear error
+# rather than silently served by Anthropic on the default model (#764).
+_AGENT_TYPE_TO_PROVIDER = {"claude": "anthropic", "anthropic": "anthropic"}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -69,6 +77,8 @@ async def _run_streaming_adapter(
     interrupt_event: asyncio.Event,
     db_repo,
     workspace_path: Path,
+    agent_type: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> None:
     """Drive the StreamingChatAdapter and forward ChatEvents into the token queue.
 
@@ -79,15 +89,34 @@ async def _run_streaming_adapter(
         interrupt_event: Signals the adapter to stop mid-stream.
         db_repo: ``InteractiveSessionRepository`` for history load/persist.
         workspace_path: Absolute path to the workspace for file-system tools.
+        agent_type: Session's stored agent type; resolves the LLM provider
+            (#764). Defaults to ``"claude"`` when unset (legacy rows).
+        model: Session's stored model; honored instead of the adapter default.
     """
     try:
-        from codeframe.adapters.llm.anthropic import AnthropicProvider
-        provider = AnthropicProvider()
+        provider_type = _AGENT_TYPE_TO_PROVIDER.get((agent_type or "claude").lower())
+        if provider_type is None:
+            # An agent_type with no streaming provider (e.g. codex/opencode) must
+            # not be silently served by Anthropic — fail loudly (#764).
+            await token_queue.put({
+                "type": "error",
+                "message": (
+                    f"Interactive chat cannot serve agent_type '{agent_type}'. "
+                    "Only Claude/Anthropic sessions are supported."
+                ),
+            })
+            return
+        from codeframe.adapters.llm import get_provider
+        provider = get_provider(provider_type)
+        # Honor the session's stored model; fall back to the adapter default only
+        # when unset, instead of always using the hardcoded default (#764).
+        adapter_kwargs = {"model": model} if model else {}
         adapter = StreamingChatAdapter(
             session_id=session_id,
             db_repo=db_repo,
             workspace_path=workspace_path,
             provider=provider,
+            **adapter_kwargs,
         )
         async for event in adapter.send_message(
             content=user_message,
@@ -320,6 +349,8 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             interrupt_event,
                             db.interactive_sessions,
                             workspace_path,
+                            session.get("agent_type"),
+                            session.get("model"),
                         )
                     )
 
