@@ -35,6 +35,14 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: test  # Gate: do not deploy unless the test suite passes
+    # Serialize staging deploys: overlapping runs SSH to the same VPS and run
+    # `uv venv --clear`, `npm run build`, and `pm2 restart` concurrently, which
+    # clears a venv another run is using and races the backend port rebind →
+    # the backend crash-loops and the health check fails. Queue instead of
+    # cancel: never interrupt an in-flight deploy and leave the server half-updated.
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
     if: |
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
@@ -247,6 +255,15 @@ jobs:
           done
 
           echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
+          # Surface the cause: a silent `curl -sf` gave no reason. Dump PM2
+          # status and the backend error log so a crash-loop is diagnosable.
+          echo "::group::Backend diagnostics (PM2 status + recent error log)"
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "
+            pm2 describe '${{ secrets.PM2_BACKEND_NAME }}' 2>/dev/null | grep -Ei 'status|restarts|uptime|script|pid|exit' || true
+            echo '--- last 40 lines of logs/backend-error.log ---'
+            tail -n 40 '${{ secrets.PROJECT_PATH }}/logs/backend-error.log' 2>/dev/null || echo '(no backend-error.log found)'
+          " || true
+          echo "::endgroup::"
           exit 1
 
       - name: Deployment summary
@@ -265,6 +282,10 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: test  # Gate: do not deploy to production unless the test suite passes
+    # Serialize production deploys (own group, independent of staging).
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     if: |
       (github.event_name == 'release') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
@@ -582,6 +603,15 @@ jobs:
           done
 
           echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
+          # Surface the cause: a silent `curl -sf` gave no reason. Dump PM2
+          # status and the backend error log so a crash-loop is diagnosable.
+          echo "::group::Backend diagnostics (PM2 status + recent error log)"
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "
+            pm2 describe '${{ secrets.PM2_BACKEND_NAME }}' 2>/dev/null | grep -Ei 'status|restarts|uptime|script|pid|exit' || true
+            echo '--- last 40 lines of logs/backend-error.log ---'
+            tail -n 40 '${{ secrets.PROJECT_PATH }}/logs/backend-error.log' 2>/dev/null || echo '(no backend-error.log found)'
+          " || true
+          echo "::endgroup::"
           exit 1
 
       - name: Deployment summary
