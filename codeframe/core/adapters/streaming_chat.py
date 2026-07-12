@@ -41,6 +41,17 @@ _DEFAULT_MODEL = "claude-sonnet-4-5"
 # claude-sonnet-4 context window is 200k; leave 20k for response headroom.
 _MAX_HISTORY_TOKENS = 180_000
 
+# Maps the persisted (display-oriented) message roles onto the two roles the
+# Anthropic Messages API accepts. Roles absent from this map (e.g. "system",
+# "error") are UI-only and dropped from the replay list. See _load_history.
+_REPLAY_ROLE_MAP = {
+    "user": "user",
+    "assistant": "assistant",
+    "thinking": "assistant",
+    "tool_use": "assistant",
+    "tool_result": "user",
+}
+
 # ---------------------------------------------------------------------------
 # Event types
 # ---------------------------------------------------------------------------
@@ -190,11 +201,25 @@ class StreamingChatAdapter:
     def _load_history(self) -> list[dict]:
         """Load conversation history from the DB for this session.
 
+        The REST layer persists richer display roles (``tool_use``,
+        ``tool_result``, ``thinking``, ``system``, ``error``) so the session
+        transcript UI can render them. The Anthropic Messages API only accepts
+        ``user``/``assistant``, so those roles are collapsed here — otherwise the
+        next chat turn 400s on replay (#765). ``system``/``error`` rows are
+        UI-only artifacts and are dropped from the replay list entirely.
+
         Returns:
-            List of ``{"role": str, "content": str}`` dicts in chronological order.
+            List of ``{"role": "user"|"assistant", "content": str}`` dicts in
+            chronological order.
         """
         rows = self._db_repo.get_messages(self._session_id)
-        return [{"role": r["role"], "content": r["content"]} for r in rows]
+        history: list[dict] = []
+        for r in rows:
+            role = _REPLAY_ROLE_MAP.get(r["role"])
+            if role is None:
+                continue  # drop system/error and any unknown display-only role
+            history.append({"role": role, "content": r["content"]})
+        return history
 
     def _truncate_history(self, messages: list[dict]) -> list[dict]:
         """Drop oldest messages when the history exceeds the token budget.
