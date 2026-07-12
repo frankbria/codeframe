@@ -266,7 +266,7 @@ class TestSessionChatWSProtocol:
         session_id = _create_session(api_client)
         ticket = mint_ticket(user_id=1)
 
-        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path):
+        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None):
             await token_queue.put({"type": "text_delta", "content": "Hello"})
             await token_queue.put({"type": "text_delta", "content": " world"})
             await token_queue.put({"type": "cost_update", "cost_usd": 0.001, "input_tokens": 10, "output_tokens": 5})
@@ -303,7 +303,7 @@ class TestSessionChatWSProtocol:
         session_id = _create_session(api_client)
         ticket = mint_ticket(user_id=1)
 
-        async def slow_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path):
+        async def slow_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None):
             for i in range(10):
                 if interrupt_event.is_set():
                     await token_queue.put({"type": "done"})
@@ -342,7 +342,7 @@ class TestSessionChatWSProtocol:
         session_id = _create_session(api_client)
         ticket = mint_ticket(user_id=1)
 
-        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path):
+        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None):
             await token_queue.put(
                 {"type": "cost_update", "cost_usd": 0.005, "input_tokens": 100, "output_tokens": 50}
             )
@@ -366,6 +366,77 @@ class TestSessionChatWSProtocol:
         assert data["cost_usd"] == pytest.approx(0.005, abs=1e-6)
         assert data["input_tokens"] == 100
         assert data["output_tokens"] == 50
+
+
+# ---------------------------------------------------------------------------
+# Provider / model resolution (#764)
+# ---------------------------------------------------------------------------
+
+
+class TestRunStreamingAdapterResolution:
+    """`_run_streaming_adapter` resolves provider + model from the session (#764)."""
+
+    @staticmethod
+    def _fake_adapter_factory(captured: dict):
+        """Return a StreamingChatAdapter stand-in that records ctor kwargs."""
+
+        class _FakeAdapter:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+            async def send_message(self, content, history, interrupt_event):
+                return
+                yield  # pragma: no cover - makes this an async generator
+
+        return _FakeAdapter
+
+    def _run(self, agent_type, model):
+        """Drive _run_streaming_adapter once, returning (ctor_kwargs, events)."""
+        import asyncio
+        from unittest.mock import MagicMock, patch
+
+        import codeframe.ui.routers.session_chat_ws as mod
+
+        captured: dict = {}
+        events: list = []
+
+        async def drive():
+            q = asyncio.Queue()
+            await mod._run_streaming_adapter(
+                "sess-1", "hi", q, asyncio.Event(), MagicMock(), object(),
+                agent_type, model,
+            )
+            while not q.empty():
+                events.append(q.get_nowait())
+
+        with patch.object(mod, "StreamingChatAdapter", self._fake_adapter_factory(captured)), \
+                patch("codeframe.adapters.llm.get_provider") as get_provider:
+            get_provider.return_value = MagicMock(name="provider")
+            asyncio.run(drive())
+            self._last_get_provider = get_provider
+        return captured, events
+
+    def test_claude_session_resolves_anthropic_and_honors_model(self):
+        captured, events = self._run("claude", "claude-opus-4-6")
+        self._last_get_provider.assert_called_once_with("anthropic")
+        assert captured["model"] == "claude-opus-4-6"
+        assert captured["provider"] is self._last_get_provider.return_value
+        assert not any(e["type"] == "error" for e in events)
+
+    def test_missing_agent_type_defaults_to_claude(self):
+        captured, events = self._run(None, None)
+        self._last_get_provider.assert_called_once_with("anthropic")
+        # No model override → adapter default used (no "model" kwarg passed).
+        assert "model" not in captured
+        assert not any(e["type"] == "error" for e in events)
+
+    def test_unsupported_agent_type_errors_without_anthropic_fallback(self):
+        captured, events = self._run("codex", "gpt-4o")
+        # No provider constructed, no adapter built — a clear error is emitted.
+        self._last_get_provider.assert_not_called()
+        assert captured == {}
+        assert events and events[0]["type"] == "error"
+        assert "codex" in events[0]["message"]
 
 
 # ---------------------------------------------------------------------------
