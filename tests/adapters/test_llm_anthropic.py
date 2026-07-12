@@ -52,3 +52,19 @@ async def test_async_complete_passes_temperature_unconditionally(monkeypatch, te
     )
 
     assert _create.captured["temperature"] == temperature
+
+
+@pytest.mark.parametrize("temperature", [0.0, 0.7])
+def test_stream_passes_temperature_unconditionally(temperature):
+    """Sync streaming path must also pass temperature=0.0 (#767)."""
+    provider = _provider()
+    fake_client = MagicMock()
+    stream_cm = MagicMock()
+    stream_cm.__enter__.return_value.text_stream = iter(["hi"])
+    fake_client.messages.stream.return_value = stream_cm
+    provider._client = fake_client
+
+    list(provider.stream(messages=[{"role": "user", "content": "hi"}], temperature=temperature))
+
+    kwargs = fake_client.messages.stream.call_args.kwargs
+    assert kwargs["temperature"] == temperature
