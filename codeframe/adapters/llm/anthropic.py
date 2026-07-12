@@ -237,7 +237,7 @@ class AnthropicProvider(LLMProvider):
                 stream_ctx = self._async_client.beta.messages.stream(**kwargs)
             else:
                 stream_ctx = self._async_client.messages.stream(**kwargs)
-        except TypeError:  # pragma: no cover
+        except TypeError:
             if use_thinking:
                 kwargs.pop("betas", None)
                 kwargs.pop("thinking", None)
