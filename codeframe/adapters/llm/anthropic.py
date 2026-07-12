@@ -108,8 +108,10 @@ class AnthropicProvider(LLMProvider):
             "messages": self._convert_messages(messages),
         }
 
-        if temperature > 0:
-            kwargs["temperature"] = temperature
+        # Pass temperature unconditionally: temperature=0.0 is a valid request
+        # for deterministic sampling, not "unset". Guarding on `> 0` silently
+        # dropped it and let the API default to 1.0 (#767).
+        kwargs["temperature"] = temperature
 
         if system:
             kwargs["system"] = system
@@ -157,8 +159,10 @@ class AnthropicProvider(LLMProvider):
             "max_tokens": max_tokens,
             "messages": self._convert_messages(messages),
         }
-        if temperature > 0:
-            kwargs["temperature"] = temperature
+        # Pass temperature unconditionally: temperature=0.0 is a valid request
+        # for deterministic sampling, not "unset". Guarding on `> 0` silently
+        # dropped it and let the API default to 1.0 (#767).
+        kwargs["temperature"] = temperature
         if system:
             kwargs["system"] = system
         if tools:
@@ -328,8 +332,10 @@ class AnthropicProvider(LLMProvider):
             "messages": self._convert_messages(messages),
         }
 
-        if temperature > 0:
-            kwargs["temperature"] = temperature
+        # Pass temperature unconditionally: temperature=0.0 is a valid request
+        # for deterministic sampling, not "unset". Guarding on `> 0` silently
+        # dropped it and let the API default to 1.0 (#767).
+        kwargs["temperature"] = temperature
 
         if system:
             kwargs["system"] = system
