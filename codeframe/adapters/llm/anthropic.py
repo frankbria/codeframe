@@ -214,18 +214,33 @@ class AnthropicProvider(LLMProvider):
             "max_tokens": max_tokens,
         }
 
-        if extended_thinking:
+        # Interleaved extended thinking requires the beta namespace:
+        # messages.stream() rejects betas= with TypeError (that was the #766 bug —
+        # a blanket except swallowed it and retried without thinking every turn).
+        # budget_tokens must be >=1024 and < max_tokens, so only enable when the
+        # cap leaves room.
+        use_thinking = extended_thinking and max_tokens > 1024
+        if use_thinking:
             kwargs["betas"] = ["interleaved-thinking-2025-05-14"]
+            kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": max(1024, max_tokens // 2),
+            }
 
         active_tool_id: Optional[str] = None
 
-        # When extended_thinking is set, the beta header may be unsupported on
-        # older SDK versions.  Retry without it rather than hard-failing.
+        # On an SDK too old to accept betas=/thinking=, degrade to a plain stream
+        # rather than hard-failing.  Narrowed to TypeError so real API errors
+        # (auth/rate-limit/connection) surface instead of being swallowed.
         try:
-            stream_ctx = self._async_client.messages.stream(**kwargs)
-        except Exception:  # pragma: no cover
-            if extended_thinking:
+            if use_thinking:
+                stream_ctx = self._async_client.beta.messages.stream(**kwargs)
+            else:
+                stream_ctx = self._async_client.messages.stream(**kwargs)
+        except TypeError:  # pragma: no cover
+            if use_thinking:
                 kwargs.pop("betas", None)
+                kwargs.pop("thinking", None)
                 stream_ctx = self._async_client.messages.stream(**kwargs)
             else:
                 raise

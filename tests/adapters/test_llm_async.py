@@ -145,6 +145,107 @@ class TestMockProviderAsyncStream:
         assert provider.last_call["extended_thinking"] is True
 
 
+class _FakeStreamCtx:
+    """Async ctx-manager + iterator that yields no SDK events."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise StopAsyncIteration
+
+
+class _FakeMessages:
+    def __init__(self, rec, name, raises=None):
+        self._rec = rec
+        self._name = name
+        self._raises = raises
+
+    def stream(self, **kwargs):
+        self._rec.append((self._name, kwargs))
+        if self._raises is not None:
+            raise self._raises
+        return _FakeStreamCtx()
+
+
+class _FakeClient:
+    """Stand-in for AsyncAnthropic with plain + beta message namespaces."""
+
+    def __init__(self, rec, beta_raises=None):
+        self.messages = _FakeMessages(rec, "plain")
+        self.beta = type("_Beta", (), {"messages": _FakeMessages(rec, "beta", beta_raises)})()
+
+
+class TestAnthropicExtendedThinkingRouting:
+    """#766 — extended thinking must route to the beta namespace with thinking=."""
+
+    def _provider(self, rec, beta_raises=None):
+        from codeframe.adapters.llm.anthropic import AnthropicProvider
+
+        provider = AnthropicProvider(api_key="test-key")
+        provider._async_client = _FakeClient(rec, beta_raises=beta_raises)
+        return provider
+
+    async def _drain(self, provider, **kw):
+        async for _ in provider.async_stream(
+            messages=[{"role": "user", "content": "hi"}],
+            system="s", tools=[], model="claude-x", max_tokens=4096, **kw,
+        ):
+            pass
+
+    @pytest.mark.asyncio
+    async def test_extended_thinking_uses_beta_namespace(self):
+        rec = []
+        await self._drain(self._provider(rec), extended_thinking=True)
+        name, kwargs = rec[-1]
+        assert name == "beta"
+        assert kwargs["betas"] == ["interleaved-thinking-2025-05-14"]
+        assert kwargs["thinking"]["type"] == "enabled"
+        assert 1024 <= kwargs["thinking"]["budget_tokens"] < 4096
+
+    @pytest.mark.asyncio
+    async def test_no_thinking_uses_plain_namespace(self):
+        rec = []
+        await self._drain(self._provider(rec), extended_thinking=False)
+        name, kwargs = rec[-1]
+        assert name == "plain"
+        assert "betas" not in kwargs
+        assert "thinking" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_small_max_tokens_skips_thinking(self):
+        """budget_tokens needs >=1024 headroom; tiny caps fall back to plain."""
+        rec = []
+        async for _ in self._provider(rec).async_stream(
+            messages=[{"role": "user", "content": "hi"}],
+            system="s", tools=[], model="claude-x", max_tokens=512,
+            extended_thinking=True,
+        ):
+            pass
+        name, kwargs = rec[-1]
+        assert name == "plain"
+        assert "thinking" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_typeerror_degrades_to_plain_stream(self):
+        """An SDK too old to accept betas=/thinking= degrades, not crashes."""
+        rec = []
+        await self._drain(
+            self._provider(rec, beta_raises=TypeError("unexpected kwarg")),
+            extended_thinking=True,
+        )
+        # First attempt hits beta (raises), fallback lands on plain without thinking.
+        assert rec[0][0] == "beta"
+        assert rec[-1][0] == "plain"
+        assert "thinking" not in rec[-1][1]
+
+
 class TestLLMExceptions:
     """Common LLM exception hierarchy."""
 
