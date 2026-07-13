@@ -1026,6 +1026,42 @@ def _execute_serial_resume(
     Similar to _execute_serial but only runs specified tasks and
     merges results with existing batch results.
     """
+    # resume_batch pinned the batch to RUNNING before calling us, so an
+    # unexpected worker error must not leave it stuck RUNNING (#848 — the same
+    # failure mode #763 fixed for _execute_serial/_execute_parallel). Unlike
+    # those paths, resume does not start a reconciliation thread, so there is
+    # nothing to stop in a finally here. `finalized` flips to True the instant a
+    # terminal status is persisted, so a finalization-tail error (after the
+    # terminal _save_batch) preserves that correct record instead of clobbering
+    # it with FAILED.
+    finalized = {"done": False}
+    try:
+        _run_serial_resume(workspace, batch, tasks_to_run, finalized, on_event)
+    except Exception:
+        logger.exception("Batch resume failed unexpectedly")
+        if not finalized["done"]:
+            batch.status = BatchStatus.FAILED
+            batch.completed_at = _utc_now()
+            _save_batch(workspace, batch)
+            events.emit_for_workspace(
+                workspace,
+                events.EventType.BATCH_FAILED,
+                {"batch_id": batch.id, "error": "unexpected execution error", "is_resume": True},
+                print_event=True,
+            )
+        raise
+
+
+def _run_serial_resume(
+    workspace: Workspace,
+    batch: BatchRun,
+    tasks_to_run: list[str],
+    finalized: dict[str, bool],
+    on_event: Optional[Callable[[str, dict], None]] = None,
+) -> None:
+    """Resume task loop + finalization. Sets ``finalized['done'] = True`` once a
+    terminal status is persisted so the caller preserves it on a tail error (#848).
+    """
     completed_count = 0
     failed_count = 0
     blocked_count = 0
@@ -1155,6 +1191,7 @@ def _execute_serial_resume(
 
     batch.completed_at = _utc_now()
     _save_batch(workspace, batch)
+    finalized["done"] = True  # terminal status persisted — caller must not override (#848)
 
     # Emit batch completion event
     events.emit_for_workspace(
@@ -1197,6 +1234,26 @@ def _execute_retries(
         max_retries: Maximum retry attempts per task
         on_event: Optional callback for events
     """
+    # The initial execution pass already persisted a terminal status before we
+    # were called, and retries never set the batch back to RUNNING — so there is
+    # no stuck-RUNNING risk here (unlike resume, #848). An unexpected worker
+    # error must therefore preserve that prior terminal record (never clobber a
+    # correct COMPLETED/PARTIAL with FAILED); we just log and re-raise. Retries
+    # also start no reconciliation thread, so nothing to stop in a finally.
+    try:
+        _run_retries(workspace, batch, max_retries, on_event)
+    except Exception:
+        logger.exception("Batch retry failed unexpectedly; preserving prior terminal status")
+        raise
+
+
+def _run_retries(
+    workspace: Workspace,
+    batch: BatchRun,
+    max_retries: int,
+    on_event: Optional[Callable[[str, dict], None]] = None,
+) -> None:
+    """Retry loop + finalization for :func:`_execute_retries` (#848)."""
     failed_statuses = {RunStatus.FAILED.value}  # Only retry FAILED, not BLOCKED
 
     for retry_num in range(1, max_retries + 1):

@@ -725,6 +725,123 @@ class TestBatchExecution:
                     + list_batches(workspace, status=BatchStatus.PARTIAL))
         assert len(terminal) == 1
 
+    def test_parallel_unexpected_exception_marks_failed_and_stops_reconcile(self, workspace_with_tasks):
+        """Parallel sibling of the serial #763 test — guards against serial/parallel drift (#848).
+
+        The exception-handling fix is hand-duplicated across _execute_serial and
+        _execute_parallel; PR #847's tests were serial-only. This exercises the
+        parallel copy so a copy-paste slip (wrong stop-event var, wrong strategy
+        tag) is caught.
+        """
+        from codeframe.core import conductor
+
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        captured = {}
+        real_start = conductor._start_reconciliation_thread
+
+        def capture_start(ws, batch, **kwargs):
+            ev = real_start(ws, batch, **kwargs)
+            captured["event"] = ev
+            return ev
+
+        with patch('codeframe.core.conductor._start_reconciliation_thread', side_effect=capture_start), \
+             patch('codeframe.core.conductor._execute_task_subprocess', side_effect=RuntimeError("boom")):
+            with pytest.raises(RuntimeError, match="boom"):
+                start_batch(workspace, task_ids, strategy="parallel", max_parallel=2)
+
+        # Reconciliation thread was signalled to stop — no daemon leak.
+        assert captured["event"].is_set()
+
+        # Batch is terminal FAILED, not stuck RUNNING.
+        assert list_batches(workspace, status=BatchStatus.RUNNING) == []
+        assert len(list_batches(workspace, status=BatchStatus.FAILED)) == 1
+
+    def test_resume_unexpected_exception_marks_failed(self, workspace_with_tasks):
+        """A raised worker error during resume marks the batch FAILED, not stuck RUNNING (#848).
+
+        resume_batch pins the batch to RUNNING before _execute_serial_resume runs,
+        so an unexpected worker exception used to leave it RUNNING forever — the
+        same failure mode #763 fixed for the initial serial/parallel passes.
+        """
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # Build a PARTIAL batch (task[1] fails) that is eligible for resume.
+        def mock_initial(ws, tid, batch_id=None, **kwargs):
+            return "FAILED" if tid == task_ids[1] else "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_initial):
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+        assert batch.status == BatchStatus.PARTIAL
+
+        # Resume re-runs task[1]; this time the worker raises unexpectedly.
+        with patch('codeframe.core.conductor._execute_task_subprocess',
+                   side_effect=RuntimeError("resume boom")):
+            with pytest.raises(RuntimeError, match="resume boom"):
+                resume_batch(workspace, batch.id)
+
+        # Terminal FAILED, not pinned at RUNNING.
+        assert list_batches(workspace, status=BatchStatus.RUNNING) == []
+        assert get_batch(workspace, batch.id).status == BatchStatus.FAILED
+
+    def test_resume_finalization_tail_error_preserves_terminal_status(self, workspace_with_tasks):
+        """An error AFTER resume persists its terminal status must not flip it to FAILED (#848)."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        def mock_initial(ws, tid, batch_id=None, **kwargs):
+            return "FAILED" if tid == task_ids[1] else "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_initial):
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+        assert batch.status == BatchStatus.PARTIAL
+
+        # Resume finalizes (still PARTIAL — task[1] fails again → terminal saved),
+        # then the post-save webhook dispatch raises: a finalization-tail failure.
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_initial), \
+             patch('codeframe.core.conductor._dispatch_batch_completed_webhook',
+                   side_effect=RuntimeError("resume tail boom")):
+            with pytest.raises(RuntimeError, match="resume tail boom"):
+                resume_batch(workspace, batch.id)
+
+        # The correct terminal record must survive — not overwritten with FAILED.
+        assert list_batches(workspace, status=BatchStatus.RUNNING) == []
+        assert list_batches(workspace, status=BatchStatus.FAILED) == []
+        assert get_batch(workspace, batch.id).status == BatchStatus.PARTIAL
+
+    def test_retries_unexpected_exception_preserves_terminal_status(self, workspace_with_tasks):
+        """A raised worker error during retries preserves the prior terminal status (#848).
+
+        Unlike resume, _execute_retries runs only after the initial pass persisted
+        a terminal status and never sets RUNNING — so there is no stuck-RUNNING
+        window, and an unexpected retry error must NOT clobber a correct PARTIAL
+        with FAILED.
+        """
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # task[1] fails on the initial pass (→ PARTIAL), then the retry raises.
+        attempts = {"n": 0}
+
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
+            if tid == task_ids[1]:
+                attempts["n"] += 1
+                if attempts["n"] == 1:
+                    return "FAILED"
+                raise RuntimeError("retry boom")
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            with pytest.raises(RuntimeError, match="retry boom"):
+                start_batch(workspace, task_ids, on_failure="continue", max_retries=2)
+
+        # Prior terminal PARTIAL preserved — not stuck RUNNING, not clobbered to FAILED.
+        assert list_batches(workspace, status=BatchStatus.RUNNING) == []
+        assert list_batches(workspace, status=BatchStatus.FAILED) == []
+        assert len(list_batches(workspace, status=BatchStatus.PARTIAL)) == 1
+
     def test_task_blocked(self, workspace_with_tasks):
         """Batch should handle BLOCKED tasks and continue."""
         workspace, task_list = workspace_with_tasks
