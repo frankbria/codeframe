@@ -338,10 +338,10 @@ def tail(
         time.sleep(0.5)  # Poll interval
 
 
-def _print_event(event: Event) -> None:
+def print_event(event: Event) -> None:
     """Print an event to the console in a readable format."""
     timestamp = event.created_at.strftime("%H:%M:%S")
-    type_color = _get_event_color(event.event_type)
+    type_color = get_event_color(event.event_type)
 
     console.print(
         f"[dim]{timestamp}[/dim] [{type_color}]{event.event_type}[/{type_color}]",
@@ -362,7 +362,7 @@ def _print_event(event: Event) -> None:
         console.print()
 
 
-def _get_event_color(event_type: str) -> str:
+def get_event_color(event_type: str) -> str:
     """Get the Rich color for an event type."""
     if "ERROR" in event_type or "FAILED" in event_type:
         return "red"
@@ -373,3 +373,8 @@ def _get_event_color(event_type: str) -> str:
     if "BLOCKED" in event_type or "BLOCKER" in event_type:
         return "yellow"
     return "cyan"
+
+
+# emit()/emit_for_workspace() have a `print_event` keyword argument that
+# shadows the public function inside their scope; they call this alias.
+_print_event = print_event
