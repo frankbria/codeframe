@@ -11,7 +11,7 @@
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
 > [!WARNING]
-> **Prerequisite:** CodeFRAME requires an `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com/). Get your key before running any `cf` command.
+> **Prerequisite:** CodeFRAME requires an API key matching your LLM provider — by default an `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com/), or `OPENAI_API_KEY` when using `--llm-provider openai` (local providers like Ollama need no key). Get your key before running any `cf` command.
 
 ---
 
