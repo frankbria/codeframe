@@ -110,6 +110,18 @@ class TestCreateProvider:
         provider = create_provider(LLMSettings(provider_type="mock"))
         assert isinstance(provider, MockProvider)
 
+    def test_anthropic_model_override_is_honored(self, monkeypatch):
+        """A resolved model override must reach the Anthropic provider, not
+        be silently dropped (#768 review finding)."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+        provider = create_provider(
+            LLMSettings(provider_type="anthropic", model="claude-test-model")
+        )
+        selector = provider.model_selector
+        assert selector.planning_model == "claude-test-model"
+        assert selector.execution_model == "claude-test-model"
+        assert selector.generation_model == "claude-test-model"
+
     def test_creates_openai_compatible_for_ollama(self, monkeypatch):
         from codeframe.adapters.llm import OpenAIProvider
 

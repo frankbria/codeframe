@@ -1879,6 +1879,13 @@ def tasks_generate(
 
         console.print(f"Generating tasks from PRD: [bold]{prd_record.title}[/bold]")
 
+        if recursive and no_llm:
+            console.print(
+                "[red]Error:[/red] --recursive requires LLM generation and "
+                "cannot be combined with --no-llm."
+            )
+            raise typer.Exit(1)
+
         provider = None
         if not no_llm:
             # Validate the key matching the resolved provider

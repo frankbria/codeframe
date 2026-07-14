@@ -355,6 +355,21 @@ class TestThinkPhaseProviderResolution:
         assert result.exit_code != 0
         assert "OPENAI_API_KEY" in result.output
 
+    def test_tasks_generate_recursive_no_llm_rejected(
+        self, workspace_with_prd, isolated_keys
+    ):
+        """--recursive needs the LLM; combining it with --no-llm must be a
+        clear error, not an AttributeError on a None provider."""
+        from codeframe.cli.app import app
+
+        result = runner.invoke(
+            app,
+            ["tasks", "generate", "--recursive", "--no-llm",
+             "-w", str(workspace_with_prd)],
+        )
+        assert result.exit_code != 0
+        assert "--no-llm" in result.output and "--recursive" in result.output
+
     def test_tasks_generate_ollama_provider_skips_anthropic_key(
         self, workspace_with_prd, isolated_keys, monkeypatch
     ):
