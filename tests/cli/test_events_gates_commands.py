@@ -106,6 +106,12 @@ class TestEventsTail:
         assert result.exit_code == 1
         assert "No workspace found" in result.output
 
+    def test_zero_limit_rejected(self, ws_with_events):
+        # limit=0 would reset since_id to 0 and make tail replay old events
+        _, path, _ = ws_with_events
+        result = runner.invoke(app, ["events", "tail", "-w", str(path), "-n", "0"])
+        assert result.exit_code != 0
+
 
 # ---------------------------------------------------------------------------
 # cf gates run

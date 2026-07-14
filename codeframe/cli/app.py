@@ -4549,7 +4549,7 @@ events_app = typer.Typer(
 
 @events_app.command("tail")
 def events_tail(
-    limit: int = typer.Option(20, "--limit", "-n", help="Number of events to show"),
+    limit: int = typer.Option(20, "--limit", "-n", min=1, help="Number of events to show"),
     workspace_path: Optional[Path] = typer.Option(
         None,
         "--workspace",
