@@ -650,7 +650,6 @@ def execute_agent(
     """
     import os
     from codeframe.core.agent import AgentState, AgentStatus
-    from codeframe.adapters.llm import get_provider
     from codeframe.core.diagnostics import RunLogger, LogCategory
     from codeframe.core.engine_registry import (
         is_external_engine, resolve_engine, get_external_adapter, get_builtin_adapter,
@@ -661,41 +660,22 @@ def execute_agent(
     engine = resolve_engine(engine)
 
     # Resolve LLM provider: CLI flag → env var → workspace config → default "anthropic"
-    from codeframe.core.config import load_environment_config as _load_cfg
-    _env_cfg = _load_cfg(workspace.repo_path)
-    _cfg_provider = _env_cfg.llm.provider if (_env_cfg and _env_cfg.llm) else None
-    _cfg_model = _env_cfg.llm.model if (_env_cfg and _env_cfg.llm) else None
-    _cfg_base_url = _env_cfg.llm.base_url if (_env_cfg and _env_cfg.llm) else None
+    from codeframe.core.llm_resolution import resolve_llm_settings, create_provider
 
-    provider_type = (
-        llm_provider
-        or os.getenv("CODEFRAME_LLM_PROVIDER")
-        or _cfg_provider
-        or "anthropic"
+    llm_settings = resolve_llm_settings(
+        workspace.repo_path, provider_flag=llm_provider, model_flag=llm_model
     )
-    model_override = (
-        llm_model
-        or os.getenv("CODEFRAME_LLM_MODEL")
-        or _cfg_model
-    )
-    base_url_override = _cfg_base_url or os.getenv("OPENAI_BASE_URL")
 
-    # External engines manage their own authentication
+    # Only create LLM provider for builtin engines (external engines manage
+    # their own authentication)
     if not is_external_engine(engine):
-        if provider_type == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
+        key_env = llm_settings.required_key_env
+        if key_env and not os.getenv(key_env):
             raise ValueError(
-                "ANTHROPIC_API_KEY environment variable is required for agent execution. "
-                "Set it with: export ANTHROPIC_API_KEY=your-key"
+                f"{key_env} environment variable is required for agent execution. "
+                f"Set it with: export {key_env}=your-key"
             )
-
-    # Only create LLM provider for builtin engines (external engines manage their own)
-    if not is_external_engine(engine):
-        provider_kwargs = {}
-        if model_override:
-            provider_kwargs["model"] = model_override
-        if base_url_override:
-            provider_kwargs["base_url"] = base_url_override
-        provider = get_provider(provider_type, **provider_kwargs)
+        provider = create_provider(llm_settings)
     else:
         provider = None
 

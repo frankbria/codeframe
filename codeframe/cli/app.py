@@ -1651,6 +1651,16 @@ def prd_stress_test(
         "--interactive", "-i",
         help="Resolve ambiguities inline and update PRD",
     ),
+    llm_provider: Optional[str] = typer.Option(
+        None,
+        "--llm-provider",
+        help="LLM provider: anthropic, openai (default: anthropic or $CODEFRAME_LLM_PROVIDER)",
+    ),
+    llm_model: Optional[str] = typer.Option(
+        None,
+        "--llm-model",
+        help="Model override (default: provider default or $CODEFRAME_LLM_MODEL)",
+    ),
 ) -> None:
     """Stress-test a PRD via recursive decomposition.
 
@@ -1664,18 +1674,20 @@ def prd_stress_test(
 
     Use --interactive to resolve ambiguities inline and update the PRD.
 
-    Requires ANTHROPIC_API_KEY environment variable.
+    Requires the API key matching the resolved LLM provider
+    (e.g. ANTHROPIC_API_KEY for the default anthropic provider).
 
     Example:
         codeframe prd stress-test
         codeframe prd stress-test --max-depth 4
         codeframe prd stress-test --output spec.md
         codeframe prd stress-test --interactive
+        codeframe prd stress-test --llm-provider openai --llm-model gpt-4o
     """
-    import os
     from codeframe.core.workspace import get_workspace
     from codeframe.core import prd as prd_module
-    from codeframe.adapters.llm.anthropic import AnthropicProvider
+    from codeframe.core.llm_resolution import resolve_llm_settings, create_provider
+    from codeframe.cli.validators import require_api_key_for_provider
     from codeframe.core.prd_stress_test import (
         stress_test_prd,
         resolve_ambiguities_into_prd,
@@ -1703,13 +1715,13 @@ def prd_stress_test(
 
     console.print(f"[dim]Stress-testing PRD: {record.title} (v{record.version})[/dim]")
 
-    # Build provider
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        console.print("[red]Error:[/red] ANTHROPIC_API_KEY environment variable required.")
-        raise typer.Exit(1)
-
-    provider = AnthropicProvider(api_key=api_key)
+    # Build provider: flag → env → config → anthropic, validating the
+    # matching API key (#768)
+    settings = resolve_llm_settings(
+        workspace.repo_path, provider_flag=llm_provider, model_flag=llm_model
+    )
+    require_api_key_for_provider(settings.provider_type)
+    provider = create_provider(settings)
 
     # Run stress test
     console.print(f"[dim]Recursively decomposing (max depth: {max_depth})...[/dim]")
@@ -1820,6 +1832,16 @@ def tasks_generate(
         min=1,
         max=5,
     ),
+    llm_provider: Optional[str] = typer.Option(
+        None,
+        "--llm-provider",
+        help="LLM provider: anthropic, openai (default: anthropic or $CODEFRAME_LLM_PROVIDER)",
+    ),
+    llm_model: Optional[str] = typer.Option(
+        None,
+        "--llm-model",
+        help="Model override (default: provider default or $CODEFRAME_LLM_MODEL)",
+    ),
 ) -> None:
     """Generate tasks from the PRD.
 
@@ -1857,18 +1879,27 @@ def tasks_generate(
 
         console.print(f"Generating tasks from PRD: [bold]{prd_record.title}[/bold]")
 
+        provider = None
         if not no_llm:
-            from codeframe.cli.validators import require_anthropic_api_key
-            require_anthropic_api_key()
+            # Validate the key matching the resolved provider
+            # (flag → env → config → anthropic), #768
+            from codeframe.cli.validators import require_api_key_for_provider
+            from codeframe.core.llm_resolution import (
+                create_provider,
+                resolve_llm_settings,
+            )
+            settings = resolve_llm_settings(
+                workspace.repo_path, provider_flag=llm_provider, model_flag=llm_model
+            )
+            require_api_key_for_provider(settings.provider_type)
+            provider = create_provider(settings)
 
         try:
             if recursive:
                 console.print(f"[dim]Using recursive decomposition (max depth: {max_depth})...[/dim]")
 
-                from codeframe.adapters.llm import get_provider
                 from codeframe.core.task_tree import generate_task_tree, flatten_task_tree
 
-                provider = get_provider()
                 tree = generate_task_tree(
                     provider,
                     prd_record.content,
@@ -1882,7 +1913,9 @@ def tasks_generate(
                 created = tasks.generate_from_prd(workspace, prd_record, use_llm=False)
             else:
                 console.print("[dim]Using LLM for task generation...[/dim]")
-                created = tasks.generate_from_prd(workspace, prd_record, use_llm=True)
+                created = tasks.generate_from_prd(
+                    workspace, prd_record, use_llm=True, provider=provider
+                )
         except Exception:
             # Roll back any partial new tasks; the originals were never deleted.
             # A failure *during* rollback must not mask the original generation
@@ -2468,8 +2501,14 @@ def work_start(
                 from codeframe.cli.validators import require_e2b_api_key
                 require_e2b_api_key()
             elif not is_external_engine(engine):
-                from codeframe.cli.validators import require_anthropic_api_key
-                require_anthropic_api_key()
+                # Builtin engines: validate the key matching the resolved
+                # provider (flag → env → config → anthropic), #768
+                from codeframe.cli.validators import require_api_key_for_provider
+                from codeframe.core.llm_resolution import resolve_llm_settings
+                settings = resolve_llm_settings(
+                    workspace.repo_path, provider_flag=llm_provider
+                )
+                require_api_key_for_provider(settings.provider_type)
 
         # Start the run
         run = runtime.start_task_run(workspace, task.id)
@@ -2994,9 +3033,12 @@ def work_retry(
 
         task = matching[0]
 
-        # Validate API key before any state modifications
-        from codeframe.cli.validators import require_anthropic_api_key
-        require_anthropic_api_key()
+        # Validate the key matching the resolved provider (env → config →
+        # anthropic) before any state modifications, #768
+        from codeframe.cli.validators import require_api_key_for_provider
+        from codeframe.core.llm_resolution import resolve_llm_settings
+        settings = resolve_llm_settings(workspace.repo_path)
+        require_api_key_for_provider(settings.provider_type)
 
         # Reset task to READY if it's FAILED or BLOCKED
         if task.status in (TaskStatus.FAILED, TaskStatus.BLOCKED):
@@ -3842,8 +3884,14 @@ def batch_run(
             from codeframe.cli.validators import require_e2b_api_key
             require_e2b_api_key()
         elif not is_external_engine(engine):
-            from codeframe.cli.validators import require_anthropic_api_key
-            require_anthropic_api_key()
+            # Builtin engines: validate the key matching the resolved
+            # provider (flag → env → config → anthropic), #768
+            from codeframe.cli.validators import require_api_key_for_provider
+            from codeframe.core.llm_resolution import resolve_llm_settings
+            settings = resolve_llm_settings(
+                workspace.repo_path, provider_flag=llm_provider
+            )
+            require_api_key_for_provider(settings.provider_type)
 
         # Execute batch
         if max_retries > 0:

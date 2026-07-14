@@ -41,3 +41,21 @@ class TestWorkStartLLMFlags:
         result = runner.invoke(app, ["work", "batch", "run", "--help"])
         assert result.exit_code == 0
         assert "--llm-model" in _plain(result.output)
+
+
+class TestThinkPhaseLLMFlags:
+    """--llm-provider and --llm-model on Think-phase commands (#768)."""
+
+    def test_prd_stress_test_has_llm_flags(self):
+        result = runner.invoke(app, ["prd", "stress-test", "--help"])
+        assert result.exit_code == 0
+        output = _plain(result.output)
+        assert "--llm-provider" in output
+        assert "--llm-model" in output
+
+    def test_tasks_generate_has_llm_flags(self):
+        result = runner.invoke(app, ["tasks", "generate", "--help"])
+        assert result.exit_code == 0
+        output = _plain(result.output)
+        assert "--llm-provider" in output
+        assert "--llm-model" in output

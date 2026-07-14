@@ -163,6 +163,218 @@ class TestTasksGenerateValidation:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def isolated_keys(monkeypatch, tmp_path):
+    """No API keys anywhere: env cleared, cwd + home have no .env files."""
+    for var in (
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "CODEFRAME_LLM_PROVIDER",
+        "CODEFRAME_LLM_MODEL",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
+
+
+def _completed_agent_state():
+    from types import SimpleNamespace
+
+    from codeframe.core.agent import AgentStatus
+
+    return SimpleNamespace(
+        status=AgentStatus.COMPLETED, blocker=None, step_results=[]
+    )
+
+
+class TestProviderAwarePreflight:
+    """Pre-flight key checks must honor the resolved provider (#768)."""
+
+    def test_work_start_openai_provider_requires_openai_key(
+        self, workspace_with_ready_task, isolated_keys
+    ):
+        from codeframe.cli.app import app
+
+        workspace_path, task_id = workspace_with_ready_task
+        result = runner.invoke(
+            app,
+            ["work", "start", task_id, "--execute",
+             "--llm-provider", "openai", "-w", str(workspace_path)],
+        )
+        assert result.exit_code != 0
+        assert "OPENAI_API_KEY" in result.output
+        assert "ANTHROPIC_API_KEY" not in result.output
+
+    def test_work_start_ollama_provider_skips_anthropic_key(
+        self, workspace_with_ready_task, isolated_keys, monkeypatch
+    ):
+        from codeframe.cli.app import app
+        from codeframe.core import runtime
+
+        workspace_path, task_id = workspace_with_ready_task
+        monkeypatch.setattr(
+            runtime, "execute_agent",
+            lambda *a, **kw: _completed_agent_state(),
+        )
+        result = runner.invoke(
+            app,
+            ["work", "start", task_id, "--execute",
+             "--llm-provider", "ollama", "-w", str(workspace_path)],
+        )
+        assert result.exit_code == 0, result.output
+        assert "ANTHROPIC_API_KEY" not in result.output
+
+    def test_batch_run_openai_provider_requires_openai_key(
+        self, workspace_with_ready_task, isolated_keys
+    ):
+        from codeframe.cli.app import app
+
+        workspace_path, task_id = workspace_with_ready_task
+        result = runner.invoke(
+            app,
+            ["work", "batch", "run", task_id,
+             "--llm-provider", "openai", "-w", str(workspace_path)],
+        )
+        assert result.exit_code != 0
+        assert "OPENAI_API_KEY" in result.output
+
+    def test_batch_run_ollama_provider_skips_anthropic_key(
+        self, workspace_with_ready_task, isolated_keys, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        from codeframe.cli.app import app
+        from codeframe.core import conductor
+
+        workspace_path, task_id = workspace_with_ready_task
+        fake_batch = SimpleNamespace(
+            id="deadbeefcafe",
+            status=SimpleNamespace(value="COMPLETED"),
+            results={task_id: "COMPLETED"},
+        )
+        monkeypatch.setattr(
+            conductor, "start_batch", lambda *a, **kw: fake_batch
+        )
+        result = runner.invoke(
+            app,
+            ["work", "batch", "run", task_id,
+             "--llm-provider", "ollama", "-w", str(workspace_path)],
+        )
+        assert result.exit_code == 0, result.output
+        assert "ANTHROPIC_API_KEY" not in result.output
+
+    def test_work_retry_non_anthropic_provider_skips_anthropic_key(
+        self, workspace_with_ready_task, isolated_keys, monkeypatch
+    ):
+        from codeframe.cli.app import app
+        from codeframe.core import runtime
+
+        workspace_path, task_id = workspace_with_ready_task
+        monkeypatch.setenv("CODEFRAME_LLM_PROVIDER", "ollama")
+        monkeypatch.setattr(
+            runtime, "execute_agent",
+            lambda *a, **kw: _completed_agent_state(),
+        )
+        result = runner.invoke(
+            app, ["work", "retry", task_id, "-w", str(workspace_path)]
+        )
+        assert result.exit_code == 0, result.output
+        assert "ANTHROPIC_API_KEY" not in result.output
+
+    def test_work_retry_default_provider_still_requires_anthropic_key(
+        self, workspace_with_ready_task, isolated_keys
+    ):
+        from codeframe.cli.app import app
+
+        workspace_path, task_id = workspace_with_ready_task
+        result = runner.invoke(
+            app, ["work", "retry", task_id, "-w", str(workspace_path)]
+        )
+        assert result.exit_code != 0
+        assert "ANTHROPIC_API_KEY" in result.output
+
+
+class TestThinkPhaseProviderResolution:
+    """prd stress-test and tasks generate must honor the provider chain (#768)."""
+
+    def test_stress_test_default_provider_requires_anthropic_key(
+        self, workspace_with_prd, isolated_keys
+    ):
+        from codeframe.cli.app import app
+
+        result = runner.invoke(
+            app, ["prd", "stress-test", "-w", str(workspace_with_prd)]
+        )
+        assert result.exit_code != 0
+        assert "ANTHROPIC_API_KEY" in result.output
+
+    def test_stress_test_ollama_provider_skips_anthropic_key(
+        self, workspace_with_prd, isolated_keys, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        from codeframe.adapters.llm import OpenAIProvider
+        from codeframe.cli.app import app
+        from codeframe.core import prd_stress_test
+
+        seen_providers = []
+
+        def fake_stress_test(content, provider, max_depth=3):
+            seen_providers.append(provider)
+            return SimpleNamespace(
+                ambiguities=[], tree=[], tech_spec_markdown="# Spec"
+            )
+
+        monkeypatch.setattr(
+            prd_stress_test, "stress_test_prd", fake_stress_test
+        )
+        result = runner.invoke(
+            app,
+            ["prd", "stress-test", "--llm-provider", "ollama",
+             "-w", str(workspace_with_prd)],
+        )
+        assert result.exit_code == 0, result.output
+        assert "ANTHROPIC_API_KEY" not in result.output
+        assert len(seen_providers) == 1
+        assert isinstance(seen_providers[0], OpenAIProvider)
+
+    def test_tasks_generate_openai_provider_requires_openai_key(
+        self, workspace_with_prd, isolated_keys
+    ):
+        from codeframe.cli.app import app
+
+        result = runner.invoke(
+            app,
+            ["tasks", "generate", "--llm-provider", "openai",
+             "-w", str(workspace_with_prd)],
+        )
+        assert result.exit_code != 0
+        assert "OPENAI_API_KEY" in result.output
+
+    def test_tasks_generate_ollama_provider_skips_anthropic_key(
+        self, workspace_with_prd, isolated_keys, monkeypatch
+    ):
+        from codeframe.cli.app import app
+        from codeframe.core import tasks as tasks_module
+
+        monkeypatch.setattr(
+            tasks_module,
+            "_generate_tasks_with_llm",
+            lambda *a, **kw: [{"title": "Task A", "description": "do a"}],
+        )
+        result = runner.invoke(
+            app,
+            ["tasks", "generate", "--llm-provider", "ollama",
+             "-w", str(workspace_with_prd)],
+        )
+        assert result.exit_code == 0, result.output
+        assert "ANTHROPIC_API_KEY" not in result.output
+
+
 class TestWorkStartValidation:
     """Test that work start --execute validates API key."""
 

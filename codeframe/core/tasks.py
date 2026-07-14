@@ -930,6 +930,7 @@ def generate_from_prd(
     workspace: Workspace,
     prd: PrdRecord,
     use_llm: bool = True,
+    provider=None,
 ) -> list[Task]:
     """Generate tasks from a PRD.
 
@@ -940,13 +941,15 @@ def generate_from_prd(
         workspace: Target workspace
         prd: PRD to generate tasks from
         use_llm: Whether to use LLM for generation (default True)
+        provider: LLM provider to use; None falls back to the default
+            ``get_provider()`` (anthropic), #768
 
     Returns:
         List of created Tasks
     """
     if use_llm:
         try:
-            tasks_data = _generate_tasks_with_llm(prd.content)
+            tasks_data = _generate_tasks_with_llm(prd.content, provider)
         except json.JSONDecodeError as e:
             # Invalid JSON from LLM response — fall back to simple extraction
             logger.warning(f"LLM generation failed ({e}), using simple extraction")
@@ -986,11 +989,12 @@ def generate_from_prd(
     return created_tasks
 
 
-def _generate_tasks_with_llm(prd_content: str) -> list[dict]:
+def _generate_tasks_with_llm(prd_content: str, provider=None) -> list[dict]:
     """Use LLM to generate tasks from PRD content.
 
     Args:
         prd_content: PRD text
+        provider: LLM provider (None falls back to the default anthropic)
 
     Returns:
         List of task dicts with rich metadata fields
@@ -998,7 +1002,8 @@ def _generate_tasks_with_llm(prd_content: str) -> list[dict]:
     # Use the LLM adapter for provider-agnostic access
     from codeframe.adapters.llm import get_provider, Purpose
 
-    provider = get_provider()
+    if provider is None:
+        provider = get_provider()
 
     prompt = f"""Analyze the following PRD and generate a list of actionable development tasks.
 

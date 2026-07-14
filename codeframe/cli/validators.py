@@ -85,6 +85,26 @@ def require_openai_api_key() -> str:
     raise typer.Exit(1)
 
 
+def require_api_key_for_provider(provider_type: str) -> str | None:
+    """Validate the API key matching the resolved LLM provider (#768).
+
+    anthropic → ANTHROPIC_API_KEY, openai → OPENAI_API_KEY. Local /
+    OpenAI-compatible providers (ollama, vllm, compatible) and mock
+    require no key.
+
+    Returns:
+        The API key string, or None when the provider needs no key.
+
+    Raises:
+        typer.Exit: If a required key cannot be found anywhere.
+    """
+    if provider_type == "anthropic":
+        return require_anthropic_api_key()
+    if provider_type == "openai":
+        return require_openai_api_key()
+    return None
+
+
 def require_e2b_api_key() -> str:
     """Ensure E2B_API_KEY is available, loading from .env if needed.
 
