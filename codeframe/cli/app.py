@@ -2380,7 +2380,7 @@ def work_start(
         False,
         "--execute",
         "-x",
-        help="Run the agent to execute the task (builtin engines require ANTHROPIC_API_KEY)",
+        help="Run the agent to execute the task (builtin engines require the API key matching the resolved LLM provider)",
     ),
     dry_run: bool = typer.Option(
         False,

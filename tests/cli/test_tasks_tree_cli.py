@@ -98,6 +98,9 @@ class TestTasksGenerateRecursiveFlag:
             patch("codeframe.core.workspace.get_workspace", return_value=mock_workspace),
             patch("codeframe.core.prd.get_latest", return_value=mock_prd),
             patch("codeframe.cli.validators.require_anthropic_api_key"),
+            # Provider construction now happens before generate_from_prd (#768);
+            # patch the factory so no real key (env or CredentialManager) is needed.
+            patch("codeframe.adapters.llm.get_provider"),
             patch("codeframe.core.tasks.generate_from_prd", return_value=[mock_task]) as mock_gen,
             patch("codeframe.core.events.emit_for_workspace"),
         ):
