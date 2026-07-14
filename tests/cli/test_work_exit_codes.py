@@ -250,3 +250,25 @@ class TestIsolationRejection:
             ["work", "start", task.id[:8], "--isolation", "none", "-w", str(repo)],
         )
         assert "worktree isolation is temporarily disabled" not in result.output
+
+    def test_work_start_rejects_cloud_at_parse_time(self, tmp_path):
+        """Issue #769: 'cloud' is not a valid --isolation choice — Click rejects
+        it before any run is created (no dangling IN_PROGRESS task)."""
+        repo, ws, task = self._workspace_with_task(tmp_path)
+        result = runner.invoke(
+            app,
+            ["work", "start", task.id[:8], "--execute", "--isolation", "cloud", "-w", str(repo)],
+        )
+        assert result.exit_code != 0
+        assert "cloud" in result.output and "is not one of" in result.output
+        assert tasks.get(ws, task.id).status != TaskStatus.IN_PROGRESS
+
+    def test_work_batch_run_rejects_cloud_at_parse_time(self, tmp_path):
+        repo, ws, task = self._workspace_with_task(tmp_path)
+        result = runner.invoke(
+            app,
+            ["work", "batch", "run", task.id[:8], "--isolation", "cloud", "-w", str(repo)],
+        )
+        assert result.exit_code != 0
+        assert "cloud" in result.output and "is not one of" in result.output
+        assert tasks.get(ws, task.id).status != TaskStatus.IN_PROGRESS
