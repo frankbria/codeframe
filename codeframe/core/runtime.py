@@ -646,7 +646,8 @@ def execute_agent(
         Final AgentState after execution
 
     Raises:
-        ValueError: If ANTHROPIC_API_KEY is not set (for builtin engines) or engine is invalid
+        ValueError: If the API key matching the resolved LLM provider is not
+            set (for builtin engines) or engine is invalid
     """
     import os
     from codeframe.core.agent import AgentState, AgentStatus
