@@ -546,8 +546,10 @@ class TestStressTestCLI:
         result = runner.invoke(app, ["prd", "stress-test", "-w", str(tmp_path)])
         assert result.exit_code == 1
 
-    @patch("codeframe.adapters.llm.anthropic.AnthropicProvider")
-    def test_stress_test_with_prd(self, mock_provider_cls, workspace, sample_prd, mock_provider, tmp_path, monkeypatch):
+    # Patched at the shared-resolution seam: the CLI now builds the provider
+    # via llm_resolution.create_provider (#768), not AnthropicProvider directly.
+    @patch("codeframe.core.llm_resolution.create_provider")
+    def test_stress_test_with_prd(self, mock_create_provider, workspace, sample_prd, mock_provider, tmp_path, monkeypatch):
         """Should run stress test on existing PRD."""
         from typer.testing import CliRunner
         from codeframe.cli.app import app
@@ -557,15 +559,15 @@ class TestStressTestCLI:
         # Store a PRD first
         prd_module.store(workspace, "Test PRD", sample_prd, {})
 
-        mock_provider_cls.return_value = mock_provider
+        mock_create_provider.return_value = mock_provider
 
         runner = CliRunner()
         result = runner.invoke(app, ["prd", "stress-test", "-w", str(tmp_path)])
         assert result.exit_code == 0
         assert "ambiguit" in result.output.lower() or "AUTH SCOPE" in result.output
 
-    @patch("codeframe.adapters.llm.anthropic.AnthropicProvider")
-    def test_stress_test_output_flag(self, mock_provider_cls, workspace, sample_prd, mock_provider, tmp_path, monkeypatch):
+    @patch("codeframe.core.llm_resolution.create_provider")
+    def test_stress_test_output_flag(self, mock_create_provider, workspace, sample_prd, mock_provider, tmp_path, monkeypatch):
         """--output should write tech spec to file."""
         from typer.testing import CliRunner
         from codeframe.cli.app import app
@@ -573,7 +575,7 @@ class TestStressTestCLI:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake-key")
 
         prd_module.store(workspace, "Test PRD", sample_prd, {})
-        mock_provider_cls.return_value = mock_provider
+        mock_create_provider.return_value = mock_provider
 
         output_path = tmp_path / "spec.md"
         runner = CliRunner()

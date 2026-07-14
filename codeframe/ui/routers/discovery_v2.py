@@ -389,11 +389,24 @@ async def generate_tasks_from_prd(
                     detail="No PRD found. Generate a PRD first with POST /api/v2/discovery/start",
                 )
 
+        # Resolve the LLM provider via the standard chain (#768) so this
+        # endpoint honors CODEFRAME_LLM_PROVIDER / .codeframe/config.yaml
+        # like its CLI equivalent and the PRD stress-test endpoint.
+        provider = None
+        if use_llm:
+            from codeframe.core.llm_resolution import (
+                create_provider,
+                resolve_llm_settings,
+            )
+
+            provider = create_provider(resolve_llm_settings(workspace.repo_path))
+
         # Generate tasks
         generated_tasks = tasks.generate_from_prd(
             workspace,
             prd_record,
             use_llm=use_llm,
+            provider=provider,
         )
 
         return GenerateTasksResponse(

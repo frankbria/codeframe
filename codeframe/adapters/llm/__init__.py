@@ -85,7 +85,21 @@ def get_provider(provider_type: str = "anthropic", **kwargs) -> LLMProvider:
             base_url=kwargs.get("base_url", os.environ.get("OPENAI_BASE_URL")),
         )
     elif provider_type == "anthropic":
-        return AnthropicProvider()
+        model_selector = None
+        model = kwargs.get("model")
+        if model:
+            # A single model override applies to every purpose; otherwise
+            # ModelSelector falls back to CODEFRAME_*_MODEL env / defaults.
+            model_selector = ModelSelector(
+                planning_model=model,
+                execution_model=model,
+                generation_model=model,
+                correction_model=model,
+                supervision_model=model,
+            )
+        return AnthropicProvider(
+            api_key=kwargs.get("api_key"), model_selector=model_selector
+        )
     elif provider_type == "mock":
         return MockProvider()
     else:

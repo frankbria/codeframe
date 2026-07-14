@@ -174,9 +174,10 @@ cf status
 # PRD
 cf prd add <file.md>
 cf prd show
+cf prd stress-test [--llm-provider openai --llm-model gpt-4o]
 
 # Tasks
-cf tasks generate
+cf tasks generate [--llm-provider openai --llm-model gpt-4o]
 cf tasks list [--status READY]
 cf tasks show <id>
 
