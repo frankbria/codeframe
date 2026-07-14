@@ -2422,8 +2422,8 @@ def work_start(
     isolation: str = typer.Option(
         "none",
         "--isolation",
-        help="Task execution isolation: none (default), worktree, or cloud",
-        click_type=click.Choice(["none", "worktree", "cloud"], case_sensitive=False),
+        help="Task execution isolation: none (default) or worktree",
+        click_type=click.Choice(["none", "worktree"], case_sensitive=False),
     ),
     cloud_timeout: int = typer.Option(
         30,
@@ -3767,8 +3767,8 @@ def batch_run(
     isolation: str = typer.Option(
         "none",
         "--isolation",
-        help="Task execution isolation: none (default), worktree, or cloud",
-        click_type=click.Choice(["none", "worktree", "cloud"], case_sensitive=False),
+        help="Task execution isolation: none (default) or worktree",
+        click_type=click.Choice(["none", "worktree"], case_sensitive=False),
     ),
     cloud_timeout: int = typer.Option(
         30,
