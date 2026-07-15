@@ -4549,11 +4549,43 @@ events_app = typer.Typer(
 
 @events_app.command("tail")
 def events_tail(
-    limit: int = typer.Option(20, "--limit", "-n", help="Number of events to show"),
+    limit: int = typer.Option(20, "--limit", "-n", min=1, help="Number of events to show"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
 ) -> None:
-    """Tail the event log."""
-    # Stub for Phase 3
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 3.")
+    """Tail the event log.
+
+    Shows the most recent events, then follows new ones until Ctrl+C.
+
+    Example:
+        codeframe events tail
+        codeframe events tail -n 50
+    """
+    from codeframe.core import events
+    from codeframe.core.workspace import get_workspace
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+
+    recent = events.list_recent(workspace, limit=limit)
+    for event in reversed(recent):  # list_recent is newest-first
+        events.print_event(event)
+
+    since_id = recent[0].id if recent else 0
+    try:
+        for event in events.tail(workspace, since_id=since_id):
+            events.print_event(event)
+    except KeyboardInterrupt:
+        pass
 
 
 # Blocker commands
@@ -5281,10 +5313,28 @@ gates_app = typer.Typer(
 
 
 @gates_app.command("run")
-def gates_run() -> None:
-    """Run verification gates (tests, lint)."""
-    # Stub for Phase 5
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 5.")
+def gates_run(
+    gates_to_run: Optional[list[str]] = typer.Option(
+        None,
+        "--gate",
+        "-g",
+        help="Specific gate to run (can be repeated)",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show full output from gates",
+    ),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Run verification gates (tests, lint). Alias for `cf review`."""
+    review(gates_to_run, verbose, workspace_path)
 
 
 # =============================================================================
