@@ -236,7 +236,7 @@ class TestClaudeCodeDangerousCommandGuard:
 
         hook_cmd = self._settings(cmd)["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
         assert sys.executable in hook_cmd
-        assert "-m codeframe.core.adapters.claude_code_guard" in hook_cmd
+        assert "-m codeframe.core.claude_code_guard" in hook_cmd
 
     def test_settings_payload_is_valid_json(self) -> None:
         with patch("shutil.which", return_value="/usr/bin/claude"):
@@ -284,6 +284,21 @@ class TestClaudeCodeRequireFileChangesDefault:
 
     def test_tool_name_matching_is_case_insensitive(self) -> None:
         assert self._make(allowlist=["edit"])._require_file_changes is True
+
+    @pytest.mark.parametrize(
+        "allowlist",
+        [
+            ["mcp__filesystem__write_file"],  # MCP write tool
+            ["Read", "SomeFutureWriteTool"],
+            ["Task"],  # spawns a subagent that can write
+        ],
+    )
+    def test_unrecognized_tool_is_assumed_write_capable(self, allowlist) -> None:
+        """Fail safe on the unknown. Misreading a write tool as read-only would
+        silently switch off the zero-file guard and re-open the #739 false
+        completion; misreading a read-only tool as a write tool only costs a
+        loud failure on an analysis run. Bias toward the loud one. (#819 review)"""
+        assert self._make(allowlist=allowlist)._require_file_changes is True
 
     def test_empty_allowlist_defaults_to_required(self) -> None:
         """An empty list is falsy and takes the bypassPermissions path, which

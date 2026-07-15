@@ -9,21 +9,31 @@ from pathlib import Path
 
 from codeframe.core.adapters.subprocess_adapter import SubprocessAdapter
 
-_GUARD_MODULE = "codeframe.core.adapters.claude_code_guard"
+_GUARD_MODULE = "codeframe.core.claude_code_guard"
 
-# Allowlist entries that let the delegated agent change the tree. Bash counts:
-# it can write via a heredoc, `sed -i`, or a commit.
-_WRITE_TOOLS = frozenset({"edit", "write", "multiedit", "notebookedit", "bash"})
+# Tools known to be incapable of changing the workspace. Everything *not* listed
+# here — Edit/Write/Bash, an MCP write tool, Task (whose subagent can write), a
+# tool that does not exist yet — is assumed write-capable.
+#
+# The polarity matters. Reading a write tool as read-only would silently switch
+# off the zero-file guard and re-open the #739 false completion; reading a
+# read-only tool as a write tool merely fails an analysis run loudly. So the
+# unknown case must land on "write". Keeping an allowlist of the safe names, not
+# a blocklist of the dangerous ones, is what makes that the default. (#819 review)
+_READ_ONLY_TOOLS = frozenset(
+    {"read", "grep", "glob", "ls", "notebookread", "webfetch", "websearch"}
+)
 
 
 def _grants_write_access(allowlist: list[str]) -> bool:
-    """True if any allowlist entry grants a tool that can modify the workspace.
+    """True unless every allowlist entry is a known read-only tool.
 
     Entries may be bare tool names ("Edit") or rule-shaped ("Bash(git *)"), so
     match on the tool name preceding any rule parentheses.
     """
-    return any(
-        entry.split("(", 1)[0].strip().lower() in _WRITE_TOOLS for entry in allowlist
+    return not all(
+        entry.split("(", 1)[0].strip().lower() in _READ_ONLY_TOOLS
+        for entry in allowlist
     )
 
 

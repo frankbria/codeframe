@@ -2,11 +2,13 @@
 
 import io
 import json
+import subprocess
+import sys
 from unittest.mock import patch
 
 import pytest
 
-from codeframe.core.adapters import claude_code_guard
+from codeframe.core import claude_code_guard
 
 pytestmark = pytest.mark.v2
 
@@ -114,3 +116,39 @@ class TestGuardAllowsEverythingElse:
         code, output = _run_guard("[1, 2, 3]")
         assert code == 0
         assert output is None
+
+
+class TestGuardStaysLightweight:
+    """The guard is spawned as a fresh subprocess for *every* Bash call the
+    delegated CLI makes, so its import cost is paid per command. It must not
+    drag in the LLM SDKs to run what is a regex match. (#819 review)"""
+
+    def test_guard_module_does_not_import_llm_sdks(self):
+        """Run in a clean interpreter: importing the guard must not pull openai
+        or anthropic in via the codeframe.core.executor -> adapters.llm chain."""
+        probe = (
+            "import sys; import codeframe.core.claude_code_guard; "
+            "print(int('openai' in sys.modules), int('anthropic' in sys.modules))"
+        )
+        out = subprocess.run(
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip() == "0 0", (
+            "guard pulled in an LLM SDK; it must import the dangerous-command "
+            f"patterns from a leaf module. stdout={out.stdout!r}"
+        )
+
+    def test_patterns_are_shared_with_the_react_engine(self):
+        """One source of truth: the guard and executor must be the same object,
+        not a drifting copy."""
+        from codeframe.core.dangerous_commands import (
+            is_dangerous_command as leaf_impl,
+        )
+        from codeframe.core.executor import is_dangerous_command as executor_impl
+
+        assert claude_code_guard.is_dangerous_command is leaf_impl
+        assert executor_impl is leaf_impl

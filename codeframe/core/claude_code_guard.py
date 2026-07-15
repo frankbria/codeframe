@@ -13,6 +13,17 @@ prompt-injection blast radius.
 Re-using ``is_dangerous_command`` keeps one source of truth for the patterns, so
 both engines block the same set. (#819)
 
+Import cost is paid *per Bash call* (a fresh subprocess each time), so this module
+is kept deliberately cheap to import:
+
+- The patterns live in the stdlib-only ``core.dangerous_commands`` leaf rather
+  than in ``core.executor``, which drags in ``codeframe.adapters.llm`` and the
+  openai SDK.
+- It sits in ``core`` rather than beside its adapter in ``core.adapters``, whose
+  ``__init__`` eagerly imports every adapter (and so the LLM SDKs again).
+
+Together those took the guard from ~930 imported modules to ~300. (#819 review)
+
 This is the same grade of protection ReAct has, no more: a regex matcher over the
 command string, evadable by an agent that means to evade it (``bash -c``, string
 splicing). It raises the floor for accidental and injected destructive commands;
@@ -28,7 +39,7 @@ from __future__ import annotations
 import json
 import sys
 
-from codeframe.core.executor import is_dangerous_command
+from codeframe.core.dangerous_commands import is_dangerous_command
 
 
 def main() -> int:
