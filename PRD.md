@@ -15,5 +15,6 @@ Product requirements now live in:
 | [`docs/CLI_WIREFRAME.md`](docs/CLI_WIREFRAME.md) | Command tree → core module mapping |
 | [`CLAUDE.md`](CLAUDE.md) | Current status, architecture rules, working mode |
 
-The v1 requirements this file held are preserved in [`legacydocs/`](legacydocs/) for
-historical reference only. They do not describe the current product.
+The v1 requirements this file used to hold remain in git history (`git log -- PRD.md`).
+Other v1-era documents are archived under [`legacydocs/`](legacydocs/). Neither
+describes the current product.
