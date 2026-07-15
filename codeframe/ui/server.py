@@ -594,8 +594,8 @@ app = FastAPI(
         "url": "https://github.com/frankbria/codeframe",
     },
     license_info={
-        "name": "MIT",
-        "identifier": "MIT",
+        "name": "AGPL-3.0-or-later",
+        "identifier": "AGPL-3.0-or-later",
     },
 )
 
@@ -636,10 +636,7 @@ else:
         "http://localhost:5173",  # Vite dev server
     ]
 
-# Log CORS configuration for debugging
-print("🔒 CORS Configuration:")
-print(f"   CORS_ALLOWED_ORIGINS env: {cors_origins_env!r}")
-print(f"   Parsed allowed origins: {allowed_origins}")
+logger.info("CORS allowed origins: %s (from env: %r)", allowed_origins, cors_origins_env)
 
 app.add_middleware(
     CORSMiddleware,
