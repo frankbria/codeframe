@@ -272,7 +272,7 @@ cf checkpoint restore <id>            # Roll back to checkpoint
 
 # Debugging
 cf work replay <id>                   # Replay and debug a past execution
-cf tui                                # Launch TUI dashboard
+cf dashboard                          # Launch TUI dashboard
 ```
 
 ### SHIP -- Delivery
@@ -293,7 +293,7 @@ cf patch export                       # Export changes as patch
 CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser:
 
 - **THINK**: Socratic PRD generation with recursive stress-testing, LLM-powered task decomposition with dependency graphs, 5 PRD templates, 7 task templates, CPM-based scheduling
-- **BUILD**: ReAct agent with 7 tools, self-correction with loop prevention, verification gates (ruff/pytest/BUILD), stall detection with configurable recovery (retry/blocker/fail), batch execution (serial/parallel/auto), human-in-the-loop blockers, checkpointing, state persistence, replay/debug mode (`cf work replay`), dynamic config reload, TUI dashboard (`cf tui`)
+- **BUILD**: ReAct agent with 7 tools, self-correction with loop prevention, verification gates (ruff/pytest/BUILD), stall detection with configurable recovery (retry/blocker/fail), batch execution (serial/parallel/auto), human-in-the-loop blockers, checkpointing, state persistence, replay/debug mode (`cf work replay`), dynamic config reload, TUI dashboard (`cf dashboard`)
 - **PROVE**: PROOF9 quality memory system — 9-gate evidence-based verification (`cf proof run/capture/list/status/show/waive`), every glitch becomes a permanent proof obligation
 - **SHIP**: GitHub PR workflow, environment validation, task self-diagnosis
 - **Engine adapters**: Claude Code, Codex, OpenCode, Kilocode, and built-in ReAct — all via `--engine` flag
@@ -316,7 +316,7 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - [x] Worktree isolation for parallel agent execution
 - [x] Reconciliation layer for multi-agent output
 - [x] Replay/debug mode (`cf work replay`)
-- [x] TUI dashboard (`cf tui`)
+- [x] TUI dashboard (`cf dashboard`)
 - [x] Dynamic config reload during batch execution
 - [x] Multi-provider LLM -- Anthropic, OpenAI, or any OpenAI-compatible endpoint
 - [ ] Engine performance tracking and automatic routing

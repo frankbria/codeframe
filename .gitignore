@@ -40,7 +40,10 @@ ENV/
 .pytest_cache/
 .coverage
 coverage.xml
+coverage.json
 htmlcov/
+test_output.log
+*_output.log
 .hypothesis/
 artifacts/
 tests/e2e/run-e2e-full.sh
