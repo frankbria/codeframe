@@ -416,13 +416,17 @@ class TestSubprocessAdapterModifiedFiles:
         assert result.status == "completed"
         assert result.modified_files == []
 
-    def _run_with(self, adapter, tmp_path, *, modified, head_before, head_after):
+    def _run_with(
+        self, adapter, tmp_path, *, modified, head_before, head_after, stdout=None
+    ):
         """Run with _detect_modified_files and _git_head stubbed.
 
         head_before/head_after become the two _git_head() return values (pre-run
         baseline, then the guard's post-run check).
         """
-        mock_process = self._make_mock_process(stdout_lines=["done\n"], returncode=0)
+        mock_process = self._make_mock_process(
+            stdout_lines=stdout or ["done\n"], returncode=0
+        )
         with (
             patch("subprocess.Popen", return_value=mock_process),
             patch.object(
@@ -505,6 +509,94 @@ class TestSubprocessAdapterModifiedFiles:
 
         assert result.status == "completed"
         assert result.modified_files == []
+
+    def test_zero_file_run_with_requirements_ambiguity_becomes_blocker(self, tmp_path):
+        """A --print run that exits 0 after printing a genuine ambiguity is a
+        question a human can answer, not a hard failure. (#819)"""
+        with patch("shutil.which", return_value="/usr/bin/test-agent"):
+            adapter = SubprocessAdapter("test-agent", require_file_changes=True)
+        result = self._run_with(
+            adapter,
+            tmp_path,
+            modified=[],
+            head_before="sha1",
+            head_after="sha1",
+            stdout=[
+                "Reviewed the task.\n",
+                "The specification unclear: should deletes cascade?\n",
+            ],
+        )
+        assert result.status == "blocked"
+        assert "cascade" in result.blocker_question
+        assert result.error is None
+
+    def test_zero_file_run_with_access_issue_becomes_blocker(self, tmp_path):
+        """Exit 0 + an access complaint routes to a blocker, not a false
+        'lacked write permission' hard failure. (#819)"""
+        with patch("shutil.which", return_value="/usr/bin/test-agent"):
+            adapter = SubprocessAdapter("test-agent", require_file_changes=True)
+        result = self._run_with(
+            adapter,
+            tmp_path,
+            modified=[],
+            head_before="sha1",
+            head_after="sha1",
+            stdout=["Cannot continue: the ANTHROPIC_API_KEY credentials missing\n"],
+        )
+        assert result.status == "blocked"
+
+    def test_zero_file_run_without_blocker_signal_still_fails(self, tmp_path):
+        """Plain analysis output with no ambiguity keeps hard-failing. (#819)"""
+        with patch("shutil.which", return_value="/usr/bin/test-agent"):
+            adapter = SubprocessAdapter("test-agent", require_file_changes=True)
+        result = self._run_with(
+            adapter,
+            tmp_path,
+            modified=[],
+            head_before="sha1",
+            head_after="sha1",
+            stdout=["I read the code and it looks fine to me.\n"],
+        )
+        assert result.status == "failed"
+        assert "modified no files" in result.error
+
+    def test_zero_file_run_with_tactical_question_still_fails(self, tmp_path):
+        """Tactical calls are the agent's own job — they must NOT earn a blocker
+        just because the run wrote nothing. (#819)"""
+        with patch("shutil.which", return_value="/usr/bin/test-agent"):
+            adapter = SubprocessAdapter("test-agent", require_file_changes=True)
+        result = self._run_with(
+            adapter,
+            tmp_path,
+            modified=[],
+            head_before="sha1",
+            head_after="sha1",
+            stdout=["Which approach do you want, a dict or a dataclass?\n"],
+        )
+        assert result.status == "failed"
+
+    def test_git_head_logs_warning_on_git_error(self, adapter, tmp_path, caplog):
+        """A git hiccup must be distinguishable from 'agent changed nothing' in
+        the logs, now that empty -> failed. (#819)"""
+        with patch(
+            "subprocess.run", side_effect=subprocess.TimeoutExpired("git", 10)
+        ):
+            assert adapter._git_head(tmp_path) is None
+
+        assert any(
+            r.levelname == "WARNING" and "git" in r.message.lower()
+            for r in caplog.records
+        )
+
+    def test_git_head_logs_warning_on_nonzero_exit(self, adapter, tmp_path, caplog):
+        """Non-zero rev-parse (e.g. not a repo, unborn HEAD) is logged. (#819)"""
+        with patch(
+            "subprocess.run",
+            return_value=MagicMock(returncode=128, stdout="", stderr="not a git repo"),
+        ):
+            assert adapter._git_head(tmp_path) is None
+
+        assert any(r.levelname == "WARNING" for r in caplog.records)
 
 
 class TestSubprocessAdapterBlockerExtraction:

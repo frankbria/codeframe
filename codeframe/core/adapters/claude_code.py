@@ -2,9 +2,50 @@
 
 from __future__ import annotations
 
+import json
+import shlex
+import sys
 from pathlib import Path
 
 from codeframe.core.adapters.subprocess_adapter import SubprocessAdapter
+
+_GUARD_MODULE = "codeframe.core.adapters.claude_code_guard"
+
+# Allowlist entries that let the delegated agent change the tree. Bash counts:
+# it can write via a heredoc, `sed -i`, or a commit.
+_WRITE_TOOLS = frozenset({"edit", "write", "multiedit", "notebookedit", "bash"})
+
+
+def _grants_write_access(allowlist: list[str]) -> bool:
+    """True if any allowlist entry grants a tool that can modify the workspace.
+
+    Entries may be bare tool names ("Edit") or rule-shaped ("Bash(git *)"), so
+    match on the tool name preceding any rule parentheses.
+    """
+    return any(
+        entry.split("(", 1)[0].strip().lower() in _WRITE_TOOLS for entry in allowlist
+    )
+
+
+def _guard_settings() -> str:
+    """Build the --settings payload registering the dangerous-command guard.
+
+    The hook runs under the interpreter already running CodeFrame, so the guard
+    module is importable regardless of what is on the delegated CLI's PATH.
+    """
+    hook_command = f"{shlex.quote(sys.executable)} -m {_GUARD_MODULE}"
+    return json.dumps(
+        {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [{"type": "command", "command": hook_command}],
+                    }
+                ]
+            }
+        }
+    )
 
 
 class ClaudeCodeAdapter(SubprocessAdapter):
@@ -20,7 +61,7 @@ class ClaudeCodeAdapter(SubprocessAdapter):
     def __init__(
         self,
         allowlist: list[str] | None = None,
-        require_file_changes: bool = True,
+        require_file_changes: bool | None = None,
     ) -> None:
         """Initialize the Claude Code adapter.
 
@@ -32,9 +73,16 @@ class ClaudeCodeAdapter(SubprocessAdapter):
                        are auto-approved in non-interactive ``--print`` mode.
                        Without this, ``--print`` silently denies those tools and
                        the delegated agent can analyze but never modify files. (#739)
-            require_file_changes: If True (default), a run that exits 0 but touches
-                       no files is downgraded to ``failed`` — a coding task that
-                       writes nothing is a false completion.
+                       Either way a PreToolUse hook vets Bash commands against
+                       CodeFrame's dangerous-command patterns — the permission
+                       mode skips approval prompts, not hooks. (#819)
+            require_file_changes: If True, a run that exits 0 but touches no files
+                       is downgraded to ``failed`` — a coding task that writes
+                       nothing is a false completion. Defaults to whether the
+                       adapter actually grants write access: on for the
+                       bypassPermissions default, and for an allowlist carrying a
+                       write tool; off for a read-only allowlist, whose whole
+                       point is a run that writes nothing. (#819)
         """
         cli_args = ["--print"]
         if allowlist:
@@ -42,6 +90,15 @@ class ClaudeCodeAdapter(SubprocessAdapter):
                 cli_args.extend(["--allowedTools", tool])
         else:
             cli_args.extend(["--permission-mode", "bypassPermissions"])
+
+        # Attached on both paths: an allowlist granting Bash has the same blast
+        # radius as bypass mode, and a read-only one loses nothing by carrying it.
+        cli_args.extend(["--settings", _guard_settings()])
+
+        if require_file_changes is None:
+            require_file_changes = (
+                _grants_write_access(allowlist) if allowlist else True
+            )
 
         super().__init__(
             binary="claude",
