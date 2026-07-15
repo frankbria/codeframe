@@ -1,5 +1,7 @@
 """Tests for Claude Code adapter."""
 
+import json
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -195,3 +197,118 @@ class TestClaudeCodeAdapter:
         with patch("shutil.which", return_value="/usr/bin/claude"):
             adapter = ClaudeCodeAdapter()
             assert adapter._allowlist is None
+
+
+class TestClaudeCodeDangerousCommandGuard:
+    """bypassPermissions hands the delegated CLI unrestricted Bash. A PreToolUse
+    hook (which still fires under bypassPermissions) restores the CodeFrame-side
+    dangerous-command filter the built-in ReAct engine applies. (#819)"""
+
+    def _settings(self, cmd: list[str]) -> dict:
+        return json.loads(cmd[cmd.index("--settings") + 1])
+
+    def test_bypass_mode_registers_the_guard_hook(self) -> None:
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            adapter = ClaudeCodeAdapter()
+        cmd = adapter.build_command("prompt", Path("/tmp"))
+
+        assert "--settings" in cmd
+        hook = self._settings(cmd)["hooks"]["PreToolUse"][0]
+        assert hook["matcher"] == "Bash"
+        assert "claude_code_guard" in hook["hooks"][0]["command"]
+
+    def test_allowlist_mode_also_registers_the_guard_hook(self) -> None:
+        """An allowlist granting Bash carries the same blast radius as bypass
+        mode, so the guard is not conditional on the permission strategy."""
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            adapter = ClaudeCodeAdapter(allowlist=["Bash", "Edit"])
+        cmd = adapter.build_command("prompt", Path("/tmp"))
+
+        assert "--settings" in cmd
+        assert "claude_code_guard" in json.dumps(self._settings(cmd))
+
+    def test_hook_command_uses_the_running_interpreter(self) -> None:
+        """sys.executable is the interpreter already running CodeFrame, so the
+        guard module is importable without depending on PATH."""
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            adapter = ClaudeCodeAdapter()
+        cmd = adapter.build_command("prompt", Path("/tmp"))
+
+        hook_cmd = self._settings(cmd)["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        assert sys.executable in hook_cmd
+        assert "-m codeframe.core.claude_code_guard" in hook_cmd
+
+    def test_settings_payload_is_valid_json(self) -> None:
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            adapter = ClaudeCodeAdapter()
+        cmd = adapter.build_command("prompt", Path("/tmp"))
+        assert isinstance(self._settings(cmd), dict)
+
+
+class TestClaudeCodeRequireFileChangesDefault:
+    """The default must follow what the allowlist actually *grants*, not merely
+    whether one was passed — a read-only allowlist means an analysis run, which
+    legitimately writes nothing. (#819)"""
+
+    def _make(self, **kwargs) -> ClaudeCodeAdapter:
+        with patch("shutil.which", return_value="/usr/bin/claude"):
+            return ClaudeCodeAdapter(**kwargs)
+
+    def test_no_allowlist_defaults_to_required(self) -> None:
+        """Bypass mode grants writes, so a zero-file run is a false completion."""
+        assert self._make()._require_file_changes is True
+
+    def test_read_only_allowlist_defaults_to_not_required(self) -> None:
+        assert self._make(allowlist=["Read", "Grep"])._require_file_changes is False
+
+    @pytest.mark.parametrize(
+        "allowlist",
+        [
+            ["Edit"],
+            ["Write"],
+            ["MultiEdit"],
+            ["NotebookEdit"],
+            ["Bash"],
+            ["Read", "Write"],
+        ],
+    )
+    def test_write_granting_allowlist_defaults_to_required(self, allowlist) -> None:
+        assert self._make(allowlist=allowlist)._require_file_changes is True
+
+    def test_rule_shaped_bash_entry_counts_as_write(self) -> None:
+        """Allowlist entries may be rule-shaped, e.g. 'Bash(git *)'."""
+        assert self._make(allowlist=["Bash(git *)"])._require_file_changes is True
+
+    def test_rule_shaped_read_entry_does_not_count_as_write(self) -> None:
+        assert self._make(allowlist=["Read(src/**)"])._require_file_changes is False
+
+    def test_tool_name_matching_is_case_insensitive(self) -> None:
+        assert self._make(allowlist=["edit"])._require_file_changes is True
+
+    @pytest.mark.parametrize(
+        "allowlist",
+        [
+            ["mcp__filesystem__write_file"],  # MCP write tool
+            ["Read", "SomeFutureWriteTool"],
+            ["Task"],  # spawns a subagent that can write
+        ],
+    )
+    def test_unrecognized_tool_is_assumed_write_capable(self, allowlist) -> None:
+        """Fail safe on the unknown. Misreading a write tool as read-only would
+        silently switch off the zero-file guard and re-open the #739 false
+        completion; misreading a read-only tool as a write tool only costs a
+        loud failure on an analysis run. Bias toward the loud one. (#819 review)"""
+        assert self._make(allowlist=allowlist)._require_file_changes is True
+
+    def test_empty_allowlist_defaults_to_required(self) -> None:
+        """An empty list is falsy and takes the bypassPermissions path, which
+        grants writes — keep the two consistent."""
+        assert self._make(allowlist=[])._require_file_changes is True
+
+    def test_explicit_true_overrides_read_only_allowlist(self) -> None:
+        adapter = self._make(allowlist=["Read"], require_file_changes=True)
+        assert adapter._require_file_changes is True
+
+    def test_explicit_false_overrides_write_allowlist(self) -> None:
+        adapter = self._make(allowlist=["Write"], require_file_changes=False)
+        assert adapter._require_file_changes is False

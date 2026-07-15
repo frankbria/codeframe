@@ -242,12 +242,27 @@ class SubprocessAdapter:
                 and head_after != head_before
             )
             if in_git_repo and not committed:
-                result.status = "failed"
-                result.error = (
-                    f"'{self._binary}' exited successfully but modified no files. "
-                    "A coding task must change at least one file; the agent likely "
-                    "lacked write permission or produced no edits."
-                )
+                # A zero-file exit-0 run may be the agent *asking* rather than
+                # failing: `--print` has no way to prompt, so a genuine ambiguity
+                # gets printed and the process exits clean. Route those to the
+                # blocker flow a human can answer instead of hard-failing with a
+                # misleading "lacked write permission". Tactical questions
+                # classify as None by design — those are the agent's own job, so
+                # they keep failing. (#819)
+                category = classify_error_for_blocker(result.output or "")
+                if category is not None:
+                    result.status = "blocked"
+                    result.error = None
+                    result.blocker_question = self._extract_blocker_question(
+                        result.output or ""
+                    )
+                else:
+                    result.status = "failed"
+                    result.error = (
+                        f"'{self._binary}' exited successfully but modified no "
+                        "files. A coding task must change at least one file; the "
+                        "agent likely lacked write permission or produced no edits."
+                    )
 
         return result
 
@@ -296,6 +311,9 @@ class SubprocessAdapter:
 
         None means "not a git repo, git unavailable, or an unborn HEAD" — i.e.
         a state where modified-file detection can't judge whether work happened.
+        Errors are logged: since empty now means failed for require_file_changes
+        adapters, a git hiccup would otherwise be indistinguishable from "the
+        agent changed nothing" in the logs. (#819)
         """
         try:
             result = subprocess.run(
@@ -306,9 +324,18 @@ class SubprocessAdapter:
                 timeout=10,
             )
             if result.returncode != 0:
+                logger.warning(
+                    "git rev-parse HEAD failed in %s (exit %d): %s",
+                    workspace_path,
+                    result.returncode,
+                    (result.stderr or "").strip() or "<no stderr>",
+                )
                 return None
             return result.stdout.strip() or None
-        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as e:
+            logger.warning(
+                "git rev-parse HEAD could not run in %s: %s", workspace_path, e
+            )
             return None
 
     def _extract_blocker_question(self, output: str) -> str:
