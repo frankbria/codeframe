@@ -74,7 +74,13 @@ class BuiltinReactAdapter:
     ) -> AgentResult:
         """Run the ReactAgent with stall retry, map AgentStatus to AgentResult."""
         from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.sandbox.context import rebased_workspace
         from codeframe.core.stall_detector import StallDetectedError
+
+        # #715: when isolated in a worktree, run against workspace_path so code
+        # I/O and gates land in the worktree; task/blocker state stays on the
+        # main-repo DB (rebased_workspace keeps state_dir unchanged).
+        run_workspace = rebased_workspace(self._workspace, workspace_path)
 
         def _bridge_event(event_type: str, data: dict) -> None:
             if on_event:
@@ -82,7 +88,7 @@ class BuiltinReactAdapter:
 
         def _build_agent() -> ReactAgent:
             kwargs: dict = {
-                "workspace": self._workspace,
+                "workspace": run_workspace,
                 "llm_provider": self._llm_provider,
                 "stall_timeout_s": self._stall_timeout_s,
                 "event_publisher": self._event_publisher,
@@ -179,6 +185,10 @@ class BuiltinPlanAdapter:
     ) -> AgentResult:
         """Run the plan-based Agent with supervisor retry, map to AgentResult."""
         from codeframe.core.agent import Agent, AgentStatus
+        from codeframe.core.sandbox.context import rebased_workspace
+
+        # #715: run against the worktree path when isolated (state stays on main).
+        run_workspace = rebased_workspace(self._workspace, workspace_path)
 
         def _bridge_event(event_type: str, data: dict) -> None:
             if on_event:
@@ -186,7 +196,7 @@ class BuiltinPlanAdapter:
 
         def _build_agent() -> Agent:
             return Agent(
-                workspace=self._workspace,
+                workspace=run_workspace,
                 llm_provider=self._llm_provider,
                 dry_run=self._dry_run,
                 on_event=_bridge_event,

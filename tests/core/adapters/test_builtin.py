@@ -16,7 +16,10 @@ _PLAN_AGENT_CLS = "codeframe.core.agent.Agent"
 @pytest.fixture
 def mock_workspace():
     ws = MagicMock()
-    ws.repo_path = Path("/tmp/test-repo")
+    # Match the path passed to adapter.run() below so the (non-worktree) call has
+    # workspace_path == repo_path — rebased_workspace then returns this mock
+    # unchanged instead of attempting dataclasses.replace on a MagicMock (#787).
+    ws.repo_path = Path("/tmp")
     return ws
 
 

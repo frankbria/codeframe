@@ -112,24 +112,63 @@ class TestCreateExecutionContextNone:
 
 
 class TestCreateExecutionContextWorktree:
-    """Issue #714 / P0.3: worktree isolation is disabled until merge-back ships
-    because cleanup() force-deleted the branch/worktree without merging agent
-    work back — silent data loss. create_execution_context must fail closed and
-    create NOTHING (no worktree dir, no branch)."""
+    """Issue #787: worktree isolation is re-enabled for the single-run path with
+    real merge-back. create_execution_context creates a git worktree, points
+    workspace_path at it, and wires merge_back / cleanup / preserve hooks."""
 
-    def test_worktree_is_rejected(self, git_repo: Path):
-        with pytest.raises(ValueError, match="worktree isolation is temporarily disabled"):
+    def test_creates_worktree_dir(self, git_repo: Path):
+        ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
+        assert ctx.workspace_path == git_repo / ".codeframe" / "worktrees" / "task-abc"
+        assert ctx.workspace_path.exists()
+
+    def test_merge_back_is_wired(self, git_repo: Path):
+        ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
+        assert callable(ctx.merge_back)
+
+    def test_cleanup_removes_worktree_and_branch(self, git_repo: Path):
+        ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
+        assert ctx.workspace_path.exists()
+        ctx.cleanup()
+        assert not ctx.workspace_path.exists()
+        branches = subprocess.run(
+            ["git", "branch", "--list", "cf/task-abc"],
+            cwd=str(git_repo), capture_output=True, text=True,
+        )
+        assert "cf/task-abc" not in branches.stdout
+
+    def test_preserve_keeps_worktree_and_branch(self, git_repo: Path):
+        ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
+        ctx.preserve()
+        assert ctx.workspace_path.exists()
+        branches = subprocess.run(
+            ["git", "branch", "--list", "cf/task-abc"],
+            cwd=str(git_repo), capture_output=True, text=True,
+        )
+        assert "cf/task-abc" in branches.stdout
+
+    def test_preserved_branch_collision_raises_clear_error(self, git_repo: Path):
+        """A preserved cf/<task> branch from a prior run must raise an actionable
+        ValueError (caught by runtime → handled FAILED), not a raw git error that
+        strands the run IN_PROGRESS."""
+        # Simulate a preserved branch from a previous failed/conflicted run.
+        subprocess.run(
+            ["git", "branch", "cf/task-abc"],
+            cwd=str(git_repo), check=True, capture_output=True,
+        )
+        with pytest.raises(ValueError, match="from a previous run"):
             create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
 
-    def test_reject_message_points_at_the_issue(self, git_repo: Path):
-        with pytest.raises(ValueError, match="#714"):
-            create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
+    def test_merge_back_lands_worktree_file_on_base(self, git_repo: Path):
+        """The core acceptance mechanic: a file written in the worktree exists on
+        the base branch after auto-commit + merge_back."""
+        ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
+        (ctx.workspace_path / "agent_output.txt").write_text("from the agent")
 
-    def test_no_worktree_created_on_reject(self, git_repo: Path):
-        with pytest.raises(ValueError):
-            create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
-        # Nothing was created before the guard fired.
-        assert not (git_repo / ".codeframe" / "worktrees" / "task-abc").exists()
+        result = ctx.merge_back()
+
+        assert result is not None and result.success is True
+        assert (git_repo / "agent_output.txt").exists()
+        assert (git_repo / "agent_output.txt").read_text() == "from the agent"
 
 
 class TestValidateIsolation:
@@ -138,11 +177,17 @@ class TestValidateIsolation:
 
         validate_isolation(IsolationLevel.NONE)  # no raise
 
-    def test_worktree_raises(self):
+    def test_worktree_is_allowed(self):
+        """#787: worktree no longer rejected (single-run path supports it)."""
         from codeframe.core.sandbox.context import validate_isolation
 
-        with pytest.raises(ValueError, match="#714"):
-            validate_isolation(IsolationLevel.WORKTREE)
+        validate_isolation(IsolationLevel.WORKTREE)  # no raise
+
+    def test_cloud_raises(self):
+        from codeframe.core.sandbox.context import validate_isolation
+
+        with pytest.raises(NotImplementedError, match="E2B"):
+            validate_isolation(IsolationLevel.CLOUD)
 
 
 class TestCreateExecutionContextCloud:
