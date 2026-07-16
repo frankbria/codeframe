@@ -716,6 +716,9 @@ def execute_agent(
         run.task_id, IsolationLevel(isolation), workspace.repo_path
     )
     effective_repo_path = exec_ctx.workspace_path
+    # Worktree isolation (#787): tracks whether agent work was merged back so the
+    # finally block cleans up (merged) vs preserves the branch (failed/conflict).
+    worktree_merged = False
 
     try:
         # Execute before_task hook (aborts on failure)
@@ -830,6 +833,34 @@ def execute_agent(
             )
             state.blocker = blocker_obj
 
+        # Worktree isolation (#787): on a successful run, auto-commit + merge the
+        # task branch back to base. A merge conflict becomes a blocker and the
+        # branch is preserved (downgrade COMPLETED → BLOCKED so the run reflects
+        # it before the status transition below). Runs into merge-back only when
+        # exec_ctx has a worktree (merge_back is None for NONE isolation).
+        if exec_ctx.merge_back is not None and state.status == AgentStatus.COMPLETED:
+            merge_result = exec_ctx.merge_back()
+            if merge_result is not None and not merge_result.success:
+                from codeframe.core import blockers as blockers_mod
+                conflict_q = (
+                    f"Worktree merge-back conflicted merging cf/{run.task_id} into "
+                    "the base branch. Resolve manually — the branch and worktree "
+                    "have been preserved for recovery.\n\n"
+                    f"{merge_result.conflict_details[:1000]}"
+                )
+                blocker_obj = blockers_mod.create(
+                    workspace, task_id=run.task_id, question=conflict_q,
+                )
+                state = AgentState(status=AgentStatus.BLOCKED)
+                state.blocker = blocker_obj
+                run_logger.warning(
+                    LogCategory.BLOCKER,
+                    f"Worktree merge-back conflict for {run.task_id}",
+                    {"conflict": merge_result.conflict_details[:500]},
+                )
+            else:
+                worktree_merged = True
+
         # Log final status
         if state.status == AgentStatus.COMPLETED:
             run_logger.info(LogCategory.STATE_CHANGE, "Agent completed successfully")
@@ -928,8 +959,14 @@ def execute_agent(
     finally:
         # Always close the output logger to ensure file is properly flushed
         output_logger.close()
-        # Clean up execution context (no-op for NONE, removes worktree for WORKTREE)
-        exec_ctx.cleanup()
+        # Clean up execution context. For NONE this is a harmless no-op. For a
+        # WORKTREE run: remove the worktree + branch only when work was merged
+        # back; otherwise preserve them for recovery (failure/blocked/conflict/
+        # exception — never silently discard agent work, the #714 bug).
+        if exec_ctx.merge_back is not None and not worktree_merged:
+            exec_ctx.preserve()
+        else:
+            exec_ctx.cleanup()
 
 
 def _event_type_to_category(event_type: str):

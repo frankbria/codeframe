@@ -2489,12 +2489,12 @@ def work_start(
 
         task = matching[0]
 
-        # Reject unsupported isolation first (#714): worktree would silently
-        # discard agent work. Fails closed before any run is created.
+        # Reject unsupported isolation first (before any run is created). WORKTREE
+        # is now accepted for this single-run path (#787); CLOUD still raises.
         from codeframe.core.sandbox.context import IsolationLevel, validate_isolation
         try:
             validate_isolation(IsolationLevel(isolation))
-        except ValueError as exc:
+        except (ValueError, NotImplementedError) as exc:
             console.print(f"[red]Error:[/red] {exc}")
             raise typer.Exit(1)
 
@@ -3859,12 +3859,23 @@ def batch_run(
             console.print("[red]Error:[/red] Specify task IDs or use --all-ready/--all-blocked")
             raise typer.Exit(1)
 
-        # Reject unsupported isolation up front (#714) — before the API-key
-        # check and before any run is created (worktree would discard work).
+        # Reject unsupported isolation up front — before the API-key check and
+        # before any batch is created. CLOUD is not implemented; WORKTREE is
+        # enabled only for the single-run path (`cf work start`, #787) — the
+        # batch subprocess path can't reach the gitignored .codeframe DB from a
+        # worktree, so it stays rejected here until that's solved.
         from codeframe.core.sandbox.context import IsolationLevel, validate_isolation
+        if IsolationLevel(isolation) == IsolationLevel.WORKTREE:
+            console.print(
+                "[red]Error:[/red] worktree isolation is not yet supported for "
+                "batch runs (subprocess workers can't reach the workspace state "
+                "DB in a worktree). Use it with a single task: "
+                "`cf work start <task> --execute --isolation worktree`."
+            )
+            raise typer.Exit(1)
         try:
             validate_isolation(IsolationLevel(isolation))
-        except ValueError as exc:
+        except (ValueError, NotImplementedError) as exc:
             console.print(f"[red]Error:[/red] {exc}")
             raise typer.Exit(1)
 

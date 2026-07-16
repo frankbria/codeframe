@@ -53,6 +53,10 @@ class VerificationWrapper:
     ) -> None:
         self._inner = inner
         self._workspace = workspace
+        # Workspace that verification gates + quick fixes run against. Rebased to
+        # the worktree in run() when isolated (#716); blocker creation still uses
+        # self._workspace so blockers land in the main-repo state DB.
+        self._verify_workspace = workspace
         self._max_correction_rounds = max_correction_rounds
         self._gate_names = gate_names  # None = use default gates
         self._verbose = verbose
@@ -70,6 +74,10 @@ class VerificationWrapper:
         on_event: Callable[[AgentEvent], None] | None = None,
     ) -> AgentResult:
         """Run the inner adapter, then verify with gates. Self-correct on failure."""
+        from codeframe.core.sandbox.context import rebased_workspace
+
+        # #716: verify against the worktree when isolated (no-op for NONE).
+        self._verify_workspace = rebased_workspace(self._workspace, workspace_path)
 
         # Initial run
         result = self._inner.run(task_id, prompt, workspace_path, on_event)
@@ -90,7 +98,7 @@ class VerificationWrapper:
                 ))
 
             gate_result = run_gates(
-                self._workspace,
+                self._verify_workspace,
                 gates=self._gate_names,
                 verbose=self._verbose,
             )
@@ -160,7 +168,7 @@ class VerificationWrapper:
 
         # Final gate check after all correction rounds
         gate_result = run_gates(
-            self._workspace,
+            self._verify_workspace,
             gates=self._gate_names,
             verbose=self._verbose,
         )
@@ -179,11 +187,11 @@ class VerificationWrapper:
 
         Returns True if a fix was successfully applied.
         """
-        fix = find_quick_fix(error_summary, repo_path=self._workspace.repo_path)
+        fix = find_quick_fix(error_summary, repo_path=self._verify_workspace.repo_path)
         if fix is None:
             return False
 
-        success, msg = apply_quick_fix(fix, self._workspace.repo_path)
+        success, msg = apply_quick_fix(fix, self._verify_workspace.repo_path)
         if success:
             self._verbose_print(f"[VerificationWrapper] Quick fix: {msg}")
         return success

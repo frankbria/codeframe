@@ -211,9 +211,9 @@ class TestBatchRunExitCodes:
 
 
 class TestIsolationRejection:
-    """Issue #714: `--isolation worktree` must be rejected up front (exit 1)
-    before any run/batch is created — worktree isolation would silently discard
-    agent work. Covers the branch CodeRabbit flagged as untested."""
+    """Issue #787: `--isolation worktree` is now accepted for the single-run
+    path (`cf work start`) but still rejected for batch runs (the subprocess
+    worker can't reach the workspace state DB in a worktree)."""
 
     def _workspace_with_task(self, tmp_path):
         repo = tmp_path / "repo"
@@ -222,16 +222,18 @@ class TestIsolationRejection:
         task = tasks.create(ws, title="t", description="d", status=TaskStatus.READY)
         return repo, ws, task
 
-    def test_work_start_rejects_worktree(self, tmp_path):
+    def test_work_start_accepts_worktree(self, tmp_path):
+        """#787: `cf work start --isolation worktree` passes validation and starts
+        a run (worktree is created inside execute_agent, so no --execute here)."""
         repo, ws, task = self._workspace_with_task(tmp_path)
         result = runner.invoke(
             app,
-            ["work", "start", task.id[:8], "--execute", "--isolation", "worktree", "-w", str(repo)],
+            ["work", "start", task.id[:8], "--isolation", "worktree", "-w", str(repo)],
         )
-        assert result.exit_code == 1
-        assert "worktree isolation is temporarily disabled" in result.output
-        # No run was created; the task was not moved to IN_PROGRESS.
-        assert tasks.get(ws, task.id).status != TaskStatus.IN_PROGRESS
+        assert result.exit_code == 0, result.output
+        assert "not yet supported for batch" not in result.output
+        # The run was started (task moved to IN_PROGRESS), not rejected.
+        assert tasks.get(ws, task.id).status == TaskStatus.IN_PROGRESS
 
     def test_work_batch_run_rejects_worktree(self, tmp_path):
         repo, ws, task = self._workspace_with_task(tmp_path)
@@ -240,16 +242,16 @@ class TestIsolationRejection:
             ["work", "batch", "run", task.id[:8], "--isolation", "worktree", "-w", str(repo)],
         )
         assert result.exit_code == 1
-        assert "worktree isolation is temporarily disabled" in result.output
+        assert "not yet supported for batch" in result.output
 
     def test_work_start_allows_none(self, tmp_path):
-        """--isolation none must NOT hit the rejection path (sanity)."""
+        """--isolation none must NOT hit any rejection path (sanity)."""
         repo, ws, task = self._workspace_with_task(tmp_path)
         result = runner.invoke(
             app,
             ["work", "start", task.id[:8], "--isolation", "none", "-w", str(repo)],
         )
-        assert "worktree isolation is temporarily disabled" not in result.output
+        assert result.exit_code == 0, result.output
 
     def test_work_start_rejects_cloud_at_parse_time(self, tmp_path):
         """Issue #769: 'cloud' is not a valid --isolation choice — Click rejects

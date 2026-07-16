@@ -5,16 +5,28 @@ conductor.py and agent adapters to run tasks in isolated environments.
 
 Isolation levels:
   NONE     — shared filesystem, preserves current behavior (default)
-  WORKTREE — git worktree per task (DISABLED — discarded agent work; see #714)
+  WORKTREE — git worktree per task with merge-back (single-run path only; #787)
   CLOUD    — E2B Linux VM per task (reserved, raises NotImplementedError)
+
+Worktree scope (#787): worktree isolation is enabled for the in-process
+single-run path (``cf work start --isolation worktree`` → runtime.execute_agent),
+which rebases the workspace so code + gates land in the worktree while task/
+blocker/event state stays in the main repo's ``.codeframe`` DB. The batch
+subprocess path (conductor) stays rejected at the CLI: a spawned child runs with
+``cwd=worktree`` and cannot reach the gitignored ``.codeframe`` DB there.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import dataclasses
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable, Optional
+
+if TYPE_CHECKING:
+    from codeframe.core.workspace import Workspace
+    from codeframe.core.worktrees import MergeResult
 
 
 class IsolationLevel(str, Enum):
@@ -25,6 +37,10 @@ class IsolationLevel(str, Enum):
     CLOUD = "cloud"
 
 
+def _noop() -> None:
+    return None
+
+
 @dataclass
 class ExecutionContext:
     """Execution environment for a single task run.
@@ -33,43 +49,59 @@ class ExecutionContext:
         task_id: Task being executed.
         isolation: Isolation strategy in use.
         workspace_path: Root path the agent should use for all file I/O.
-        cleanup: Called after task completion to release resources.
+        cleanup: Full teardown — removes the worktree and deletes its branch
+            (no-op for NONE). Called only when the run's work has been merged
+            back (or when there is nothing to preserve).
+        merge_back: For WORKTREE, auto-commits worktree changes then merges the
+            task branch into the base branch, returning a MergeResult. ``None``
+            when there is no worktree to merge (NONE).
+        preserve: Leave the worktree + branch intact for recovery (no-op for
+            NONE). Called instead of ``cleanup`` on failure, block, or merge
+            conflict so agent work is never silently discarded (the #714 bug).
     """
 
     task_id: str
     isolation: IsolationLevel
     workspace_path: Path
     cleanup: Callable[[], None]
+    merge_back: Optional[Callable[[], "MergeResult"]] = None
+    preserve: Callable[[], None] = field(default=_noop)
 
 
-# worktree isolation is disabled until real merge-back ships (issue #714).
-# It force-deleted the per-task branch/worktree in cleanup() WITHOUT ever
-# merging the agent's work back to the base branch — silently discarding all
-# changes. Re-enable once merge-back (+ auto-commit of worktree changes) lands;
-# that work is gated behind #715 (builtin engines ignore the worktree path) and
-# #716 (verification runs against the wrong tree).
-_WORKTREE_DISABLED_MSG = (
-    "worktree isolation is temporarily disabled: it discards agent work without "
-    "merging it back to the base branch (silent data loss — see issue #714). "
-    "Use --isolation none (the default) until merge-back ships."
-)
+def rebased_workspace(workspace: "Workspace", workspace_path: Path) -> "Workspace":
+    """Return a Workspace whose code root is ``workspace_path``.
+
+    Used by the builtin adapters (#715) and the verification wrapper (#716) so
+    that code I/O and verification gates run against the worktree, while the
+    ``state_dir``/``db_path`` (task, blocker, and event state) stay pointed at
+    the original main-repo ``.codeframe`` directory. Returns the workspace
+    unchanged when ``workspace_path`` already is its repo root (the NONE case).
+    """
+    if Path(workspace_path) == workspace.repo_path:
+        return workspace
+    return dataclasses.replace(workspace, repo_path=Path(workspace_path))
 
 
 def validate_isolation(isolation: IsolationLevel) -> None:
     """Reject isolation levels that are not currently safe to run.
 
+    WORKTREE is now allowed for the in-process single-run path (#787): it
+    auto-commits and merges agent work back to the base branch, and preserves
+    the branch on failure/conflict rather than discarding it (the #714 bug).
+
     Raises:
-        ValueError: If ``isolation`` is WORKTREE (see #714). Callers (CLI,
-            server, conductor) should surface this to the user *before*
-            creating a run so no task is stranded IN_PROGRESS.
+        NotImplementedError: If ``isolation`` is CLOUD (reserved for E2B).
 
     Note:
-        The server path needs no explicit guard today — no ``ui/routers/`` route
-        accepts an ``isolation`` parameter — but ``create_execution_context``
-        calls this, so any future server/programmatic caller is covered too.
+        The batch subprocess path (conductor) still rejects WORKTREE at the CLI
+        because a child process cannot reach the gitignored ``.codeframe`` DB in
+        a worktree. That guard lives in ``cli/app.py`` (batch command), not here.
     """
-    if isolation == IsolationLevel.WORKTREE:
-        raise ValueError(_WORKTREE_DISABLED_MSG)
+    if isolation == IsolationLevel.CLOUD:
+        raise NotImplementedError(
+            "IsolationLevel.CLOUD is reserved for the future E2B agent adapter phase. "
+            "Use 'none' instead."
+        )
 
 
 def create_execution_context(
@@ -85,13 +117,13 @@ def create_execution_context(
         repo_path: Canonical repository root path.
 
     Returns:
-        ExecutionContext with workspace_path and cleanup configured.
+        ExecutionContext with workspace_path, merge_back, cleanup, and preserve
+        configured for the isolation level.
 
     Raises:
-        ValueError: If isolation is WORKTREE (disabled until merge-back — #714).
         NotImplementedError: If isolation is CLOUD (future E2B phase).
+        ValueError: If isolation is an unknown level.
     """
-    # Fail closed before creating anything: WORKTREE would destroy agent work.
     validate_isolation(isolation)
 
     if isolation == IsolationLevel.NONE:
@@ -99,13 +131,38 @@ def create_execution_context(
             task_id=task_id,
             isolation=isolation,
             workspace_path=repo_path,
-            cleanup=lambda: None,
+            cleanup=_noop,
         )
 
-    if isolation == IsolationLevel.CLOUD:
-        raise NotImplementedError(
-            "IsolationLevel.CLOUD is reserved for the future E2B agent adapter phase. "
-            "Use 'none' instead."
-        )
+    if isolation == IsolationLevel.WORKTREE:
+        return _create_worktree_context(task_id, repo_path)
 
     raise ValueError(f"Unknown isolation level: {isolation}")
+
+
+def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
+    """Create a git worktree and wire its merge-back / cleanup / preserve hooks.
+
+    The worktree is intentionally NOT registered in WorktreeRegistry: orphan
+    cleanup (keyed on process liveness) would force-delete a preserved branch
+    once this process exits, defeating the failure/conflict preservation the
+    acceptance criteria require.
+    """
+    from codeframe.core.worktrees import TaskWorktree, get_base_branch
+
+    base_branch = get_base_branch(repo_path)
+    worktree = TaskWorktree()
+    worktree_path = worktree.create(repo_path, task_id, base_branch=base_branch)
+
+    def _merge_back() -> "MergeResult":
+        worktree.auto_commit(worktree_path, task_id)
+        return worktree.merge_back(repo_path, task_id, base_branch=base_branch)
+
+    return ExecutionContext(
+        task_id=task_id,
+        isolation=IsolationLevel.WORKTREE,
+        workspace_path=worktree_path,
+        cleanup=lambda: worktree.cleanup(repo_path, task_id),
+        merge_back=_merge_back,
+        preserve=_noop,  # leave worktree + branch on disk for recovery
+    )

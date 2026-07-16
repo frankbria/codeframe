@@ -1701,9 +1701,9 @@ def _execute_parallel(
         CycleDetectedError: If circular dependencies are detected
     """
     # Clean up orphaned worktrees from crashed workers on previous runs.
-    # Legacy-record path only (#714): worktree isolation is disabled, so this
-    # fires just for batches persisted before the fix — harmless best-effort
-    # cleanup of pre-existing debris.
+    # Batch worktree isolation stays rejected at the CLI (#787 enables it only
+    # for the single-run path), so this fires just for legacy batches persisted
+    # with worktree isolation — harmless best-effort cleanup of pre-existing debris.
     from codeframe.core.sandbox.context import IsolationLevel as _IL
     if batch.isolation == _IL.WORKTREE.value:
         from codeframe.core.worktrees import WorktreeRegistry

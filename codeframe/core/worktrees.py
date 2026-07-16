@@ -77,6 +77,47 @@ class TaskWorktree:
         logger.info("Created worktree for %s at %s", task_id, worktree_path)
         return worktree_path
 
+    def auto_commit(
+        self,
+        worktree_path: Path,
+        task_id: str,
+    ) -> bool:
+        """Stage and commit all changes in the worktree on its branch.
+
+        Agent adapters write files but never commit, so ``git merge cf/<task_id>``
+        would merge nothing. This commits any pending work first.
+
+        Args:
+            worktree_path: Path to the task's worktree directory
+            task_id: Task identifier (for the commit message)
+
+        Returns:
+            True if a commit was created, False if the worktree was clean.
+        """
+        subprocess.run(
+            ["git", "add", "-A"],
+            cwd=str(worktree_path),
+            capture_output=True,
+            text=True,
+        )
+        # Nothing staged → nothing to commit (git commit would error).
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=str(worktree_path),
+            capture_output=True,
+        )
+        if staged.returncode == 0:
+            return False
+
+        subprocess.run(
+            ["git", "commit", "-m", f"cf: auto-commit worktree changes for {task_id}"],
+            cwd=str(worktree_path),
+            capture_output=True,
+            text=True,
+        )
+        logger.info("Auto-committed worktree changes for %s", task_id)
+        return True
+
     def merge_back(
         self,
         workspace_path: Path,
