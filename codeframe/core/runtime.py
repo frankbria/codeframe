@@ -710,17 +710,27 @@ def execute_agent(
     import time as _time_mod
     _perf_start_ms = int(_time_mod.monotonic() * 1000)
 
-    # Create execution context (handles isolation; NONE is a no-op)
-    from codeframe.core.sandbox.context import IsolationLevel, create_execution_context
-    exec_ctx = create_execution_context(
-        run.task_id, IsolationLevel(isolation), workspace.repo_path
+    from codeframe.core.sandbox.context import (
+        ExecutionContext,
+        IsolationLevel,
+        create_execution_context,
     )
-    effective_repo_path = exec_ctx.workspace_path
+    # Execution context is created INSIDE the try (#787): building a worktree runs
+    # git, which can fail (e.g. a preserved cf/<task_id> branch from a prior run).
+    # Creating it here would let that exception escape execute_agent and strand the
+    # run IN_PROGRESS; inside the try it becomes a handled FAILED with preservation.
+    exec_ctx: "ExecutionContext | None" = None
+    effective_repo_path = workspace.repo_path
     # Worktree isolation (#787): tracks whether agent work was merged back so the
     # finally block cleans up (merged) vs preserves the branch (failed/conflict).
     worktree_merged = False
 
     try:
+        exec_ctx = create_execution_context(
+            run.task_id, IsolationLevel(isolation), workspace.repo_path
+        )
+        effective_repo_path = exec_ctx.workspace_path
+
         # Execute before_task hook (aborts on failure)
         if env_config and hook_ctx:
             try:
@@ -834,32 +844,59 @@ def execute_agent(
             state.blocker = blocker_obj
 
         # Worktree isolation (#787): on a successful run, auto-commit + merge the
-        # task branch back to base. A merge conflict becomes a blocker and the
-        # branch is preserved (downgrade COMPLETED → BLOCKED so the run reflects
-        # it before the status transition below). Runs into merge-back only when
-        # exec_ctx has a worktree (merge_back is None for NONE isolation).
+        # task branch back to base. A merge conflict (or an auto-commit failure)
+        # becomes a blocker and the branch is preserved (downgrade COMPLETED →
+        # BLOCKED so the run reflects it before the status transition below).
+        # worktree_merged is only set True on a clean merge, so any other outcome
+        # — including an exception — routes the finally block to preserve().
+        # Runs here only when exec_ctx has a worktree (merge_back is None for NONE).
         if exec_ctx.merge_back is not None and state.status == AgentStatus.COMPLETED:
-            merge_result = exec_ctx.merge_back()
-            if merge_result is not None and not merge_result.success:
-                from codeframe.core import blockers as blockers_mod
-                conflict_q = (
-                    f"Worktree merge-back conflicted merging cf/{run.task_id} into "
-                    "the base branch. Resolve manually — the branch and worktree "
-                    "have been preserved for recovery.\n\n"
-                    f"{merge_result.conflict_details[:1000]}"
+            from codeframe.core import blockers as blockers_mod
+            try:
+                merge_result = exec_ctx.merge_back()
+            except Exception as merge_exc:
+                # Auto-commit / merge raised (e.g. commit hook rejection, git
+                # error). Never proceed to cleanup — that would discard the
+                # agent's uncommitted work (the #714 class of bug).
+                block_q = (
+                    f"Worktree merge-back failed for cf/{run.task_id}: {merge_exc}. "
+                    "The branch and worktree have been preserved for recovery."
                 )
                 blocker_obj = blockers_mod.create(
-                    workspace, task_id=run.task_id, question=conflict_q,
+                    workspace, task_id=run.task_id, question=block_q,
                 )
                 state = AgentState(status=AgentStatus.BLOCKED)
                 state.blocker = blocker_obj
-                run_logger.warning(
+                run_logger.error(
                     LogCategory.BLOCKER,
-                    f"Worktree merge-back conflict for {run.task_id}",
-                    {"conflict": merge_result.conflict_details[:500]},
+                    f"Worktree merge-back error for {run.task_id}",
+                    {"error": str(merge_exc)[:500]},
                 )
             else:
-                worktree_merged = True
+                if not merge_result.success:
+                    conflict_q = (
+                        f"Worktree merge-back conflicted merging cf/{run.task_id} "
+                        "into the base branch. Resolve manually — the branch and "
+                        "worktree have been preserved for recovery.\n\n"
+                        f"{merge_result.conflict_details[:1000]}"
+                    )
+                    blocker_obj = blockers_mod.create(
+                        workspace, task_id=run.task_id, question=conflict_q,
+                    )
+                    state = AgentState(status=AgentStatus.BLOCKED)
+                    state.blocker = blocker_obj
+                    run_logger.warning(
+                        LogCategory.BLOCKER,
+                        f"Worktree merge-back conflict for {run.task_id}",
+                        {"conflict": merge_result.conflict_details[:500]},
+                    )
+                else:
+                    worktree_merged = True
+
+        # Re-sync agent_status to the final state: merge-back may have downgraded
+        # a COMPLETED run to BLOCKED, and engine_stats.record_run below keys off
+        # agent_status — without this a conflicted run is miscounted as COMPLETED.
+        agent_status = state.status
 
         # Log final status
         if state.status == AgentStatus.COMPLETED:
@@ -963,10 +1000,13 @@ def execute_agent(
         # WORKTREE run: remove the worktree + branch only when work was merged
         # back; otherwise preserve them for recovery (failure/blocked/conflict/
         # exception — never silently discard agent work, the #714 bug).
-        if exec_ctx.merge_back is not None and not worktree_merged:
-            exec_ctx.preserve()
-        else:
-            exec_ctx.cleanup()
+        # exec_ctx is None when create_execution_context itself failed (e.g. a
+        # preserved branch collision) — nothing to clean up or preserve here.
+        if exec_ctx is not None:
+            if exec_ctx.merge_back is not None and not worktree_merged:
+                exec_ctx.preserve()
+            else:
+                exec_ctx.cleanup()
 
 
 def _event_type_to_category(event_type: str):

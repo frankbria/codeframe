@@ -13,6 +13,7 @@ Lifecycle:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -21,13 +22,41 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - non-POSIX (e.g. native Windows)
+    fcntl = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
 WORKTREE_DIR = ".codeframe/worktrees"
 _REGISTRY_FILE = ".codeframe/worktrees.json"
 _registry_lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def _main_tree_lock(workspace_path: Path) -> Iterator[None]:
+    """Serialize operations that mutate the shared main working tree.
+
+    ``merge_back`` runs ``git checkout`` + ``git merge`` directly in the main
+    repo's single working directory. Two concurrent single-run worktree merges
+    against the same repo would otherwise interleave in that one directory and
+    corrupt it. This is a cross-process advisory lock (``flock``) keyed on the
+    repo. Best-effort: a no-op where ``fcntl`` is unavailable (non-POSIX).
+    """
+    if fcntl is None:
+        yield
+        return
+    lock_path = workspace_path / ".git" / "cf-merge.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 @dataclass
@@ -93,14 +122,27 @@ class TaskWorktree:
 
         Returns:
             True if a commit was created, False if the worktree was clean.
+
+        Raises:
+            RuntimeError: If staging or committing fails. Failing loudly is
+                deliberate — a silent failure here would report "clean"/"committed"
+                while agent work sits uncommitted, and the caller's merge-back
+                would then merge nothing and cleanup would delete the branch,
+                discarding that work (the #714 class of bug). On raise, the run's
+                merge-back aborts and the branch/worktree are preserved.
         """
-        subprocess.run(
+        add = subprocess.run(
             ["git", "add", "-A"],
             cwd=str(worktree_path),
             capture_output=True,
             text=True,
         )
-        # Nothing staged → nothing to commit (git commit would error).
+        if add.returncode != 0:
+            raise RuntimeError(
+                f"git add failed in worktree for {task_id}: {add.stderr.strip()}"
+            )
+
+        # Nothing staged → genuinely clean; nothing to commit.
         staged = subprocess.run(
             ["git", "diff", "--cached", "--quiet"],
             cwd=str(worktree_path),
@@ -109,12 +151,20 @@ class TaskWorktree:
         if staged.returncode == 0:
             return False
 
-        subprocess.run(
+        commit = subprocess.run(
             ["git", "commit", "-m", f"cf: auto-commit worktree changes for {task_id}"],
             cwd=str(worktree_path),
             capture_output=True,
             text=True,
         )
+        if commit.returncode != 0:
+            # Staged changes exist but couldn't be committed (hook rejection,
+            # missing identity, object-DB error). Do NOT report success — that
+            # would route to cleanup and discard the staged work.
+            raise RuntimeError(
+                f"git commit failed in worktree for {task_id}: "
+                f"{(commit.stderr or commit.stdout).strip()}"
+            )
         logger.info("Auto-committed worktree changes for %s", task_id)
         return True
 
@@ -136,41 +186,44 @@ class TaskWorktree:
         """
         branch_name = f"cf/{task_id}"
 
-        # Checkout base branch
-        subprocess.run(
-            ["git", "checkout", base_branch],
-            cwd=str(workspace_path),
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        # checkout + merge mutate the shared main working tree — serialize against
+        # concurrent worktree merges on the same repo (see _main_tree_lock).
+        with _main_tree_lock(workspace_path):
+            # Checkout base branch
+            subprocess.run(
+                ["git", "checkout", base_branch],
+                cwd=str(workspace_path),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
 
-        # Attempt merge
-        result = subprocess.run(
-            ["git", "merge", branch_name, "--no-ff", "-m", f"Merge {branch_name} into {base_branch}"],
-            cwd=str(workspace_path),
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode == 0:
-            # Get merge commit hash
-            head = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
+            # Attempt merge
+            result = subprocess.run(
+                ["git", "merge", branch_name, "--no-ff", "-m", f"Merge {branch_name} into {base_branch}"],
                 cwd=str(workspace_path),
                 capture_output=True,
                 text=True,
             )
-            merge_commit = head.stdout.strip() if head.returncode == 0 else None
 
-            logger.info("Merged %s back to %s", branch_name, base_branch)
-            return MergeResult(
-                task_id=task_id,
-                success=True,
-                conflict_details="",
-                merge_commit=merge_commit,
-            )
-        else:
+            if result.returncode == 0:
+                # Get merge commit hash
+                head = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=str(workspace_path),
+                    capture_output=True,
+                    text=True,
+                )
+                merge_commit = head.stdout.strip() if head.returncode == 0 else None
+
+                logger.info("Merged %s back to %s", branch_name, base_branch)
+                return MergeResult(
+                    task_id=task_id,
+                    success=True,
+                    conflict_details="",
+                    merge_commit=merge_commit,
+                )
+
             # Merge conflict — abort and report
             conflict_output = result.stdout + result.stderr
             subprocess.run(

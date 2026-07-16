@@ -148,7 +148,27 @@ def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     once this process exits, defeating the failure/conflict preservation the
     acceptance criteria require.
     """
-    from codeframe.core.worktrees import TaskWorktree, get_base_branch
+    import subprocess
+
+    from codeframe.core.worktrees import WORKTREE_DIR, TaskWorktree, get_base_branch
+
+    # A preserved cf/<task_id> branch or worktree dir from a prior failed/conflicted
+    # run would make `git worktree add -b` fail. Surface an actionable error instead
+    # of a raw git traceback (runtime creates this inside its try, so this becomes a
+    # handled failure rather than a stranded IN_PROGRESS run).
+    branch_name = f"cf/{task_id}"
+    existing = subprocess.run(
+        ["git", "branch", "--list", branch_name],
+        cwd=str(repo_path), capture_output=True, text=True,
+    )
+    worktree_dir = repo_path / WORKTREE_DIR / task_id
+    if branch_name in existing.stdout or worktree_dir.exists():
+        raise ValueError(
+            f"a worktree or branch '{branch_name}' from a previous run of this task "
+            "still exists (preserved for recovery). Recover or discard it, then "
+            f"retry — e.g. `git worktree remove --force {worktree_dir}` and "
+            f"`git branch -D {branch_name}`."
+        )
 
     base_branch = get_base_branch(repo_path)
     worktree = TaskWorktree()

@@ -98,7 +98,7 @@ class TestBuiltinReactAdapterStallRetry:
         from codeframe.core.stall_detector import StallDetectedError
 
         ws = MagicMock()
-        ws.repo_path = Path("/tmp/test")
+        ws.repo_path = Path("/tmp")  # match adapter.run() path so #787 rebase is a no-op
         provider = MagicMock()
 
         call_count = 0
@@ -128,7 +128,7 @@ class TestBuiltinReactAdapterStallRetry:
         from codeframe.core.stall_detector import StallDetectedError
 
         ws = MagicMock()
-        ws.repo_path = Path("/tmp/test")
+        ws.repo_path = Path("/tmp")  # match adapter.run() path so #787 rebase is a no-op
         provider = MagicMock()
 
         def always_stall(**kwargs):
@@ -161,7 +161,7 @@ class TestBuiltinPlanAdapterRetry:
         from codeframe.core.agent import AgentStatus
 
         ws = MagicMock()
-        ws.repo_path = Path("/tmp/test")
+        ws.repo_path = Path("/tmp")  # match adapter.run() path so #787 rebase is a no-op
         provider = MagicMock()
 
         with patch("codeframe.core.agent.Agent") as mock_cls:
@@ -176,7 +176,7 @@ class TestBuiltinPlanAdapterRetry:
         from codeframe.core.agent import AgentStatus
 
         ws = MagicMock()
-        ws.repo_path = Path("/tmp/test")
+        ws.repo_path = Path("/tmp")  # match adapter.run() path so #787 rebase is a no-op
         provider = MagicMock()
 
         with patch("codeframe.core.agent.Agent") as mock_cls:
@@ -194,7 +194,7 @@ class TestBuiltinPlanAdapterRetry:
         from codeframe.core.agent import AgentStatus
 
         ws = MagicMock()
-        ws.repo_path = Path("/tmp/test")
+        ws.repo_path = Path("/tmp")  # match adapter.run() path so #787 rebase is a no-op
         provider = MagicMock()
 
         with patch("codeframe.core.agent.Agent") as mock_cls:
@@ -211,7 +211,7 @@ class TestBuiltinPlanAdapterRetry:
         from codeframe.core.agent import AgentStatus
 
         ws = MagicMock()
-        ws.repo_path = Path("/tmp/test")
+        ws.repo_path = Path("/tmp")  # match adapter.run() path so #787 rebase is a no-op
         provider = MagicMock()
 
         step_result = MagicMock()

@@ -103,6 +103,27 @@ class TestAutoCommit:
         wtp = wt.create(git_workspace.repo_path, "t1", base_branch="main")
         assert wt.auto_commit(wtp, "t1") is False
 
+    def test_commit_failure_raises_not_silent(self, git_workspace: Workspace):
+        """Regression: a failed commit must raise, not report success — else the
+        caller merges nothing and cleanup discards the agent's work (#714 class)."""
+        from codeframe.core.worktrees import TaskWorktree
+
+        repo = git_workspace.repo_path
+        # A rejecting pre-commit hook lives in the shared .git/hooks (worktrees
+        # share GIT_COMMON_DIR), so commits in the worktree fail.
+        hooks = repo / ".git" / "hooks"
+        hooks.mkdir(parents=True, exist_ok=True)
+        hook = hooks / "pre-commit"
+        hook.write_text("#!/bin/sh\nexit 1\n")
+        hook.chmod(0o755)
+
+        wt = TaskWorktree()
+        wtp = wt.create(repo, "t1", base_branch="main")
+        (wtp / "work.txt").write_text("agent work")
+
+        with pytest.raises(RuntimeError, match="git commit failed"):
+            wt.auto_commit(wtp, "t1")
+
 
 # ---------------------------------------------------------------------------
 # runtime.execute_agent worktree wiring
@@ -188,6 +209,10 @@ class TestExecuteAgentWorktreeMergeBack:
         # Merged → worktree + branch cleaned up.
         assert not _branch_exists(repo, f"cf/{task.id}")
         assert not (repo / ".codeframe" / "worktrees" / task.id).exists()
+        # Single-run worktrees are intentionally never registered (so orphan
+        # cleanup keyed on process liveness can't force-delete a preserved branch).
+        from codeframe.core.worktrees import list_worktrees
+        assert list_worktrees(repo) == []
 
     def test_conflict_creates_blocker_and_preserves_branch(self, git_workspace: Workspace):
         task, state = _run_with_adapter(git_workspace, _ConflictingAdapter())

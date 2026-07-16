@@ -146,6 +146,18 @@ class TestCreateExecutionContextWorktree:
         )
         assert "cf/task-abc" in branches.stdout
 
+    def test_preserved_branch_collision_raises_clear_error(self, git_repo: Path):
+        """A preserved cf/<task> branch from a prior run must raise an actionable
+        ValueError (caught by runtime → handled FAILED), not a raw git error that
+        strands the run IN_PROGRESS."""
+        # Simulate a preserved branch from a previous failed/conflicted run.
+        subprocess.run(
+            ["git", "branch", "cf/task-abc"],
+            cwd=str(git_repo), check=True, capture_output=True,
+        )
+        with pytest.raises(ValueError, match="from a previous run"):
+            create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
+
     def test_merge_back_lands_worktree_file_on_base(self, git_repo: Path):
         """The core acceptance mechanic: a file written in the worktree exists on
         the base branch after auto-commit + merge_back."""

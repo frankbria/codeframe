@@ -13,7 +13,10 @@ from codeframe.core.gates import GateStatus
 @pytest.fixture
 def mock_workspace():
     ws = MagicMock()
-    ws.repo_path = Path("/tmp/test-repo")
+    # Match the path passed to wrapper.run() below so the (non-worktree) call has
+    # workspace_path == repo_path — rebased_workspace then returns this mock
+    # unchanged instead of attempting dataclasses.replace on a MagicMock (#787).
+    ws.repo_path = Path("/tmp")
     return ws
 
 

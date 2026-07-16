@@ -3800,7 +3800,6 @@ def batch_run(
         codeframe work batch run --all-ready --engine plan
         codeframe work batch run task1 task2 --dry-run
         codeframe work batch run task1 task2 --retry 2
-        codeframe work batch run --all-ready --isolation worktree
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks as tasks_module, conductor
