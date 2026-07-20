@@ -87,6 +87,9 @@ def keys_client(temp_credentials_dir):
     app.dependency_overrides[settings_v2.get_credential_manager] = (
         lambda: temp_credentials_dir
     )
+    app.dependency_overrides[settings_v2.get_credential_manager_readonly] = (
+        lambda: temp_credentials_dir
+    )
     yield TestClient(app)
 
 

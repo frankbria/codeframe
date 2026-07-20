@@ -2,7 +2,8 @@
 
 Stores only **non-secret** repo metadata for a connected GitHub repository under
 ``.codeframe/github_integration.json``. The PAT itself is stored in the
-machine-wide ``CredentialManager`` (``CredentialProvider.GIT_GITHUB``) — never
+caller-scoped ``CredentialManager`` (``CredentialProvider.GIT_GITHUB``; issue
+#790 — per-user when authenticated, machine-wide when auth is disabled) — never
 in this file.
 
 Headless — no FastAPI or HTTP imports (architecture rule #1). Mirrors the

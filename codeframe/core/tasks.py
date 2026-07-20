@@ -523,8 +523,12 @@ def _dispatch_github_autoclose(workspace: Workspace, task: Task) -> None:
     task transition. The repo is taken from the task's own ``external_url`` (its
     source repo) — NOT the workspace's current connection — so completing an
     older imported task always closes the right issue even after the workspace
-    is reconnected to a different repository. The PAT comes from the machine-wide
-    credential store.
+    is reconnected to a different repository.
+
+    The PAT is resolved from the machine-wide credential store / ``GITHUB_TOKEN``
+    environment variable. Per-user stored PATs are **not** used by autoclose
+    (this is a known limitation of the current headless/background task path;
+    hosted tenants should supply ``GITHUB_TOKEN`` via environment for autoclose).
     """
     if not task.auto_close_github_issue or task.github_issue_number is None:
         return

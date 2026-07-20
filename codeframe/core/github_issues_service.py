@@ -2,8 +2,9 @@
 
 Headless service used by the Integrations issues endpoint to fetch a connected
 repository's **open** issues for the import browser UI. Builds on the connection
-established in #563: the PAT comes from the machine-wide ``CredentialManager``
-and the ``owner/repo`` from per-workspace ``.codeframe/github_integration.json``
+established in #563: the PAT comes from the caller-scoped ``CredentialManager``
+(issue #790; per-user in hosted mode, machine-wide when auth is disabled) and
+the ``owner/repo`` from per-workspace ``.codeframe/github_integration.json``
 — this module only performs the GitHub API call given those values.
 
 No FastAPI / HTTP-framework imports (architecture rule #1 — core is headless).

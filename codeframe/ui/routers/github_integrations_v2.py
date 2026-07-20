@@ -6,7 +6,8 @@ Routes (prefix ``/api/v2/integrations/github``):
     GET    /status       - Report connection status (never exposes the PAT)
     GET    /issues       - List the connected repo's open issues (#564)
 
-The PAT is stored machine-wide via ``CredentialManager`` under
+The PAT is stored via ``CredentialManager`` scoped to the authenticated user
+(issue #790; machine-wide when auth is disabled) under
 ``CredentialProvider.GIT_GITHUB`` — the same slot the API Keys settings tab
 (#555) uses. Repo metadata (non-secret) is persisted per-workspace under
 ``.codeframe/github_integration.json``. The PAT is never returned in any
@@ -21,6 +22,8 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
+from codeframe.auth.api_keys import SCOPE_ADMIN
+from codeframe.auth.dependencies import require_auth, require_scope
 from codeframe.core.credentials import CredentialManager, CredentialProvider
 from codeframe.core.github_connect_service import (
     GitHubConnectError,
@@ -44,10 +47,7 @@ from codeframe.core.github_integration_config import (
 from codeframe.core import tasks
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
-from codeframe.ui.dependencies import (
-    forbid_shared_credentials_in_hosted_mode,
-    get_v2_workspace,
-)
+from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import ErrorCodes, api_error
 
 logger = logging.getLogger(__name__)
@@ -55,12 +55,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v2/integrations/github", tags=["integrations"])
 
 
-def get_credential_manager() -> CredentialManager:
-    """Dependency: machine-wide CredentialManager.
+def get_credential_manager(auth: dict = Depends(require_auth)) -> CredentialManager:
+    """Dependency: CredentialManager scoped to the authenticated user (#790).
 
-    Overridden in tests to point at an isolated temp directory.
+    ``user_id=None`` (auth disabled / self-hosted) yields the machine-wide
+    store. Overridden in tests to point at an isolated temp directory.
+    Runs the machine-wide migration — use only on write paths.
     """
-    return CredentialManager()
+    return CredentialManager(user_id=auth.get("user_id"), migrate=True)
+
+
+def get_credential_manager_readonly(auth: dict = Depends(require_auth)) -> CredentialManager:
+    """Read-only variant: scoped to the authenticated user but skips migration.
+
+    Used on GET endpoints so that a plain status check cannot trigger a
+    credential write into a new tenant's store (#790).
+    """
+    return CredentialManager(user_id=auth.get("user_id"), migrate=False)
 
 
 class ConnectRequest(BaseModel):
@@ -117,9 +128,11 @@ class ImportResponse(BaseModel):
 
 
 # In-process TTL cache for issue listings (#564). Keyed by the full query
-# (repo + page + per_page + search + label); entries expire after 60s to avoid
-# hammering GitHub's rate limit on repeated browses. Module-level so it is
-# shared across requests within the same server process. Bounded to
+# (repo + page + per_page + search + label) plus the calling user — two
+# tenants may browse the same repo slug with different PATs and must never
+# share payloads (#790). Entries expire after 60s to avoid hammering GitHub's
+# rate limit on repeated browses. Module-level so it is shared across requests
+# within the same server process. Bounded to
 # _ISSUE_CACHE_MAX_SIZE entries and swept on every set so search text (an
 # unbounded key space) can't accumulate stale payloads forever (#761).
 _ISSUE_CACHE_TTL_SECONDS = 60.0
@@ -156,14 +169,18 @@ def _issue_cache_set(key: str, payload: Any) -> None:
     _evict_issue_cache()
 
 
-def _issue_cache_invalidate(repo: str) -> None:
-    """Drop all cached issue listings for ``repo``.
+def _issue_cache_invalidate(repo: str, user_id: Optional[int]) -> None:
+    """Drop cached issue listings for ``repo`` scoped to ``user_id``.
 
     Called after an import so reopening the browse modal doesn't keep offering
     just-imported issues as selectable (they would now be skipped as dupes).
+    Keys are ``repo|page|per_page|search|label|user_id``; only drop entries
+    belonging to the calling user so one tenant's import does not wipe another's
+    cache for the same repo (#790).
     """
     prefix = f"{repo}|"
-    for key in [k for k in _ISSUE_CACHE if k.startswith(prefix)]:
+    suffix = f"|{user_id}"
+    for key in [k for k in _ISSUE_CACHE if k.startswith(prefix) and k.endswith(suffix)]:
         _ISSUE_CACHE.pop(key, None)
 
 
@@ -172,12 +189,12 @@ def _issue_cache_invalidate(repo: str) -> None:
 async def get_status(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
-    manager: CredentialManager = Depends(get_credential_manager),
+    manager: CredentialManager = Depends(get_credential_manager_readonly),
 ) -> StatusResponse:
     """Report whether a GitHub repo is connected for this workspace.
 
     Connected means BOTH the per-workspace repo metadata exists AND the
-    machine-wide GitHub PAT is present (env var or stored).
+    calling user's GitHub PAT is present (env var or stored).
     """
     cfg = load_github_integration_config(workspace)
     has_pat = manager.get_credential(CredentialProvider.GIT_GITHUB) is not None
@@ -194,7 +211,6 @@ async def get_status(
 @router.post(
     "/connect",
     response_model=ConnectResponse,
-    dependencies=[Depends(forbid_shared_credentials_in_hosted_mode)],  # shared PAT, not cross-tenant (#718)
 )
 @rate_limit_ai()
 async def connect(
@@ -202,6 +218,7 @@ async def connect(
     body: ConnectRequest,
     workspace: Workspace = Depends(get_v2_workspace),
     manager: CredentialManager = Depends(get_credential_manager),
+    _auth: dict = Depends(require_scope(SCOPE_ADMIN)),  # PAT storage is admin-only (#717/#790)
 ) -> ConnectResponse:
     """Validate a PAT against the target repo, then store the PAT + repo metadata.
 
@@ -249,10 +266,10 @@ async def connect(
             detail=api_error(str(e), ErrorCodes.EXECUTION_FAILED),
         )
 
-    # Validation passed — store the PAT (machine-wide) and repo metadata.
-    # The GIT_GITHUB slot is shared machine-wide with the API Keys tab, so
-    # capture any prior token first to restore it if the config write fails —
-    # never blindly delete an unrelated, previously working credential.
+    # Validation passed — store the PAT (per user, #790) and repo metadata.
+    # The GIT_GITHUB slot is shared with the API Keys tab, so capture any
+    # prior token first to restore it if the config write fails — never
+    # blindly delete an unrelated, previously working credential.
     prior_pat = manager.get_credential(CredentialProvider.GIT_GITHUB)
     try:
         manager.set_credential(CredentialProvider.GIT_GITHUB, body.pat)
@@ -306,13 +323,13 @@ async def connect(
 @router.delete(
     "/disconnect",
     status_code=204,
-    dependencies=[Depends(forbid_shared_credentials_in_hosted_mode)],  # shared PAT, not cross-tenant (#718)
 )
 @rate_limit_standard()
 async def disconnect(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
     manager: CredentialManager = Depends(get_credential_manager),
+    _auth: dict = Depends(require_scope(SCOPE_ADMIN)),  # PAT deletion is admin-only (#717/#790)
 ) -> Response:
     """Clear stored repo metadata and delete the GitHub PAT. Idempotent."""
     clear_github_integration_config(workspace)
@@ -335,14 +352,16 @@ async def get_issues(
     search: str = Query("", description="Free-text title/body search"),
     label: str = Query("", description="Filter by a single label name"),
     workspace: Workspace = Depends(get_v2_workspace),
-    manager: CredentialManager = Depends(get_credential_manager),
+    manager: CredentialManager = Depends(get_credential_manager_readonly),
+    auth: dict = Depends(require_auth),
 ) -> GitHubIssuesResponse:
     """List the connected repository's **open** issues for the import browser.
 
     Requires an established connection (#563): repo metadata in
     ``.codeframe/github_integration.json`` AND a stored GitHub PAT. Responses
-    are cached in-process for 60s keyed by the full query to avoid GitHub
-    rate-limit pressure during paging/searching. The PAT is never returned.
+    are cached in-process for 60s keyed by the full query plus the calling
+    user (#790) to avoid GitHub rate-limit pressure during paging/searching.
+    The PAT is never returned.
     """
     cfg = load_github_integration_config(workspace)
     pat = manager.get_credential(CredentialProvider.GIT_GITHUB)
@@ -360,7 +379,9 @@ async def get_issues(
     per_page = max(1, min(per_page, 100))
     repo = cfg["repo"]
 
-    cache_key = f"{repo}|{page}|{per_page}|{search}|{label}"
+    # The user component keeps the repo|-prefixed invalidation in
+    # _issue_cache_invalidate working while separating tenants (#790).
+    cache_key = f"{repo}|{page}|{per_page}|{search}|{label}|{auth.get('user_id')}"
     cached = _issue_cache_get(cache_key)
     if cached is not None:
         return cached
@@ -452,7 +473,8 @@ async def import_issues(
     request: Request,
     body: ImportRequest,
     workspace: Workspace = Depends(get_v2_workspace),
-    manager: CredentialManager = Depends(get_credential_manager),
+    manager: CredentialManager = Depends(get_credential_manager_readonly),  # read-only: uses PAT, doesn't store (#790)
+    auth: dict = Depends(require_auth),
 ) -> ImportResponse:
     """Import selected GitHub issues as CodeFRAME tasks (issue #565).
 
@@ -558,7 +580,8 @@ async def import_issues(
     # Invalidate the browse cache so a re-open reflects current duplicate state.
     # Always — even a skipped-only import (issues created by another tab/process)
     # must drop the stale listing that still offers them as selectable.
-    _issue_cache_invalidate(repo)
+    # Scoped to the caller so one tenant's import does not flush another's cache.
+    _issue_cache_invalidate(repo, auth.get("user_id"))
 
     return ImportResponse(
         created=created, skipped=skipped, total_created=len(created)

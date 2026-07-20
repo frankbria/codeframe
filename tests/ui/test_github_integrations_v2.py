@@ -63,6 +63,9 @@ def client(workspace, manager):
     app.dependency_overrides[github_integrations_v2.get_credential_manager] = (
         lambda: manager
     )
+    app.dependency_overrides[github_integrations_v2.get_credential_manager_readonly] = (
+        lambda: manager
+    )
     return TestClient(app)
 
 
@@ -304,6 +307,20 @@ class TestIssueCacheEviction:
         assert len(gi._ISSUE_CACHE) == 3
         assert "repo|new" in gi._ISSUE_CACHE
         assert "repo|0" not in gi._ISSUE_CACHE
+
+    def test_invalidation_scoped_to_calling_user(self, monkeypatch):
+        """User A's import drops A's cache entries but leaves user B's alone (#790)."""
+        from codeframe.ui.routers import github_integrations_v2 as gi
+
+        _clear_issue_cache()
+        base = gi.time.monotonic()
+        gi._ISSUE_CACHE["acme/app|1|25|||1"] = (base + 60.0, "a-payload")
+        gi._ISSUE_CACHE["acme/app|1|25|||2"] = (base + 60.0, "b-payload")
+
+        gi._issue_cache_invalidate("acme/app", 1)
+
+        assert "acme/app|1|25|||1" not in gi._ISSUE_CACHE
+        assert "acme/app|1|25|||2" in gi._ISSUE_CACHE
 
 
 class TestListIssues:

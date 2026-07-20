@@ -11,9 +11,11 @@ Routes:
     PUT    /api/v2/settings/notifications         - Save outbound webhook config
     POST   /api/v2/settings/notifications/test    - Fire a test payload and return HTTP status
 
-Key management is machine-wide (CredentialManager / keyring) and does not
-require a workspace. Env vars take precedence at read time. Notifications
-config is per-workspace and persisted under .codeframe/notifications_config.json.
+Key management is scoped per authenticated user (CredentialManager keyed by
+``auth["user_id"]``; issue #790) and does not require a workspace. With auth
+disabled (self-hosted/no-auth) the store is machine-wide. Env vars take
+precedence at read time. Notifications config is per-workspace and persisted
+under .codeframe/notifications_config.json.
 """
 
 import logging
@@ -26,8 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 
 from codeframe.auth.api_keys import SCOPE_ADMIN
-from codeframe.auth.dependencies import require_scope
-from codeframe.ui.dependencies import forbid_shared_credentials_in_hosted_mode
+from codeframe.auth.dependencies import require_auth, require_scope
 from openai import AuthenticationError as _OpenAIAuthError
 from openai import OpenAI as _OpenAIClient
 from pydantic import BaseModel, Field
@@ -77,12 +78,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v2/settings", tags=["settings"])
 
 
-def get_credential_manager() -> CredentialManager:
-    """Dependency: machine-wide CredentialManager.
+def get_credential_manager(auth: dict = Depends(require_auth)) -> CredentialManager:
+    """Dependency: CredentialManager scoped to the authenticated user (#790).
 
-    Overridden in tests to point at an isolated temp directory.
+    ``user_id=None`` (auth disabled / self-hosted) yields the machine-wide
+    store. Overridden in tests to point at an isolated temp directory.
+    Runs the machine-wide migration — use only on write (admin-scoped) paths.
     """
-    return CredentialManager()
+    return CredentialManager(user_id=auth.get("user_id"), migrate=True)
+
+
+def get_credential_manager_readonly(auth: dict = Depends(require_auth)) -> CredentialManager:
+    """Read-only variant: scoped to the authenticated user but skips migration.
+
+    Used on GET endpoints so that a plain status check cannot trigger a
+    credential write into a new tenant's store (#790).
+    """
+    return CredentialManager(user_id=auth.get("user_id"), migrate=False)
 
 
 def _config_to_response(config: EnvironmentConfig) -> AgentSettingsResponse:
@@ -170,9 +182,10 @@ async def update_settings(
 # ============================================================================
 # API Key Management (issue #555)
 #
-# These endpoints are machine-wide: they do not require a workspace. Keys are
-# stored via CredentialManager (platform keyring or encrypted file fallback).
-# Plaintext key values are NEVER returned in any response.
+# These endpoints do not require a workspace. Keys are stored via
+# CredentialManager scoped to the authenticated user (#790) — machine-wide
+# when auth is disabled. Plaintext key values are NEVER returned in any
+# response.
 # ============================================================================
 
 # Map the public provider name to the internal CredentialProvider enum.
@@ -233,7 +246,7 @@ def _build_status(
 @rate_limit_standard()
 async def list_key_status(
     request: Request,
-    manager: CredentialManager = Depends(get_credential_manager),
+    manager: CredentialManager = Depends(get_credential_manager_readonly),
 ) -> list[KeyStatusResponse]:
     """Return status of each known API key without exposing plaintext."""
     return [_build_status(p, manager) for p in KEY_PROVIDERS]
@@ -242,16 +255,13 @@ async def list_key_status(
 @router.put(
     "/keys/{provider}",
     response_model=KeyStatusResponse,
-    dependencies=[
-        Depends(require_scope(SCOPE_ADMIN)),  # credential storage is admin-only (#717)
-        Depends(forbid_shared_credentials_in_hosted_mode),  # not shareable across tenants (#718)
-    ],
 )
 @rate_limit_standard()
 async def store_key(
     provider: str,
     body: StoreKeyRequest,
     request: Request,
+    auth: dict = Depends(require_scope(SCOPE_ADMIN)),  # credential storage is admin-only (#717)
     manager: CredentialManager = Depends(get_credential_manager),
 ) -> KeyStatusResponse:
     """Store an API key for the given provider after validating its format."""
@@ -282,15 +292,12 @@ async def store_key(
 @router.delete(
     "/keys/{provider}",
     status_code=204,
-    dependencies=[
-        Depends(require_scope(SCOPE_ADMIN)),  # credential deletion is admin-only (#717)
-        Depends(forbid_shared_credentials_in_hosted_mode),  # not shareable across tenants (#718)
-    ],
 )
 @rate_limit_standard()
 async def delete_key(
     provider: str,
     request: Request,
+    auth: dict = Depends(require_scope(SCOPE_ADMIN)),  # credential deletion is admin-only (#717)
     manager: CredentialManager = Depends(get_credential_manager),
 ) -> Response:
     """Delete a stored credential. Idempotent — non-existent keys are a no-op."""
@@ -395,7 +402,7 @@ def _verify_openai_sync(key: str) -> tuple[bool, str]:
 async def verify_key(
     body: VerifyKeyRequest,
     request: Request,
-    manager: CredentialManager = Depends(get_credential_manager),
+    manager: CredentialManager = Depends(get_credential_manager_readonly),
 ) -> VerifyKeyResponse:
     """Live-verify a key against its provider.
 
