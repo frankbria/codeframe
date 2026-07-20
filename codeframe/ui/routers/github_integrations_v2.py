@@ -22,7 +22,8 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
-from codeframe.auth.dependencies import require_auth
+from codeframe.auth.api_keys import SCOPE_ADMIN
+from codeframe.auth.dependencies import require_auth, require_scope
 from codeframe.core.credentials import CredentialManager, CredentialProvider
 from codeframe.core.github_connect_service import (
     GitHubConnectError,
@@ -217,6 +218,7 @@ async def connect(
     body: ConnectRequest,
     workspace: Workspace = Depends(get_v2_workspace),
     manager: CredentialManager = Depends(get_credential_manager),
+    _auth: dict = Depends(require_scope(SCOPE_ADMIN)),  # PAT storage is admin-only (#717/#790)
 ) -> ConnectResponse:
     """Validate a PAT against the target repo, then store the PAT + repo metadata.
 
@@ -327,6 +329,7 @@ async def disconnect(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
     manager: CredentialManager = Depends(get_credential_manager),
+    _auth: dict = Depends(require_scope(SCOPE_ADMIN)),  # PAT deletion is admin-only (#717/#790)
 ) -> Response:
     """Clear stored repo metadata and delete the GitHub PAT. Idempotent."""
     clear_github_integration_config(workspace)
@@ -470,7 +473,7 @@ async def import_issues(
     request: Request,
     body: ImportRequest,
     workspace: Workspace = Depends(get_v2_workspace),
-    manager: CredentialManager = Depends(get_credential_manager),
+    manager: CredentialManager = Depends(get_credential_manager_readonly),  # read-only: uses PAT, doesn't store (#790)
     auth: dict = Depends(require_auth),
 ) -> ImportResponse:
     """Import selected GitHub issues as CodeFRAME tasks (issue #565).
