@@ -59,7 +59,7 @@ def many_batches(workspace):
     return workspace, created
 
 
-class TestFindBatchByPrefixResolvesBeyon100:
+class TestFindBatchByPrefixResolvesBeyond100:
     def test_resolves_batch_beyond_first_100(self, many_batches):
         """AC1: a batch sorted past position 100 is resolvable by prefix."""
         workspace, created = many_batches
@@ -106,3 +106,46 @@ class TestFindBatchByPrefixResolvesBeyon100:
         """A backslash in the prefix is escaped and returns empty (no UUID match)."""
         _make_batch(workspace)
         assert conductor.find_batch_by_prefix(workspace, "\\") == []
+
+
+class TestCliAmbiguousPrefixIsRejected:
+    """Uncapped resolution widens the collision surface, so every batch CLI
+    command must refuse an ambiguous prefix rather than silently act on the
+    first match (matching the task-side ``Multiple tasks match`` guard). This
+    is the merge-blocking finding from PR #872's cross-family review.
+    """
+
+    def _seed_colliding_pair(self, workspace) -> None:
+        """Two batches sharing the prefix ``dupe`` so ``dupe`` matches both."""
+        for suffix in ("0001", "0002"):
+            _save_batch(
+                workspace,
+                BatchRun(
+                    id=f"dupe{suffix}-1111-1111-1111-111111111111",
+                    workspace_id=workspace.id,
+                    task_ids=[],
+                    status=BatchStatus.PENDING,
+                    strategy="serial",
+                    max_parallel=1,
+                    on_failure=OnFailure.CONTINUE,
+                    started_at=_utc_now(),
+                    completed_at=None,
+                ),
+            )
+
+    @pytest.mark.parametrize("subcommand", ["status", "stop", "resume", "follow"])
+    def test_ambiguous_prefix_errors_and_exits(self, workspace, subcommand):
+        from typer.testing import CliRunner
+
+        from codeframe.cli.app import app
+
+        self._seed_colliding_pair(workspace)
+        runner = CliRunner(env={"COLUMNS": "200", "NO_COLOR": "1"})
+
+        result = runner.invoke(
+            app,
+            ["work", "batch", subcommand, "dupe", "-w", str(workspace.repo_path)],
+        )
+
+        assert result.exit_code == 1, result.output
+        assert "Multiple batches match" in result.output

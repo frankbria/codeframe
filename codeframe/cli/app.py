@@ -4024,6 +4024,12 @@ def batch_status(
                 console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
                 raise typer.Exit(1)
 
+            if len(matching) > 1:
+                console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+                for b in matching[:5]:
+                    console.print(f"  {b.id[:8]} ({b.status.value})")
+                raise typer.Exit(1)
+
             batch = matching[0]
 
             # Status color
@@ -4168,6 +4174,12 @@ def batch_stop(
             console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
             raise typer.Exit(1)
 
+        if len(matching) > 1:
+            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+            for b in matching[:5]:
+                console.print(f"  {b.id[:8]} ({b.status.value})")
+            raise typer.Exit(1)
+
         batch = matching[0]
 
         if batch.status.value not in ("PENDING", "RUNNING"):
@@ -4237,10 +4249,10 @@ def batch_resume(
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[yellow]Warning:[/yellow] Multiple batches match '{batch_id}':")
+            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
             for b in matching[:5]:
-                console.print(f"  - {b.id[:8]} ({b.status.value})")
-            console.print("Using the most recent match.")
+                console.print(f"  {b.id[:8]} ({b.status.value})")
+            raise typer.Exit(1)
 
         batch = matching[0]
 
@@ -4432,6 +4444,12 @@ ETA: {eta} | Elapsed: {elapsed}"""
 
         if not matching:
             console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            raise typer.Exit(1)
+
+        if len(matching) > 1:
+            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+            for b in matching[:5]:
+                console.print(f"  {b.id[:8]} ({b.status.value})")
             raise typer.Exit(1)
 
         batch = matching[0]
