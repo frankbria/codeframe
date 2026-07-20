@@ -4017,12 +4017,17 @@ def batch_status(
 
         if batch_id:
             # Show specific batch
-            # Find by partial ID
-            all_batches = conductor.list_batches(workspace, limit=100)
-            matching = [b for b in all_batches if b.id.startswith(batch_id)]
+            # Find by partial ID (SQL LIKE — no cap, resolves batches beyond 100)
+            matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
             if not matching:
                 console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+                raise typer.Exit(1)
+
+            if len(matching) > 1:
+                console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+                for b in matching[:5]:
+                    console.print(f"  {b.id[:8]} ({b.status.value})")
                 raise typer.Exit(1)
 
             batch = matching[0]
@@ -4162,12 +4167,17 @@ def batch_stop(
     try:
         workspace = get_workspace(path)
 
-        # Find by partial ID
-        all_batches = conductor.list_batches(workspace, limit=100)
-        matching = [b for b in all_batches if b.id.startswith(batch_id)]
+        # Find by partial ID (SQL LIKE — no cap, resolves batches beyond 100)
+        matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
         if not matching:
             console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            raise typer.Exit(1)
+
+        if len(matching) > 1:
+            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+            for b in matching[:5]:
+                console.print(f"  {b.id[:8]} ({b.status.value})")
             raise typer.Exit(1)
 
         batch = matching[0]
@@ -4231,19 +4241,18 @@ def batch_resume(
     try:
         workspace = get_workspace(path)
 
-        # Find by partial ID
-        all_batches = conductor.list_batches(workspace, limit=100)
-        matching = [b for b in all_batches if b.id.startswith(batch_id)]
+        # Find by partial ID (SQL LIKE — no cap, resolves batches beyond 100)
+        matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
         if not matching:
             console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[yellow]Warning:[/yellow] Multiple batches match '{batch_id}':")
+            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
             for b in matching[:5]:
-                console.print(f"  - {b.id[:8]} ({b.status.value})")
-            console.print("Using the most recent match.")
+                console.print(f"  {b.id[:8]} ({b.status.value})")
+            raise typer.Exit(1)
 
         batch = matching[0]
 
@@ -4430,12 +4439,17 @@ ETA: {eta} | Elapsed: {elapsed}"""
     try:
         workspace = get_workspace(path)
 
-        # Find batch by partial ID
-        all_batches = conductor.list_batches(workspace, limit=100)
-        matching = [b for b in all_batches if b.id.startswith(batch_id)]
+        # Find batch by partial ID (SQL LIKE — no cap, resolves batches beyond 100)
+        matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
         if not matching:
             console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            raise typer.Exit(1)
+
+        if len(matching) > 1:
+            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+            for b in matching[:5]:
+                console.print(f"  {b.id[:8]} ({b.status.value})")
             raise typer.Exit(1)
 
         batch = matching[0]
