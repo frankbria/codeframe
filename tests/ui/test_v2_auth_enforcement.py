@@ -90,7 +90,38 @@ def _build_auth_app(tmp_path, monkeypatch, *, enable_test_endpoints):
     from codeframe.ui import server
 
     importlib.reload(server)
+
+    # Isolate the credential store: authenticated requests carry user_id=1 and
+    # the per-user CredentialManager (#790) would otherwise probe — and migrate
+    # entries out of — the developer's real ~/.codeframe store.
+    from codeframe.core.credentials import CredentialManager, CredentialStore
+    from codeframe.ui.routers import github_integrations_v2, settings_v2
+
+    cred_store = CredentialStore(storage_dir=tmp_path / "creds")
+    cred_store._keyring_available = False
+    cred_manager = CredentialManager.__new__(CredentialManager)
+    cred_manager._store = cred_store
+    for dep in (
+        settings_v2.get_credential_manager,
+        settings_v2.get_credential_manager_readonly,
+        github_integrations_v2.get_credential_manager,
+        github_integrations_v2.get_credential_manager_readonly,
+    ):
+        server.app.dependency_overrides[dep] = lambda: cred_manager
+
     return server.app
+
+
+def _pop_credential_overrides(app) -> None:
+    from codeframe.ui.routers import github_integrations_v2, settings_v2
+
+    for dep in (
+        settings_v2.get_credential_manager,
+        settings_v2.get_credential_manager_readonly,
+        github_integrations_v2.get_credential_manager,
+        github_integrations_v2.get_credential_manager_readonly,
+    ):
+        app.dependency_overrides.pop(dep, None)
 
 
 @pytest.fixture
@@ -98,6 +129,7 @@ def auth_app(tmp_path, monkeypatch):
     """Real server app with auth enforcement and test endpoints enabled."""
     app = _build_auth_app(tmp_path, monkeypatch, enable_test_endpoints=True)
     yield app
+    _pop_credential_overrides(app)
     reset_auth_engine()
 
 
@@ -106,6 +138,7 @@ def auth_app_no_test_endpoints(tmp_path, monkeypatch):
     """Real server app with auth enforcement but NO test endpoints (#753)."""
     app = _build_auth_app(tmp_path, monkeypatch, enable_test_endpoints=False)
     yield app
+    _pop_credential_overrides(app)
     reset_auth_engine()
 
 

@@ -236,6 +236,62 @@ class TestAutoCloseDispatch:
         tasks.update_status(workspace, task.id, TaskStatus.DONE)
         assert calls == []
 
+    def test_done_ignores_per_user_stored_pat(self, workspace, tmp_path, monkeypatch):
+        """Autoclose uses the machine-wide store / env; per-user stored PATs
+        are not picked up (#790 known limitation).
+        """
+        from codeframe.core import credentials as creds_mod
+        from codeframe.core.credentials import (
+            CredentialManager,
+            CredentialProvider,
+            CredentialStore,
+        )
+
+        # Keep this test off the real keyring/secret-service backend.
+        monkeypatch.setattr(CredentialStore, "_check_keyring", lambda self: False)
+
+        calls = []
+        monkeypatch.setattr(
+            tasks,
+            "_close_issue_background",
+            lambda pat, repo, number: calls.append((pat, repo, number)),
+        )
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+        # Seed a per-user store with a valid PAT.
+        per_user = CredentialManager(storage_dir=tmp_path, user_id=1)
+        per_user.set_credential(CredentialProvider.GIT_GITHUB, "test-github-token-per-user-only-fake-0000")
+
+        # The dispatch uses a machine-wide manager; make it an empty one so a
+        # real per-user credential cannot accidentally leak through.
+        machine_wide = CredentialManager(storage_dir=tmp_path)
+
+        real_manager = creds_mod.CredentialManager
+        created_user_ids = []
+
+        def fake_manager(*, storage_dir=None, user_id=None):
+            created_user_ids.append(user_id)
+            if user_id is None:
+                return machine_wide
+            return real_manager(storage_dir=storage_dir, user_id=user_id)
+
+        monkeypatch.setattr(creds_mod, "CredentialManager", fake_manager)
+
+        task = tasks.create(
+            workspace,
+            title="Imported",
+            status=TaskStatus.IN_PROGRESS,
+            github_issue_number=99,
+            external_url="https://github.com/acme/app/issues/99",
+            auto_close_github_issue=True,
+        )
+        tasks.update_status(workspace, task.id, TaskStatus.DONE)
+
+        # Autoclose resolved to the machine-wide (user_id=None) manager, which
+        # had no PAT, so nothing was dispatched despite the per-user store.
+        assert created_user_ids == [None]
+        assert calls == []
+
 
 class TestUpdateAutoClose:
     def test_toggle_on_and_off(self, workspace):
@@ -253,3 +309,5 @@ class TestUpdateAutoClose:
     def test_raises_for_missing_task(self, workspace):
         with pytest.raises(ValueError, match="not found"):
             tasks.update_auto_close(workspace, "does-not-exist", True)
+
+

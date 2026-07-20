@@ -107,6 +107,16 @@ def test_hosted_mode_escape_hatch_still_fails(monkeypatch):
         server._validate_security_config()
 
 
+def test_hosted_mode_with_auth_disabled_fails_even_with_real_secret(monkeypatch):
+    """Hosted mode must never run with synthetic user_id=None principals."""
+    _set_secret(monkeypatch, "a-real-and-very-secret-value")
+    monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "hosted")
+    monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
+
+    with pytest.raises(RuntimeError, match="authentication"):
+        server._validate_security_config()
+
+
 @pytest.mark.parametrize(
     "raw",
     ["", "   ", DEFAULT_SECRET + " ", "  " + DEFAULT_SECRET, f"\t{DEFAULT_SECRET}\n"],

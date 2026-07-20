@@ -26,7 +26,9 @@ import json
 import logging
 import os
 import platform
+import threading
 import uuid
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -42,6 +44,16 @@ except ImportError:
     keyring = None
     KeyringError = Exception
 
+try:
+    from keyring.errors import PasswordDeleteError
+except ImportError:  # pragma: no cover (older keyring without this subclass)
+    PasswordDeleteError = KeyringError
+
+try:
+    from filelock import FileLock
+except ImportError:  # pragma: no cover (filelock is a declared dependency)
+    FileLock = None  # type: ignore[misc,assignment]
+
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -54,6 +66,35 @@ KEYRING_SERVICE_NAME = "codeframe-credentials"
 ENCRYPTED_FILE_NAME = "credentials.encrypted"
 SALT_FILE_NAME = "salt"
 DEFAULT_STORAGE_DIR = Path.home() / ".codeframe"
+
+# Per-process memo of completed machine-wide → per-user migrations (#790).
+# CredentialManager is constructed per request, but migration is idempotent
+# (copy-only), so one run per user storage_dir per process is enough — the
+# next process retries anything that failed. Tests that build managers via
+# ``CredentialManager.__new__`` bypass __init__ and thus this memo entirely.
+# Tests reset it with ``_MIGRATION_COMPLETE.clear()``.
+_MIGRATION_COMPLETE: set[Path] = set()
+
+# Thread locks serialize concurrent migrations for the same storage root within
+# a process. The optional file lock (requires ``filelock``) extends that
+# serialization across processes.
+_MIGRATION_THREAD_LOCKS: dict[Path, threading.Lock] = {}
+
+
+def _get_migration_locks(storage_dir: Path) -> tuple[threading.Lock, Any | None]:
+    """Return the migration locks for ``storage_dir``.
+
+    The returned tuple is ``(thread_lock, file_lock_or_none)``. ``file_lock``
+    is ``None`` when ``filelock`` is not installed; callers fall back to the
+    thread lock only and log a warning that cross-process serialization is
+    disabled.
+    """
+    lock_path = storage_dir / ".migration.lock"
+    thread_lock = _MIGRATION_THREAD_LOCKS.setdefault(lock_path, threading.Lock())
+    file_lock: Any | None = None
+    if FileLock is not None:
+        file_lock = FileLock(str(lock_path))
+    return thread_lock, file_lock
 
 
 class CredentialSource(str, Enum):
@@ -329,17 +370,41 @@ class CredentialStore:
     """Low-level credential storage.
 
     Uses platform keyring as primary storage with encrypted file fallback.
+
+    Storage is machine-wide by default (``user_id=None``). With a ``user_id``
+    the store is scoped to that user (#790): keyring entries live under a
+    per-user service name and the encrypted-file fallback lives under
+    ``<storage_dir>/users/<id>/`` with its own salt — the per-directory salt
+    yields per-user encryption keys from the unchanged key derivation.
     """
 
-    def __init__(self, storage_dir: Optional[Path] = None):
+    def __init__(self, storage_dir: Optional[Path] = None, user_id: Optional[int] = None):
         """Initialize credential store.
 
         Args:
             storage_dir: Directory for encrypted file storage
+            user_id: Scope storage to this user; None keeps machine-wide storage
         """
-        self.storage_dir = storage_dir or DEFAULT_STORAGE_DIR
+        self.user_id = user_id
+        self.storage_dir = self._resolve_storage_dir(storage_dir, user_id)
+        self._keyring_service_name = self._resolve_keyring_service_name(user_id)
         self._keyring_available = self._check_keyring()
         self._fernet: Optional[Fernet] = None
+
+    @staticmethod
+    def _resolve_storage_dir(storage_dir: Optional[Path], user_id: Optional[int]) -> Path:
+        """Per-user stores live in ``<storage_dir>/users/<id>/``."""
+        base = storage_dir or DEFAULT_STORAGE_DIR
+        if user_id is None:
+            return base
+        return base / "users" / str(user_id)
+
+    @staticmethod
+    def _resolve_keyring_service_name(user_id: Optional[int]) -> str:
+        """Per-user keyring entries are addressed under their own service."""
+        if user_id is None:
+            return KEYRING_SERVICE_NAME
+        return f"{KEYRING_SERVICE_NAME}-user-{user_id}"
 
     def _check_keyring(self) -> bool:
         """Check if keyring is available and working."""
@@ -411,6 +476,15 @@ class CredentialStore:
     def _save_encrypted_store(self, store: dict[str, dict]) -> None:
         """Save all credentials to encrypted file."""
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+        if self.user_id is not None:
+            # Per-user dirs are 0700 so other local accounts cannot enumerate
+            # tenant ids (#790). The machine-wide base dir keeps its default
+            # perms. Best-effort — Windows does not honor POSIX modes.
+            for directory in (self.storage_dir, self.storage_dir.parent):
+                try:
+                    directory.chmod(0o700)
+                except OSError:  # pragma: no cover (chmod may fail on Windows)
+                    pass
 
         file_path = self._get_encrypted_file_path()
         fernet = self._get_fernet()
@@ -446,13 +520,13 @@ class CredentialStore:
         # Try keyring first
         if self._keyring_available:
             try:
-                keyring.set_password(KEYRING_SERVICE_NAME, key, data)
+                keyring.set_password(self._keyring_service_name, key, data)
                 logger.debug(f"Stored {key} in keyring")
                 return
             except Exception as e:
                 logger.warning(f"Keyring storage failed, using encrypted file: {e}")
                 try:
-                    keyring.delete_password(KEYRING_SERVICE_NAME, key)
+                    keyring.delete_password(self._keyring_service_name, key)
                 except Exception:
                     pass
                 self._keyring_available = False
@@ -479,7 +553,7 @@ class CredentialStore:
         # Try keyring first
         if self._keyring_available:
             try:
-                data = keyring.get_password(KEYRING_SERVICE_NAME, key)
+                data = keyring.get_password(self._keyring_service_name, key)
                 if data:
                     return Credential.from_dict(json.loads(data))
             except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
@@ -509,8 +583,12 @@ class CredentialStore:
         # Try keyring
         if self._keyring_available:
             try:
-                keyring.delete_password(KEYRING_SERVICE_NAME, key)
+                keyring.delete_password(self._keyring_service_name, key)
                 logger.debug(f"Deleted {key} from keyring")
+            except PasswordDeleteError:
+                # Not in the keyring (e.g. a file-only entry) — that is
+                # "nothing to do", not a failure. Continue to file cleanup.
+                logger.debug(f"{key} not present in keyring; nothing to delete there")
             except Exception as e:
                 logger.warning(f"Keyring deletion failed: {e}")
                 raise
@@ -553,15 +631,80 @@ class CredentialManager:
 
     Provides environment variable override, storage abstraction,
     and credential lifecycle management.
+
+    With ``user_id`` the underlying store is scoped to that user (#790); the
+    first per-user manager also copies any legacy machine-wide entries into
+    the user's store while leaving the machine-wide source intact.
+    ``user_id=None`` is the machine-wide store itself and never migrates.
     """
 
-    def __init__(self, storage_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        storage_dir: Optional[Path] = None,
+        user_id: Optional[int] = None,
+        migrate: bool = True,
+    ):
         """Initialize credential manager.
 
         Args:
             storage_dir: Directory for credential storage
+            user_id: Scope credentials to this user; None keeps the machine-wide store
+            migrate: Whether to run the machine-wide → per-user migration on first
+                construction for this user.  Pass ``False`` from read-only endpoints
+                so that a plain GET cannot write credentials into a new tenant store
+                (the admin-scoped PUT/POST paths keep the default ``True``).
         """
-        self._store = CredentialStore(storage_dir)
+        self._user_id = user_id
+        self._storage_dir = storage_dir
+        self._store = CredentialStore(storage_dir, user_id=user_id)
+        if migrate and user_id is not None:
+            if self._store.storage_dir not in _MIGRATION_COMPLETE:
+                self._migrate_machine_wide_entries()
+                _MIGRATION_COMPLETE.add(self._store.storage_dir)
+
+    def _migrate_machine_wide_entries(self) -> None:
+        """Copy legacy machine-wide credentials into this user's store (#790).
+
+        Probes every known provider (the keyring backend cannot enumerate, so
+        the enum is the probe list — same trick as ``list_credentials``), copies
+        entries the user's store lacks, and leaves the machine-wide entries in
+        place. Idempotent; first-come-first-served for the per-user copy only.
+        The machine-wide file + salt are left in place so legacy managers
+        (CLI/background, ``user_id=None``) continue to work and autoclose keeps
+        seeing the source credential.
+
+        A thread lock and an optional file lock (when ``filelock`` is installed)
+        serialize concurrent migrations for the same storage root, protecting
+        the per-user store's read-modify-write save from concurrent first-time
+        requests for the same user.
+        """
+        machine_store = CredentialStore(self._storage_dir)
+        if FileLock is None:
+            logger.warning(
+                "filelock is not installed; cross-process migration serialization "
+                "is disabled. Install filelock for multi-process deployments."
+            )
+
+        thread_lock, file_lock = _get_migration_locks(machine_store.storage_dir)
+        with ExitStack() as stack:
+            stack.enter_context(thread_lock)
+            if file_lock is not None:
+                stack.enter_context(file_lock)
+
+            copied: list[str] = []
+            for provider in CredentialProvider:
+                if self._store.retrieve(provider) is not None:
+                    continue
+                credential = machine_store.retrieve(provider)
+                if credential is None:
+                    continue
+                self._store.store(credential)
+                copied.append(provider.name)
+            if copied:
+                logger.info(
+                    f"Copied {len(copied)} legacy credential(s) into user "
+                    f"{self._user_id}'s store: {', '.join(copied)}"
+                )
 
     def get_credential(
         self,

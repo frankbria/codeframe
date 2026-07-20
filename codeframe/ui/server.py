@@ -124,26 +124,37 @@ def _validate_security_config():
 
     Raises:
         RuntimeError: If auth is enabled (or hosted mode) while the default
-            secret is in use and no escape hatch applies.
+            secret is in use and no escape hatch applies, or if hosted mode is
+            requested with authentication disabled.
     """
     from codeframe.auth.manager import SECRET, DEFAULT_SECRET
     from codeframe.auth.dependencies import auth_required
 
+    deployment_mode = get_deployment_mode()
+
+    # Hosted/production mode checks must run regardless of whether the secret is
+    # custom, because hosted mode must never run with auth disabled.
+    if deployment_mode == DeploymentMode.HOSTED:
+        # Never tolerate the default secret. The dev escape hatch is
+        # intentionally NOT honored here.
+        if SECRET == DEFAULT_SECRET:
+            raise RuntimeError(
+                "🚨 SECURITY: AUTH_SECRET must be set in hosted/production mode. "
+                "Using the default secret compromises all JWT tokens. "
+                "Set the AUTH_SECRET environment variable to a secure random value "
+                "(e.g. `openssl rand -hex 32`)."
+            )
+        if not auth_required():
+            raise RuntimeError(
+                "Hosted mode requires authentication. "
+                "Set CODEFRAME_AUTH_REQUIRED=true (or equivalent) and configure a secure AUTH_SECRET."
+            )
+        # Hosted mode with a real secret and auth enabled is safe to start.
+        return
+
     if SECRET != DEFAULT_SECRET:
         logger.info("🔐 AUTH_SECRET configured (custom secret in use)")
         return
-
-    deployment_mode = get_deployment_mode()
-
-    # Hosted/production mode: never tolerate the default secret. The dev escape
-    # hatch is intentionally NOT honored here.
-    if deployment_mode == DeploymentMode.HOSTED:
-        raise RuntimeError(
-            "🚨 SECURITY: AUTH_SECRET must be set in hosted/production mode. "
-            "Using the default secret compromises all JWT tokens. "
-            "Set the AUTH_SECRET environment variable to a secure random value "
-            "(e.g. `openssl rand -hex 32`)."
-        )
 
     # Self-hosted with auth enabled: forging a JWT is trivial with the known
     # default secret, so refuse to start unless the operator has explicitly
