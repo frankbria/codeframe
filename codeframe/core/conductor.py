@@ -827,6 +827,48 @@ def list_batches(
     return [_row_to_batch(row) for row in rows]
 
 
+def find_batch_by_prefix(workspace: Workspace, prefix: str) -> list[BatchRun]:
+    """Resolve batches whose id starts with ``prefix`` (SQL ``LIKE``, no cap).
+
+    The CLI accepts partial batch ids. Doing that in Python over
+    ``list_batches(limit=100)`` meant any batch beyond the cap was unreachable
+    (#825). This resolves at the SQL layer with no ``LIMIT`` so every matching
+    batch is addressable regardless of how many batches exist.
+
+    Returns all matches (possibly >1) so callers can report ambiguity.
+
+    Args:
+        workspace: Workspace to query
+        prefix: Batch id prefix (user-typed; may be partial)
+
+    Returns:
+        List of matching BatchRuns, newest first.
+    """
+    # Batch IDs are UUIDs (no _/%), but the prefix is user-typed — escape LIKE
+    # metachars so a stray wildcard can't over-match the wrong batch.
+    escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    conn = get_db_connection(workspace)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
+                   on_failure, started_at, completed_at, results, engine,
+                   isolation, stall_timeout_s, stall_action, concurrency_by_status,
+                   llm_provider, llm_model
+            FROM batch_runs
+            WHERE workspace_id = ? AND id LIKE ? ESCAPE '\\'
+            ORDER BY started_at DESC
+            """,
+            (workspace.id, f"{escaped}%"),
+        )
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    return [_row_to_batch(row) for row in rows]
+
+
 def cancel_batch(workspace: Workspace, batch_id: str) -> BatchRun:
     """Cancel a running batch.
 
