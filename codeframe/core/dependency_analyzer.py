@@ -11,7 +11,6 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import json
-import os
 import re
 from typing import Optional
 
@@ -81,7 +80,11 @@ def analyze_dependencies(
 
     # Get or create LLM provider
     if provider is None:
-        provider = _get_default_provider()
+        # Resolve via the shared chain (#861):
+        # CODEFRAME_LLM_PROVIDER → .codeframe/config.yaml → anthropic.
+        from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+
+        provider = create_provider(resolve_llm_settings(workspace.repo_path))
 
     # Call LLM
     response = provider.complete(
@@ -211,19 +214,3 @@ def apply_inferred_dependencies(
         if deps:
             task_module.update_depends_on(workspace, task_id, deps)
 
-
-def _get_default_provider():
-    """Get the default Anthropic LLM provider.
-
-    Returns:
-        AnthropicProvider instance
-
-    Raises:
-        ValueError: If ANTHROPIC_API_KEY not set
-    """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY environment variable not set")
-
-    from codeframe.adapters.llm.anthropic import AnthropicProvider
-    return AnthropicProvider(api_key=api_key)
