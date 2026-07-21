@@ -128,7 +128,7 @@ class TestPrdGenerateCommand:
         assert result.exit_code == 1
         assert "ANTHROPIC_API_KEY" in result.output
 
-    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    @patch("codeframe.core.llm_resolution.create_provider")
     def test_command_starts_discovery(
         self, mock_provider_class, workspace_dir: Path, monkeypatch, mock_llm_provider
     ):
@@ -153,7 +153,7 @@ class TestPrdGenerateCommand:
         # Should start discovery
         assert "AI-driven" in result.output or "discovery" in result.output.lower()
 
-    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    @patch("codeframe.core.llm_resolution.create_provider")
     def test_existing_prd_prompts_confirmation(
         self, mock_provider_class, workspace_dir: Path, monkeypatch, mock_llm_provider
     ):
@@ -179,7 +179,7 @@ class TestPrdGenerateCommand:
 
         assert "Cancelled" in result.output or "existing" in result.output.lower()
 
-    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    @patch("codeframe.core.llm_resolution.create_provider")
     def test_help_command_shows_commands(
         self, mock_provider_class, workspace_dir: Path, monkeypatch, mock_llm_provider
     ):
@@ -203,7 +203,7 @@ class TestPrdGenerateCommand:
         assert "/pause" in result.output
         assert "/quit" in result.output
 
-    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    @patch("codeframe.core.llm_resolution.create_provider")
     def test_pause_saves_progress(
         self, mock_provider_class, workspace_dir: Path, monkeypatch, mock_llm_provider
     ):
@@ -231,7 +231,7 @@ class TestPrdGenerateCommand:
 class TestPrdGenerateResume:
     """Tests for resuming paused discovery sessions."""
 
-    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    @patch("codeframe.core.llm_resolution.create_provider")
     def test_resume_with_invalid_blocker(
         self, mock_provider_class, workspace_dir: Path, monkeypatch, mock_llm_provider
     ):
@@ -252,7 +252,7 @@ class TestPrdGenerateResume:
 class TestPrdGenerateComplete:
     """Tests for completing discovery and generating PRD."""
 
-    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    @patch("codeframe.core.llm_resolution.create_provider")
     def test_complete_discovery_generates_prd(
         self, mock_provider_class, workspace_dir: Path, monkeypatch
     ):
@@ -330,7 +330,7 @@ Mobile"""
         prd_record = prd.get_latest(workspace)
         assert prd_record is not None
 
-    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    @patch("codeframe.core.llm_resolution.create_provider")
     def test_generated_prd_shows_preview(
         self, mock_provider_class, workspace_dir: Path, monkeypatch
     ):
@@ -402,7 +402,7 @@ Rollback"""
 class TestPrdGenerateValidation:
     """Tests for AI validation during discovery."""
 
-    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    @patch("codeframe.core.llm_resolution.create_provider")
     def test_ai_rejects_vague_answer(
         self, mock_provider_class, workspace_dir: Path, monkeypatch
     ):
