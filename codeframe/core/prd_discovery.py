@@ -222,7 +222,10 @@ class PrdDiscoverySession:
 
     Attributes:
         workspace: The workspace this session belongs to
-        api_key: API key for LLM provider (required)
+        api_key: Optional; when set, constructs an ``AnthropicProvider``
+            with this key (legacy contract). When unset, the provider is
+            resolved via the ``llm_resolution`` chain (#861):
+            ``CODEFRAME_LLM_PROVIDER`` → ``.codeframe/config.yaml`` → anthropic.
         session_id: Unique session identifier
         state: Current session state
     """
