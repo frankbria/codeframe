@@ -239,15 +239,33 @@ class PrdDiscoverySession:
     _is_complete: bool = field(default=False, init=False)
 
     def __post_init__(self):
-        """Initialize the LLM provider."""
-        key = self.api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not key:
+        """Initialize the LLM provider.
+
+        Resolution order (#861):
+        1. ``api_key`` set → ``AnthropicProvider(api_key=...)`` (legacy contract;
+           preserves existing callers passing an explicit key).
+        2. Otherwise → shared ``llm_resolution`` chain
+           (``CODEFRAME_LLM_PROVIDER`` → ``.codeframe/config.yaml`` → anthropic).
+           When the resolved provider requires an API key (see
+           ``LLMSettings.required_key_env``) and it is missing from the
+           environment, ``NoApiKeyError`` is raised — generalizes the previous
+           Anthropic-only check to all keyed providers.
+        """
+        if self.api_key:
+            self._llm_provider = AnthropicProvider(api_key=self.api_key)
+            return
+
+        from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+
+        settings = resolve_llm_settings(self.workspace.repo_path)
+        required_env = settings.required_key_env
+        if required_env and not os.getenv(required_env, ""):
             raise NoApiKeyError(
-                "ANTHROPIC_API_KEY is required for AI-driven discovery. "
+                f"{required_env} is required for AI-driven discovery "
+                f"(resolved provider: {settings.provider_type}). "
                 "Set the environment variable or pass api_key parameter."
             )
-
-        self._llm_provider = AnthropicProvider(api_key=key)
+        self._llm_provider = create_provider(settings)
 
     @property
     def answered_count(self) -> int:

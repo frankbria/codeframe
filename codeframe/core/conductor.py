@@ -119,10 +119,15 @@ class SupervisorResolver:
 
     @property
     def llm(self):
-        """Lazy-load LLM provider."""
+        """Lazy-load LLM provider.
+
+        Resolves via the shared ``llm_resolution`` chain (#861):
+        ``CODEFRAME_LLM_PROVIDER`` → ``.codeframe/config.yaml`` → anthropic.
+        """
         if self._llm is None:
-            from codeframe.adapters.llm import get_provider
-            self._llm = get_provider()
+            from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+
+            self._llm = create_provider(resolve_llm_settings(self.workspace.repo_path))
         return self._llm
 
     def try_resolve_blocked_task(self, task_id: str) -> bool:

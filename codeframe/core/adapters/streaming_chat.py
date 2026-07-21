@@ -182,11 +182,15 @@ class StreamingChatAdapter:
         if provider is None:
             # Backward-compatibility fallback: callers that haven't been
             # updated to pass an explicit provider (e.g. tests using the old
-            # api_key= constructor argument) still get an AnthropicProvider.
-            # New callers should construct the provider themselves and pass it
-            # in — see session_chat_ws.py for the recommended pattern.
-            from codeframe.adapters.llm.anthropic import AnthropicProvider
-            provider = AnthropicProvider(api_key=api_key)
+            # api_key= constructor argument) get the shared-chain provider
+            # (CODEFRAME_LLM_PROVIDER → .codeframe/config.yaml → anthropic,
+            # per #861). New callers should construct the provider themselves
+            # and pass it in — see session_chat_ws.py for the recommended
+            # pattern.
+            from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+
+            settings = resolve_llm_settings(workspace_path, model_flag=model)
+            provider = create_provider(settings)
 
         self._session_id = session_id
         self._db_repo = db_repo
