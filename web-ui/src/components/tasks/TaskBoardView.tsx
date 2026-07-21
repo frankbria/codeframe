@@ -10,7 +10,8 @@ import { TaskFilters } from './TaskFilters';
 import { BatchActionsBar } from './BatchActionsBar';
 import { BulkActionConfirmDialog, type BulkActionType } from './BulkActionConfirmDialog';
 import { GitHubIssueImportModal } from './GitHubIssueImportModal';
-import { Cancel01Icon, Task01Icon, GithubIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon, Task01Icon, GithubIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { tasksApi, prdApi, costsApi, integrationsApi } from '@/lib/api';
 import { useRequirementsLookup } from '@/hooks/useRequirementsLookup';
@@ -410,7 +411,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
             variant="outline"
             onClick={() => setImportModalOpen(true)}
           >
-            <GithubIcon className="mr-2 h-4 w-4" />
+            <HugeiconsIcon icon={GithubIcon} className="mr-2 h-4 w-4" />
             Import from GitHub
           </Button>
         )}
@@ -453,7 +454,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
             aria-label="Dismiss import summary"
             className="ml-2 rounded p-0.5 hover:opacity-70 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
           >
-            <Cancel01Icon className="h-4 w-4" />
+            <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -467,7 +468,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
             aria-label="Dismiss error"
             className="ml-2 rounded p-0.5 text-destructive hover:text-destructive/80 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
           >
-            <Cancel01Icon className="h-4 w-4" />
+            <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -475,7 +476,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
       {/* Empty state — shown when no tasks exist after loading completes */}
       {tasks.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-lg border bg-muted/30 py-16 text-center">
-          <Task01Icon className="mb-4 h-10 w-10 text-muted-foreground/50" />
+          <HugeiconsIcon icon={Task01Icon} className="mb-4 h-10 w-10 text-muted-foreground/50" />
           <h2 className="text-base font-semibold text-foreground">No tasks yet</h2>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
             Generate tasks from your PRD or create them manually to start building.

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { SentIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { SentIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 
 interface DiscoveryInputProps {
@@ -49,7 +50,7 @@ export function DiscoveryInput({
           disabled={disabled || !value.trim()}
           className="shrink-0 self-end"
         >
-          <SentIcon className="h-4 w-4" />
+          <HugeiconsIcon icon={SentIcon} className="h-4 w-4" />
         </Button>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">

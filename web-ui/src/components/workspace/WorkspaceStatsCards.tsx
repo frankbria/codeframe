@@ -1,11 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import {
-  CodeIcon,
-  Task01Icon,
-  PlayIcon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { CodeIcon, Task01Icon, PlayIcon } from '@hugeicons/core-free-icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,7 +30,7 @@ export function WorkspaceStatsCards({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Tech Stack</CardTitle>
-          <CodeIcon className="h-4 w-4 text-muted-foreground" />
+          <HugeiconsIcon icon={CodeIcon} className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           {techStack ? (
@@ -59,7 +56,7 @@ export function WorkspaceStatsCards({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Tasks</CardTitle>
-          <Task01Icon className="h-4 w-4 text-muted-foreground" />
+          <HugeiconsIcon icon={Task01Icon} className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
@@ -120,7 +117,7 @@ export function WorkspaceStatsCards({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Active Runs</CardTitle>
-          <PlayIcon className="h-4 w-4 text-muted-foreground" />
+          <HugeiconsIcon icon={PlayIcon} className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <p

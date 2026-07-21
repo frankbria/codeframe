@@ -1,17 +1,19 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import type { IconSvgElement } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
 import {
   Notification02Icon,
   Cancel01Icon,
   Alert02Icon,
   CheckmarkCircle01Icon,
-} from '@hugeicons/react';
+} from '@hugeicons/core-free-icons';
 import { formatDistanceToNow } from 'date-fns';
 import { useNotificationContext } from '@/contexts/NotificationContext';
 import type { AppNotification } from '@/types';
 
-function iconForNotification(n: AppNotification) {
+function iconForNotification(n: AppNotification): { Icon: IconSvgElement; color: string } {
   if (n.type === 'batch.completed' && n.batchStatus && n.batchStatus !== 'COMPLETED') {
     return { Icon: Cancel01Icon, color: n.batchStatus === 'FAILED' ? 'text-red-600' : 'text-muted-foreground' };
   }
@@ -62,7 +64,7 @@ export function NotificationCenter() {
         onClick={() => setOpen((prev) => !prev)}
         className="relative flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground lg:px-3"
       >
-        <Notification02Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+        <HugeiconsIcon icon={Notification02Icon} className="h-5 w-5 shrink-0" aria-hidden="true" />
         <span className="hidden lg:inline" aria-hidden="true">Notifications</span>
         {unreadCount > 0 && (
           <span
@@ -133,7 +135,7 @@ function NotificationRow({
       data-testid="notification-item"
       className={`flex items-start gap-2 px-3 py-2 text-sm ${notification.read ? 'opacity-60' : ''}`}
     >
-      <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${colorClass}`} aria-hidden="true" />
+      <HugeiconsIcon icon={Icon} className={`mt-0.5 h-4 w-4 shrink-0 ${colorClass}`} aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <p className="break-words">{notification.message}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{formatTimestamp(notification.timestamp)}</p>
@@ -145,7 +147,7 @@ function NotificationRow({
           onClick={() => onMarkRead(notification.id)}
           className="text-muted-foreground hover:text-foreground"
         >
-          <Cancel01Icon className="h-3.5 w-3.5" aria-hidden="true" />
+          <HugeiconsIcon icon={Cancel01Icon} className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       )}
     </li>

@@ -1,11 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  Loading03Icon,
-  GitBranchIcon,
-  Idea01Icon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Loading03Icon, GitBranchIcon, Idea01Icon } from '@hugeicons/core-free-icons';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -66,9 +63,9 @@ export function CommitPanel({
           className="self-start transition-all"
         >
           {isGenerating ? (
-            <Loading03Icon className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Idea01Icon className="mr-1.5 h-3.5 w-3.5" />
+            <HugeiconsIcon icon={Idea01Icon} className="mr-1.5 h-3.5 w-3.5" />
           )}
           Generate Message
         </Button>
@@ -109,7 +106,7 @@ export function CommitPanel({
         className="w-full transition-all"
       >
         {isCommitting && (
-          <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
+          <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-4 w-4 animate-spin" />
         )}
         {isCommitting ? 'Committing...' : 'Commit'}
       </Button>
@@ -162,9 +159,9 @@ export function CommitPanel({
               className="w-full transition-all"
             >
               {isCreatingPR ? (
-                <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-4 w-4 animate-spin" />
               ) : (
-                <GitBranchIcon className="mr-1.5 h-4 w-4" />
+                <HugeiconsIcon icon={GitBranchIcon} className="mr-1.5 h-4 w-4" />
               )}
               {isCreatingPR ? 'Creating PR...' : 'Create PR'}
             </Button>

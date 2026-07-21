@@ -1,7 +1,8 @@
 'use client';
 
 import { Fragment, useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { ArrowDown01Icon, ArrowRight01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowDown01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { DiffFile, DiffHunkLine } from '@/lib/diffParser';
@@ -161,9 +162,9 @@ export function DiffViewer({ diffFiles, selectedFile, tasks, contextTask, change
                   aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${key}`}
                 >
                   {isCollapsed ? (
-                    <ArrowRight01Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <HugeiconsIcon icon={ArrowRight01Icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   ) : (
-                    <ArrowDown01Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <HugeiconsIcon icon={ArrowDown01Icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   )}
                   <span className="truncate font-mono text-sm font-medium">
                     {key}

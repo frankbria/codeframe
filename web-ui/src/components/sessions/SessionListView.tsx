@@ -3,7 +3,8 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { Search01Icon, Loading03Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Search01Icon, Loading03Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SessionCard } from './SessionCard';
@@ -115,7 +116,7 @@ export function SessionListView({ workspacePath }: SessionListViewProps) {
           </Button>
         </div>
         <div className="rounded-lg border bg-muted/50 p-8 text-center">
-          <Loading03Icon className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+          <HugeiconsIcon icon={Loading03Icon} className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
           <p className="text-sm font-medium text-foreground">No sessions yet</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Start a new session to begin working with an AI agent.
@@ -143,7 +144,7 @@ export function SessionListView({ workspacePath }: SessionListViewProps) {
 
       {/* Search */}
       <div className="relative">
-        <Search01Icon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <HugeiconsIcon icon={Search01Icon} className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Search sessions..."
           value={search}

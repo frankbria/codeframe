@@ -1,14 +1,7 @@
 'use client';
 
-import {
-  FileEditIcon,
-  Upload04Icon,
-  MessageSearch01Icon,
-  TaskEdit01Icon,
-  TestTube01Icon,
-  Loading03Icon,
-  Time01Icon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { FileEditIcon, Upload04Icon, MessageSearch01Icon, TaskEdit01Icon, TestTube01Icon, Loading03Icon, Time01Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import type { PrdResponse } from '@/types';
 
@@ -34,7 +27,7 @@ export function PRDHeader({
   return (
     <header className="flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <FileEditIcon className="h-6 w-6 text-muted-foreground" />
+        <HugeiconsIcon icon={FileEditIcon} className="h-6 w-6 text-muted-foreground" />
         <div>
           <h2 className="text-2xl font-bold tracking-tight">
             {prd ? prd.title : 'Product Requirements'}
@@ -51,12 +44,12 @@ export function PRDHeader({
       <div className="flex gap-2">
         {prd && onViewHistory && (
           <Button variant="outline" size="sm" onClick={onViewHistory}>
-            <Time01Icon className="mr-1.5 h-4 w-4" />
+            <HugeiconsIcon icon={Time01Icon} className="mr-1.5 h-4 w-4" />
             History
           </Button>
         )}
         <Button variant="outline" size="sm" onClick={onUploadPrd}>
-          <Upload04Icon className="mr-1.5 h-4 w-4" />
+          <HugeiconsIcon icon={Upload04Icon} className="mr-1.5 h-4 w-4" />
           {prd ? 'Upload New' : 'Upload PRD'}
         </Button>
         {onStressTest && (
@@ -66,12 +59,12 @@ export function PRDHeader({
             onClick={onStressTest}
             disabled={!prd}
           >
-            <TestTube01Icon className="mr-1.5 h-4 w-4" />
+            <HugeiconsIcon icon={TestTube01Icon} className="mr-1.5 h-4 w-4" />
             Stress Test
           </Button>
         )}
         <Button variant="outline" size="sm" onClick={onStartDiscovery}>
-          <MessageSearch01Icon className="mr-1.5 h-4 w-4" />
+          <HugeiconsIcon icon={MessageSearch01Icon} className="mr-1.5 h-4 w-4" />
           Discovery
         </Button>
         <Button
@@ -81,12 +74,12 @@ export function PRDHeader({
         >
           {isGeneratingTasks ? (
             <>
-              <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
+              <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-4 w-4 animate-spin" />
               Generating...
             </>
           ) : (
             <>
-              <TaskEdit01Icon className="mr-1.5 h-4 w-4" />
+              <HugeiconsIcon icon={TaskEdit01Icon} className="mr-1.5 h-4 w-4" />
               Generate Tasks
             </>
           )}

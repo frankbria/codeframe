@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowDown01Icon, ArrowUp01Icon, CheckmarkCircle01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowDown01Icon, ArrowUp01Icon, CheckmarkCircle01Icon } from '@hugeicons/core-free-icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,13 +36,13 @@ export function ResolvedBlockersSection({ blockers }: ResolvedBlockersSectionPro
         aria-controls="resolved-blockers-list"
       >
         <span className="flex items-center gap-2">
-          <CheckmarkCircle01Icon className="h-4 w-4 text-muted-foreground" />
+          <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-4 w-4 text-muted-foreground" />
           Resolved Blockers ({blockers.length})
         </span>
         {expanded ? (
-          <ArrowUp01Icon className="h-4 w-4" />
+          <HugeiconsIcon icon={ArrowUp01Icon} className="h-4 w-4" />
         ) : (
-          <ArrowDown01Icon className="h-4 w-4" />
+          <HugeiconsIcon icon={ArrowDown01Icon} className="h-4 w-4" />
         )}
       </Button>
 

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert02Icon, Loading03Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Alert02Icon, Loading03Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { blockersApi } from '@/lib/api';
 import type { BlockerEvent as BlockerEventType } from '@/hooks/useTaskStream';
@@ -55,7 +56,7 @@ export function BlockerEvent({ event, workspacePath, onAnswered }: BlockerEventP
     <div className="rounded-md border-2 border-red-300 bg-red-50 p-3 dark:border-red-700 dark:bg-red-950/30">
       {/* Header */}
       <div className="mb-2 flex items-center gap-2">
-        <Alert02Icon className="h-4 w-4 text-red-600" />
+        <HugeiconsIcon icon={Alert02Icon} className="h-4 w-4 text-red-600" />
         <span className="text-sm font-semibold text-red-800 dark:text-red-300">
           Agent needs your help
         </span>
@@ -100,7 +101,7 @@ export function BlockerEvent({ event, workspacePath, onAnswered }: BlockerEventP
           onClick={handleSubmit}
           disabled={!answer.trim() || isSubmitting}
         >
-          {isSubmitting && <Loading03Icon className="h-3 w-3 animate-spin" />}
+          {isSubmitting && <HugeiconsIcon icon={Loading03Icon} className="h-3 w-3 animate-spin" />}
           Answer Blocker
         </Button>
       </div>

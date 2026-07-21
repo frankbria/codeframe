@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { ArtificialIntelligence01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArtificialIntelligence01Icon } from '@hugeicons/core-free-icons';
 import type { DiscoveryMessage } from '@/types';
 
 interface DiscoveryTranscriptProps {
@@ -30,7 +31,7 @@ export function DiscoveryTranscript({
           {/* Avatar */}
           {msg.role === 'assistant' && (
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-              <ArtificialIntelligence01Icon className="h-4 w-4 text-primary" />
+              <HugeiconsIcon icon={ArtificialIntelligence01Icon} className="h-4 w-4 text-primary" />
             </div>
           )}
 
@@ -51,7 +52,7 @@ export function DiscoveryTranscript({
       {isThinking && (
         <div className="flex gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-            <ArtificialIntelligence01Icon className="h-4 w-4 text-primary" />
+            <HugeiconsIcon icon={ArtificialIntelligence01Icon} className="h-4 w-4 text-primary" />
           </div>
           <div className="rounded-lg bg-muted px-3 py-2">
             <div className="flex gap-1">

@@ -1,6 +1,7 @@
 'use client';
 
-import { Folder01Icon, Loading03Icon, CheckmarkCircle01Icon, Alert01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Folder01Icon, Loading03Icon, CheckmarkCircle01Icon, Alert01Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import type { WorkspaceResponse } from '@/types';
 
@@ -27,7 +28,7 @@ export function WorkspaceHeader({
             <>
               <span className="text-muted-foreground">/</span>
               <div className="flex items-center gap-2 text-muted-foreground">
-                <Folder01Icon className="h-5 w-5" />
+                <HugeiconsIcon icon={Folder01Icon} className="h-5 w-5" />
                 <span className="font-medium">{repoName}</span>
               </div>
               {workspace.tech_stack ? (
@@ -35,7 +36,7 @@ export function WorkspaceHeader({
                   data-testid="tech-stack-detected"
                   className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800"
                 >
-                  <CheckmarkCircle01Icon className="h-3 w-3" />
+                  <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-3 w-3" />
                   Tech stack detected
                 </div>
               ) : (
@@ -43,7 +44,7 @@ export function WorkspaceHeader({
                   data-testid="tech-stack-missing"
                   className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
                 >
-                  <Alert01Icon className="h-3 w-3" />
+                  <HugeiconsIcon icon={Alert01Icon} className="h-3 w-3" />
                   No tech stack
                 </div>
               )}
@@ -64,7 +65,7 @@ export function WorkspaceHeader({
             <Button onClick={onInitialize} disabled={isLoading}>
               {isLoading ? (
                 <>
-                  <Loading03Icon className="mr-2 h-4 w-4 animate-spin" />
+                  <HugeiconsIcon icon={Loading03Icon} className="mr-2 h-4 w-4 animate-spin" />
                   Initializing...
                 </>
               ) : (

@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Cancel01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon } from '@hugeicons/core-free-icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { getOnboardingDismissed, setOnboardingDismissed } from '@/lib/workspace-storage';
@@ -58,7 +59,7 @@ export function OnboardingCard({ workspacePath }: OnboardingCardProps) {
           aria-label="Dismiss onboarding"
           className="ml-4 rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground"
         >
-          <Cancel01Icon className="h-4 w-4" />
+          <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
         </button>
       </CardHeader>
       <CardContent>

@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import { Cancel01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon } from '@hugeicons/core-free-icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -66,7 +67,7 @@ export function SessionCard({ session, onEnd }: SessionCardProps) {
                   variant="ghost"
                   className="h-7 gap-1 px-2 text-xs text-destructive"
                 >
-                  <Cancel01Icon className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={Cancel01Icon} className="h-3.5 w-3.5" />
                   End
                 </Button>
               </AlertDialogTrigger>

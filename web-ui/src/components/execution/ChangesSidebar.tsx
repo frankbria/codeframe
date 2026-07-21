@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { FileEditIcon, SidebarLeftIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { FileEditIcon, SidebarLeftIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -44,7 +45,7 @@ export function ChangesSidebar({ changedFiles }: ChangesSidebarProps) {
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-expanded={!collapsed}
         >
-          <SidebarLeftIcon className="h-3.5 w-3.5" />
+          <HugeiconsIcon icon={SidebarLeftIcon} className="h-3.5 w-3.5" />
         </Button>
       </div>
 
@@ -58,7 +59,7 @@ export function ChangesSidebar({ changedFiles }: ChangesSidebarProps) {
                 className="flex items-center gap-1.5 rounded px-2 py-1 text-xs hover:bg-muted/50"
                 title={filePath}
               >
-                <FileEditIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <HugeiconsIcon icon={FileEditIcon} className="h-3 w-3 shrink-0 text-muted-foreground" />
                 <span className="truncate font-mono">{filePath}</span>
               </div>
             ))}

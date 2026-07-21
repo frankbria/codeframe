@@ -2,7 +2,8 @@
 
 import { useMemo, useCallback } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
-import { CheckmarkCircle01Icon, Loading03Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { CheckmarkCircle01Icon, Loading03Icon } from '@hugeicons/core-free-icons';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { BlockerCard } from './BlockerCard';
@@ -46,7 +47,7 @@ export function BlockerResolutionView({ workspacePath }: BlockerResolutionViewPr
           <h1 className="text-2xl font-bold tracking-tight">Blockers</h1>
         </div>
         <div className="flex items-center justify-center py-12">
-          <Loading03Icon className="h-6 w-6 animate-spin text-muted-foreground" />
+          <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin text-muted-foreground" />
           <span className="ml-2 text-sm text-muted-foreground">Loading blockers...</span>
         </div>
       </div>
@@ -95,7 +96,7 @@ export function BlockerResolutionView({ workspacePath }: BlockerResolutionViewPr
       {/* Open blockers */}
       {openBlockers.length === 0 ? (
         <div className="rounded-lg border bg-muted/50 p-8 text-center">
-          <CheckmarkCircle01Icon className="mx-auto mb-3 h-10 w-10 text-green-500" />
+          <HugeiconsIcon icon={CheckmarkCircle01Icon} className="mx-auto mb-3 h-10 w-10 text-green-500" />
           <p className="text-sm font-medium text-foreground">No open blockers</p>
           <p className="mt-1 text-xs text-muted-foreground">
             Agents are running smoothly — no questions need your attention.

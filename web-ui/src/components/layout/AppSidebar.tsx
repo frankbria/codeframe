@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import useSWR from 'swr';
+import type { IconSvgElement } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
 import {
   Home01Icon,
   FileEditIcon,
@@ -17,7 +19,7 @@ import {
   Settings01Icon,
   ChartLineData01Icon,
   Logout01Icon,
-} from '@hugeicons/react';
+} from '@hugeicons/core-free-icons';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import { logout } from '@/lib/auth';
 import { blockersApi, sessionsApi } from '@/lib/api';
@@ -28,7 +30,7 @@ import type { BlockerListResponse, SessionListResponse, ProofRequirement } from 
 interface NavItem {
   href: string;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: IconSvgElement;
   enabled: boolean;
 }
 
@@ -104,7 +106,7 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <nav className="flex flex-1 flex-col gap-1 px-2">
-        {NAV_ITEMS.map(({ href, label, icon: Icon, enabled }) => {
+        {NAV_ITEMS.map(({ href, label, icon: navIcon, enabled }) => {
           const isActive = href === '/'
             ? pathname === '/'
             : pathname.startsWith(href);
@@ -116,7 +118,7 @@ export function AppSidebar() {
                 className="flex items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground/50 lg:px-3"
                 title={`${label} (coming soon)`}
               >
-                <Icon className="h-5 w-5 shrink-0" />
+                <HugeiconsIcon icon={navIcon} className="h-5 w-5 shrink-0" />
                 <span className="hidden lg:inline">{label}</span>
               </span>
             );
@@ -132,7 +134,7 @@ export function AppSidebar() {
                   : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
               }`}
             >
-              <Icon className="h-5 w-5 shrink-0" />
+              <HugeiconsIcon icon={navIcon} className="h-5 w-5 shrink-0" />
               <span className="hidden lg:inline">{label}</span>
               {label === 'Sessions' && activeSessionCount > 0 && (
                 <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-bold text-foreground">
@@ -158,7 +160,7 @@ export function AppSidebar() {
           onClick={() => setShowCaptureModal(true)}
           className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground lg:px-3"
         >
-          <Add01Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <HugeiconsIcon icon={Add01Icon} className="h-5 w-5 shrink-0" aria-hidden="true" />
           <span className="hidden lg:inline" aria-hidden="true">Capture Glitch</span>
         </button>
         <button
@@ -167,7 +169,7 @@ export function AppSidebar() {
           onClick={() => logout()}
           className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground lg:px-3"
         >
-          <Logout01Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <HugeiconsIcon icon={Logout01Icon} className="h-5 w-5 shrink-0" aria-hidden="true" />
           <span className="hidden lg:inline" aria-hidden="true">Sign out</span>
         </button>
       </div>

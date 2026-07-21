@@ -1,13 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  Folder01Icon,
-  Time01Icon,
-  Cancel01Icon,
-  Loading03Icon,
-  Alert02Icon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Folder01Icon, Time01Icon, Cancel01Icon, Loading03Icon, Alert02Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useWorkspaces } from '@/hooks/useWorkspaces';
@@ -74,7 +69,7 @@ export function WorkspaceSelector({
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Folder01Icon className="h-5 w-5" />
+              <HugeiconsIcon icon={Folder01Icon} className="h-5 w-5" />
               Open Project
             </CardTitle>
           </CardHeader>
@@ -110,7 +105,7 @@ export function WorkspaceSelector({
               <Button type="submit" disabled={isLoading || !inputPath.trim()}>
                 {isLoading ? (
                   <>
-                    <Loading03Icon className="mr-2 h-4 w-4 animate-spin" />
+                    <HugeiconsIcon icon={Loading03Icon} className="mr-2 h-4 w-4 animate-spin" />
                     Opening...
                   </>
                 ) : (
@@ -125,7 +120,7 @@ export function WorkspaceSelector({
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Time01Icon className="h-5 w-5" />
+              <HugeiconsIcon icon={Time01Icon} className="h-5 w-5" />
               Recent Projects
             </CardTitle>
           </CardHeader>
@@ -135,7 +130,7 @@ export function WorkspaceSelector({
                 data-testid="workspaces-loading"
                 className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground"
               >
-                <Loading03Icon className="h-4 w-4 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
                 Loading projects…
               </div>
             ) : recentWorkspaces.length === 0 ? (
@@ -167,7 +162,7 @@ export function WorkspaceSelector({
                       aria-disabled={isLoading}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <Folder01Icon className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                        <HugeiconsIcon icon={Folder01Icon} className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
                         <div className="min-w-0">
                           <p className="font-medium truncate flex items-center gap-1.5">
                             {displayName}
@@ -176,7 +171,7 @@ export function WorkspaceSelector({
                                 className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground"
                                 title="This path no longer exists on disk"
                               >
-                                <Alert02Icon className="h-3 w-3" />
+                                <HugeiconsIcon icon={Alert02Icon} className="h-3 w-3" />
                                 Missing
                               </span>
                             )}
@@ -204,7 +199,7 @@ export function WorkspaceSelector({
                           title="Remove from recent"
                           aria-label={`Remove ${displayName} from recent projects`}
                         >
-                          <Cancel01Icon className="h-4 w-4" />
+                          <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
                         </button>
                       </div>
                     </div>

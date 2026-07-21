@@ -1,7 +1,8 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowLeft01Icon, ArrowRight01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowLeft01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons';
 import { cn } from '@/lib/utils';
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -298,9 +299,9 @@ export function SplitPane({
           aria-label={isLeftCollapsed ? 'Expand left pane' : 'Collapse left pane'}
         >
           {isLeftCollapsed ? (
-            <ArrowRight01Icon className="h-3 w-3" />
+            <HugeiconsIcon icon={ArrowRight01Icon} className="h-3 w-3" />
           ) : (
-            <ArrowLeft01Icon className="h-3 w-3" />
+            <HugeiconsIcon icon={ArrowLeft01Icon} className="h-3 w-3" />
           )}
         </button>
 
@@ -319,9 +320,9 @@ export function SplitPane({
           aria-label={isRightCollapsed ? 'Expand right pane' : 'Collapse right pane'}
         >
           {isRightCollapsed ? (
-            <ArrowLeft01Icon className="h-3 w-3" />
+            <HugeiconsIcon icon={ArrowLeft01Icon} className="h-3 w-3" />
           ) : (
-            <ArrowRight01Icon className="h-3 w-3" />
+            <HugeiconsIcon icon={ArrowRight01Icon} className="h-3 w-3" />
           )}
         </button>
       </div>

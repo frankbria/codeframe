@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Upload04Icon, Loading03Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Upload04Icon, Loading03Icon } from '@hugeicons/core-free-icons';
 import {
   Dialog,
   DialogContent,
@@ -163,7 +164,7 @@ export function UploadPRDModal({
 
           <TabsContent value="file">
             <div className="flex flex-col items-center gap-4 rounded-lg border-2 border-dashed p-8">
-              <Upload04Icon className="h-10 w-10 text-muted-foreground/50" />
+              <HugeiconsIcon icon={Upload04Icon} className="h-10 w-10 text-muted-foreground/50" />
               <div className="text-center">
                 {fileName ? (
                   <p className="text-sm font-medium">{fileName}</p>
@@ -214,7 +215,7 @@ export function UploadPRDModal({
           >
             {isSubmitting ? (
               <>
-                <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-4 w-4 animate-spin" />
                 Creating...
               </>
             ) : (

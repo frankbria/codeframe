@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import useSWR from 'swr';
-import { ArrowLeft01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowLeft01Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AgentChatPanel } from '@/components/sessions/AgentChatPanel';
@@ -107,7 +108,7 @@ export function SessionDetailClient({ sessionId }: SessionDetailClientProps) {
           <div className="mb-6">
             <Button asChild variant="ghost" size="sm">
               <Link href="/sessions">
-                <ArrowLeft01Icon className="h-4 w-4 mr-1" />
+                <HugeiconsIcon icon={ArrowLeft01Icon} className="h-4 w-4 mr-1" />
                 Back to Sessions
               </Link>
             </Button>
@@ -148,7 +149,7 @@ export function SessionDetailClient({ sessionId }: SessionDetailClientProps) {
       <header className="flex shrink-0 items-center gap-3 border-b bg-background px-4 py-2">
         <Button asChild variant="ghost" size="sm" className="shrink-0">
           <Link href="/sessions">
-            <ArrowLeft01Icon className="h-4 w-4 mr-1" />
+            <HugeiconsIcon icon={ArrowLeft01Icon} className="h-4 w-4 mr-1" />
             Sessions
           </Link>
         </Button>

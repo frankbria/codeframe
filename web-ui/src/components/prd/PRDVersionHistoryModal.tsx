@@ -3,11 +3,8 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import { toast } from 'sonner';
-import {
-  ArrowLeft01Icon,
-  Loading03Icon,
-  Time01Icon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowLeft01Icon, Loading03Icon, Time01Icon } from '@hugeicons/core-free-icons';
 import {
   Dialog,
   DialogContent,
@@ -117,7 +114,7 @@ export function PRDVersionHistoryModal({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Time01Icon className="h-5 w-5 text-muted-foreground" />
+            <HugeiconsIcon icon={Time01Icon} className="h-5 w-5 text-muted-foreground" />
             {view === 'list' ? 'Version History' : `Version ${preview?.version.version} Preview`}
           </DialogTitle>
         </DialogHeader>
@@ -163,7 +160,7 @@ function VersionList({ versions, currentVersion, isLoading, error, onViewVersion
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground">
-        <Loading03Icon className="mr-2 h-4 w-4 animate-spin" />
+        <HugeiconsIcon icon={Loading03Icon} className="mr-2 h-4 w-4 animate-spin" />
         Loading versions...
       </div>
     );
@@ -242,7 +239,7 @@ function VersionPreview({
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={onBack}>
-          <ArrowLeft01Icon className="mr-1.5 h-4 w-4" />
+          <HugeiconsIcon icon={ArrowLeft01Icon} className="mr-1.5 h-4 w-4" />
           Back to list
         </Button>
         <div className="ml-auto flex gap-2">
@@ -254,7 +251,7 @@ function VersionPreview({
           >
             {diffLoading ? (
               <>
-                <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-4 w-4 animate-spin" />
                 Loading diff...
               </>
             ) : (
@@ -286,7 +283,7 @@ function VersionPreview({
             >
               {restoring ? (
                 <>
-                  <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
+                  <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-4 w-4 animate-spin" />
                   Restoring...
                 </>
               ) : (

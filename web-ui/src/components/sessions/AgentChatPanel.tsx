@@ -1,14 +1,8 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import {
-  ArtificialIntelligence01Icon,
-  ArrowRight01Icon,
-  Alert01Icon,
-  Idea01Icon,
-  Cancel01Icon,
-  SentIcon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArtificialIntelligence01Icon, ArrowRight01Icon, Alert01Icon, Idea01Icon, Cancel01Icon, SentIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAgentChat } from '@/hooks/useAgentChat';
@@ -64,7 +58,7 @@ function AssistantBubble({
   return (
     <div className="flex flex-row gap-3">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-        <ArtificialIntelligence01Icon className="h-4 w-4 text-primary" />
+        <HugeiconsIcon icon={ArtificialIntelligence01Icon} className="h-4 w-4 text-primary" />
       </div>
       <div className="max-w-[80%] rounded-lg bg-muted px-3 py-2 text-sm text-foreground leading-relaxed">
         {message.content}
@@ -91,7 +85,7 @@ function ToolUseCard({ message }: { message: ChatMessage }) {
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} tool call: ${message.toolName ?? 'tool'}`}
       >
-        <ArrowRight01Icon
+        <HugeiconsIcon icon={ArrowRight01Icon}
           className={`h-3 w-3 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
         />
         <span className="font-mono text-xs text-muted-foreground">{message.toolName ?? 'tool'}</span>
@@ -135,7 +129,7 @@ function ToolResultCard({ message }: { message: ChatMessage }) {
 function ThinkingBlock({ message }: { message: ChatMessage }) {
   return (
     <div className="flex gap-2 border-l-2 border-muted-foreground/30 pl-3 italic text-sm text-muted-foreground">
-      <Idea01Icon className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+      <HugeiconsIcon icon={Idea01Icon} className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
       <span>{message.content}</span>
     </div>
   );
@@ -150,7 +144,7 @@ function SystemLine({ message }: { message: ChatMessage }) {
 function ErrorCard({ message }: { message: ChatMessage }) {
   return (
     <div className="flex gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-      <Alert01Icon className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+      <HugeiconsIcon icon={Alert01Icon} className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
       <span>{message.content}</span>
     </div>
   );
@@ -159,7 +153,7 @@ function ErrorCard({ message }: { message: ChatMessage }) {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-      <ArtificialIntelligence01Icon className="h-10 w-10 opacity-40" aria-hidden="true" />
+      <HugeiconsIcon icon={ArtificialIntelligence01Icon} className="h-10 w-10 opacity-40" aria-hidden="true" />
       <p className="text-sm">Start a conversation with your agent</p>
     </div>
   );
@@ -315,7 +309,7 @@ export function AgentChatPanel({
                 onClick={interrupt}
                 aria-label="Interrupt agent"
               >
-                <Cancel01Icon className="h-4 w-4 mr-1" />
+                <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4 mr-1" />
                 Interrupt
               </Button>
             )}
@@ -338,7 +332,7 @@ export function AgentChatPanel({
               aria-label="Send message"
               className="shrink-0"
             >
-              <SentIcon className="h-4 w-4" />
+              <HugeiconsIcon icon={SentIcon} className="h-4 w-4" />
             </Button>
           </div>
         </div>

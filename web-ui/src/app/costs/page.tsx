@@ -2,11 +2,8 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import {
-  MoneyBag02Icon,
-  Task01Icon,
-  Analytics01Icon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { MoneyBag02Icon, Task01Icon, Analytics01Icon } from '@hugeicons/core-free-icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SpendBarChart } from '@/components/costs/SpendBarChart';
 import { TopTasksTable } from '@/components/costs/TopTasksTable';
@@ -126,7 +123,7 @@ export default function CostsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total Spend</CardTitle>
-                  <MoneyBag02Icon className="h-4 w-4 text-muted-foreground" />
+                  <HugeiconsIcon icon={MoneyBag02Icon} className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <p
@@ -141,7 +138,7 @@ export default function CostsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Tasks Run</CardTitle>
-                  <Task01Icon className="h-4 w-4 text-muted-foreground" />
+                  <HugeiconsIcon icon={Task01Icon} className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <p
@@ -156,7 +153,7 @@ export default function CostsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Avg Cost / Task</CardTitle>
-                  <Analytics01Icon className="h-4 w-4 text-muted-foreground" />
+                  <HugeiconsIcon icon={Analytics01Icon} className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <p

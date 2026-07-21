@@ -3,7 +3,8 @@
 import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Loading03Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Loading03Icon } from '@hugeicons/core-free-icons';
 import { tasksApi } from '@/lib/api';
 import { BatchExecutionMonitor } from '@/components/execution/BatchExecutionMonitor';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
@@ -20,7 +21,7 @@ export default function ExecutionLandingPage() {
     <Suspense
       fallback={
         <main className="flex min-h-screen items-center justify-center bg-background">
-          <Loading03Icon className="h-6 w-6 animate-spin text-muted-foreground" />
+          <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin text-muted-foreground" />
         </main>
       }
     >
@@ -109,7 +110,7 @@ function ExecutionLandingContent() {
   if (taskIdParam || resolving) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
-        <Loading03Icon className="h-6 w-6 animate-spin text-muted-foreground" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin text-muted-foreground" />
       </main>
     );
   }

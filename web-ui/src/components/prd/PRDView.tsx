@@ -1,6 +1,7 @@
 'use client';
 
-import { FileEditIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { FileEditIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PRDHeader } from './PRDHeader';
@@ -69,7 +70,7 @@ export function PRDView({
 
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
-            <FileEditIcon className="mb-4 h-12 w-12 text-muted-foreground/50" />
+            <HugeiconsIcon icon={FileEditIcon} className="mb-4 h-12 w-12 text-muted-foreground/50" />
             <h3 className="text-lg font-semibold">No PRD yet</h3>
             <p className="mt-1 max-w-sm text-center text-sm text-muted-foreground">
               Upload a PRD document or start an AI-powered discovery session to

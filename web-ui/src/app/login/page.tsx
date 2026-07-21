@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Login01Icon, Mail01Icon, LockIcon, Loading03Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Login01Icon, Mail01Icon, LockIcon, Loading03Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -78,7 +79,7 @@ export default function LoginPage() {
         role="status"
         aria-label="Redirecting"
       >
-        <Loading03Icon className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
       </div>
     );
   }
@@ -88,7 +89,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <Login01Icon className="h-5 w-5 text-primary" aria-hidden="true" />
+            <HugeiconsIcon icon={Login01Icon} className="h-5 w-5 text-primary" aria-hidden="true" />
             <CardTitle>{isRegister ? 'Create your account' : 'Sign in'}</CardTitle>
           </div>
           <CardDescription>
@@ -114,7 +115,7 @@ export default function LoginPage() {
                 htmlFor="email"
                 className="flex items-center gap-1.5 text-sm font-medium text-foreground"
               >
-                <Mail01Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <HugeiconsIcon icon={Mail01Icon} className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 Email
               </label>
               <Input
@@ -134,7 +135,7 @@ export default function LoginPage() {
                 htmlFor="password"
                 className="flex items-center gap-1.5 text-sm font-medium text-foreground"
               >
-                <LockIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <HugeiconsIcon icon={LockIcon} className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 Password
               </label>
               <Input
@@ -153,7 +154,7 @@ export default function LoginPage() {
           <CardFooter className="flex flex-col gap-3">
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting && (
-                <Loading03Icon className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                <HugeiconsIcon icon={Loading03Icon} className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
               )}
               {isRegister ? 'Create account' : 'Sign in'}
             </Button>

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { Cancel01Icon, Loading03Icon, ArrowReloadHorizontalIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon, Loading03Icon, ArrowReloadHorizontalIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { DiscoveryTranscript } from './DiscoveryTranscript';
 import { DiscoveryInput } from './DiscoveryInput';
@@ -227,7 +228,7 @@ export function DiscoveryPanel({
               aria-label="Start over"
               title="Start over"
             >
-              <ArrowReloadHorizontalIcon className="h-4 w-4" />
+              <HugeiconsIcon icon={ArrowReloadHorizontalIcon} className="h-4 w-4" />
             </button>
           )}
           <button
@@ -235,7 +236,7 @@ export function DiscoveryPanel({
             className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Close discovery panel"
           >
-            <Cancel01Icon className="h-4 w-4" />
+            <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -281,7 +282,7 @@ export function DiscoveryPanel({
           >
             {isGenerating ? (
               <>
-                <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-4 w-4 animate-spin" />
                 Generating PRD...
               </>
             ) : (

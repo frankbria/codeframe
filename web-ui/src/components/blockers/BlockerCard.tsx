@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import type { IconSvgElement } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
 import {
   Alert02Icon,
   Loading03Icon,
@@ -9,7 +11,7 @@ import {
   ArtificialIntelligence01Icon,
   Settings01Icon,
   UserCircle02Icon,
-} from '@hugeicons/react';
+} from '@hugeicons/core-free-icons';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,7 +21,7 @@ import type { Blocker, BlockerOrigin, ApiError } from '@/types';
 
 const ORIGIN_CONFIG: Record<BlockerOrigin, {
   label: string;
-  Icon: React.ComponentType<{ className?: string }>;
+  Icon: IconSvgElement;
   badgeClass: string;
   guidance: string;
 }> = {
@@ -82,7 +84,7 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
       >
         <CardContent className="flex items-center justify-between gap-4 p-4">
           <div className="flex items-center gap-2">
-            <CheckmarkCircle01Icon className="h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
+            <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-5 w-5 shrink-0 text-green-600 dark:text-green-400" />
             <p className="text-sm font-medium text-green-800 dark:text-green-300">
               Answer recorded. Go to Tasks and restart execution to resume the agent.
             </p>
@@ -111,7 +113,7 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
         {/* Question */}
         <div className="rounded-md border-2 border-red-300 bg-red-50 p-3 dark:border-red-700 dark:bg-red-950/30">
           <div className="flex items-start gap-2">
-            <Alert02Icon className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+            <HugeiconsIcon icon={Alert02Icon} className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
             <p className="text-sm font-medium text-foreground">{blocker.question}</p>
           </div>
         </div>
@@ -123,7 +125,7 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
             data-testid="origin-badge"
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${origin.badgeClass}`}
           >
-            <origin.Icon className="h-3 w-3" />
+            <HugeiconsIcon icon={origin.Icon} className="h-3 w-3" />
             {origin.label}
           </span>
           <span className="text-xs text-muted-foreground">
@@ -189,7 +191,7 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
                 onClick={handleSubmit}
                 disabled={!answer.trim() || isSubmitting}
               >
-                {isSubmitting && <Loading03Icon className="h-3 w-3 animate-spin" />}
+                {isSubmitting && <HugeiconsIcon icon={Loading03Icon} className="h-3 w-3 animate-spin" />}
                 Answer Blocker
               </Button>
             </div>

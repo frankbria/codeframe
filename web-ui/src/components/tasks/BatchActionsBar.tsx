@@ -1,6 +1,7 @@
 'use client';
 
-import { CheckListIcon, PlayCircleIcon, Loading03Icon, Cancel01Icon, ArrowTurnBackwardIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { CheckListIcon, PlayCircleIcon, Loading03Icon, Cancel01Icon, ArrowTurnBackwardIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -55,7 +56,7 @@ export function BatchActionsBar({
         onClick={onToggleSelectionMode}
         className="gap-1.5"
       >
-        <CheckListIcon className="h-4 w-4" />
+        <HugeiconsIcon icon={CheckListIcon} className="h-4 w-4" />
         {selectionMode ? 'Cancel' : 'Batch'}
       </Button>
 
@@ -92,9 +93,9 @@ export function BatchActionsBar({
               className="gap-1.5"
             >
               {isExecuting ? (
-                <Loading03Icon className="h-3.5 w-3.5 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <PlayCircleIcon className="h-3.5 w-3.5" />
+                <HugeiconsIcon icon={PlayCircleIcon} className="h-3.5 w-3.5" />
               )}
               Execute {readyCount}
             </Button>
@@ -110,9 +111,9 @@ export function BatchActionsBar({
               className="gap-1.5"
             >
               {isStoppingBatch ? (
-                <Loading03Icon className="h-3.5 w-3.5 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Cancel01Icon className="h-3.5 w-3.5" />
+                <HugeiconsIcon icon={Cancel01Icon} className="h-3.5 w-3.5" />
               )}
               Stop {inProgressCount}
             </Button>
@@ -128,9 +129,9 @@ export function BatchActionsBar({
               className="gap-1.5"
             >
               {isResettingBatch ? (
-                <Loading03Icon className="h-3.5 w-3.5 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <ArrowTurnBackwardIcon className="h-3.5 w-3.5" />
+                <HugeiconsIcon icon={ArrowTurnBackwardIcon} className="h-3.5 w-3.5" />
               )}
               Reset {failedCount}
             </Button>

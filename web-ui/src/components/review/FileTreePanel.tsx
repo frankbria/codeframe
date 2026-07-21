@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { FileAddIcon, FileRemoveIcon, FileEditIcon, ArrowDown01Icon, ArrowRight01Icon } from '@hugeicons/react';
+import type { IconSvgElement } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { FileAddIcon, FileRemoveIcon, FileEditIcon, ArrowDown01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { getDirectory, getFilename } from '@/lib/diffParser';
@@ -15,7 +17,7 @@ interface FileTreePanelProps {
   contextTask?: Task | null;
 }
 
-const changeTypeIcon: Record<FileChange['change_type'], React.ComponentType<{ className?: string }>> = {
+const changeTypeIcon: Record<FileChange['change_type'], IconSvgElement> = {
   added: FileAddIcon,
   deleted: FileRemoveIcon,
   modified: FileEditIcon,
@@ -142,9 +144,9 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                       aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${dir}`}
                     >
                       {isCollapsed ? (
-                        <ArrowRight01Icon className="h-3 w-3 shrink-0" />
+                        <HugeiconsIcon icon={ArrowRight01Icon} className="h-3 w-3 shrink-0" />
                       ) : (
-                        <ArrowDown01Icon className="h-3 w-3 shrink-0" />
+                        <HugeiconsIcon icon={ArrowDown01Icon} className="h-3 w-3 shrink-0" />
                       )}
                       <span className="truncate font-mono">{dir}</span>
                       <span className="ml-auto text-[10px] text-muted-foreground/70">
@@ -155,7 +157,7 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                     {!isCollapsed && (
                       <div className="ml-2">
                         {dirFiles.map((file) => {
-                          const Icon = changeTypeIcon[file.change_type];
+                          const icon = changeTypeIcon[file.change_type];
                           const iconColor = changeTypeColor[file.change_type];
                           const isSelected = selectedFile === file.path;
 
@@ -173,7 +175,7 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                               title={file.path}
                               aria-current={isSelected ? 'true' : undefined}
                             >
-                              <Icon className={cn('h-3.5 w-3.5 shrink-0', iconColor)} />
+                              <HugeiconsIcon icon={icon} className={cn('h-3.5 w-3.5 shrink-0', iconColor)} />
                               <span className="truncate font-mono">
                                 {getFilename(file.path)}
                               </span>
@@ -211,9 +213,9 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                       aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${taskTitle}`}
                     >
                       {isCollapsed ? (
-                        <ArrowRight01Icon className="h-3 w-3 shrink-0" />
+                        <HugeiconsIcon icon={ArrowRight01Icon} className="h-3 w-3 shrink-0" />
                       ) : (
-                        <ArrowDown01Icon className="h-3 w-3 shrink-0" />
+                        <HugeiconsIcon icon={ArrowDown01Icon} className="h-3 w-3 shrink-0" />
                       )}
                       <span className="h-2 w-2 rounded-full bg-amber-500" />
                       <span className="truncate">{taskTitle}</span>
@@ -225,7 +227,7 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                     {!isCollapsed && (
                       <div className="ml-2">
                         {taskFiles.map((file) => {
-                          const Icon = changeTypeIcon[file.change_type];
+                          const icon = changeTypeIcon[file.change_type];
                           const iconColor = changeTypeColor[file.change_type];
                           const isSelected = selectedFile === file.path;
 
@@ -243,7 +245,7 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                               title={file.path}
                               aria-current={isSelected ? 'true' : undefined}
                             >
-                              <Icon className={cn('h-3.5 w-3.5 shrink-0', iconColor)} />
+                              <HugeiconsIcon icon={icon} className={cn('h-3.5 w-3.5 shrink-0', iconColor)} />
                               <span className="truncate font-mono">
                                 {getFilename(file.path)}
                               </span>
