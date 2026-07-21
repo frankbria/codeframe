@@ -13,13 +13,13 @@ import { formatDistanceToNow } from 'date-fns';
 import { useNotificationContext } from '@/contexts/NotificationContext';
 import type { AppNotification } from '@/types';
 
-function iconForNotification(n: AppNotification): { Icon: IconSvgElement; color: string } {
+function iconForNotification(n: AppNotification): { icon: IconSvgElement; color: string } {
   if (n.type === 'batch.completed' && n.batchStatus && n.batchStatus !== 'COMPLETED') {
-    return { Icon: Cancel01Icon, color: n.batchStatus === 'FAILED' ? 'text-red-600' : 'text-muted-foreground' };
+    return { icon: Cancel01Icon, color: n.batchStatus === 'FAILED' ? 'text-red-600' : 'text-muted-foreground' };
   }
-  if (n.type === 'batch.completed') return { Icon: CheckmarkCircle01Icon, color: 'text-green-600' };
-  if (n.type === 'blocker.created') return { Icon: Alert02Icon, color: 'text-amber-600' };
-  return { Icon: Alert02Icon, color: 'text-red-600' };
+  if (n.type === 'batch.completed') return { icon: CheckmarkCircle01Icon, color: 'text-green-600' };
+  if (n.type === 'blocker.created') return { icon: Alert02Icon, color: 'text-amber-600' };
+  return { icon: Alert02Icon, color: 'text-red-600' };
 }
 
 function formatTimestamp(iso: string): string {
@@ -129,13 +129,13 @@ function NotificationRow({
   notification: AppNotification;
   onMarkRead: (id: string) => void;
 }) {
-  const { Icon, color: colorClass } = iconForNotification(notification);
+  const { icon, color: colorClass } = iconForNotification(notification);
   return (
     <li
       data-testid="notification-item"
       className={`flex items-start gap-2 px-3 py-2 text-sm ${notification.read ? 'opacity-60' : ''}`}
     >
-      <HugeiconsIcon icon={Icon} className={`mt-0.5 h-4 w-4 shrink-0 ${colorClass}`} aria-hidden="true" />
+      <HugeiconsIcon icon={icon} className={`mt-0.5 h-4 w-4 shrink-0 ${colorClass}`} aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <p className="break-words">{notification.message}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{formatTimestamp(notification.timestamp)}</p>
