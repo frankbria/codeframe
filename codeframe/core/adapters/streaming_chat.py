@@ -169,28 +169,40 @@ class StreamingChatAdapter:
             db_repo: ``InteractiveSessionRepository`` instance.
             workspace_path: Absolute path used to scope file-system tool calls.
             model: Model identifier passed to the provider's ``async_stream()``.
-            api_key: API key used when constructing the default
-                ``AnthropicProvider`` (when ``provider`` is ``None``).
-            provider: LLM provider to use for streaming.  When ``None``,
-                an ``AnthropicProvider`` is constructed automatically using
-                ``api_key`` or the ``ANTHROPIC_API_KEY`` environment variable.
+                Also threaded into ``resolve_llm_settings`` as ``model_flag``
+                when the provider must be resolved (#861).
+            api_key: Legacy construct — when set AND ``provider`` is ``None``,
+                an ``AnthropicProvider`` is constructed with this key
+                (matches the pre-#861 contract). Ignored if ``provider`` is
+                given. Prefer passing ``provider`` directly.
+            provider: LLM provider to use for streaming.  When ``None`` and
+                ``api_key`` is also ``None``, the provider is resolved via the
+                shared ``llm_resolution`` chain (#861):
+                ``CODEFRAME_LLM_PROVIDER`` → ``.codeframe/config.yaml`` →
+                anthropic.
 
         Raises:
-            ValueError: If no provider is given and no Anthropic API key is
-                available.
+            ValueError: If no provider is given, no ``api_key`` is given, and
+                the chain resolves to a provider whose required API key is
+                missing from the environment.
         """
         if provider is None:
-            # Backward-compatibility fallback: callers that haven't been
-            # updated to pass an explicit provider (e.g. tests using the old
-            # api_key= constructor argument) get the shared-chain provider
-            # (CODEFRAME_LLM_PROVIDER → .codeframe/config.yaml → anthropic,
-            # per #861). New callers should construct the provider themselves
-            # and pass it in — see session_chat_ws.py for the recommended
-            # pattern.
-            from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+            if api_key is not None:
+                # Legacy path: explicit api_key always means Anthropic.
+                # Preserves the pre-#861 contract (mirrors PrdDiscoverySession).
+                from codeframe.adapters.llm.anthropic import AnthropicProvider
 
-            settings = resolve_llm_settings(workspace_path, model_flag=model)
-            provider = create_provider(settings)
+                provider = AnthropicProvider(api_key=api_key)
+            else:
+                # New: resolve via the shared chain
+                # (CODEFRAME_LLM_PROVIDER → .codeframe/config.yaml → anthropic,
+                # per #861). New callers should construct the provider
+                # themselves and pass it in — see session_chat_ws.py for the
+                # recommended pattern.
+                from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+
+                settings = resolve_llm_settings(workspace_path, model_flag=model)
+                provider = create_provider(settings)
 
         self._session_id = session_id
         self._db_repo = db_repo

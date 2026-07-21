@@ -132,16 +132,30 @@ class TestDependencyAnalyzerProviderResolution:
         assert kwargs.get("purpose") == Purpose.PLANNING
 
     def test_explicit_provider_skips_chain(self, workspace, ollama_env):
-        """Passing provider= must NOT trigger the chain."""
+        """Passing provider= must NOT trigger the chain AND must be the provider used."""
+        from codeframe.core import tasks as task_module
         from codeframe.core.dependency_analyzer import analyze_dependencies
+        from codeframe.core.state_machine import TaskStatus
+
+        # Seed a task so analyze_dependencies actually reaches the provider call
+        # (otherwise an early-return at line ~63 would mask broken explicit-provider handling).
+        task = task_module.create(
+            workspace,
+            title="Seed task",
+            description="exists so the provider path runs",
+            status=TaskStatus.READY,
+        )
 
         explicit_provider = MagicMock(name="explicit")
         explicit_provider.complete.return_value = MagicMock(content="{}")
         with patch(
             "codeframe.core.llm_resolution.create_provider"
         ) as mock_create:
-            analyze_dependencies(workspace, [], provider=explicit_provider)
+            analyze_dependencies(workspace, [task.id], provider=explicit_provider)
+
         mock_create.assert_not_called()
+        # And the explicit provider is the one whose .complete() was called
+        explicit_provider.complete.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -213,12 +227,17 @@ class TestStreamingChatProviderResolution:
                 session_id="s1",
                 db_repo=MagicMock(),
                 workspace_path=Path("/tmp"),
+                model="claude-opus-4-20250514",
             )
 
         assert adapter._provider is fake_provider
         mock_create.assert_called_once()
         settings = mock_create.call_args.args[0]
         assert settings.provider_type == "ollama"
+        # The adapter's model= must thread through to the resolved settings
+        # so callers can pin a specific model even when the chain resolves
+        # the provider. Locks in the only model_flag= propagation site.
+        assert settings.model == "claude-opus-4-20250514"
 
     def test_explicit_provider_skips_chain(self, ollama_env):
         from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
@@ -235,3 +254,23 @@ class TestStreamingChatProviderResolution:
             )
         mock_create.assert_not_called()
         assert adapter._provider is explicit
+
+    def test_legacy_api_key_skips_chain(self, ollama_env):
+        """Backward-compat: explicit api_key still constructs AnthropicProvider,
+        mirroring PrdDiscoverySession. Without this, callers passing api_key=
+        would silently get a chain-resolved provider instead."""
+        from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
+
+        with patch(
+            "codeframe.core.llm_resolution.create_provider"
+        ) as mock_create, patch(
+            "codeframe.adapters.llm.anthropic.AnthropicProvider"
+        ) as mock_anthropic:
+            StreamingChatAdapter(
+                session_id="s1",
+                db_repo=MagicMock(),
+                workspace_path=Path("/tmp"),
+                api_key="legacy-key",
+            )
+        mock_create.assert_not_called()
+        mock_anthropic.assert_called_once_with(api_key="legacy-key")
