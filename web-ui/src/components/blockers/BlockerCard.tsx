@@ -21,25 +21,25 @@ import type { Blocker, BlockerOrigin, ApiError } from '@/types';
 
 const ORIGIN_CONFIG: Record<BlockerOrigin, {
   label: string;
-  Icon: IconSvgElement;
+  icon: IconSvgElement;
   badgeClass: string;
   guidance: string;
 }> = {
   system: {
     label: 'System',
-    Icon: Settings01Icon,
+    icon: Settings01Icon,
     badgeClass: 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300',
     guidance: 'System-initiated pause. Review the context and answer to continue.',
   },
   agent: {
     label: 'Agent',
-    Icon: ArtificialIntelligence01Icon,
+    icon: ArtificialIntelligence01Icon,
     badgeClass: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
     guidance: 'Agent requested information. Provide the answer below.',
   },
   human: {
     label: 'Manual',
-    Icon: UserCircle02Icon,
+    icon: UserCircle02Icon,
     badgeClass: 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300',
     guidance: 'Manually created blocker. Resolve and mark answered.',
   },
@@ -125,7 +125,7 @@ export function BlockerCard({ blocker, workspacePath, onAnswered }: BlockerCardP
             data-testid="origin-badge"
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${origin.badgeClass}`}
           >
-            <HugeiconsIcon icon={origin.Icon} className="h-3 w-3" />
+            <HugeiconsIcon icon={origin.icon} className="h-3 w-3" />
             {origin.label}
           </span>
           <span className="text-xs text-muted-foreground">
