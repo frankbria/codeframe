@@ -1,6 +1,7 @@
 'use client';
 
-import { CheckmarkCircle01Icon, Cancel01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { CheckmarkCircle01Icon, Cancel01Icon } from '@hugeicons/core-free-icons';
 import type { ProgressEvent } from '@/hooks/useTaskStream';
 
 interface VerificationEventProps {
@@ -17,11 +18,12 @@ interface VerificationEventProps {
  */
 export function VerificationEvent({ event }: VerificationEventProps) {
   const passed = /\bpassed?\b/i.test(event.message ?? '');
-  const Icon = passed ? CheckmarkCircle01Icon : Cancel01Icon;
+  const icon = passed ? CheckmarkCircle01Icon : Cancel01Icon;
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <Icon
+      <HugeiconsIcon
+        icon={icon}
         className={`h-4 w-4 shrink-0 ${
           passed ? 'text-green-600' : 'text-red-600'
         }`}

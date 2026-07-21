@@ -2,7 +2,8 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Loading03Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Loading03Icon } from '@hugeicons/core-free-icons';
 import { isAuthenticated } from '@/lib/auth';
 import { checkAuthAccess } from '@/lib/api';
 import { AppSidebar } from './AppSidebar';
@@ -24,7 +25,7 @@ function FullPageLoader() {
       role="status"
       aria-label="Loading"
     >
-      <Loading03Icon className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+      <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
     </div>
   );
 }

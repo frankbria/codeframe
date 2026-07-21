@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Cancel01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Cancel01Icon } from '@hugeicons/core-free-icons';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -170,7 +171,7 @@ export function CaptureGlitchModal({
                 aria-label="Close"
                 className="rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2"
               >
-                <Cancel01Icon className="h-4 w-4" aria-hidden="true" />
+                <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" aria-hidden="true" />
               </button>
             </DialogPrimitive.Close>
           </div>

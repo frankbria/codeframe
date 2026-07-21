@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Tick01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Tick01Icon } from '@hugeicons/core-free-icons';
 import { cn } from '@/lib/utils';
 import { usePipelineStatus } from '@/hooks/usePipelineStatus';
 
@@ -63,7 +64,7 @@ export function PipelineProgressBar() {
               aria-current={isActive ? 'step' : undefined}
             >
               {isComplete ? (
-                <Tick01Icon className="h-4 w-4 shrink-0" />
+                <HugeiconsIcon icon={Tick01Icon} className="h-4 w-4 shrink-0" />
               ) : (
                 <span
                   className={cn(

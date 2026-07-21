@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback } from 'react';
-import { CheckmarkCircle01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { CheckmarkCircle01Icon } from '@hugeicons/core-free-icons';
 import {
   Dialog,
   DialogContent,
@@ -33,7 +34,7 @@ export function PRCreatedModal({
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader className="items-center">
-          <CheckmarkCircle01Icon className="mx-auto h-12 w-12 text-green-500" />
+          <HugeiconsIcon icon={CheckmarkCircle01Icon} className="mx-auto h-12 w-12 text-green-500" />
           <DialogTitle>Pull Request Created</DialogTitle>
           <DialogDescription className="sr-only">
             Pull request #{prNumber} has been created successfully

@@ -1,6 +1,7 @@
 'use client';
 
-import { Loading03Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Loading03Icon } from '@hugeicons/core-free-icons';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,7 +70,7 @@ export function BulkActionConfirmDialog({
             disabled={isLoading}
             className={config.destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
           >
-            {isLoading && <Loading03Icon className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading && <HugeiconsIcon icon={Loading03Icon} className="mr-2 h-4 w-4 animate-spin" />}
             Confirm
           </AlertDialogAction>
         </AlertDialogFooter>

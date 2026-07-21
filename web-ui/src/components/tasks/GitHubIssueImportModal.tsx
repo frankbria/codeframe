@@ -3,14 +3,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import useSWR from 'swr';
 import { formatDistanceToNowStrict } from 'date-fns';
-import {
-  Search01Icon,
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
-  Cancel01Icon,
-  Loading03Icon,
-  Alert02Icon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Search01Icon, ArrowLeft01Icon, ArrowRight01Icon, Cancel01Icon, Loading03Icon, Alert02Icon } from '@hugeicons/core-free-icons';
 import {
   Dialog,
   DialogContent,
@@ -151,14 +145,14 @@ export function GitHubIssueImportModal({
             aria-label="Close"
             className="rounded p-1 text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
           >
-            <Cancel01Icon className="h-4 w-4" />
+            <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
           </button>
         </DialogHeader>
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3 border-b px-6 py-3">
           <div className="relative flex-1 min-w-[200px]">
-            <Search01Icon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <HugeiconsIcon icon={Search01Icon} className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
@@ -219,7 +213,7 @@ export function GitHubIssueImportModal({
               role="alert"
               className="flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 px-4 py-3 text-sm text-destructive"
             >
-              <Alert02Icon className="h-4 w-4 shrink-0" />
+              <HugeiconsIcon icon={Alert02Icon} className="h-4 w-4 shrink-0" />
               <span>{error.detail || 'Failed to load issues.'}</span>
             </div>
           )}
@@ -278,7 +272,7 @@ export function GitHubIssueImportModal({
             role="alert"
             className="flex items-center gap-2 border-t border-destructive/40 bg-destructive/10 px-6 py-2.5 text-sm text-destructive"
           >
-            <Alert02Icon className="h-4 w-4 shrink-0" />
+            <HugeiconsIcon icon={Alert02Icon} className="h-4 w-4 shrink-0" />
             <span>{importError}</span>
           </div>
         )}
@@ -293,7 +287,7 @@ export function GitHubIssueImportModal({
               disabled={page <= 1 || isLoading}
               aria-label="Previous page"
             >
-              <ArrowLeft01Icon className="h-4 w-4" />
+              <HugeiconsIcon icon={ArrowLeft01Icon} className="h-4 w-4" />
             </Button>
             <span>
               Page {page} of {totalPages}
@@ -305,7 +299,7 @@ export function GitHubIssueImportModal({
               disabled={page >= totalPages || isLoading}
               aria-label="Next page"
             >
-              <ArrowRight01Icon className="h-4 w-4" />
+              <HugeiconsIcon icon={ArrowRight01Icon} className="h-4 w-4" />
             </Button>
           </div>
           <div className="flex items-center gap-2">
@@ -317,7 +311,7 @@ export function GitHubIssueImportModal({
               disabled={selected.size === 0 || importing}
             >
               {(isLoading || importing) && (
-                <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-4 w-4 animate-spin" />
               )}
               {importing
                 ? `Importing ${selected.size} issue${selected.size !== 1 ? 's' : ''}…`

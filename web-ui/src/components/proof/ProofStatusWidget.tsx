@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import useSWR from 'swr';
-import { CheckmarkCircle01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { CheckmarkCircle01Icon } from '@hugeicons/core-free-icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { proofApi } from '@/lib/api';
@@ -23,7 +24,7 @@ export function ProofStatusWidget({ workspacePath }: ProofStatusWidgetProps) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium">PROOF9 Status</CardTitle>
-        <CheckmarkCircle01Icon className="h-4 w-4 text-muted-foreground" />
+        <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
         {isLoading && (

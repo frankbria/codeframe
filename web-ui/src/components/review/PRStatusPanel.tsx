@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
-import { Loading03Icon, CheckmarkCircle01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Loading03Icon, CheckmarkCircle01Icon } from '@hugeicons/core-free-icons';
 import { prApi, proofApi } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -213,7 +214,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
               </p>
             ) : openRequirements.length === 0 ? (
               <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                <CheckmarkCircle01Icon className="h-3 w-3 text-green-600" />
+                <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-3 w-3 text-green-600" />
                 All clear
               </p>
             ) : (
@@ -256,7 +257,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
       {/* Success banner or Merge button */}
       {alreadyMerged ? (
         <div className="flex items-center gap-1 rounded bg-green-50 px-3 py-2 text-xs text-green-700">
-          <CheckmarkCircle01Icon className="h-3 w-3" />
+          <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-3 w-3" />
           PR #{prNumber} merged successfully
         </div>
       ) : (
@@ -273,7 +274,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
                 >
                   {isMerging ? (
                     <>
-                      <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
+                      <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-4 w-4 animate-spin" />
                       Merging...
                     </>
                   ) : (

@@ -1,14 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import {
-  FileEditIcon,
-  FileAddIcon,
-  Task01Icon,
-  GitBranchIcon,
-  PlayCircleIcon,
-  CheckListIcon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { FileEditIcon, FileAddIcon, Task01Icon, GitBranchIcon, PlayCircleIcon, CheckListIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import type { QuickActionsProps } from '@/types';
 
@@ -35,13 +29,13 @@ export function QuickActions({ taskCounts }: QuickActionsProps) {
           <>
             <Button asChild>
               <Link href="/prd">
-                <FileEditIcon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={FileEditIcon} className="mr-2 h-4 w-4" />
                 Create PRD
               </Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/prd">
-                <FileAddIcon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={FileAddIcon} className="mr-2 h-4 w-4" />
                 Import PRD
               </Link>
             </Button>
@@ -52,13 +46,13 @@ export function QuickActions({ taskCounts }: QuickActionsProps) {
           <>
             <Button asChild>
               <Link href="/tasks">
-                <PlayCircleIcon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={PlayCircleIcon} className="mr-2 h-4 w-4" />
                 Execute Tasks
               </Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/tasks">
-                <Task01Icon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={Task01Icon} className="mr-2 h-4 w-4" />
                 Manage Tasks
               </Link>
             </Button>
@@ -69,13 +63,13 @@ export function QuickActions({ taskCounts }: QuickActionsProps) {
           <>
             <Button asChild>
               <Link href="/tasks">
-                <PlayCircleIcon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={PlayCircleIcon} className="mr-2 h-4 w-4" />
                 View Running Tasks
               </Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/tasks">
-                <Task01Icon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={Task01Icon} className="mr-2 h-4 w-4" />
                 Manage Tasks
               </Link>
             </Button>
@@ -86,13 +80,13 @@ export function QuickActions({ taskCounts }: QuickActionsProps) {
           <>
             <Button asChild>
               <Link href="/proof">
-                <CheckListIcon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={CheckListIcon} className="mr-2 h-4 w-4" />
                 View Proof Gates
               </Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/review">
-                <GitBranchIcon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={GitBranchIcon} className="mr-2 h-4 w-4" />
                 Review Changes
               </Link>
             </Button>
@@ -103,19 +97,19 @@ export function QuickActions({ taskCounts }: QuickActionsProps) {
           <>
             <Button variant="outline" asChild>
               <Link href="/prd">
-                <FileEditIcon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={FileEditIcon} className="mr-2 h-4 w-4" />
                 View PRD
               </Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/tasks">
-                <Task01Icon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={Task01Icon} className="mr-2 h-4 w-4" />
                 Manage Tasks
               </Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/review">
-                <GitBranchIcon className="mr-2 h-4 w-4" />
+                <HugeiconsIcon icon={GitBranchIcon} className="mr-2 h-4 w-4" />
                 Review Changes
               </Link>
             </Button>

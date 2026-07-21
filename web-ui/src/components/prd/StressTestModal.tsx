@@ -1,12 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Loading03Icon,
-  TestTube01Icon,
-  CheckmarkCircle01Icon,
-  Alert01Icon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Loading03Icon, TestTube01Icon, CheckmarkCircle01Icon, Alert01Icon } from '@hugeicons/core-free-icons';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -129,7 +125,7 @@ export function StressTestModal({
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <TestTube01Icon className="h-5 w-5 text-muted-foreground" />
+            <HugeiconsIcon icon={TestTube01Icon} className="h-5 w-5 text-muted-foreground" />
             Stress Test PRD
           </DialogTitle>
           <DialogDescription>
@@ -139,14 +135,14 @@ export function StressTestModal({
 
         {status === 'streaming' && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loading03Icon className="h-4 w-4 animate-spin" />
+            <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
             Analyzing PRD...
           </div>
         )}
 
         {status === 'complete' && (
           <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-500">
-            <CheckmarkCircle01Icon className="h-4 w-4" />
+            <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-4 w-4" />
             {result && result.ambiguityCount > 0
               ? `Found ${result.ambiguityCount} ambiguit${result.ambiguityCount === 1 ? 'y' : 'ies'}`
               : 'No ambiguities found — PRD is well-specified'}
@@ -201,7 +197,7 @@ export function StressTestModal({
         {status === 'error' && (
           <div className="rounded-md border border-destructive bg-destructive/10 p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-destructive">
-              <Alert01Icon className="h-4 w-4" />
+              <HugeiconsIcon icon={Alert01Icon} className="h-4 w-4" />
               Stress test failed
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -227,7 +223,7 @@ export function StressTestModal({
                 !prdId
               }
             >
-              {isRefining && <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />}
+              {isRefining && <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-4 w-4 animate-spin" />}
               Refine PRD
             </Button>
           )}

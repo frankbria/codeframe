@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Loading03Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Loading03Icon } from '@hugeicons/core-free-icons';
 import type { SessionCreateRequest } from '@/types';
 import {
   Dialog,
@@ -108,7 +109,7 @@ export function NewSessionModal({
             onClick={handleSubmit}
             disabled={isSubmitting}
           >
-            {isSubmitting && <Loading03Icon className="mr-2 h-4 w-4 animate-spin" />}
+            {isSubmitting && <HugeiconsIcon icon={Loading03Icon} className="mr-2 h-4 w-4 animate-spin" />}
             Start Session
           </Button>
         </DialogFooter>

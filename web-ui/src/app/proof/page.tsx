@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
-import { InformationCircleIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { InformationCircleIcon } from '@hugeicons/core-free-icons';
 import {
   Tooltip,
   TooltipTrigger,
@@ -436,7 +437,7 @@ function ProofPageContent() {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button type="button" aria-label="Explain Glitch Type" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                              <InformationCircleIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                              <HugeiconsIcon icon={InformationCircleIcon} className="h-3.5 w-3.5" aria-hidden="true" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>The category of quality issue this requirement addresses</TooltipContent>
@@ -449,7 +450,7 @@ function ProofPageContent() {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button type="button" aria-label="Explain Severity" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                              <InformationCircleIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                              <HugeiconsIcon icon={InformationCircleIcon} className="h-3.5 w-3.5" aria-hidden="true" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>Impact level: critical, high, medium, or low</TooltipContent>
@@ -462,7 +463,7 @@ function ProofPageContent() {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button type="button" aria-label="Explain Gates" className="inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                              <InformationCircleIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                              <HugeiconsIcon icon={InformationCircleIcon} className="h-3.5 w-3.5" aria-hidden="true" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent>Number of evidence gates that must pass to satisfy this requirement</TooltipContent>

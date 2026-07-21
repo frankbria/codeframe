@@ -12,6 +12,7 @@ const customJestConfig = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@hugeicons/react$': '<rootDir>/__mocks__/@hugeicons/react.js',
+    '^@hugeicons/core-free-icons$': '<rootDir>/__mocks__/@hugeicons/core-free-icons.js',
   },
   testMatch: ['**/__tests__/**/*.[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
   testPathIgnorePatterns: [

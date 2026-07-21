@@ -4,7 +4,7 @@
  * Used by EventItem, ExecutionHeader, and other execution monitor components
  * to ensure consistent badge colors and icons across the UI.
  */
-import type { ComponentType } from 'react';
+import type { IconSvgElement } from '@hugeicons/react';
 import type { UIAgentState } from '@/types';
 import type {
   ExecutionEvent,
@@ -23,7 +23,7 @@ import {
   Loading03Icon,
   WifiDisconnected01Icon,
   FileEditIcon,
-} from '@hugeicons/react';
+} from '@hugeicons/core-free-icons';
 
 // ── Agent state derivation ─────────────────────────────────────────────
 
@@ -100,11 +100,8 @@ export const agentStateLabels: Record<UIAgentState, string> = {
 
 // ── Icon mapping ───────────────────────────────────────────────────────
 
-// Hugeicons icon props type (size + className are the commonly used ones)
-type IconProps = { size?: number; className?: string };
-
-/** Icon component for each agent state. */
-export const agentStateIcons: Record<UIAgentState, ComponentType<IconProps>> = {
+/** Icon data for each agent state (rendered via `<HugeiconsIcon icon={...} />`). */
+export const agentStateIcons: Record<UIAgentState, IconSvgElement> = {
   CONNECTING: Loading03Icon,
   PLANNING: Idea01Icon,
   EXECUTING: PlayIcon,
@@ -117,7 +114,7 @@ export const agentStateIcons: Record<UIAgentState, ComponentType<IconProps>> = {
 };
 
 /**
- * Icon for specific event sub-types used inside event detail renderers
+ * Icon data for specific event sub-types used inside event detail renderers
  * (e.g. shell output uses a terminal icon, errors use a diamond alert).
  */
 export const eventDetailIcons = {

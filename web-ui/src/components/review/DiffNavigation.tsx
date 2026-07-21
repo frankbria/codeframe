@@ -1,6 +1,7 @@
 'use client';
 
-import { ArrowLeft01Icon, ArrowRight01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowLeft01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 
 interface DiffNavigationProps {
@@ -41,7 +42,7 @@ export function DiffNavigation({
         disabled={isFirst}
         aria-label="Previous file"
       >
-        <ArrowLeft01Icon className="mr-1 h-3.5 w-3.5" />
+        <HugeiconsIcon icon={ArrowLeft01Icon} className="mr-1 h-3.5 w-3.5" />
         Prev
       </Button>
 
@@ -61,7 +62,7 @@ export function DiffNavigation({
         aria-label="Next file"
       >
         Next
-        <ArrowRight01Icon className="ml-1 h-3.5 w-3.5" />
+        <HugeiconsIcon icon={ArrowRight01Icon} className="ml-1 h-3.5 w-3.5" />
       </Button>
     </nav>
   );

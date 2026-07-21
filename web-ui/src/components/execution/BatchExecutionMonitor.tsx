@@ -2,13 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  CheckmarkCircle01Icon,
-  Cancel01Icon,
-  Loading03Icon,
-  Alert02Icon,
-  StopIcon,
-} from '@hugeicons/react';
+import type { IconSvgElement } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { CheckmarkCircle01Icon, Cancel01Icon, Loading03Icon, Alert02Icon, StopIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -28,7 +24,7 @@ import type { BatchResponse, Task } from '@/types';
 
 // ── Status icon helper ────────────────────────────────────────────────
 
-const statusConfig: Record<string, { icon: typeof CheckmarkCircle01Icon; className: string; label: string }> = {
+const statusConfig: Record<string, { icon: IconSvgElement; className: string; label: string }> = {
   COMPLETED: { icon: CheckmarkCircle01Icon, className: 'text-green-600', label: 'Completed' },
   DONE: { icon: CheckmarkCircle01Icon, className: 'text-green-600', label: 'Done' },
   FAILED: { icon: Cancel01Icon, className: 'text-red-600', label: 'Failed' },
@@ -145,7 +141,7 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
   if (!batch) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loading03Icon className="h-6 w-6 animate-spin text-muted-foreground" />
+        <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -173,7 +169,7 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 gap-1.5 px-3">
-                  <StopIcon className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={StopIcon} className="h-3.5 w-3.5" />
                   Stop Batch
                 </Button>
               </AlertDialogTrigger>
@@ -197,7 +193,7 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" size="sm" className="h-8 gap-1.5 px-3">
-                  <Cancel01Icon className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={Cancel01Icon} className="h-3.5 w-3.5" />
                   Cancel Batch
                 </Button>
               </AlertDialogTrigger>
@@ -269,7 +265,6 @@ function BatchTaskRow({
   workspacePath: string;
 }) {
   const config = getStatusConfig(status);
-  const StatusIcon = config.icon;
 
   // Only connect SSE when expanded and task is in progress or blocked
   const shouldStream = isExpanded && (status === 'IN_PROGRESS' || status === 'BLOCKED');
@@ -283,7 +278,7 @@ function BatchTaskRow({
         className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"
         aria-expanded={isExpanded}
       >
-        <StatusIcon className={`h-4 w-4 shrink-0 ${config.className}`} />
+        <HugeiconsIcon icon={config.icon} className={`h-4 w-4 shrink-0 ${config.className}`} />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
           {task?.title ?? taskId}
         </span>

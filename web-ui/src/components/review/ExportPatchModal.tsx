@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Copy01Icon, Download04Icon, CheckmarkCircle01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Copy01Icon, Download04Icon, CheckmarkCircle01Icon } from '@hugeicons/core-free-icons';
 import {
   Dialog,
   DialogContent,
@@ -74,14 +75,14 @@ export function ExportPatchModal({
         <DialogFooter>
           <Button variant="outline" onClick={handleCopy}>
             {copied ? (
-              <CheckmarkCircle01Icon className="mr-1.5 h-3.5 w-3.5 text-green-500" />
+              <HugeiconsIcon icon={CheckmarkCircle01Icon} className="mr-1.5 h-3.5 w-3.5 text-green-500" />
             ) : (
-              <Copy01Icon className="mr-1.5 h-3.5 w-3.5" />
+              <HugeiconsIcon icon={Copy01Icon} className="mr-1.5 h-3.5 w-3.5" />
             )}
             {copied ? 'Copied!' : 'Copy to Clipboard'}
           </Button>
           <Button variant="default" onClick={handleDownload}>
-            <Download04Icon className="mr-1.5 h-3.5 w-3.5" />
+            <HugeiconsIcon icon={Download04Icon} className="mr-1.5 h-3.5 w-3.5" />
             Download
           </Button>
         </DialogFooter>

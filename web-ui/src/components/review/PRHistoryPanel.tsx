@@ -2,14 +2,8 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import {
-  ArrowDown01Icon,
-  ArrowUp01Icon,
-  ArrowUpRight01Icon,
-  CheckmarkCircle01Icon,
-  Cancel01Icon,
-  Alert02Icon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowDown01Icon, ArrowUp01Icon, ArrowUpRight01Icon, CheckmarkCircle01Icon, Cancel01Icon, Alert02Icon } from '@hugeicons/core-free-icons';
 import { prApi } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -135,9 +129,9 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
                       {proofBadgeText(pr.proof_snapshot)}
                     </Badge>
                     {expandedPR === pr.number ? (
-                      <ArrowUp01Icon className="h-4 w-4 text-muted-foreground" />
+                      <HugeiconsIcon icon={ArrowUp01Icon} className="h-4 w-4 text-muted-foreground" />
                     ) : (
-                      <ArrowDown01Icon className="h-4 w-4 text-muted-foreground" />
+                      <HugeiconsIcon icon={ArrowDown01Icon} className="h-4 w-4 text-muted-foreground" />
                     )}
                   </div>
                 </button>
@@ -151,7 +145,7 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
                   {loadingFiles === pr.number ? (
                     <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
                   ) : (
-                    <Alert02Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                    <HugeiconsIcon icon={Alert02Icon} className="h-3.5 w-3.5" aria-hidden="true" />
                   )}
                   Report Glitch
                 </Button>
@@ -162,7 +156,7 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
                   className="shrink-0 text-muted-foreground transition-all hover:text-foreground focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring rounded"
                   aria-label={`Open PR #${pr.number} on GitHub`}
                 >
-                  <ArrowUpRight01Icon className="h-4 w-4" />
+                  <HugeiconsIcon icon={ArrowUpRight01Icon} className="h-4 w-4" />
                 </a>
               </div>
 
@@ -176,9 +170,9 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
                         className="flex items-center gap-2 text-xs"
                       >
                         {gate.status === 'satisfied' ? (
-                          <CheckmarkCircle01Icon className="h-3.5 w-3.5 text-green-600" />
+                          <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-3.5 w-3.5 text-green-600" />
                         ) : (
-                          <Cancel01Icon className="h-3.5 w-3.5 text-red-600" />
+                          <HugeiconsIcon icon={Cancel01Icon} className="h-3.5 w-3.5 text-red-600" />
                         )}
                         <span className="text-muted-foreground">
                           {gate.gate}

@@ -1,7 +1,8 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { ArrowDown01Icon, ArrowRight01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { ArrowDown01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { editGroupBadgeStyles } from '@/lib/eventStyles';
 import { EventItem } from './EventItem';
@@ -95,7 +96,7 @@ function ReadGroupRow({
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} ${group.count} file read events`}
       >
-        <ArrowRight01Icon
+        <HugeiconsIcon icon={ArrowRight01Icon}
           className={`h-3 w-3 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
         />
         <span className="font-mono text-[11px]">
@@ -265,7 +266,7 @@ export function EventStream({ events, workspacePath, onBlockerAnswered }: EventS
             className="h-7 gap-1 rounded-full px-3 text-xs shadow-md"
             onClick={scrollToBottom}
           >
-            <ArrowDown01Icon className="h-3.5 w-3.5" />
+            <HugeiconsIcon icon={ArrowDown01Icon} className="h-3.5 w-3.5" />
             New events
           </Button>
         </div>

@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Loading03Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Loading03Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -58,7 +59,7 @@ export function MarkdownEditor({
             <Button size="sm" onClick={handleSave} disabled={isSaving}>
               {isSaving ? (
                 <>
-                  <Loading03Icon className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                   Saving...
                 </>
               ) : (

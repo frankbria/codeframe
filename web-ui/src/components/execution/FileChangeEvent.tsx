@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { FileEditIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { FileEditIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import type { ProgressEvent } from '@/hooks/useTaskStream';
 
@@ -25,7 +26,7 @@ export function FileChangeEvent({ event }: FileChangeEventProps) {
   return (
     <div className="text-sm">
       <div className="flex items-center gap-2">
-        <FileEditIcon className="h-4 w-4 shrink-0 text-green-600" />
+        <HugeiconsIcon icon={FileEditIcon} className="h-4 w-4 shrink-0 text-green-600" />
         <span className="truncate font-mono text-xs">{filePath || event.message}</span>
         <Button
           variant="ghost"

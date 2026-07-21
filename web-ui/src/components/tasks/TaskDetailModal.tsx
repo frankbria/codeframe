@@ -3,18 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  PlayCircleIcon,
-  CheckmarkCircle01Icon,
-  LinkCircleIcon,
-  Loading03Icon,
-  Time01Icon,
-  ViewIcon,
-  BookOpen01Icon,
-  Alert02Icon,
-  CheckListIcon,
-  InformationCircleIcon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { PlayCircleIcon, CheckmarkCircle01Icon, LinkCircleIcon, Loading03Icon, Time01Icon, ViewIcon, BookOpen01Icon, Alert02Icon, CheckListIcon, InformationCircleIcon } from '@hugeicons/core-free-icons';
 import {
   Dialog,
   DialogContent,
@@ -158,7 +148,7 @@ export function TaskDetailModal({
 
         {isLoading && (
           <div className="flex items-center justify-center py-12">
-            <Loading03Icon className="h-6 w-6 animate-spin text-muted-foreground" />
+            <HugeiconsIcon icon={Loading03Icon} className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         )}
 
@@ -214,13 +204,13 @@ export function TaskDetailModal({
             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
               {task.estimated_hours != null && (
                 <span className="flex items-center gap-1">
-                  <Time01Icon className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={Time01Icon} className="h-3.5 w-3.5" />
                   {task.estimated_hours}h estimated
                 </span>
               )}
               {task.updated_at && (
                 <span className="flex items-center gap-1">
-                  <Time01Icon className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={Time01Icon} className="h-3.5 w-3.5" />
                   Last changed: {new Date(task.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
               )}
@@ -248,7 +238,7 @@ export function TaskDetailModal({
             {task.depends_on.length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  <LinkCircleIcon className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={LinkCircleIcon} className="h-3.5 w-3.5" />
                   Dependencies ({task.depends_on.length})
                 </div>
                 <ul className="space-y-1">
@@ -285,11 +275,11 @@ export function TaskDetailModal({
             {(task.requirement_ids ?? []).length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  <BookOpen01Icon className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={BookOpen01Icon} className="h-3.5 w-3.5" />
                   Requirements
                 </div>
                 {reqsLoading ? (
-                  <Loading03Icon className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  <HugeiconsIcon icon={Loading03Icon} className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                 ) : (
                   <ul className="space-y-1">
                     {(task.requirement_ids ?? []).map((reqId) => {
@@ -321,7 +311,7 @@ export function TaskDetailModal({
             {task.status === 'FAILED' && (
               <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5" data-testid="status-next-step">
                 <div className="flex items-start gap-2">
-                  <Alert02Icon className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                  <HugeiconsIcon icon={Alert02Icon} className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                   <div className="space-y-0.5">
                     <p className="text-xs font-medium text-destructive">Task failed during execution</p>
                     <p className="text-xs text-muted-foreground">
@@ -336,7 +326,7 @@ export function TaskDetailModal({
             {(task.status === 'DONE' || task.status === 'BLOCKED' || task.status === 'MERGED') && (
               <div className="rounded-md border bg-muted/40 px-3 py-2.5" data-testid="status-next-step">
                 <div className="flex items-start gap-2">
-                  <InformationCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <HugeiconsIcon icon={InformationCircleIcon} className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                   <div className="space-y-0.5">
                     <p className="text-xs font-medium text-foreground">What&apos;s next?</p>
                     <p className="text-xs text-muted-foreground">{STATUS_INFO[task.status].nextSteps}</p>
@@ -354,9 +344,9 @@ export function TaskDetailModal({
                   onClick={handleMarkReady}
                 >
                   {isUpdating ? (
-                    <Loading03Icon className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <CheckmarkCircle01Icon className="mr-1.5 h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={CheckmarkCircle01Icon} className="mr-1.5 h-3.5 w-3.5" />
                   )}
                   Mark Ready
                 </Button>
@@ -369,7 +359,7 @@ export function TaskDetailModal({
                     router.push(`/execution/${task.id}`);
                   }}
                 >
-                  <ViewIcon className="mr-1.5 h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={ViewIcon} className="mr-1.5 h-3.5 w-3.5" />
                   View Execution
                 </Button>
               )}
@@ -378,7 +368,7 @@ export function TaskDetailModal({
                   size="sm"
                   onClick={() => onExecute(task.id)}
                 >
-                  <PlayCircleIcon className="mr-1.5 h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={PlayCircleIcon} className="mr-1.5 h-3.5 w-3.5" />
                   Execute
                 </Button>
               )}
@@ -399,9 +389,9 @@ export function TaskDetailModal({
                       onClick={handleMarkReady}
                     >
                       {isUpdating ? (
-                        <Loading03Icon className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                       ) : (
-                        <CheckmarkCircle01Icon className="mr-1.5 h-3.5 w-3.5" />
+                        <HugeiconsIcon icon={CheckmarkCircle01Icon} className="mr-1.5 h-3.5 w-3.5" />
                       )}
                       Reset to Ready
                     </Button>
@@ -412,7 +402,7 @@ export function TaskDetailModal({
                         router.push(proofLink);
                       }}
                     >
-                      <CheckListIcon className="mr-1.5 h-3.5 w-3.5" />
+                      <HugeiconsIcon icon={CheckListIcon} className="mr-1.5 h-3.5 w-3.5" />
                       View PROOF9 Gates
                     </Button>
                   </>

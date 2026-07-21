@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { PlayCircleIcon, CheckmarkCircle01Icon, LinkCircleIcon, Cancel01Icon, ArrowTurnBackwardIcon, Loading03Icon, BookOpen01Icon, MoneyBag02Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { PlayCircleIcon, CheckmarkCircle01Icon, LinkCircleIcon, Cancel01Icon, ArrowTurnBackwardIcon, Loading03Icon, BookOpen01Icon, MoneyBag02Icon } from '@hugeicons/core-free-icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -145,7 +146,7 @@ export function TaskCard({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="flex cursor-default items-center gap-1 text-xs text-muted-foreground">
-                  <LinkCircleIcon className="h-3.5 w-3.5" />
+                  <HugeiconsIcon icon={LinkCircleIcon} className="h-3.5 w-3.5" />
                   {task.depends_on.length}
                 </span>
               </TooltipTrigger>
@@ -173,7 +174,7 @@ export function TaskCard({
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >
-            <BookOpen01Icon className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <HugeiconsIcon icon={BookOpen01Icon} className="h-3 w-3 shrink-0 text-muted-foreground" />
             <Link href={`/proof/${encodeURIComponent(reqIds[0])}`}>
               <Badge variant="outline" className="h-5 cursor-pointer gap-1 px-1.5 text-[10px] hover:bg-accent">
                 <span className="font-mono">{reqIds[0].slice(0, 10)}</span>
@@ -202,7 +203,7 @@ export function TaskCard({
                   variant="outline"
                   className="h-5 gap-1 px-1.5 text-[10px]"
                 >
-                  <MoneyBag02Icon className="h-3 w-3" />
+                  <HugeiconsIcon icon={MoneyBag02Icon} className="h-3 w-3" />
                   <span className="tabular-nums">{formatBadgeCost(costEntry.total_cost_usd)}</span>
                 </Badge>
               </TooltipTrigger>
@@ -222,7 +223,7 @@ export function TaskCard({
           <div className="mt-2 flex gap-1">
             {isLoading ? (
               <span role="status" aria-label="Loading">
-                <Loading03Icon className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                <HugeiconsIcon icon={Loading03Icon} className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
               </span>
             ) : (
               <>
@@ -236,7 +237,7 @@ export function TaskCard({
                       onExecute(task.id);
                     }}
                   >
-                    <PlayCircleIcon className="h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={PlayCircleIcon} className="h-3.5 w-3.5" />
                     Execute
                   </Button>
                 )}
@@ -250,7 +251,7 @@ export function TaskCard({
                       onMarkReady(task.id);
                     }}
                   >
-                    <CheckmarkCircle01Icon className="h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-3.5 w-3.5" />
                     Mark Ready
                   </Button>
                 )}
@@ -264,7 +265,7 @@ export function TaskCard({
                       onStop(task.id);
                     }}
                   >
-                    <Cancel01Icon className="h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={Cancel01Icon} className="h-3.5 w-3.5" />
                     Stop
                   </Button>
                 )}
@@ -278,7 +279,7 @@ export function TaskCard({
                       onReset(task.id);
                     }}
                   >
-                    <ArrowTurnBackwardIcon className="h-3.5 w-3.5" />
+                    <HugeiconsIcon icon={ArrowTurnBackwardIcon} className="h-3.5 w-3.5" />
                     Reset
                   </Button>
                 )}

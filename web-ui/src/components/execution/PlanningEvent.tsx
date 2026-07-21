@@ -1,6 +1,7 @@
 'use client';
 
-import { Idea01Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { Idea01Icon } from '@hugeicons/core-free-icons';
 import type { ProgressEvent } from '@/hooks/useTaskStream';
 
 interface PlanningEventProps {
@@ -10,7 +11,7 @@ interface PlanningEventProps {
 export function PlanningEvent({ event }: PlanningEventProps) {
   return (
     <div className="flex items-start gap-2 text-sm">
-      <Idea01Icon className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+      <HugeiconsIcon icon={Idea01Icon} className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
       <div className="min-w-0">
         {event.total_steps > 0 && (
           <span className="text-xs text-muted-foreground">

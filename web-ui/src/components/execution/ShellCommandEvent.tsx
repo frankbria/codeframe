@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { CommandLineIcon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { CommandLineIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import type { OutputEvent } from '@/hooks/useTaskStream';
 
@@ -21,7 +22,7 @@ export function ShellCommandEvent({ event }: ShellCommandEventProps) {
   return (
     <div className="text-sm">
       <div className="flex items-center gap-2">
-        <CommandLineIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <HugeiconsIcon icon={CommandLineIcon} className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="truncate font-mono text-xs text-muted-foreground">
           {isError ? 'stderr' : 'stdout'}
         </span>

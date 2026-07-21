@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { StopIcon, Loading03Icon } from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { StopIcon, Loading03Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -40,7 +41,7 @@ export function ExecutionHeader({
   isCompleted,
 }: ExecutionHeaderProps) {
   const [isStopping, setIsStopping] = useState(false);
-  const StateIcon = agentStateIcons[agentState];
+  const stateIcon = agentStateIcons[agentState];
 
   const handleStop = async () => {
     setIsStopping(true);
@@ -73,7 +74,7 @@ export function ExecutionHeader({
             agentStateBadgeStyles[agentState]
           )}
         >
-          <StateIcon className="h-3.5 w-3.5" />
+          <HugeiconsIcon icon={stateIcon} className="h-3.5 w-3.5" />
           {agentStateLabels[agentState]}
         </span>
       </div>
@@ -102,9 +103,9 @@ export function ExecutionHeader({
               disabled={isCompleted || isStopping}
             >
               {isStopping ? (
-                <Loading03Icon className="h-3.5 w-3.5 animate-spin" />
+                <HugeiconsIcon icon={Loading03Icon} className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <StopIcon className="h-3.5 w-3.5" />
+                <HugeiconsIcon icon={StopIcon} className="h-3.5 w-3.5" />
               )}
               Stop
             </Button>

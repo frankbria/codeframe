@@ -1,13 +1,7 @@
 'use client';
 
-import {
-  FileEditIcon,
-  Loading03Icon,
-  CheckmarkCircle01Icon,
-  Cancel01Icon,
-  Download04Icon,
-  PlayIcon,
-} from '@hugeicons/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { FileEditIcon, Loading03Icon, CheckmarkCircle01Icon, Cancel01Icon, Download04Icon, PlayIcon } from '@hugeicons/core-free-icons';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,7 +33,7 @@ export function ReviewHeader({
         {/* Left: Change summary */}
         <div className="flex items-center gap-4 text-sm">
           <span className="flex items-center gap-1.5 text-muted-foreground">
-            <FileEditIcon className="h-4 w-4" />
+            <HugeiconsIcon icon={FileEditIcon} className="h-4 w-4" />
             <span>
               {filesChanged} {filesChanged === 1 ? 'file' : 'files'} changed
             </span>
@@ -69,9 +63,9 @@ export function ReviewHeader({
                 }
               >
                 {check.status === 'PASSED' ? (
-                  <CheckmarkCircle01Icon className="h-3 w-3" />
+                  <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-3 w-3" />
                 ) : check.status === 'FAILED' ? (
-                  <Cancel01Icon className="h-3 w-3" />
+                  <HugeiconsIcon icon={Cancel01Icon} className="h-3 w-3" />
                 ) : null}
                 {check.name}
               </Badge>
@@ -93,9 +87,9 @@ export function ReviewHeader({
             className="transition-all"
           >
             {isRunningGates ? (
-              <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
+              <HugeiconsIcon icon={Loading03Icon} className="mr-1.5 h-4 w-4 animate-spin" />
             ) : (
-              <PlayIcon className="mr-1.5 h-4 w-4" />
+              <HugeiconsIcon icon={PlayIcon} className="mr-1.5 h-4 w-4" />
             )}
             Run Gates
           </Button>
@@ -105,7 +99,7 @@ export function ReviewHeader({
             onClick={onExportPatch}
             className="transition-all"
           >
-            <Download04Icon className="mr-1.5 h-4 w-4" />
+            <HugeiconsIcon icon={Download04Icon} className="mr-1.5 h-4 w-4" />
             Export Patch
           </Button>
         </div>
