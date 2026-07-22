@@ -105,6 +105,63 @@ class TestStoreToken:
         mode = creds_path.stat().st_mode & 0o777
         assert mode == 0o600
 
+    def test_store_token_directory_permissions(self, tmp_path):
+        """The .codeframe directory should be owner-only (0o700)."""
+        creds_path = tmp_path / ".codeframe" / "credentials.json"
+
+        with patch("codeframe.cli.auth.get_credentials_path", return_value=creds_path):
+            store_token("secret-token")
+
+        dir_mode = creds_path.parent.stat().st_mode & 0o777
+        assert dir_mode == 0o700
+
+    def test_store_token_no_world_readable_window(self, tmp_path):
+        """The file must never exist world/group-readable, even mid-write.
+
+        Regression for the TOCTOU where open()+chmod left a window in which the
+        JWT was 0o644. Under a permissive umask the file must still be born
+        0o600. We inspect the on-disk mode at the moment content is written.
+        """
+        creds_path = tmp_path / ".codeframe" / "credentials.json"
+        observed = {}
+
+        real_dump = json.dump
+
+        def spy_dump(obj, fp, *args, **kwargs):
+            # Inspect the exact file the token bytes are being written into.
+            observed["mode"] = os.stat(fp.fileno()).st_mode & 0o777
+            return real_dump(obj, fp, *args, **kwargs)
+
+        old_umask = os.umask(0o000)
+        try:
+            with patch("codeframe.cli.auth.get_credentials_path", return_value=creds_path), patch(
+                "codeframe.cli.auth.json.dump", side_effect=spy_dump
+            ):
+                store_token("secret-token")
+        finally:
+            os.umask(old_umask)
+
+        assert observed["mode"] == 0o600
+
+    def test_store_token_replaces_loose_preexisting_file(self, tmp_path):
+        """A pre-existing world-readable credentials file must not receive the
+        new token; the final file is 0o600 with the new content.
+
+        Regression: os.open(O_CREAT|O_TRUNC) would keep a pre-existing file's
+        loose perms while writing the token. The atomic temp+replace closes it.
+        """
+        creds_dir = tmp_path / ".codeframe"
+        creds_dir.mkdir()
+        creds_path = creds_dir / "credentials.json"
+        creds_path.write_text('{"access_token": "old"}')
+        creds_path.chmod(0o644)
+
+        with patch("codeframe.cli.auth.get_credentials_path", return_value=creds_path):
+            store_token("new-token")
+
+        assert creds_path.stat().st_mode & 0o777 == 0o600
+        assert json.loads(creds_path.read_text())["access_token"] == "new-token"
+
 
 class TestGetToken:
     """Tests for get_token function."""

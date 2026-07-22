@@ -12,6 +12,18 @@ Security features:
 - Machine-specific encryption keys
 - Audit logging for credential operations
 
+Threat model — file-fallback confidentiality (#772):
+    The encrypted-file fallback derives its key from a machine-specific
+    identifier (e.g. /etc/machine-id). That identifier is NOT a secret: a local
+    attacker who can read the ciphertext file can typically also read the
+    machine-id and re-derive the key. So this layer is obfuscation-at-rest that
+    stops casual disk/backup snooping — it is NOT confidentiality against a
+    local attacker with your file access. For real confidentiality either (a)
+    rely on the OS keyring (the primary, preferred backend), or (b) set the
+    CODEFRAME_CREDENTIAL_SECRET environment variable, which mixes a real secret
+    into the KDF. Changing/adding that secret rekeys the store, so previously
+    stored credentials become undecryptable and must be re-entered.
+
 Usage:
     from codeframe.core.credentials import CredentialManager, CredentialProvider
 
@@ -236,6 +248,13 @@ def derive_encryption_key(salt_file: Path) -> bytes:
     Uses PBKDF2 with machine ID and a persistent salt to create
     a Fernet-compatible encryption key.
 
+    The machine ID is not secret, so on its own this only obfuscates the file
+    at rest (see the module docstring "Threat model"). When the
+    CODEFRAME_CREDENTIAL_SECRET environment variable is set, its value is mixed
+    into the KDF input to provide real confidentiality. Note: adding or changing
+    that secret changes the derived key, rendering any previously stored
+    credentials undecryptable (they must be re-entered).
+
     Args:
         salt_file: Path to store/retrieve the salt
 
@@ -261,8 +280,16 @@ def derive_encryption_key(salt_file: Path) -> bytes:
         # Secure permissions
         salt_file.chmod(0o600)
 
-    # Get machine-specific identifier
+    # Get machine-specific identifier; optionally mix in a real user secret so
+    # the key isn't recoverable from the (non-secret) machine ID alone (#772).
     machine_id = _get_machine_id()
+    user_secret = os.environ.get("CODEFRAME_CREDENTIAL_SECRET")
+    # When no secret is set, key material stays exactly machine_id (unchanged
+    # from prior versions) so existing stored credentials remain decryptable.
+    if user_secret:
+        key_material = f"{machine_id}\0{user_secret}".encode()
+    else:
+        key_material = machine_id.encode()
 
     # Derive key using PBKDF2
     kdf = PBKDF2HMAC(
@@ -271,7 +298,7 @@ def derive_encryption_key(salt_file: Path) -> bytes:
         salt=salt,
         iterations=480000,
     )
-    key = base64.urlsafe_b64encode(kdf.derive(machine_id.encode()))
+    key = base64.urlsafe_b64encode(kdf.derive(key_material))
 
     return key
 

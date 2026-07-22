@@ -316,6 +316,19 @@ REDIS_URL=redis://localhost:6379
 
 CODEFRAME_API_KEY_SECRET=<secret>     # API key hashing
 
+# Credential-file confidentiality (#772 — opt-in)
+CODEFRAME_CREDENTIAL_SECRET=<secret>  # Mixed into the PBKDF2 KDF for the
+                                      # encrypted-file credential fallback
+                                      # (codeframe/core/credentials.py). Unset =
+                                      # key derived from the (non-secret)
+                                      # machine-id alone — obfuscation-at-rest,
+                                      # not confidentiality vs a local reader.
+                                      # Set it for real confidentiality; prefer
+                                      # the OS keyring where available. WARNING:
+                                      # adding/changing this rekeys the store, so
+                                      # previously stored credentials become
+                                      # undecryptable and must be re-entered.
+
 # Session token lifetime (#657 — defense-in-depth)
 JWT_LIFETIME_SECONDS=86400            # JWT validity window; default 24h (was 7d).
                                       # Shorter window limits exposure of the

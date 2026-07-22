@@ -8,6 +8,15 @@ This module provides commands for:
 - Managing API credentials (setup, list, validate, rotate, remove)
 - Managing API keys (create, list, revoke, rotate)
 
+Note on api-key-* commands (local-admin only):
+    The api-key-* commands operate directly on the local CodeFRAME database
+    (get_db_for_cli) with no server-side authorization. Whoever can run them
+    already has filesystem access to that database, so the --user-id option is a
+    target selector, not an authorization boundary — it does not grant any
+    privilege the caller lacks. Restrict these commands to the machine's admin by
+    protecting the database file. For remote/authenticated key management, use
+    the authenticated server API instead.
+
 Usage:
     codeframe auth login --email user@example.com --password secret
     codeframe auth logout
@@ -33,7 +42,12 @@ import typer
 from rich.table import Table
 
 from codeframe.cli.auth import store_token, clear_token, is_authenticated
-from codeframe.cli.api_client import APIClient, AuthenticationError, get_api_base_url
+from codeframe.cli.api_client import (
+    APIClient,
+    AuthenticationError,
+    get_api_base_url,
+    is_insecure_transport,
+)
 from codeframe.cli.helpers import console
 from codeframe.core.credentials import (
     CredentialManager,
@@ -270,6 +284,11 @@ def login(
 
     # Call login API
     base_url = get_api_base_url()
+    if is_insecure_transport(base_url):
+        console.print(
+            f"[yellow]Warning:[/yellow] Sending your password over insecure http:// to "
+            f"{base_url}. Your credentials are not encrypted in transit. Use https://."
+        )
     login_url = f"{base_url}/auth/jwt/login"
 
     try:
@@ -363,6 +382,11 @@ def register(
 
     # Call register API
     base_url = get_api_base_url()
+    if is_insecure_transport(base_url):
+        console.print(
+            f"[yellow]Warning:[/yellow] Sending your password over insecure http:// to "
+            f"{base_url}. Your credentials are not encrypted in transit. Use https://."
+        )
     register_url = f"{base_url}/auth/register"
 
     try:
@@ -783,7 +807,7 @@ def remove_credential(
 @auth_app.command("api-key-create")
 def api_key_create(
     name: str = typer.Option(..., "--name", "-n", help="Human-readable name for the key"),
-    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID to create key for"),
+    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID to create key for (local-admin only; not an auth boundary)"),
     scopes: Optional[str] = typer.Option(
         None, "--scopes", "-s", help="Comma-separated scopes (default: read,write)"
     ),
@@ -839,7 +863,7 @@ def api_key_create(
 
 @auth_app.command("api-key-list")
 def api_key_list(
-    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID to list keys for"),
+    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID to list keys for (local-admin only; not an auth boundary)"),
 ):
     """List all API keys for a user.
 
@@ -892,7 +916,7 @@ def api_key_list(
 @auth_app.command("api-key-revoke")
 def api_key_revoke(
     key_id: str = typer.Argument(..., help="API key ID to revoke"),
-    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID (must own the key)"),
+    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID (local-admin only; not an auth boundary)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
 ):
     """Revoke an API key.
@@ -928,7 +952,7 @@ def api_key_revoke(
 @auth_app.command("api-key-rotate")
 def api_key_rotate(
     key_id: str = typer.Argument(..., help="API key ID to rotate"),
-    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID (must own the key)"),
+    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID (local-admin only; not an auth boundary)"),
 ):
     """Rotate an API key.
 
