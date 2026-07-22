@@ -15,6 +15,7 @@ Security considerations:
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -40,18 +41,31 @@ def store_token(token: str) -> None:
     """
     creds_path = get_credentials_path()
 
-    # Create parent directories if needed
+    # Create parent directory owner-only. mkdir's mode is masked by umask and
+    # only applies on creation, so chmod unconditionally to guarantee 0o700.
     creds_path.parent.mkdir(parents=True, exist_ok=True)
+    creds_path.parent.chmod(0o700)
 
-    # Write token with restricted permissions
     credentials = {"access_token": token}
 
-    # Write to file
-    with open(creds_path, "w") as f:
-        json.dump(credentials, f, indent=2)
-
-    # Set secure permissions (owner read/write only)
-    creds_path.chmod(0o600)
+    # Write to a fresh temp file (mkstemp creates it 0o600 with O_EXCL) and
+    # atomically replace the target. The token is thus only ever written to a
+    # born-owner-only file, closing the open()+chmod TOCTOU window even when a
+    # credentials file already exists with looser permissions (#772).
+    fd, tmp_path = tempfile.mkstemp(
+        dir=creds_path.parent, prefix=".credentials-", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(credentials, f, indent=2)
+        os.replace(tmp_path, creds_path)
+    except BaseException:
+        # Never leave a stray temp file holding the token behind.
+        try:
+            os.unlink(tmp_path)
+        except FileNotFoundError:
+            pass
+        raise
 
     logger.debug(f"Token stored in {creds_path}")
 

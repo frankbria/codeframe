@@ -15,7 +15,24 @@ from codeframe.cli.api_client import (
     APIError,
     AuthenticationError,
     get_api_base_url,
+    is_insecure_transport,
 )
+
+
+class TestIsInsecureTransport:
+    """Tests for is_insecure_transport (credential-leaking transport guard)."""
+
+    def test_https_is_secure(self):
+        assert is_insecure_transport("https://api.example.com") is False
+
+    def test_http_loopback_is_ok(self):
+        assert is_insecure_transport("http://localhost:8080") is False
+        assert is_insecure_transport("http://127.0.0.1:8080") is False
+        assert is_insecure_transport("http://[::1]:8080") is False
+
+    def test_http_remote_is_insecure(self):
+        assert is_insecure_transport("http://api.example.com") is True
+        assert is_insecure_transport("http://192.168.1.50:8080") is True
 
 
 class TestGetApiBaseUrl:

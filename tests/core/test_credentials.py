@@ -623,3 +623,32 @@ class TestValidation:
 
         # Invalid - too short
         assert validate_credential_format(CredentialProvider.LLM_OPENAI, "sk-short") is False
+
+
+class TestEncryptionKeyDerivation:
+    """Tests for derive_encryption_key (machine-id KDF + optional secret)."""
+
+    def test_key_is_deterministic_without_secret(self, tmp_path):
+        """Same machine + same salt -> same key when no secret is set."""
+        from codeframe.core.credentials import derive_encryption_key
+
+        salt_file = tmp_path / "salt"
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CODEFRAME_CREDENTIAL_SECRET", None)
+            key1 = derive_encryption_key(salt_file)
+            key2 = derive_encryption_key(salt_file)
+        assert key1 == key2
+
+    def test_credential_secret_changes_derived_key(self, tmp_path):
+        """Mixing CODEFRAME_CREDENTIAL_SECRET must change the derived key."""
+        from codeframe.core.credentials import derive_encryption_key
+
+        salt_file = tmp_path / "salt"
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CODEFRAME_CREDENTIAL_SECRET", None)
+            base_key = derive_encryption_key(salt_file)
+
+        with patch.dict(os.environ, {"CODEFRAME_CREDENTIAL_SECRET": "hunter2"}):
+            secret_key = derive_encryption_key(salt_file)
+
+        assert secret_key != base_key

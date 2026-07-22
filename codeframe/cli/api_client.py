@@ -51,6 +51,25 @@ def get_api_base_url() -> str:
     return url.rstrip("/")
 
 
+# Hosts for which plain http:// is acceptable (traffic never leaves the machine).
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def is_insecure_transport(url: str) -> bool:
+    """Return True if sending credentials to ``url`` would cross the network in
+    the clear — i.e. an ``http://`` URL to a non-loopback host (#772).
+
+    Loopback http is fine (self-hosted local server); https is always fine.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme != "http":
+        return False
+    host = (parsed.hostname or "").lower()
+    return host not in _LOOPBACK_HOSTS
+
+
 class APIClient:
     """HTTP client for CodeFRAME API with authentication.
 
@@ -72,6 +91,14 @@ class APIClient:
         self.token = token if token is not None else get_token()
         self.max_retries = max_retries
         self.timeout = timeout
+
+        # Warn before sending a bearer token over cleartext to a remote host.
+        if self.token and is_insecure_transport(self.base_url):
+            logger.warning(
+                "Sending credentials over insecure http:// to non-loopback host %s. "
+                "Use https:// to protect your token in transit.",
+                self.base_url,
+            )
 
     def _get_headers(self) -> dict[str, str]:
         """Get HTTP headers including auth token.
