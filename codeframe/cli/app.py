@@ -119,6 +119,11 @@ def init(
         "--generate-config",
         help="Generate starter CODEFRAME.md with project configuration",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite an existing CODEFRAME.md (with --generate-config)",
+    ),
 ) -> None:
     """Initialize a CodeFRAME workspace for a repository.
 
@@ -209,14 +214,20 @@ def init(
                 else:
                     console.print(f"  Hook after_init: [yellow]failed[/yellow] ({hook_result.stderr[:100]})")
 
-        # Generate CODEFRAME.md if requested
+        # Generate CODEFRAME.md if requested (never clobber an existing one, #778)
         if generate_config:
-            config_content = _generate_codeframe_md(
-                tech_stack=final_tech_stack or "",
-            )
             config_path = repo_path / "CODEFRAME.md"
-            config_path.write_text(config_content)
-            console.print("  Generated: CODEFRAME.md")
+            if config_path.exists() and not force:
+                console.print(
+                    "  [yellow]CODEFRAME.md already exists — skipping "
+                    "(use --force to overwrite)[/yellow]"
+                )
+            else:
+                config_content = _generate_codeframe_md(
+                    tech_stack=final_tech_stack or "",
+                )
+                config_path.write_text(config_content)
+                console.print("  Generated: CODEFRAME.md")
 
         console.print()
         console.print("Next steps:")
@@ -2128,7 +2139,7 @@ def tasks_set(
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks
-    from codeframe.core.state_machine import parse_status
+    from codeframe.core.state_machine import parse_status, InvalidTransitionError
     from codeframe.core.events import emit_for_workspace, EventType
 
     workspace_path = repo_path or Path.cwd()
@@ -2201,16 +2212,24 @@ def tasks_set(
             console.print("[red]Error:[/red] Specify a task ID or use --all")
             raise typer.Exit(1)
 
-        # Update tasks
+        # Update tasks. In bulk mode an invalid transition must not abort the
+        # loop mid-way (partial state, #778) — collect failures and report.
         updated_count = 0
         skipped_count = 0
+        failed = []
         for task in matching:
             if task.status == new_status:
                 skipped_count += 1
                 continue
 
             old_status = task.status
-            tasks.update_status(workspace, task.id, new_status)
+            try:
+                tasks.update_status(workspace, task.id, new_status)
+            except InvalidTransitionError:
+                if not all_tasks_flag:
+                    raise
+                failed.append(task)
+                continue
 
             emit_for_workspace(
                 workspace,
@@ -2225,7 +2244,7 @@ def tasks_set(
             updated_count += 1
 
         # Report results
-        if len(matching) == 1:
+        if len(matching) == 1 and not failed:
             task = matching[0]
             if updated_count:
                 console.print("[green]Task updated[/green]")
@@ -2237,6 +2256,15 @@ def tasks_set(
             console.print(f"[green]Updated {updated_count} tasks to {new_status.value}[/green]")
             if skipped_count:
                 console.print(f"[dim]Skipped {skipped_count} (already {new_status.value})[/dim]")
+            if failed:
+                console.print(f"[yellow]{len(failed)} failed (invalid transition):[/yellow]")
+                for task in failed:
+                    console.print(
+                        f"  {task.id[:8]}: {task.status.value} -> {new_status.value} not allowed"
+                    )
+                if not updated_count:
+                    # Total failure must not look like success to scripts
+                    raise typer.Exit(1)
 
     except typer.Exit:
         raise  # Re-raise typer.Exit to preserve exit code
@@ -4490,10 +4518,27 @@ ETA: {eta} | Elapsed: {elapsed}"""
             started_at=batch.started_at,
         )
 
-        # Get starting event ID (find batch's first event or latest)
+        # Resume from the newest event: progress is already seeded from
+        # batch.results, so replaying historical batch events would count
+        # completed tasks twice (#778).
         recent_events = events.list_recent(workspace, limit=100)
-        batch_events = [e for e in recent_events if e.payload.get("batch_id") == batch.id]
-        since_id = batch_events[-1].id - 1 if batch_events else 0
+        since_id = recent_events[0].id if recent_events else 0
+
+        # batch.results only records terminal states, so seed in-flight tasks
+        # (started, no terminal result yet) — otherwise the running count and
+        # ETA read wrong when attaching mid-batch. Newest-first + setdefault
+        # keeps the latest start of a retried task.
+        # ponytail: tasks started before this 100-event window stay invisible
+        # until their terminal event; widen the window if that ever matters.
+        for evt in recent_events:
+            task_id = evt.payload.get("task_id")
+            if (
+                evt.payload.get("batch_id") == batch.id
+                and evt.event_type == events.EventType.BATCH_TASK_STARTED
+                and task_id
+                and task_id not in batch.results
+            ):
+                progress.task_start_times.setdefault(task_id, evt.created_at)
 
         console.print(f"[cyan]Following batch {batch_id_short}...[/cyan]")
         console.print("[dim]Press Ctrl+C to stop following[/dim]\n")
