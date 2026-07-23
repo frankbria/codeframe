@@ -41,8 +41,7 @@ def test_dispatches_when_enabled_with_pr_url(workspace, monkeypatch):
         workspace,
         {"webhook_url": "https://example.com/h", "webhook_enabled": True},
     )
-    # Provide GitHub env so GitHubIntegration() succeeds and the URL has the
-    # owner/repo segment.
+    # Provide GITHUB_REPO so the URL has the owner/repo segment.
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_test_token")
     monkeypatch.setenv("GITHUB_REPO", "frankbria/codeframe")
 
@@ -60,9 +59,9 @@ def test_dispatches_when_enabled_with_pr_url(workspace, monkeypatch):
 
 
 def test_dispatches_with_null_url_when_github_unconfigured(workspace, monkeypatch):
-    """If GitHubIntegration() can't be constructed, we still emit the event
-    but pr_url is None — consumers branch on pr_number (always present)
-    rather than parsing an unparseable sentinel."""
+    """If GITHUB_REPO is unset, we still emit the event but pr_url is None —
+    consumers branch on pr_number (always present) rather than parsing an
+    unparseable sentinel."""
     save_notifications_config(
         workspace,
         {"webhook_url": "https://example.com/h", "webhook_enabled": True},
@@ -84,8 +83,9 @@ def test_dispatches_with_null_url_when_github_unconfigured(workspace, monkeypatc
 
 
 def test_no_github_client_constructed(workspace, monkeypatch):
-    """The dispatch only needs the repo slug — constructing GitHubIntegration
-    would eagerly open (and leak) an httpx.AsyncClient (issue #779)."""
+    """Regression guard for #779: the dispatch only needs the repo slug —
+    constructing GitHubIntegration would eagerly open (and leak) an
+    httpx.AsyncClient, so it must never be reintroduced on this path."""
     save_notifications_config(
         workspace,
         {"webhook_url": "https://example.com/h", "webhook_enabled": True},
