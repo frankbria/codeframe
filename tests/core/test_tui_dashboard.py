@@ -117,15 +117,14 @@ class TestDashboardApp:
 
 
 class TestSingleConnection:
-    def test_steady_state_refresh_opens_one_connection(self, workspace, monkeypatch):
-        """After warm-up (table init), a dashboard load opens exactly ONE connection."""
+    def test_refresh_connection_counts(self, workspace, monkeypatch):
+        """Cold load opens 3 (shared read + one-time proof DDL/migration);
+        every steady-state load after that opens exactly ONE."""
         import codeframe.tui.data_service as ds
         from codeframe.core import blockers, events
         from codeframe.core import tasks as task_module
         from codeframe.core.proof import ledger
         from codeframe.core.workspace import get_db_connection
-
-        ds.load_dashboard_data(workspace)  # warm-up: proof table init + migration
 
         opens: list[int] = []
 
@@ -136,7 +135,12 @@ class TestSingleConnection:
         for module in (ds, task_module, blockers, events, ledger):
             monkeypatch.setattr(module, "get_db_connection", counting)
 
-        data = ds.load_dashboard_data(workspace)
+        data = ds.load_dashboard_data(workspace)  # cold: proof tables absent
+        assert data.error is None
+        assert len(opens) == 3
+
+        opens.clear()
+        data = ds.load_dashboard_data(workspace)  # steady state (the every-2s path)
         assert data.error is None
         assert len(opens) == 1
 
@@ -223,6 +227,34 @@ class TestThreadWorkerRefresh:
 
         assert seen, "refresh never ran"
         assert all(t is not threading.main_thread() for t in seen)
+
+    @pytest.mark.asyncio
+    async def test_refresh_skipped_while_one_in_flight(self, workspace, monkeypatch):
+        """A new refresh is not started while a slow one is still running."""
+        import time as _time
+
+        import codeframe.tui.app as app_module
+        from codeframe.tui.app import DashboardApp
+
+        real = app_module.load_dashboard_data
+        calls: list[int] = []
+
+        def slow(ws):
+            calls.append(1)
+            _time.sleep(0.3)
+            return real(ws)
+
+        monkeypatch.setattr(app_module, "load_dashboard_data", slow)
+
+        app = DashboardApp(workspace=workspace, refresh_interval=60)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await app.workers.wait_for_complete()  # initial load
+            app.action_refresh()
+            await pilot.pause(0.05)
+            app.action_refresh()  # in-flight -> skipped
+            await app.workers.wait_for_complete()
+
+        assert len(calls) == 2  # mount + first manual; second manual skipped
 
     @pytest.mark.asyncio
     async def test_worker_refresh_updates_widgets(self, workspace):
