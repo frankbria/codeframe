@@ -1,200 +1,90 @@
-"""Tests for the serve CLI command.
+"""Tests for the `cf serve` CLI command.
 
-These tests are skipped during v2 refactor as the serve command is an optional
-adapter layer (not part of Golden Path). The current serve command is a stub.
-These tests will be enabled when the server adapter is implemented.
+`serve` is a thin, optional adapter that starts uvicorn on the FastAPI app — it
+is NOT part of the Golden Path (the CLI works with no server running). These
+tests mock ``uvicorn.run`` so nothing binds a socket, and assert the command
+wires host/port/reload through correctly and prints the startup banner.
+
+The command's real signature is ``serve(--port/-p, --host, --reload)`` calling
+``uvicorn.run("codeframe.ui.server:app", host=, port=, reload=)`` directly. It
+does NOT shell out via subprocess, do pre-flight port checks, open a browser, or
+take ``--no-browser`` — the pre-v2 stub these tests used to mock never shipped.
 """
 
-import subprocess
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
-# Skip all tests in this module - serve command is stub during v2 refactor
-pytestmark = pytest.mark.skip(
-    reason="serve command is stub - server adapter not yet implemented (v2 Golden Path)"
-)
+from codeframe.cli.app import app
 
-# Tests for serve command following TDD approach
+pytestmark = pytest.mark.v2
+
 runner = CliRunner()
 
 
-class TestServeBasicFunctionality:
-    """Test basic serve command functionality (User Story 1)."""
+class TestServeCommand:
+    """`cf serve` wires uvicorn with the requested host/port/reload."""
 
-    @patch("codeframe.cli.subprocess.run")
-    @patch("codeframe.cli.check_port_availability")
-    def test_serve_default_port(self, mock_port_check, mock_run):
-        """Test that serve command uses default port 8080."""
-        from codeframe.cli.app import app
+    def test_default_host_port_and_app(self):
+        """No flags → uvicorn.run on the v2 app at 0.0.0.0:8080, reload off."""
+        with patch("uvicorn.run") as mock_run:
+            result = runner.invoke(app, ["serve"])
 
-        # Mock port as available
-        mock_port_check.return_value = (True, "")
-        # Mock subprocess to avoid actually starting server
-        mock_run.return_value = Mock(returncode=0)
-
-        # Run command
-        runner.invoke(app, ["serve", "--no-browser"])
-
-        # Verify uvicorn was called with port 8080
+        assert result.exit_code == 0
         assert mock_run.called
-        call_args = mock_run.call_args[0][0]  # Get the command list
-        assert "uvicorn" in call_args
-        assert "--port" in call_args
-        port_index = call_args.index("--port") + 1
-        assert call_args[port_index] == "8080"
+        args, kwargs = mock_run.call_args
+        # The app import string is passed positionally to uvicorn.run.
+        assert args[0] == "codeframe.ui.server:app"
+        assert kwargs["host"] == "0.0.0.0"
+        assert kwargs["port"] == 8080
+        assert kwargs["reload"] is False
 
-    @patch("codeframe.cli.subprocess.run")
-    @patch("codeframe.cli.check_port_availability")
-    def test_serve_keyboard_interrupt(self, mock_port_check, mock_run):
-        """Test graceful shutdown on Ctrl+C."""
-        from codeframe.cli.app import app
+    def test_custom_port(self):
+        """--port overrides the default and is passed as an int."""
+        with patch("uvicorn.run") as mock_run:
+            result = runner.invoke(app, ["serve", "--port", "3000"])
 
-        # Mock port as available
-        mock_port_check.return_value = (True, "")
-        # Mock subprocess to raise KeyboardInterrupt (simulating Ctrl+C)
-        mock_run.side_effect = KeyboardInterrupt()
+        assert result.exit_code == 0
+        assert mock_run.call_args.kwargs["port"] == 3000
 
-        # Run command - should handle KeyboardInterrupt gracefully
-        result = runner.invoke(app, ["serve", "--no-browser"])
+    def test_custom_port_short_flag(self):
+        """-p is the short form of --port."""
+        with patch("uvicorn.run") as mock_run:
+            result = runner.invoke(app, ["serve", "-p", "4567"])
 
-        # Should have attempted to start server
-        assert mock_run.called
-        # Should show shutdown message
-        assert "Server stopped" in result.stdout
+        assert result.exit_code == 0
+        assert mock_run.call_args.kwargs["port"] == 4567
 
+    def test_custom_host(self):
+        """--host binds the requested interface."""
+        with patch("uvicorn.run") as mock_run:
+            result = runner.invoke(app, ["serve", "--host", "127.0.0.1"])
 
-class TestServeCustomPort:
-    """Test custom port configuration (User Story 2)."""
+        assert result.exit_code == 0
+        assert mock_run.call_args.kwargs["host"] == "127.0.0.1"
 
-    @patch("codeframe.cli.subprocess.run")
-    @patch("codeframe.cli.check_port_availability")
-    def test_serve_custom_port(self, mock_port_check, mock_run):
-        """Test that --port flag sets custom port."""
-        from codeframe.cli.app import app
+    def test_reload_flag_enables_reload(self):
+        """--reload turns on uvicorn auto-reload."""
+        with patch("uvicorn.run") as mock_run:
+            result = runner.invoke(app, ["serve", "--reload"])
 
-        # Mock port as available
-        mock_port_check.return_value = (True, "")
-        mock_run.return_value = Mock(returncode=0)
+        assert result.exit_code == 0
+        assert mock_run.call_args.kwargs["reload"] is True
 
-        # Run command with custom port
-        runner.invoke(app, ["serve", "--port", "3000", "--no-browser"])
+    def test_prints_startup_banner_with_port(self):
+        """The banner surfaces the docs URL for the chosen port before serving."""
+        with patch("uvicorn.run"):
+            result = runner.invoke(app, ["serve", "--port", "9123"])
 
-        # Verify uvicorn was called with port 3000
-        assert mock_run.called
-        call_args = mock_run.call_args[0][0]
-        assert "--port" in call_args
-        port_index = call_args.index("--port") + 1
-        assert call_args[port_index] == "3000"
+        assert result.exit_code == 0
+        assert "9123" in result.stdout
+        assert "/docs" in result.stdout
 
-    def test_serve_port_validation(self):
-        """Test that port <1024 is rejected with helpful error."""
-        from codeframe.cli.app import app
+    def test_uvicorn_not_started_on_bad_option(self):
+        """An unknown option is a usage error — uvicorn is never invoked."""
+        with patch("uvicorn.run") as mock_run:
+            result = runner.invoke(app, ["serve", "--definitely-not-a-flag"])
 
-        # Attempt to use privileged port should fail
-        result = runner.invoke(app, ["serve", "--port", "80"])
         assert result.exit_code != 0
-        assert "elevated privileges" in result.stdout
-
-    @patch("codeframe.cli.subprocess.run")
-    @patch("codeframe.cli.check_port_availability")
-    def test_serve_port_in_use(self, mock_port_check, mock_run):
-        """Test helpful error when port is already in use."""
-        from codeframe.cli.app import app
-
-        # Simulate port already in use
-        mock_port_check.return_value = (False, "Port 8080 is already in use")
-
-        # Run command
-        result = runner.invoke(app, ["serve"])
-
-        # Should exit with error
-        assert result.exit_code != 0
-        # Should not attempt to start server
         assert not mock_run.called
-
-    @patch("codeframe.cli.subprocess.run")
-    @patch("codeframe.cli.check_port_availability")
-    def test_serve_subprocess_failure(self, mock_port_check, mock_run):
-        """Test error handling when server subprocess fails to start."""
-        from codeframe.cli.app import app
-
-        # Port check passes
-        mock_port_check.return_value = (True, "")
-
-        # But subprocess fails (e.g., port conflict, permission error, etc.)
-        mock_run.side_effect = subprocess.CalledProcessError(1, "uvicorn")
-
-        # Run command
-        result = runner.invoke(app, ["serve", "--no-browser"])
-
-        # Should exit with error
-        assert result.exit_code != 0
-        # Should show helpful troubleshooting message
-        assert "failed to start" in result.stdout.lower()
-        assert "common issues" in result.stdout.lower()
-
-
-class TestServeBrowserOpening:
-    """Test browser auto-open functionality (User Story 3)."""
-
-    @patch("codeframe.cli.threading.Thread")
-    @patch("codeframe.cli.subprocess.run")
-    @patch("codeframe.cli.check_port_availability")
-    def test_serve_browser_opens(self, mock_port_check, mock_run, mock_thread):
-        """Test that browser opens automatically by default."""
-        from codeframe.cli.app import app
-
-        # Mock port as available
-        mock_port_check.return_value = (True, "")
-        mock_run.return_value = Mock(returncode=0)
-        mock_thread_instance = Mock()
-        mock_thread.return_value = mock_thread_instance
-
-        # Run command with default (browser enabled)
-        runner.invoke(app, ["serve"])
-
-        # Verify background thread was created for browser opening
-        assert mock_thread.called
-        # Verify thread was started
-        assert mock_thread_instance.start.called
-
-    @patch("codeframe.cli.threading.Thread")
-    @patch("codeframe.cli.subprocess.run")
-    @patch("codeframe.cli.check_port_availability")
-    def test_serve_no_browser(self, mock_port_check, mock_run, mock_thread):
-        """Test that --no-browser flag prevents browser opening."""
-        from codeframe.cli.app import app
-
-        # Mock port as available
-        mock_port_check.return_value = (True, "")
-        mock_run.return_value = Mock(returncode=0)
-
-        # Run command with --no-browser
-        runner.invoke(app, ["serve", "--no-browser"])
-
-        # Browser thread should NOT be created
-        assert not mock_thread.called
-
-
-class TestServeReloadFlag:
-    """Test development reload functionality (User Story 4)."""
-
-    @patch("codeframe.cli.subprocess.run")
-    @patch("codeframe.cli.check_port_availability")
-    def test_serve_reload_flag(self, mock_port_check, mock_run):
-        """Test that --reload flag is passed to uvicorn."""
-        from codeframe.cli.app import app
-
-        # Mock port as available
-        mock_port_check.return_value = (True, "")
-        mock_run.return_value = Mock(returncode=0)
-
-        # Run command with --reload
-        runner.invoke(app, ["serve", "--reload", "--no-browser"])
-
-        # Verify --reload was passed to uvicorn
-        assert mock_run.called
-        call_args = mock_run.call_args[0][0]
-        assert "--reload" in call_args

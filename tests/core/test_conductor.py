@@ -1512,19 +1512,33 @@ class TestParallelExecution:
     """Tests for parallel batch execution."""
 
     def test_parallel_independent_tasks_run_concurrently(self, workspace_with_tasks):
-        """Independent tasks should run in parallel."""
-        workspace, task_list = workspace_with_tasks
-        task_ids = [t.id for t in task_list]  # 3 independent tasks
+        """Independent tasks must actually run concurrently — not merely complete.
 
-        execution_order = []
+        Deterministic concurrency proof via a Barrier: every task body blocks
+        until all N are simultaneously in-flight. A serial executor can never get
+        N task bodies to the barrier at once, so it trips the timeout and raises
+        BrokenBarrierError → the test fails. The old version asserted only
+        completion and would pass green even if execution were fully serial
+        (the exact no-op-assertion this batch targets, #773). Sleep-based overlap
+        detection is avoided on purpose: per-task bookkeeping is serialized, so a
+        short sleep makes overlap timing-dependent and flaky.
+        """
         import threading
 
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]  # 3 independent tasks
+        n = len(task_ids)
+
+        barrier = threading.Barrier(n, timeout=15)
+        threads_seen: set[str] = set()
+        seen_lock = threading.Lock()
+
         def mock_execute(ws, tid, batch_id=None, **kwargs):
-            # Record when each task starts
-            execution_order.append(("start", tid, threading.current_thread().name))
-            import time
-            time.sleep(0.05)  # Small delay to allow overlap detection
-            execution_order.append(("end", tid, threading.current_thread().name))
+            with seen_lock:
+                threads_seen.add(threading.current_thread().name)
+            # Blocks until all N task bodies reach here at the same time. Serial
+            # execution never reaches N concurrently → BrokenBarrierError on timeout.
+            barrier.wait()
             return "COMPLETED"
 
         with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
@@ -1532,13 +1546,14 @@ class TestParallelExecution:
                 workspace,
                 task_ids,
                 strategy="parallel",
-                max_parallel=3,
+                max_parallel=n,
             )
 
         assert batch.status == BatchStatus.COMPLETED
-        # All tasks should be complete
         for tid in task_ids:
             assert batch.results[tid] == "COMPLETED"
+        # All N task bodies were in-flight simultaneously on distinct workers.
+        assert len(threads_seen) == n
 
     def test_parallel_respects_max_parallel(self, workspace_with_tasks):
         """max_parallel should limit concurrent execution."""

@@ -21,13 +21,16 @@ import pytest
 import requests
 import shutil
 
-# Two legacy WebSocket tests are still in transition. They reference live
-# managers but use the v1 get_db/get_db_websocket plumbing; until they are
-# rewritten on the v2 dependencies, keep them excluded from collection.
-collect_ignore = [
-    "test_websocket_integration.py",
-    "test_websocket_subscriptions.py",
-]
+# Both legacy WebSocket suites are now collected normally instead of being hidden
+# here:
+#   * test_websocket_subscriptions.py is a pure unit suite (WebSocketSubscription
+#     manager / ConnectionManager with mock sockets — no server, no get_db) and
+#     passes as-is.
+#   * test_websocket_integration.py targets the removed v1 `/ws` project-
+#     subscription protocol (no such route or subscribe handler exists on the v2
+#     server), so it carries a truthful module-level skip until it is rewritten
+#     against the v2 workspace-scoped streaming API — not the false "server is a
+#     stub" reason it used to hide behind.
 
 from codeframe.platform_store.database import Database  # noqa: E402
 
