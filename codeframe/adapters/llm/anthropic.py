@@ -33,6 +33,7 @@ class AnthropicProvider(LLMProvider):
         api_key: Optional[str] = None,
         model_selector: Optional[ModelSelector] = None,
         credential_manager: Optional["CredentialManager"] = None,
+        base_url: Optional[str] = None,
     ):
         """Initialize the Anthropic provider.
 
@@ -40,6 +41,8 @@ class AnthropicProvider(LLMProvider):
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
             model_selector: Custom model selector
             credential_manager: Optional credential manager for secure key retrieval
+            base_url: Custom API endpoint (proxy/gateway); None uses the
+                SDK default (#780)
 
         Raises:
             ValueError: If no API key is available
@@ -65,6 +68,7 @@ class AnthropicProvider(LLMProvider):
                 "Set the environment variable, pass api_key parameter, "
                 "or configure via 'codeframe auth setup --provider anthropic'."
             )
+        self.base_url = base_url
         self._client = None
         self._async_client = None
 
@@ -74,7 +78,7 @@ class AnthropicProvider(LLMProvider):
         if self._client is None:
             from anthropic import Anthropic
 
-            self._client = Anthropic(api_key=self.api_key)
+            self._client = Anthropic(api_key=self.api_key, base_url=self.base_url)
         return self._client
 
     def complete(
@@ -151,7 +155,9 @@ class AnthropicProvider(LLMProvider):
         )
 
         if self._async_client is None:
-            self._async_client = AsyncAnthropic(api_key=self.api_key)
+            self._async_client = AsyncAnthropic(
+                api_key=self.api_key, base_url=self.base_url
+            )
 
         model = self.get_model(purpose)
         kwargs: dict = {
@@ -205,7 +211,9 @@ class AnthropicProvider(LLMProvider):
         from anthropic import AsyncAnthropic
 
         if self._async_client is None:
-            self._async_client = AsyncAnthropic(api_key=self.api_key)
+            self._async_client = AsyncAnthropic(
+                api_key=self.api_key, base_url=self.base_url
+            )
 
         # Convert messages to Anthropic API format (handles tool_calls/tool_results)
         converted = self._convert_messages(messages)

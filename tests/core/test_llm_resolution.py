@@ -75,6 +75,31 @@ class TestModelAndBaseUrl:
         monkeypatch.setenv("OPENAI_BASE_URL", "http://env:8000/v1")
         assert resolve_llm_settings(tmp_path).base_url == "http://cfg:11434/v1"
 
+    def test_openai_base_url_env_does_not_leak_to_anthropic(
+        self, tmp_path, monkeypatch
+    ):
+        """OPENAI_BASE_URL is OpenAI-compatible-only; it must not redirect
+        Anthropic traffic now that the anthropic path honors base_url (#780)."""
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://env:8000/v1")
+        settings = resolve_llm_settings(tmp_path)
+        assert settings.provider_type == "anthropic"
+        assert settings.base_url is None
+
+    def test_openai_base_url_env_applies_to_openai_compatible(
+        self, tmp_path, monkeypatch
+    ):
+        _write_llm_config(tmp_path, provider="ollama")
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://env:8000/v1")
+        assert resolve_llm_settings(tmp_path).base_url == "http://env:8000/v1"
+
+    def test_config_base_url_applies_to_anthropic(self, tmp_path):
+        """An explicit llm.base_url in config is honored for anthropic
+        (proxy/gateway deployments, #780)."""
+        _write_llm_config(
+            tmp_path, provider="anthropic", base_url="http://proxy:8080"
+        )
+        assert resolve_llm_settings(tmp_path).base_url == "http://proxy:8080"
+
     def test_provider_kwargs_only_includes_set_values(self, tmp_path):
         settings = resolve_llm_settings(tmp_path)
         assert settings.provider_kwargs() == {}
@@ -121,6 +146,16 @@ class TestCreateProvider:
         assert selector.planning_model == "claude-test-model"
         assert selector.execution_model == "claude-test-model"
         assert selector.generation_model == "claude-test-model"
+
+    def test_anthropic_base_url_override_is_honored(self, monkeypatch):
+        """A resolved base_url must reach the Anthropic SDK client, not be
+        silently dropped (#780)."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+        provider = create_provider(
+            LLMSettings(provider_type="anthropic", base_url="http://proxy:8080")
+        )
+        assert provider.base_url == "http://proxy:8080"
+        assert str(provider.client.base_url).rstrip("/") == "http://proxy:8080"
 
     def test_creates_openai_compatible_for_ollama(self, monkeypatch):
         from codeframe.adapters.llm import OpenAIProvider

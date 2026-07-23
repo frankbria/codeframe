@@ -51,7 +51,9 @@ __all__ = [
     "get_provider",
 ]
 
-_OPENAI_COMPATIBLE = {"openai", "ollama", "vllm", "compatible"}
+# Provider types routed to OpenAIProvider; also gates the OPENAI_BASE_URL
+# env fallback in core.llm_resolution (#780).
+OPENAI_COMPATIBLE_PROVIDERS = {"openai", "ollama", "vllm", "compatible"}
 
 
 def get_provider(provider_type: str = "anthropic", **kwargs) -> LLMProvider:
@@ -73,7 +75,7 @@ def get_provider(provider_type: str = "anthropic", **kwargs) -> LLMProvider:
     Raises:
         ValueError: If provider type is unknown
     """
-    if provider_type in _OPENAI_COMPATIBLE:
+    if provider_type in OPENAI_COMPATIBLE_PROVIDERS:
         api_key = kwargs.get("api_key") or os.environ.get("OPENAI_API_KEY")
         if not api_key and provider_type != "openai":
             # Local providers (ollama, vllm, compatible) don't need real auth;
@@ -98,7 +100,9 @@ def get_provider(provider_type: str = "anthropic", **kwargs) -> LLMProvider:
                 supervision_model=model,
             )
         return AnthropicProvider(
-            api_key=kwargs.get("api_key"), model_selector=model_selector
+            api_key=kwargs.get("api_key"),
+            model_selector=model_selector,
+            base_url=kwargs.get("base_url"),
         )
     elif provider_type == "mock":
         return MockProvider()
