@@ -2262,6 +2262,9 @@ def tasks_set(
                     console.print(
                         f"  {task.id[:8]}: {task.status.value} -> {new_status.value} not allowed"
                     )
+                if not updated_count:
+                    # Total failure must not look like success to scripts
+                    raise typer.Exit(1)
 
     except typer.Exit:
         raise  # Re-raise typer.Exit to preserve exit code
@@ -4518,8 +4521,24 @@ ETA: {eta} | Elapsed: {elapsed}"""
         # Resume from the newest event: progress is already seeded from
         # batch.results, so replaying historical batch events would count
         # completed tasks twice (#778).
-        recent_events = events.list_recent(workspace, limit=1)
+        recent_events = events.list_recent(workspace, limit=100)
         since_id = recent_events[0].id if recent_events else 0
+
+        # batch.results only records terminal states, so seed in-flight tasks
+        # (started, no terminal result yet) — otherwise the running count and
+        # ETA read wrong when attaching mid-batch. Newest-first + setdefault
+        # keeps the latest start of a retried task.
+        # ponytail: tasks started before this 100-event window stay invisible
+        # until their terminal event; widen the window if that ever matters.
+        for evt in recent_events:
+            task_id = evt.payload.get("task_id")
+            if (
+                evt.payload.get("batch_id") == batch.id
+                and evt.event_type == events.EventType.BATCH_TASK_STARTED
+                and task_id
+                and task_id not in batch.results
+            ):
+                progress.task_start_times.setdefault(task_id, evt.created_at)
 
         console.print(f"[cyan]Following batch {batch_id_short}...[/cyan]")
         console.print("[dim]Press Ctrl+C to stop following[/dim]\n")

@@ -307,3 +307,15 @@ class TestBulkPartialProgress:
 
         assert result.exit_code == 1
         assert "Invalid transition" in result.output
+
+    def test_all_transitions_failing_exits_nonzero(self, runner, mixed_status_workspace):
+        """Total failure (nothing updated, all invalid) must not exit 0."""
+        ws, repo, t_ready, t_progress, t_backlog = mixed_status_workspace
+
+        # MERGED is only reachable from DONE — invalid for all three tasks
+        result = runner.invoke(
+            app, ["tasks", "set", "status", "MERGED", "--all", "-w", str(repo)]
+        )
+
+        assert result.exit_code == 1, result.output
+        assert "3 failed" in result.output
