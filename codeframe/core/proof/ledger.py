@@ -352,28 +352,30 @@ def list_requirements(
     _ensure_tables(workspace, conn=conn)
     if own_conn:
         conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-    if status:
-        cursor.execute(
-            """SELECT id, title, description, severity, source, scope, obligations,
-                      evidence_rules, status, waiver, created_at, satisfied_at,
-                      created_by, source_issue, related_reqs, glitch_type
-               FROM proof_requirements WHERE workspace_id = ? AND status = ?
-               ORDER BY created_at DESC""",
-            (workspace.id, status.value),
-        )
-    else:
-        cursor.execute(
-            """SELECT id, title, description, severity, source, scope, obligations,
-                      evidence_rules, status, waiver, created_at, satisfied_at,
-                      created_by, source_issue, related_reqs, glitch_type
-               FROM proof_requirements WHERE workspace_id = ?
-               ORDER BY created_at DESC""",
-            (workspace.id,),
-        )
-    rows = cursor.fetchall()
-    if own_conn:
-        conn.close()
+    try:
+        cursor = conn.cursor()
+        if status:
+            cursor.execute(
+                """SELECT id, title, description, severity, source, scope, obligations,
+                          evidence_rules, status, waiver, created_at, satisfied_at,
+                          created_by, source_issue, related_reqs, glitch_type
+                   FROM proof_requirements WHERE workspace_id = ? AND status = ?
+                   ORDER BY created_at DESC""",
+                (workspace.id, status.value),
+            )
+        else:
+            cursor.execute(
+                """SELECT id, title, description, severity, source, scope, obligations,
+                          evidence_rules, status, waiver, created_at, satisfied_at,
+                          created_by, source_issue, related_reqs, glitch_type
+                   FROM proof_requirements WHERE workspace_id = ?
+                   ORDER BY created_at DESC""",
+                (workspace.id,),
+            )
+        rows = cursor.fetchall()
+    finally:
+        if own_conn:
+            conn.close()
     return [_row_to_requirement(r) for r in rows]
 
 

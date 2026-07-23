@@ -282,31 +282,33 @@ def list_all(
     own_conn = conn is None
     if own_conn:
         conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    query = """
-        SELECT id, workspace_id, task_id, question, answer, status, created_at, answered_at,
-               COALESCE(created_by, 'human') as created_by
-        FROM blockers
-        WHERE workspace_id = ?
-    """
-    params: list = [workspace.id]
+        query = """
+            SELECT id, workspace_id, task_id, question, answer, status, created_at, answered_at,
+                   COALESCE(created_by, 'human') as created_by
+            FROM blockers
+            WHERE workspace_id = ?
+        """
+        params: list = [workspace.id]
 
-    if status:
-        query += " AND status = ?"
-        params.append(status.value)
+        if status:
+            query += " AND status = ?"
+            params.append(status.value)
 
-    if task_id:
-        query += " AND task_id = ?"
-        params.append(task_id)
+        if task_id:
+            query += " AND task_id = ?"
+            params.append(task_id)
 
-    query += " ORDER BY created_at ASC LIMIT ?"
-    params.append(limit)
+        query += " ORDER BY created_at ASC LIMIT ?"
+        params.append(limit)
 
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    if own_conn:
-        conn.close()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+    finally:
+        if own_conn:
+            conn.close()
 
     return [_row_to_blocker(row) for row in rows]
 

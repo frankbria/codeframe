@@ -163,8 +163,9 @@ class DashboardApp(App):
         """Load fresh data off the event loop, then apply it on the UI thread.
 
         The 5 SQLite queries run in a thread worker so they never block input
-        or rendering (#776). ``exclusive=True`` cancels a still-running load
-        when the next tick fires instead of piling up stale refreshes.
+        or rendering (#776). ``exclusive=True`` marks a still-running load
+        cancelled when the next tick fires; the ``is_cancelled`` guard below
+        then drops its stale snapshot instead of applying it.
         """
         if not self.workspace:
             return
