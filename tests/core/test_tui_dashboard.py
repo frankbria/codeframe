@@ -113,6 +113,98 @@ class TestDashboardApp:
             await pilot.press("q")
 
 
+# --- Issue #776: thread-worker refresh + single connection ---
+
+
+class TestSingleConnection:
+    def test_steady_state_refresh_opens_one_connection(self, workspace, monkeypatch):
+        """After warm-up (table init), a dashboard load opens exactly ONE connection."""
+        import codeframe.tui.data_service as ds
+        from codeframe.core import blockers, events
+        from codeframe.core import tasks as task_module
+        from codeframe.core.proof import ledger
+        from codeframe.core.workspace import get_db_connection
+
+        ds.load_dashboard_data(workspace)  # warm-up: proof table init + migration
+
+        opens: list[int] = []
+
+        def counting(ws):
+            opens.append(1)
+            return get_db_connection(ws)
+
+        for module in (ds, task_module, blockers, events, ledger):
+            monkeypatch.setattr(module, "get_db_connection", counting)
+
+        data = ds.load_dashboard_data(workspace)
+        assert data.error is None
+        assert len(opens) == 1
+
+    def test_core_readers_accept_borrowed_connection(self, workspace):
+        """Passing conn= must not close the borrowed connection."""
+        from codeframe.core import blockers, events
+        from codeframe.core import tasks as task_module
+        from codeframe.core.events import EventType, emit_for_workspace
+        from codeframe.core.proof import ledger
+        from codeframe.core.workspace import get_db_connection
+
+        task_module.create(workspace, title="T1", description="d")
+        emit_for_workspace(workspace, EventType.WORKSPACE_INIT, {}, print_event=False)
+        conn = get_db_connection(workspace)
+        try:
+            assert len(task_module.list_tasks(workspace, conn=conn)) == 1
+            assert blockers.list_open(workspace, conn=conn) == []
+            assert events.list_recent(workspace, conn=conn) != []
+            assert ledger.list_requirements(workspace, conn=conn) == []
+            # still usable — borrowed conn was not closed by any reader
+            conn.execute("SELECT 1")
+        finally:
+            conn.close()
+
+
+class TestThreadWorkerRefresh:
+    @pytest.mark.asyncio
+    async def test_refresh_offloads_db_load_to_thread(self, workspace, monkeypatch):
+        """load_dashboard_data must run off the event-loop thread."""
+        import threading
+
+        import codeframe.tui.app as app_module
+        from codeframe.tui.app import DashboardApp
+
+        real = app_module.load_dashboard_data
+        seen: list[threading.Thread] = []
+
+        def spy(ws):
+            seen.append(threading.current_thread())
+            return real(ws)
+
+        monkeypatch.setattr(app_module, "load_dashboard_data", spy)
+
+        app = DashboardApp(workspace=workspace)
+        async with app.run_test(size=(120, 40)):
+            await app.workers.wait_for_complete()
+
+        assert seen, "refresh never ran"
+        assert all(t is not threading.main_thread() for t in seen)
+
+    @pytest.mark.asyncio
+    async def test_worker_refresh_updates_widgets(self, workspace):
+        """Results are posted back to the UI thread and rendered."""
+        from textual.widgets import DataTable
+
+        from codeframe.core import tasks as task_module
+        from codeframe.tui.app import DashboardApp
+
+        task_module.create(workspace, title="Worker task", description="d")
+
+        app = DashboardApp(workspace=workspace)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            table = app.query_one("#task-table", DataTable)
+            assert table.row_count == 1
+
+
 # --- Proof Panel Tests ---
 
 
@@ -273,6 +365,9 @@ class TestDashboardAppProof:
 
         app = DashboardApp(workspace=workspace)
         async with app.run_test(size=(120, 40)) as pilot:
+            # refresh runs in a thread worker (#776) — wait for it to apply
+            await app.workers.wait_for_complete()
+            await pilot.pause()
             log = app.query_one("#proof-log", RichLog)
             # RichLog.lines returns Strip objects; str() gives plain text
             content = "\n".join(str(line) for line in log.lines)

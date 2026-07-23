@@ -11,6 +11,8 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, RichLog, Static
+from textual.worker import get_current_worker
+from textual import work
 
 from codeframe.core.workspace import Workspace
 from codeframe.tui.data_service import DashboardData, load_dashboard_data
@@ -156,12 +158,23 @@ class DashboardApp(App):
         # Auto-refresh
         self.set_interval(self.refresh_interval, self._refresh_data)
 
+    @work(thread=True, exclusive=True, group="refresh")
     def _refresh_data(self) -> None:
-        """Load fresh data from the workspace and update all widgets."""
+        """Load fresh data off the event loop, then apply it on the UI thread.
+
+        The 5 SQLite queries run in a thread worker so they never block input
+        or rendering (#776). ``exclusive=True`` cancels a still-running load
+        when the next tick fires instead of piling up stale refreshes.
+        """
         if not self.workspace:
             return
 
         data = load_dashboard_data(self.workspace)
+        if not get_current_worker().is_cancelled:
+            self.call_from_thread(self._apply_data, data)
+
+    def _apply_data(self, data: DashboardData) -> None:
+        """Update all widgets from a data snapshot (UI thread only)."""
         self.data = data
 
         self._update_status_bar(data)

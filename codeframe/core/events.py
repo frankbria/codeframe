@@ -9,6 +9,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import json
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -251,6 +252,7 @@ def list_recent(
     workspace: Workspace,
     limit: int = 20,
     since_id: Optional[int] = None,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> list[Event]:
     """List recent events for a workspace.
 
@@ -258,11 +260,14 @@ def list_recent(
         workspace: Workspace to query
         limit: Maximum number of events to return
         since_id: Only return events after this ID (for pagination)
+        conn: Optional borrowed connection (caller keeps ownership; not closed)
 
     Returns:
         List of Event objects, newest first
     """
-    conn = get_db_connection(workspace)
+    own_conn = conn is None
+    if own_conn:
+        conn = get_db_connection(workspace)
     try:
         cursor = conn.cursor()
 
@@ -291,7 +296,8 @@ def list_recent(
 
         rows = cursor.fetchall()
     finally:
-        conn.close()
+        if own_conn:
+            conn.close()
 
     return [
         Event(

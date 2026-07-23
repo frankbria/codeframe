@@ -6,6 +6,7 @@ until answered by a human.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import sqlite3
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -244,16 +245,19 @@ def get(workspace: Workspace, blocker_id: str) -> Optional[Blocker]:
     return _row_to_blocker(row)
 
 
-def list_open(workspace: Workspace) -> list[Blocker]:
+def list_open(
+    workspace: Workspace, conn: Optional[sqlite3.Connection] = None
+) -> list[Blocker]:
     """List open blockers.
 
     Args:
         workspace: Workspace to query
+        conn: Optional borrowed connection (caller keeps ownership; not closed)
 
     Returns:
         List of open Blockers, oldest first
     """
-    return list_all(workspace, status=BlockerStatus.OPEN)
+    return list_all(workspace, status=BlockerStatus.OPEN, conn=conn)
 
 
 def list_all(
@@ -261,6 +265,7 @@ def list_all(
     status: Optional[BlockerStatus] = None,
     task_id: Optional[str] = None,
     limit: int = 100,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> list[Blocker]:
     """List blockers with optional filters.
 
@@ -269,11 +274,14 @@ def list_all(
         status: Optional status filter
         task_id: Optional task filter
         limit: Maximum blockers to return
+        conn: Optional borrowed connection (caller keeps ownership; not closed)
 
     Returns:
         List of Blockers, oldest first
     """
-    conn = get_db_connection(workspace)
+    own_conn = conn is None
+    if own_conn:
+        conn = get_db_connection(workspace)
     cursor = conn.cursor()
 
     query = """
@@ -297,7 +305,8 @@ def list_all(
 
     cursor.execute(query, params)
     rows = cursor.fetchall()
-    conn.close()
+    if own_conn:
+        conn.close()
 
     return [_row_to_blocker(row) for row in rows]
 

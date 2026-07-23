@@ -114,9 +114,17 @@ def init_proof_tables(workspace: Workspace) -> None:
     conn.close()
 
 
-def _ensure_tables(workspace: Workspace) -> None:
-    """Lazily init tables on first access."""
-    conn = get_db_connection(workspace)
+def _ensure_tables(
+    workspace: Workspace, conn: Optional[sqlite3.Connection] = None
+) -> None:
+    """Lazily init tables on first access.
+
+    A borrowed ``conn`` is used for the existence checks only (and not closed);
+    the one-time init/migration paths manage their own connections.
+    """
+    own_conn = conn is None
+    if own_conn:
+        conn = get_db_connection(workspace)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='proof_requirements'"
@@ -137,7 +145,8 @@ def _ensure_tables(workspace: Workspace) -> None:
             "SELECT name FROM sqlite_master WHERE type='table' AND name='pr_merge_overrides'"
         )
         missing = not cursor.fetchone()
-    conn.close()
+    if own_conn:
+        conn.close()
     if missing:
         init_proof_tables(workspace)
     _migrate_evidence_status_column(workspace)
@@ -331,11 +340,18 @@ def get_requirement(workspace: Workspace, req_id: str) -> Optional[Requirement]:
 
 
 def list_requirements(
-    workspace: Workspace, status: Optional[ReqStatus] = None
+    workspace: Workspace,
+    status: Optional[ReqStatus] = None,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> list[Requirement]:
-    """List all requirements, optionally filtered by status."""
-    _ensure_tables(workspace)
-    conn = get_db_connection(workspace)
+    """List all requirements, optionally filtered by status.
+
+    ``conn``: optional borrowed connection (caller keeps ownership; not closed).
+    """
+    own_conn = conn is None
+    _ensure_tables(workspace, conn=conn)
+    if own_conn:
+        conn = get_db_connection(workspace)
     cursor = conn.cursor()
     if status:
         cursor.execute(
@@ -356,7 +372,8 @@ def list_requirements(
             (workspace.id,),
         )
     rows = cursor.fetchall()
-    conn.close()
+    if own_conn:
+        conn.close()
     return [_row_to_requirement(r) for r in rows]
 
 
