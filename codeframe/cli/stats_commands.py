@@ -16,6 +16,7 @@ Usage:
 """
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -35,9 +36,10 @@ stats_app = typer.Typer(
 
 
 def _get_db():
-    """Get database from current workspace.
+    """Get database from the enclosing workspace.
 
-    Looks for .codeframe/state.db relative to the current directory.
+    Honors the DATABASE_PATH environment variable; otherwise walks up from
+    the current directory looking for .codeframe/state.db (issue #777).
 
     Returns:
         Initialized Database instance.
@@ -47,10 +49,25 @@ def _get_db():
     """
     from codeframe.platform_store.database import Database
 
-    db_path = Path(".codeframe/state.db")
-    if not db_path.exists():
-        console.print("[red]Error:[/red] No workspace found. Run 'cf init' first.")
-        raise typer.Exit(1)
+    env_path = os.getenv("DATABASE_PATH")
+    if env_path:
+        db_path = Path(env_path)
+        if not db_path.exists():
+            console.print(
+                f"[red]Error:[/red] DATABASE_PATH points to a non-existent database: {db_path}"
+            )
+            raise typer.Exit(1)
+    else:
+        cwd = Path.cwd()
+        db_path = None
+        for p in (cwd, *cwd.parents):
+            candidate = p / ".codeframe" / "state.db"
+            if candidate.exists():
+                db_path = candidate
+                break
+        if db_path is None:
+            console.print("[red]Error:[/red] No workspace found. Run 'cf init' first.")
+            raise typer.Exit(1)
     db = Database(db_path)
     db.initialize()
     return db
