@@ -11,6 +11,8 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import DataTable, Footer, Header, RichLog, Static
+from textual.worker import Worker, get_current_worker
+from textual import work
 
 from codeframe.core.workspace import Workspace
 from codeframe.tui.data_service import DashboardData, load_dashboard_data
@@ -151,17 +153,48 @@ class DashboardApp(App):
         table.cursor_type = "row"
 
         # Initial data load
-        self._refresh_data()
+        self._maybe_refresh()
 
         # Auto-refresh
-        self.set_interval(self.refresh_interval, self._refresh_data)
+        self.set_interval(self.refresh_interval, self._maybe_refresh)
 
+    def _maybe_refresh(self) -> None:
+        """Start a refresh unless one is already in flight.
+
+        Thread workers can't be interrupted mid-query, so without this gate a
+        load slower than the refresh interval would stack cancelled-but-still-
+        running loads (one per tick).
+        """
+        if any(w.group == "refresh" and not w.is_finished for w in self.workers):
+            return
+        self._refresh_data()
+
+    @work(thread=True, exclusive=True, group="refresh")
     def _refresh_data(self) -> None:
-        """Load fresh data from the workspace and update all widgets."""
+        """Load fresh data off the event loop, then apply it on the UI thread.
+
+        The 5 SQLite queries run in a thread worker so they never block input
+        or rendering (#776). ``exclusive=True`` marks a still-running load
+        cancelled when the next tick fires; the ``is_cancelled`` guard below
+        then drops its stale snapshot instead of applying it.
+        """
         if not self.workspace:
             return
 
+        worker = get_current_worker()
         data = load_dashboard_data(self.workspace)
+        if not worker.is_cancelled:
+            self.call_from_thread(self._apply_data, data, worker)
+
+    def _apply_data(self, data: DashboardData, worker: Optional[Worker] = None) -> None:
+        """Update all widgets from a data snapshot (UI thread only).
+
+        Re-checks the producing worker's cancellation here: cancellation
+        happens on this (loop) thread, so this check is race-free where the
+        worker-side one is best-effort.
+        """
+        if worker is not None and worker.is_cancelled:
+            return
         self.data = data
 
         self._update_status_bar(data)
@@ -253,5 +286,5 @@ class DashboardApp(App):
 
     def action_refresh(self) -> None:
         """Manual refresh via 'r' key."""
-        self._refresh_data()
+        self._maybe_refresh()
         self.notify("Refreshed")

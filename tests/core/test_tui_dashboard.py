@@ -113,6 +113,167 @@ class TestDashboardApp:
             await pilot.press("q")
 
 
+# --- Issue #776: thread-worker refresh + single connection ---
+
+
+class TestSingleConnection:
+    def test_refresh_connection_counts(self, workspace, monkeypatch):
+        """Cold load opens 3 (shared read + one-time proof DDL/migration);
+        every steady-state load after that opens exactly ONE."""
+        import codeframe.tui.data_service as ds
+        from codeframe.core import blockers, events
+        from codeframe.core import tasks as task_module
+        from codeframe.core.proof import ledger
+        from codeframe.core.workspace import get_db_connection
+
+        opens: list[int] = []
+
+        def counting(ws):
+            opens.append(1)
+            return get_db_connection(ws)
+
+        for module in (ds, task_module, blockers, events, ledger):
+            monkeypatch.setattr(module, "get_db_connection", counting)
+
+        data = ds.load_dashboard_data(workspace)  # cold: proof tables absent
+        assert data.error is None
+        assert len(opens) == 3
+
+        opens.clear()
+        data = ds.load_dashboard_data(workspace)  # steady state (the every-2s path)
+        assert data.error is None
+        assert len(opens) == 1
+
+    def test_core_readers_accept_borrowed_connection(self, workspace):
+        """Passing conn= must not close the borrowed connection."""
+        from codeframe.core import blockers, events
+        from codeframe.core import tasks as task_module
+        from codeframe.core.events import EventType, emit_for_workspace
+        from codeframe.core.proof import ledger
+        from codeframe.core.workspace import get_db_connection
+
+        task_module.create(workspace, title="T1", description="d")
+        emit_for_workspace(workspace, EventType.WORKSPACE_INIT, {}, print_event=False)
+        conn = get_db_connection(workspace)
+        try:
+            assert len(task_module.list_tasks(workspace, conn=conn)) == 1
+            assert blockers.list_open(workspace, conn=conn) == []
+            assert events.list_recent(workspace, conn=conn) != []
+            assert ledger.list_requirements(workspace, conn=conn) == []
+            # still usable — borrowed conn was not closed by any reader
+            conn.execute("SELECT 1")
+
+            # default (no conn) still works: each reader owns its connection
+            assert len(task_module.list_tasks(workspace)) == 1
+            assert blockers.list_open(workspace) == []
+            assert len(events.list_recent(workspace)) == len(
+                events.list_recent(workspace, conn=conn)
+            )
+            assert ledger.list_requirements(workspace) == []
+        finally:
+            conn.close()
+
+    def test_db_open_failure_sets_error(self, workspace, monkeypatch):
+        import codeframe.tui.data_service as ds
+
+        def boom(ws):
+            raise RuntimeError("no db")
+
+        monkeypatch.setattr(ds, "get_db_connection", boom)
+        data = ds.load_dashboard_data(workspace)
+        assert data.error is not None and data.error.startswith("DB:")
+
+    def test_section_failures_are_isolated(self, workspace, monkeypatch):
+        """A failing section sets error (first wins) without killing the others."""
+        import codeframe.tui.data_service as ds
+        from codeframe.core import blockers, events
+        from codeframe.core import tasks as task_module
+        from codeframe.core.proof import ledger
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(task_module, "list_tasks", boom)
+        monkeypatch.setattr(blockers, "list_open", boom)
+        monkeypatch.setattr(events, "list_recent", boom)
+        monkeypatch.setattr(ledger, "list_requirements", boom)
+
+        data = ds.load_dashboard_data(workspace)
+        assert data.error == "Tasks: boom"  # first failure wins
+        assert data.tasks == [] and data.blockers == [] and data.events == []
+
+
+class TestThreadWorkerRefresh:
+    @pytest.mark.asyncio
+    async def test_refresh_offloads_db_load_to_thread(self, workspace, monkeypatch):
+        """load_dashboard_data must run off the event-loop thread."""
+        import threading
+
+        import codeframe.tui.app as app_module
+        from codeframe.tui.app import DashboardApp
+
+        real = app_module.load_dashboard_data
+        seen: list[threading.Thread] = []
+
+        def spy(ws):
+            seen.append(threading.current_thread())
+            return real(ws)
+
+        monkeypatch.setattr(app_module, "load_dashboard_data", spy)
+
+        app = DashboardApp(workspace=workspace)
+        async with app.run_test(size=(120, 40)):
+            await app.workers.wait_for_complete()
+
+        assert seen, "refresh never ran"
+        assert all(t is not threading.main_thread() for t in seen)
+
+    @pytest.mark.asyncio
+    async def test_refresh_skipped_while_one_in_flight(self, workspace, monkeypatch):
+        """A new refresh is not started while a slow one is still running."""
+        import time as _time
+
+        import codeframe.tui.app as app_module
+        from codeframe.tui.app import DashboardApp
+
+        real = app_module.load_dashboard_data
+        calls: list[int] = []
+
+        def slow(ws):
+            calls.append(1)
+            _time.sleep(0.3)
+            return real(ws)
+
+        monkeypatch.setattr(app_module, "load_dashboard_data", slow)
+
+        app = DashboardApp(workspace=workspace, refresh_interval=60)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await app.workers.wait_for_complete()  # initial load
+            app.action_refresh()
+            await pilot.pause(0.05)
+            app.action_refresh()  # in-flight -> skipped
+            await app.workers.wait_for_complete()
+
+        assert len(calls) == 2  # mount + first manual; second manual skipped
+
+    @pytest.mark.asyncio
+    async def test_worker_refresh_updates_widgets(self, workspace):
+        """Results are posted back to the UI thread and rendered."""
+        from textual.widgets import DataTable
+
+        from codeframe.core import tasks as task_module
+        from codeframe.tui.app import DashboardApp
+
+        task_module.create(workspace, title="Worker task", description="d")
+
+        app = DashboardApp(workspace=workspace)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            table = app.query_one("#task-table", DataTable)
+            assert table.row_count == 1
+
+
 # --- Proof Panel Tests ---
 
 
@@ -273,6 +434,9 @@ class TestDashboardAppProof:
 
         app = DashboardApp(workspace=workspace)
         async with app.run_test(size=(120, 40)) as pilot:
+            # refresh runs in a thread worker (#776) — wait for it to apply
+            await app.workers.wait_for_complete()
+            await pilot.pause()
             log = app.query_one("#proof-log", RichLog)
             # RichLog.lines returns Strip objects; str() gives plain text
             content = "\n".join(str(line) for line in log.lines)

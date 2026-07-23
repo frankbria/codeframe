@@ -7,6 +7,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 
 import asyncio
 import json
+import sqlite3
 import logging
 import re
 import threading
@@ -353,6 +354,7 @@ def list_tasks(
     workspace: Workspace,
     status: Optional[TaskStatus] = None,
     limit: Optional[int] = 100,
+    conn: Optional[sqlite3.Connection] = None,
 ) -> list[Task]:
     """List tasks in a workspace.
 
@@ -361,6 +363,8 @@ def list_tasks(
         status: Optional status filter
         limit: Maximum tasks to return. ``None`` returns every task (uncapped)
             so listing/bulk ops can address tasks beyond the default cap (#743).
+        conn: Optional borrowed connection (caller keeps ownership; not closed
+            here). Lets callers batch several reads on one connection (#776).
 
     Returns:
         List of Tasks
@@ -369,7 +373,9 @@ def list_tasks(
     # it); pass limit=None to opt into an uncapped list.
     limit_clause = "" if limit is None else "LIMIT ?"
 
-    conn = get_db_connection(workspace)
+    own_conn = conn is None
+    if own_conn:
+        conn = get_db_connection(workspace)
     try:
         cursor = conn.cursor()
 
@@ -404,7 +410,8 @@ def list_tasks(
 
         rows = cursor.fetchall()
     finally:
-        conn.close()
+        if own_conn:
+            conn.close()
 
     return [_row_to_task(row) for row in rows]
 

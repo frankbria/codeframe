@@ -6,7 +6,7 @@ Loads all dashboard data in a single call to minimize DB access.
 from dataclasses import dataclass, field
 from typing import Optional
 
-from codeframe.core.workspace import Workspace
+from codeframe.core.workspace import Workspace, get_db_connection
 
 
 @dataclass
@@ -51,53 +51,63 @@ def load_dashboard_data(
         tech_stack=workspace.tech_stack or "",
     )
 
+    # One connection shared by all queries (#776) — opened here, closed here.
     try:
-        from codeframe.core import tasks as task_module
-
-        all_tasks = task_module.list_tasks(workspace)
-        data.tasks = all_tasks
-
-        counts: dict[str, int] = {}
-        for t in all_tasks:
-            status_name = t.status.value if hasattr(t.status, "value") else str(t.status)
-            counts[status_name] = counts.get(status_name, 0) + 1
-        data.task_counts = counts
+        conn = get_db_connection(workspace)
     except Exception as exc:
-        data.error = f"Tasks: {exc}"
+        data.error = f"DB: {exc}"
+        return data
 
     try:
-        from codeframe.core import blockers
-        data.blockers = blockers.list_open(workspace)
-        data.blocker_count = len(data.blockers)
-    except Exception as exc:
-        if not data.error:
-            data.error = f"Blockers: {exc}"
+        try:
+            from codeframe.core import tasks as task_module
 
-    try:
-        from codeframe.core.events import list_recent
-        data.events = list_recent(workspace, limit=event_limit)
-    except Exception as exc:
-        if not data.error:
-            data.error = f"Events: {exc}"
+            all_tasks = task_module.list_tasks(workspace, conn=conn)
+            data.tasks = all_tasks
 
-    try:
-        from datetime import date
-        from codeframe.core.proof.ledger import list_requirements
-        from codeframe.core.proof.models import ReqStatus
+            counts: dict[str, int] = {}
+            for t in all_tasks:
+                status_name = t.status.value if hasattr(t.status, "value") else str(t.status)
+                counts[status_name] = counts.get(status_name, 0) + 1
+            data.task_counts = counts
+        except Exception as exc:
+            data.error = f"Tasks: {exc}"
 
-        open_reqs = list_requirements(workspace, status=ReqStatus.OPEN)
-        data.open_requirements = open_reqs
-        data.open_obligation_count = len(open_reqs)
+        try:
+            from codeframe.core import blockers
+            data.blockers = blockers.list_open(workspace, conn=conn)
+            data.blocker_count = len(data.blockers)
+        except Exception as exc:
+            if not data.error:
+                data.error = f"Blockers: {exc}"
 
-        waived = list_requirements(workspace, status=ReqStatus.WAIVED)
-        today = date.today()
-        data.expiring_waivers = [
-            req for req in waived
-            if req.waiver and req.waiver.expires is not None
-            and 0 <= (req.waiver.expires - today).days <= 7
-        ]
-    except Exception as exc:
-        if not data.error:
-            data.error = f"Proof: {exc}"
+        try:
+            from codeframe.core.events import list_recent
+            data.events = list_recent(workspace, limit=event_limit, conn=conn)
+        except Exception as exc:
+            if not data.error:
+                data.error = f"Events: {exc}"
+
+        try:
+            from datetime import date
+            from codeframe.core.proof.ledger import list_requirements
+            from codeframe.core.proof.models import ReqStatus
+
+            open_reqs = list_requirements(workspace, status=ReqStatus.OPEN, conn=conn)
+            data.open_requirements = open_reqs
+            data.open_obligation_count = len(open_reqs)
+
+            waived = list_requirements(workspace, status=ReqStatus.WAIVED, conn=conn)
+            today = date.today()
+            data.expiring_waivers = [
+                req for req in waived
+                if req.waiver and req.waiver.expires is not None
+                and 0 <= (req.waiver.expires - today).days <= 7
+            ]
+        except Exception as exc:
+            if not data.error:
+                data.error = f"Proof: {exc}"
+    finally:
+        conn.close()
 
     return data
