@@ -83,6 +83,58 @@ def test_dispatches_with_null_url_when_github_unconfigured(workspace, monkeypatc
     assert payload["pr_url"] is None
 
 
+def test_no_github_client_constructed(workspace, monkeypatch):
+    """The dispatch only needs the repo slug — constructing GitHubIntegration
+    would eagerly open (and leak) an httpx.AsyncClient (issue #779)."""
+    save_notifications_config(
+        workspace,
+        {"webhook_url": "https://example.com/h", "webhook_enabled": True},
+    )
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_test_token")
+    monkeypatch.setenv("GITHUB_REPO", "frankbria/codeframe")
+
+    with patch(
+        "codeframe.notifications.webhook.WebhookNotificationService"
+    ), patch("codeframe.ui.routers.pr_v2.GitHubIntegration") as MockGH:
+        _dispatch_pr_merged_webhook(workspace, pr_number=42)
+    MockGH.assert_not_called()
+
+
+def test_pr_url_built_without_token(workspace, monkeypatch):
+    """A canonical github.com URL needs no auth — GITHUB_REPO alone suffices."""
+    save_notifications_config(
+        workspace,
+        {"webhook_url": "https://example.com/h", "webhook_enabled": True},
+    )
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_REPO", "frankbria/codeframe")
+
+    with patch(
+        "codeframe.notifications.webhook.WebhookNotificationService"
+    ) as MockSvc:
+        instance = MockSvc.return_value
+        _dispatch_pr_merged_webhook(workspace, pr_number=7)
+    payload = instance.send_event_background.call_args.args[0]
+    assert payload["pr_url"] == "https://github.com/frankbria/codeframe/pull/7"
+
+
+@pytest.mark.parametrize("bad_repo", ["no-slash", "owner/", "/repo", " / "])
+def test_pr_url_none_for_malformed_repo(workspace, monkeypatch, bad_repo):
+    save_notifications_config(
+        workspace,
+        {"webhook_url": "https://example.com/h", "webhook_enabled": True},
+    )
+    monkeypatch.setenv("GITHUB_REPO", bad_repo)
+
+    with patch(
+        "codeframe.notifications.webhook.WebhookNotificationService"
+    ) as MockSvc:
+        instance = MockSvc.return_value
+        _dispatch_pr_merged_webhook(workspace, pr_number=3)
+    payload = instance.send_event_background.call_args.args[0]
+    assert payload["pr_url"] is None
+
+
 def test_dispatch_failure_does_not_raise(workspace, monkeypatch):
     save_notifications_config(
         workspace,
