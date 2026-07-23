@@ -52,9 +52,9 @@ def _get_db():
     env_path = os.getenv("DATABASE_PATH")
     if env_path:
         db_path = Path(env_path)
-        if not db_path.exists():
+        if not db_path.is_file():
             console.print(
-                f"[red]Error:[/red] DATABASE_PATH points to a non-existent database: {db_path}"
+                f"[red]Error:[/red] DATABASE_PATH does not point to a database file: {db_path}"
             )
             raise typer.Exit(1)
     else:
@@ -62,7 +62,7 @@ def _get_db():
         db_path = None
         for p in (cwd, *cwd.parents):
             candidate = p / ".codeframe" / "state.db"
-            if candidate.exists():
+            if candidate.is_file():
                 db_path = candidate
                 break
         if db_path is None:

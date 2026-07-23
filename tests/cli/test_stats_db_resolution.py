@@ -91,11 +91,14 @@ def test_stats_tokens_errors_when_no_workspace(tmp_path: Path, monkeypatch):
     assert "No workspace found" in result.output
 
 
-def test_stats_tokens_errors_when_database_path_missing(tmp_path: Path, monkeypatch):
-    """DATABASE_PATH pointing at a missing file errors without falling back."""
+@pytest.mark.parametrize("target", ["nope.db", "."])
+def test_stats_tokens_errors_when_database_path_invalid(
+    tmp_path: Path, monkeypatch, target: str
+):
+    """DATABASE_PATH pointing at a missing file or a directory errors out."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "nope.db"))
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / target))
 
     result = CliRunner().invoke(stats_app, ["tokens"])
     assert result.exit_code == 1
-    assert "DATABASE_PATH points to a non-existent database" in result.output
+    assert "DATABASE_PATH does not point to a database file" in result.output
