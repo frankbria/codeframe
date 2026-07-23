@@ -41,8 +41,7 @@ def test_dispatches_when_enabled_with_pr_url(workspace, monkeypatch):
         workspace,
         {"webhook_url": "https://example.com/h", "webhook_enabled": True},
     )
-    # Provide GitHub env so GitHubIntegration() succeeds and the URL has the
-    # owner/repo segment.
+    # Provide GITHUB_REPO so the URL has the owner/repo segment.
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_test_token")
     monkeypatch.setenv("GITHUB_REPO", "frankbria/codeframe")
 
@@ -60,9 +59,9 @@ def test_dispatches_when_enabled_with_pr_url(workspace, monkeypatch):
 
 
 def test_dispatches_with_null_url_when_github_unconfigured(workspace, monkeypatch):
-    """If GitHubIntegration() can't be constructed, we still emit the event
-    but pr_url is None — consumers branch on pr_number (always present)
-    rather than parsing an unparseable sentinel."""
+    """If GITHUB_REPO is unset, we still emit the event but pr_url is None —
+    consumers branch on pr_number (always present) rather than parsing an
+    unparseable sentinel."""
     save_notifications_config(
         workspace,
         {"webhook_url": "https://example.com/h", "webhook_enabled": True},
@@ -80,6 +79,81 @@ def test_dispatches_with_null_url_when_github_unconfigured(workspace, monkeypatc
     payload = instance.send_event_background.call_args.args[0]
     assert payload["event"] == "pr.merged"
     assert payload["pr_number"] == 99
+    assert payload["pr_url"] is None
+
+
+def test_no_github_client_constructed(workspace, monkeypatch):
+    """Regression guard for #779: the dispatch only needs the repo slug —
+    constructing GitHubIntegration would eagerly open (and leak) an
+    httpx.AsyncClient, so it must never be reintroduced on this path."""
+    save_notifications_config(
+        workspace,
+        {"webhook_url": "https://example.com/h", "webhook_enabled": True},
+    )
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_test_token")
+    monkeypatch.setenv("GITHUB_REPO", "frankbria/codeframe")
+
+    with patch(
+        "codeframe.notifications.webhook.WebhookNotificationService"
+    ) as MockSvc, patch("codeframe.ui.routers.pr_v2.GitHubIntegration") as MockGH:
+        _dispatch_pr_merged_webhook(workspace, pr_number=42)
+    # Prove the dispatch path actually executed — otherwise assert_not_called
+    # would pass vacuously on an early return.
+    MockSvc.return_value.send_event_background.assert_called_once()
+    MockGH.assert_not_called()
+
+
+def test_pr_url_built_without_token(workspace, monkeypatch):
+    """A canonical github.com URL needs no auth — GITHUB_REPO alone suffices."""
+    save_notifications_config(
+        workspace,
+        {"webhook_url": "https://example.com/h", "webhook_enabled": True},
+    )
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_REPO", "frankbria/codeframe")
+
+    with patch(
+        "codeframe.notifications.webhook.WebhookNotificationService"
+    ) as MockSvc:
+        instance = MockSvc.return_value
+        _dispatch_pr_merged_webhook(workspace, pr_number=7)
+    payload = instance.send_event_background.call_args.args[0]
+    assert payload["pr_url"] == "https://github.com/frankbria/codeframe/pull/7"
+
+
+def test_pr_url_strips_whitespace_from_repo(workspace, monkeypatch):
+    """A copy-pasted .env value like ' owner/repo ' yields a clean URL."""
+    save_notifications_config(
+        workspace,
+        {"webhook_url": "https://example.com/h", "webhook_enabled": True},
+    )
+    monkeypatch.setenv("GITHUB_REPO", " frankbria/codeframe ")
+
+    with patch(
+        "codeframe.notifications.webhook.WebhookNotificationService"
+    ) as MockSvc:
+        instance = MockSvc.return_value
+        _dispatch_pr_merged_webhook(workspace, pr_number=8)
+    payload = instance.send_event_background.call_args.args[0]
+    assert payload["pr_url"] == "https://github.com/frankbria/codeframe/pull/8"
+
+
+@pytest.mark.parametrize(
+    "bad_repo", ["no-slash", "owner/", "/repo", " / ", "owner/repo/extra"]
+)
+def test_pr_url_none_for_malformed_repo(workspace, monkeypatch, bad_repo):
+    save_notifications_config(
+        workspace,
+        {"webhook_url": "https://example.com/h", "webhook_enabled": True},
+    )
+    monkeypatch.setenv("GITHUB_REPO", bad_repo)
+
+    with patch(
+        "codeframe.notifications.webhook.WebhookNotificationService"
+    ) as MockSvc:
+        instance = MockSvc.return_value
+        _dispatch_pr_merged_webhook(workspace, pr_number=3)
+    payload = instance.send_event_background.call_args.args[0]
     assert payload["pr_url"] is None
 
 
