@@ -158,8 +158,45 @@ class TestSingleConnection:
             assert ledger.list_requirements(workspace, conn=conn) == []
             # still usable — borrowed conn was not closed by any reader
             conn.execute("SELECT 1")
+
+            # default (no conn) still works: each reader owns its connection
+            assert len(task_module.list_tasks(workspace)) == 1
+            assert blockers.list_open(workspace) == []
+            assert len(events.list_recent(workspace)) == len(
+                events.list_recent(workspace, conn=conn)
+            )
+            assert ledger.list_requirements(workspace) == []
         finally:
             conn.close()
+
+    def test_db_open_failure_sets_error(self, workspace, monkeypatch):
+        import codeframe.tui.data_service as ds
+
+        def boom(ws):
+            raise RuntimeError("no db")
+
+        monkeypatch.setattr(ds, "get_db_connection", boom)
+        data = ds.load_dashboard_data(workspace)
+        assert data.error is not None and data.error.startswith("DB:")
+
+    def test_section_failures_are_isolated(self, workspace, monkeypatch):
+        """A failing section sets error (first wins) without killing the others."""
+        import codeframe.tui.data_service as ds
+        from codeframe.core import blockers, events
+        from codeframe.core import tasks as task_module
+        from codeframe.core.proof import ledger
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(task_module, "list_tasks", boom)
+        monkeypatch.setattr(blockers, "list_open", boom)
+        monkeypatch.setattr(events, "list_recent", boom)
+        monkeypatch.setattr(ledger, "list_requirements", boom)
+
+        data = ds.load_dashboard_data(workspace)
+        assert data.error == "Tasks: boom"  # first failure wins
+        assert data.tasks == [] and data.blockers == [] and data.events == []
 
 
 class TestThreadWorkerRefresh:
