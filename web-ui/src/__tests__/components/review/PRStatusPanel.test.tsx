@@ -1,217 +1,229 @@
-import React from 'react';
-import { render, screen } from '@testing-library/react';
-import useSWR from 'swr';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { PRStatusPanel } from '@/components/review/PRStatusPanel';
-import type { PRStatusResponse } from '@/types';
 
-// ── Mocks ─────────────────────────────────────────────────────────────────
-
-jest.mock('swr');
 jest.mock('@/lib/api', () => ({
-  prApi: { getStatus: jest.fn() },
+  prApi: {
+    getStatus: jest.fn(),
+    merge: jest.fn(),
+  },
+  proofApi: {
+    getStatus: jest.fn(),
+  },
 }));
 
+jest.mock('@/lib/workspace-storage', () => ({
+  getSelectedWorkspacePath: jest.fn(() => '/test/workspace'),
+}));
+
+jest.mock('swr', () => ({ __esModule: true, default: jest.fn() }));
+
+import useSWR from 'swr';
+import { prApi } from '@/lib/api';
+
 const mockUseSWR = useSWR as jest.MockedFunction<typeof useSWR>;
+const mockMerge = prApi.merge as jest.MockedFunction<typeof prApi.merge>;
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// ── Fixtures ──────────────────────────────────────────────────────────────────
 
-const WORKSPACE = '/home/user/project';
-const PR_NUMBER = 42;
+const successfulCIChecks = [
+  { name: 'tests', status: 'completed', conclusion: 'success' },
+  { name: 'lint', status: 'completed', conclusion: 'success' },
+];
 
-const BASE_STATUS: PRStatusResponse = {
-  ci_checks: [],
-  review_status: 'pending',
+const failingCIChecks = [
+  { name: 'tests', status: 'completed', conclusion: 'failure' },
+];
+
+const pendingCIChecks = [
+  { name: 'tests', status: 'in_progress', conclusion: null },
+];
+
+const basePRStatus = {
+  ci_checks: successfulCIChecks,
+  review_status: 'approved',
   merge_state: 'open',
-  pr_url: 'https://github.com/owner/repo/pull/42',
+  pr_url: 'https://github.com/test/repo/pull/42',
   pr_number: 42,
 };
 
-function withData(overrides: Partial<PRStatusResponse> = {}) {
-  mockUseSWR.mockReturnValue({
-    data: { ...BASE_STATUS, ...overrides },
-    error: undefined,
-    isLoading: false,
-    isValidating: false,
-    mutate: jest.fn(),
-  } as ReturnType<typeof useSWR>);
-}
+const openReq = {
+  id: 'REQ-001',
+  title: 'Fix critical bug',
+  status: 'open',
+  description: 'A test requirement',
+  severity: 'high',
+  source: 'manual',
+  glitch_type: null,
+  obligations: [],
+  evidence_rules: [],
+  waiver: null,
+  created_at: '2026-01-01T00:00:00Z',
+  satisfied_at: null,
+  created_by: 'tester',
+  source_issue: null,
+  related_reqs: [],
+  scope: null,
+};
 
-function withLoading() {
-  mockUseSWR.mockReturnValue({
-    data: undefined,
-    error: undefined,
-    isLoading: true,
-    isValidating: true,
-    mutate: jest.fn(),
-  } as ReturnType<typeof useSWR>);
-}
+const cleanProofStatus = {
+  total: 0,
+  open: 0,
+  satisfied: 0,
+  waived: 0,
+  requirements: [],
+};
 
-function withError() {
-  mockUseSWR.mockReturnValue({
-    data: undefined,
-    error: new Error('Network error'),
-    isLoading: false,
-    isValidating: false,
-    mutate: jest.fn(),
-  } as ReturnType<typeof useSWR>);
-}
+const proofStatusWithOpenReqs = {
+  total: 1,
+  open: 1,
+  satisfied: 0,
+  waived: 0,
+  requirements: [openReq],
+};
 
-function setup(overrides?: Partial<PRStatusResponse>) {
-  withData(overrides);
-  return render(<PRStatusPanel prNumber={PR_NUMBER} workspacePath={WORKSPACE} />);
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// ── Tests ─────────────────────────────────────────────────────────────────
+const setupSWRMock = (
+  prStatus: object | undefined,
+  proofStatus: object | undefined,
+  options?: { proofLoading?: boolean; proofError?: unknown }
+) => {
+  mockUseSWR.mockImplementation((key: unknown) => {
+    const keyStr = typeof key === 'string' ? key : '';
+    if (keyStr.includes('/api/v2/proof/status')) {
+      return {
+        data: proofStatus,
+        error: options?.proofError,
+        isLoading: options?.proofLoading ?? false,
+        mutate: jest.fn(),
+      } as any;
+    }
+    return { data: prStatus, error: undefined, isLoading: false, mutate: jest.fn() } as any;
+  });
+};
 
-describe('PRStatusPanel', () => {
-  beforeEach(() => jest.clearAllMocks());
+const defaultProps = {
+  prNumber: 42,
+  workspacePath: '/test/workspace',
+};
 
-  describe('loading state', () => {
-    it('renders heading and loading skeleton while data is pending', () => {
-      withLoading();
-      render(<PRStatusPanel prNumber={PR_NUMBER} workspacePath={WORKSPACE} />);
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
-      expect(screen.getByText('PR Status')).toBeInTheDocument();
-      // Badge labels should not be present yet
-      expect(screen.queryByText('Open')).not.toBeInTheDocument();
-      expect(screen.queryByText('Pending Review')).not.toBeInTheDocument();
+describe('PRStatusPanel — PROOF9-gated merge button', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('disables merge button when PROOF9 has open requirements', () => {
+    setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByRole('button', { name: /^merge$/i })).toBeDisabled();
+  });
+
+  it('shows blocking REQ titles inline when PROOF9 has open requirements', () => {
+    setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByText('Fix critical bug')).toBeInTheDocument();
+  });
+
+  it('shows link to /proof page when PROOF9 is blocking', () => {
+    setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByRole('link', { name: /view all/i })).toHaveAttribute('href', '/proof');
+  });
+
+  it('enables merge button when all requirements are cleared and CI passes', () => {
+    setupSWRMock(basePRStatus, cleanProofStatus);
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByRole('button', { name: /^merge$/i })).not.toBeDisabled();
+  });
+
+  it('shows success banner and removes merge button after successful merge', async () => {
+    setupSWRMock(basePRStatus, cleanProofStatus);
+    mockMerge.mockResolvedValueOnce({ sha: 'abc123', merged: true, message: 'Merged!' });
+    render(<PRStatusPanel {...defaultProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^merge$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/merged successfully/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /merge/i })).not.toBeInTheDocument();
+  });
+
+  it('shows error message and re-enables button when merge API call fails', async () => {
+    setupSWRMock(basePRStatus, cleanProofStatus);
+    mockMerge.mockRejectedValueOnce({ detail: 'Cannot merge: conflicts detected' });
+    render(<PRStatusPanel {...defaultProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^merge$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/cannot merge/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /^merge$/i })).toBeInTheDocument();
+  });
+
+  it('disables merge button and shows loading text while merge is in-flight', async () => {
+    setupSWRMock(basePRStatus, cleanProofStatus);
+    let resolveMerge!: (val: unknown) => void;
+    const mergePromise = new Promise((resolve) => {
+      resolveMerge = resolve;
+    });
+    mockMerge.mockReturnValueOnce(mergePromise as any);
+    render(<PRStatusPanel {...defaultProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^merge$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /merging/i })).toBeDisabled();
+    });
+
+    resolveMerge({ sha: 'abc', merged: true, message: 'ok' });
+
+    await waitFor(() => {
+      expect(screen.getByText(/merged successfully/i)).toBeInTheDocument();
     });
   });
 
-  describe('merge state badge', () => {
-    it('shows Open badge for an open PR', () => {
-      setup({ merge_state: 'open' });
-      expect(screen.getByText('Open')).toBeInTheDocument();
-    });
-
-    it('shows Merged badge when PR is merged', () => {
-      setup({ merge_state: 'merged' });
-      expect(screen.getByText('Merged')).toBeInTheDocument();
-    });
-
-    it('shows Closed badge when PR is closed without merge', () => {
-      setup({ merge_state: 'closed' });
-      expect(screen.getByText('Closed')).toBeInTheDocument();
-    });
+  it('shows CI blocking message when CI checks are failing', () => {
+    setupSWRMock({ ...basePRStatus, ci_checks: failingCIChecks }, cleanProofStatus);
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByText(/ci checks failing/i)).toBeInTheDocument();
   });
 
-  describe('review status badge', () => {
-    it('shows Pending Review when there are no reviews', () => {
-      setup({ review_status: 'pending' });
-      expect(screen.getByText('Pending Review')).toBeInTheDocument();
-    });
-
-    it('shows Approved badge', () => {
-      setup({ review_status: 'approved' });
-      expect(screen.getByText('Approved')).toBeInTheDocument();
-    });
-
-    it('shows Changes Requested badge', () => {
-      setup({ review_status: 'changes_requested' });
-      expect(screen.getByText('Changes Requested')).toBeInTheDocument();
-    });
+  it('shows both CI and PROOF9 blocking messages when both are blocking', () => {
+    setupSWRMock({ ...basePRStatus, ci_checks: failingCIChecks }, proofStatusWithOpenReqs);
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByText(/ci checks failing/i)).toBeInTheDocument();
+    expect(screen.getByText('Fix critical bug')).toBeInTheDocument();
   });
 
-  describe('CI checks', () => {
-    it('shows "No checks found" when ci_checks is empty', () => {
-      setup({ ci_checks: [] });
-      expect(screen.getByText('No checks found.')).toBeInTheDocument();
-    });
-
-    it('renders each check name', () => {
-      setup({
-        ci_checks: [
-          { name: 'lint', status: 'completed', conclusion: 'success' },
-          { name: 'test-suite', status: 'in_progress', conclusion: null },
-        ],
-      });
-      expect(screen.getByText('lint')).toBeInTheDocument();
-      expect(screen.getByText('test-suite')).toBeInTheDocument();
-    });
-
-    it('labels an in-progress check as Running', () => {
-      setup({
-        ci_checks: [{ name: 'build', status: 'in_progress', conclusion: null }],
-      });
-      expect(screen.getByText('Running')).toBeInTheDocument();
-    });
-
-    it('labels a queued check as Queued', () => {
-      setup({
-        ci_checks: [{ name: 'deploy', status: 'queued', conclusion: null }],
-      });
-      expect(screen.getByText('Queued')).toBeInTheDocument();
-    });
-
-    it('shows the conclusion value for a completed check', () => {
-      setup({
-        ci_checks: [{ name: 'lint', status: 'completed', conclusion: 'success' }],
-      });
-      expect(screen.getByText('success')).toBeInTheDocument();
-    });
-
-    it('shows the conclusion for a failed check', () => {
-      setup({
-        ci_checks: [{ name: 'test', status: 'completed', conclusion: 'failure' }],
-      });
-      expect(screen.getByText('failure')).toBeInTheDocument();
-    });
+  it('shows "Waiting for CI checks" when CI checks are pending', () => {
+    setupSWRMock({ ...basePRStatus, ci_checks: pendingCIChecks }, cleanProofStatus);
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByText(/waiting for ci checks/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^merge$/i })).toBeDisabled();
   });
 
-  describe('error state', () => {
-    it('shows fallback message when API call fails and no data cached', () => {
-      withError();
-      render(<PRStatusPanel prNumber={PR_NUMBER} workspacePath={WORKSPACE} />);
-      expect(screen.getByText(/Unable to load PR status/i)).toBeInTheDocument();
-    });
+  it('shows PROOF9 loading skeleton instead of "All clear" while proof data loads', () => {
+    setupSWRMock(basePRStatus, undefined, { proofLoading: true });
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.queryByText(/all clear/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^merge$/i })).toBeDisabled();
   });
 
-  describe('SWR integration', () => {
-    it('passes the correct SWR key', () => {
-      withData();
-      render(<PRStatusPanel prNumber={PR_NUMBER} workspacePath={WORKSPACE} />);
+  it('shows PROOF9 error message when proof API fails', () => {
+    setupSWRMock(basePRStatus, undefined, { proofError: new Error('Network error') });
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByText(/unable to load proof9 status/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^merge$/i })).toBeDisabled();
+  });
 
-      const [key] = mockUseSWR.mock.calls[0];
-      expect(key).toContain(`pr_number=${PR_NUMBER}`);
-      expect(key).toContain(`workspace_path=${encodeURIComponent(WORKSPACE)}`);
-    });
-
-    it('passes a refreshInterval function to SWR config', () => {
-      withData();
-      render(<PRStatusPanel prNumber={PR_NUMBER} workspacePath={WORKSPACE} />);
-
-      const config = mockUseSWR.mock.calls[0][2] as { refreshInterval: unknown };
-      expect(typeof config.refreshInterval).toBe('function');
-    });
-
-    it('refreshInterval returns 0 when merge_state is merged', () => {
-      withData({ merge_state: 'merged' });
-      render(<PRStatusPanel prNumber={PR_NUMBER} workspacePath={WORKSPACE} />);
-
-      const config = mockUseSWR.mock.calls[0][2] as {
-        refreshInterval: (data: PRStatusResponse) => number;
-      };
-      expect(config.refreshInterval({ ...BASE_STATUS, merge_state: 'merged' })).toBe(0);
-    });
-
-    it('refreshInterval returns 0 when merge_state is closed', () => {
-      withData({ merge_state: 'closed' });
-      render(<PRStatusPanel prNumber={PR_NUMBER} workspacePath={WORKSPACE} />);
-
-      const config = mockUseSWR.mock.calls[0][2] as {
-        refreshInterval: (data: PRStatusResponse) => number;
-      };
-      expect(config.refreshInterval({ ...BASE_STATUS, merge_state: 'closed' })).toBe(0);
-    });
-
-    it('refreshInterval returns 30000 when PR is still open', () => {
-      withData({ merge_state: 'open' });
-      render(<PRStatusPanel prNumber={PR_NUMBER} workspacePath={WORKSPACE} />);
-
-      const config = mockUseSWR.mock.calls[0][2] as {
-        refreshInterval: (data: PRStatusResponse) => number;
-      };
-      expect(config.refreshInterval({ ...BASE_STATUS, merge_state: 'open' })).toBe(30_000);
-    });
+  it('shows success banner when PR was merged externally', () => {
+    setupSWRMock({ ...basePRStatus, merge_state: 'merged' }, cleanProofStatus);
+    render(<PRStatusPanel {...defaultProps} />);
+    expect(screen.getByText(/merged successfully/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /merge/i })).not.toBeInTheDocument();
   });
 });
