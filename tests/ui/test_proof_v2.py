@@ -320,9 +320,15 @@ class TestRunProof:
         assert response.status_code == 422
 
     def test_run_results_shape(self, test_client):
-        """results is a dict mapping req_id to list of gate results."""
+        """results maps req_id → a NON-EMPTY list of executed gate results.
+
+        Asserts real gate execution, not just JSON shape: a captured requirement
+        must produce obligations that actually run and yield gate outcomes. The
+        old version asserted only isinstance(dict), so it stayed green even if no
+        gate ever executed — the shape-only no-op this batch targets (#773).
+        """
         # Capture a requirement first so there's something to run
-        test_client.post(
+        capture = test_client.post(
             "/api/v2/proof/requirements",
             json={
                 "title": "Run test req",
@@ -332,9 +338,18 @@ class TestRunProof:
                 "source": "qa",
             },
         )
+        assert capture.status_code == 201
         response = test_client.post("/api/v2/proof/run", json={"full": True})
         data = response.json()
         assert isinstance(data["results"], dict)
+        # The captured requirement was evaluated → at least one req_id with gates.
+        assert data["results"], "expected the captured requirement to be evaluated"
+        gate_results = [gr for reqs in data["results"].values() for gr in reqs]
+        assert gate_results, "expected at least one gate to actually execute"
+        # Each executed gate carries the real result contract (not just any dict).
+        for gr in gate_results:
+            assert set(gr) >= {"gate", "satisfied", "status"}
+            assert gr["status"] in ("passed", "failed", "unverifiable")
 
     def test_run_results_carry_status(self, test_client):
         """Each gate result carries a tri-state status alongside satisfied."""

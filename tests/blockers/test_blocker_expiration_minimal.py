@@ -1,7 +1,7 @@
 """Minimal tests for blocker expiration to isolate timeout issues."""
 
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 def test_expire_stale_blockers_direct_sql():
@@ -64,8 +64,10 @@ def test_expire_stale_blockers_direct_sql():
         (1, 1, "Test Task", "Test", "pending", 0),
     )
 
-    # Create stale blocker (25 hours old)
-    stale_time = (datetime.now() - timedelta(hours=25)).isoformat()
+    # Create stale blocker (25 hours old). Use UTC — the expiry SQL compares
+    # against datetime('now'), which SQLite evaluates in UTC. A naive local
+    # datetime.now() makes this test pass/fail by the runner's timezone offset.
+    stale_time = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
     conn.execute(
         """
         INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)

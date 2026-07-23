@@ -49,24 +49,27 @@ def _reset_tickets():
 
 class TestTerminalWsAuth:
     def test_missing_ticket_closes_4001(self, monkeypatch):
+        """No ticket in auth mode → closed with 4001 (auth failure), not just 'raised'.
+        Asserting the exact code is what makes a silent auth bypass fail this test."""
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         app = _make_app()
         client = TestClient(app)
-        with pytest.raises(Exception):
-            # No ticket → closed before accepting; TestClient raises on non-101
+        with pytest.raises(WebSocketDisconnect) as exc:
             with client.websocket_connect("/ws/sessions/s1/terminal"):
                 pass
+        assert exc.value.code == 4001
 
     def test_unknown_ticket_closes_4001(self, monkeypatch):
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         app = _make_app()
         client = TestClient(app)
-        with pytest.raises(Exception):
+        with pytest.raises(WebSocketDisconnect) as exc:
             with client.websocket_connect("/ws/sessions/s1/terminal?ticket=not-a-real-ticket"):
                 pass
+        assert exc.value.code == 4001
 
     def test_valid_ticket_session_not_found(self):
-        """Valid ticket but session does not exist → closed."""
+        """Valid ticket but session does not exist → closed 4004."""
         app = _make_app(session_data=None)
         client = TestClient(app)
 
@@ -75,12 +78,13 @@ class TestTerminalWsAuth:
             "codeframe.ui.routers.terminal_ws._authenticate_websocket",
             new=AsyncMock(return_value=(True, 1)),
         ):
-            with pytest.raises(Exception):
+            with pytest.raises(WebSocketDisconnect) as exc:
                 with client.websocket_connect("/ws/sessions/missing/terminal?ticket=x"):
                     pass
+            assert exc.value.code == 4004
 
     def test_valid_ticket_ended_session(self):
-        """Valid ticket but session is ended → closed."""
+        """Valid ticket but session is ended → closed 4004."""
         app = _make_app(session_data={"state": "ended", "workspace_path": "/tmp"})
         client = TestClient(app)
 
@@ -88,12 +92,14 @@ class TestTerminalWsAuth:
             "codeframe.ui.routers.terminal_ws._authenticate_websocket",
             new=AsyncMock(return_value=(True, 1)),
         ):
-            with pytest.raises(Exception):
+            with pytest.raises(WebSocketDisconnect) as exc:
                 with client.websocket_connect("/ws/sessions/s1/terminal?ticket=x"):
                     pass
+            assert exc.value.code == 4004
 
     def test_ownership_mismatch_closes(self):
-        """Ticket user_id does not match session user_id → closed."""
+        """Ticket user_id does not match session user_id → closed 4003 (forbidden).
+        A bypass that let the connection through would fail this exact-code assert."""
         app = _make_app(
             session_data={"state": "active", "workspace_path": "/tmp", "user_id": 999}
         )
@@ -103,9 +109,10 @@ class TestTerminalWsAuth:
             "codeframe.ui.routers.terminal_ws._authenticate_websocket",
             new=AsyncMock(return_value=(True, 1)),
         ):
-            with pytest.raises(Exception):
+            with pytest.raises(WebSocketDisconnect) as exc:
                 with client.websocket_connect("/ws/sessions/s1/terminal?ticket=x"):
                     pass
+            assert exc.value.code == 4003
 
 
 # ---------------------------------------------------------------------------
