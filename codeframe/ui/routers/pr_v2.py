@@ -245,11 +245,11 @@ def _dispatch_pr_merged_webhook(workspace: Workspace, pr_number: int) -> None:
         # can branch on it without parsing the URL. Read the env var directly
         # instead of constructing GitHubIntegration — the constructor eagerly
         # opens an httpx.AsyncClient that would leak here (#779).
-        repo = os.getenv("GITHUB_REPO") or ""
-        owner, _, name = repo.partition("/")
+        repo = (os.getenv("GITHUB_REPO") or "").strip()
+        parts = [part.strip() for part in repo.split("/")]
         pr_url: Optional[str] = (
-            f"https://github.com/{repo}/pull/{pr_number}"
-            if owner.strip() and name.strip()
+            f"https://github.com/{parts[0]}/{parts[1]}/pull/{pr_number}"
+            if len(parts) == 2 and all(parts)
             else None
         )
 

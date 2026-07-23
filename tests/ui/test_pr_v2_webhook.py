@@ -95,8 +95,11 @@ def test_no_github_client_constructed(workspace, monkeypatch):
 
     with patch(
         "codeframe.notifications.webhook.WebhookNotificationService"
-    ), patch("codeframe.ui.routers.pr_v2.GitHubIntegration") as MockGH:
+    ) as MockSvc, patch("codeframe.ui.routers.pr_v2.GitHubIntegration") as MockGH:
         _dispatch_pr_merged_webhook(workspace, pr_number=42)
+    # Prove the dispatch path actually executed — otherwise assert_not_called
+    # would pass vacuously on an early return.
+    MockSvc.return_value.send_event_background.assert_called_once()
     MockGH.assert_not_called()
 
 
@@ -118,7 +121,26 @@ def test_pr_url_built_without_token(workspace, monkeypatch):
     assert payload["pr_url"] == "https://github.com/frankbria/codeframe/pull/7"
 
 
-@pytest.mark.parametrize("bad_repo", ["no-slash", "owner/", "/repo", " / "])
+def test_pr_url_strips_whitespace_from_repo(workspace, monkeypatch):
+    """A copy-pasted .env value like ' owner/repo ' yields a clean URL."""
+    save_notifications_config(
+        workspace,
+        {"webhook_url": "https://example.com/h", "webhook_enabled": True},
+    )
+    monkeypatch.setenv("GITHUB_REPO", " frankbria/codeframe ")
+
+    with patch(
+        "codeframe.notifications.webhook.WebhookNotificationService"
+    ) as MockSvc:
+        instance = MockSvc.return_value
+        _dispatch_pr_merged_webhook(workspace, pr_number=8)
+    payload = instance.send_event_background.call_args.args[0]
+    assert payload["pr_url"] == "https://github.com/frankbria/codeframe/pull/8"
+
+
+@pytest.mark.parametrize(
+    "bad_repo", ["no-slash", "owner/", "/repo", " / ", "owner/repo/extra"]
+)
 def test_pr_url_none_for_malformed_repo(workspace, monkeypatch, bad_repo):
     save_notifications_config(
         workspace,
