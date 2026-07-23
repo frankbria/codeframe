@@ -171,3 +171,30 @@ class TestInitGenerateConfig:
         """CLI output mentions CODEFRAME.md was generated."""
         result = runner.invoke(app, ["init", str(temp_repo), "--generate-config"])
         assert "Generated: CODEFRAME.md" in result.output
+
+
+class TestGenerateConfigOverwriteGuard:
+    """#778: --generate-config must not clobber an existing CODEFRAME.md."""
+
+    def test_existing_config_preserved_without_force(self, temp_repo):
+        existing = "# my hand-edited config\n"
+        (temp_repo / "CODEFRAME.md").write_text(existing)
+
+        result = runner.invoke(app, ["init", str(temp_repo), "--generate-config"])
+
+        assert result.exit_code == 0, result.output
+        assert (temp_repo / "CODEFRAME.md").read_text() == existing
+        assert "--force" in result.output
+
+    def test_force_overwrites_existing_config(self, temp_repo):
+        existing = "# my hand-edited config\n"
+        (temp_repo / "CODEFRAME.md").write_text(existing)
+
+        result = runner.invoke(
+            app, ["init", str(temp_repo), "--generate-config", "--force"]
+        )
+
+        assert result.exit_code == 0, result.output
+        content = (temp_repo / "CODEFRAME.md").read_text()
+        assert content != existing
+        assert content.startswith("---")

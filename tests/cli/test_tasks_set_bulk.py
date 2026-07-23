@@ -241,3 +241,69 @@ class TestTasksSetErrors:
 
         assert result.exit_code == 0
         assert "No tasks in workspace" in result.output
+
+
+class TestBulkPartialProgress:
+    """#778: bulk update must not abort mid-loop on an invalid transition."""
+
+    @pytest.fixture
+    def mixed_status_workspace(self, tmp_path):
+        """Workspace where `set status DONE --all` is valid for only one task."""
+        repo = tmp_path / "mixed_repo"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+        ws = workspace.create_or_load_workspace(repo)
+
+        t_ready = tasks.create(ws, title="Ready task")
+        tasks.update_status(ws, t_ready.id, TaskStatus.READY)
+
+        t_progress = tasks.create(ws, title="In progress task")
+        tasks.update_status(ws, t_progress.id, TaskStatus.READY)
+        tasks.update_status(ws, t_progress.id, TaskStatus.IN_PROGRESS)
+
+        t_backlog = tasks.create(ws, title="Backlog task")
+
+        return ws, repo, t_ready, t_progress, t_backlog
+
+    def test_invalid_transitions_do_not_abort_bulk_update(
+        self, runner, mixed_status_workspace
+    ):
+        """Valid transitions apply even when other tasks fail validation."""
+        ws, repo, t_ready, t_progress, t_backlog = mixed_status_workspace
+
+        result = runner.invoke(
+            app, ["tasks", "set", "status", "DONE", "--all", "-w", str(repo)]
+        )
+
+        assert result.exit_code == 0, result.output
+        # IN_PROGRESS -> DONE is valid and must be applied
+        assert tasks.get(ws, t_progress.id).status == TaskStatus.DONE
+        # Invalid transitions leave tasks untouched
+        assert tasks.get(ws, t_ready.id).status == TaskStatus.READY
+        assert tasks.get(ws, t_backlog.id).status == TaskStatus.BACKLOG
+
+    def test_partial_progress_is_reported(self, runner, mixed_status_workspace):
+        """Output reports updated and failed counts, not a bare error."""
+        ws, repo, t_ready, t_progress, t_backlog = mixed_status_workspace
+
+        result = runner.invoke(
+            app, ["tasks", "set", "status", "DONE", "--all", "-w", str(repo)]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Updated 1" in result.output
+        assert "2 failed" in result.output
+        # Failing tasks are identified so the user can act on them
+        assert t_ready.id[:8] in result.output
+        assert t_backlog.id[:8] in result.output
+
+    def test_single_task_invalid_transition_still_errors(self, runner, mixed_status_workspace):
+        """Single-task mode keeps the loud error (exit 1)."""
+        ws, repo, t_ready, t_progress, t_backlog = mixed_status_workspace
+
+        result = runner.invoke(
+            app, ["tasks", "set", "status", t_backlog.id[:8], "DONE", "-w", str(repo)]
+        )
+
+        assert result.exit_code == 1
+        assert "Invalid transition" in result.output
