@@ -50,8 +50,8 @@ src = inspect.getsource(get_provider)
 # Check default branch
 assert \"anthropic\" in src
 # Verify OpenAI-compatible set covers expected providers
-from codeframe.adapters.llm import _OPENAI_COMPATIBLE
-print(\"OpenAI-compatible providers:\", sorted(_OPENAI_COMPATIBLE))
+from codeframe.adapters.llm import OPENAI_COMPATIBLE_PROVIDERS
+print(\"OpenAI-compatible providers:\", sorted(OPENAI_COMPATIBLE_PROVIDERS))
 print(\"Default: anthropic -> AnthropicProvider\")
 print(\"openai/ollama/vllm/compatible -> OpenAIProvider\")
 print(\"Factory routes correctly.\")

@@ -56,7 +56,8 @@ def resolve_llm_settings(
 
     Provider: flag → CODEFRAME_LLM_PROVIDER → config → "anthropic".
     Model: flag → CODEFRAME_LLM_MODEL → config.
-    Base URL: config → OPENAI_BASE_URL.
+    Base URL: config → OPENAI_BASE_URL (env tier applies to
+    OpenAI-compatible providers only, #780).
 
     Args:
         repo_path: Workspace repo path for ``.codeframe/config.yaml``
@@ -82,9 +83,14 @@ def resolve_llm_settings(
         or os.getenv("CODEFRAME_LLM_MODEL")
         or (llm_cfg.model if llm_cfg else None)
     )
-    base_url = (llm_cfg.base_url if llm_cfg else None) or os.getenv(
-        "OPENAI_BASE_URL"
-    )
+    # Explicit config base_url applies to any provider (anthropic proxies
+    # included, #780); the OPENAI_BASE_URL env fallback is OpenAI-compatible
+    # only, so an ambient value can't redirect Anthropic traffic.
+    from codeframe.adapters.llm import OPENAI_COMPATIBLE_PROVIDERS
+
+    base_url = llm_cfg.base_url if llm_cfg else None
+    if not base_url and provider_type in OPENAI_COMPATIBLE_PROVIDERS:
+        base_url = os.getenv("OPENAI_BASE_URL")
     return LLMSettings(provider_type=provider_type, model=model, base_url=base_url)
 
 

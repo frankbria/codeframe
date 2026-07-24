@@ -294,12 +294,12 @@ CODEFRAME_ENABLE_TEST_ENDPOINTS=1     # Registers the integration-test-only
 CODEFRAME_LLM_PROVIDER=anthropic      # Provider: anthropic (default), openai, ollama, vllm, compatible
 CODEFRAME_LLM_MODEL=gpt-4o            # Model override (used with openai/ollama/vllm/compatible)
 OPENAI_API_KEY=sk-...                 # Required for openai provider; not needed for local providers
-OPENAI_BASE_URL=http://localhost:11434/v1  # Base URL override (for ollama, vllm, or custom endpoints)
+OPENAI_BASE_URL=http://localhost:11434/v1  # Base URL override (OpenAI-compatible providers only, #780)
 # Per-workspace config: .codeframe/config.yaml supports llm: block
 # llm:
 #   provider: openai
 #   model: qwen2.5-coder:7b
-#   base_url: http://localhost:11434/v1   # optional, for local models
+#   base_url: http://localhost:11434/v1   # optional; local models, or an API proxy/gateway (any provider incl. anthropic, #780)
 
 # Optional — Rate limiting
 RATE_LIMIT_ENABLED=true
