@@ -318,6 +318,34 @@ class TestAPIClientRetry:
 
             assert "Connection error" in str(exc_info.value)
 
+    def test_max_retries_exceeded_preserves_cause(self):
+        """Exhausted retries should chain the last underlying exception."""
+        last_error = requests.Timeout("timed out")
+        with patch("requests.request", side_effect=[
+            requests.ConnectionError("Connection refused"),
+            last_error,
+        ]), patch("time.sleep"):
+            client = APIClient(token="test-token", max_retries=2)
+
+            with pytest.raises(APIError) as exc_info:
+                client.get("/api/projects")
+
+        assert exc_info.value.__cause__ is last_error
+
+    def test_non_connection_request_error_wrapped(self):
+        """Other RequestException types should be wrapped in APIError, not propagate raw."""
+        redirect_error = requests.TooManyRedirects("too many redirects")
+        with patch("requests.request", side_effect=redirect_error) as mock_request:
+            client = APIClient(token="test-token", max_retries=3)
+
+            with pytest.raises(APIError) as exc_info:
+                client.get("/api/projects")
+
+        # Non-transient: raised immediately, no retries
+        assert mock_request.call_count == 1
+        assert exc_info.value.__cause__ is redirect_error
+        assert "too many redirects" in str(exc_info.value)
+
 
 class TestAPIClientErrorMessages:
     """Tests for user-friendly error messages."""
