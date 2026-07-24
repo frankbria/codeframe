@@ -42,13 +42,11 @@ ENV/
 coverage.xml
 coverage.json
 htmlcov/
-test_output.log
-*_output.log
+*.log
 .hypothesis/
 artifacts/
 tests/e2e/run-e2e-full.sh
 test-results/
-tests/test_new_feature.py
 
 # CodeFRAME specific
 .codeframe/state.db
@@ -57,6 +55,7 @@ tests/test_new_feature.py
 *.db-journal
 state.db
 codeframe.db
+*.backup
 *.db.backup*
 
 # Environment
@@ -72,7 +71,6 @@ codeframe.db
 /logs/
 .pm2/
 node_modules/
-server.log
 
 # Git worktrees
 .worktrees/

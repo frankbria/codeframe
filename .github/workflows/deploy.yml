@@ -16,6 +16,10 @@ on:
           - staging
           - production
 
+# Deploy jobs only check out code and SSH outward — no write scopes needed.
+permissions:
+  contents: read
+
 env:
   PYTHON_VERSION: '3.11'
   NODE_VERSION: '20'
@@ -60,9 +64,18 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
       - name: Add server to known hosts
+        # Pinned host key (no live ssh-keyscan TOFU). Populate the
+        # SSH_KNOWN_HOSTS secret from a trusted session with:
+        #   ssh-keyscan -H <host> (verify the fingerprint out-of-band first)
+        env:
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
+          if [ -z "${SSH_KNOWN_HOSTS}" ]; then
+            echo "❌ SSH_KNOWN_HOSTS secret is not set — see this step's comment to populate it."
+            exit 1
+          fi
           mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
 
       - name: Create environment file
         env:
@@ -303,9 +316,18 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
       - name: Add server to known hosts
+        # Pinned host key (no live ssh-keyscan TOFU). Populate the
+        # SSH_KNOWN_HOSTS secret from a trusted session with:
+        #   ssh-keyscan -H <host> (verify the fingerprint out-of-band first)
+        env:
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
+          if [ -z "${SSH_KNOWN_HOSTS}" ]; then
+            echo "❌ SSH_KNOWN_HOSTS secret is not set — see this step's comment to populate it."
+            exit 1
+          fi
           mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
 
       - name: Create environment file
         env:
