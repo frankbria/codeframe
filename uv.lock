@@ -563,21 +563,6 @@ wheels = [
 ]
 
 [[package]]
-name = "claude-agent-sdk"
-version = "0.1.10"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "mcp" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/51/13/a6c08fd20f12dcc685c852221c7159cb902580cf5f626b59be6c942f4644/claude_agent_sdk-0.1.10.tar.gz", hash = "sha256:fda9a520c9904f0d00a15c36e2530ac174a6c29a4c4555ee4c8ec8f35af5fd08", size = 51302, upload-time = "2025-11-25T16:01:14.611Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/08/710efbe4a4090bcb6e7aff16e5fa03867b19bfa9bc1814973da5d4e5cc5d/claude_agent_sdk-0.1.10-py3-none-macosx_11_0_arm64.whl", hash = "sha256:2be5c3da0cf9959db817d7ff01ab87d94f68c5625efc7c11c7af94abcdd11b83", size = 49449922, upload-time = "2025-11-25T16:01:01.787Z" },
-    { url = "https://files.pythonhosted.org/packages/fe/f0/6ec298fa1921551c6a8e4d4bc2caf5f75728219a4b58e537985d36717049/claude_agent_sdk-0.1.10-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:f2576d7429753c3b8081a4c377855940b95a3359552fadbedef7f0fcdc01d8ca", size = 65319866, upload-time = "2025-11-25T16:01:05.697Z" },
-    { url = "https://files.pythonhosted.org/packages/83/30/11d101012e5b02361bd645e590498894a7bf30586a2b4626500e5157c872/claude_agent_sdk-0.1.10-py3-none-win_amd64.whl", hash = "sha256:a76567eb07143ad49617e30a41e41756a2542ff9986b83ec77b0d54ba2fa5cfa", size = 68211967, upload-time = "2025-11-25T16:01:10.526Z" },
-]
-
-[[package]]
 name = "click"
 version = "8.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -597,7 +582,6 @@ dependencies = [
     { name = "aiohttp" },
     { name = "aiosqlite" },
     { name = "anthropic" },
-    { name = "claude-agent-sdk" },
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "fastapi-users", extra = ["sqlalchemy"] },
@@ -673,7 +657,6 @@ requires-dist = [
     { name = "aiosqlite", specifier = ">=0.19.0" },
     { name = "anthropic", specifier = ">=0.18.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.3.1" },
-    { name = "claude-agent-sdk", specifier = ">=0.1.10" },
     { name = "cryptography", specifier = ">=46.0.7" },
     { name = "e2b", marker = "extra == 'cloud'", specifier = ">=2.0.0" },
     { name = "e2b", marker = "extra == 'dev'", specifier = ">=2.0.0" },

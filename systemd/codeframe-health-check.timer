@@ -4,8 +4,7 @@ Documentation=https://github.com/frankbria/codeframe
 
 [Timer]
 # Run daily at 2 AM
-OnCalendar=daily
-OnCalendar=02:00
+OnCalendar=*-*-* 02:00:00
 # Also run 15 minutes after boot
 OnBootSec=15min
 # If a scheduled run is missed (system was off), run it when possible

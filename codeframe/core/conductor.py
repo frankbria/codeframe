@@ -577,7 +577,6 @@ class BatchRun:
     stall_timeout_s: int = 300
     stall_action: str = "blocker"
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
-    isolate: bool = True
     isolation: str = "none"
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
@@ -596,7 +595,6 @@ def start_batch(
     stall_timeout_s: int = 300,
     stall_action: str = "blocker",
     concurrency_by_status: Optional[dict[str, int]] = None,
-    isolate: bool = True,
     isolation: str = "none",
     cloud_timeout_minutes: int = 30,
     llm_provider: Optional[str] = None,
@@ -655,7 +653,6 @@ def start_batch(
         stall_timeout_s=stall_timeout_s,
         stall_action=stall_action,
         concurrency=concurrency,
-        isolate=isolate,
         isolation=isolation,
         llm_provider=llm_provider,
         llm_model=llm_model,
@@ -1651,7 +1648,6 @@ def _execute_serial(
 
         # Determine final batch status
         total = len(batch.task_ids)
-        completed_count + failed_count + blocked_count
 
         if completed_count == total:
             batch.status = BatchStatus.COMPLETED
@@ -1862,7 +1858,6 @@ def _execute_parallel(
 
         # Determine final batch status
         total = len(batch.task_ids)
-        completed_count + failed_count + blocked_count
 
         if completed_count == total:
             batch.status = BatchStatus.COMPLETED

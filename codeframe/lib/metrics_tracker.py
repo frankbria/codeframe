@@ -672,11 +672,7 @@ class MetricsTracker:
                 "date_range": {
                     "start": str (ISO format),
                     "end": str (ISO format)
-                },
-                "by_day": [
-                    {"date": str, "cost_usd": float, "tokens": int, "calls": int},
-                    ...
-                ]
+                }
             }
 
         Example:
@@ -703,7 +699,6 @@ class MetricsTracker:
                 "start": start_date.isoformat() if start_date else None,
                 "end": end_date.isoformat() if end_date else None,
             },
-            "by_day": [],
         }
 
         if not usage_records:
@@ -716,9 +711,6 @@ class MetricsTracker:
 
         # Round cost
         result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
-
-        # TODO: Implement by_day aggregation (future enhancement)
-        # This would group usage by date for timeline visualization
 
         return result
 

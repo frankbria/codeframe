@@ -185,47 +185,6 @@ class TestTaskWorktreeCleanup:
 
 
 # ---------------------------------------------------------------------------
-# BatchRun isolation field tests
-# ---------------------------------------------------------------------------
-
-
-class TestBatchRunIsolate:
-    """Test BatchRun.isolate field."""
-
-    def test_defaults_to_true(self) -> None:
-        from codeframe.core.conductor import BatchRun, BatchStatus, OnFailure
-        from datetime import datetime, timezone
-
-        batch = BatchRun(
-            id="b1", workspace_id="w1", task_ids=["t1"],
-            status=BatchStatus.PENDING, strategy="parallel",
-            max_parallel=4, on_failure=OnFailure.CONTINUE,
-            started_at=datetime.now(timezone.utc), completed_at=None,
-        )
-        assert batch.isolate is True
-
-
-class TestStartBatchIsolate:
-    """Test start_batch with isolate parameter."""
-
-    def test_passes_isolate_to_batch(self) -> None:
-        from codeframe.core.conductor import start_batch
-
-        workspace = MagicMock()
-        workspace.id = "w1"
-        mock_task = MagicMock()
-        mock_task.id = "t1"
-
-        with patch("codeframe.core.conductor.tasks.get", return_value=mock_task):
-            with patch("codeframe.core.conductor._save_batch"):
-                with patch("codeframe.core.conductor.events.emit_for_workspace"):
-                    with patch("codeframe.core.conductor._execute_serial"):
-                        batch = start_batch(workspace, ["t1"], isolate=False)
-
-        assert batch.isolate is False
-
-
-# ---------------------------------------------------------------------------
 # get_base_branch tests
 # ---------------------------------------------------------------------------
 
@@ -252,7 +211,6 @@ class TestGetBaseBranch:
 
     def test_returns_main_in_detached_head_state(self, tmp_path: Path) -> None:
         from codeframe.core.worktrees import get_base_branch
-        from unittest.mock import patch, MagicMock
 
         # Simulate git returning "HEAD" (detached HEAD)
         mock_result = MagicMock(returncode=0, stdout="HEAD\n")
@@ -433,7 +391,6 @@ class TestConductorOrphanCleanup:
 
     def _run_parallel(self, batch, mock_cleanup):
         from codeframe.core.conductor import _execute_parallel
-        from unittest.mock import patch, MagicMock
 
         workspace = MagicMock()
         workspace.repo_path = Path("/tmp/fake-repo")
@@ -449,14 +406,12 @@ class TestConductorOrphanCleanup:
 
     def test_cleanup_stale_called_when_isolation_is_worktree(self) -> None:
         """WorktreeRegistry.cleanup_stale() is called at batch start when isolation=worktree."""
-        from unittest.mock import MagicMock
         mock_cleanup = MagicMock()
         batch = self._make_batch("worktree")
         workspace = self._run_parallel(batch, mock_cleanup)
         mock_cleanup.assert_called_once_with(workspace.repo_path)
 
     def test_cleanup_stale_not_called_when_isolation_is_none(self) -> None:
-        from unittest.mock import MagicMock
         mock_cleanup = MagicMock()
         batch = self._make_batch("none")
         self._run_parallel(batch, mock_cleanup)
