@@ -207,6 +207,7 @@ class APIClient:
         """
         url = self._make_url(endpoint)
         headers = self._get_headers()
+        last_exc: requests.RequestException | None = None
 
         for attempt in range(self.max_retries):
             try:
@@ -220,6 +221,7 @@ class APIClient:
                 return self._handle_response(response)
 
             except requests.ConnectionError as e:
+                last_exc = e
                 logger.warning(f"Connection error (attempt {attempt + 1}/{self.max_retries}): {e}")
 
                 if attempt < self.max_retries - 1:
@@ -229,18 +231,23 @@ class APIClient:
                 continue
 
             except requests.Timeout as e:
+                last_exc = e
                 logger.warning(f"Request timeout (attempt {attempt + 1}/{self.max_retries}): {e}")
 
                 if attempt < self.max_retries - 1:
                     time.sleep(2 ** attempt)
                 continue
 
+            except requests.RequestException as e:
+                # Non-transient (bad URL, redirect loop, ...): no point retrying
+                raise APIError(f"Request failed: {e}", status_code=None) from e
+
         # All retries exhausted
         raise APIError(
             f"Connection error: Unable to connect to {self.base_url}. "
             "Please check the server is running and try again.",
             status_code=None,
-        )
+        ) from last_exc
 
     def get(self, endpoint: str, params: dict | None = None) -> Any:
         """Make GET request.
