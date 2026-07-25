@@ -30,13 +30,21 @@ function buildCsp(env = process.env) {
     apiUrl: env.NEXT_PUBLIC_API_URL,
     wsUrl: env.NEXT_PUBLIC_WS_URL,
   });
+  // unsafe-eval is only needed by the Next.js dev runtime (React Refresh /
+  // eval source maps); production bundles never eval, so it ships dev-only.
+  const scriptSrc = env.NODE_ENV === 'development'
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self' 'unsafe-inline'";
   return [
     "default-src 'self'",
-    // ponytail: 'unsafe-inline'/'unsafe-eval' are required by the Next.js App
-    // Router without a per-request nonce middleware (a much larger change).
-    // Exfil containment comes from connect-src/img-src/object-src below — not
-    // script-src — so the token can't be POSTed/GET'd to an attacker origin.
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    // ponytail: 'unsafe-inline' is required by the Next.js App Router without
+    // a per-request nonce middleware (a much larger change). Residual risk
+    // (#783): with the JWT in localStorage and inline scripts allowed, an
+    // injected inline script could read the token — containment comes from
+    // connect-src/img-src/object-src below (not script-src), which close off
+    // the origins the token could be POSTed/GET'd to. Upgrade path: nonce
+    // middleware and/or an httpOnly-cookie token.
+    scriptSrc,
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: ${AVATAR_HOST}`,
     "font-src 'self' data:",

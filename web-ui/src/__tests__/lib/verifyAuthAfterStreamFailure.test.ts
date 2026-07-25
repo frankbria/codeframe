@@ -80,7 +80,7 @@ describe('checkAuthAccess', () => {
     await expect(checkAuthAccess()).resolves.toBe('denied');
   });
 
-  it('returns "error" on a network/other failure (fail open)', async () => {
+  it('returns "error" on a network/other failure (caller fails closed, #783)', async () => {
     mockIsAxiosError = () => true;
     mockBareGet.mockRejectedValue({ response: { status: 503 } });
     await expect(checkAuthAccess()).resolves.toBe('error');

@@ -38,6 +38,17 @@ describe('security headers (#657)', () => {
     expect(cs).toContain('ws://localhost:8000');
   });
 
+  test('production CSP does not allow eval (#783)', () => {
+    // unsafe-eval is only needed by the Next.js dev runtime (React Refresh);
+    // shipping it in production widens the XSS surface for no benefit.
+    expect(buildCsp({})).not.toContain("'unsafe-eval'");
+    expect(buildCsp({ NODE_ENV: 'production' })).not.toContain("'unsafe-eval'");
+  });
+
+  test('dev CSP allows eval for the Next.js dev runtime', () => {
+    expect(buildCsp({ NODE_ENV: 'development' })).toContain("'unsafe-eval'");
+  });
+
   test('securityHeaders ships the CSP plus the hardening header set', () => {
     const keys = securityHeaders({}).map((h) => h.key);
     expect(keys).toEqual(

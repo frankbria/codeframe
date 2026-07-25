@@ -41,7 +41,9 @@ function FullPageLoader() {
  * permitted before deciding:
  *   - allowed (valid token, or auth disabled) → render the shell;
  *   - denied (auth required, no token)        → redirect to /login;
- *   - error (backend unreachable)             → fail open, render the shell.
+ *   - error (backend unreachable)             → fail closed, redirect to
+ *     /login (#783) — the shell is useless without a backend anyway, and the
+ *     login page surfaces the connectivity error on submit.
  *
  * Throughout, an unauthenticated visitor only ever sees a neutral loader — the
  * sidebar/shell never renders for them, so there's no "shell → flicker → login"
@@ -73,11 +75,13 @@ export function AppLayout({ children }: AppLayoutProps) {
     let cancelled = false;
     checkAuthAccess().then((result) => {
       if (cancelled) return;
-      if (result === 'denied') {
-        router.replace('/login');
-      } else {
-        // 'allowed' (auth disabled) or 'error' (fail open) → render the app.
+      if (result === 'allowed') {
+        // Auth disabled on the backend → token-less access is fine.
         setAccess('allowed');
+      } else {
+        // 'denied' (auth required) or 'error' (backend unreachable) → fail
+        // closed to the login page (#783).
+        router.replace('/login');
       }
     });
     return () => {

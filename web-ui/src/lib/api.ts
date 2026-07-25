@@ -240,8 +240,8 @@ export async function fetchStreamTicket(): Promise<string | null> {
  *
  * - `'allowed'`  — 2xx: a valid token, or auth is disabled on the backend.
  * - `'denied'`   — 401: auth is required and the client is unauthenticated.
- * - `'error'`    — network/other failure: caller should fail open (render the
- *   app and let real requests surface errors) rather than trap the user.
+ * - `'error'`    — network/other failure: caller should fail closed (redirect
+ *   to /login, #783) — the app is unusable without a backend anyway.
  */
 export async function checkAuthAccess(): Promise<'allowed' | 'denied' | 'error'> {
   const token = getToken();
