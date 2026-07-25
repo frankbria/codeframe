@@ -70,7 +70,7 @@ describe('checkAuthAccess', () => {
     await expect(checkAuthAccess()).resolves.toBe('allowed');
     expect(mockBareGet).toHaveBeenCalledWith(
       expect.stringContaining(PROBE_PATH),
-      expect.objectContaining({ withCredentials: true })
+      expect.objectContaining({ withCredentials: true, timeout: 5000 })
     );
   });
 
@@ -80,7 +80,7 @@ describe('checkAuthAccess', () => {
     await expect(checkAuthAccess()).resolves.toBe('denied');
   });
 
-  it('returns "error" on a network/other failure (fail open)', async () => {
+  it('returns "error" on a network/other failure (caller fails closed, #783)', async () => {
     mockIsAxiosError = () => true;
     mockBareGet.mockRejectedValue({ response: { status: 503 } });
     await expect(checkAuthAccess()).resolves.toBe('error');

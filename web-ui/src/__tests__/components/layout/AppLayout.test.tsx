@@ -97,7 +97,7 @@ describe('AppLayout', () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
-  it('fails open (renders the shell) when the backend probe errors', async () => {
+  it('fails closed (redirects to /login, no shell) when the backend probe errors (#783)', async () => {
     mockIsAuthenticated.mockReturnValue(false);
     mockCheckAuthAccess.mockResolvedValue('error');
     render(
@@ -105,7 +105,9 @@ describe('AppLayout', () => {
         <div data-testid="child">content</div>
       </AppLayout>
     );
-    expect(await screen.findByTestId('app-sidebar')).toBeInTheDocument();
-    expect(mockReplace).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/login'));
+    expect(screen.queryByTestId('app-sidebar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('child')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 });

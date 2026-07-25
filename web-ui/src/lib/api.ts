@@ -240,8 +240,8 @@ export async function fetchStreamTicket(): Promise<string | null> {
  *
  * - `'allowed'`  — 2xx: a valid token, or auth is disabled on the backend.
  * - `'denied'`   — 401: auth is required and the client is unauthenticated.
- * - `'error'`    — network/other failure: caller should fail open (render the
- *   app and let real requests surface errors) rather than trap the user.
+ * - `'error'`    — network/other failure: caller should fail closed (redirect
+ *   to /login, #783) — the app is unusable without a backend anyway.
  */
 export async function checkAuthAccess(): Promise<'allowed' | 'denied' | 'error'> {
   const token = getToken();
@@ -249,6 +249,10 @@ export async function checkAuthAccess(): Promise<'allowed' | 'denied' | 'error'>
     await axios.get(`${API_ORIGIN}${AUTH_PROBE_PATH}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       withCredentials: true,
+      // Cap the probe: on networks where a dead backend port hangs instead of
+      // refusing, the visitor would otherwise sit on the loader for the full
+      // OS connect timeout before the fail-closed redirect (#783).
+      timeout: 5000,
     });
     return 'allowed';
   } catch (error) {

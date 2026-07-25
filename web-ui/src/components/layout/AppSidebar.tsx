@@ -31,20 +31,19 @@ interface NavItem {
   href: string;
   label: string;
   icon: IconSvgElement;
-  enabled: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/', label: 'Workspace', icon: Home01Icon, enabled: true },
-  { href: '/prd', label: 'PRD', icon: FileEditIcon, enabled: true },
-  { href: '/tasks', label: 'Tasks', icon: Task01Icon, enabled: true },
-  { href: '/execution', label: 'Execution', icon: PlayIcon, enabled: true },
-  { href: '/sessions', label: 'Sessions', icon: CommandLineIcon, enabled: true },
-  { href: '/blockers', label: 'Blockers', icon: Alert02Icon, enabled: true },
-  { href: '/review', label: 'Review', icon: GitBranchIcon, enabled: true },
-  { href: '/proof', label: 'Proof', icon: CheckmarkCircle01Icon, enabled: true },
-  { href: '/costs', label: 'Costs', icon: ChartLineData01Icon, enabled: true },
-  { href: '/settings', label: 'Settings', icon: Settings01Icon, enabled: true },
+  { href: '/', label: 'Workspace', icon: Home01Icon },
+  { href: '/prd', label: 'PRD', icon: FileEditIcon },
+  { href: '/tasks', label: 'Tasks', icon: Task01Icon },
+  { href: '/execution', label: 'Execution', icon: PlayIcon },
+  { href: '/sessions', label: 'Sessions', icon: CommandLineIcon },
+  { href: '/blockers', label: 'Blockers', icon: Alert02Icon },
+  { href: '/review', label: 'Review', icon: GitBranchIcon },
+  { href: '/proof', label: 'Proof', icon: CheckmarkCircle01Icon },
+  { href: '/costs', label: 'Costs', icon: ChartLineData01Icon },
+  { href: '/settings', label: 'Settings', icon: Settings01Icon },
 ];
 
 export function AppSidebar() {
@@ -106,23 +105,10 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <nav className="flex flex-1 flex-col gap-1 px-2">
-        {NAV_ITEMS.map(({ href, label, icon: navIcon, enabled }) => {
+        {NAV_ITEMS.map(({ href, label, icon: navIcon }) => {
           const isActive = href === '/'
             ? pathname === '/'
             : pathname.startsWith(href);
-
-          if (!enabled) {
-            return (
-              <span
-                key={href}
-                className="flex items-center gap-3 rounded-md px-2 py-2 text-sm text-muted-foreground/50 lg:px-3"
-                title={`${label} (coming soon)`}
-              >
-                <HugeiconsIcon icon={navIcon} className="h-5 w-5 shrink-0" />
-                <span className="hidden lg:inline">{label}</span>
-              </span>
-            );
-          }
 
           return (
             <Link
