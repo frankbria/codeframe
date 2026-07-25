@@ -82,7 +82,7 @@ describe('AppSidebar', () => {
     expect(screen.getByText('PRD')).toBeInTheDocument();
   });
 
-  it('renders all 8 navigation items', () => {
+  it('renders all 10 navigation items', () => {
     mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
     render(<AppSidebar />);
 
@@ -94,21 +94,16 @@ describe('AppSidebar', () => {
     expect(screen.getByText('Blockers')).toBeInTheDocument();
     expect(screen.getByText('Review')).toBeInTheDocument();
     expect(screen.getByText('Proof')).toBeInTheDocument();
+    expect(screen.getByText('Costs')).toBeInTheDocument();
+    expect(screen.getByText('Settings')).toBeInTheDocument();
   });
 
-  it('renders enabled items as links', () => {
+  it('renders navigation items as links (#783: no disabled state exists)', () => {
     mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
     render(<AppSidebar />);
 
     expect(screen.getByRole('link', { name: /workspace/i })).toHaveAttribute('href', '/');
     expect(screen.getByRole('link', { name: /prd/i })).toHaveAttribute('href', '/prd');
-  });
-
-  it('renders all navigation items as links when enabled', () => {
-    mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
-    render(<AppSidebar />);
-
-    // All nav items are enabled including Review
     expect(screen.getByRole('link', { name: /^tasks$/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^execution$/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^blockers$/i })).toBeInTheDocument();

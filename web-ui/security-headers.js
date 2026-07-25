@@ -40,10 +40,11 @@ function buildCsp(env = process.env) {
     // ponytail: 'unsafe-inline' is required by the Next.js App Router without
     // a per-request nonce middleware (a much larger change). Residual risk
     // (#783): with the JWT in localStorage and inline scripts allowed, an
-    // injected inline script could read the token — containment comes from
-    // connect-src/img-src/object-src below (not script-src), which close off
-    // the origins the token could be POSTed/GET'd to. Upgrade path: nonce
-    // middleware and/or an httpOnly-cookie token.
+    // injected inline script can read the token. connect-src/img-src/
+    // object-src below close the fetch/XHR/img/plugin exfil channels, but NOT
+    // top-level navigation (`window.location = attacker + token`) — CSP has
+    // no deployable navigate-to directive, so that channel stays open until
+    // the real fix: nonce middleware and/or an httpOnly-cookie token.
     scriptSrc,
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: ${AVATAR_HOST}`,
