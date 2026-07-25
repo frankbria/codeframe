@@ -70,7 +70,7 @@ describe('checkAuthAccess', () => {
     await expect(checkAuthAccess()).resolves.toBe('allowed');
     expect(mockBareGet).toHaveBeenCalledWith(
       expect.stringContaining(PROBE_PATH),
-      expect.objectContaining({ withCredentials: true })
+      expect.objectContaining({ withCredentials: true, timeout: 5000 })
     );
   });
 
