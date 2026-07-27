@@ -13,6 +13,7 @@ this only constrains scoped API keys.
 """
 
 import importlib
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,6 +29,11 @@ pytestmark = pytest.mark.v2
 @pytest.fixture
 def scoped_app(tmp_path, monkeypatch):
     """Real server app with auth ON and three API keys (read/write/admin)."""
+    # TestClient does not change cwd, so routes that resolve a workspace from
+    # Path.cwd() (get_v2_workspace) would read the developer's own repo-root
+    # .codeframe/ (issue #975). Chdir before the server reload below so the
+    # module's cwd-derived defaults are isolated too.
+    monkeypatch.chdir(tmp_path)
     db_path = tmp_path / "state.db"
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
     monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
@@ -55,6 +61,13 @@ def scoped_app(tmp_path, monkeypatch):
 
     from codeframe.ui import server
 
+    # server.py re-reads Path.cwd() at module eval for the WORKSPACE_ROOT and
+    # DATABASE_PATH defaults. DATABASE_PATH is overridden above, but
+    # WORKSPACE_ROOT is not — so the chdir MUST still be in effect here or
+    # app.state.workspace_manager binds to the developer's real workspaces dir.
+    # The conftest guard does not cover that path (it bypasses _get_state_dir),
+    # so assert the ordering rather than trusting it.
+    assert Path.cwd() == tmp_path
     importlib.reload(server)
 
     # Isolate the credential store: with auth ON, requests carry user_id=1 and

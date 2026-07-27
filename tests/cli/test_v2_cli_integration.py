@@ -1184,8 +1184,11 @@ class TestPRCommands:
         assert result.exit_code == 0
         assert "42" in result.output or "created" in result.output.lower()
 
-    def test_pr_merge(self, mock_github_env, mock_pr_details, monkeypatch):
+    def test_pr_merge(self, mock_github_env, mock_pr_details, tmp_path, monkeypatch):
         """PR merge command merges a PR."""
+        # CliRunner does not change cwd, so the PROOF9 merge gate would resolve
+        # the developer's own repo-root workspace (issue #975).
+        monkeypatch.chdir(tmp_path)
         from unittest.mock import AsyncMock
         from codeframe.git.github_integration import MergeResult
 
