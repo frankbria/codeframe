@@ -37,6 +37,108 @@ os.environ.setdefault("CODEFRAME_TELEMETRY", "off")
 collect_ignore: list[str] = []
 
 
+# --------------------------------------------------------------------------
+# Ambient-workspace guard (issue #975)
+#
+# Several CLI and API code paths resolve a workspace from the process cwd
+# (``cli/pr_commands.py`` merge gate, ``ui/dependencies.py:get_v2_workspace``).
+# Neither ``CliRunner`` nor ``TestClient`` changes cwd, so under pytest that cwd
+# is the repo root — which on a developer machine holds a real ``.codeframe/``
+# left over from ``codeframe serve`` or dogfooding. Tests then read the
+# developer's own state instead of an isolated one: they fail locally while CI,
+# which has no ``.codeframe/``, stays green.
+#
+# The guard below wraps ``_get_state_dir`` — the chokepoint for every
+# ``core.workspace`` resolution (``get_workspace``, ``create_or_load_workspace``,
+# ``workspace_exists``, ``update_workspace_tech_stack``) — and turns an ambient
+# read into a loud, self-explaining error. It hooks the private helper rather
+# than ``get_workspace`` because callers like ``ui/dependencies.py`` bind
+# ``get_workspace`` by name at import time and would bypass a patch on it;
+# ``_get_state_dir`` is looked up through module globals on every call, so
+# wrapping it covers every import style.
+#
+# SCOPE — what this guard does NOT cover. Several call sites build a
+# ``.codeframe`` path from cwd directly and never reach ``_get_state_dir``:
+#
+#   codeframe/ui/server.py:385,393       WORKSPACE_ROOT / DATABASE_PATH defaults
+#   codeframe/auth/manager.py:90         platform_store DB fallback
+#   codeframe/auth/dependencies.py:291   platform_store DB fallback
+#   codeframe/auth/api_key_router.py:121 platform_store DB fallback
+#   codeframe/cli/auth_commands.py:79    platform_store DB fallback
+#   codeframe/core/config.py:466,712     per-workspace config dir
+#
+# Those are the paths that *wrote* the ambient state.db in the first place.
+# A test exercising one of them without an isolated cwd still reads ambient
+# state and this guard stays silent — so do not treat a green run as proof of
+# isolation for them. They need an explicit env override (DATABASE_PATH,
+# WORKSPACE_ROOT) or `monkeypatch.chdir`.
+# --------------------------------------------------------------------------
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Imported here rather than at the top of the file so the environment defaults
+# set above are already in place — importing core pulls in config, which reads
+# the environment at import time. (E402: deliberate, not an oversight.)
+from codeframe.core import workspace as _workspace_module  # noqa: E402
+
+_REAL_GET_STATE_DIR = _workspace_module._get_state_dir
+
+# Populated by ``pytest_configure`` when --basetemp puts pytest's tmp dirs
+# somewhere the OS does not consider temporary.
+_EXTRA_ISOLATED_ROOTS: list[Path] = []
+
+
+class AmbientWorkspaceError(RuntimeError):
+    """A test tried to resolve a workspace outside an isolated temp directory."""
+
+
+def _isolated_roots() -> list[Path]:
+    """Directories whose contents are per-run scratch space, not real state."""
+    roots = {Path(tempfile.gettempdir()).resolve()}
+    for var in ("TMPDIR", "TEMP", "TMP"):
+        value = os.environ.get(var)
+        if value:
+            roots.add(Path(value).resolve())
+    return [*roots, *_EXTRA_ISOLATED_ROOTS]
+
+
+def _is_isolated(path: Path) -> bool:
+    """True when ``path`` lives under a temp root (``tmp_path``, mkdtemp, ...)."""
+    resolved = Path(path).resolve()
+    return any(resolved.is_relative_to(root) for root in _isolated_roots())
+
+
+@pytest.fixture(autouse=True)
+def forbid_ambient_workspace(monkeypatch):
+    """Fail loudly when a test resolves a workspace outside an isolated dir.
+
+    Only fires when the ``.codeframe/`` directory actually exists — probing a
+    path that has none reads nothing and raises ``FileNotFoundError`` on its own,
+    which is legitimate test behaviour.
+
+    Being function-scoped, this does not cover a *session*- or *module*-scoped
+    fixture that resolves a workspace during its own setup: pytest builds those
+    before any function-scoped fixture. No such fixture exists in the non-e2e
+    suite today. If one is added, guard it there too rather than assuming this
+    covers it.
+    """
+
+    def guarded_get_state_dir(repo_path: Path) -> Path:
+        state_dir = _REAL_GET_STATE_DIR(repo_path)
+        if state_dir.exists() and not _is_isolated(state_dir):
+            raise AmbientWorkspaceError(
+                f"Test resolved the ambient workspace at {state_dir}.\n"
+                "Tests must never read the developer's real .codeframe/ state — "
+                "it makes the suite pass on CI and fail locally (issue #975).\n"
+                "Fix: run the test from an isolated cwd with "
+                "`monkeypatch.chdir(tmp_path)`, or pass an explicit workspace "
+                "path (repo_path=/workspace_path=) instead of relying on cwd."
+            )
+        return state_dir
+
+    monkeypatch.setattr(_workspace_module, "_get_state_dir", guarded_get_state_dir)
+
+
 def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:
     """Create a JWT token for testing.
 
@@ -194,6 +296,10 @@ def openai_api_key(mock_env) -> str:
 # Markers for test organization
 def pytest_configure(config):
     """Configure pytest with custom markers."""
+    # --basetemp can point tmp_path outside the OS temp root; still isolated.
+    if config.option.basetemp:
+        _EXTRA_ISOLATED_ROOTS.append(Path(config.option.basetemp).resolve())
+
     config.addinivalue_line("markers", "unit: mark test as a unit test")
     config.addinivalue_line("markers", "integration: mark test as an integration test")
     config.addinivalue_line("markers", "slow: mark test as slow running")
