@@ -59,9 +59,11 @@ codeframe.db
 *.db.backup*
 
 # Environment
-.env
-.env.local
-.env.staging
+# Ignore every .env variant and re-include only the committed templates, so a
+# new variant (.env.production, .env.hosted, ...) is never committable by
+# default. Enumerating them instead failed open — see #895.
+.env*
+!.env*.example
 
 # Staging server private configuration
 .staging-server.conf

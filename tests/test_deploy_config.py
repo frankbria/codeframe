@@ -150,3 +150,88 @@ def test_remote_setup_installs_proxy_and_binds_loopback_firewall():
     # The raw app ports must no longer be opened to the world.
     assert "ufw allow 14100/tcp" not in text
     assert "ufw allow 14200/tcp" not in text
+
+
+# --- .env ignore rules (#895 / P0.1) ----------------------------------------
+#
+# deploy.yml writes a real .env.production (ANTHROPIC_API_KEY + AUTH_SECRET)
+# into the production git checkout. The ignore list used to enumerate
+# .env/.env.local/.env.staging, so .env.production — and every future variant —
+# defaulted to committable. These guard the pattern-plus-negation that replaced
+# the enumeration.
+
+# Templates that must stay committed (they carry no real values).
+ENV_EXAMPLES = (
+    ".env.example",
+    ".env.production.example",
+    ".env.staging.example",
+    "web-ui/.env.example",
+)
+
+# Files that may hold live secrets and must never be committable. The last one
+# does not exist today on purpose: the rule has to fail closed for variants
+# nobody has thought of yet.
+REAL_ENV_FILES = (
+    ".env",
+    ".env.local",
+    ".env.staging",
+    ".env.production",
+    ".env.hosted",
+)
+
+requires_git_checkout = pytest.mark.skipif(
+    shutil.which("git") is None or not (REPO / ".git").exists(),
+    reason="needs a git checkout (not available in an unpacked sdist)",
+)
+
+
+def _is_ignored(path: str) -> bool:
+    """Ask git whether `path` is excluded, rather than re-implementing
+    .gitignore matching here.
+
+    `--no-index` makes this a pure test of the ignore rules: without it git
+    short-circuits and reports any *tracked* file as not-ignored, which would
+    make the ENV_EXAMPLES assertions pass even if the `!` negation were broken.
+    """
+    return (
+        subprocess.run(
+            ["git", "check-ignore", "-q", "--no-index", "--", path],
+            cwd=str(REPO),
+            capture_output=True,
+        ).returncode
+        == 0
+    )
+
+
+@requires_git_checkout
+@pytest.mark.parametrize("name", REAL_ENV_FILES)
+def test_real_env_files_are_gitignored(name):
+    """Any file that can hold live credentials must be unstageable."""
+    assert _is_ignored(name), (
+        f"{name} is not gitignored — `git add -A` would publish live secrets "
+        f"to a public repo. Expected `.env*` to match it."
+    )
+
+
+@requires_git_checkout
+@pytest.mark.parametrize("name", ENV_EXAMPLES)
+def test_env_examples_are_not_gitignored(name):
+    """The `.env*` rule must be narrowed by `!.env*.example` so the templates
+    stay committable — otherwise operators lose the files they copy from."""
+    assert not _is_ignored(name), (
+        f"{name} is gitignored — the `!.env*.example` negation is missing or "
+        f"ordered before the `.env*` rule that it must override."
+    )
+
+
+@requires_git_checkout
+@pytest.mark.parametrize("name", ENV_EXAMPLES)
+def test_env_examples_are_still_tracked(name):
+    """Belt-and-braces: the templates are actually in the index."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", name],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+    )
+    assert tracked.returncode == 0, f"{name} is no longer tracked: {tracked.stderr.strip()}"
