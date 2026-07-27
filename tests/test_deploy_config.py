@@ -179,6 +179,8 @@ REAL_ENV_FILES = (
     ".env.hosted",
 )
 
+# These guards are necessarily CI/checkout-only: gitignore behaviour cannot be
+# tested without git. They do not run against an unpacked sdist.
 requires_git_checkout = pytest.mark.skipif(
     shutil.which("git") is None or not (REPO / ".git").exists(),
     reason="needs a git checkout (not available in an unpacked sdist)",
@@ -221,6 +223,24 @@ def test_env_examples_are_not_gitignored(name):
     assert not _is_ignored(name), (
         f"{name} is gitignored — the `!.env*.example` negation is missing or "
         f"ordered before the `.env*` rule that it must override."
+    )
+
+
+@requires_git_checkout
+@pytest.mark.parametrize("name", REAL_ENV_FILES)
+def test_real_env_files_are_not_tracked(name):
+    """.gitignore only governs *untracked* paths — a file already in the index
+    stays committable no matter what the rules say. Guard against a real env
+    file being force-added (`git add -f`) and quietly reopening the hole."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", name],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+    )
+    assert tracked.returncode != 0, (
+        f"{name} is TRACKED — it will be committed on every change regardless "
+        f"of .gitignore. Remove it from the index: git rm --cached {name}"
     )
 
 
