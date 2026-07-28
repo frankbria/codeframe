@@ -18,6 +18,26 @@ from codeframe.core.workspace import create_or_load_workspace
 pytestmark = pytest.mark.v2
 
 
+def wait_until(predicate, timeout_s: float = 10.0, poll_s: float = 0.02) -> bool:
+    """Block until ``predicate()`` is true, or ``timeout_s`` elapses.
+
+    These tests drive a background poller and previously just slept for a fixed
+    0.5s, assuming a 0.1s poll interval had fired by then. That holds on an idle
+    machine and fails on a loaded one — the watcher thread simply may not be
+    scheduled in time — which made this module flake under a full-suite run.
+
+    Waiting on the condition instead of the clock is both reliable and faster:
+    it returns as soon as the poller has done its work rather than always
+    burning the whole budget. The generous timeout only bounds the failure case.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(poll_s)
+    return predicate()
+
+
 @pytest.fixture
 def workspace(tmp_path: Path):
     repo_path = tmp_path / "test_repo"
@@ -70,8 +90,8 @@ class TestConfigReloadLifecycle:
             future_time = time.time() + 1
             os.utime(agents_path, (future_time, future_time))
 
-            # Step 6: Wait for detection (poll_interval=0.1s, should detect within 0.5s)
-            time.sleep(0.5)
+            # Step 6: Wait for the watcher to notice the change.
+            wait_until(lambda: state.last_reload_at is not None)
 
             # Step 7: Verify reload happened
             assert state.last_reload_at is not None
@@ -97,7 +117,7 @@ class TestConfigReloadLifecycle:
             time.sleep(0.3)
             agents_path.write_text("# Always Do\n- First update\n")
             os.utime(agents_path, (time.time() + 1, time.time() + 1))
-            time.sleep(0.5)
+            wait_until(lambda: len(state.reload_timestamps) >= 1)
 
             assert len(state.reload_timestamps) == 1
             assert "First update" in state.get_prefs().always_do
@@ -105,7 +125,7 @@ class TestConfigReloadLifecycle:
             # Second change
             agents_path.write_text("# Always Do\n- Second update\n")
             os.utime(agents_path, (time.time() + 2, time.time() + 2))
-            time.sleep(0.5)
+            wait_until(lambda: len(state.reload_timestamps) >= 2)
 
             assert len(state.reload_timestamps) == 2
             assert "Second update" in state.get_prefs().always_do
@@ -134,7 +154,10 @@ class TestConfigReloadLifecycle:
             ):
                 agents_path.write_text("corrupt")
                 os.utime(agents_path, (time.time() + 1, time.time() + 1))
-                time.sleep(0.5)
+                # Wait for the failed reload attempt to be recorded — the patch
+                # must still be active when the watcher thread runs, so this
+                # cannot be moved outside the `with` block.
+                wait_until(lambda: state.last_error is not None)
 
             # Original config preserved
             assert "Original good config" in state.get_prefs().always_do
@@ -160,7 +183,7 @@ class TestConfigReloadLifecycle:
             time.sleep(0.3)
             agents_path.write_text("# Always Do\n- Changed\n")
             os.utime(agents_path, (time.time() + 1, time.time() + 1))
-            time.sleep(0.5)
+            wait_until(lambda: state.has_reloaded_since(checkpoint))
 
             assert state.has_reloaded_since(checkpoint)
 

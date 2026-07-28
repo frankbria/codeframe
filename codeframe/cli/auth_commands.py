@@ -356,17 +356,36 @@ def logout():
 def register(
     email: Optional[str] = typer.Option(None, "--email", "-e", help="Your email address"),
     password: Optional[str] = typer.Option(None, "--password", "-p", help="Your password", hide_input=True),
+    bootstrap_token: Optional[str] = typer.Option(
+        None,
+        "--bootstrap-token",
+        "-t",
+        help="Server's CODEFRAME_BOOTSTRAP_TOKEN (defaults to the env var). "
+             "Required unless you are running this on the server host itself.",
+        hide_input=True,
+    ),
 ):
-    """Register a new CodeFRAME account.
+    """Register the first CodeFRAME account.
 
-    Creates a new account and automatically logs you in.
+    Creates the account and automatically logs you in. Registration closes once
+    an account exists.
+
+    The server gates this route (issue #897): supply its
+    CODEFRAME_BOOTSTRAP_TOKEN, or run this command on the server host so the
+    request arrives over loopback.
 
     Examples:
 
         codeframe auth register
 
         codeframe auth register --email new@example.com --password secret
+
+        codeframe auth register --bootstrap-token "$CODEFRAME_BOOTSTRAP_TOKEN"
     """
+    # Fall back to the env var so an operator who already exported it on the
+    # server does not have to repeat it on the command line.
+    if not bootstrap_token:
+        bootstrap_token = os.getenv("CODEFRAME_BOOTSTRAP_TOKEN", "").strip() or None
     # Prompt for email if not provided
     if not email:
         email = typer.prompt("Email")
@@ -389,6 +408,10 @@ def register(
         )
     register_url = f"{base_url}/auth/register"
 
+    headers = {"Content-Type": "application/json"}
+    if bootstrap_token:
+        headers["X-Bootstrap-Token"] = bootstrap_token
+
     try:
         response = requests.post(
             register_url,
@@ -396,7 +419,7 @@ def register(
                 "email": email,
                 "password": password,
             },
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             timeout=30,
         )
 
@@ -420,6 +443,19 @@ def register(
                     console.print("[green]✓ Logged in automatically[/green]")
             else:
                 console.print("[yellow]Note:[/yellow] Please log in manually: codeframe auth login")
+
+        elif response.status_code == 403:
+            # Either the bootstrap credential gate (#897) or registration being
+            # closed (#336). The server's detail distinguishes them.
+            try:
+                detail = response.json().get("detail", "")
+            except ValueError:
+                detail = ""
+            console.print(
+                f"[red]Error:[/red] Registration refused: "
+                f"{detail or 'the server rejected this registration.'}"
+            )
+            raise typer.Exit(1)
 
         elif response.status_code == 400:
             error_detail = response.json().get("detail", "")

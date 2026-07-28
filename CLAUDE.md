@@ -290,6 +290,29 @@ CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES=1  # Escape hatch for the above: start w
                                       # never set on an exposed server. Mirrors
                                       # CODEFRAME_ALLOW_INSECURE_SECRET (#643).
 
+# Bootstrap registration gate (#897)
+CODEFRAME_BOOTSTRAP_TOKEN=<secret>    # Out-of-band secret gating the
+                                      # unauthenticated POST /auth/register
+                                      # bootstrap route. When set, the caller
+                                      # must send it as the X-Bootstrap-Token
+                                      # header — loopback does NOT bypass it.
+                                      # When unset, only host-local requests may
+                                      # register: loopback peer, every
+                                      # X-Forwarded-For hop loopback, and no
+                                      # RFC 7239 Forwarded header (the gate does
+                                      # not rely on RATE_LIMIT_TRUSTED_PROXIES,
+                                      # which is optional — behind the Caddy
+                                      # deploy every public request has a
+                                      # loopback peer). REQUIRED for any deploy
+                                      # reachable over a network; without it a
+                                      # fresh instance is claimable as admin by
+                                      # whoever reaches /auth/register first.
+                                      # The #336 close-after-first-user gate
+                                      # still applies on top. See
+                                      # deploy/README.md → "Creating the first
+                                      # account"; `cf auth register
+                                      # --bootstrap-token` sends the header.
+
 # Test-only endpoints (#753) — default OFF
 CODEFRAME_ENABLE_TEST_ENDPOINTS=1     # Registers the integration-test-only
                                       # POST /test/broadcast route (pushes a WS
