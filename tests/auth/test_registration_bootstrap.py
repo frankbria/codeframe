@@ -186,6 +186,22 @@ class TestBootstrapTokenGate:
         resp = _register(auth_client)
         assert resp.status_code in (200, 201), resp.text
 
+    def test_non_ascii_token_header_is_rejected_not_crashed(
+        self, auth_client, monkeypatch
+    ):
+        """A hostile header must 403, not 500.
+
+        Header bytes above 0x7F are legal on the wire and Starlette decodes them
+        as latin-1, so the dependency sees a non-ASCII ``str``.
+        ``hmac.compare_digest`` raises ``TypeError`` on non-ASCII ``str``
+        operands, so comparing strings directly would turn this into a 500.
+        """
+        monkeypatch.setenv("CODEFRAME_BOOTSTRAP_TOKEN", BOOTSTRAP_TOKEN)
+        resp = _register(
+            auth_client, headers={"X-Bootstrap-Token": b"caf\xe9-\xfcnicode"}
+        )
+        assert resp.status_code == 403, resp.text
+
     def test_remote_caller_with_correct_token_registers(self, remote_client, monkeypatch):
         """The token is what makes remote bootstrap possible at all."""
         monkeypatch.setenv("CODEFRAME_BOOTSTRAP_TOKEN", BOOTSTRAP_TOKEN)
@@ -228,6 +244,46 @@ class TestLoopbackGate:
         resp = _register(auth_client, headers={"X-Forwarded-For": "127.0.0.1"})
         assert resp.status_code in (200, 201), resp.text
 
+    def test_repeated_forwarded_for_headers_all_inspected(self, auth_client):
+        """``Headers.get`` returns only the FIRST match. A proxy that emits its
+        own ``X-Forwarded-For`` header instead of appending to the client's
+        would otherwise let an attacker-supplied loopback value mask the real
+        address sitting in the second header."""
+        resp = auth_client.post(
+            "/auth/register",
+            json={"email": "a@example.com", "password": "secret123"},
+            headers=[
+                ("X-Forwarded-For", "127.0.0.1"),
+                ("X-Forwarded-For", "203.0.113.5"),
+            ],
+        )
+        assert resp.status_code == 403, resp.text
+
+    def test_x_real_ip_public_client_forbidden(self, auth_client):
+        """nginx-style proxies set ``X-Real-IP``, sometimes without any
+        ``X-Forwarded-For`` at all."""
+        resp = _register(auth_client, headers={"X-Real-IP": "203.0.113.5"})
+        assert resp.status_code == 403, resp.text
+
+    def test_x_real_ip_loopback_allowed(self, auth_client):
+        resp = _register(auth_client, headers={"X-Real-IP": "127.0.0.1"})
+        assert resp.status_code in (200, 201), resp.text
+
+    def test_header_casing_is_ignored(self, auth_client):
+        """HTTP headers are case-insensitive — the gate must not be evadable by
+        sending ``x-FoRwArDeD-fOr``."""
+        resp = _register(auth_client, headers={"x-FoRwArDeD-fOr": "203.0.113.5"})
+        assert resp.status_code == 403, resp.text
+
+    def test_forwarded_proto_and_host_do_not_block(self, auth_client):
+        """These describe the request, not who made it, and the local Next.js
+        `/auth/*` rewrite sets them in ordinary development."""
+        resp = _register(
+            auth_client,
+            headers={"X-Forwarded-Proto": "http", "X-Forwarded-Host": "localhost:3000"},
+        )
+        assert resp.status_code in (200, 201), resp.text
+
     def test_rfc7239_forwarded_header_forbidden(self, auth_client):
         """Any RFC 7239 `Forwarded` header means a proxy is in the path."""
         resp = _register(
@@ -242,6 +298,27 @@ class TestLoopbackGate:
         ) as client:
             resp = _register(client)
             assert resp.status_code in (200, 201), resp.text
+        reset_auth_engine()
+
+    def test_ipv4_mapped_ipv6_loopback_peer_allowed(self, tmp_path, monkeypatch):
+        """A dual-stack listener reports a loopback IPv4 peer as
+        ``::ffff:127.0.0.1``, which ``IPv6Address.is_loopback`` calls False."""
+        app, _ = _build_app(tmp_path, monkeypatch)
+        with TestClient(
+            app, raise_server_exceptions=False, client=("::ffff:127.0.0.1", 40000)
+        ) as client:
+            resp = _register(client)
+            assert resp.status_code in (200, 201), resp.text
+        reset_auth_engine()
+
+    def test_ipv4_mapped_ipv6_public_peer_forbidden(self, tmp_path, monkeypatch):
+        """The mapped-address unwrapping must not turn into a bypass."""
+        app, _ = _build_app(tmp_path, monkeypatch)
+        with TestClient(
+            app, raise_server_exceptions=False, client=("::ffff:203.0.113.5", 40000)
+        ) as client:
+            resp = _register(client)
+            assert resp.status_code == 403, resp.text
         reset_auth_engine()
 
     def test_unparseable_peer_forbidden(self, tmp_path, monkeypatch):

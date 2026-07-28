@@ -49,8 +49,16 @@ The route is therefore gated two ways, and **at least one must hold**:
 
 "Originates on the host" means a loopback peer **with no proxy in the path** —
 a request arriving through Caddy carries the real client IP in
-`X-Forwarded-For`, so public traffic never qualifies. This does not depend on
+`X-Forwarded-For`, so public traffic never qualifies. `X-Real-IP` and RFC 7239
+`Forwarded` are inspected too, and this does not depend on
 `RATE_LIMIT_TRUSTED_PROXIES` being configured.
+
+> **Set the token if you front the app with anything other than the Caddy
+> config shipped here.** The loopback fallback identifies public callers by the
+> client IP the proxy appends; a proxy that strips or passes client headers
+> through unchanged (`proxy_set_header X-Forwarded-For "";`, a raw TCP
+> passthrough) would let a remote client send `X-Forwarded-For: 127.0.0.1` and
+> pass. With `CODEFRAME_BOOTSTRAP_TOKEN` set, none of that matters.
 
 Registration still closes permanently once the first real account exists, token
 or not. The seeded `admin@localhost` row has a disabled password, cannot log in,

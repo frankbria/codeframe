@@ -67,12 +67,28 @@ def _bootstrap_token() -> str:
     return os.getenv("CODEFRAME_BOOTSTRAP_TOKEN", "").strip()
 
 
+# Headers that name a *client* address. Any of them means something upstream is
+# speaking for someone else, so every address they carry must also be loopback
+# before the request counts as host-local. Deliberately excludes
+# X-Forwarded-Host/Proto: those describe the request, not who made it, and the
+# local Next.js `/auth/*` rewrite sets them in ordinary development.
+_CLIENT_ADDRESS_HEADERS = ("x-forwarded-for", "x-real-ip")
+
+
 def _is_loopback_ip(value: str) -> bool:
-    """Whether ``value`` parses as a loopback IP. Unparseable → ``False``."""
+    """Whether ``value`` parses as a loopback IP. Unparseable → ``False``.
+
+    Unwraps IPv4-mapped IPv6 first: ``ipaddress`` reports
+    ``::ffff:127.0.0.1`` as **not** loopback (``IPv6Address.is_loopback`` only
+    recognises ``::1``), yet that is exactly how a dual-stack listener reports a
+    loopback IPv4 peer.
+    """
     try:
-        return ipaddress.ip_address(value.strip()).is_loopback
+        address = ipaddress.ip_address(value.strip())
     except ValueError:
         return False
+    mapped = getattr(address, "ipv4_mapped", None)
+    return (mapped or address).is_loopback
 
 
 def _is_local_request(request: Request) -> bool:
@@ -97,13 +113,25 @@ def _is_local_request(request: Request) -> bool:
     if client is None or not _is_loopback_ip(client.host):
         return False
 
-    # Any RFC 7239 header means a proxy is in the path; we cannot tell whose.
+    # Any RFC 7239 header means a proxy is in the path. Its `for=` grammar
+    # (quoted strings, ports, obfuscated identifiers) is fiddly enough that
+    # parsing it is more risk than it is worth here — reject and let the
+    # operator use a token instead.
     if request.headers.get("forwarded"):
         return False
 
-    forwarded_for = request.headers.get("x-forwarded-for", "")
-    hops = [hop for hop in forwarded_for.split(",") if hop.strip()]
-    return all(_is_loopback_ip(hop) for hop in hops)
+    # getlist, not get: a request can carry the header more than once, and
+    # `.get()` would return only the first — letting an attacker-supplied
+    # `X-Forwarded-For: 127.0.0.1` mask the real address a proxy appended in a
+    # second header. Reading every instance removes the dependence on which
+    # style of proxy is in front.
+    for header in _CLIENT_ADDRESS_HEADERS:
+        for value in request.headers.getlist(header):
+            hops = [hop for hop in value.split(",") if hop.strip()]
+            if not all(_is_loopback_ip(hop) for hop in hops):
+                return False
+
+    return True
 
 
 def _check_bootstrap_credential(request: Request) -> None:
@@ -124,7 +152,10 @@ def _check_bootstrap_credential(request: Request) -> None:
 
     if expected:
         presented = request.headers.get(BOOTSTRAP_TOKEN_HEADER, "")
-        if hmac.compare_digest(presented, expected):
+        # Compare bytes, not str: compare_digest rejects non-ASCII str operands
+        # with TypeError, and Starlette decodes headers as latin-1 — so a
+        # non-ASCII header value would 500 instead of cleanly 403-ing.
+        if hmac.compare_digest(presented.encode("utf-8"), expected.encode("utf-8")):
             return
         logger.warning(
             "Rejected bootstrap registration: %s missing or incorrect.",

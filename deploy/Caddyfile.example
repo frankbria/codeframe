@@ -31,6 +31,16 @@ codeframe.example.com {
 
 	# Backend: REST API, auth, WebSockets, health, and API docs. Caddy proxies
 	# WebSocket upgrades (/ws/*) transparently — no extra config needed.
+	#
+	# NOTE (#897): /auth/register is the unauthenticated bootstrap route for the
+	# very first account. When CODEFRAME_BOOTSTRAP_TOKEN is unset, the backend
+	# falls back to allowing only host-local callers, and it tells them apart
+	# from public ones by reading the client IP this proxy appends to
+	# X-Forwarded-For — which reverse_proxy does by default. A proxy configured
+	# to strip or pass through client headers unchanged would let a remote
+	# client claim the instance by sending X-Forwarded-For: 127.0.0.1. If you
+	# replace Caddy or edit the header handling, set CODEFRAME_BOOTSTRAP_TOKEN.
+	# See deploy/README.md → "Creating the first account".
 	@backend path /api/* /auth/* /ws/* /health /docs /redoc /openapi.json
 	reverse_proxy @backend 127.0.0.1:14200
 
