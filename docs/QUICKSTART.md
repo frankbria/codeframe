@@ -31,6 +31,16 @@ Get your project built with AI agents in minutes.
    entirely for local dev — both the REST API and the session/terminal
    WebSockets then accept unauthenticated connections, so the sessions UI is
    fully usable in that mode.)
+4. **`CODEFRAME_BOOTSTRAP_TOKEN` (only once the server is reachable over a
+   network)** — creating the very first account uses an unauthenticated route,
+   so on a fresh deploy whoever reaches it first claims the instance as admin.
+   Locally you need nothing: requests from this machine are allowed as-is. The
+   moment the server sits behind a proxy or a public address, set this and pass
+   it as the `X-Bootstrap-Token` header (or use the field on the sign-up form):
+   ```bash
+   export CODEFRAME_BOOTSTRAP_TOKEN=$(openssl rand -hex 32)
+   ```
+   See `deploy/README.md` → "Creating the first account".
 
 ## Coming from ralph?
 
