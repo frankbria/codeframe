@@ -86,6 +86,7 @@ jobs:
           ENV_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
           ENV_AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           ENV_DATABASE_PATH: ${{ secrets.DATABASE_PATH }}
+          ENV_WORKSPACE_ROOT: ${{ secrets.WORKSPACE_ROOT }}
           ENV_API_HOST: ${{ secrets.API_HOST }}
           ENV_API_PORT: ${{ secrets.API_PORT }}
           ENV_CORS: ${{ secrets.CORS_ORIGINS }}
@@ -100,6 +101,13 @@ jobs:
           ENV_PM2_BACKEND_NAME: ${{ secrets.PM2_BACKEND_NAME }}
         run: |
           echo "📝 Creating .env.staging file..."
+
+          # Workspace allowlist (#896). The backend refuses to start when auth
+          # is enabled and this is unset, because an empty allowlist lets any
+          # authenticated user open a terminal session in ANY host directory.
+          # Optional secret with a sane default, so the deploy doesn't start
+          # failing on a secret that has never been set.
+          WORKSPACE_ROOT="${ENV_WORKSPACE_ROOT:-${REMOTE_PATH}/workspaces}"
 
           # Fail fast if the AUTH_SECRET secret is missing/empty. The backend
           # hard-fails on the default secret when auth is enabled (issue #643),
@@ -127,6 +135,13 @@ jobs:
             "" \
             "# Database Configuration" \
             "DATABASE_PATH=${ENV_DATABASE_PATH}" \
+            "" \
+            "# Workspace allowlist (#896) — permitted roots for workspaces and" \
+            "# interactive sessions. A session workspace_path becomes a terminal" \
+            "# shell cwd, so an unset allowlist is a shell anywhere on the host;" \
+            "# the backend refuses to start without it when auth is enabled." \
+            "WORKSPACE_ROOT=${WORKSPACE_ROOT}" \
+            "CODEFRAME_DEPLOYMENT_MODE=self_hosted" \
             "" \
             "# Status Server Configuration" \
             "API_HOST=${ENV_API_HOST}" \
@@ -338,6 +353,7 @@ jobs:
           ENV_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
           ENV_AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           ENV_DATABASE_PATH: ${{ secrets.DATABASE_PATH }}
+          ENV_WORKSPACE_ROOT: ${{ secrets.WORKSPACE_ROOT }}
           ENV_API_HOST: ${{ secrets.API_HOST }}
           ENV_API_PORT: ${{ secrets.API_PORT }}
           ENV_CORS: ${{ secrets.CORS_ORIGINS }}
@@ -350,6 +366,13 @@ jobs:
           ENV_HOT_RELOAD: ${{ secrets.HOT_RELOAD }}
         run: |
           echo "📝 Creating .env.production file..."
+
+          # Workspace allowlist (#896). The backend refuses to start when auth
+          # is enabled and this is unset, because an empty allowlist lets any
+          # authenticated user open a terminal session in ANY host directory.
+          # Optional secret with a sane default, so the deploy doesn't start
+          # failing on a secret that has never been set.
+          WORKSPACE_ROOT="${ENV_WORKSPACE_ROOT:-${REMOTE_PATH}/workspaces}"
 
           # Fail fast if the AUTH_SECRET secret is missing/empty. The backend
           # hard-fails on the default secret when auth is enabled (issue #643),
@@ -377,6 +400,13 @@ jobs:
             "" \
             "# Database Configuration" \
             "DATABASE_PATH=${ENV_DATABASE_PATH}" \
+            "" \
+            "# Workspace allowlist (#896) — permitted roots for workspaces and" \
+            "# interactive sessions. A session workspace_path becomes a terminal" \
+            "# shell cwd, so an unset allowlist is a shell anywhere on the host;" \
+            "# the backend refuses to start without it when auth is enabled." \
+            "WORKSPACE_ROOT=${WORKSPACE_ROOT}" \
+            "CODEFRAME_DEPLOYMENT_MODE=self_hosted" \
             "" \
             "# Status Server Configuration" \
             "API_HOST=${ENV_API_HOST}" \

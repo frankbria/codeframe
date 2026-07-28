@@ -13,7 +13,6 @@ from typing import Any, Dict, Optional
 from fastapi import Depends, HTTPException, Query, Request
 
 from codeframe.auth.dependencies import require_auth
-from codeframe.workspace import WorkspaceManager
 
 # v2 imports
 from codeframe.core.workspace import Workspace, get_workspace, workspace_exists
@@ -22,8 +21,18 @@ from codeframe.core.workspace import Workspace, get_workspace, workspace_exists
 def _allowed_workspace_roots() -> list[Path]:
     """Permitted workspace roots from ``WORKSPACE_ROOT`` (os.pathsep-separated).
 
-    Empty when unset — meaning "no allowlist" (single-operator self-hosted, the
-    default). Each root is resolved so containment checks defeat ``..`` escapes.
+    This is the **only** reader of ``WORKSPACE_ROOT`` (issue #896). The server
+    lifespan used to parse the same variable as a single directory and mkdir it,
+    so the documented multi-root form ``/srv/a:/srv/b`` created a junk directory
+    at boot. One name, one meaning: an allowlist, never a location.
+
+    Empty when unset — meaning "no allowlist". Startup refuses to serve in that
+    configuration whenever auth is enforced, so an empty list can only reach a
+    request on a server that is either auth-free or has explicitly opted out via
+    ``CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES`` (see
+    ``server._validate_workspace_allowlist_config``).
+
+    Each root is resolved so containment checks defeat ``..`` escapes.
     """
     raw = os.getenv("WORKSPACE_ROOT", "").strip()
     if not raw:
@@ -99,24 +108,6 @@ def revalidate_workspace_path(workspace_path: str, user_id: Optional[int]) -> Op
         return None
 
 
-def get_workspace_manager(request: Request) -> WorkspaceManager:
-    """Get workspace manager from application state.
-
-    Args:
-        request: FastAPI request object
-
-    Returns:
-        WorkspaceManager instance from app.state.workspace_manager
-
-    Usage:
-        @router.post("/endpoint")
-        async def endpoint(workspace_mgr: WorkspaceManager = Depends(get_workspace_manager)):
-            # Use workspace_mgr here
-            ...
-    """
-    return request.app.state.workspace_manager
-
-
 def get_v2_workspace(
     workspace_path: Optional[str] = Query(
         None,
@@ -184,7 +175,6 @@ def get_v2_workspace(
 
 
 __all__ = [
-    "get_workspace_manager",
     "get_v2_workspace",
     "enforce_workspace_allowlist",
 ]

@@ -61,10 +61,9 @@ def scoped_app(tmp_path, monkeypatch):
 
     from codeframe.ui import server
 
-    # server.py re-reads Path.cwd() at module eval for the WORKSPACE_ROOT and
-    # DATABASE_PATH defaults. DATABASE_PATH is overridden above, but
-    # WORKSPACE_ROOT is not — so the chdir MUST still be in effect here or
-    # app.state.workspace_manager binds to the developer's real workspaces dir.
+    # server.py re-reads Path.cwd() at module eval for the DATABASE_PATH
+    # default. It is overridden above, but the chdir MUST still be in effect
+    # here so a reload can't bind anything to the developer's real state dir.
     # The conftest guard does not cover that path (it bypasses _get_state_dir),
     # so assert the ordering rather than trusting it.
     assert Path.cwd() == tmp_path

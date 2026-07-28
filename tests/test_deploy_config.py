@@ -107,6 +107,57 @@ def test_env_examples_bind_backend_loopback():
         assert "HOST=0.0.0.0" not in text, f"{env.name}: HOST must not be 0.0.0.0"
 
 
+# --- Workspace allowlist must reach the deployed host (#896 / P0.2) ---------
+#
+# WORKSPACE_ROOT gates which directories an authenticated user can open an
+# interactive session — and therefore a terminal shell — in. It defaulted to
+# "no allowlist", and none of the three deployment configs set it, so the
+# public instance ran wide open. Startup now refuses to serve in that state,
+# which turns a silent security hole into a loud boot failure — so the deploy
+# configs have to actually supply the value.
+
+
+@pytest.mark.parametrize("env", [STAGING_ENV, PROD_ENV], ids=["staging", "prod"])
+def test_env_examples_set_workspace_allowlist(env):
+    text = env.read_text()
+    root = re.search(r"^WORKSPACE_ROOT=(\S+)$", text, re.MULTILINE)
+    assert root, f"{env.name}: WORKSPACE_ROOT must be set (#896)"
+    assert root.group(1).startswith("/"), (
+        f"{env.name}: WORKSPACE_ROOT must be absolute, got {root.group(1)!r}"
+    )
+    assert re.search(r"^CODEFRAME_DEPLOYMENT_MODE=self_hosted$", text, re.MULTILINE), (
+        f"{env.name}: CODEFRAME_DEPLOYMENT_MODE must be explicit, not inherited"
+    )
+
+
+def test_deploy_workflow_writes_workspace_allowlist():
+    """Both env write-outs (staging + production) must emit the two variables.
+
+    WORKSPACE_ROOT is host-specific so it interpolates a shell variable;
+    CODEFRAME_DEPLOYMENT_MODE is a deliberate constant, not an operator knob.
+    """
+    text = DEPLOY_YML.read_text()
+    for emitted in ('"WORKSPACE_ROOT=${WORKSPACE_ROOT}"',
+                    '"CODEFRAME_DEPLOYMENT_MODE=self_hosted"'):
+        assert text.count(emitted) == 2, (
+            f"deploy.yml must emit {emitted} in both the staging and production "
+            f"env files (#896)"
+        )
+
+
+def test_deploy_workflow_defaults_workspace_root():
+    """The value must not depend on a GitHub secret nobody has set yet.
+
+    A hard requirement on a new secret would break the deploy on the very first
+    run after this change — and the failure mode (startup refusing to serve) is
+    indistinguishable from the bug being fixed.
+    """
+    text = DEPLOY_YML.read_text()
+    assert text.count("WORKSPACE_ROOT:-") == 2, (
+        "deploy.yml must default WORKSPACE_ROOT when the secret is unset"
+    )
+
+
 def test_env_examples_document_tls_origins():
     """Public-facing origins in the deploy templates must be https/wss, not
     plaintext http/ws (the whole point of #747)."""
