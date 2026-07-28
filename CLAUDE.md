@@ -270,15 +270,25 @@ ANTHROPIC_API_KEY=sk-ant-...          # Required for Anthropic provider (default
 E2B_API_KEY=e2b_...                   # Required for --engine cloud
 DATABASE_PATH=./codeframe.db          # Optional
 
-# Server deployment + workspace allowlist (#655)
+# Server deployment + workspace allowlist (#655, #896)
 CODEFRAME_DEPLOYMENT_MODE=self_hosted # self_hosted (default) or hosted (multi-tenant)
 WORKSPACE_ROOT=/srv/workspaces        # os.pathsep-separated allowlist of permitted
                                       # workspace roots. Any client-supplied workspace
                                       # path (REST, workspace init, session create) must
-                                      # resolve inside a root, else 403. Unset = no
-                                      # allowlist (single-operator self-hosted default).
-                                      # In hosted mode it is MANDATORY (fail closed) and
-                                      # each user is confined to <root>/<user_id>.
+                                      # resolve inside a root, else 403. Parsed ONLY by
+                                      # ui/dependencies._allowed_workspace_roots — it is
+                                      # an allowlist, never a location, and nothing
+                                      # mkdirs it (#896). REQUIRED whenever auth is
+                                      # enforced: the server refuses to start without it,
+                                      # because an empty allowlist lets any authenticated
+                                      # user open a session — and a terminal shell — in
+                                      # any host directory. In hosted mode each user is
+                                      # additionally confined to <root>/<user_id>.
+CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES=1  # Escape hatch for the above: start with no
+                                      # allowlist (loud WARNING) on a single-operator
+                                      # LOCAL machine. Never honored in hosted mode,
+                                      # never set on an exposed server. Mirrors
+                                      # CODEFRAME_ALLOW_INSECURE_SECRET (#643).
 
 # Test-only endpoints (#753) — default OFF
 CODEFRAME_ENABLE_TEST_ENDPOINTS=1     # Registers the integration-test-only

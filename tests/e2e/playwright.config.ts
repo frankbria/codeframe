@@ -5,6 +5,7 @@ import {
   CENTRAL_DB_PATH,
   FRONTEND_URL,
   STORAGE_STATE_PATH,
+  WORKSPACE_DIR,
 } from './e2e-env';
 
 /**
@@ -66,7 +67,11 @@ export default defineConfig({
   // already-running pair (reuseExistingServer is true off-CI only).
   webServer: [
     {
-      command: `AUTH_SECRET=${AUTH_SECRET} DATABASE_PATH=${CENTRAL_DB_PATH} uv run uvicorn codeframe.ui.server:app --port ${BACKEND_PORT}`,
+      // WORKSPACE_ROOT is required: auth is on by default and the backend
+      // refuses to start without a workspace allowlist (#896). Pointing it at
+      // the seeded workspace also makes the suite exercise the allowlist the
+      // way a real deployment does, instead of running unrestricted.
+      command: `AUTH_SECRET=${AUTH_SECRET} DATABASE_PATH=${CENTRAL_DB_PATH} WORKSPACE_ROOT=${WORKSPACE_DIR} uv run uvicorn codeframe.ui.server:app --port ${BACKEND_PORT}`,
       cwd: '../..',
       url: `${BACKEND_URL}/health`,
       reuseExistingServer: !process.env.CI,

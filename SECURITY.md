@@ -70,8 +70,14 @@ CodeFRAME has two deployment modes (`CODEFRAME_DEPLOYMENT_MODE`):
   distrusting users: any authenticated user can act within the configured
   workspace(s), and credentials are shared by design. Multiple untrusting users
   require separate instances (or hosted mode).
-- **`hosted` — multi-tenant.** `WORKSPACE_ROOT` is mandatory (the server fails
-  closed if unset) and each user is confined to `<WORKSPACE_ROOT>/<user_id>`, so
+- **`WORKSPACE_ROOT` is required in both modes whenever auth is enforced**, and
+  the server refuses to start without it (#896). An unset allowlist is not a
+  mild default — a session's `workspace_path` becomes a terminal shell's `cwd`,
+  so it grants every authenticated principal a shell in any directory on the
+  host. A single-operator local machine may opt out explicitly with
+  `CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES=1`, which logs a loud warning and is
+  never honored in hosted mode.
+- **`hosted` — multi-tenant.** Each user is confined to `<WORKSPACE_ROOT>/<user_id>`, so
   tenants cannot reach each other's workspaces. Because the credential store is
   machine-wide and cannot yet be safely shared across tenants, the shared
   credential and GitHub-PAT **mutation** endpoints (`PUT`/`DELETE

@@ -16,7 +16,6 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 # Local imports - v2 only (no v1 persistence layer)
-from codeframe.workspace import WorkspaceManager
 from codeframe.ui.routers import (
     # v2 routers only - delegate to codeframe.core modules
     batches_v2,
@@ -100,17 +99,83 @@ logger = logging.getLogger(__name__)
 # If session management is needed, implement in v2 core modules
 
 
-def _allow_insecure_secret() -> bool:
-    """Whether the local-dev escape hatch for the default JWT secret is set.
-
-    Controlled by ``CODEFRAME_ALLOW_INSECURE_SECRET`` (default OFF). Truthy
-    values (case-insensitive): ``1``, ``true``, ``yes``, ``on``. This hatch is
-    for local development only and is **never** honored in hosted mode.
-    """
-    value = os.getenv("CODEFRAME_ALLOW_INSECURE_SECRET")
+def _env_flag(name: str) -> bool:
+    """Whether an opt-in env flag is set. Truthy: ``1``, ``true``, ``yes``, ``on``."""
+    value = os.getenv(name)
     if value is None:
         return False
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _allow_insecure_secret() -> bool:
+    """Whether the local-dev escape hatch for the default JWT secret is set.
+
+    Controlled by ``CODEFRAME_ALLOW_INSECURE_SECRET`` (default OFF). This hatch
+    is for local development only and is **never** honored in hosted mode.
+    """
+    return _env_flag("CODEFRAME_ALLOW_INSECURE_SECRET")
+
+
+def _validate_workspace_allowlist_config():
+    """Refuse to serve with an unrestricted workspace allowlist (issue #896).
+
+    ``enforce_workspace_allowlist`` is a no-op when ``WORKSPACE_ROOT`` is unset,
+    so an exposed server handed every authenticated principal a shell anywhere
+    on the host: ``POST /api/v2/sessions`` stores an arbitrary ``workspace_path``
+    that ``terminal_ws`` later uses as a shell ``cwd``. The control defaulted to
+    off and no deployment config set it, so the public instance ran wide open.
+
+    In self-hosted mode the allowlist only matters where authentication is what
+    stands between a caller and those routes: with auth disabled every caller is
+    unrestricted already, and demanding a root would just break local dev. So
+    the self-hosted gate is "auth enforced but no roots configured".
+
+    Hosted/multi-tenant has no unrestricted configuration at all — the roots are
+    what separate tenants. ``_validate_security_config`` already rejects
+    hosted-with-auth-disabled, but this does not lean on that: a fail-closed
+    property that depends on the order of two validators reopens the moment
+    someone reorders them.
+
+    Mirrors the ``CODEFRAME_ALLOW_INSECURE_SECRET`` hatch above: single-operator
+    self-hosted can still opt out via ``CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES``
+    — explicitly and loudly — but hosted never can.
+
+    Raises:
+        RuntimeError: If the allowlist is missing where it is required and no
+            applicable escape hatch is set.
+    """
+    from codeframe.auth.dependencies import auth_required
+    from codeframe.ui.dependencies import _allowed_workspace_roots
+
+    hosted = get_deployment_mode() == DeploymentMode.HOSTED
+
+    if _allowed_workspace_roots() or (not hosted and not auth_required()):
+        return
+
+    if not hosted and _env_flag("CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES"):
+        logger.warning(
+            "⚠️  SECURITY: WORKSPACE_ROOT is unset, so any authenticated user can "
+            "open a session — and therefore a shell — in ANY directory on this "
+            "host. Starting anyway because CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES "
+            "is set. Use this for a single-operator LOCAL machine only; never "
+            "expose this server."
+        )
+        return
+
+    raise RuntimeError(
+        "🚨 SECURITY: WORKSPACE_ROOT must list the permitted workspace roots in "
+        + ("hosted mode" if hosted else "this configuration")
+        + ". Without it, any authenticated user can start "
+        "an interactive session — and a terminal shell — in any directory on this "
+        "host. Set WORKSPACE_ROOT to one or more directories separated by "
+        f"'{os.pathsep}' (e.g. WORKSPACE_ROOT=/srv/workspaces)"
+        + (
+            "."
+            if hosted
+            else ", or set CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES=1 for a "
+            "single-operator local machine only."
+        )
+    )
 
 
 def _validate_security_config():
@@ -380,12 +445,7 @@ async def lifespan(app: FastAPI):
     # Validate security configuration before starting
     _validate_security_config()
 
-    # Initialize workspace manager for v2 core
-    workspace_root_str = os.environ.get(
-        "WORKSPACE_ROOT", str(Path.cwd() / ".codeframe" / "workspaces")
-    )
-    workspace_root = Path(workspace_root_str)
-    app.state.workspace_manager = WorkspaceManager(workspace_root)
+    _validate_workspace_allowlist_config()
 
     # Initialize global persistent DB (used by interactive_sessions and auth)
     db_path = os.environ.get(

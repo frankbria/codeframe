@@ -27,6 +27,17 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # an explicit environment override win.
 os.environ.setdefault("CODEFRAME_AUTH_REQUIRED", "false")
 
+# The lifespan refuses to start when auth is enforced and no workspace allowlist
+# is configured (issue #896). Tests build workspaces under per-test ``tmp_path``
+# dirs, so there is no single WORKSPACE_ROOT that could contain them all —
+# pinning one would break every fixture that uses an arbitrary temp directory.
+# Opt the suite into the documented "no allowlist" escape hatch instead, which
+# is the behaviour these tests already assumed. Same pattern as the auth
+# setdefault above: tests that exercise the guard (tests/ui/test_workspace_root_
+# startup.py) set or delete the variable explicitly via monkeypatch, and
+# ``setdefault`` lets an explicit environment override win.
+os.environ.setdefault("CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES", "1")
+
 # Telemetry is opt-in (issue #616), but force it off for the whole suite so no
 # test — including subprocess-based lifecycle tests, which inherit the env —
 # can ever prompt or send events. The env var is the highest-precedence switch;
