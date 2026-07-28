@@ -85,10 +85,24 @@ export async function login(email: string, password: string): Promise<string> {
 /**
  * Register the first account (bootstrap-first-user). The backend returns 403
  * once any user exists, so this is only reachable on a fresh install.
+ *
+ * `bootstrapToken` carries the server's `CODEFRAME_BOOTSTRAP_TOKEN` (issue
+ * #897). It is required whenever the request does not originate on the server
+ * host — which is every browser request in the reverse-proxy deploy — and is
+ * omitted entirely when blank so a purely local install needs no token.
  */
-export async function register(email: string, password: string): Promise<void> {
+export async function register(
+  email: string,
+  password: string,
+  bootstrapToken?: string
+): Promise<void> {
+  const token = bootstrapToken?.trim();
   try {
-    await axios.post(`${API_BASE}/auth/register`, { email, password });
+    await axios.post(
+      `${API_BASE}/auth/register`,
+      { email, password },
+      token ? { headers: { 'X-Bootstrap-Token': token } } : undefined
+    );
   } catch (error) {
     throw normalizeAuthError(error, 'register');
   }
@@ -138,7 +152,12 @@ function normalizeAuthError(error: unknown, flow: 'login' | 'register'): Error {
     if (flow === 'login' && status === 400) {
       return new Error('Invalid email or password.');
     }
+    const detail = error.response?.data?.detail;
     if (flow === 'register' && status === 403) {
+      // A 403 now means either "already claimed" (#336) or "bootstrap
+      // credential missing/wrong" (#897). Both server details are written for
+      // humans and say different things, so prefer them over a fixed string.
+      if (typeof detail === 'string' && detail.trim()) return new Error(detail);
       return new Error(
         'Registration is closed — an account already exists. Please sign in.'
       );
@@ -146,7 +165,6 @@ function normalizeAuthError(error: unknown, flow: 'login' | 'register'): Error {
     if (flow === 'register' && status === 400) {
       return new Error('An account with that email already exists.');
     }
-    const detail = error.response?.data?.detail;
     if (typeof detail === 'string') return new Error(detail);
   }
   return new Error(

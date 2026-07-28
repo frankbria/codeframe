@@ -167,6 +167,80 @@ class TestRegisterCommand:
         assert "exists" in result.output.lower() or "already" in result.output.lower()
 
 
+class TestRegisterBootstrapToken:
+    """The out-of-band bootstrap secret (#897) reaches the server."""
+
+    @staticmethod
+    def _mock_register_then_login():
+        register = MagicMock()
+        register.status_code = 201
+        register.json.return_value = {"id": "user-id-123", "email": "new@example.com"}
+        login = MagicMock()
+        login.status_code = 200
+        login.json.return_value = {"access_token": "new-user-token"}
+        return [register, login]
+
+    def _invoke(self, tmp_path, args):
+        creds_path = tmp_path / ".codeframe" / "credentials.json"
+        with patch("requests.post", side_effect=self._mock_register_then_login()) as post:
+            with patch("codeframe.cli.auth.get_credentials_path", return_value=creds_path):
+                result = runner.invoke(auth_app, args)
+        return result, post
+
+    def test_flag_is_sent_as_header(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("CODEFRAME_BOOTSTRAP_TOKEN", raising=False)
+        result, post = self._invoke(
+            tmp_path,
+            [
+                "register", "--email", "new@example.com", "--password", "pw",
+                "--bootstrap-token", "tok-from-flag",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        headers = post.call_args_list[0].kwargs["headers"]
+        assert headers["X-Bootstrap-Token"] == "tok-from-flag"
+
+    def test_env_var_is_used_when_flag_omitted(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CODEFRAME_BOOTSTRAP_TOKEN", "tok-from-env")
+        result, post = self._invoke(
+            tmp_path, ["register", "--email", "new@example.com", "--password", "pw"]
+        )
+
+        assert result.exit_code == 0, result.output
+        headers = post.call_args_list[0].kwargs["headers"]
+        assert headers["X-Bootstrap-Token"] == "tok-from-env"
+
+    def test_no_token_sends_no_header(self, tmp_path, monkeypatch):
+        """Loopback registration needs no token — don't send an empty one."""
+        monkeypatch.delenv("CODEFRAME_BOOTSTRAP_TOKEN", raising=False)
+        result, post = self._invoke(
+            tmp_path, ["register", "--email", "new@example.com", "--password", "pw"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "X-Bootstrap-Token" not in post.call_args_list[0].kwargs["headers"]
+
+    def test_403_surfaces_the_server_detail(self, monkeypatch):
+        """A refused bootstrap must tell the operator what to do, not just
+        'HTTP 403'."""
+        monkeypatch.delenv("CODEFRAME_BOOTSTRAP_TOKEN", raising=False)
+        refused = MagicMock()
+        refused.status_code = 403
+        refused.json.return_value = {
+            "detail": "Bootstrap registration is not permitted from this client. "
+                      "Set CODEFRAME_BOOTSTRAP_TOKEN on the server..."
+        }
+
+        with patch("requests.post", return_value=refused):
+            result = runner.invoke(
+                auth_app, ["register", "--email", "a@example.com", "--password", "pw"]
+            )
+
+        assert result.exit_code != 0
+        assert "CODEFRAME_BOOTSTRAP_TOKEN" in result.output
+
+
 class TestWhoamiCommand:
     """Tests for the whoami command."""
 

@@ -1,8 +1,12 @@
 """Auth router configuration."""
 import asyncio
+import hmac
+import ipaddress
+import logging
+import os
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
@@ -13,6 +17,8 @@ from codeframe.auth.api_key_router import router as api_key_router
 from codeframe.auth.dependencies import require_auth
 from codeframe.auth.stream_tickets import TICKET_TTL_SECONDS, mint_ticket
 from codeframe.lib.rate_limiter import enforce_auth_rate_limit
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -38,15 +44,123 @@ _DISABLED_PASSWORD = "!DISABLED!"
 # In-process only — multi-worker deployments retain a narrow race.
 _register_lock = asyncio.Lock()
 
+# Header carrying the out-of-band bootstrap secret (#897). A header rather than
+# a body field so the fastapi-users ``UserCreate`` schema stays untouched and
+# the secret never lands in the JSON echoed back by validation errors.
+BOOTSTRAP_TOKEN_HEADER = "X-Bootstrap-Token"
 
-async def allow_registration():
-    """Gate registration to bootstrap-first-user only (issue #336).
+_BOOTSTRAP_DENIED_DETAIL = (
+    "Bootstrap registration is not permitted from this client. Set "
+    "CODEFRAME_BOOTSTRAP_TOKEN on the server and send it as the "
+    f"{BOOTSTRAP_TOKEN_HEADER} header, or register from the server host itself "
+    "(e.g. `codeframe auth register` over loopback)."
+)
 
-    Registration is permitted only while no *real* (login-capable) account
-    exists. The database always seeds a default admin (id=1) with a disabled
-    password placeholder; that account cannot log in and does not count.
-    Once the first real user registers, this raises 403.
+
+def _bootstrap_token() -> str:
+    """The configured out-of-band bootstrap secret, or ``""`` when unset.
+
+    Read at request time (not import time) so tests and operators can change it
+    without reimporting the module. Whitespace-only values are treated as unset
+    — an empty string must never become a matchable secret.
     """
+    return os.getenv("CODEFRAME_BOOTSTRAP_TOKEN", "").strip()
+
+
+def _is_loopback_ip(value: str) -> bool:
+    """Whether ``value`` parses as a loopback IP. Unparseable → ``False``."""
+    try:
+        return ipaddress.ip_address(value.strip()).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_local_request(request: Request) -> bool:
+    """Whether the request genuinely originated on this host (issue #897).
+
+    Deliberately does NOT reuse ``lib.rate_limiter.get_client_ip``: that helper
+    only honors ``X-Forwarded-For`` when ``RATE_LIMIT_TRUSTED_PROXIES`` is
+    configured, and that setting is optional. Behind the documented Caddy deploy
+    (``deploy/Caddyfile.example`` proxies ``/auth/*`` from the public Internet to
+    ``127.0.0.1``) with that setting unset, it reports every Internet client as
+    ``127.0.0.1`` — which would leave this gate wide open. A security gate must
+    not depend on an optional performance/telemetry setting being present.
+
+    So the rule here is strict and self-contained: the peer must be loopback,
+    every hop in the forwarded chain must be loopback, and no RFC 7239
+    ``Forwarded`` header may be present. Caddy *appends* the real client IP to
+    ``X-Forwarded-For``, so a spoofed ``X-Forwarded-For: 127.0.0.1`` from the
+    Internet still leaves a non-loopback hop behind it. A local dev proxy (the
+    Next.js ``/auth/*`` rewrite) forwards loopback→loopback and still passes.
+    """
+    client = request.client
+    if client is None or not _is_loopback_ip(client.host):
+        return False
+
+    # Any RFC 7239 header means a proxy is in the path; we cannot tell whose.
+    if request.headers.get("forwarded"):
+        return False
+
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    hops = [hop for hop in forwarded_for.split(",") if hop.strip()]
+    return all(_is_loopback_ip(hop) for hop in hops)
+
+
+def _check_bootstrap_credential(request: Request) -> None:
+    """Require the out-of-band secret, or a host-local request (issue #897).
+
+    Without this, ``/auth/register`` is an unauthenticated route that hands out
+    ``[read, write, admin]`` to whoever reaches it first on a fresh deploy — and
+    the deploy path publishes it before any account exists.
+
+    When ``CODEFRAME_BOOTSTRAP_TOKEN`` is set it is mandatory, loopback
+    included: configuring it is an explicit opt-in to the stronger control, and
+    behind a reverse proxy "loopback" means nothing anyway.
+
+    Raises:
+        HTTPException: 403 when neither the token nor host-locality holds.
+    """
+    expected = _bootstrap_token()
+
+    if expected:
+        presented = request.headers.get(BOOTSTRAP_TOKEN_HEADER, "")
+        if hmac.compare_digest(presented, expected):
+            return
+        logger.warning(
+            "Rejected bootstrap registration: %s missing or incorrect.",
+            BOOTSTRAP_TOKEN_HEADER,
+        )
+    elif _is_local_request(request):
+        return
+    else:
+        logger.warning(
+            "Rejected bootstrap registration from a non-local client and no "
+            "CODEFRAME_BOOTSTRAP_TOKEN is configured."
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=_BOOTSTRAP_DENIED_DETAIL,
+    )
+
+
+async def allow_registration(request: Request):
+    """Gate registration to bootstrap-first-user only (issues #336, #897).
+
+    Two gates, both of which must pass:
+
+    1. The caller presents ``CODEFRAME_BOOTSTRAP_TOKEN`` out of band, or the
+       request originates on the host itself (#897).
+    2. No *real* (login-capable) account exists yet (#336). The database always
+       seeds a default admin (id=1) with a disabled password placeholder; that
+       account cannot log in and does not count.
+
+    The credential gate runs first and outside the lock: an unauthorized caller
+    then learns nothing about whether the instance has been claimed, and
+    rejected requests never contend for the lock.
+    """
+    _check_bootstrap_credential(request)
+
     async with _register_lock:
         async_session_maker = get_async_session_maker()
         async with async_session_maker() as session:

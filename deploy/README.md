@@ -34,6 +34,59 @@ ever travel over HTTPS/WSS between the browser and Caddy. Plaintext
 4. Firewall: allow `80`/`443` only. The app ports (`14100`/`14200`) must **not**
    be reachable from the network — Caddy reaches them over loopback.
 
+## Creating the first account
+
+`POST /auth/register` is how the very first account is made, so it cannot itself
+require a login — and Caddy publishes `/auth/*`. Left ungated, a fresh deploy is
+claimable by whoever reaches it first, with `[read, write, admin]` (issue #897).
+
+The route is therefore gated two ways, and **at least one must hold**:
+
+| Gate | When it applies |
+|---|---|
+| `X-Bootstrap-Token` header matching `CODEFRAME_BOOTSTRAP_TOKEN` | Whenever the variable is set — including for loopback callers |
+| Request originates on the server host itself | Only when `CODEFRAME_BOOTSTRAP_TOKEN` is unset |
+
+"Originates on the host" means a loopback peer **with no proxy in the path** —
+a request arriving through Caddy carries the real client IP in
+`X-Forwarded-For`, so public traffic never qualifies. This does not depend on
+`RATE_LIMIT_TRUSTED_PROXIES` being configured.
+
+Registration still closes permanently once the first real account exists, token
+or not. The seeded `admin@localhost` row has a disabled password, cannot log in,
+and does not count as that account.
+
+**Set the token before the first deploy** — it is in `.env.production.example` /
+`.env.staging.example`:
+
+```bash
+openssl rand -hex 32          # → CODEFRAME_BOOTSTRAP_TOKEN in your .env.<stage>
+```
+
+Then create the account one of two ways.
+
+**From the server host** (simplest — the CLI reads the env var):
+
+```bash
+ssh your-server
+cd /path/to/codeframe
+set -a; . ./.env.production; set +a          # exports CODEFRAME_BOOTSTRAP_TOKEN
+# Point the CLI at the loopback backend — its default is :8080, not your
+# BACKEND_PORT. This hits the app directly, bypassing Caddy.
+CODEFRAME_API_URL="http://127.0.0.1:${BACKEND_PORT:-8000}" \
+  codeframe auth register --email you@example.com
+```
+
+(`--bootstrap-token` overrides the env var if you would rather pass it inline.)
+
+**From your browser**, at `https://your-domain/login` → *"First time here? Create
+the first account"*: fill in email, password, and paste the token into
+**Bootstrap token**.
+
+After the account exists, remove `CODEFRAME_BOOTSTRAP_TOKEN` from the
+environment if you like — the route is closed either way, and a token left in
+place has no further use.
+
 ## Routing
 
 Caddy path-routes a single public origin, so browser traffic is same-origin and

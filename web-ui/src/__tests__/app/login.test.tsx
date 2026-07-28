@@ -103,7 +103,7 @@ describe('LoginPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {
-      expect(registerMock).toHaveBeenCalledWith('first@example.com', 'pw123');
+      expect(registerMock).toHaveBeenCalledWith('first@example.com', 'pw123', '');
     });
     await waitFor(() => {
       expect(loginMock).toHaveBeenCalledWith('first@example.com', 'pw123');
@@ -111,5 +111,41 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith('/');
     });
+  });
+
+  it('register flow: passes the bootstrap token when the operator supplies one', async () => {
+    registerMock.mockResolvedValueOnce(undefined);
+    loginMock.mockResolvedValueOnce('jwt-new');
+    render(<LoginPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /create the first account/i }));
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: 'first@example.com' },
+    });
+    fireEvent.change(screen.getByLabelText(/^password/i), {
+      target: { value: 'pw123' },
+    });
+    fireEvent.change(screen.getByLabelText(/bootstrap token/i), {
+      target: { value: 'tok-abc' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
+
+    await waitFor(() => {
+      expect(registerMock).toHaveBeenCalledWith(
+        'first@example.com',
+        'pw123',
+        'tok-abc'
+      );
+    });
+  });
+
+  it('the bootstrap token field is register-only', () => {
+    render(<LoginPage />);
+
+    expect(screen.queryByLabelText(/bootstrap token/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /create the first account/i }));
+    expect(screen.getByLabelText(/bootstrap token/i)).toBeInTheDocument();
   });
 });

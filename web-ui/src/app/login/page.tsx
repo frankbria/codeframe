@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { Login01Icon, Mail01Icon, LockIcon, Loading03Icon } from '@hugeicons/core-free-icons';
+import { Login01Icon, Mail01Icon, LockIcon, Loading03Icon, Key01Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -31,6 +31,10 @@ export default function LoginPage() {
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // The server's CODEFRAME_BOOTSTRAP_TOKEN (#897). Required for the first
+  // account on any deploy the browser reaches over a network; blank is correct
+  // for a purely local install, where the loopback path applies.
+  const [bootstrapToken, setBootstrapToken] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Already-authenticated visitors are bounced to the app (#651). Tracked in
@@ -53,7 +57,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       if (isRegister) {
-        await register(email, password);
+        await register(email, password, bootstrapToken);
         // First account created — log in immediately for a seamless handoff.
         await login(email, password);
       } else {
@@ -149,6 +153,33 @@ export default function LoginPage() {
                 disabled={submitting}
               />
             </div>
+
+            {isRegister && (
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="bootstrap-token"
+                  className="flex items-center gap-1.5 text-sm font-medium text-foreground"
+                >
+                  <HugeiconsIcon icon={Key01Icon} className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                  Bootstrap token
+                  <span className="font-normal text-muted-foreground">(if required)</span>
+                </label>
+                <Input
+                  id="bootstrap-token"
+                  type="password"
+                  autoComplete="off"
+                  value={bootstrapToken}
+                  onChange={(e) => setBootstrapToken(e.target.value)}
+                  placeholder="CODEFRAME_BOOTSTRAP_TOKEN"
+                  disabled={submitting}
+                  aria-describedby="bootstrap-token-help"
+                />
+                <p id="bootstrap-token-help" className="text-xs text-muted-foreground">
+                  Set on the server as <code>CODEFRAME_BOOTSTRAP_TOKEN</code>. Leave
+                  blank when running CodeFRAME locally on this machine.
+                </p>
+              </div>
+            )}
           </CardContent>
 
           <CardFooter className="flex flex-col gap-3">

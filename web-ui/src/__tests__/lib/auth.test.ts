@@ -115,9 +115,44 @@ describe('register', () => {
     expect(body).toEqual({ email: 'first@example.com', password: 'pw123' });
   });
 
-  it('throws "registration is closed" on 403', async () => {
+  it('sends the bootstrap token as X-Bootstrap-Token when supplied', async () => {
+    mockedAxios.post.mockResolvedValueOnce({ data: {} });
+
+    await register('first@example.com', 'pw123', 'tok-abc');
+
+    const config = mockedAxios.post.mock.calls[0][2] as {
+      headers: Record<string, string>;
+    };
+    expect(config.headers['X-Bootstrap-Token']).toBe('tok-abc');
+  });
+
+  it('omits the header when the bootstrap token is blank', async () => {
+    mockedAxios.post.mockResolvedValueOnce({ data: {} });
+
+    await register('first@example.com', 'pw123', '   ');
+
+    expect(mockedAxios.post.mock.calls[0][2]).toBeUndefined();
+  });
+
+  it('surfaces the server explanation on 403', async () => {
+    // 403 means either "already claimed" (#336) or "bootstrap credential
+    // missing/wrong" (#897) — the detail is what tells them apart.
     mockedAxios.post.mockRejectedValueOnce({
-      response: { status: 403, data: { detail: 'forbidden' } },
+      response: {
+        status: 403,
+        data: { detail: 'Set CODEFRAME_BOOTSTRAP_TOKEN on the server.' },
+      },
+    });
+    mockedAxios.isAxiosError = jest.fn(() => true) as unknown as typeof axios.isAxiosError;
+
+    await expect(register('second@example.com', 'pw')).rejects.toThrow(
+      /CODEFRAME_BOOTSTRAP_TOKEN/
+    );
+  });
+
+  it('falls back to "registration is closed" on a 403 with no detail', async () => {
+    mockedAxios.post.mockRejectedValueOnce({
+      response: { status: 403, data: {} },
     });
     mockedAxios.isAxiosError = jest.fn(() => true) as unknown as typeof axios.isAxiosError;
 
