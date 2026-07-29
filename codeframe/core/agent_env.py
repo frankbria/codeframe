@@ -50,7 +50,7 @@ SAFE_ENV_VARS = frozenset({
 _XDG_VARS = ("XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME")
 
 
-def build_agent_env(workspace_path: Path) -> dict[str, str]:
+def build_agent_env(workspace_path: Path | str) -> dict[str, str]:
     """The environment for a subprocess an agent (or repo content) can steer.
 
     Args:
@@ -58,6 +58,7 @@ def build_agent_env(workspace_path: Path) -> dict[str, str]:
             lives under its ``.codeframe/`` state dir, so it is per-workspace and
             inspectable.
     """
+    workspace_path = Path(workspace_path)
     env = {k: os.environ[k] for k in SAFE_ENV_VARS if k in os.environ}
 
     # A real directory rather than a nonexistent path, so tools that write
