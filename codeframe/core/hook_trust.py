@@ -20,7 +20,6 @@ import hashlib
 import json
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -103,14 +102,6 @@ def record_trust(workspace_path: Path, hooks: "HooksConfig") -> None:
 def allow_hooks_requested() -> bool:
     """Whether the operator passed the non-interactive opt-in."""
     return os.getenv(ALLOW_HOOKS_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def is_interactive() -> bool:
-    """Whether there is a human on the other end to answer a prompt."""
-    try:
-        return sys.stdin.isatty() and sys.stdout.isatty()
-    except (AttributeError, ValueError):
-        return False
 
 
 def describe_hooks(hooks: "HooksConfig") -> str:
