@@ -292,6 +292,22 @@ CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES=1  # Escape hatch for the above: start w
                                       # never set on an exposed server. Mirrors
                                       # CODEFRAME_ALLOW_INSECURE_SECRET (#643).
 
+# Repo-committed hook trust (#905) — default OFF (refuse)
+CODEFRAME_ALLOW_HOOKS=1               # Run a workspace's configured lifecycle
+                                      # hooks without a recorded trust decision.
+                                      # Hooks come from .codeframe/config.yaml,
+                                      # a file a cloned repo can commit, and
+                                      # `cf init` fires after_init immediately —
+                                      # so by default a hook runs only after
+                                      # `cf hooks trust` records approval in
+                                      # ~/.codeframe/trusted_hooks.json (outside
+                                      # the repo tree, keyed to the exact
+                                      # commands, so editing a hook re-asks).
+                                      # `cf init --allow-hooks` sets this for
+                                      # one run. CODEFRAME.md can no longer
+                                      # supply hooks at all: it is found by
+                                      # walking UP from the workspace.
+
 # Bootstrap registration gate (#897)
 CODEFRAME_BOOTSTRAP_TOKEN=<secret>    # Out-of-band secret gating the
                                       # unauthenticated POST /auth/register

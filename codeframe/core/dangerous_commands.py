@@ -41,6 +41,13 @@ DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\b(wget|curl)\s+.*\|\s*(ba)?sh", "download piped to shell"),
     # Overwriting important system files
     (r">\s*/(etc|bin|usr|lib|sbin)/", "overwriting system directory"),
+    # Reaching the operator's credential store (#905). run_command already gets a
+    # sandboxed HOME, so `~/.codeframe` and `$HOME/.codeframe` resolve into the
+    # workspace — this catches the absolute path an agent can still discover via
+    # `ls /home`. Defense in depth against prompt injection, not a containment
+    # boundary: an obfuscated path defeats it, and only OS-level isolation
+    # (worktree/E2B/container) actually contains a hostile command.
+    (r"\.codeframe/credentials", "reading the credential store"),
 ]
 
 

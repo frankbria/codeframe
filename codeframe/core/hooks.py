@@ -15,7 +15,7 @@ Hook points:
 from __future__ import annotations
 
 import logging
-import shlex
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -72,17 +72,45 @@ class HookAbortError(Exception):
         )
 
 
-def render_hook_command(template: str, ctx: HookContext) -> str:
-    """Render a hook command template with context variables.
+#: Context values are passed to the hook as environment variables and the
+#: template is rendered with *references* to them, never with the values.
+HOOK_CONTEXT_ENV = {
+    "task_id": "CF_HOOK_TASK_ID",
+    "task_title": "CF_HOOK_TASK_TITLE",
+    "task_status": "CF_HOOK_TASK_STATUS",
+    "workspace_path": "CF_HOOK_WORKSPACE_PATH",
+}
 
-    Variable values are shell-escaped to prevent injection via task_title
-    or other user-controlled fields.
+
+def hook_context_env(ctx: HookContext) -> dict:
+    """The environment carrying a hook's context values."""
+    return {
+        HOOK_CONTEXT_ENV["task_id"]: ctx.task_id,
+        HOOK_CONTEXT_ENV["task_title"]: ctx.task_title,
+        HOOK_CONTEXT_ENV["task_status"]: ctx.task_status,
+        HOOK_CONTEXT_ENV["workspace_path"]: ctx.workspace_path,
+    }
+
+
+def render_hook_command(template: str, ctx: HookContext) -> str:
+    """Render a hook command template with references to context variables.
+
+    Substitutes ``"${CF_HOOK_TASK_TITLE}"`` rather than the title itself. The
+    previous version substituted ``shlex.quote(value)``, which is **not** safe:
+    single quotes lose their meaning inside a double-quoted template, so a hook
+    written as ``echo "{{ task_title }}"`` with the title ``$(id)`` rendered to
+    ``echo "'$(id)'"`` and the shell ran the command substitution (#905).
+
+    A parameter expansion is safe in both positions. The shell does not rescan
+    an expansion's *result* for command substitution, so ``$(id)`` arriving as a
+    value stays the four characters it is — quoted or not. The values themselves
+    travel in the environment (``hook_context_env``), never in the command text.
     """
     return Template(template).render(
-        task_id=shlex.quote(ctx.task_id),
-        task_title=shlex.quote(ctx.task_title),
-        task_status=shlex.quote(ctx.task_status),
-        workspace_path=shlex.quote(ctx.workspace_path),
+        task_id='"${%s}"' % HOOK_CONTEXT_ENV["task_id"],
+        task_title='"${%s}"' % HOOK_CONTEXT_ENV["task_title"],
+        task_status='"${%s}"' % HOOK_CONTEXT_ENV["task_status"],
+        workspace_path='"${%s}"' % HOOK_CONTEXT_ENV["workspace_path"],
     )
 
 
@@ -109,6 +137,8 @@ def run_hook(
             capture_output=True,
             text=True,
             timeout=timeout,
+            # Context values arrive here, not spliced into the command text.
+            env={**os.environ, **hook_context_env(ctx)},
         )
         duration_ms = int((time.monotonic() - start) * 1000)
         return HookResult(
@@ -159,6 +189,41 @@ def execute_hook(
     command = getattr(config.hooks, hook_name, None)
     if not command:
         return None
+
+    # Trust gate (#905). Hook commands come from files the repository can
+    # commit, and `cf init` fires after_init immediately — so without this,
+    # cloning an untrusted repo and running any cf command runs its code. The
+    # decision is recorded outside the repo tree and keyed to these exact
+    # commands; see core.hook_trust.
+    from codeframe.core.hook_trust import (
+        allow_hooks_requested,
+        describe_hooks,
+        is_trusted,
+    )
+
+    if not (is_trusted(workspace_path, config.hooks) or allow_hooks_requested()):
+        message = (
+            f"Refusing to run the '{hook_name}' hook: this workspace's hooks "
+            "are not trusted. They come from files inside the repository, so "
+            "running them is running its code.\n"
+            f"{describe_hooks(config.hooks)}\n"
+            "Approve them with 'cf hooks trust', or pass --allow-hooks "
+            "(CODEFRAME_ALLOW_HOOKS=1) if you have reviewed them."
+        )
+        # Reuses the existing failure path so every caller's abort/warn handling
+        # applies unchanged — an untrusted hook is a hook that did not succeed.
+        result = HookResult(
+            hook_name=hook_name, command=command, success=False,
+            stdout="", stderr=message, duration_ms=0, timed_out=False,
+        )
+        if abort_on_failure:
+            raise HookAbortError(hook_name, result)
+        logger.warning("%s", message)
+        return result
+
+    # The exact command is shown before the first execution, so an approval is
+    # never given to something the operator has not seen.
+    logger.info("Running %s hook: %s", hook_name, command)
 
     try:
         result = run_hook(hook_name, command, workspace_path, ctx, config.hooks.hook_timeout)

@@ -5,6 +5,7 @@ Usage:
     codeframe hooks run <hook_name>   # Manually trigger a hook
     codeframe hooks set <name> <cmd>  # Set a hook command
     codeframe hooks clear <name>      # Remove a hook
+    codeframe hooks trust             # Approve repo-supplied hooks (#905)
 """
 
 from pathlib import Path
@@ -71,6 +72,16 @@ def hooks_show(
     table.add_row("hook_timeout", f"{config.hooks.hook_timeout}s", "[dim]default[/dim]")
 
     console.print(table)
+
+    from codeframe.core.hook_trust import describe_hooks, is_trusted
+    if describe_hooks(config.hooks):
+        if is_trusted(path, config.hooks):
+            console.print("[green]Trusted[/green] — these hooks may run.")
+        else:
+            console.print(
+                "[yellow]Not trusted[/yellow] — these hooks will NOT run. "
+                "Approve with 'codeframe hooks trust'."
+            )
 
 
 @hooks_app.command("run")
@@ -166,6 +177,7 @@ def hooks_set(
 
     setattr(config.hooks, hook_name, command)
     save_environment_config(path, config)
+    _record_trust(path, config)
 
     console.print(f"[green]Hook '{hook_name}' set to:[/green] {command}")
 
@@ -204,5 +216,59 @@ def hooks_clear(
 
     setattr(config.hooks, hook_name, None)
     save_environment_config(path, config)
+    _record_trust(path, config)
 
     console.print(f"[green]Hook '{hook_name}' cleared.[/green]")
+
+
+def _record_trust(path: Path, config: "object") -> None:
+    """Approve the hooks the operator just edited via the CLI.
+
+    Trust is keyed on the exact commands (#905), so any edit would otherwise
+    revoke it — including the operator's own.
+    """
+    from codeframe.core.hook_trust import record_trust
+
+    record_trust(path, config.hooks)  # type: ignore[attr-defined]
+
+
+@hooks_app.command("trust")
+def hooks_trust(
+    workspace_path: Optional[Path] = typer.Option(
+        None, "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt"),
+) -> None:
+    """Approve this workspace's hook commands so they are allowed to run.
+
+    Hooks come from files a repository can commit, so cloning an untrusted repo
+    would otherwise be enough to get its shell commands executed (#905). The
+    decision is recorded outside the repository tree and keyed to these exact
+    commands, so editing a hook requires approving it again.
+    """
+    from codeframe.core.config import load_environment_config
+    from codeframe.core.hook_trust import describe_hooks, record_trust
+    from codeframe.core.workspace import get_workspace
+
+    path = (workspace_path or Path.cwd()).resolve()
+    try:
+        path = get_workspace(path).repo_path
+    except (FileNotFoundError, ValueError):
+        pass  # Workspace not initialized; fall back to raw path
+
+    config = load_environment_config(path)
+    described = describe_hooks(config.hooks) if config else ""
+    if not described:
+        console.print("[yellow]No hooks configured — nothing to trust.[/yellow]")
+        raise typer.Exit(1)
+
+    # Always show the exact commands before approval: they run as you.
+    console.print("[bold]These commands will run on this workspace's lifecycle events:[/bold]")
+    console.print(described)
+    if not yes and not typer.confirm("Trust these hooks?", default=False):
+        console.print("[yellow]Not trusted.[/yellow]")
+        raise typer.Exit(1)
+
+    record_trust(path, config.hooks)
+    console.print(f"[green]Hooks trusted for {path}[/green]")

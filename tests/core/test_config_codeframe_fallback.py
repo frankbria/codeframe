@@ -126,8 +126,14 @@ class TestCodeframeConfigToEnvConfig:
         # pytest is not a lint tool
         assert "pytest" not in config.lint_tools
 
-    def test_hooks_map_correctly(self, tmp_path):
-        """hooks dict maps to HooksConfig."""
+    def test_hooks_are_not_mapped(self, tmp_path):
+        """hooks are deliberately NOT sourced from CODEFRAME.md (#905).
+
+        This file is located by walking *up* from the workspace, so a parent
+        directory — or a cloned repository — could otherwise hand `cf init`
+        shell commands to run. Hooks come only from .codeframe/config.yaml,
+        and even there they need a recorded trust decision.
+        """
         _write_codeframe_md(tmp_path, {
             "hooks": {
                 "after_init": "echo initialized",
@@ -137,8 +143,8 @@ class TestCodeframeConfigToEnvConfig:
 
         config = load_environment_config(tmp_path)
         assert config is not None
-        assert config.hooks.after_init == "echo initialized"
-        assert config.hooks.before_task == "echo starting"
+        assert config.hooks.after_init is None
+        assert config.hooks.before_task is None
 
     def test_batch_maps_correctly(self, tmp_path):
         """batch config maps to BatchConfig."""
