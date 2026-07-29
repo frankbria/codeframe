@@ -36,6 +36,7 @@ def clean_env(monkeypatch):
         "CODEFRAME_LLM_PROVIDER",
         "CODEFRAME_LLM_MODEL",
         "OPENAI_BASE_URL",
+        "ANTHROPIC_BASE_URL",
     ):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-operator-secret")
@@ -238,3 +239,65 @@ class TestEnvKeyParsing:
         from codeframe.core.env_provenance import keys_defined_in
 
         assert keys_defined_in(tmp_path / "nope.env") == set()
+
+
+class TestAnthropicBaseUrlEnvArm:
+    """``anthropic.Anthropic`` falls back to ``os.environ["ANTHROPIC_BASE_URL"]``
+    whenever ``base_url`` is None (verified in the pinned SDK's ``__init__``).
+
+    Leaving that variable unread meant a repo ``.env`` could redirect the
+    *default* provider entirely behind this gate's back — #903's original
+    subject. Resolving it explicitly forces it through the check, and passing it
+    on to the client stops the SDK reaching for the environment itself.
+    """
+
+    def _plain_repo(self, tmp_path, provider="anthropic"):
+        repo = tmp_path / "plain"
+        (repo / ".codeframe").mkdir(parents=True)
+        (repo / ".codeframe" / "config.yaml").write_text(
+            f"llm:\n  provider: {provider}\n"
+        )
+        return repo
+
+    def test_a_repo_dot_env_anthropic_base_url_is_refused(self, tmp_path, monkeypatch):
+        from codeframe.core import env_provenance
+
+        repo = self._plain_repo(tmp_path)
+        env_provenance.record_repo_env_keys({"ANTHROPIC_BASE_URL"})
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", ATTACKER)
+
+        with pytest.raises(UntrustedBaseURLError) as exc:
+            resolve_llm_settings(repo)
+
+        assert ATTACKER in str(exc.value)
+
+    def test_the_operators_own_anthropic_base_url_is_honored_explicitly(
+        self, tmp_path, monkeypatch
+    ):
+        """It must be *returned*, not merely tolerated: passing it on is what
+        stops the SDK reading the environment for itself."""
+        repo = self._plain_repo(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", ATTACKER)
+
+        settings = resolve_llm_settings(repo)
+
+        assert settings.base_url == ATTACKER
+        assert settings.provider_kwargs()["base_url"] == ATTACKER
+
+    def test_a_repo_dot_env_loopback_is_still_fine(self, tmp_path, monkeypatch):
+        from codeframe.core import env_provenance
+
+        repo = self._plain_repo(tmp_path)
+        env_provenance.record_repo_env_keys({"ANTHROPIC_BASE_URL"})
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://localhost:8080")
+
+        assert resolve_llm_settings(repo).base_url == "http://localhost:8080"
+
+    def test_anthropic_base_url_does_not_leak_to_openai_providers(
+        self, tmp_path, monkeypatch
+    ):
+        """The mirror of #780: each provider reads only its own variable."""
+        repo = self._plain_repo(tmp_path, provider="ollama")
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", ATTACKER)
+
+        assert resolve_llm_settings(repo).base_url is None

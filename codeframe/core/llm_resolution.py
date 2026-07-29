@@ -147,15 +147,30 @@ def resolve_llm_settings(
     config_base_url = llm_cfg.base_url if llm_cfg else None
     base_url = config_base_url
     env_sourced_from_repo = False
-    if not base_url and provider_type in OPENAI_COMPATIBLE_PROVIDERS:
-        base_url = os.getenv("OPENAI_BASE_URL")
+    if not base_url:
         # The env tier is trusted because it is the *operator's* environment —
         # but `cf` loads <cwd>/.env with override=True, so a file committed in a
-        # cloned repo can set this key and beat what the operator exported. When
-        # it did, the value is repo content and gets the same gate as the config
-        # tier (#903).
-        if base_url and is_repo_supplied("OPENAI_BASE_URL"):
-            env_sourced_from_repo = True
+        # cloned repo can set these keys and beat what the operator exported.
+        # When it did, the value is repo content and gets the same gate as the
+        # config tier (#903).
+        #
+        # ANTHROPIC_BASE_URL is read here rather than left to the SDK on
+        # purpose: anthropic.Anthropic falls back to os.environ["ANTHROPIC_BASE_URL"]
+        # whenever base_url is None, so leaving it unset here would let a repo
+        # .env redirect the *default* provider entirely behind this gate's back.
+        # Resolving it explicitly means the value always passes through the
+        # check and is always announced.
+        env_var = (
+            "OPENAI_BASE_URL"
+            if provider_type in OPENAI_COMPATIBLE_PROVIDERS
+            else "ANTHROPIC_BASE_URL"
+            if provider_type == "anthropic"
+            else None
+        )
+        if env_var:
+            base_url = os.getenv(env_var)
+            if base_url and is_repo_supplied(env_var):
+                env_sourced_from_repo = True
 
     # A config-sourced base_url is repo-controlled input (#903). #780 closed the
     # env fallback for Anthropic, but a config file committed inside a cloned
