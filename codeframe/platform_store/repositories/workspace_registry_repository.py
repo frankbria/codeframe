@@ -33,14 +33,19 @@ class WorkspaceRegistryRepository(BaseRepository):
         """Register (or refresh) a workspace by its repo path.
 
         Idempotent on ``repo_path``: a second call for the same path updates the
-        existing row (name/tech_stack/owner + ``last_opened_at``) instead of
-        creating a duplicate, preserving the original ``id`` and ``created_at``.
+        existing row (name/tech_stack + ``last_opened_at``) instead of creating a
+        duplicate, preserving the original ``id`` and ``created_at``.
+
+        Ownership is **write-once** (#898): a conflict never reassigns an
+        existing ``owner_user_id``. Only an ownerless row (``NULL``, e.g. one
+        registered while auth was disabled) can still be claimed.
 
         Args:
             repo_path: Absolute path to the repository (unique key).
             name: Human-readable display name (defaults to last path segment).
             tech_stack: Natural-language tech stack description.
-            owner_user_id: Owning user id (nullable until auth is enforced).
+            owner_user_id: Owning user id. Recorded on insert, or on a refresh of
+                a row that has no owner yet; ignored when the row already has one.
 
         Returns:
             The registry entry as a dict.
@@ -61,12 +66,12 @@ class WorkspaceRegistryRepository(BaseRepository):
                 -- COALESCE so a refresh that omits name/tech_stack (None) keeps the
                 -- previously-stored value instead of nulling it.
                 name = COALESCE(excluded.name, workspaces_registry.name),
-                -- COALESCE so a refresh that omits the owner (None) keeps the
-                -- recorded owner instead of nulling it (#720). A refresh with a
-                -- *different* non-None owner still overwrites; that's safe only
-                -- because path-based tenant isolation (#655) stops user B from
-                -- re-registering a path they don't own.
-                owner_user_id = COALESCE(excluded.owner_user_id, workspaces_registry.owner_user_id),
+                -- Ownership is write-once: an already-recorded owner is never
+                -- reassigned (#898), so user B re-registering user A's
+                -- repo_path cannot take the row over. A refresh that omits the
+                -- owner still keeps it (#720), and a row left ownerless by an
+                -- auth-disabled run is still claimable on first attribution.
+                owner_user_id = COALESCE(workspaces_registry.owner_user_id, excluded.owner_user_id),
                 tech_stack = COALESCE(excluded.tech_stack, workspaces_registry.tech_stack),
                 last_opened_at = excluded.last_opened_at
             """,

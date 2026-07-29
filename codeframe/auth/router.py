@@ -11,7 +11,12 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from codeframe.auth.schemas import UserCreate, UserRead, UserUpdate
-from codeframe.auth.manager import auth_backend, fastapi_users, get_async_session_maker
+from codeframe.auth.manager import (
+    DISABLED_PASSWORD,
+    auth_backend,
+    fastapi_users,
+    get_async_session_maker,
+)
 from codeframe.auth.models import User
 from codeframe.auth.api_key_router import router as api_key_router
 from codeframe.auth.dependencies import require_auth
@@ -30,11 +35,10 @@ class StreamTicketResponse(BaseModel):
     expires_in: int
 
 
-# Placeholder password for the seeded bootstrap admin (id=1). It cannot match
-# any bcrypt hash, so that account can never log in. It is therefore NOT a real
-# account and does not close the registration window. See SchemaManager
-# ._ensure_default_admin_user.
-_DISABLED_PASSWORD = "!DISABLED!"
+# ``DISABLED_PASSWORD`` (imported from auth.manager) is the placeholder password
+# for the seeded bootstrap admin (id=1). It cannot match any bcrypt hash, so that
+# account can never log in. It is therefore NOT a real account and does not close
+# the registration window. See SchemaManager._ensure_default_admin_user.
 
 # Serializes the bootstrap registration check-then-create window. The count
 # check (here) and the user INSERT (fastapi-users route handler) run in
@@ -198,7 +202,7 @@ async def allow_registration(request: Request):
             result = await session.execute(
                 select(func.count())
                 .select_from(User)
-                .where(User.hashed_password != _DISABLED_PASSWORD)
+                .where(User.hashed_password != DISABLED_PASSWORD)
             )
             real_user_count = result.scalar_one()
 

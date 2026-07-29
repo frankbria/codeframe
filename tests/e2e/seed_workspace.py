@@ -57,13 +57,16 @@ def seed_central_user(central_db_path: str) -> None:
     try:
         now = _now().isoformat()
         # id=1 is the seeded DISABLED admin; use a distinct id for our login user.
+        # is_superuser=1 mirrors a real install: the bootstrap first account is
+        # promoted to admin (#898), and admin scope is what admits credential
+        # storage, GitHub PAT storage and PR merge.
         conn.execute(
             """
             INSERT OR IGNORE INTO users (
                 id, email, name, hashed_password,
                 is_active, is_superuser, is_verified, email_verified,
                 created_at, updated_at
-            ) VALUES (2, ?, 'E2E Test User', ?, 1, 0, 1, 1, ?, ?)
+            ) VALUES (2, ?, 'E2E Test User', ?, 1, 1, 1, 1, ?, ?)
             """,
             (TEST_USER_EMAIL, TEST_USER_HASH, now, now),
         )

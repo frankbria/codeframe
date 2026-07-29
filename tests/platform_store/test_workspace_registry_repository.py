@@ -179,6 +179,30 @@ class TestOwnerScoping:
         db.workspace_registry.upsert(repo_path="/p/alpha", name="alpha", owner_user_id=None)
         assert db.workspace_registry.get_by_path("/p/alpha")["owner_user_id"] == 1
 
+    def test_upsert_refuses_to_reassign_an_existing_owner(self, db_two_users):
+        """Issue #898 / P0.4: ownership is not transferable by re-registering.
+
+        Previously the ON CONFLICT clause took ``excluded.owner_user_id`` first,
+        so user B registering user A's ``repo_path`` silently took the row over.
+        """
+        db = db_two_users
+        db.workspace_registry.upsert(repo_path="/p/alpha", name="alpha", owner_user_id=1)
+
+        db.workspace_registry.upsert(repo_path="/p/alpha", name="alpha", owner_user_id=2)
+
+        assert db.workspace_registry.get_by_path("/p/alpha")["owner_user_id"] == 1
+        # And user B still cannot see or delete it.
+        assert db.workspace_registry.list_all(owner_user_id=2) == []
+
+    def test_upsert_claims_an_unowned_row(self, db_two_users):
+        """A row registered before auth was enforced (owner NULL) is claimable."""
+        db = db_two_users
+        db.workspace_registry.upsert(repo_path="/p/alpha", name="alpha", owner_user_id=None)
+
+        db.workspace_registry.upsert(repo_path="/p/alpha", name="alpha", owner_user_id=2)
+
+        assert db.workspace_registry.get_by_path("/p/alpha")["owner_user_id"] == 2
+
     def test_delete_is_owner_scoped(self, db_two_users):
         db = db_two_users
         entry = db.workspace_registry.upsert(repo_path="/p/a", name="a", owner_user_id=1)

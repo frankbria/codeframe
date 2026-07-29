@@ -9,6 +9,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Password placeholder for the seeded bootstrap admin (id=1). It cannot match any
+# bcrypt hash, so that account can never log in and must never be counted as a
+# real user.
+#
+# THE single definition — ``codeframe.auth`` imports this one (that direction is
+# DAG-legal; the reverse is not). It must not be duplicated: the registration
+# gate, the bootstrap promotion and the admin backfill all compare against it,
+# so two copies drifting apart would silently make a fresh deploy unclaimable
+# AND strip an upgraded deploy's only admin, with no error anywhere.
+DISABLED_PASSWORD = "!DISABLED!"
+
+# Back-compat alias for readers of this module's private name.
+_DISABLED_PASSWORD = DISABLED_PASSWORD
+
 
 class SchemaManager:
     """Manages database schema creation and migrations.
@@ -53,6 +67,9 @@ class SchemaManager:
 
         # Ensure default admin user exists
         self._ensure_default_admin_user()
+
+        # Backfill admin for instances upgraded across issue #898
+        self._ensure_bootstrap_superuser()
 
     def _create_auth_tables(self, cursor: sqlite3.Cursor) -> None:
         """Create authentication tables (fastapi-users compatible)."""
@@ -320,8 +337,9 @@ class SchemaManager:
                 id, email, name, hashed_password,
                 is_active, is_superuser, is_verified, email_verified
             )
-            VALUES (1, 'admin@localhost', 'Admin User', '!DISABLED!', 1, 1, 1, 1)
-            """
+            VALUES (1, 'admin@localhost', 'Admin User', ?, 1, 1, 1, 1)
+            """,
+            (_DISABLED_PASSWORD,),
         )
         user_created = cursor.rowcount > 0
 
@@ -331,4 +349,49 @@ class SchemaManager:
                 "This account has a disabled password and cannot be used for login."
             )
 
+        self.conn.commit()
+
+    def _ensure_bootstrap_superuser(self) -> None:
+        """Give the operator admin back after issue #898 (upgrade backfill).
+
+        Admin scope now derives from ``users.is_superuser``, and every account
+        registered before that change has it set to 0 (fastapi-users forces the
+        field False on registration). An in-place upgrade would therefore strip
+        admin from the only human on the instance, with no in-product way to
+        restore it.
+
+        So: when no *login-capable* superuser exists, promote the earliest
+        login-capable account. The seeded id=1 admin holds is_superuser=1 but
+        carries a password placeholder that cannot match any bcrypt hash, so it
+        never counts on either side of the check. Idempotent — the second run
+        finds a superuser and does nothing.
+
+        Note this runs on *every* ``initialize()``, not once, so demoting the
+        only login-capable account does not stick. That is deliberate: an
+        instance without a reachable admin cannot store credentials or merge
+        PRs and has no in-product way back. Demoting a non-earliest account
+        still sticks, since an admin then exists.
+        """
+        # ponytail: earliest-id heuristic, not an ownership record. Fine while
+        # registration admits exactly one account (#336/#897); revisit if the
+        # product ever grows multi-user signup.
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            UPDATE users SET is_superuser = 1
+            WHERE id = (
+                SELECT MIN(id) FROM users WHERE hashed_password != ?
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM users
+                WHERE is_superuser = 1 AND hashed_password != ?
+            )
+            """,
+            (_DISABLED_PASSWORD, _DISABLED_PASSWORD),
+        )
+        if cursor.rowcount > 0:
+            logger.info(
+                "Granted admin (is_superuser) to the earliest login-capable "
+                "account: this instance had none after the scope change (#898)."
+            )
         self.conn.commit()

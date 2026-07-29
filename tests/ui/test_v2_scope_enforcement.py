@@ -41,12 +41,18 @@ def scoped_app(tmp_path, monkeypatch):
 
     db = Database(db_path)
     db.initialize()
+    # Two users: 1 is an ordinary account (is_superuser=0) and 2 is the
+    # instance admin. Since #898 a key's scopes are clamped to what its owner
+    # holds, so an admin-scoped key must belong to a superuser — the read/write
+    # keys stay on user 1 so the method-scope tests are unaffected.
     db.conn.execute(
         """
         INSERT OR REPLACE INTO users (
             id, email, name, hashed_password,
             is_active, is_superuser, is_verified, email_verified
-        ) VALUES (1, 'test@example.com', 'Test', '!DISABLED!', 1, 0, 1, 1)
+        ) VALUES
+            (1, 'test@example.com', 'Test', '!DISABLED!', 1, 0, 1, 1),
+            (2, 'admin@example.com', 'Admin', '!DISABLED!', 1, 1, 1, 1)
         """
     )
     db.conn.commit()
@@ -55,7 +61,7 @@ def scoped_app(tmp_path, monkeypatch):
     keys = {
         "read": svc.create_api_key(user_id=1, name="r", scopes=[SCOPE_READ]).key,
         "write": svc.create_api_key(user_id=1, name="w", scopes=[SCOPE_READ, SCOPE_WRITE]).key,
-        "admin": svc.create_api_key(user_id=1, name="a", scopes=[SCOPE_ADMIN]).key,
+        "admin": svc.create_api_key(user_id=2, name="a", scopes=[SCOPE_ADMIN]).key,
     }
     db.close()
 
@@ -159,6 +165,38 @@ class TestAdminScope:
         # admin passes the scope gate; may 400/404/422 on body/logic, never 403.
         assert r.status_code != 403
         assert r.status_code != 401
+
+
+class TestJwtIsNotAutomaticallyAdmin:
+    """Issue #898 / P0.4 — a browser session no longer implies admin.
+
+    The ``scoped_app`` user (id=1) is seeded ``is_superuser = 0``, so its JWT
+    must be write-capable but admin-forbidden. Before this, every JWT carried
+    ``[read, write, admin]`` and the admin gate was decorative for anyone with a
+    session cookie's worth of token.
+    """
+
+    def _jwt(self):
+        from tests.conftest import create_test_jwt_token
+
+        return {"Authorization": f"Bearer {create_test_jwt_token(user_id=1)}"}
+
+    def test_non_superuser_jwt_forbidden_on_credential_storage(self, scoped_app):
+        app, _ = scoped_app
+        r = TestClient(app).put(
+            "/api/v2/settings/keys/openai", headers=self._jwt(), json={"value": "sk-x"}
+        )
+        assert r.status_code == 403, r.text
+
+    def test_non_superuser_jwt_forbidden_on_pr_merge(self, scoped_app):
+        app, _ = scoped_app
+        r = TestClient(app).post("/api/v2/pr/1/merge", headers=self._jwt(), json={})
+        assert r.status_code == 403, r.text
+
+    def test_non_superuser_jwt_still_allowed_on_write(self, scoped_app):
+        app, _ = scoped_app
+        r = TestClient(app).put("/api/v2/settings", headers=self._jwt(), json={})
+        assert r.status_code not in (401, 403), r.text
 
 
 class TestPatchIsMutating:

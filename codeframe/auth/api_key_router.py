@@ -15,10 +15,15 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, field_validator
 
-from codeframe.auth.dependencies import get_current_user, require_auth
+from codeframe.auth.dependencies import (
+    get_current_user,
+    require_auth,
+    require_method_scope,
+)
 from codeframe.auth.models import User
 from codeframe.auth.api_keys import (
     validate_scopes,
+    SCOPE_ADMIN,
     SCOPE_READ,
     SCOPE_WRITE,
 )
@@ -27,7 +32,15 @@ from codeframe.platform_store.database import Database
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/auth/api-keys", tags=["auth", "api-keys"])
+# The method-scope guard applies to the whole router (#898). Without it this
+# router proved authentication only, so a scopes:["read"] key could DELETE its
+# owner's write/admin keys — a mutation from a credential that proved read
+# access. GET needs read; POST/DELETE need write.
+router = APIRouter(
+    prefix="/api/auth/api-keys",
+    tags=["auth", "api-keys"],
+    dependencies=[Depends(require_method_scope)],
+)
 
 
 # =============================================================================
@@ -151,12 +164,25 @@ async def create_api_key(
     The full API key is returned only once. Store it securely - it cannot
     be retrieved again.
 
+    A key can never grant more than its creator holds: only an ``is_superuser``
+    account may mint an ``admin``-scoped key (#898). Otherwise the new
+    JWT-scope derivation would be a formality — any signed-in user could issue
+    themselves an admin key and use it to store credentials or merge PRs.
+
     Args:
         body: API key configuration (name, scopes, optional expiration)
 
     Returns:
         Created API key details including the full key (shown once)
     """
+    # getattr, matching require_auth: a principal lacking the column must fail
+    # closed to 403, never raise into a 500 that leaves the route ungated.
+    if SCOPE_ADMIN in body.scopes and not getattr(current_user, "is_superuser", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an admin account may create an admin-scoped API key",
+        )
+
     service = get_api_key_service(request)
 
     result = service.create_api_key(

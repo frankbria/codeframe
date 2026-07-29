@@ -15,6 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 
 from codeframe.auth.models import User
 
+# Re-exported, never redefined. The placeholder password for the seeded
+# bootstrap admin (id=1) is owned by the layer that writes it
+# (SchemaManager._ensure_default_admin_user). Two independent copies would have
+# to stay byte-identical forever: the registration gate, the bootstrap
+# promotion and the admin backfill all compare against it, so any drift makes
+# fresh deploys unclaimable and silently strips an upgraded deploy's admin.
+from codeframe.platform_store.schema_manager import DISABLED_PASSWORD
+
 logger = logging.getLogger(__name__)
 
 # Get configuration from environment
@@ -167,6 +175,59 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
             "User registered",
             extra={"user_id": user.id, "email": user.email}
         )
+        await self._promote_if_bootstrap_user(user)
+
+    async def _promote_if_bootstrap_user(self, user: User) -> None:
+        """Grant ``is_superuser`` to the instance's first real account (#898).
+
+        Admin scope derives from ``is_superuser``, and
+        ``fastapi_users.get_register_router`` forces the field to ``False`` on
+        every registration — so without this no principal would ever hold admin
+        and credential storage, GitHub PAT storage and PR merge would be
+        permanently 403.
+
+        ``/auth/register`` already admits exactly one login-capable account
+        (issues #336, #897), so that account is the operator. Two guards, both
+        evaluated *inside* a *single atomic UPDATE* rather than read-then-write:
+
+        - this must be the only login-capable account, and
+        - no login-capable superuser may exist yet.
+
+        Atomicity matters because ``_register_lock`` is an ``asyncio.Lock`` —
+        in-process only, so it does not serialize across uvicorn/gunicorn
+        workers. With count-then-write, two racing first-time registrations can
+        each observe two users and neither promote, leaving the instance with
+        zero admins and no in-product way back. Letting the database arbitrate
+        removes that window.
+        """
+        from sqlalchemy import text
+
+        session = getattr(self.user_db, "session", None)
+        if session is None:  # pragma: no cover - non-SQLAlchemy user_db
+            return
+
+        result = await session.execute(
+            text(
+                "UPDATE users SET is_superuser = 1 "
+                "WHERE id = :uid"
+                "  AND (SELECT COUNT(*) FROM users"
+                "       WHERE hashed_password != :disabled) = 1"
+                "  AND NOT EXISTS ("
+                "      SELECT 1 FROM users"
+                "      WHERE is_superuser = 1 AND hashed_password != :disabled"
+                "  )"
+            ),
+            {"uid": user.id, "disabled": DISABLED_PASSWORD},
+        )
+        await session.commit()
+
+        if result.rowcount:
+            # Keep the in-memory row consistent with what was just written, so
+            # the registration response does not report is_superuser=false.
+            await session.refresh(user)
+            logger.info(
+                "Promoted bootstrap user to superuser", extra={"user_id": user.id}
+            )
 
     async def on_after_login(
         self, user: User, request: Optional[Request] = None, response=None
