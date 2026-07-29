@@ -219,3 +219,76 @@ def test_quick_fix_package_install_gets_the_sanitized_env(secrets_in_parent, wor
     assert recorded.exists(), f"the install command did not run: {ok} {message}"
     leaked = _leaked(recorded.read_text())
     assert not leaked, f"package install saw {leaked}"
+
+
+def test_lifecycle_hook_cannot_see_the_api_key(secrets_in_parent, workspace, monkeypatch):
+    """Trust says the command may *run*, not that it may read the API keys.
+
+    Hooks are shell commands from repo config — the same class of input as
+    everything else here — so the trust gate (#905) and the environment
+    allowlist (#907) are separate controls.
+    """
+    from codeframe.core import hook_trust
+    from codeframe.core.config import EnvironmentConfig, HooksConfig
+    from codeframe.core.hooks import HookContext, execute_hook
+
+    monkeypatch.setenv(hook_trust.ALLOW_HOOKS_ENV, "1")
+    config = EnvironmentConfig(
+        hooks=HooksConfig(after_init='echo "leak=$ANTHROPIC_API_KEY:$AUTH_SECRET"')
+    )
+    ctx = HookContext(
+        task_id="1", task_title="t", task_status="init", workspace_path=str(workspace)
+    )
+
+    result = execute_hook("after_init", config, workspace, ctx, abort_on_failure=False)
+
+    assert result is not None and result.success, result.stderr
+    leaked = _leaked(result.stdout + result.stderr)
+    assert not leaked, f"hook saw {leaked}"
+
+
+def test_hook_still_receives_its_context_values(secrets_in_parent, workspace, monkeypatch):
+    """Sanitizing the environment must not strip the hook's own variables."""
+    from codeframe.core import hook_trust
+    from codeframe.core.config import EnvironmentConfig, HooksConfig
+    from codeframe.core.hooks import HookContext, execute_hook
+
+    monkeypatch.setenv(hook_trust.ALLOW_HOOKS_ENV, "1")
+    config = EnvironmentConfig(hooks=HooksConfig(after_init='echo "{{ task_title }}"'))
+    ctx = HookContext(
+        task_id="1", task_title="Fix the parser", task_status="init",
+        workspace_path=str(workspace),
+    )
+
+    result = execute_hook("after_init", config, workspace, ctx, abort_on_failure=False)
+
+    assert result.stdout.strip() == "Fix the parser"
+
+
+def test_unbuildable_sandbox_home_does_not_fall_back_to_the_operator(tmp_path, monkeypatch):
+    """Unsetting HOME fails *open*: expanduser falls back to getpwuid().
+
+    So the failure path must still point HOME somewhere harmless rather than
+    delete it.
+    """
+    operator_home = tmp_path / "operator"
+    operator_home.mkdir()
+    monkeypatch.setenv("HOME", str(operator_home))
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    # .codeframe exists as a *file*, so mkdir of .codeframe/agent-home raises.
+    (workspace / ".codeframe").write_text("not a directory")
+
+    env = build_agent_env(workspace)
+
+    assert env["HOME"] != str(operator_home)
+    assert Path(env["HOME"]).is_relative_to(workspace)
+
+    import subprocess
+
+    proc = subprocess.run(
+        ["python3", "-c", "import os;print(os.path.expanduser('~'))"],
+        cwd=workspace, env=env, capture_output=True, text=True,
+    )
+    assert str(operator_home) not in proc.stdout
