@@ -43,6 +43,15 @@ _WATCHED = (
     "HOME",
     "KILOCODE_PATH",
     "KILOCODE_FLAGS",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "REQUESTS_CA_BUNDLE",
+    "CURL_CA_BUNDLE",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "https_proxy",
     "CODEFRAME_TOKEN",
     "DATABASE_PATH",
     "CODEFRAME_TELEMETRY_ENDPOINT",
@@ -108,7 +117,16 @@ class TestSecuritySteeringKeysAreNeverTakenFromARepo:
             "PATH",
             "HOME",
             "KILOCODE_PATH",                 # an executable that gets run
-            "KILOCODE_FLAGS",                # argument injection into that run
+            "KILOCODE_FLAGS",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "REQUESTS_CA_BUNDLE",
+    "CURL_CA_BUNDLE",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "https_proxy",                # argument injection into that run
         ],
     )
     def test_a_repo_env_cannot_set_it(self, repo, tmp_path, key):
@@ -199,16 +217,87 @@ class TestForbiddenKeyRule:
 
 
 class TestProvenanceStillRecorded:
-    def test_repo_keys_are_still_recorded_for_the_llm_gate(self, repo, tmp_path):
+    def test_repo_keys_are_recorded_for_the_llm_gate(self, repo, tmp_path):
         """#903's gate depends on this, and #904 must not quietly remove it."""
         from codeframe.core import env_provenance
 
-        _write_env(repo, "HARMLESS_SETTING=x\nANTHROPIC_BASE_URL=https://evil\n")
+        _write_env(repo, "HARMLESS_SETTING=x\n")
 
         load_env_files(cwd=repo, home=tmp_path / "nohome")
 
         assert env_provenance.is_repo_supplied("HARMLESS_SETTING")
-        assert env_provenance.is_repo_supplied("ANTHROPIC_BASE_URL")
+
+    def test_a_blocked_key_is_not_marked_repo_supplied(self, repo, tmp_path):
+        """Review finding: an earlier version recorded provenance for *every*
+        key in the repo's .env, including the ones whose value it then discarded.
+
+        The #903 gate would then refuse the **operator's own** base_url merely
+        because a repo .env mentioned the same name — the opposite of this
+        module's guarantee. The repo never supplied that value, so it is not
+        repo-supplied.
+        """
+        from codeframe.core import env_provenance
+
+        os.environ["ANTHROPIC_BASE_URL"] = "https://my-own-proxy.example"
+        _write_env(repo, "ANTHROPIC_BASE_URL=https://evil\n")
+
+        load_env_files(cwd=repo, home=tmp_path / "nohome")
+
+        assert os.environ["ANTHROPIC_BASE_URL"] == "https://my-own-proxy.example"
+        assert not env_provenance.is_repo_supplied("ANTHROPIC_BASE_URL")
+
+    def test_the_operators_endpoint_still_works_after_a_repo_mentions_it(
+        self, repo, tmp_path
+    ):
+        """End to end: the #903 gate must not refuse the operator's own value."""
+        from codeframe.adapters.llm.anthropic import AnthropicProvider
+
+        os.environ["ANTHROPIC_BASE_URL"] = "https://my-own-proxy.example"
+        _write_env(repo, "ANTHROPIC_BASE_URL=https://evil\n")
+
+        load_env_files(cwd=repo, home=tmp_path / "nohome")
+
+        provider = AnthropicProvider(api_key="sk-ant-operator")
+        assert provider.base_url == "https://my-own-proxy.example"
+
+
+class TestOutboundTransportCannotBeRedirected:
+    """Review finding: `requests` honors proxy and CA-bundle variables from the
+    environment by default, and `cf auth login` POSTs email+password with no
+    ``proxies=``/``verify=``/``trust_env=False``. A repo .env pairing
+    ``HTTPS_PROXY`` with its own CA bundle MITMs exactly the request this issue
+    exists to protect — around the ``CODEFRAME_API_URL`` block, not through it.
+    """
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
+            "REQUESTS_CA_BUNDLE",
+            "CURL_CA_BUNDLE",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
+        ],
+    )
+    def test_a_repo_env_cannot_set_it(self, repo, tmp_path, key):
+        os.environ.pop(key, None)
+        _write_env(repo, f"{key}=http://attacker.tld:8080\n")
+
+        load_env_files(cwd=repo, home=tmp_path / "nohome")
+
+        assert os.environ.get(key) is None
+
+    def test_lower_case_forms_are_blocked_too(self, repo, tmp_path):
+        """`requests` reads the lower-case spellings as well."""
+        os.environ.pop("https_proxy", None)
+        _write_env(repo, "https_proxy=http://attacker.tld:8080\n")
+
+        load_env_files(cwd=repo, home=tmp_path / "nohome")
+
+        assert os.environ.get("https_proxy") is None
 
 
 class TestExplicitFileIsHonored:

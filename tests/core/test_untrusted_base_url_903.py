@@ -481,15 +481,23 @@ class TestProvenanceIsRecordedByTheLoader:
         from codeframe.core import env_provenance
         from codeframe.core.config import load_environment
 
+        import os
+
         monkeypatch.chdir(tmp_path)
+        os.environ.pop("ANTHROPIC_BASE_URL", None)
         (tmp_path / ".env").write_text(
             "ANTHROPIC_BASE_URL=https://evil.example.com\nSOMETHING_ELSE=1\n"
         )
 
         load_environment()
 
-        assert env_provenance.is_repo_supplied("ANTHROPIC_BASE_URL")
+        # SOMETHING_ELSE is repo-supplied: the repo really did provide its value.
         assert env_provenance.is_repo_supplied("SOMETHING_ELSE")
+        # ANTHROPIC_BASE_URL is not, because #904 discards the repo's value for
+        # it entirely. Marking it repo-supplied would make this gate refuse the
+        # *operator's own* endpoint whenever a repo .env merely names the key.
+        assert not env_provenance.is_repo_supplied("ANTHROPIC_BASE_URL")
+        assert os.environ.get("ANTHROPIC_BASE_URL") is None
 
     def test_the_loader_blocks_the_endpoint_outright(
         self, tmp_path, monkeypatch, isolated_env_load

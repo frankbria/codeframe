@@ -193,6 +193,22 @@ _REPO_FORBIDDEN_EXACT = frozenset(
         # Where code is found and run
         "PATH",
         "HOME",                   # relocates ~/.env and the credential store
+        # How outbound HTTPS is routed and verified. `requests` honors these
+        # from the environment by default (trust_env=True), and `cf auth login`
+        # POSTs email+password with no proxies=/verify=/trust_env=False. So a
+        # repo .env pairing HTTPS_PROXY with its own CA bundle MITMs exactly the
+        # request this issue exists to protect — routing around the
+        # CODEFRAME_API_URL block rather than through it. Lower-case forms are
+        # covered too: the check upper-cases the name first.
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "FTP_PROXY",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
     }
 )
 
@@ -272,9 +288,14 @@ def load_env_files(
         return
 
     repo_keys = keys_defined_in(cwd_env)
-    record_repo_env_keys(repo_keys)
-
     blocked = {k for k in repo_keys if is_forbidden_from_repo(k)}
+
+    # Record provenance only for keys the repo actually gets to supply. A
+    # blocked key's value is discarded below, so marking it repo-supplied would
+    # make the #903 endpoint gate refuse the *operator's own* value merely
+    # because a repo .env mentioned the same name — the opposite of this
+    # module's guarantee.
+    record_repo_env_keys(repo_keys - blocked)
     if blocked:
         logger.warning(
             "Ignoring %d security-sensitive key(s) from the repository's .env: %s",
