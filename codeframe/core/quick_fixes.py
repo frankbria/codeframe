@@ -505,12 +505,19 @@ def apply_quick_fix(
                 return True, f"Would run: {fix.command}"
 
             import subprocess
+
+            from codeframe.core.agent_env import build_agent_env
+
             result = subprocess.run(
                 fix.command.split(),
                 cwd=repo_path,
                 capture_output=True,
                 text=True,
                 timeout=120,
+                # A package install runs the package's own postinstall scripts
+                # (#907). Same allowlisted, credential-free env as every other
+                # agent-triggered subprocess.
+                env=build_agent_env(repo_path),
             )
 
             if result.returncode == 0:

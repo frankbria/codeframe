@@ -190,3 +190,32 @@ def test_parent_process_keeps_its_own_environment(secrets_in_parent):
     build_agent_env(Path.cwd())
 
     assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-LEAKED"
+
+
+# ---------------------------------------------------------------------------
+# Other agent-reachable spawns (found while auditing for siblings)
+# ---------------------------------------------------------------------------
+
+
+def test_quick_fix_package_install_gets_the_sanitized_env(secrets_in_parent, workspace):
+    """A package's own postinstall script is repo-controlled code."""
+    from codeframe.core.quick_fixes import FixType, QuickFix, apply_quick_fix
+
+    # apply_quick_fix does `fix.command.split()`, so the command cannot contain
+    # an argument with spaces — stand in for a postinstall hook with a script.
+    (workspace / "postinstall.py").write_text(
+        "import os, pathlib\n"
+        "pathlib.Path('install_env.txt').write_text(repr(dict(os.environ)))\n"
+    )
+    fix = QuickFix(
+        fix_type=FixType.INSTALL_PACKAGE,
+        description="install with a postinstall hook",
+        command="python3 postinstall.py",
+    )
+
+    ok, message = apply_quick_fix(fix, workspace)
+
+    recorded = workspace / "install_env.txt"
+    assert recorded.exists(), f"the install command did not run: {ok} {message}"
+    leaked = _leaked(recorded.read_text())
+    assert not leaked, f"package install saw {leaked}"
