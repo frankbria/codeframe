@@ -69,6 +69,15 @@ def build_agent_env(workspace_path: Path | str) -> dict[str, str]:
     sandbox_home = workspace_path / ".codeframe" / "agent-home"
     try:
         sandbox_home.mkdir(parents=True, exist_ok=True)
+        # The sandbox fills with pip/npm/cargo cache files, and it lives inside
+        # the workspace — so without this every one of them shows up as
+        # untracked, marking the tree dirty and (worse) landing in the PROOF9
+        # scope, which is built from `status.untracked_files`. Self-ignoring,
+        # the way `uv venv` does it, needs no git-directory resolution and works
+        # unchanged in the linked worktrees CodeFRAME creates.
+        gitignore = sandbox_home / ".gitignore"
+        if not gitignore.exists():
+            gitignore.write_text("*\n")
     except OSError:
         # Point at it anyway. Deleting HOME does NOT fail closed: with the
         # variable *unset*, `expanduser("~")` and everything built on it fall

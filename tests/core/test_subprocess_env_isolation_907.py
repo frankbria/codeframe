@@ -305,3 +305,29 @@ def test_unbuildable_sandbox_home_does_not_fall_back_to_the_operator(tmp_path, m
         cwd=workspace, env=env, capture_output=True, text=True,
     )
     assert str(operator_home) not in proc.stdout
+
+
+def test_the_sandbox_home_does_not_pollute_the_git_status(tmp_path):
+    """The sandbox lives inside the workspace and fills with cache files.
+
+    `get_changed_scope` builds the PROOF9 scope from `status.untracked_files`,
+    so an unignored agent-home drags every pip/npm cache entry into the scope.
+    """
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+
+    env = build_agent_env(repo)
+    # Simulate a tool writing into the sandbox.
+    cache = Path(env["XDG_CACHE_HOME"]) / "pip" / "http"
+    cache.mkdir(parents=True)
+    (cache / "blob").write_text("cached")
+
+    untracked = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=repo, capture_output=True, text=True,
+    ).stdout
+
+    assert "agent-home" not in untracked, f"sandbox leaked into git status:\n{untracked}"
