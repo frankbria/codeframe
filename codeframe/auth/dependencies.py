@@ -12,9 +12,12 @@ read+write always, admin only for ``is_superuser`` accounts (issue #898).
 import logging
 import os
 import re
+import threading
+import time
 from typing import Callable, Dict, Optional, Any, Tuple
 
 from fastapi import Depends, HTTPException, Request, Security, WebSocket, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 
 from codeframe.auth.models import User
@@ -294,11 +297,40 @@ def _scopes_within_owner_grant(db: Any, key_record: Dict[str, Any]) -> list:
     return [s for s in scopes if s != SCOPE_ADMIN]
 
 
+# How long to suppress repeat ``last_used_at`` writes for the same key (#902).
+# Every API-key request used to do a bcrypt verify, a SELECT *and* an
+# UPDATE+COMMIT against a lock with busy_timeout=5000 — a write per request, on
+# the event loop, purely to refresh a timestamp nothing reads at that
+# resolution. Five minutes keeps the field useful for "is this key still in
+# use?" while removing almost all of the writes.
+_LAST_USED_COALESCE_SECONDS = 300.0
+
+# In-process only: each worker refreshes at most once per window per key, which
+# is the right trade for a usage hint. Bounded by the number of live keys.
+_last_used_writes: Dict[str, float] = {}
+_last_used_lock = threading.Lock()
+
+
+def _should_record_last_used(key_id: str) -> bool:
+    """Whether this key's ``last_used_at`` is due for a refresh."""
+    now = time.monotonic()
+    with _last_used_lock:
+        previous = _last_used_writes.get(key_id)
+        if previous is not None and (now - previous) < _LAST_USED_COALESCE_SECONDS:
+            return False
+        _last_used_writes[key_id] = now
+        return True
+
+
 async def get_api_key_auth(
     api_key: Optional[str] = Security(api_key_header),
     request: Request = None,
 ) -> Optional[Dict[str, Any]]:
     """Extract and validate API key from X-API-Key header.
+
+    The work is entirely synchronous — a bcrypt verify plus SQLite reads — so
+    it runs on a worker thread (#902). Inline, every API-key request blocked the
+    event loop on a lock with a 5s busy timeout.
 
     Args:
         api_key: API key from header (auto-extracted by FastAPI Security)
@@ -310,7 +342,11 @@ async def get_api_key_auth(
     """
     if not api_key:
         return None
+    return await run_in_threadpool(_resolve_api_key, api_key, request)
 
+
+def _resolve_api_key(api_key: str, request: Optional[Request]) -> Optional[Dict[str, Any]]:
+    """Blocking half of :func:`get_api_key_auth`. Runs on a worker thread."""
     fallback_db = None
     try:
         # Get database from app state (singleton) or request state
@@ -349,11 +385,14 @@ async def get_api_key_auth(
             logger.warning(f"API key auth failed: verification failed (prefix: {prefix[:4]}...)")
             return None
 
-        # Update last used timestamp (fire and forget)
-        try:
-            db.api_keys.update_last_used(key_record["id"])
-        except Exception as e:
-            logger.warning(f"Failed to update last_used_at: {e}")
+        # Refresh last_used_at at most once per key per window (#902) — this is
+        # an UPDATE+COMMIT, and doing it on every request made each
+        # authenticated call a database writer.
+        if _should_record_last_used(key_record["id"]):
+            try:
+                db.api_keys.update_last_used(key_record["id"])
+            except Exception as e:
+                logger.warning(f"Failed to update last_used_at: {e}")
 
         return {
             "type": "api_key",

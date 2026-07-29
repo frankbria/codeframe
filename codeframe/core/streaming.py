@@ -279,8 +279,34 @@ async def atail_run_output(
         Lines from the log file as they appear
     """
     log_path = get_run_output_path(workspace, run_id)
-    current_line = since_line
     start_time = time.monotonic()
+
+    # Incremental tail (#902). The previous implementation re-read the whole
+    # file with readlines() on every poll — twice a second, per connected
+    # client — so a multi-MB agent log burned O(size) CPU and IO per tick on the
+    # event loop, for every open tab. We now remember a byte offset and read
+    # only what was appended since.
+    offset = 0
+    pending = ""      # bytes read that do not yet end a line
+    skip_lines = max(since_line, 0)
+    started = False
+
+    def _read_new() -> str:
+        """Return text appended since ``offset``, updating it. Never raises."""
+        nonlocal offset
+        try:
+            size = log_path.stat().st_size
+            if size < offset:
+                # Truncated/rotated underneath us — start over rather than
+                # seeking past the end and yielding nothing forever.
+                offset = 0
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                f.seek(offset)
+                chunk = f.read()
+                offset = f.tell()
+            return chunk
+        except Exception:
+            return ""  # File might be temporarily unavailable
 
     while True:
         if max_wait is not None and (time.monotonic() - start_time) >= max_wait:
@@ -289,20 +315,27 @@ async def atail_run_output(
         if should_stop is not None and await should_stop():
             break
 
-        # ponytail: full-file readlines each poll (same as the sync tailer);
-        # fine for agent logs. Switch to incremental seek reads if they grow large.
         if log_path.exists():
-            try:
-                with open(log_path, "r", encoding="utf-8") as f:
-                    all_lines = f.readlines()
+            pending += _read_new()
 
-                while current_line < len(all_lines):
-                    yield all_lines[current_line]
-                    current_line += 1
-            except Exception:
-                pass  # File might be temporarily unavailable
+            # Only emit complete lines: a trailing fragment is a line the agent
+            # is still writing. Holding it back until its newline arrives also
+            # fixes a latent bug in the old version, which could yield a partial
+            # line and then never emit its remainder.
+            while "\n" in pending:
+                line, pending = pending.split("\n", 1)
+                if skip_lines:
+                    skip_lines -= 1
+                    continue
+                started = True
+                yield line + "\n"
 
         await asyncio.sleep(poll_interval)
+
+    # Flush a final unterminated line (a log whose last write had no newline),
+    # which would otherwise be lost when the stream closes.
+    if pending and not skip_lines and (started or since_line == 0):
+        yield pending
 
 
 # =============================================================================

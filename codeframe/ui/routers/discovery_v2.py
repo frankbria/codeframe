@@ -129,7 +129,7 @@ async def start_discovery(
     """
     try:
         # Check for existing active session
-        existing = prd_discovery.get_active_session(workspace)
+        existing = await run_in_threadpool(prd_discovery.get_active_session, workspace)
         if existing and not existing.is_complete():
             raise HTTPException(
                 status_code=400,
@@ -142,7 +142,8 @@ async def start_discovery(
             )
 
         # Start new session
-        session = prd_discovery.start_discovery_session(workspace)
+        # LLM round trip: minutes, not milliseconds (#902).
+        session = await run_in_threadpool(prd_discovery.start_discovery_session, workspace)
         question = session.get_current_question()
 
         return StartDiscoveryResponse(
@@ -183,7 +184,8 @@ async def get_status(
     Returns:
         Discovery status including state, progress, and current question
     """
-    status = prd_discovery.get_discovery_status(
+    status = await run_in_threadpool(
+        prd_discovery.get_discovery_status,
         workspace,
         session_id=session_id,
     )
@@ -220,7 +222,9 @@ async def submit_answer(
             - 500: Processing error
     """
     try:
-        result = prd_discovery.process_discovery_answer(
+        # LLM round trip (#902).
+        result = await run_in_threadpool(
+            prd_discovery.process_discovery_answer,
             workspace,
             session_id,
             body.answer,
@@ -319,7 +323,9 @@ async def reset_discovery(
     Returns:
         Success status and message
     """
-    reset = prd_discovery.reset_discovery(workspace, session_id=session_id)
+    reset = await run_in_threadpool(
+        prd_discovery.reset_discovery, workspace, session_id=session_id
+    )
 
     if reset:
         return {
@@ -402,7 +408,9 @@ async def generate_tasks_from_prd(
             provider = create_provider(resolve_llm_settings(workspace.repo_path))
 
         # Generate tasks
-        generated_tasks = tasks.generate_from_prd(
+        # LLM decomposition of a whole PRD: minutes (#902).
+        generated_tasks = await run_in_threadpool(
+            tasks.generate_from_prd,
             workspace,
             prd_record,
             use_llm=use_llm,
