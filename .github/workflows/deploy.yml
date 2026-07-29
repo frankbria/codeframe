@@ -71,7 +71,9 @@ jobs:
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
           if [ -z "${SSH_KNOWN_HOSTS}" ]; then
-            echo "❌ SSH_KNOWN_HOSTS secret is not set — see this step's comment to populate it."
+            echo "❌ SSH_KNOWN_HOSTS secret is not set — the deploy cannot verify the server host key."
+            echo "   Populate it from a trusted machine (verify the fingerprint out-of-band first):"
+            echo "     ssh-keyscan -H <host> | gh secret set SSH_KNOWN_HOSTS --env <staging|production>"
             exit 1
           fi
           mkdir -p ~/.ssh
@@ -338,7 +340,9 @@ jobs:
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
           if [ -z "${SSH_KNOWN_HOSTS}" ]; then
-            echo "❌ SSH_KNOWN_HOSTS secret is not set — see this step's comment to populate it."
+            echo "❌ SSH_KNOWN_HOSTS secret is not set — the deploy cannot verify the server host key."
+            echo "   Populate it from a trusted machine (verify the fingerprint out-of-band first):"
+            echo "     ssh-keyscan -H <host> | gh secret set SSH_KNOWN_HOSTS --env <staging|production>"
             exit 1
           fi
           mkdir -p ~/.ssh
