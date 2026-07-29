@@ -155,19 +155,32 @@ def test_gate_subprocess_environment_has_no_platform_secrets(
 def test_every_gates_subprocess_passes_an_environment():
     """Guards the next spawn site added without `env=`.
 
-    A behavioural test cannot reach all 13 runners without the toolchains they
-    shell out to, so this asserts the source invariant directly: every
-    `subprocess.run` in gates.py is given an explicit environment.
+    A behavioural test cannot reach all the runners without the toolchains they
+    shell out to (npm, mypy, tsc), so this asserts the source invariant: every
+    `subprocess.run` in gates.py is given an explicit environment. Parsed rather
+    than grepped, so a call that passes `env=` some other way still counts.
     """
+    import ast
+
     import codeframe.core.gates as gates_module
 
-    source = Path(gates_module.__file__).read_text()
+    tree = ast.parse(Path(gates_module.__file__).read_text())
 
-    spawns = source.count("subprocess.run(")
-    envs = source.count("env=build_agent_env(repo_path),")
-    assert spawns == envs, (
-        f"{spawns} subprocess.run calls but only {envs} pass env= — "
-        "a new spawn site is inheriting the operator's environment"
+    missing = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Attribute) and func.attr == "run"):
+            continue
+        if not (isinstance(func.value, ast.Name) and func.value.id == "subprocess"):
+            continue
+        if not any(kw.arg == "env" for kw in node.keywords):
+            missing.append(node.lineno)
+
+    assert not missing, (
+        f"subprocess.run at gates.py lines {missing} inherit the operator's "
+        "environment — pass env=build_agent_env(repo_path)"
     )
 
 
