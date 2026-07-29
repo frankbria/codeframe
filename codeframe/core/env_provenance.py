@@ -195,7 +195,11 @@ def is_forbidden_from_repo(name: str) -> bool:
     return upper in _REPO_FORBIDDEN_EXACT or upper.endswith(_REPO_FORBIDDEN_SUFFIXES)
 
 
-def load_env_files(cwd: Optional[Path] = None, home: Optional[Path] = None) -> None:
+def load_env_files(
+    cwd: Optional[Path] = None,
+    home: Optional[Path] = None,
+    explicit_file: Optional[Path] = None,
+) -> None:
     """Load ``~/.env`` then ``<cwd>/.env`` — the one place that does this (#904).
 
     Two rules the previous four copies of this logic did not follow:
@@ -215,11 +219,28 @@ def load_env_files(cwd: Optional[Path] = None, home: Optional[Path] = None) -> N
     """
     from dotenv import load_dotenv
 
+    if explicit_file is not None:
+        # A caller naming a specific file chose it deliberately — that is the
+        # operator's decision, not repo content, so it is loaded as-is.
+        if explicit_file.exists():
+            load_dotenv(explicit_file)
+        return
+
     home_env = (home or Path.home()) / ".env"
-    if home_env.exists():
+    cwd_env = (cwd or Path.cwd()) / ".env"
+
+    # When cwd *is* home the two are one file. Treat it as the repository copy —
+    # fail closed — because we cannot tell an operator's ~/.env from a checkout
+    # that happens to live at $HOME, and the ignored keys are logged either way.
+    same_file = (
+        home_env.exists()
+        and cwd_env.exists()
+        and home_env.resolve() == cwd_env.resolve()
+    )
+
+    if home_env.exists() and not same_file:
         load_dotenv(home_env)
 
-    cwd_env = (cwd or Path.cwd()) / ".env"
     if not cwd_env.exists():
         return
 

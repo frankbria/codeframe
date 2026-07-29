@@ -701,7 +701,13 @@ def load_environment(env_file: str = ".env") -> None:
     # what keeps the LLM-endpoint gate live in server processes — they reach
     # their .env through here, not through cli/app.py.
     env_path = Path(env_file)
-    load_env_files(cwd=env_path.parent if env_path.name == ".env" else Path.cwd())
+    if env_path.name == ".env":
+        # The default shape: apply the repo rules to <dir>/.env plus ~/.env.
+        load_env_files(cwd=env_path.parent if str(env_path.parent) != "." else None)
+    else:
+        # A caller naming a non-".env" file chose it explicitly; honor it rather
+        # than silently loading the defaults instead.
+        load_env_files(explicit_file=env_path)
 
 
 class Config:

@@ -179,3 +179,55 @@ class TestProvenanceStillRecorded:
 
         assert env_provenance.is_repo_supplied("HARMLESS_SETTING")
         assert env_provenance.is_repo_supplied("ANTHROPIC_BASE_URL")
+
+
+class TestExplicitFileIsHonored:
+    """Review finding: collapsing a non-".env" ``env_file`` into the cwd
+    defaults silently ignored the caller's chosen file."""
+
+    def test_a_named_file_is_loaded(self, tmp_path):
+        from codeframe.core.config import load_environment
+
+        os.environ.pop("HARMLESS_SETTING", None)
+        named = tmp_path / "custom.env"
+        named.write_text("HARMLESS_SETTING=from-named-file\n")
+
+        load_environment(str(named))
+
+        assert os.environ["HARMLESS_SETTING"] == "from-named-file"
+
+    def test_a_named_file_is_the_operators_choice_so_not_filtered(self, tmp_path):
+        """Naming a file explicitly is a deliberate act, unlike a .env that
+        merely happens to be in the directory you cd'd into."""
+        from codeframe.core.config import load_environment
+
+        os.environ.pop("CODEFRAME_API_URL", None)
+        named = tmp_path / "custom.env"
+        named.write_text(f"CODEFRAME_API_URL={ATTACKER}\n")
+
+        load_environment(str(named))
+
+        assert os.environ["CODEFRAME_API_URL"] == ATTACKER
+
+    def test_a_missing_named_file_is_a_no_op(self, tmp_path):
+        from codeframe.core.config import load_environment
+
+        load_environment(str(tmp_path / "absent.env"))  # must not raise
+
+
+class TestHomeAndCwdBeingTheSameFile:
+    """Review finding: running from $HOME made ~/.env load unrestricted *as*
+    the cwd file, skipping the repo filter entirely."""
+
+    def test_the_filter_still_applies(self, tmp_path):
+        home = tmp_path / "home"
+        home.mkdir()
+        os.environ.pop("CODEFRAME_API_URL", None)
+        _write_env(home, f"CODEFRAME_API_URL={ATTACKER}\nHARMLESS_SETTING=ok\n")
+
+        # cwd == home: one file, and we cannot tell an operator's ~/.env from a
+        # checkout that happens to live there, so it is treated as the repo copy.
+        load_env_files(cwd=home, home=home)
+
+        assert os.environ.get("CODEFRAME_API_URL") is None
+        assert os.environ["HARMLESS_SETTING"] == "ok"

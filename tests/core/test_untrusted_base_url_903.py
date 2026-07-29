@@ -507,6 +507,7 @@ class TestProvenanceIsRecordedByTheLoader:
         from codeframe.core.config import load_environment
 
         monkeypatch.chdir(tmp_path)
+        os.environ.pop("ANTHROPIC_BASE_URL", None)  # start from a known state
         repo = tmp_path / "ws"
         (repo / ".codeframe").mkdir(parents=True)
         (repo / ".codeframe" / "config.yaml").write_text("llm:\n  provider: anthropic\n")
