@@ -151,7 +151,19 @@ def review_files(
         #
         # Order matters: rejecting before the exists() probe keeps a real
         # outside file indistinguishable from a missing one.
-        full_path = (project_root / file_path).resolve()
+        #
+        # resolve() itself raises on input the OS cannot represent — an embedded
+        # NUL (ValueError) or an over-long/looping path (OSError). Those are
+        # skipped like any other rejected entry rather than propagating: this
+        # call sits outside the per-analyzer try/except below, so an unhandled
+        # raise becomes a 500 that discards the whole batch, letting one
+        # malformed entry deny review of every legitimate file sent with it.
+        try:
+            full_path = (project_root / file_path).resolve()
+        except (OSError, ValueError):
+            logger.warning(f"Malformed path, skipping: {file_path!r}")
+            continue
+
         if not full_path.is_relative_to(project_root):
             logger.warning(f"Path outside workspace, skipping: {file_path}")
             continue

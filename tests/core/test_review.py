@@ -329,6 +329,20 @@ class TestWorkspaceContainment:
         assert analyzed == [(workspace.repo_path / "ok.py").resolve()]
         assert len(result.findings) == 1
 
+    @pytest.mark.parametrize("malformed", ["bad\x00.py", "\x00", "x\x00y.py"])
+    def test_malformed_path_is_skipped_not_raised(
+        self, workspace, analyzed, malformed
+    ):
+        """``resolve()`` raises ValueError on an embedded NUL. That call sits
+        outside the per-analyzer try/except, so an unhandled raise would 500 the
+        endpoint and discard every other file in the same request."""
+        (workspace.repo_path / "ok.py").write_text("def f():\n    return 1\n")
+
+        result = review_files(workspace, [malformed, "ok.py"])
+
+        assert analyzed == [(workspace.repo_path / "ok.py").resolve()]
+        assert len(result.findings) == 1
+
     def test_review_task_is_covered_by_the_same_guard(
         self, workspace, outsider, analyzed
     ):

@@ -104,23 +104,39 @@ class TestReviewFilesEndpoint:
         assert analyzed == [], f"analyzer opened {analyzed}"
         assert resp.json()["findings"] == []
 
-    def test_absolute_system_path_is_rejected(self, client, analyzed):
-        resp = client.post("/api/v2/review/files", json={"files": ["/etc/hosts.py"]})
+    def test_malformed_path_is_skipped_not_fatal(
+        self, client, test_workspace, analyzed
+    ):
+        """An embedded NUL makes resolve() raise ValueError. That must skip the
+        entry, not 500 the request — otherwise one malformed entry denies review
+        of every legitimate file sent alongside it.
+        """
+        (test_workspace.repo_path / "mod.py").write_text("def f():\n    return 1\n")
+
+        resp = client.post(
+            "/api/v2/review/files",
+            json={"files": ["bad\x00/../../etc/passwd.py", "mod.py"]},
+        )
 
         assert resp.status_code == 200, resp.text
-        assert analyzed == []
+        assert analyzed == [
+            (Path(test_workspace.repo_path).resolve() / "mod.py")
+        ] * len(analyzed), f"unexpected paths analyzed: {analyzed}"
+        assert analyzed, "the legitimate file must still have been reviewed"
 
     def test_in_workspace_file_is_still_reviewed(
         self, client, test_workspace, analyzed
     ):
         (test_workspace.repo_path / "mod.py").write_text("def f():\n    return 1\n")
+        (test_workspace.repo_path / "other.py").write_text("def g():\n    return 2\n")
 
         resp = client.post("/api/v2/review/files", json={"files": ["mod.py"]})
 
         assert resp.status_code == 200, resp.text
+        # Exactly the requested file — not "some file in the workspace".
+        expected = Path(test_workspace.repo_path).resolve() / "mod.py"
         assert analyzed, "a legitimate in-workspace file must still be analyzed"
-        for path in analyzed:
-            assert path.is_relative_to(Path(test_workspace.repo_path).resolve())
+        assert set(analyzed) == {expected}
 
 
 class TestReviewTaskEndpoint:
