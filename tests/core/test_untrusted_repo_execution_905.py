@@ -440,15 +440,31 @@ def test_plan_engine_shell_gets_the_same_sandbox(tmp_path, monkeypatch):
     workspace.mkdir()
 
     executor = Executor(llm_provider=None, repo_path=workspace)
-    step = PlanStep(
+
+    # Both execution branches: the executor picks shell=True only when the
+    # command contains a shell operator, and shlex-split argv otherwise. The
+    # argv branch still reads HOME — from the environment rather than from `$`
+    # expansion — so covering only one would leave the other untested.
+    shell_step = PlanStep(
         index=1,
         type=StepType.SHELL_COMMAND,
-        description="read an operator dotfile",
-        target="cat $HOME/.ssh/id_rsa",
+        description="read an operator dotfile via the shell",
+        target="cat $HOME/.ssh/id_rsa && true",
     )
-    result = executor._execute_shell_command(step)
+    argv_step = PlanStep(
+        index=2,
+        type=StepType.SHELL_COMMAND,
+        description="read an operator dotfile via argv",
+        target=(
+            "python3 -c "
+            "\"import os;print(open(os.environ['HOME']+'/.ssh/id_rsa').read())\""
+        ),
+    )
 
-    assert "SECRET-MATERIAL" not in (result.output or "") + (result.error or "")
+    for step in (shell_step, argv_step):
+        result = executor._execute_shell_command(step)
+        combined = (result.output or "") + (result.error or "")
+        assert "SECRET-MATERIAL" not in combined, f"leaked via {step.description}"
 
 
 def test_run_command_home_is_writable(tmp_path, monkeypatch):
