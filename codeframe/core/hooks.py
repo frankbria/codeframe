@@ -15,7 +15,6 @@ Hook points:
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -23,6 +22,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from jinja2 import Template
+
+from codeframe.core.agent_env import build_agent_env
 
 if TYPE_CHECKING:
     from codeframe.core.config import EnvironmentConfig
@@ -137,8 +138,12 @@ def run_hook(
             capture_output=True,
             text=True,
             timeout=timeout,
-            # Context values arrive here, not spliced into the command text.
-            env={**os.environ, **hook_context_env(ctx)},
+            # A hook is a shell command from repo config, so it gets the same
+            # credential-free environment as every other agent-steerable
+            # subprocess (#907) — the trust decision (#905) says the command may
+            # *run*, not that it may read the operator's API keys. Context
+            # values arrive here too, never spliced into the command text.
+            env={**build_agent_env(workspace_path), **hook_context_env(ctx)},
         )
         duration_ms = int((time.monotonic() - start) * 1000)
         return HookResult(

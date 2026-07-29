@@ -20,6 +20,7 @@ hostile command; this closes the paths a prompt-injected agent actually takes.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -49,8 +50,10 @@ SAFE_ENV_VARS = frozenset({
 #: still let an XDG path resolve back to the operator's real home.
 _XDG_VARS = ("XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME")
 
+logger = logging.getLogger(__name__)
 
-def build_agent_env(workspace_path: Path) -> dict[str, str]:
+
+def build_agent_env(workspace_path: Path | str) -> dict[str, str]:
     """The environment for a subprocess an agent (or repo content) can steer.
 
     Args:
@@ -58,6 +61,7 @@ def build_agent_env(workspace_path: Path) -> dict[str, str]:
             lives under its ``.codeframe/`` state dir, so it is per-workspace and
             inspectable.
     """
+    workspace_path = Path(workspace_path)
     env = {k: os.environ[k] for k in SAFE_ENV_VARS if k in os.environ}
 
     # A real directory rather than a nonexistent path, so tools that write
@@ -65,16 +69,21 @@ def build_agent_env(workspace_path: Path) -> dict[str, str]:
     sandbox_home = workspace_path / ".codeframe" / "agent-home"
     try:
         sandbox_home.mkdir(parents=True, exist_ok=True)
-        env["HOME"] = str(sandbox_home)
-        for xdg in _XDG_VARS:
-            env[xdg] = str(sandbox_home / xdg.lower())
     except OSError:
-        # Fail closed: drop the pointers entirely rather than fall back to the
-        # operator's. XDG_CONFIG_HOME is on the allowlist, so leaving it set
-        # would still reach ~/.config (gh/hosts.yml and friends).
-        env.pop("HOME", None)
-        for xdg in _XDG_VARS:
-            env.pop(xdg, None)
+        # Point at it anyway. Deleting HOME does NOT fail closed: with the
+        # variable *unset*, `expanduser("~")` and everything built on it fall
+        # back to getpwuid() and resolve the operator's real home — so the
+        # child would quietly regain ~/.codeframe, ~/.npmrc, ~/.config/gh.
+        # A set-but-missing directory keeps the pointer away from the operator
+        # and makes tools that truly need to write there fail visibly.
+        logger.warning(
+            "Could not create the agent sandbox home %s; subprocesses will run "
+            "with a non-existent HOME rather than the operator's.", sandbox_home
+        )
+
+    env["HOME"] = str(sandbox_home)
+    for xdg in _XDG_VARS:
+        env[xdg] = str(sandbox_home / xdg.lower())
 
     for venv_dir in (".venv", "venv"):
         venv_bin = workspace_path / venv_dir / "bin"

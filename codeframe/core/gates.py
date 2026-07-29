@@ -15,6 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from codeframe.core.agent_env import build_agent_env
 from codeframe.core.workspace import Workspace
 from codeframe.core import events
 
@@ -216,6 +217,7 @@ def _ensure_dependencies_installed(
                     result = subprocess.run(
                         ["uv", "pip", "install", "-r", str(requirements_txt)],
                         cwd=repo_path,
+                        env=build_agent_env(repo_path),
                         capture_output=True,
                         text=True,
                         timeout=300,  # 5 minutes
@@ -231,6 +233,7 @@ def _ensure_dependencies_installed(
                     result = subprocess.run(
                         ["pip", "install", "-r", str(requirements_txt)],
                         cwd=repo_path,
+                        env=build_agent_env(repo_path),
                         capture_output=True,
                         text=True,
                         timeout=300,
@@ -261,6 +264,7 @@ def _ensure_dependencies_installed(
                     result = subprocess.run(
                         ["npm", "install"],
                         cwd=repo_path,
+                        env=build_agent_env(repo_path),
                         capture_output=True,
                         text=True,
                         timeout=300,  # 5 minutes
@@ -507,6 +511,7 @@ def _run_pytest(
         result = subprocess.run(
             cmd,
             cwd=repo_path,
+            env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
             timeout=300,  # 5 minute timeout
@@ -607,6 +612,7 @@ def _run_ruff(repo_path: Path, verbose: bool = False) -> GateCheck:
         result = subprocess.run(
             cmd,
             cwd=repo_path,
+            env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
             timeout=60,
@@ -663,6 +669,7 @@ def _run_mypy(repo_path: Path, verbose: bool = False) -> GateCheck:
         result = subprocess.run(
             ["mypy", "."],
             cwd=repo_path,
+            env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
             timeout=120,
@@ -713,6 +720,7 @@ def _run_npm_test(repo_path: Path, verbose: bool = False) -> GateCheck:
         result = subprocess.run(
             ["npm", "test"],
             cwd=repo_path,
+            env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
             timeout=300,
@@ -763,6 +771,7 @@ def _run_npm_lint(repo_path: Path, verbose: bool = False) -> GateCheck:
         result = subprocess.run(
             ["npm", "run", "lint"],
             cwd=repo_path,
+            env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
             timeout=120,
@@ -840,6 +849,7 @@ def _run_python_build(repo_path: Path, verbose: bool = False) -> GateCheck:
         result = subprocess.run(
             cmd,
             cwd=repo_path,
+            env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
             timeout=60,  # 1 minute for import check
@@ -918,6 +928,7 @@ def _run_npm_build(repo_path: Path, verbose: bool = False) -> GateCheck:
         result = subprocess.run(
             ["npm", "run", "build"],
             cwd=repo_path,
+            env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
             timeout=300,  # 5 minutes for builds
@@ -999,6 +1010,7 @@ def _run_tsc(repo_path: Path, verbose: bool = False) -> GateCheck:
         result = subprocess.run(
             cmd,
             cwd=repo_path,
+            env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
             timeout=120,  # 2 minutes, same as mypy
@@ -1145,6 +1157,7 @@ def run_lint_on_file(
         result = subprocess.run(
             cmd,
             cwd=repo_path,
+            env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -1244,6 +1257,7 @@ def run_autofix_on_file(
         result = subprocess.run(
             cmd,
             cwd=repo_path,
+            env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
             timeout=timeout,

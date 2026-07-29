@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from codeframe.adapters.llm import LLMProvider, Purpose
 from codeframe.core import blockers, events
+from codeframe.core.agent_env import build_agent_env
 from codeframe.core.path_safety import is_path_safe
 from codeframe.core.context import ContextLoader, TaskContext
 from codeframe.core.events import EventType
@@ -895,6 +896,7 @@ class Agent:
                 capture_output=True,
                 text=True,
                 timeout=30,
+                env=build_agent_env(self.workspace.repo_path),
             )
 
             if result.returncode == 0:
@@ -1320,6 +1322,8 @@ IMPORTANT:
                                     capture_output=True,
                                     text=True,
                                     timeout=120,
+                                    # LLM-authored argv (#907).
+                                    env=build_agent_env(self.workspace.repo_path),
                                 )
 
                             # Global scope commands should go through Coordinator
