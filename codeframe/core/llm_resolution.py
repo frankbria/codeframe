@@ -56,7 +56,13 @@ def _is_loopback_url(url: str) -> bool:
     """
     try:
         host = (urlparse(url).hostname or "").strip()
-    except ValueError:
+    except Exception:
+        # Deliberately broad: this predicate is fail-closed, and a malformed
+        # config can set base_url to any YAML type. urlparse raises different
+        # exceptions per type (AttributeError for a list, TypeError for an int),
+        # and getting that list wrong turns a clean refusal into an unhandled
+        # crash in the security gate. "Not parseable" is simply "not this
+        # machine".
         return False
     if not host:
         return False

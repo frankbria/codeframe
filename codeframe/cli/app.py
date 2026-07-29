@@ -15,6 +15,7 @@ Examples:
 """
 
 import json
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -5932,7 +5933,10 @@ def main() -> None:
         # A deliberate refusal, not a crash: show the operator what was
         # blocked and how to proceed, without a traceback (#903).
         console.print(f"\n[red]Refusing to run:[/red] {e}\n")
-        raise typer.Exit(1)
+        # sys.exit, not typer.Exit: main() *is* the console-script entry point,
+        # so there is no Click standalone loop above it to turn Exit into a
+        # clean status — it would surface as a traceback under the message.
+        sys.exit(1)
 
 
 if __name__ == "__main__":

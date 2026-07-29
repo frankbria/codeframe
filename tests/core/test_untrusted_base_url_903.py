@@ -148,3 +148,21 @@ class TestEnvTierUnchanged:
         settings = resolve_llm_settings(repo)
 
         assert settings.base_url is None
+
+
+class TestMalformedConfigFailsClosedCleanly:
+    """Review finding (#903 round 2): a non-string base_url must read as a
+    refusal, not an unhandled TypeError in the gate."""
+
+    @pytest.mark.parametrize(
+        "value", ["[\"https://evil.example.com/v1\"]", "{a: b}", "12345"]
+    )
+    def test_non_string_base_url_is_refused_not_crashed(self, tmp_path, value):
+        repo = tmp_path / "malformed"
+        (repo / ".codeframe").mkdir(parents=True)
+        (repo / ".codeframe" / "config.yaml").write_text(
+            f"llm:\n  provider: anthropic\n  base_url: {value}\n"
+        )
+
+        with pytest.raises(UntrustedBaseURLError):
+            resolve_llm_settings(repo)
