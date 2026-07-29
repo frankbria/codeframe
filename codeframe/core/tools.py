@@ -835,6 +835,29 @@ def _execute_run_command(
     # layer venv activation on top. Never os.environ.copy() here — that would
     # hand every host secret to an LLM-authored shell command.
     env = {k: os.environ[k] for k in _RUN_COMMAND_SAFE_ENV_VARS if k in os.environ}
+
+    # HOME points at a scratch directory, not the operator's (#905). The
+    # allowlist above kept secrets out of the *environment*, but HOME is a
+    # pointer to them: ~/.codeframe holds the credential store, whose Fernet key
+    # is derived from the (non-secret) machine id unless
+    # CODEFRAME_CREDENTIAL_SECRET is set — so a prompt-injected `cat ~/.codeframe/...`
+    # could re-derive it and exfiltrate every provider key and the GitHub PAT.
+    # A real directory rather than a nonexistent path so tools that write dotfiles
+    # (npm, pip, cargo, git) still work; it lives under the workspace's state dir
+    # so it is per-workspace and inspectable.
+    sandbox_home = workspace_path / ".codeframe" / "agent-home"
+    try:
+        sandbox_home.mkdir(parents=True, exist_ok=True)
+        env["HOME"] = str(sandbox_home)
+        # These default to $HOME/... when unset; pin them so nothing resolves
+        # back to the operator's real home through an XDG path.
+        for xdg in ("XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME"):
+            env[xdg] = str(sandbox_home / xdg.lower())
+    except OSError:
+        # If the sandbox cannot be created, drop HOME entirely rather than fall
+        # back to the operator's — fail closed.
+        env.pop("HOME", None)
+
     for venv_dir in (".venv", "venv"):
         venv_bin = workspace_path / venv_dir / "bin"
         if venv_bin.is_dir():

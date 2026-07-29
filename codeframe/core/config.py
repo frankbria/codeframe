@@ -12,6 +12,7 @@ v2 environment config is stored in .codeframe/config.yaml and controls:
 """
 
 import json
+import logging
 from dataclasses import dataclass, field as dataclass_field, asdict
 from enum import Enum
 from pathlib import Path
@@ -20,6 +21,8 @@ from typing import Any, Optional
 import yaml
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -428,11 +431,18 @@ def _codeframe_config_to_env_config(cf_config: Any) -> EnvironmentConfig:
         lint_gate_names = {"ruff", "pylint", "eslint", "prettier", "flake8", "mypy", "biome"}
         config.lint_tools = [g for g in cf_config.gates if g in lint_gate_names]
 
-    # Map hooks
+    # Hooks are deliberately NOT mapped from CODEFRAME.md (#905). That file is
+    # found by walking *up* from the workspace, so a CODEFRAME.md in a parent
+    # directory — or one committed by a cloned repo — could supply shell
+    # commands that `cf init` runs immediately. Hooks come only from
+    # .codeframe/config.yaml, and even there they need a recorded trust
+    # decision (core.hook_trust).
     if cf_config.hooks:
-        valid_hook_fields = {f.name for f in HooksConfig.__dataclass_fields__.values()}
-        filtered = {k: v for k, v in cf_config.hooks.items() if k in valid_hook_fields}
-        config.hooks = HooksConfig(**filtered)
+        logger.warning(
+            "Ignoring %d hook(s) declared in CODEFRAME.md: hooks may only be "
+            "configured in .codeframe/config.yaml (#905).",
+            len(cf_config.hooks),
+        )
 
     # Map batch
     if cf_config.batch:

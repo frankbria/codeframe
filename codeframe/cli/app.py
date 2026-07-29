@@ -15,6 +15,7 @@ Examples:
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -120,6 +121,11 @@ def init(
         "--force",
         help="Overwrite an existing CODEFRAME.md (with --generate-config)",
     ),
+    allow_hooks: bool = typer.Option(
+        False,
+        "--allow-hooks",
+        help="Run this repository's configured hooks without prompting (#905)",
+    ),
 ) -> None:
     """Initialize a CodeFRAME workspace for a repository.
 
@@ -193,7 +199,10 @@ def init(
 
         # Execute after_init hook (non-blocking, only on fresh init)
         from codeframe.core.config import load_environment_config
+        from codeframe.core.hook_trust import ALLOW_HOOKS_ENV
         from codeframe.core.hooks import HookContext, execute_hook
+        if allow_hooks:
+            os.environ[ALLOW_HOOKS_ENV] = "1"
         env_config = load_environment_config(repo_path)
         if env_config and not already_existed:
             hook_ctx = HookContext(
