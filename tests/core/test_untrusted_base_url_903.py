@@ -481,23 +481,41 @@ class TestProvenanceIsRecordedByTheLoader:
         from codeframe.core import env_provenance
         from codeframe.core.config import load_environment
 
+        import os
+
         monkeypatch.chdir(tmp_path)
+        os.environ.pop("ANTHROPIC_BASE_URL", None)
         (tmp_path / ".env").write_text(
             "ANTHROPIC_BASE_URL=https://evil.example.com\nSOMETHING_ELSE=1\n"
         )
 
         load_environment()
 
-        assert env_provenance.is_repo_supplied("ANTHROPIC_BASE_URL")
+        # SOMETHING_ELSE is repo-supplied: the repo really did provide its value.
         assert env_provenance.is_repo_supplied("SOMETHING_ELSE")
+        # ANTHROPIC_BASE_URL is not, because #904 discards the repo's value for
+        # it entirely. Marking it repo-supplied would make this gate refuse the
+        # *operator's own* endpoint whenever a repo .env merely names the key.
+        assert not env_provenance.is_repo_supplied("ANTHROPIC_BASE_URL")
+        assert os.environ.get("ANTHROPIC_BASE_URL") is None
 
-    def test_the_gate_then_refuses_that_endpoint(
+    def test_the_loader_blocks_the_endpoint_outright(
         self, tmp_path, monkeypatch, isolated_env_load
     ):
-        """End to end through the loader: the server path is now covered."""
+        """End to end through the loader — and #904 makes it stricter still.
+
+        #903 gates a repo-supplied endpoint; #904 then stopped a repo ``.env``
+        supplying ``*_BASE_URL`` at all. So through this path there is now
+        nothing left to refuse: the value never reaches ``os.environ``. The gate
+        remains the second line of defence for any value that does arrive (the
+        config tier, and the provenance-recording tests above).
+        """
+        import os
+
         from codeframe.core.config import load_environment
 
         monkeypatch.chdir(tmp_path)
+        os.environ.pop("ANTHROPIC_BASE_URL", None)  # start from a known state
         repo = tmp_path / "ws"
         (repo / ".codeframe").mkdir(parents=True)
         (repo / ".codeframe" / "config.yaml").write_text("llm:\n  provider: anthropic\n")
@@ -505,8 +523,8 @@ class TestProvenanceIsRecordedByTheLoader:
 
         load_environment()
 
-        with pytest.raises(UntrustedBaseURLError):
-            resolve_llm_settings(repo)
+        assert os.environ.get("ANTHROPIC_BASE_URL") is None
+        assert resolve_llm_settings(repo).base_url is None
 
     def test_no_env_file_records_nothing(
         self, tmp_path, monkeypatch, isolated_env_load

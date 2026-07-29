@@ -1,10 +1,9 @@
 """CLI validation helpers for pre-command checks."""
 
 import os
-from pathlib import Path
 
 import typer
-from dotenv import load_dotenv
+from codeframe.core.env_provenance import load_env_files
 from rich.console import Console
 
 console = Console()
@@ -28,13 +27,7 @@ def require_anthropic_api_key() -> str:
         return key
 
     # Try loading from .env files (same priority as app.py)
-    cwd_env = Path.cwd() / ".env"
-    home_env = Path.home() / ".env"
-
-    if home_env.exists():
-        load_dotenv(home_env)
-    if cwd_env.exists():
-        load_dotenv(cwd_env, override=True)
+    load_env_files()
 
     key = os.getenv("ANTHROPIC_API_KEY")
     if key:
@@ -65,13 +58,7 @@ def require_openai_api_key() -> str:
     if key:
         return key
 
-    cwd_env = Path.cwd() / ".env"
-    home_env = Path.home() / ".env"
-
-    if home_env.exists():
-        load_dotenv(home_env)
-    if cwd_env.exists():
-        load_dotenv(cwd_env, override=True)
+    load_env_files()
 
     key = os.getenv("OPENAI_API_KEY")
     if key:
@@ -122,13 +109,7 @@ def require_e2b_api_key() -> str:
     if key:
         return key
 
-    cwd_env = Path.cwd() / ".env"
-    home_env = Path.home() / ".env"
-
-    if home_env.exists():
-        load_dotenv(home_env)
-    if cwd_env.exists():
-        load_dotenv(cwd_env, override=True)
+    load_env_files()
 
     key = os.getenv("E2B_API_KEY")
     if key:

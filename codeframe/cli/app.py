@@ -21,7 +21,6 @@ from typing import Optional
 
 import click
 import typer
-from dotenv import load_dotenv
 from rich.console import Console
 
 # Import auth subapp for credential management
@@ -33,24 +32,12 @@ from codeframe.cli.hooks_commands import hooks_app
 from codeframe.cli.stats_commands import stats_app
 from codeframe.cli.import_commands import import_app
 
-# Load environment variables from .env files
-# Priority: workspace .env > home .env
-_cwd = Path.cwd()
-_home_env = Path.home() / ".env"
-_cwd_env = _cwd / ".env"
+# Load environment variables from .env files.
+# One shared loader (#904): the repository's .env never overrides the operator's
+# environment, and never supplies security-steering keys at all.
+from codeframe.core.env_provenance import load_env_files  # noqa: E402
 
-if _home_env.exists():
-    load_dotenv(_home_env)
-if _cwd_env.exists():
-    # Record provenance before loading: this file lives inside the repository
-    # and overrides the operator's exported environment, so anything downstream
-    # that trusts os.environ as "the operator's own configuration" needs to
-    # know which keys the repo supplied (#903). The general problem — a repo
-    # .env overriding the operator at all — is #904.
-    from codeframe.core.env_provenance import keys_defined_in, record_repo_env_keys
-
-    record_repo_env_keys(keys_defined_in(_cwd_env))
-    load_dotenv(_cwd_env, override=True)  # workspace .env takes precedence
+load_env_files()
 
 # Create main app
 app = typer.Typer(

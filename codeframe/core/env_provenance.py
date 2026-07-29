@@ -162,3 +162,154 @@ def vet_env_base_url(env_var: str) -> Optional[str]:
     if not is_repo_supplied(env_var):
         return value  # the operator's own environment
     return vet_base_url(value, source=f"the repository's .env ({env_var})")
+
+
+# ---------------------------------------------------------------------------
+# The shared .env loader (issue #904)
+# ---------------------------------------------------------------------------
+
+#: Keys a repository's ``.env`` may never set. These steer *where the process
+#: sends things* or *which credential it uses* — a repo that could set them
+#: would redirect logins, API traffic and telemetry, or point the tool at
+#: another database. Prefixes match any key ending in them.
+_REPO_FORBIDDEN_EXACT = frozenset(
+    {
+        # Where credentials and data are sent
+        "CODEFRAME_API_URL",      # `cf auth login` POSTs email+password here
+        "CODEFRAME_TOKEN",        # the session token itself
+        "CODEFRAME_TELEMETRY_ENDPOINT",
+        "CORS_ALLOWED_ORIGINS",   # a repo could allow its own origin
+        # Secrets that make sessions/keys forgeable
+        "AUTH_SECRET",
+        "CODEFRAME_API_KEY_SECRET",
+        "CODEFRAME_CREDENTIAL_SECRET",
+        "CODEFRAME_BOOTSTRAP_TOKEN",
+        "JWT_LIFETIME_SECONDS",   # e.g. a decade-long session
+        # Whether the guards run at all
+        "CODEFRAME_AUTH_REQUIRED",        # `false` disables authentication
+        "CODEFRAME_DEPLOYMENT_MODE",      # flips hosted-mode gating
+        "CODEFRAME_ENABLE_TEST_ENDPOINTS",  # arms /test/broadcast (#753)
+        "WORKSPACE_ROOT",         # the workspace allowlist (#655/#896)
+        # Where code is found and run
+        "PATH",
+        "HOME",                   # relocates ~/.env and the credential store
+        # How outbound HTTPS is routed and verified. `requests` honors these
+        # from the environment by default (trust_env=True), and `cf auth login`
+        # POSTs email+password with no proxies=/verify=/trust_env=False. So a
+        # repo .env pairing HTTPS_PROXY with its own CA bundle MITMs exactly the
+        # request this issue exists to protect — routing around the
+        # CODEFRAME_API_URL block rather than through it. Lower-case forms are
+        # covered too: the check upper-cases the name first.
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "FTP_PROXY",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+    }
+)
+
+#: Suffixes a repository's ``.env`` may never set, for the same reason.
+#: ``_PATH`` covers DATABASE_PATH and KILOCODE_PATH — a filesystem location the
+#: tool reads, writes, or *executes*.
+#: ``_FLAGS`` covers KILOCODE_FLAGS and friends: shell-quoted arguments spliced
+#: into a delegated engine's command line, i.e. argument injection.
+_REPO_FORBIDDEN_SUFFIXES = ("_BASE_URL", "_API_URL", "_PATH", "_FLAGS")
+
+#: Prefixes a repository's ``.env`` may never set. Every deliberate escape hatch
+#: is named ``CODEFRAME_ALLOW_*``, and a repo granting itself one is the whole
+#: problem: ``CODEFRAME_ALLOW_CONFIG_BASE_URL=1`` alone would reopen #903, and
+#: ``CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES`` / ``_PRIVATE_WEBHOOKS`` disarm
+#: the workspace allowlist and the SSRF guard. A prefix rule rather than a list
+#: so a hatch added later is covered by default.
+_REPO_FORBIDDEN_PREFIXES = ("CODEFRAME_ALLOW_",)
+
+
+def is_forbidden_from_repo(name: str) -> bool:
+    """Whether a repository ``.env`` is allowed to define ``name``."""
+    upper = name.upper()
+    return (
+        upper in _REPO_FORBIDDEN_EXACT
+        or upper.endswith(_REPO_FORBIDDEN_SUFFIXES)
+        or upper.startswith(_REPO_FORBIDDEN_PREFIXES)
+    )
+
+
+def load_env_files(
+    cwd: Optional[Path] = None,
+    home: Optional[Path] = None,
+    explicit_file: Optional[Path] = None,
+) -> None:
+    """Load ``~/.env`` then ``<cwd>/.env`` — the one place that does this (#904).
+
+    Two rules the previous four copies of this logic did not follow:
+
+    1. **The repository never overrides the operator.** ``<cwd>/.env`` used to be
+       loaded with ``override=True``, so a committed file won over what the
+       operator exported. A repo could therefore point ``CODEFRAME_API_URL`` at
+       its own host and ``cf auth login`` would POST the user's email and
+       password there — the insecure-transport warning only fires for ``http://``,
+       so an ``https://`` attacker host is silent.
+    2. **Security-steering keys are never taken from a repo at all**, even when
+       the operator has not set them, because "unset" is the common case and
+       silence is what makes this dangerous. See ``is_forbidden_from_repo``.
+
+    The home ``.env`` is the operator's own file and is not restricted.
+    Provenance is still recorded for what the repo did supply (#903).
+    """
+    from dotenv import load_dotenv
+
+    if explicit_file is not None:
+        # A caller naming a specific file chose it deliberately — that is the
+        # operator's decision, not repo content, so it is loaded as-is.
+        if explicit_file.exists():
+            load_dotenv(explicit_file)
+        return
+
+    home_env = (home or Path.home()) / ".env"
+    cwd_env = (cwd or Path.cwd()) / ".env"
+
+    # When cwd *is* home the two are one file. Treat it as the repository copy —
+    # fail closed — because we cannot tell an operator's ~/.env from a checkout
+    # that happens to live at $HOME, and the ignored keys are logged either way.
+    same_file = (
+        home_env.exists()
+        and cwd_env.exists()
+        and home_env.resolve() == cwd_env.resolve()
+    )
+
+    if home_env.exists() and not same_file:
+        load_dotenv(home_env)
+
+    if not cwd_env.exists():
+        return
+
+    repo_keys = keys_defined_in(cwd_env)
+    blocked = {k for k in repo_keys if is_forbidden_from_repo(k)}
+
+    # Record provenance only for keys the repo actually gets to supply. A
+    # blocked key's value is discarded below, so marking it repo-supplied would
+    # make the #903 endpoint gate refuse the *operator's own* value merely
+    # because a repo .env mentioned the same name — the opposite of this
+    # module's guarantee.
+    record_repo_env_keys(repo_keys - blocked)
+    if blocked:
+        logger.warning(
+            "Ignoring %d security-sensitive key(s) from the repository's .env: %s",
+            len(blocked),
+            ", ".join(sorted(blocked)),
+        )
+
+    # override=False: whatever the operator exported stands. Then remove any
+    # forbidden key this file introduced — dotenv has no per-key filter, so the
+    # cheap correct approach is to snapshot those names first and restore them.
+    preserved = {k: os.environ.get(k) for k in blocked}
+    load_dotenv(cwd_env)
+    for key, original in preserved.items():
+        if original is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = original
