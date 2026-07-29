@@ -5924,8 +5924,15 @@ def main() -> None:
     behavior or exit codes.
     """
     from codeframe.cli.telemetry_runtime import run
+    from codeframe.core.llm_resolution import UntrustedBaseURLError
 
-    run(app)
+    try:
+        run(app)
+    except UntrustedBaseURLError as e:
+        # A deliberate refusal, not a crash: show the operator what was
+        # blocked and how to proceed, without a traceback (#903).
+        console.print(f"\n[red]Refusing to run:[/red] {e}\n")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

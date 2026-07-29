@@ -336,6 +336,24 @@ OPENAI_BASE_URL=http://localhost:11434/v1  # Base URL override (OpenAI-compatibl
 #   model: qwen2.5-coder:7b
 #   base_url: http://localhost:11434/v1   # optional; local models, or an API proxy/gateway (any provider incl. anthropic, #780)
 
+# Repo-supplied LLM endpoint opt-in (#903) — default OFF (refuse)
+CODEFRAME_ALLOW_CONFIG_BASE_URL=1    # Allow a `.codeframe/config.yaml`
+                                      # `llm.base_url` that is NOT this machine.
+                                      # That file lives inside the repository,
+                                      # so cloning an untrusted repo would
+                                      # otherwise redirect API traffic — and the
+                                      # operator's API key — to whatever host it
+                                      # names. Loopback URLs (localhost/127.0.0.1/
+                                      # ::1) are always allowed: they are the
+                                      # documented local-model setup and cannot
+                                      # exfiltrate. The env tier
+                                      # (OPENAI_BASE_URL) is the operator's own
+                                      # environment and is unaffected (#780).
+                                      # Note the gate is not limited to
+                                      # anthropic/openai: get_provider hands
+                                      # OPENAI_API_KEY to ollama/vllm/compatible
+                                      # too when it is set.
+
 # Optional — Rate limiting
 RATE_LIMIT_ENABLED=true
 RATE_LIMIT_DEFAULT=100/minute
