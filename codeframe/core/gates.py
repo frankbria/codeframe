@@ -7,8 +7,10 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import re
-import subprocess
+import os
 import shutil
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -178,6 +180,65 @@ class GateResult:
         return by_file
 
 
+def _install_python_requirements(
+    repo_path: Path, requirements_txt: Path
+) -> tuple[bool, str]:
+    """Install a target repo's requirements into a venv *of its own* (#908).
+
+    This runs in exactly the state where ``requirements.txt`` exists and no venv
+    does, and the previous implementation ran ``uv pip install -r ...`` straight
+    away — which errors in precisely that state::
+
+        error: No virtual environment found; run `uv venv` to create an
+        environment, or pass `--system` to install into a non-virtual environment
+
+    so the install could never succeed where it was triggered. Worse, when
+    CodeFRAME itself runs inside an activated venv, the inherited ``VIRTUAL_ENV``
+    made the fallback install the *target repo's* dependencies into CodeFRAME's
+    own environment.
+
+    Both are fixed by creating the venv first and pinning ``VIRTUAL_ENV`` to it,
+    never to whatever the parent process happened to be using.
+    """
+    venv_path = repo_path / ".venv"
+
+    env = build_agent_env(repo_path)
+    # The repo has no venv yet, so build_agent_env copied VIRTUAL_ENV straight
+    # from the parent — which is CodeFRAME's own when `cf` is run from an
+    # activated environment. Drop it before creating anything.
+    env.pop("VIRTUAL_ENV", None)
+
+    def _run(cmd: list[str], timeout: int = 300) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            cmd, cwd=repo_path, env=env, capture_output=True, text=True, timeout=timeout
+        )
+
+    try:
+        if shutil.which("uv"):
+            created = _run(["uv", "venv", str(venv_path)], timeout=120)
+            if created.returncode != 0:
+                return False, f"Failed to create virtualenv: {created.stderr.strip()}"
+            env["VIRTUAL_ENV"] = str(venv_path)
+            installed = _run(["uv", "pip", "install", "-r", str(requirements_txt)])
+            manager = "uv"
+        else:
+            created = _run([sys.executable, "-m", "venv", str(venv_path)], timeout=120)
+            if created.returncode != 0:
+                return False, f"Failed to create virtualenv: {created.stderr.strip()}"
+            env["VIRTUAL_ENV"] = str(venv_path)
+            # Call the venv's own pip by path rather than relying on PATH, so
+            # this cannot resolve to CodeFRAME's pip.
+            venv_pip = venv_path / ("Scripts" if os.name == "nt" else "bin") / "pip"
+            installed = _run([str(venv_pip), "install", "-r", str(requirements_txt)])
+            manager = "pip"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"Error installing Python dependencies: {exc}"
+
+    if installed.returncode != 0:
+        return False, f"Failed to install Python dependencies: {installed.stderr.strip()}"
+    return True, f"Installed Python dependencies via {manager}: {requirements_txt.name}"
+
+
 def _ensure_dependencies_installed(
     repo_path: Path,
     auto_install: bool = True,
@@ -212,38 +273,11 @@ def _ensure_dependencies_installed(
             uv_bin = shutil.which("uv")
             pip_bin = shutil.which("pip")
 
-            if uv_bin:
-                try:
-                    result = subprocess.run(
-                        ["uv", "pip", "install", "-r", str(requirements_txt)],
-                        cwd=repo_path,
-                        env=build_agent_env(repo_path),
-                        capture_output=True,
-                        text=True,
-                        timeout=300,  # 5 minutes
-                    )
-                    if result.returncode == 0:
-                        messages.append(f"Installed Python dependencies via uv: {requirements_txt.name}")
-                    else:
-                        return False, f"Failed to install Python dependencies: {result.stderr}"
-                except Exception as e:
-                    return False, f"Error installing Python dependencies: {e}"
-            elif pip_bin:
-                try:
-                    result = subprocess.run(
-                        ["pip", "install", "-r", str(requirements_txt)],
-                        cwd=repo_path,
-                        env=build_agent_env(repo_path),
-                        capture_output=True,
-                        text=True,
-                        timeout=300,
-                    )
-                    if result.returncode == 0:
-                        messages.append(f"Installed Python dependencies via pip: {requirements_txt.name}")
-                    else:
-                        return False, f"Failed to install Python dependencies: {result.stderr}"
-                except Exception as e:
-                    return False, f"Error installing Python dependencies: {e}"
+            if uv_bin or pip_bin:
+                ok, message = _install_python_requirements(repo_path, requirements_txt)
+                if not ok:
+                    return False, message
+                messages.append(message)
             else:
                 messages.append("Python dependencies needed but no package manager found (uv/pip)")
     elif requirements_txt.exists() and has_venv:
@@ -327,32 +361,28 @@ def run(
     if verbose:
         print(f"[gates] Dependency check: {dep_message}")
 
-    # If dependency installation fails, create an ERROR check and return early
-    if not dep_success:
-        check = GateCheck(
-            name="dependency-check",
-            status=GateStatus.ERROR,
-            output=f"Dependency installation failed: {dep_message}",
-        )
-        result = GateResult(
-            passed=False,
-            checks=[check],
-            started_at=started_at,
-            completed_at=_utc_now(),
-        )
-        events.emit_for_workspace(
-            workspace,
-            events.EventType.GATES_COMPLETED,
-            {
-                "passed": False,
-                "summary": "Dependency installation failed",
-                "checks": [{"name": check.name, "status": check.status.value}],
-            },
-            print_event=True,
-        )
-        return result
-
     checks: list[GateCheck] = []
+
+    # A failed dependency install is recorded and the gates run anyway (#908).
+    # Returning early here blocked *every* gate — including ruff and tsc, which
+    # need no Python dependencies at all — and poisoned every PROOF9 run, since
+    # runner._run_gate calls this per obligation. It also hid the real signal:
+    # if the missing dependencies actually matter, the gate that needs them
+    # fails on its own and says why. SKIPPED rather than ERROR because this
+    # check did not run to a verdict, and SKIPPED does not fail the run.
+    if not dep_success:
+        checks.append(
+            GateCheck(
+                name="dependency-check",
+                status=GateStatus.SKIPPED,
+                output=(
+                    f"Dependency installation failed, running gates anyway: {dep_message}"
+                ),
+            )
+        )
+        if verbose:
+            print(f"[gates] Dependency install failed (continuing): {dep_message}")
+
     repo_path = workspace.repo_path
 
     # Determine which gates to run
