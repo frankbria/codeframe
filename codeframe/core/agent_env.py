@@ -86,10 +86,15 @@ def build_agent_env(workspace_path: Path | str) -> dict[str, str]:
         env[xdg] = str(sandbox_home / xdg.lower())
 
     for venv_dir in (".venv", "venv"):
-        venv_bin = workspace_path / venv_dir / "bin"
-        if venv_bin.is_dir():
-            env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
-            env["VIRTUAL_ENV"] = str(workspace_path / venv_dir)
-            break
+        # "Scripts" on Windows, "bin" everywhere else. Checking both rather than
+        # os.name means a venv created on either platform is recognised (#908
+        # review) — without this, a Windows target repo's pytest resolved from
+        # CodeFRAME's PATH instead of the repo's own venv.
+        for bin_dir in ("bin", "Scripts"):
+            venv_bin = workspace_path / venv_dir / bin_dir
+            if venv_bin.is_dir():
+                env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
+                env["VIRTUAL_ENV"] = str(workspace_path / venv_dir)
+                return env
 
     return env

@@ -7,6 +7,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import re
+import logging
 import os
 import shutil
 import subprocess
@@ -20,6 +21,8 @@ from typing import Any, Callable, Optional
 from codeframe.core.agent_env import build_agent_env
 from codeframe.core.workspace import Workspace
 from codeframe.core import events
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -214,30 +217,114 @@ def _install_python_requirements(
             cmd, cwd=repo_path, env=env, capture_output=True, text=True, timeout=timeout
         )
 
+    use_uv = shutil.which("uv") is not None
+    create_cmd = (
+        ["uv", "venv", str(venv_path)] if use_uv
+        else [sys.executable, "-m", "venv", str(venv_path)]
+    )
+
     try:
-        if shutil.which("uv"):
-            created = _run(["uv", "venv", str(venv_path)], timeout=120)
-            if created.returncode != 0:
-                return False, f"Failed to create virtualenv: {created.stderr.strip()}"
-            env["VIRTUAL_ENV"] = str(venv_path)
+        created = _run(create_cmd, timeout=120)
+        if created.returncode != 0:
+            return False, f"Failed to create virtualenv: {created.stderr.strip()}"
+
+        _exclude_from_git(repo_path, venv_path.name)
+        env["VIRTUAL_ENV"] = str(venv_path)
+
+        if use_uv:
             installed = _run(["uv", "pip", "install", "-r", str(requirements_txt)])
             manager = "uv"
         else:
-            created = _run([sys.executable, "-m", "venv", str(venv_path)], timeout=120)
-            if created.returncode != 0:
-                return False, f"Failed to create virtualenv: {created.stderr.strip()}"
-            env["VIRTUAL_ENV"] = str(venv_path)
-            # Call the venv's own pip by path rather than relying on PATH, so
-            # this cannot resolve to CodeFRAME's pip.
-            venv_pip = venv_path / ("Scripts" if os.name == "nt" else "bin") / "pip"
-            installed = _run([str(venv_pip), "install", "-r", str(requirements_txt)])
+            # `<venv>/bin/python -m pip` rather than the pip executable: it is
+            # the same on Windows (where the binary is `pip.exe`, not `pip`) and
+            # it cannot resolve to CodeFRAME's pip the way a bare name on PATH
+            # could (#908 review).
+            venv_python = _venv_python(venv_path)
+            installed = _run([str(venv_python), "-m", "pip", "install", "-r", str(requirements_txt)])
             manager = "pip"
     except (OSError, subprocess.SubprocessError) as exc:
+        _discard_failed_venv(venv_path)
         return False, f"Error installing Python dependencies: {exc}"
 
     if installed.returncode != 0:
+        # Remove the venv we just made. Leaving it behind marks the repo as
+        # "already installed (venv exists)" forever, so a transient network
+        # failure would permanently skip the install (#908 review).
+        _discard_failed_venv(venv_path)
         return False, f"Failed to install Python dependencies: {installed.stderr.strip()}"
     return True, f"Installed Python dependencies via {manager}: {requirements_txt.name}"
+
+
+def _venv_python(venv_path: Path) -> Path:
+    """The interpreter inside *venv_path*, on either platform."""
+    for bin_dir, exe in (("bin", "python"), ("Scripts", "python.exe")):
+        candidate = venv_path / bin_dir / exe
+        if candidate.exists():
+            return candidate
+    return venv_path / ("Scripts" if os.name == "nt" else "bin") / "python"
+
+
+def _discard_failed_venv(venv_path: Path) -> None:
+    """Remove a venv whose install failed, so the next run retries."""
+    try:
+        shutil.rmtree(venv_path, ignore_errors=True)
+    except OSError as exc:  # pragma: no cover - rmtree already swallows most
+        logger.warning("Could not remove the incomplete virtualenv %s: %s", venv_path, exc)
+
+
+def _exclude_from_git(repo_path: Path, name: str) -> None:
+    """Ignore *name* locally via ``.git/info/exclude``.
+
+    A venv we create is untracked, and `get_changed_scope` feeds
+    ``status.untracked_files`` straight into the PROOF9 scope — so without this
+    a `cf review` in a repo that does not already ignore `.venv` both reports
+    the tree dirty and drags thousands of site-packages files into the scope.
+
+    ``.git/info/exclude`` rather than ``.gitignore``: it is local-only and never
+    committed, so this does not edit a file the user tracks.
+    """
+    git_dir = _resolve_git_dir(repo_path)
+    if git_dir is None:
+        return  # not a git repo — nothing to exclude from
+
+    entry = f"/{name}/"
+    exclude_file = git_dir / "info" / "exclude"
+    try:
+        # `git init` does not create .git/info, so this must be made rather
+        # than assumed — checking for it and bailing made the whole thing a
+        # silent no-op in freshly initialised repos.
+        exclude_file.parent.mkdir(parents=True, exist_ok=True)
+        existing = exclude_file.read_text() if exclude_file.exists() else ""
+        if any(line.strip() in (entry, f"{name}/", name) for line in existing.splitlines()):
+            return
+        prefix = "" if not existing or existing.endswith("\n") else "\n"
+        with exclude_file.open("a") as handle:
+            handle.write(f"{prefix}{entry}\n")
+    except OSError as exc:
+        logger.debug("Could not update %s: %s", exclude_file, exc)
+
+
+def _resolve_git_dir(repo_path: Path) -> Optional[Path]:
+    """The ``$GIT_DIR`` for *repo_path*, or None if it is not a git repo.
+
+    In a linked worktree — which CodeFRAME creates for isolated runs — ``.git``
+    is a *file* containing ``gitdir: <path>``, and git reads
+    ``$GIT_DIR/info/exclude`` from that per-worktree directory.
+    """
+    dot_git = repo_path / ".git"
+    if dot_git.is_dir():
+        return dot_git
+    if dot_git.is_file():
+        try:
+            content = dot_git.read_text().strip()
+        except OSError:
+            return None
+        if content.startswith("gitdir:"):
+            target = Path(content.split(":", 1)[1].strip())
+            if not target.is_absolute():
+                target = (repo_path / target).resolve()
+            return target if target.is_dir() else None
+    return None
 
 
 def _ensure_dependencies_installed(

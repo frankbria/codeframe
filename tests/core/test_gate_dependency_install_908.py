@@ -201,3 +201,135 @@ def test_dependency_note_never_displaces_the_gate_check(tmp_path, monkeypatch):
         "the dependency note as the gate result"
     )
     assert result.checks[-1].name == "dependency-check"
+
+
+# ---------------------------------------------------------------------------
+# Review findings
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(shutil.which("uv") is None, reason="uv not installed")
+def test_a_failed_install_does_not_leave_a_venv_behind(tmp_path):
+    """Otherwise the repo is 'already installed (venv exists)' forever.
+
+    `uv venv` succeeds, the install fails on a transient network error, and the
+    leftover `.venv` makes every later run skip the install — permanently, even
+    once the network is back.
+    """
+    repo = tmp_path / "bad-requirements"
+    repo.mkdir()
+    # A requirement that cannot resolve, so the install fails after the venv
+    # has already been created.
+    (repo / "requirements.txt").write_text(
+        "codeframe-nonexistent-package-908-test==9.9.9\n"
+    )
+
+    ok, message = _install_python_requirements(repo, repo / "requirements.txt")
+
+    assert not ok
+    assert not (repo / ".venv").exists(), (
+        "the incomplete venv survived; the next run would report "
+        "'already installed' and never retry"
+    )
+
+    # And the next check therefore still sees work to do.
+    _, next_message = _ensure_dependencies_installed(repo, auto_install=False)
+    assert "not installed" in next_message
+
+
+@pytest.mark.skipif(shutil.which("uv") is None, reason="uv not installed")
+def test_a_created_venv_is_excluded_from_git(tmp_path):
+    """`get_changed_scope` feeds untracked files into the PROOF9 scope.
+
+    Without a local ignore, `cf review` in a repo that does not already ignore
+    `.venv` reports the tree dirty and drags site-packages into the scope.
+    """
+    repo = tmp_path / "git-repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / "requirements.txt").write_text("packaging\n")
+
+    _install_python_requirements(repo, repo / "requirements.txt")
+
+    assert (repo / ".venv").is_dir()
+    untracked = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=repo, capture_output=True, text=True,
+    ).stdout
+    assert ".venv" not in untracked, f"git still reports .venv as untracked:\n{untracked}"
+
+
+def test_exclude_is_written_once(tmp_path):
+    """Repeated runs must not append the same entry over and over."""
+    from codeframe.core.gates import _exclude_from_git
+
+    repo = tmp_path / "repeat-repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+
+    for _ in range(3):
+        _exclude_from_git(repo, ".venv")
+
+    exclude = (repo / ".git" / "info" / "exclude").read_text()
+    assert exclude.count("/.venv/") == 1
+
+
+def test_exclude_is_a_no_op_outside_a_git_repo(tmp_path):
+    """Gates run on plain directories too; this must not raise."""
+    from codeframe.core.gates import _exclude_from_git
+
+    plain = tmp_path / "not-a-repo"
+    plain.mkdir()
+
+    _exclude_from_git(plain, ".venv")  # must not raise
+
+    assert not (plain / ".git").exists()
+
+
+def test_windows_style_venv_is_recognised(tmp_path):
+    """build_agent_env only looked for `bin`, so a Windows venv was ignored and
+    the target repo's pytest resolved from CodeFRAME's PATH instead."""
+    from codeframe.core.agent_env import build_agent_env
+
+    repo = tmp_path / "win-repo"
+    scripts = repo / ".venv" / "Scripts"
+    scripts.mkdir(parents=True)
+
+    env = build_agent_env(repo)
+
+    assert env["VIRTUAL_ENV"] == str(repo / ".venv")
+    assert env["PATH"].startswith(str(scripts))
+
+
+def test_exclude_works_in_a_linked_worktree(tmp_path):
+    """CodeFRAME runs agents in linked worktrees, where `.git` is a *file*.
+
+    `$GIT_DIR` is then `.git/worktrees/<id>`, and that is where git reads
+    `info/exclude` from — the repo-root path would be the wrong file.
+    """
+    from codeframe.core.gates import _exclude_from_git
+
+    main = tmp_path / "main"
+    main.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=main, check=True)
+    (main / "seed.txt").write_text("seed\n")
+    subprocess.run(["git", "add", "."], cwd=main, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "seed"],
+        cwd=main, check=True,
+    )
+
+    linked = tmp_path / "linked"
+    subprocess.run(
+        ["git", "worktree", "add", "-q", str(linked), "-b", "wt"], cwd=main, check=True
+    )
+    assert (linked / ".git").is_file(), "expected a gitfile layout"
+
+    (linked / ".venv").mkdir()
+    _exclude_from_git(linked, ".venv")
+
+    untracked = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=linked, capture_output=True, text=True,
+    ).stdout
+    assert ".venv" not in untracked, f"worktree still reports .venv:\n{untracked}"
