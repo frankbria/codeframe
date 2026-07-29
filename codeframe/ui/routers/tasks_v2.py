@@ -8,7 +8,8 @@ Key differences from v1:
 - Uses Workspace (path-based) instead of project_id
 - Delegates to core/runtime and core/conductor functions
 - No LeadAgent dependency for execution
-- Uses conductor.start_batch() for parallel execution
+- Uses conductor.create_batch() + a worker thread, so batch execution never
+  blocks the event loop (#901)
 
 The v1 router (tasks.py) remains for backwards compatibility with
 existing web UI until Phase 3 (Web UI Rebuild).
@@ -18,7 +19,7 @@ import logging
 import threading
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
@@ -456,12 +457,51 @@ def delete_task(
 # ============================================================================
 
 
+
+def _run_batch_in_background(workspace: Workspace, batch_id: str, max_retries: int = 0) -> None:
+    """Execute an already-created batch on a worker thread (issue #901).
+
+    ``conductor.execute_batch`` drives every task through a subprocess
+    ``wait()``, so calling it from an async handler pinned the uvicorn event
+    loop for the batch's whole duration — every other request, SSE stream,
+    WebSocket and ``/health`` froze for potentially hours. The batch record is
+    already persisted, so the handler returns its id at once and this runs
+    detached, exactly as ``start_single_task`` already did for a single run.
+
+    Failures are logged and left on the batch record rather than raised: there
+    is no request left to fail, and the conductor already records task outcomes.
+    """
+    batch = conductor.get_batch(workspace, batch_id)
+    if batch is None:  # pragma: no cover - the caller just persisted it
+        logger.error("Batch %s vanished before execution", batch_id)
+        return
+    try:
+        conductor.execute_batch(workspace, batch, max_retries=max_retries)
+    except Exception as exc:
+        logger.error("Background batch %s failed: %s", batch_id, exc, exc_info=True)
+
+
+def _start_batch_detached(workspace: Workspace, batch_id: str, max_retries: int = 0) -> None:
+    """Hand a persisted batch to a daemon thread and return immediately.
+
+    A dedicated thread rather than ``BackgroundTasks``: Starlette would run it
+    in the shared anyio threadpool, where an hours-long batch permanently
+    occupies one of its limited workers and enough concurrent batches starve
+    every other sync endpoint.
+    """
+    threading.Thread(
+        target=_run_batch_in_background,
+        args=(workspace, batch_id, max_retries),
+        daemon=True,
+        name=f"batch-{batch_id[:8]}",
+    ).start()
+
+
 @router.post("/approve", response_model=ApproveTasksResponse)
 @rate_limit_standard()
 async def approve_tasks_endpoint(
     request: Request,
     body: ApproveTasksRequest,
-    background_tasks: BackgroundTasks,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> ApproveTasksResponse:
     """Approve tasks and optionally start execution.
@@ -473,7 +513,6 @@ async def approve_tasks_endpoint(
 
     Args:
         request: Approval request with exclusions and execution flag
-        background_tasks: FastAPI background tasks
         workspace: v2 Workspace
 
     Returns:
@@ -502,7 +541,8 @@ async def approve_tasks_endpoint(
 
         # Optionally start execution
         if body.start_execution:
-            batch = conductor.start_batch(
+            # Persist first, then execute off the event loop (#901).
+            batch = conductor.create_batch(
                 workspace,
                 task_ids=result.approved_task_ids,
                 strategy="serial",
@@ -511,6 +551,7 @@ async def approve_tasks_endpoint(
                 engine=body.engine,
             )
             batch_id = batch.id
+            _start_batch_detached(workspace, batch_id)
             message = f"Approved {result.approved_count} task(s) and started execution (batch {batch_id[:8]})."
 
         return ApproveTasksResponse(
@@ -610,16 +651,18 @@ async def start_execution(
                 ),
             )
 
-        # Start batch execution
-        batch = conductor.start_batch(
+        # Persist the batch, then execute it off the event loop (#901): the
+        # handler must return batch_id at once so the UI can start polling
+        # while the batch runs.
+        batch = conductor.create_batch(
             workspace,
             task_ids=task_ids,
             strategy=body.strategy,
             max_parallel=body.max_parallel,
-            max_retries=body.retry_count,
             on_failure="continue",
             engine=body.engine,
         )
+        _start_batch_detached(workspace, batch.id, max_retries=body.retry_count)
 
         return StartExecutionResponse(
             success=True,
