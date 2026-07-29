@@ -333,3 +333,39 @@ def test_windows_style_venv_is_recognised(tmp_path):
     assert env["PATH"].startswith(str(scripts))
 
 
+
+
+def test_a_failed_venv_creation_leaves_no_stub(tmp_path, monkeypatch):
+    """CPython leaves `.venv/bin` behind when `-m venv` fails partway.
+
+    A stub directory makes `has_venv` true forever, so the install is skipped
+    on every later run — the same permanent-skip bug as a failed install, just
+    one step earlier.
+    """
+    from codeframe.core import gates as gates_module
+
+    repo = tmp_path / "no-ensurepip"
+    repo.mkdir()
+    (repo / "requirements.txt").write_text("packaging\n")
+
+    real_run = subprocess.run
+
+    def fail_creation(cmd, **kwargs):
+        if "venv" in cmd:
+            # Mimic CPython: leave a partial tree behind, then fail.
+            (repo / ".venv" / "bin").mkdir(parents=True, exist_ok=True)
+            return subprocess.CompletedProcess(
+                cmd, 1, "", "Error: Command '['.venv/bin/python', '-Im', 'ensurepip']' failed"
+            )
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(gates_module.subprocess, "run", fail_creation)
+
+    ok, message = gates_module._install_python_requirements(
+        repo, repo / "requirements.txt"
+    )
+
+    assert not ok
+    assert not (repo / ".venv").exists(), (
+        "a venv stub survived; every later run would report 'already installed'"
+    )

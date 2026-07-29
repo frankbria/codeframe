@@ -226,6 +226,12 @@ def _install_python_requirements(
     try:
         created = _run(create_cmd, timeout=120)
         if created.returncode != 0:
+            # Discard the partial venv for the same reason as the install path
+            # below: CPython leaves `.venv/bin` behind when `-m venv` fails
+            # partway (Debian without python3-venv, disk full, permissions), and
+            # a stub directory makes `has_venv` true forever, so the install is
+            # skipped on every later run even once the cause is fixed.
+            _discard_failed_venv(venv_path)
             return False, f"Failed to create virtualenv: {created.stderr.strip()}"
 
         _self_ignore(venv_path)
