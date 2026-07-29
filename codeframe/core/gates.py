@@ -202,11 +202,12 @@ def _install_python_requirements(
     """
     venv_path = repo_path / ".venv"
 
+    # NB: the repo has no venv at this point, so build_agent_env copies
+    # VIRTUAL_ENV straight from the parent — CodeFRAME's own when `cf` is run
+    # from an activated environment. Every install below therefore *sets* it
+    # explicitly to the venv just created; inheriting it is what made the old
+    # fallback install the target repo's dependencies into CodeFRAME's env.
     env = build_agent_env(repo_path)
-    # The repo has no venv yet, so build_agent_env copied VIRTUAL_ENV straight
-    # from the parent — which is CodeFRAME's own when `cf` is run from an
-    # activated environment. Drop it before creating anything.
-    env.pop("VIRTUAL_ENV", None)
 
     def _run(cmd: list[str], timeout: int = 300) -> subprocess.CompletedProcess:
         return subprocess.run(
