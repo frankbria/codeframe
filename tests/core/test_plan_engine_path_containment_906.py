@@ -173,19 +173,25 @@ def test_rollback_refuses_a_path_outside_the_workspace(workspace, outside):
 def test_verification_cannot_read_a_python_file_outside_the_workspace(
     workspace, tmp_path, shape
 ):
-    """The SyntaxError message echoes the offending source line, so an
-    unguarded read here leaks file contents into the step result."""
-    secret = tmp_path / "outside" / "secret.py"
-    secret.parent.mkdir(exist_ok=True)
-    secret.write_text("this is not valid python SECRET-MATERIAL\n")
-    target = str(secret) if shape == "absolute" else f"../outside/{secret.name}"
+    """Unguarded, this branch is an existence-and-syntax oracle for any host .py.
+
+    Asserts on the *containment* error specifically: reporting "Syntax error in
+    ..." would mean the file outside the workspace was opened and parsed, which
+    is the behaviour being removed.
+    """
+    outside_py = tmp_path / "outside" / "secret.py"
+    outside_py.parent.mkdir(exist_ok=True)
+    outside_py.write_text("this is not valid python\n")
+    target = str(outside_py) if shape == "absolute" else f"../outside/{outside_py.name}"
 
     result = _executor(workspace)._execute_verification(
         _step(StepType.VERIFICATION, target)
     )
 
     assert result.status == ExecutionStatus.FAILED
-    assert "SECRET-MATERIAL" not in (result.output or "") + (result.error or "")
+    assert "outside the workspace" in (result.error or ""), (
+        f"parsed a file outside the workspace: {result.error!r}"
+    )
 
 
 def test_verification_existence_probe_is_contained(workspace, outside):

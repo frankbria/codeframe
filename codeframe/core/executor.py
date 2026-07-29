@@ -617,9 +617,10 @@ class Executor:
 
         # If target is a Python file, verify it exists and check syntax
         if target.endswith(".py"):
-            # Same containment as the create/edit/delete steps (#906). This one
-            # reads: without the guard an absolute target reads any .py on disk,
-            # and the SyntaxError text below echoes the offending source line.
+            # Same containment as the create/edit/delete steps (#906). This
+            # one reads: without the guard an absolute or ../ target turns the
+            # step into an existence-and-syntax oracle for any .py file on the
+            # host. (The SyntaxError message itself does not echo source text.)
             file_path, blocked = self._resolve_target(step)
             if blocked is not None:
                 return blocked
