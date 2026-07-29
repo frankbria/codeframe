@@ -284,6 +284,10 @@ def _self_ignore(venv_path: Path) -> None:
     ``.git/info/exclude``: it needs no git-directory resolution, works
     unchanged in the linked worktrees CodeFRAME creates (where ``.git`` is a
     file), and is the convention the ecosystem already uses.
+
+    Still required despite both of those: CPython only started writing this file
+    in **3.13**, and this project supports ``>=3.11``. On a 3.13 interpreter the
+    stdlib fallback already self-ignores and this is a no-op.
     """
     try:
         (venv_path / ".gitignore").write_text("*\n")

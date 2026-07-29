@@ -237,12 +237,29 @@ def test_a_failed_install_does_not_leave_a_venv_behind(tmp_path):
     assert "not installed" in next_message
 
 
+def test_self_ignore_writes_the_ignore_file(tmp_path):
+    """Deterministic check of the helper itself.
+
+    The end-to-end test below cannot discriminate on this machine: `uv venv`
+    writes `.venv/.gitignore` itself, and CPython does too since **3.13**. This
+    project supports `>=3.11`, where neither is true — so the helper is tested
+    directly rather than through an interpreter-dependent path.
+    """
+    from codeframe.core.gates import _self_ignore
+
+    venv = tmp_path / ".venv"
+    venv.mkdir()
+
+    _self_ignore(venv)
+
+    assert (venv / ".gitignore").read_text().strip() == "*"
+
+
 def test_a_created_venv_is_ignored_by_git(tmp_path, monkeypatch):
     """`get_changed_scope` feeds untracked files into the PROOF9 scope.
 
-    Exercises the **stdlib venv** path specifically: `uv venv` writes
-    `.venv/.gitignore` itself, so a uv-based test would pass whether or not we
-    do anything. The fallback is where this actually matters.
+    A property test: the venv must not be untracked, whether that comes from
+    `_self_ignore`, `uv venv`, or CPython >= 3.13.
     """
     from codeframe.core import gates as gates_module
 
