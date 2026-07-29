@@ -174,25 +174,52 @@ def vet_env_base_url(env_var: str) -> Optional[str]:
 #: another database. Prefixes match any key ending in them.
 _REPO_FORBIDDEN_EXACT = frozenset(
     {
+        # Where credentials and data are sent
         "CODEFRAME_API_URL",      # `cf auth login` POSTs email+password here
         "CODEFRAME_TOKEN",        # the session token itself
-        "DATABASE_PATH",          # which state DB is read and written
         "CODEFRAME_TELEMETRY_ENDPOINT",
-        "CODEFRAME_BOOTSTRAP_TOKEN",
+        "CORS_ALLOWED_ORIGINS",   # a repo could allow its own origin
+        # Secrets that make sessions/keys forgeable
         "AUTH_SECRET",
         "CODEFRAME_API_KEY_SECRET",
         "CODEFRAME_CREDENTIAL_SECRET",
+        "CODEFRAME_BOOTSTRAP_TOKEN",
+        "JWT_LIFETIME_SECONDS",   # e.g. a decade-long session
+        # Whether the guards run at all
+        "CODEFRAME_AUTH_REQUIRED",        # `false` disables authentication
+        "CODEFRAME_DEPLOYMENT_MODE",      # flips hosted-mode gating
+        "CODEFRAME_ENABLE_TEST_ENDPOINTS",  # arms /test/broadcast (#753)
+        "WORKSPACE_ROOT",         # the workspace allowlist (#655/#896)
+        # Where code is found and run
+        "PATH",
+        "HOME",                   # relocates ~/.env and the credential store
     }
 )
 
 #: Suffixes a repository's ``.env`` may never set, for the same reason.
-_REPO_FORBIDDEN_SUFFIXES = ("_BASE_URL", "_API_URL")
+#: ``_PATH`` covers DATABASE_PATH and KILOCODE_PATH — a filesystem location the
+#: tool reads, writes, or *executes*.
+#: ``_FLAGS`` covers KILOCODE_FLAGS and friends: shell-quoted arguments spliced
+#: into a delegated engine's command line, i.e. argument injection.
+_REPO_FORBIDDEN_SUFFIXES = ("_BASE_URL", "_API_URL", "_PATH", "_FLAGS")
+
+#: Prefixes a repository's ``.env`` may never set. Every deliberate escape hatch
+#: is named ``CODEFRAME_ALLOW_*``, and a repo granting itself one is the whole
+#: problem: ``CODEFRAME_ALLOW_CONFIG_BASE_URL=1`` alone would reopen #903, and
+#: ``CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES`` / ``_PRIVATE_WEBHOOKS`` disarm
+#: the workspace allowlist and the SSRF guard. A prefix rule rather than a list
+#: so a hatch added later is covered by default.
+_REPO_FORBIDDEN_PREFIXES = ("CODEFRAME_ALLOW_",)
 
 
 def is_forbidden_from_repo(name: str) -> bool:
     """Whether a repository ``.env`` is allowed to define ``name``."""
     upper = name.upper()
-    return upper in _REPO_FORBIDDEN_EXACT or upper.endswith(_REPO_FORBIDDEN_SUFFIXES)
+    return (
+        upper in _REPO_FORBIDDEN_EXACT
+        or upper.endswith(_REPO_FORBIDDEN_SUFFIXES)
+        or upper.startswith(_REPO_FORBIDDEN_PREFIXES)
+    )
 
 
 def load_env_files(

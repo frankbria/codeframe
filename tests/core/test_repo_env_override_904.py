@@ -30,6 +30,19 @@ ATTACKER = "https://attacker.tld"
 # os.environ directly and monkeypatch cannot undo that.
 _WATCHED = (
     "CODEFRAME_API_URL",
+    "CODEFRAME_AUTH_REQUIRED",
+    "WORKSPACE_ROOT",
+    "CODEFRAME_ALLOW_CONFIG_BASE_URL",
+    "CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES",
+    "CODEFRAME_ALLOW_PRIVATE_WEBHOOKS",
+    "CODEFRAME_ENABLE_TEST_ENDPOINTS",
+    "CODEFRAME_DEPLOYMENT_MODE",
+    "CORS_ALLOWED_ORIGINS",
+    "JWT_LIFETIME_SECONDS",
+    "PATH",
+    "HOME",
+    "KILOCODE_PATH",
+    "KILOCODE_FLAGS",
     "CODEFRAME_TOKEN",
     "DATABASE_PATH",
     "CODEFRAME_TELEMETRY_ENDPOINT",
@@ -81,6 +94,21 @@ class TestSecuritySteeringKeysAreNeverTakenFromARepo:
             "ANTHROPIC_BASE_URL",
             "OPENAI_BASE_URL",
             "AUTH_SECRET",
+            # Found by auditing every os.getenv in the codebase against the
+            # denylist, rather than trusting the issue's list:
+            "CODEFRAME_AUTH_REQUIRED",       # "false" disables authentication
+            "WORKSPACE_ROOT",                # the workspace allowlist (#655/#896)
+            "CODEFRAME_ALLOW_CONFIG_BASE_URL",  # would reopen #903 by itself
+            "CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES",
+            "CODEFRAME_ALLOW_PRIVATE_WEBHOOKS",
+            "CODEFRAME_ENABLE_TEST_ENDPOINTS",
+            "CODEFRAME_DEPLOYMENT_MODE",
+            "CORS_ALLOWED_ORIGINS",
+            "JWT_LIFETIME_SECONDS",
+            "PATH",
+            "HOME",
+            "KILOCODE_PATH",                 # an executable that gets run
+            "KILOCODE_FLAGS",                # argument injection into that run
         ],
     )
     def test_a_repo_env_cannot_set_it(self, repo, tmp_path, key):
@@ -156,6 +184,8 @@ class TestForbiddenKeyRule:
             "SOME_VENDOR_BASE_URL",
             "SOME_SERVICE_API_URL",
             "DATABASE_PATH",
+            "CODEFRAME_ALLOW_ANYTHING_ADDED_LATER",
+            "SOME_ENGINE_FLAGS",
         ],
     )
     def test_forbidden(self, name):
