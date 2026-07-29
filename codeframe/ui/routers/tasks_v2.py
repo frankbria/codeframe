@@ -15,11 +15,13 @@ The v1 router (tasks.py) remains for backwards compatibility with
 existing web UI until Phase 3 (Web UI Rebuild).
 """
 
+import functools
 import logging
 import threading
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
@@ -541,14 +543,19 @@ async def approve_tasks_endpoint(
 
         # Optionally start execution
         if body.start_execution:
-            # Persist first, then execute off the event loop (#901).
-            batch = conductor.create_batch(
-                workspace,
-                task_ids=result.approved_task_ids,
-                strategy="serial",
-                max_parallel=4,
-                on_failure="continue",
-                engine=body.engine,
+            # Persist first, then execute off the event loop (#901). The
+            # persist is a synchronous SQLite write, so it is offloaded too —
+            # small, but it is still the event loop's time.
+            batch = await run_in_threadpool(
+                functools.partial(
+                    conductor.create_batch,
+                    workspace,
+                    task_ids=result.approved_task_ids,
+                    strategy="serial",
+                    max_parallel=4,
+                    on_failure="continue",
+                    engine=body.engine,
+                )
             )
             batch_id = batch.id
             _start_batch_detached(workspace, batch_id)
@@ -654,13 +661,16 @@ async def start_execution(
         # Persist the batch, then execute it off the event loop (#901): the
         # handler must return batch_id at once so the UI can start polling
         # while the batch runs.
-        batch = conductor.create_batch(
-            workspace,
-            task_ids=task_ids,
-            strategy=body.strategy,
-            max_parallel=body.max_parallel,
-            on_failure="continue",
-            engine=body.engine,
+        batch = await run_in_threadpool(
+            functools.partial(
+                conductor.create_batch,
+                workspace,
+                task_ids=task_ids,
+                strategy=body.strategy,
+                max_parallel=body.max_parallel,
+                on_failure="continue",
+                engine=body.engine,
+            )
         )
         _start_batch_detached(workspace, batch.id, max_retries=body.retry_count)
 
