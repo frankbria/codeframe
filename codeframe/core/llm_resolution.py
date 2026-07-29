@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
+from codeframe.core.env_provenance import is_repo_supplied
+
 logger = logging.getLogger(__name__)
 
 # Providers that need an API key up front. Local / OpenAI-compatible
@@ -144,8 +146,16 @@ def resolve_llm_settings(
 
     config_base_url = llm_cfg.base_url if llm_cfg else None
     base_url = config_base_url
+    env_sourced_from_repo = False
     if not base_url and provider_type in OPENAI_COMPATIBLE_PROVIDERS:
         base_url = os.getenv("OPENAI_BASE_URL")
+        # The env tier is trusted because it is the *operator's* environment —
+        # but `cf` loads <cwd>/.env with override=True, so a file committed in a
+        # cloned repo can set this key and beat what the operator exported. When
+        # it did, the value is repo content and gets the same gate as the config
+        # tier (#903).
+        if base_url and is_repo_supplied("OPENAI_BASE_URL"):
+            env_sourced_from_repo = True
 
     # A config-sourced base_url is repo-controlled input (#903). #780 closed the
     # env fallback for Anthropic, but a config file committed inside a cloned
@@ -153,26 +163,31 @@ def resolve_llm_settings(
     # key-bearing providers by name: get_provider hands OPENAI_API_KEY to
     # ollama/vllm/compatible too whenever it is set, so *any* provider can carry
     # the operator's key to the named host.
-    if config_base_url and not _is_loopback_url(config_base_url):
+    untrusted_candidate = config_base_url or (base_url if env_sourced_from_repo else None)
+    if untrusted_candidate and not _is_loopback_url(untrusted_candidate):
         if not _config_base_url_allowed():
+            source = (
+                "its .env (which overrides your environment)"
+                if env_sourced_from_repo
+                else "its .codeframe/config.yaml"
+            )
             raise UntrustedBaseURLError(
-                f"{repo_path or 'This workspace'}/.codeframe/config.yaml sets "
-                f"llm.base_url to {config_base_url!r}, which is not this "
-                "machine. Running would send your API key to that host.\n"
-                "If you trust it, re-run with "
-                f"{ALLOW_CONFIG_BASE_URL_ENV}=1. Otherwise remove the "
-                "base_url from the config, or pass a provider explicitly."
+                f"{repo_path or 'This workspace'} sets the LLM endpoint to "
+                f"{untrusted_candidate!r} via {source}. That is not this "
+                "machine, so running would send your API key to that host.\n"
+                f"If you trust it, re-run with {ALLOW_CONFIG_BASE_URL_ENV}=1. "
+                "Otherwise remove the base_url, or pass a provider explicitly."
             )
         logger.warning(
-            "Using non-default LLM endpoint %s from %s (allowed via %s)",
-            config_base_url,
-            "workspace config",
+            "Using non-default LLM endpoint %s supplied by the workspace "
+            "(allowed via %s)",
+            untrusted_candidate,
             ALLOW_CONFIG_BASE_URL_ENV,
         )
     elif base_url:
-        # Loopback, or the OPENAI_BASE_URL env tier: still announce the
-        # effective endpoint before the first call, so a redirect is never
-        # invisible in the output.
+        # Loopback, or an endpoint the operator really did set in their own
+        # environment: still announce it before the first call, so a redirect is
+        # never invisible in the output.
         logger.info("Using LLM endpoint %s (provider=%s)", base_url, provider_type)
 
     return LLMSettings(provider_type=provider_type, model=model, base_url=base_url)

@@ -42,6 +42,14 @@ _cwd_env = _cwd / ".env"
 if _home_env.exists():
     load_dotenv(_home_env)
 if _cwd_env.exists():
+    # Record provenance before loading: this file lives inside the repository
+    # and overrides the operator's exported environment, so anything downstream
+    # that trusts os.environ as "the operator's own configuration" needs to
+    # know which keys the repo supplied (#903). The general problem — a repo
+    # .env overriding the operator at all — is #904.
+    from codeframe.core.env_provenance import keys_defined_in, record_repo_env_keys
+
+    record_repo_env_keys(keys_defined_in(_cwd_env))
     load_dotenv(_cwd_env, override=True)  # workspace .env takes precedence
 
 # Create main app

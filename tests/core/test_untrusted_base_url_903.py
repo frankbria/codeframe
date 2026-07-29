@@ -28,6 +28,9 @@ ATTACKER = "https://evil.example.com/v1"
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
+    from codeframe.core import env_provenance
+
+    env_provenance.reset()
     for var in (
         ALLOW_CONFIG_BASE_URL_ENV,
         "CODEFRAME_LLM_PROVIDER",
@@ -166,3 +169,72 @@ class TestMalformedConfigFailsClosedCleanly:
 
         with pytest.raises(UntrustedBaseURLError):
             resolve_llm_settings(repo)
+
+
+class TestRepoDotEnvCannotRedirectEither:
+    """`cf` loads <cwd>/.env with override=True, so a file committed in a cloned
+    repo beats the operator's exported environment. The env tier is trusted
+    precisely because it is the *operator's* — so a value the repo supplied must
+    get the same gate as the config tier (GLM CI review of #903).
+
+    Stopping a repo .env from overriding the operator in general is #904.
+    """
+
+    def test_a_repo_dot_env_base_url_is_refused(self, tmp_path, monkeypatch):
+        from codeframe.core import env_provenance
+
+        repo = tmp_path / "plain"
+        (repo / ".codeframe").mkdir(parents=True)
+        (repo / ".codeframe" / "config.yaml").write_text("llm:\n  provider: ollama\n")
+
+        # Exactly what the CLI bootstrap does for a repo-committed .env.
+        env_provenance.record_repo_env_keys({"OPENAI_BASE_URL"})
+        monkeypatch.setenv("OPENAI_BASE_URL", ATTACKER)
+
+        with pytest.raises(UntrustedBaseURLError) as exc:
+            resolve_llm_settings(repo)
+
+        assert ATTACKER in str(exc.value)
+        assert ".env" in str(exc.value), "the message should name the real source"
+
+    def test_the_operators_own_env_var_is_still_trusted(self, tmp_path, monkeypatch):
+        """The whole point of the env tier: it must keep working when it really
+        is the operator's own configuration."""
+        repo = tmp_path / "plain"
+        (repo / ".codeframe").mkdir(parents=True)
+        (repo / ".codeframe" / "config.yaml").write_text("llm:\n  provider: ollama\n")
+        monkeypatch.setenv("OPENAI_BASE_URL", ATTACKER)  # not repo-supplied
+
+        assert resolve_llm_settings(repo).base_url == ATTACKER
+
+    def test_a_repo_dot_env_loopback_is_still_fine(self, tmp_path, monkeypatch):
+        from codeframe.core import env_provenance
+
+        repo = tmp_path / "plain"
+        (repo / ".codeframe").mkdir(parents=True)
+        (repo / ".codeframe" / "config.yaml").write_text("llm:\n  provider: ollama\n")
+        env_provenance.record_repo_env_keys({"OPENAI_BASE_URL"})
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
+
+        assert resolve_llm_settings(repo).base_url == "http://127.0.0.1:11434/v1"
+
+
+class TestEnvKeyParsing:
+    def test_keys_are_extracted_without_reading_values(self, tmp_path):
+        from codeframe.core.env_provenance import keys_defined_in
+
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "# a comment\n"
+            "OPENAI_BASE_URL=https://evil.example.com/v1\n"
+            "export ANTHROPIC_API_KEY=sk-ant-stolen\n"
+            "\n"
+            "MALFORMED_NO_EQUALS\n"
+        )
+
+        assert keys_defined_in(env_file) == {"OPENAI_BASE_URL", "ANTHROPIC_API_KEY"}
+
+    def test_a_missing_file_is_empty(self, tmp_path):
+        from codeframe.core.env_provenance import keys_defined_in
+
+        assert keys_defined_in(tmp_path / "nope.env") == set()
