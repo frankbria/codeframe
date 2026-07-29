@@ -117,3 +117,92 @@ def clear_github_integration_config(workspace: Workspace) -> None:
         path.unlink(missing_ok=True)
     except OSError as e:
         logger.warning("Failed to remove github_integration.json: %s", e)
+
+
+class GitHubResolutionError(Exception):
+    """No usable GitHub credential/repo for this caller and workspace.
+
+    Carries a caller-facing ``message`` explaining which half is missing so the
+    HTTP and CLI layers can render it without re-deriving the reason.
+    """
+
+
+def resolve_github_repo(
+    workspace: Workspace,
+    *,
+    allow_env_fallback: bool = True,
+) -> Optional[str]:
+    """The repo GitHub operations should target for this workspace (issue #900).
+
+    The workspace's own connection wins. ``GITHUB_REPO`` is a self-hosted
+    convenience only: it is the operator's ambient setting, so it must never
+    silently redirect a connected workspace's PRs at another repository.
+    """
+    config = load_github_integration_config(workspace)
+    if config and config.get("repo"):
+        return config["repo"]
+    if allow_env_fallback:
+        return os.getenv("GITHUB_REPO") or None
+    return None
+
+
+def resolve_github_credentials(
+    workspace: Workspace,
+    user_id: Optional[int] = None,
+    *,
+    allow_env_fallback: bool = True,
+) -> tuple[str, str]:
+    """Resolve ``(token, repo)`` for GitHub operations, scoped to the caller.
+
+    The single resolution path shared by the v2 PR router and ``cf pr`` (issue
+    #900), so the server and the CLI cannot drift.
+
+    The token comes from the caller-scoped ``CredentialManager`` (#790). For an
+    **authenticated principal** the store is consulted before the environment:
+    the default env-first order would let the operator's ambient
+    ``GITHUB_TOKEN`` beat the PAT that user connected in the UI, so every PR
+    would be opened on the operator's behalf, unattributed — the defect this
+    resolves. For ``user_id=None`` (CLI / auth disabled) the caller *is* the
+    operator, so there is no one to protect the environment from and the
+    original env-first order stands — which also keeps ``cf pr`` from doing an
+    OS-keyring read on every invocation when ``GITHUB_TOKEN`` is set.
+
+    The repo always comes from the workspace's own
+    ``.codeframe/github_integration.json`` first.
+
+    Args:
+        workspace: Workspace whose GitHub connection to use.
+        user_id: Authenticated principal, or ``None`` for the machine-wide store
+            (auth disabled / CLI).
+        allow_env_fallback: Permit ``GITHUB_TOKEN``/``GITHUB_REPO`` when the
+            workspace/user has no connection of its own. Callers in hosted mode
+            must pass ``False`` — there the environment is shared by every
+            tenant, so falling back to it is precisely the cross-tenant leak.
+
+    Raises:
+        GitHubResolutionError: If either half cannot be resolved.
+    """
+    from codeframe.core.credentials import CredentialManager, CredentialProvider
+
+    manager = CredentialManager(user_id=user_id, migrate=False)
+    if not allow_env_fallback:
+        token = manager.get_stored_credential(CredentialProvider.GIT_GITHUB)
+    else:
+        token = manager.get_credential(
+            CredentialProvider.GIT_GITHUB,
+            prefer_stored=user_id is not None,
+        )
+
+    repo = resolve_github_repo(workspace, allow_env_fallback=allow_env_fallback)
+
+    if not token:
+        raise GitHubResolutionError(
+            "No GitHub credential for this account. Connect a repository in "
+            "Settings → Integrations, or run 'cf auth setup --provider github'."
+        )
+    if not repo:
+        raise GitHubResolutionError(
+            "No GitHub repository connected for this workspace. Connect one in "
+            "Settings → Integrations."
+        )
+    return token, repo

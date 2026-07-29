@@ -19,8 +19,16 @@ runner = CliRunner()
 
 
 @pytest.fixture
-def mock_github_token(monkeypatch):
-    """Set up mock GitHub token for tests."""
+def mock_github_token(monkeypatch, tmp_path):
+    """Env-var-configured GitHub CLI, in an isolated cwd.
+
+    ``cf pr`` resolves the workspace in the cwd since #900 (the workspace's
+    connected repo and the caller's stored PAT win over the ambient env vars),
+    so these env-var tests must not run in the developer's own repo — the
+    conftest ambient-workspace guard rejects that. An empty tmp cwd has no
+    workspace, which is exactly the bare-checkout case these tests cover.
+    """
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_test_token_12345")
     monkeypatch.setenv("GITHUB_REPO", "testowner/testrepo")
 
@@ -99,10 +107,13 @@ class TestPRCreateCommand:
         call_args = mock_gh.create_pull_request.call_args
         assert call_args.kwargs.get("base") == "develop" or call_args[1].get("base") == "develop"
 
-    def test_create_pr_no_github_token_shows_error(self, monkeypatch):
+    def test_create_pr_no_github_token_shows_error(self, monkeypatch, tmp_path):
         """Create PR without GitHub token should show helpful error."""
         from codeframe.cli.pr_commands import pr_app
 
+        # Isolated cwd: `cf pr` resolves the workspace here since #900, and the
+        # conftest guard rejects resolving the developer's own repo.
+        monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("GITHUB_TOKEN", raising=False)
         monkeypatch.delenv("GITHUB_REPO", raising=False)
 
@@ -715,3 +726,66 @@ class TestErrorHandling:
 
         assert result.exit_code != 0
         assert "rate" in result.output.lower() or "limit" in result.output.lower() or "error" in result.output.lower()
+
+
+class TestCliUsesWorkspaceResolution:
+    """`cf pr` shares the v2 router's credential/repo resolution (#900 / P0.6).
+
+    Before this, the CLI read GITHUB_TOKEN/GITHUB_REPO and nothing else, so a
+    repository connected through the UI was invisible to it — the two halves of
+    the product disagreed about which repo Ship acts on.
+    """
+
+    def test_workspace_repo_wins_over_the_env_repo(self, monkeypatch, tmp_path):
+        from datetime import timezone
+
+        from codeframe.cli.pr_commands import pr_app
+        from codeframe.core.github_integration_config import (
+            save_github_integration_config,
+        )
+        from codeframe.core.workspace import create_or_load_workspace
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_env_token_12345")
+        monkeypatch.setenv("GITHUB_REPO", "operator/ambient-repo")
+
+        workspace = create_or_load_workspace(tmp_path)
+        save_github_integration_config(
+            workspace,
+            {
+                "repo": "connected/repo",
+                "owner_login": "connected",
+                "owner_avatar_url": "",
+                "connected_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
+            mock_gh = AsyncMock()
+            mock_gh.list_pull_requests = AsyncMock(return_value=[])
+            mock_gh.close = AsyncMock()
+            MockGH.return_value = mock_gh
+
+            result = runner.invoke(pr_app, ["list"])
+
+        assert result.exit_code == 0, result.output
+        assert MockGH.call_args.kwargs["repo"] == "connected/repo"
+
+    def test_no_workspace_still_works_from_a_bare_checkout(self, monkeypatch, tmp_path):
+        """The CLI must not start requiring `cf init` just to list PRs."""
+        from codeframe.cli.pr_commands import pr_app
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_env_token_12345")
+        monkeypatch.setenv("GITHUB_REPO", "operator/ambient-repo")
+
+        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
+            mock_gh = AsyncMock()
+            mock_gh.list_pull_requests = AsyncMock(return_value=[])
+            mock_gh.close = AsyncMock()
+            MockGH.return_value = mock_gh
+
+            result = runner.invoke(pr_app, ["list"])
+
+        assert result.exit_code == 0, result.output
+        assert MockGH.call_args.kwargs["repo"] == "operator/ambient-repo"

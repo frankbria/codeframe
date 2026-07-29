@@ -1076,8 +1076,16 @@ class TestPRCommands:
     """Tests for PR CLI commands with mocked GitHub API."""
 
     @pytest.fixture
-    def mock_github_env(self, monkeypatch):
-        """Set up mock GitHub environment variables."""
+    def mock_github_env(self, monkeypatch, tmp_path):
+        """Env-var-configured GitHub CLI, in an isolated cwd.
+
+        ``cf pr`` resolves the workspace in the cwd since #900 (the workspace's
+        connected repo and the caller's stored PAT win over the ambient env
+        vars), so these env-var tests must not run in the developer's own repo
+        — the conftest ambient-workspace guard rejects that. An empty tmp cwd
+        has no workspace, which is the bare-checkout case these tests cover.
+        """
+        monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_test_token_12345")
         monkeypatch.setenv("GITHUB_REPO", "testowner/testrepo")
 
@@ -1247,8 +1255,11 @@ class TestPRCommands:
         assert result.exit_code == 0
         assert "42" in result.output or "open" in result.output.lower()
 
-    def test_pr_no_token_error(self, monkeypatch):
+    def test_pr_no_token_error(self, monkeypatch, tmp_path):
         """PR commands without GITHUB_TOKEN show helpful error."""
+        # Isolated cwd: `cf pr` resolves the workspace here since #900, and the
+        # conftest guard rejects resolving the developer's own repo (#975).
+        monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("GITHUB_TOKEN", raising=False)
         monkeypatch.delenv("GITHUB_REPO", raising=False)
 
