@@ -47,7 +47,7 @@ from codeframe.core.github_integration_config import (
 from codeframe.core import tasks
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
-from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.dependencies import get_v2_workspace, resolve_github_pat
 from codeframe.ui.response_models import ErrorCodes, api_error
 
 logger = logging.getLogger(__name__)
@@ -190,6 +190,7 @@ async def get_status(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
     manager: CredentialManager = Depends(get_credential_manager_readonly),
+    auth: dict = Depends(require_auth),
 ) -> StatusResponse:
     """Report whether a GitHub repo is connected for this workspace.
 
@@ -197,7 +198,7 @@ async def get_status(
     calling user's GitHub PAT is present (env var or stored).
     """
     cfg = load_github_integration_config(workspace)
-    has_pat = manager.get_credential(CredentialProvider.GIT_GITHUB) is not None
+    has_pat = resolve_github_pat(manager, auth) is not None
     if cfg is None or not has_pat:
         return StatusResponse(connected=False)
     return StatusResponse(
@@ -270,7 +271,12 @@ async def connect(
     # The GIT_GITHUB slot is shared with the API Keys tab, so capture any
     # prior token first to restore it if the config write fails — never
     # blindly delete an unrelated, previously working credential.
-    prior_pat = manager.get_credential(CredentialProvider.GIT_GITHUB)
+    # Store-only, deliberately: get_credential is env-first, so in a
+    # deployment with GITHUB_TOKEN set this would capture the *operator's*
+    # ambient token and the rollback below would persist it into this user's
+    # store, where they could then use it (#900). Only a genuinely stored
+    # prior credential is worth restoring.
+    prior_pat = manager.get_stored_credential(CredentialProvider.GIT_GITHUB)
     try:
         manager.set_credential(CredentialProvider.GIT_GITHUB, body.pat)
     except Exception as e:
@@ -364,7 +370,7 @@ async def get_issues(
     The PAT is never returned.
     """
     cfg = load_github_integration_config(workspace)
-    pat = manager.get_credential(CredentialProvider.GIT_GITHUB)
+    pat = resolve_github_pat(manager, auth)
     if cfg is None or not pat:
         raise HTTPException(
             status_code=409,
@@ -430,7 +436,7 @@ async def get_issues(
 
 
 def _require_connection(
-    workspace: Workspace, manager: CredentialManager
+    workspace: Workspace, manager: CredentialManager, auth: dict
 ) -> tuple[str, str]:
     """Return ``(repo, pat)`` for a connected workspace, or raise 409.
 
@@ -438,7 +444,7 @@ def _require_connection(
     repo metadata AND a stored PAT must be present.
     """
     cfg = load_github_integration_config(workspace)
-    pat = manager.get_credential(CredentialProvider.GIT_GITHUB)
+    pat = resolve_github_pat(manager, auth)
     if cfg is None or not pat:
         raise HTTPException(
             status_code=409,
@@ -489,7 +495,7 @@ async def import_issues(
     issue fails the request cleanly without leaving a partial set of tasks
     behind (which would confuse a retry with phantom duplicates).
     """
-    repo, pat = _require_connection(workspace, manager)
+    repo, pat = _require_connection(workspace, manager, auth)
 
     skipped: list[int] = []
     to_create: list[tuple[int, dict]] = []

@@ -113,7 +113,7 @@ def env(tmp_path, monkeypatch):
 
     monkeypatch.setattr(pr_v2, "GitHubIntegration", _FakeGitHub)
 
-    state = {"uid": 1}
+    state = {"uid": 1, "scopes": ["read", "write", "admin"]}
     app = FastAPI()
     app.include_router(pr_v2.router)
 
@@ -122,7 +122,7 @@ def env(tmp_path, monkeypatch):
     app.dependency_overrides[require_auth] = lambda: {
         "type": "jwt",
         "user_id": state["uid"],
-        "scopes": ["read", "write", "admin"],
+        "scopes": list(state["scopes"]),
     }
     app.dependency_overrides[get_v2_workspace] = lambda: workspaces[state["uid"]]
 
@@ -131,8 +131,9 @@ def env(tmp_path, monkeypatch):
         github_calls = calls
 
         @staticmethod
-        def as_user(uid):
+        def as_user(uid, scopes=("read", "write", "admin")):
             state["uid"] = uid
+            state["scopes"] = list(scopes)
 
         @staticmethod
         def workspace(uid):
@@ -184,25 +185,64 @@ class TestPerUserCredential:
         assert resp.status_code == 200, resp.text
         assert env.github_calls[-1]["repo"] == "tenant-a/project"
 
-    def test_unconnected_caller_gets_400_not_the_operator_token(self, env, monkeypatch):
-        """A principal with no stored PAT must be told to connect, not silently
-        handed the operator's credential."""
+    def test_unconnected_non_operator_never_gets_the_env_token(self, env, monkeypatch):
+        """The default deployment is self-hosted **with auth on**, so gating the
+        env fallback on hosted mode alone would still hand an ordinary
+        authenticated user the operator's token. Only the operator may use it.
+        """
         from codeframe.core.credentials import CredentialProvider
 
         monkeypatch.setenv("GITHUB_TOKEN", OPERATOR_PAT)
-        env.as_user(1)
-        # Drop user 1's stored PAT, leaving only the ambient env var.
-        mgr_calls_before = len(env.github_calls)
+        env.as_user(1, scopes=["read", "write"])  # not an operator
         env.manager(1).delete_credential(CredentialProvider.GIT_GITHUB)
 
         resp = env.client.get("/api/v2/pr")
 
-        # The env fallback is still permitted in self-hosted mode, so this is
-        # allowed to succeed — but it must never have used a *different user's*
-        # stored PAT.
-        used = [c["token"] for c in env.github_calls[mgr_calls_before:]]
-        assert PAT_B not in used
-        assert resp.status_code in (200, 400), resp.text
+        assert resp.status_code == 400, resp.text
+        assert OPERATOR_PAT not in [c["token"] for c in env.github_calls]
+
+    def test_unconnected_operator_may_use_the_env_token(self, env, monkeypatch):
+        """The environment is the operator's own configuration, so the operator
+        (admin scope → is_superuser since #898) may still act with it."""
+        from codeframe.core.credentials import CredentialProvider
+
+        monkeypatch.setenv("GITHUB_TOKEN", OPERATOR_PAT)
+        monkeypatch.setenv("GITHUB_REPO", "operator/infra")
+        env.as_user(1, scopes=["read", "write", "admin"])
+        env.manager(1).delete_credential(CredentialProvider.GIT_GITHUB)
+        (env.workspace(1).state_dir / "github_integration.json").unlink()
+
+        resp = env.client.get("/api/v2/pr")
+
+        assert resp.status_code == 200, resp.text
+        assert env.github_calls[-1]["token"] == OPERATOR_PAT
+
+    def test_non_operator_with_own_pat_is_unaffected(self, env, monkeypatch):
+        """Tightening the fallback must not break a user who *has* connected."""
+        monkeypatch.setenv("GITHUB_TOKEN", OPERATOR_PAT)
+        env.as_user(1, scopes=["read", "write"])
+
+        resp = env.client.get("/api/v2/pr")
+
+        assert resp.status_code == 200, resp.text
+        assert env.github_calls[-1]["token"] == PAT_A
+
+    def test_unconnected_caller_hosted_gets_400_not_the_operator_token(
+        self, env, monkeypatch
+    ):
+        """Hosted: the environment belongs to no tenant, so a caller with no
+        stored PAT is told to connect rather than handed the operator's."""
+        from codeframe.core.credentials import CredentialProvider
+
+        monkeypatch.setattr("codeframe.ui.server.is_hosted_mode", lambda: True)
+        monkeypatch.setenv("GITHUB_TOKEN", OPERATOR_PAT)
+        env.as_user(1)
+        env.manager(1).delete_credential(CredentialProvider.GIT_GITHUB)
+
+        resp = env.client.get("/api/v2/pr")
+
+        assert resp.status_code == 400, resp.text
+        assert OPERATOR_PAT not in [c["token"] for c in env.github_calls]
 
 
 class TestHostedModeRefusesPrWrites:

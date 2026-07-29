@@ -193,9 +193,11 @@ def _get_github_client(workspace: Workspace, auth: dict) -> GitHubIntegration:
     stored PAT first (never displaced by the ambient env var), and the repo from
     this workspace's own ``.codeframe/github_integration.json``.
 
-    In hosted mode the environment fallback is disabled outright — there
-    ``GITHUB_TOKEN`` is shared by every tenant, so falling back to it *is* the
-    cross-tenant leak.
+    The ``GITHUB_TOKEN``/``GITHUB_REPO`` fallback is gated on *who is calling*,
+    not on deployment mode — see ``github_env_fallback_allowed``. Gating it on
+    hosted mode alone would have left the default deployment (self-hosted with
+    auth enabled) still handing every ordinary authenticated user the operator's
+    token.
 
     Raises:
         HTTPException: 400 if no credential/repo can be resolved for this caller.
@@ -204,13 +206,13 @@ def _get_github_client(workspace: Workspace, auth: dict) -> GitHubIntegration:
         GitHubResolutionError,
         resolve_github_credentials,
     )
-    from codeframe.ui.server import is_hosted_mode
+    from codeframe.ui.dependencies import github_env_fallback_allowed
 
     try:
         token, repo = resolve_github_credentials(
             workspace,
             user_id=auth.get("user_id"),
-            allow_env_fallback=not is_hosted_mode(),
+            allow_env_fallback=github_env_fallback_allowed(auth),
         )
         return GitHubIntegration(token=token, repo=repo)
     except (GitHubResolutionError, ValueError) as e:

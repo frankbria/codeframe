@@ -174,7 +174,62 @@ def get_v2_workspace(
     return workspace
 
 
+def github_env_fallback_allowed(auth: Dict[str, Any]) -> bool:
+    """Whether this caller may fall back to the process-wide GitHub env vars (#900).
+
+    One rule, stated once: **the process environment belongs to the operator, so
+    only the operator may act with it.** ``GITHUB_TOKEN``/``GITHUB_REPO`` are the
+    machine's ambient configuration, not any particular user's credential, so
+    serving them to an ordinary principal opens PRs — and reads private repos —
+    on the operator's behalf, unattributed.
+
+    Gating this on *deployment mode* is not enough, and was the first cut's
+    mistake: the default deployment is self-hosted **with auth enabled**, so an
+    ordinary authenticated user with no PAT of their own would still have been
+    handed the operator's token there.
+
+    - auth disabled (``user_id is None``) — the caller *is* the local operator.
+    - authenticated operator — an ``admin``-scoped principal. Since #898 that
+      means an ``is_superuser`` account, and an admin-scoped API key is clamped
+      to a superuser owner on every request, so this is a real operator check
+      rather than a self-asserted one.
+    - anyone else — store-only. They get a clear "connect a repository" 400
+      rather than someone else's credential.
+    - hosted mode — never. There the environment is shared by every tenant, so
+      falling back to it is precisely the cross-tenant leak.
+    """
+    from codeframe.auth.api_keys import SCOPE_ADMIN
+    from codeframe.auth.scopes import has_scope
+    from codeframe.ui.server import is_hosted_mode
+
+    if is_hosted_mode():
+        return False
+    if auth.get("user_id") is None:
+        return True
+    return has_scope(auth, SCOPE_ADMIN)
+
+
+def resolve_github_pat(credential_manager, auth: Dict[str, Any]) -> Optional[str]:
+    """The GitHub PAT this caller may act with (#900).
+
+    Shared by the PR router and the Integrations router so the two cannot drift
+    on whose credential is used. ``get_credential`` is env-*first* by default,
+    so a plain call would let the operator's ambient ``GITHUB_TOKEN`` displace
+    the PAT a user connected in the UI.
+    """
+    from codeframe.core.credentials import CredentialProvider
+
+    if github_env_fallback_allowed(auth):
+        return credential_manager.get_credential(
+            CredentialProvider.GIT_GITHUB,
+            prefer_stored=auth.get("user_id") is not None,
+        )
+    return credential_manager.get_stored_credential(CredentialProvider.GIT_GITHUB)
+
+
 __all__ = [
     "get_v2_workspace",
     "enforce_workspace_allowlist",
+    "github_env_fallback_allowed",
+    "resolve_github_pat",
 ]
