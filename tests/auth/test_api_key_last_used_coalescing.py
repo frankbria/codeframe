@@ -147,3 +147,40 @@ class TestResolutionIsOffloaded:
 
         assert auth is not None
         assert seen["thread"] is not loop_thread
+
+
+class TestClaimHousekeeping:
+    """Review findings on the coalescing (#902 round 2)."""
+
+    @pytest.mark.asyncio
+    async def test_a_failed_write_is_retried_next_request(
+        self, db_and_key, monkeypatch
+    ):
+        """The slot is claimed *before* the UPDATE, so a failed write must give
+        it back rather than suppress refreshes for the rest of the window."""
+        db, key = db_and_key
+        attempts = []
+
+        def _flaky(key_id):
+            attempts.append(key_id)
+            if len(attempts) == 1:
+                raise RuntimeError("database is locked")
+
+        monkeypatch.setattr(db.api_keys, "update_last_used", _flaky)
+
+        await deps.get_api_key_auth(api_key=key.key, request=_Request(db))
+        await deps.get_api_key_auth(api_key=key.key, request=_Request(db))
+
+        assert len(attempts) == 2, "a failed write was not retried"
+
+    @pytest.mark.asyncio
+    async def test_stale_entries_are_pruned(self, db_and_key):
+        """Entries must not accumulate for every key ever authenticated."""
+        db, key = db_and_key
+
+        deps._last_used_writes["revoked-key-long-gone"] = (
+            0.0 - deps._LAST_USED_COALESCE_SECONDS
+        )
+        await deps.get_api_key_auth(api_key=key.key, request=_Request(db))
+
+        assert "revoked-key-long-gone" not in deps._last_used_writes

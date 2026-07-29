@@ -172,3 +172,82 @@ class TestIncrementalReads:
     async def test_missing_file_is_not_an_error(self, workspace):
         lines = await _collect(workspace, max_wait=0.15)
         assert lines == []
+
+
+class TestRotationAndEncoding:
+    """Review findings on the incremental rewrite (#902 round 2)."""
+
+    async def test_rotation_to_a_larger_file_is_detected(self, workspace, log):
+        """A size-only check misses the usual case: the replacement file grows
+        *past* the old offset, so the reader seeks into its middle and silently
+        drops the head."""
+        log.write_text("".join(f"old {i}\n" for i in range(20)))
+        collected: list[str] = []
+
+        async def _rotate():
+            await asyncio.sleep(0.12)
+            log.unlink()
+            log.write_text("".join(f"new {i}\n" for i in range(60)))
+
+        rotator = asyncio.create_task(_rotate())
+        collected = await _collect(workspace, max_wait=0.5)
+        await rotator
+
+        assert "new 0\n" in collected, (
+            "head of the rotated file was skipped — rotation not detected"
+        )
+
+    async def test_truncation_does_not_weld_the_old_fragment_on(
+        self, workspace, log
+    ):
+        """`pending` must reset with the offset, or the pre-rotation fragment is
+        concatenated onto the new file's first line."""
+        log.write_text("old partial")  # no newline: stays in `pending`
+
+        async def _replace():
+            await asyncio.sleep(0.12)
+            log.write_text("new line\n")
+
+        replacer = asyncio.create_task(_replace())
+        lines = await _collect(workspace, max_wait=0.45)
+        await replacer
+
+        assert "old partialnew line\n" not in lines, f"welded fragment: {lines}"
+        assert "new line\n" in lines
+
+    async def test_multibyte_split_across_polls_is_not_mangled(
+        self, workspace, log
+    ):
+        """A UTF-8 sequence straddling a poll must survive.
+
+        Decoding each chunk independently turns the partial sequence at EOF into
+        U+FFFD and orphans its remaining bytes — permanently mangling the
+        character and replaying the corruption to every client.
+        """
+        raw = "héllo wörld ✅ 日本語\n".encode("utf-8")
+        split = len(raw) - 6  # lands inside the multibyte tail
+        log.write_bytes(raw[:split])
+
+        async def _finish():
+            await asyncio.sleep(0.12)
+            with open(log, "ab") as f:
+                f.write(raw[split:])
+
+        finisher = asyncio.create_task(_finish())
+        lines = await _collect(workspace, max_wait=0.45)
+        await finisher
+
+        assert lines == ["héllo wörld ✅ 日本語\n"], lines
+        assert "\ufffd" not in "".join(lines)
+
+    async def test_trailing_fragment_survives_since_line_on_the_boundary(
+        self, workspace, log
+    ):
+        """since_line == the exact number of complete lines: every line is
+        skipped and nothing is yielded, but the trailing fragment is still the
+        caller's."""
+        log.write_text("a\nb\nc\npartial")
+
+        lines = await _collect(workspace, since_line=3, max_wait=0.15)
+
+        assert lines == ["partial"]

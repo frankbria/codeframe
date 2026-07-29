@@ -15,6 +15,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import asyncio
+import codecs
 import logging
 import os
 import threading
@@ -286,27 +287,59 @@ async def atail_run_output(
     # client — so a multi-MB agent log burned O(size) CPU and IO per tick on the
     # event loop, for every open tab. We now remember a byte offset and read
     # only what was appended since.
+    #
+    # Binary mode with a persistent incremental decoder, deliberately. Text mode
+    # would hand back an opaque tell() cookie (not comparable with st_size), and
+    # decoding each chunk independently mangles any multibyte character whose
+    # bytes straddle a poll: the partial sequence at EOF becomes U+FFFD and its
+    # remaining bytes are then orphaned. The decoder holds incomplete sequences
+    # until the rest arrives, so emoji/CJK output survives the boundary.
     offset = 0
-    pending = ""      # bytes read that do not yet end a line
+    pending = ""
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     skip_lines = max(since_line, 0)
-    started = False
+    reached_tail = skip_lines == 0
 
-    def _read_new() -> str:
-        """Return text appended since ``offset``, updating it. Never raises."""
-        nonlocal offset
+    # Last bytes we consumed, re-verified each poll to detect that the file was
+    # replaced underneath us. Inode identity is not enough on its own: a
+    # delete-then-recreate can reuse the inode number immediately, and file
+    # timestamps change on ordinary appends, so neither distinguishes "appended"
+    # from "replaced". Comparing the bytes we already read does, at the cost of
+    # one bounded extra read per poll.
+    _SIGNATURE_BYTES = 32
+    signature = b""
+
+    def _read_new() -> tuple[str, bool]:
+        """``(text_appended, was_reset)``. Never raises.
+
+        Returns ``was_reset`` rather than clearing ``pending`` itself: the
+        caller's ``pending += ...`` loads ``pending`` *before* evaluating this
+        call, so an assignment in here would be silently discarded.
+        """
+        nonlocal offset, decoder, signature
         try:
             size = log_path.stat().st_size
-            if size < offset:
-                # Truncated/rotated underneath us — start over rather than
-                # seeking past the end and yielding nothing forever.
+            reset = size < offset
+            if not reset and offset and signature:
+                with open(log_path, "rb") as f:
+                    f.seek(offset - len(signature))
+                    reset = f.read(len(signature)) != signature
+
+            if reset:
                 offset = 0
-            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                signature = b""
+                decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+
+            with open(log_path, "rb") as f:
                 f.seek(offset)
                 chunk = f.read()
                 offset = f.tell()
-            return chunk
+
+            if chunk:
+                signature = (signature + chunk)[-_SIGNATURE_BYTES:]
+            return decoder.decode(chunk), reset
         except Exception:
-            return ""  # File might be temporarily unavailable
+            return "", False  # File might be temporarily unavailable
 
     while True:
         if max_wait is not None and (time.monotonic() - start_time) >= max_wait:
@@ -316,7 +349,11 @@ async def atail_run_output(
             break
 
         if log_path.exists():
-            pending += _read_new()
+            appended, was_reset = _read_new()
+            if was_reset:
+                # Never weld a pre-rotation fragment onto the new file's head.
+                pending = ""
+            pending += appended
 
             # Only emit complete lines: a trailing fragment is a line the agent
             # is still writing. Holding it back until its newline arrives also
@@ -326,15 +363,20 @@ async def atail_run_output(
                 line, pending = pending.split("\n", 1)
                 if skip_lines:
                     skip_lines -= 1
+                    if skip_lines == 0:
+                        reached_tail = True
                     continue
-                started = True
+                reached_tail = True
                 yield line + "\n"
 
         await asyncio.sleep(poll_interval)
 
     # Flush a final unterminated line (a log whose last write had no newline),
-    # which would otherwise be lost when the stream closes.
-    if pending and not skip_lines and (started or since_line == 0):
+    # which would otherwise be lost when the stream closes. Gated on having
+    # reached the live tail rather than on having yielded anything: with
+    # since_line == the exact number of complete lines, every line is skipped
+    # and nothing is yielded, yet the trailing fragment is still the caller's.
+    if pending and reached_tail:
         yield pending
 
 

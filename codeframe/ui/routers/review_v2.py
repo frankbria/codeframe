@@ -174,7 +174,8 @@ async def review_task(
         ReviewResultResponse with findings and score
     """
     try:
-        result = review.review_task(
+        result = await run_in_threadpool(
+            review.review_task,
             workspace,
             task_id=body.task_id,
             files_modified=body.files_modified,

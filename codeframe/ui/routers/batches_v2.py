@@ -165,7 +165,7 @@ async def get_batch(
     Raises:
         HTTPException: 404 if batch not found
     """
-    batch = conductor.get_batch(workspace, batch_id)
+    batch = await run_in_threadpool(conductor.get_batch, workspace, batch_id)
 
     if not batch:
         raise HTTPException(
@@ -211,7 +211,9 @@ async def stop_batch(
     force = body.force if body else False
 
     try:
-        batch = conductor.stop_batch(workspace, batch_id, force=force)
+        batch = await run_in_threadpool(
+            conductor.stop_batch, workspace, batch_id, force=force
+        )
         return _batch_to_response(batch)
 
     except ValueError as e:
@@ -254,7 +256,9 @@ async def resume_batch(
     force = body.force if body else False
 
     try:
-        batch = conductor.resume_batch(workspace, batch_id, force=force)
+        batch = await run_in_threadpool(
+            conductor.resume_batch, workspace, batch_id, force=force
+        )
         return _batch_to_response(batch)
 
     except ValueError as e:
@@ -301,7 +305,7 @@ async def cancel_batch(
             - 400: Batch not in cancellable state
     """
     try:
-        batch = conductor.cancel_batch(workspace, batch_id)
+        batch = await run_in_threadpool(conductor.cancel_batch, workspace, batch_id)
         return _batch_to_response(batch)
 
     except ValueError as e:

@@ -306,7 +306,9 @@ def _scopes_within_owner_grant(db: Any, key_record: Dict[str, Any]) -> list:
 _LAST_USED_COALESCE_SECONDS = 300.0
 
 # In-process only: each worker refreshes at most once per window per key, which
-# is the right trade for a usage hint. Bounded by the number of live keys.
+# is the right trade for a usage hint. Entries older than the window are pruned
+# on access, so this tracks keys in *current* use rather than every key ever
+# authenticated — a revoked key's slot does not outlive the window.
 _last_used_writes: Dict[str, float] = {}
 _last_used_lock = threading.Lock()
 
@@ -315,11 +317,30 @@ def _should_record_last_used(key_id: str) -> bool:
     """Whether this key's ``last_used_at`` is due for a refresh."""
     now = time.monotonic()
     with _last_used_lock:
-        previous = _last_used_writes.get(key_id)
-        if previous is not None and (now - previous) < _LAST_USED_COALESCE_SECONDS:
+        # Prune first: an expired entry would be overwritten anyway, and this
+        # keeps the dict proportional to keys in active use.
+        for stale in [
+            k
+            for k, t in _last_used_writes.items()
+            if (now - t) >= _LAST_USED_COALESCE_SECONDS
+        ]:
+            del _last_used_writes[stale]
+
+        if key_id in _last_used_writes:
             return False
         _last_used_writes[key_id] = now
         return True
+
+
+def _release_last_used_claim(key_id: str) -> None:
+    """Undo a claim whose write failed, so the next request can retry.
+
+    The slot is claimed *before* the UPDATE (it is what makes the check atomic),
+    so a failed write must give it back rather than suppress refreshes for the
+    rest of the window.
+    """
+    with _last_used_lock:
+        _last_used_writes.pop(key_id, None)
 
 
 async def get_api_key_auth(
@@ -393,6 +414,7 @@ def _resolve_api_key(api_key: str, request: Optional[Request]) -> Optional[Dict[
                 db.api_keys.update_last_used(key_record["id"])
             except Exception as e:
                 logger.warning(f"Failed to update last_used_at: {e}")
+                _release_last_used_claim(key_record["id"])
 
         return {
             "type": "api_key",

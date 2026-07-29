@@ -381,14 +381,14 @@ async def generate_tasks_from_prd(
     try:
         # Get PRD
         if prd_id:
-            prd_record = prd.get_by_id(workspace, prd_id)
+            prd_record = await run_in_threadpool(prd.get_by_id, workspace, prd_id)
             if not prd_record:
                 raise HTTPException(
                     status_code=404,
                     detail=f"PRD not found: {prd_id}",
                 )
         else:
-            prd_record = prd.get_latest(workspace)
+            prd_record = await run_in_threadpool(prd.get_latest, workspace)
             if not prd_record:
                 raise HTTPException(
                     status_code=404,
@@ -405,7 +405,9 @@ async def generate_tasks_from_prd(
                 resolve_llm_settings,
             )
 
-            provider = create_provider(resolve_llm_settings(workspace.repo_path))
+            provider = await run_in_threadpool(
+                lambda: create_provider(resolve_llm_settings(workspace.repo_path))
+            )
 
         # Generate tasks
         # LLM decomposition of a whole PRD: minutes (#902).
