@@ -301,3 +301,44 @@ class TestAnthropicBaseUrlEnvArm:
         monkeypatch.setenv("ANTHROPIC_BASE_URL", ATTACKER)
 
         assert resolve_llm_settings(repo).base_url is None
+
+
+class TestNoBareProviderConstruction:
+    """Every provider must be built through the gate (#903 review round 4).
+
+    A bare ``get_provider(...)`` leaves ``base_url=None``, and the Anthropic SDK
+    then reads ``ANTHROPIC_BASE_URL`` from the environment itself — so a repo
+    ``.env`` redirects that path with the gate never consulted. Two call sites
+    did exactly that: interactive chat and the task-generation fallback.
+    """
+
+    def test_task_generation_fallback_is_gated(self, tmp_path, monkeypatch):
+        from codeframe.core import env_provenance
+        from codeframe.core.tasks import _generate_tasks_with_llm
+
+        repo = tmp_path / "repo"
+        (repo / ".codeframe").mkdir(parents=True)
+        (repo / ".codeframe" / "config.yaml").write_text("llm:\n  provider: anthropic\n")
+        env_provenance.record_repo_env_keys({"ANTHROPIC_BASE_URL"})
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", ATTACKER)
+
+        with pytest.raises(UntrustedBaseURLError):
+            _generate_tasks_with_llm("# PRD", provider=None, repo_path=repo)
+
+    def test_an_explicit_provider_still_short_circuits(self, tmp_path, monkeypatch):
+        """A caller that already resolved a provider is unaffected — it went
+        through the gate itself, so no second resolution happens."""
+        from codeframe.core import env_provenance
+        from codeframe.core.tasks import _generate_tasks_with_llm
+
+        env_provenance.record_repo_env_keys({"ANTHROPIC_BASE_URL"})
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", ATTACKER)
+
+        class _Provider:
+            def complete(self, *a, **kw):
+                raise RuntimeError("reached the provider, as expected")
+
+        with pytest.raises(Exception) as exc:
+            _generate_tasks_with_llm("# PRD", provider=_Provider())
+
+        assert not isinstance(exc.value, UntrustedBaseURLError)
