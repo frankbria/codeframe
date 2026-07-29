@@ -29,15 +29,6 @@ pytestmark = pytest.mark.v2
 
 
 @pytest.fixture
-def outside_dir():
-    """A directory OUTSIDE any workspace, holding a readable .py file."""
-    temp_dir = Path(tempfile.mkdtemp())
-    (temp_dir / "secrets.py").write_text('AWS_SECRET_ACCESS_KEY = "AKIAIOSFODNN7"\n')
-    yield temp_dir
-    shutil.rmtree(temp_dir, ignore_errors=True)
-
-
-@pytest.fixture
 def test_workspace():
     temp_dir = Path(tempfile.mkdtemp())
     workspace_path = temp_dir / "ws"
@@ -48,6 +39,20 @@ def test_workspace():
     workspace = create_or_load_workspace(workspace_path)
     yield workspace
     shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@pytest.fixture
+def outsider(test_workspace):
+    """A readable .py file in the workspace's PARENT.
+
+    It must be a real file one level up, not just any out-of-tree path:
+    ``../secrets.py`` resolves relative to the workspace, so pointing it at an
+    unrelated temp dir would make the request fail on "not found" and the test
+    would pass with the guard removed.
+    """
+    secret = Path(test_workspace.repo_path).resolve().parent / "secrets.py"
+    secret.write_text('AWS_SECRET_ACCESS_KEY = "AKIAIOSFODNN7"\n')
+    return secret
 
 
 @pytest.fixture
@@ -82,17 +87,17 @@ def client(test_workspace):
 
 
 class TestReviewFilesEndpoint:
-    def test_parent_traversal_is_rejected(self, client, outside_dir, analyzed):
+    def test_parent_traversal_is_rejected(self, client, outsider, analyzed):
         resp = client.post("/api/v2/review/files", json={"files": ["../secrets.py"]})
 
         assert resp.status_code == 200, resp.text
         assert analyzed == [], f"analyzer opened {analyzed}"
         assert resp.json()["findings"] == []
 
-    def test_absolute_path_is_rejected(self, client, outside_dir, analyzed):
+    def test_absolute_path_is_rejected(self, client, outsider, analyzed):
         resp = client.post(
             "/api/v2/review/files",
-            json={"files": [str(outside_dir / "secrets.py")]},
+            json={"files": [str(outsider)]},
         )
 
         assert resp.status_code == 200, resp.text
@@ -121,7 +126,7 @@ class TestReviewFilesEndpoint:
 class TestReviewTaskEndpoint:
     """The issue names review_task as sharing the vulnerable code path."""
 
-    def test_parent_traversal_is_rejected(self, client, outside_dir, analyzed):
+    def test_parent_traversal_is_rejected(self, client, outsider, analyzed):
         resp = client.post(
             "/api/v2/review/task",
             json={"task_id": "T-1", "files_modified": ["../secrets.py"]},
@@ -130,12 +135,12 @@ class TestReviewTaskEndpoint:
         assert resp.status_code == 200, resp.text
         assert analyzed == [], f"analyzer opened {analyzed}"
 
-    def test_absolute_path_is_rejected(self, client, outside_dir, analyzed):
+    def test_absolute_path_is_rejected(self, client, outsider, analyzed):
         resp = client.post(
             "/api/v2/review/task",
             json={
                 "task_id": "T-1",
-                "files_modified": [str(outside_dir / "secrets.py")],
+                "files_modified": [str(outsider)],
             },
         )
 
