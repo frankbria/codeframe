@@ -26,6 +26,7 @@ from codeframe.adapters.llm.base import Tool, ToolCall, ToolResult
 from codeframe.core.agent_env import SAFE_ENV_VARS, build_agent_env
 from codeframe.core.context import DEFAULT_IGNORE_PATTERNS
 from codeframe.core.editor import EditOperation, SearchReplaceEditor
+from codeframe.core.path_safety import is_path_safe
 from codeframe.core.executor import is_dangerous_command
 from codeframe.core.gates import _detect_available_gates
 
@@ -48,21 +49,10 @@ _TRUNCATE_TAIL = 50
 # ---------------------------------------------------------------------------
 
 
-def _is_path_safe(file_path: Path, workspace_path: Path) -> tuple[bool, str]:
-    """Check if *file_path* is safely within *workspace_path*.
-
-    Returns:
-        ``(True, "")`` when safe, ``(False, reason)`` otherwise.
-    """
-    try:
-        resolved_file = file_path.resolve()
-        resolved_workspace = workspace_path.resolve()
-        resolved_file.relative_to(resolved_workspace)
-        return (True, "")
-    except ValueError:
-        return (False, f"Path escapes workspace: {file_path}")
-    except Exception as e:
-        return (False, f"Path resolution error: {e}")
+# Moved to the leaf module core/path_safety.py (#906) so the legacy plan engine
+# shares this exact check rather than growing a fourth copy. Kept as an alias:
+# every call site here already reads `_is_path_safe`.
+_is_path_safe = is_path_safe
 
 
 # ---------------------------------------------------------------------------
