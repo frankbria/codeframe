@@ -1,7 +1,11 @@
 """V2 Pull Request router - delegates to git/github_integration module.
 
 This module provides v2-style API endpoints for GitHub PR management.
-Requires GITHUB_TOKEN and GITHUB_REPO environment variables.
+
+Credentials are scoped to the authenticated caller (#900): the PAT comes from
+the caller's CredentialManager and the repo from the workspace's own
+``.codeframe/github_integration.json``. ``GITHUB_TOKEN``/``GITHUB_REPO`` remain
+a self-hosted fallback only, and are ignored entirely in hosted mode.
 
 Routes:
     GET  /api/v2/pr             - List pull requests
@@ -13,7 +17,6 @@ Routes:
 
 import asyncio
 import logging
-import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -175,24 +178,71 @@ def _pr_to_response(pr: PRDetails) -> PRResponse:
     )
 
 
-def _get_github_client() -> GitHubIntegration:
-    """Get a GitHub integration client.
+def _get_github_client(workspace: Workspace, auth: dict) -> GitHubIntegration:
+    """Get a GitHub client scoped to the caller and the caller's workspace (#900).
 
-    Returns:
-        GitHubIntegration instance
+    This used to be ``GitHubIntegration()`` with no arguments, which took the
+    token from ``GITHUB_TOKEN`` and the repo from ``GITHUB_REPO`` — the
+    *operator's* ambient credentials — even though the Integrations router
+    deliberately stores a PAT per user. Two consequences: any principal with
+    write scope could open or close PRs on the operator's repo using the
+    operator's token, unattributed; and a user who connected GitHub in the UI
+    could not use Ship at all, because their PAT was never consulted.
+
+    Resolution now goes through the same core path as ``cf pr``: the caller's
+    stored PAT first (never displaced by the ambient env var), and the repo from
+    this workspace's own ``.codeframe/github_integration.json``.
+
+    In hosted mode the environment fallback is disabled outright — there
+    ``GITHUB_TOKEN`` is shared by every tenant, so falling back to it *is* the
+    cross-tenant leak.
 
     Raises:
-        HTTPException: If GitHub token or repo not configured
+        HTTPException: 400 if no credential/repo can be resolved for this caller.
     """
+    from codeframe.core.github_integration_config import (
+        GitHubResolutionError,
+        resolve_github_credentials,
+    )
+    from codeframe.ui.server import is_hosted_mode
+
     try:
-        return GitHubIntegration()
-    except ValueError as e:
+        token, repo = resolve_github_credentials(
+            workspace,
+            user_id=auth.get("user_id"),
+            allow_env_fallback=not is_hosted_mode(),
+        )
+        return GitHubIntegration(token=token, repo=repo)
+    except (GitHubResolutionError, ValueError) as e:
         raise HTTPException(
             status_code=400,
             detail=api_error(
                 "GitHub not configured",
                 ErrorCodes.INVALID_REQUEST,
                 str(e),
+            ),
+        )
+
+
+def _refuse_mutating_pr_in_hosted_mode() -> None:
+    """Block PR-mutating routes in hosted mode (issue #900).
+
+    Per-user credential scoping is in place, but a hosted deployment shares one
+    process and one workspace-root tree across tenants, so a mistake in path or
+    credential scoping there writes to somebody's real repository. Until hosted
+    multi-tenancy has its own review, creating/merging/closing PRs is
+    self-hosted only. Read paths stay available.
+    """
+    from codeframe.ui.server import is_hosted_mode
+
+    if is_hosted_mode():
+        raise HTTPException(
+            status_code=403,
+            detail=api_error(
+                "PR write operations are not available in hosted mode",
+                ErrorCodes.INVALID_STATE,
+                "Creating, merging and closing pull requests is currently "
+                "self-hosted only.",
             ),
         )
 
@@ -224,8 +274,11 @@ def _dispatch_pr_merged_webhook(workspace: Workspace, pr_number: int) -> None:
     """Best-effort outbound webhook for ``pr.merged`` (issue #560).
 
     Builds the canonical ``https://github.com/{owner}/{repo}/pull/{N}`` URL
-    from the ``GITHUB_REPO`` env var when set to a valid ``owner/repo`` slug;
-    sets ``pr_url`` to ``None`` otherwise.
+    from the repo this workspace is actually connected to, falling back to the
+    ``GITHUB_REPO`` env var; sets ``pr_url`` to ``None`` when neither yields a
+    valid ``owner/repo`` slug. Resolving the workspace first keeps the notified
+    URL pointing at the repo the merge really happened on (#900) rather than
+    whatever the operator's environment names.
     The always-present ``pr_number`` field lets consumers branch without
     parsing a URL.
     """
@@ -240,12 +293,14 @@ def _dispatch_pr_merged_webhook(workspace: Workspace, pr_number: int) -> None:
         if url is None:
             return
 
-        # Canonical github.com URL when GITHUB_REPO is configured, ``None``
+        # Canonical github.com URL when a repo is resolvable, ``None``
         # otherwise. The payload always carries ``pr_number`` so consumers
-        # can branch on it without parsing the URL. Read the env var directly
+        # can branch on it without parsing the URL. Resolve the slug directly
         # instead of constructing GitHubIntegration — the constructor eagerly
         # opens an httpx.AsyncClient that would leak here (#779).
-        repo = (os.getenv("GITHUB_REPO") or "").strip()
+        from codeframe.core.github_integration_config import resolve_github_repo
+
+        repo = (resolve_github_repo(workspace) or "").strip()
         parts = [part.strip() for part in repo.split("/")]
         pr_url: Optional[str] = (
             f"https://github.com/{parts[0]}/{parts[1]}/pull/{pr_number}"
@@ -272,6 +327,7 @@ async def get_pr_status(
     request: Request,
     pr_number: int = Query(..., description="PR number to poll"),
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> PRStatusResponse:
     """Get live PR status: CI checks, review status, and merge state.
 
@@ -288,7 +344,7 @@ async def get_pr_status(
     """
     # _get_github_client() raises HTTPException if GitHub isn't configured —
     # no client to close in that case, so call it before the try/finally.
-    client = _get_github_client()
+    client = _get_github_client(workspace, auth)
     try:
         # Single call to get PR state, URL, and head SHA.
         pr_raw = await client._make_request(
@@ -369,6 +425,7 @@ async def list_pull_requests(
     request: Request,
     state: str = Query("open", description="Filter by state: open, closed, all"),
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> PRListResponse:
     """List pull requests for the repository.
 
@@ -379,7 +436,7 @@ async def list_pull_requests(
     Returns:
         List of pull requests
     """
-    client = _get_github_client()
+    client = _get_github_client(workspace, auth)
     try:
         prs = await client.list_pull_requests(state=state)
 
@@ -408,6 +465,7 @@ async def get_pr_history(
     request: Request,
     limit: int = Query(10, ge=1, le=50),
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> PRHistoryResponse:
     """List recently merged PRs with proof snapshots.
 
@@ -423,7 +481,7 @@ async def get_pr_history(
     """
     from codeframe.core.proof.ledger import get_pr_merge_override, get_pr_proof_snapshot
 
-    client = _get_github_client()
+    client = _get_github_client(workspace, auth)
     try:
         prs = await client.list_pull_requests(state="closed")
 
@@ -484,6 +542,7 @@ async def get_pr_files(
     request: Request,
     pr_number: int,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> PRFilesResponse:
     """Get the list of files changed in a pull request.
 
@@ -494,7 +553,7 @@ async def get_pr_files(
     Returns:
         List of changed filenames
     """
-    client = _get_github_client()
+    client = _get_github_client(workspace, auth)
     try:
         files = await client.get_pr_files(pr_number)
         return PRFilesResponse(files=files)
@@ -523,6 +582,7 @@ async def get_pull_request(
     request: Request,
     pr_number: int,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> PRResponse:
     """Get details of a specific pull request.
 
@@ -533,7 +593,7 @@ async def get_pull_request(
     Returns:
         PR details
     """
-    client = _get_github_client()
+    client = _get_github_client(workspace, auth)
     try:
         pr = await client.get_pull_request(pr_number)
 
@@ -558,12 +618,19 @@ async def get_pull_request(
         await client.close()
 
 
-@router.post("", response_model=PRResponse, status_code=201)
+@router.post(
+    "",
+    response_model=PRResponse,
+    status_code=201,
+    # Opening a PR writes to the repo with the caller's PAT (#900).
+    dependencies=[Depends(require_scope(SCOPE_ADMIN))],
+)
 @rate_limit_standard()
 async def create_pull_request(
     request: Request,
     body: CreatePRRequest,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> PRResponse:
     """Create a new pull request.
 
@@ -575,7 +642,8 @@ async def create_pull_request(
     Returns:
         Created PR details
     """
-    client = _get_github_client()
+    _refuse_mutating_pr_in_hosted_mode()
+    client = _get_github_client(workspace, auth)
     try:
         pr = await client.create_pull_request(
             branch=body.branch,
@@ -664,6 +732,8 @@ async def merge_pull_request(
     Returns:
         Merge result
     """
+    _refuse_mutating_pr_in_hosted_mode()
+
     method = body.method if body else "squash"
     override = bool(body and body.override)
     override_reason = (body.override_reason or "").strip() if body else ""
@@ -709,7 +779,7 @@ async def merge_pull_request(
                 ),
             )
 
-    client = _get_github_client()
+    client = _get_github_client(workspace, auth)
     try:
         result = await client.merge_pull_request(pr_number, method=method)
 
@@ -772,12 +842,17 @@ async def merge_pull_request(
         await client.close()
 
 
-@router.post("/{pr_number}/close")
+@router.post(
+    "/{pr_number}/close",
+    # Closing someone's PR is a repo mutation (#900).
+    dependencies=[Depends(require_scope(SCOPE_ADMIN))],
+)
 @rate_limit_standard()
 async def close_pull_request(
     request: Request,
     pr_number: int,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> dict:
     """Close a pull request without merging.
 
@@ -788,7 +863,8 @@ async def close_pull_request(
     Returns:
         Close confirmation
     """
-    client = _get_github_client()
+    _refuse_mutating_pr_in_hosted_mode()
+    client = _get_github_client(workspace, auth)
     try:
         closed = await client.close_pull_request(pr_number)
 

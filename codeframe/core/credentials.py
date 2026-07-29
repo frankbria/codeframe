@@ -737,31 +737,60 @@ class CredentialManager:
         self,
         provider: CredentialProvider,
         name: Optional[str] = None,
+        *,
+        prefer_stored: bool = False,
     ) -> Optional[str]:
         """Get credential value, checking env var first.
 
         Args:
             provider: The provider type
             name: Optional credential name (unused for env var lookup)
+            prefer_stored: Check this manager's store *before* the environment.
+                The default env-first order is a self-hosted convenience, but it
+                is wrong for a user-scoped manager: the environment belongs to
+                the operator, not to the caller, so an ambient ``GITHUB_TOKEN``
+                would silently win over the PAT a user connected in the UI and
+                act on the operator's behalf (issue #900). Callers resolving a
+                per-user credential must pass this.
 
         Returns:
             Credential value if found, None otherwise
         """
-        # Check environment variable first
-        env_value = os.environ.get(provider.env_var)
-        if env_value:
-            logger.debug(f"Using {provider.env_var} from environment")
-            return env_value
-
-        # Fall back to store
-        credential = self._store.retrieve(provider)
-        if credential:
+        def _from_store() -> Optional[str]:
+            credential = self._store.retrieve(provider)
+            if credential is None:
+                return None
             if credential.is_expired:
                 logger.warning(f"Credential for {provider.name} has expired")
                 return None
             return credential.value
 
-        return None
+        def _from_env() -> Optional[str]:
+            env_value = os.environ.get(provider.env_var)
+            if env_value:
+                logger.debug(f"Using {provider.env_var} from environment")
+            return env_value or None
+
+        first, second = (_from_store, _from_env) if prefer_stored else (_from_env, _from_store)
+        return first() or second()
+
+    def get_stored_credential(
+        self,
+        provider: CredentialProvider,
+    ) -> Optional[str]:
+        """Get a credential from this manager's store only, never the environment.
+
+        For contexts where the process environment is not the caller's to use —
+        hosted/multi-tenant mode, where ``GITHUB_TOKEN`` is shared by every
+        tenant and falling back to it is the cross-tenant leak itself (#900).
+        """
+        credential = self._store.retrieve(provider)
+        if credential is None:
+            return None
+        if credential.is_expired:
+            logger.warning(f"Credential for {provider.name} has expired")
+            return None
+        return credential.value
 
     def get_credential_source(
         self,

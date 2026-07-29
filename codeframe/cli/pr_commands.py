@@ -121,28 +121,54 @@ def get_commit_messages(repo_path: Path, base: str, head: str) -> str:
 
 
 def _get_github_config() -> tuple[str, str]:
-    """Get GitHub token and repo from environment.
+    """Resolve the GitHub token and repo for the workspace in the cwd (#900).
+
+    Shares ``core.github_integration_config.resolve_github_credentials`` with
+    the v2 PR router, so ``cf pr`` and the web UI cannot drift on which
+    credential or repository they act with: the stored PAT wins over the
+    ambient ``GITHUB_TOKEN``, and the repo comes from the workspace's own
+    ``.codeframe/github_integration.json`` before ``GITHUB_REPO``.
+
+    The CLI is single-operator, so the machine-wide credential store is used
+    (``user_id=None``) and the environment remains a valid fallback.
 
     Returns:
         Tuple of (token, repo)
 
     Raises:
-        typer.Exit: If configuration is missing
+        typer.Exit: If neither half can be resolved.
     """
-    token = os.environ.get("GITHUB_TOKEN")
-    repo = os.environ.get("GITHUB_REPO")
+    from codeframe.core.github_integration_config import (
+        GitHubResolutionError,
+        resolve_github_credentials,
+    )
+    from codeframe.core.workspace import get_workspace
 
-    if not token:
-        console.print("[red]Error:[/red] GITHUB_TOKEN environment variable not set.")
-        console.print("Set it with: export GITHUB_TOKEN=ghp_yourtoken")
+    try:
+        workspace = get_workspace(Path.cwd())
+    except FileNotFoundError:
+        # No workspace here: fall back to the pure-environment behaviour so
+        # `cf pr` still works from a bare checkout.
+        token = os.environ.get("GITHUB_TOKEN")
+        repo = os.environ.get("GITHUB_REPO")
+        if not token or not repo:
+            console.print(
+                "[red]Error:[/red] No CodeFRAME workspace here, and "
+                "GITHUB_TOKEN/GITHUB_REPO are not both set."
+            )
+            console.print("Run 'cf init' here, or export both variables.")
+            raise typer.Exit(1)
+        return token, repo
+
+    try:
+        return resolve_github_credentials(workspace, user_id=None)
+    except GitHubResolutionError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        console.print(
+            "From the CLI you can also: export GITHUB_TOKEN=ghp_yourtoken "
+            "and export GITHUB_REPO=owner/repo"
+        )
         raise typer.Exit(1)
-
-    if not repo:
-        console.print("[red]Error:[/red] GITHUB_REPO environment variable not set.")
-        console.print("Set it with: export GITHUB_REPO=owner/repo")
-        raise typer.Exit(1)
-
-    return token, repo
 
 
 def _run_async(coro):
