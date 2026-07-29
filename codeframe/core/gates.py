@@ -228,7 +228,7 @@ def _install_python_requirements(
         if created.returncode != 0:
             return False, f"Failed to create virtualenv: {created.stderr.strip()}"
 
-        _exclude_from_git(repo_path, venv_path.name)
+        _self_ignore(venv_path)
         env["VIRTUAL_ENV"] = str(venv_path)
 
         if use_uv:
@@ -272,59 +272,23 @@ def _discard_failed_venv(venv_path: Path) -> None:
         logger.warning("Could not remove the incomplete virtualenv %s: %s", venv_path, exc)
 
 
-def _exclude_from_git(repo_path: Path, name: str) -> None:
-    """Ignore *name* locally via ``.git/info/exclude``.
+def _self_ignore(venv_path: Path) -> None:
+    """Make the venv ignore itself, the way ``uv venv`` already does.
 
-    A venv we create is untracked, and `get_changed_scope` feeds
+    A venv we create is untracked, and ``get_changed_scope`` feeds
     ``status.untracked_files`` straight into the PROOF9 scope — so without this
-    a `cf review` in a repo that does not already ignore `.venv` both reports
-    the tree dirty and drags thousands of site-packages files into the scope.
+    a ``cf review`` reports the tree dirty and drags site-packages into the
+    scope. ``uv venv`` writes this file itself; the stdlib ``venv`` does not.
 
-    ``.git/info/exclude`` rather than ``.gitignore``: it is local-only and never
-    committed, so this does not edit a file the user tracks.
+    A ``.gitignore`` *inside* the venv rather than an entry in
+    ``.git/info/exclude``: it needs no git-directory resolution, works
+    unchanged in the linked worktrees CodeFRAME creates (where ``.git`` is a
+    file), and is the convention the ecosystem already uses.
     """
-    git_dir = _resolve_git_dir(repo_path)
-    if git_dir is None:
-        return  # not a git repo — nothing to exclude from
-
-    entry = f"/{name}/"
-    exclude_file = git_dir / "info" / "exclude"
     try:
-        # `git init` does not create .git/info, so this must be made rather
-        # than assumed — checking for it and bailing made the whole thing a
-        # silent no-op in freshly initialised repos.
-        exclude_file.parent.mkdir(parents=True, exist_ok=True)
-        existing = exclude_file.read_text() if exclude_file.exists() else ""
-        if any(line.strip() in (entry, f"{name}/", name) for line in existing.splitlines()):
-            return
-        prefix = "" if not existing or existing.endswith("\n") else "\n"
-        with exclude_file.open("a") as handle:
-            handle.write(f"{prefix}{entry}\n")
+        (venv_path / ".gitignore").write_text("*\n")
     except OSError as exc:
-        logger.debug("Could not update %s: %s", exclude_file, exc)
-
-
-def _resolve_git_dir(repo_path: Path) -> Optional[Path]:
-    """The ``$GIT_DIR`` for *repo_path*, or None if it is not a git repo.
-
-    In a linked worktree — which CodeFRAME creates for isolated runs — ``.git``
-    is a *file* containing ``gitdir: <path>``, and git reads
-    ``$GIT_DIR/info/exclude`` from that per-worktree directory.
-    """
-    dot_git = repo_path / ".git"
-    if dot_git.is_dir():
-        return dot_git
-    if dot_git.is_file():
-        try:
-            content = dot_git.read_text().strip()
-        except OSError:
-            return None
-        if content.startswith("gitdir:"):
-            target = Path(content.split(":", 1)[1].strip())
-            if not target.is_absolute():
-                target = (repo_path / target).resolve()
-            return target if target.is_dir() else None
-    return None
+        logger.debug("Could not write %s/.gitignore: %s", venv_path, exc)
 
 
 def _ensure_dependencies_installed(
