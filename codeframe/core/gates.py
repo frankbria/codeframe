@@ -371,18 +371,8 @@ def run(
     # if the missing dependencies actually matter, the gate that needs them
     # fails on its own and says why. SKIPPED rather than ERROR because this
     # check did not run to a verdict, and SKIPPED does not fail the run.
-    if not dep_success:
-        checks.append(
-            GateCheck(
-                name="dependency-check",
-                status=GateStatus.SKIPPED,
-                output=(
-                    f"Dependency installation failed, running gates anyway: {dep_message}"
-                ),
-            )
-        )
-        if verbose:
-            print(f"[gates] Dependency install failed (continuing): {dep_message}")
+    if not dep_success and verbose:
+        print(f"[gates] Dependency install failed (continuing): {dep_message}")
 
     repo_path = workspace.repo_path
 
@@ -427,6 +417,20 @@ def run(
                 )
 
         checks.append(check)
+
+    # Recorded after the gates, never before: proof/runner.py reads
+    # result.checks[0] as *the* gate's check, so a pre-flight entry at index 0
+    # would be mistaken for the gate result and reported as FAILED (SKIPPED).
+    if not dep_success:
+        checks.append(
+            GateCheck(
+                name="dependency-check",
+                status=GateStatus.SKIPPED,
+                output=(
+                    f"Dependency installation failed, ran gates anyway: {dep_message}"
+                ),
+            )
+        )
 
     completed_at = _utc_now()
 

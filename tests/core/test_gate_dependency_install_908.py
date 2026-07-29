@@ -170,3 +170,34 @@ def test_auto_install_disabled_is_reported_not_attempted(pip_repo):
     assert ok
     assert "auto-install disabled" in message
     assert not (pip_repo / ".venv").exists()
+
+
+def test_dependency_note_never_displaces_the_gate_check(tmp_path, monkeypatch):
+    """proof/runner.py reads `result.checks[0]` as *the* gate's check.
+
+    A pre-flight entry at index 0 would be mistaken for the gate result and
+    reported as `FAILED (SKIPPED)` for every enforced PROOF9 rule — a failure
+    with nothing to do with the test it names.
+    """
+    from codeframe.core import gates as gates_module
+    from codeframe.core.workspace import create_or_load_workspace
+
+    repo = tmp_path / "repo3"
+    repo.mkdir()
+    (repo / "requirements.txt").write_text("packaging\n")
+    (repo / "clean.py").write_text("x = 1\n")
+
+    workspace = create_or_load_workspace(repo)
+    monkeypatch.setattr(
+        gates_module,
+        "_ensure_dependencies_installed",
+        lambda *a, **k: (False, "simulated install failure"),
+    )
+
+    result = gates_module.run(workspace, gates=["ruff"], verbose=False)
+
+    assert result.checks[0].name == "ruff", (
+        f"checks[0] is {result.checks[0].name!r}; the proof runner would read "
+        "the dependency note as the gate result"
+    )
+    assert result.checks[-1].name == "dependency-check"
