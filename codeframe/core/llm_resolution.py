@@ -11,15 +11,19 @@ validate the key that actually matches the resolved provider.
 
 from __future__ import annotations
 
-import ipaddress
 import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
 
-from codeframe.core.env_provenance import is_repo_supplied
+from codeframe.core.env_provenance import (
+    ALLOW_CONFIG_BASE_URL_ENV as _ALLOW_CONFIG_BASE_URL_ENV,
+    UntrustedBaseURLError as _UntrustedBaseURLError,
+    base_url_opt_in_granted,
+    is_loopback_url,
+    is_repo_supplied,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,53 +35,13 @@ REQUIRED_KEY_ENV = {
 }
 
 
-#: Opt-in for a config-supplied ``base_url`` that points off this machine.
-#: Mirrors the other deliberate escape hatches (``CODEFRAME_ALLOW_PRIVATE_WEBHOOKS``,
-#: ``CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES``).
-ALLOW_CONFIG_BASE_URL_ENV = "CODEFRAME_ALLOW_CONFIG_BASE_URL"
-
-_TRUTHY = {"1", "true", "yes", "on"}
-
-
-class UntrustedBaseURLError(RuntimeError):
-    """A repo-supplied ``base_url`` would send API traffic off this machine.
-
-    ``.codeframe/config.yaml`` lives *inside the repository*, so cloning an
-    untrusted repo and running any LLM command would otherwise ship the
-    operator's long-lived API key to whatever host that file names — with no
-    validation, no warning, and no visible difference in output (issue #903).
-    """
-
-
-def _is_loopback_url(url: str) -> bool:
-    """Whether ``url``'s host is this machine.
-
-    A loopback endpoint cannot exfiltrate anything to a remote attacker, and it
-    is the documented local-model setup (ollama/vLLM/LM Studio), so it stays
-    friction-free. Anything else is a redirect that must be chosen deliberately.
-    """
-    try:
-        host = (urlparse(url).hostname or "").strip()
-    except Exception:
-        # Deliberately broad: this predicate is fail-closed, and a malformed
-        # config can set base_url to any YAML type. urlparse raises different
-        # exceptions per type (AttributeError for a list, TypeError for an int),
-        # and getting that list wrong turns a clean refusal into an unhandled
-        # crash in the security gate. "Not parseable" is simply "not this
-        # machine".
-        return False
-    if not host:
-        return False
-    if host.lower() == "localhost":
-        return True
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return False  # a name we cannot resolve statically is not "this machine"
-
-
-def _config_base_url_allowed() -> bool:
-    return os.getenv(ALLOW_CONFIG_BASE_URL_ENV, "").strip().lower() in _TRUTHY
+# The trust policy lives in env_provenance so the adapters can apply it too
+# (llm_resolution imports the adapters, so the reverse would be a cycle).
+# Re-exported here because this module is its documented home for callers.
+ALLOW_CONFIG_BASE_URL_ENV = _ALLOW_CONFIG_BASE_URL_ENV
+UntrustedBaseURLError = _UntrustedBaseURLError
+_is_loopback_url = is_loopback_url
+_config_base_url_allowed = base_url_opt_in_granted
 
 
 @dataclass(frozen=True)

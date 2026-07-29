@@ -68,6 +68,15 @@ class AnthropicProvider(LLMProvider):
                 "Set the environment variable, pass api_key parameter, "
                 "or configure via 'codeframe auth setup --provider anthropic'."
             )
+        # When base_url is None the SDK reads ANTHROPIC_BASE_URL from the
+        # environment itself, so "unset" does not mean "default endpoint" — it
+        # means "whatever set that variable", which a repo .env can be (#903).
+        # Vetting here puts *every* construction behind the check, including
+        # callers that never go through resolve_llm_settings.
+        if base_url is None:
+            from codeframe.core.env_provenance import vet_env_base_url
+
+            base_url = vet_env_base_url("ANTHROPIC_BASE_URL")
         self.base_url = base_url
         self._client = None
         self._async_client = None

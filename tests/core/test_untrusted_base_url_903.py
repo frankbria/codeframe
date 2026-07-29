@@ -342,3 +342,80 @@ class TestNoBareProviderConstruction:
             _generate_tasks_with_llm("# PRD", provider=_Provider())
 
         assert not isinstance(exc.value, UntrustedBaseURLError)
+
+
+class TestAdapterLevelVetting:
+    """The invariant that ends the whack-a-mole (#903 review round 5).
+
+    Four rounds each found *another* caller that built a provider without going
+    through ``resolve_llm_settings`` — the config path, two env paths, then
+    interactive chat and the task fallback, then the PRD-discovery legacy
+    branch. They share one shape: ``base_url=None`` does not mean "default
+    endpoint", it means "whatever set the env var", and both SDKs read it
+    themselves.
+
+    Vetting inside the adapters puts *every* construction behind the check,
+    including callers that do not exist yet.
+    """
+
+    def test_anthropic_provider_refuses_a_repo_env_endpoint(self, monkeypatch):
+        from codeframe.adapters.llm.anthropic import AnthropicProvider
+        from codeframe.core import env_provenance
+
+        env_provenance.record_repo_env_keys({"ANTHROPIC_BASE_URL"})
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", ATTACKER)
+
+        with pytest.raises(UntrustedBaseURLError):
+            AnthropicProvider(api_key="sk-ant-operator-secret")
+
+    def test_openai_provider_refuses_a_repo_env_endpoint(self, monkeypatch):
+        from codeframe.adapters.llm.openai import OpenAIProvider
+        from codeframe.core import env_provenance
+
+        env_provenance.record_repo_env_keys({"OPENAI_BASE_URL"})
+        monkeypatch.setenv("OPENAI_BASE_URL", ATTACKER)
+
+        with pytest.raises(UntrustedBaseURLError):
+            OpenAIProvider(api_key="sk-openai-operator-secret")
+
+    def test_the_operators_own_env_endpoint_is_still_used(self, monkeypatch):
+        from codeframe.adapters.llm.anthropic import AnthropicProvider
+
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", ATTACKER)  # not repo-supplied
+
+        provider = AnthropicProvider(api_key="sk-ant-operator-secret")
+
+        # Resolved explicitly rather than left None — which is what stops the
+        # SDK reaching for the environment on its own.
+        assert provider.base_url == ATTACKER
+
+    def test_an_explicit_base_url_is_untouched(self, monkeypatch):
+        from codeframe.adapters.llm.anthropic import AnthropicProvider
+        from codeframe.core import env_provenance
+
+        env_provenance.record_repo_env_keys({"ANTHROPIC_BASE_URL"})
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", ATTACKER)
+
+        provider = AnthropicProvider(
+            api_key="sk-ant-operator-secret", base_url="http://127.0.0.1:8080"
+        )
+
+        assert provider.base_url == "http://127.0.0.1:8080"
+
+    def test_no_env_endpoint_leaves_the_default(self, monkeypatch):
+        from codeframe.adapters.llm.anthropic import AnthropicProvider
+
+        assert AnthropicProvider(api_key="sk-ant-x").base_url is None
+
+    def test_the_prd_discovery_legacy_branch_is_now_covered(self, tmp_path, monkeypatch):
+        """The round-5 report: PrdDiscoverySession's api_key branch built
+        AnthropicProvider(base_url=None) directly. It is gated now because the
+        adapter itself vets, without that call site needing to change."""
+        from codeframe.adapters.llm.anthropic import AnthropicProvider
+        from codeframe.core import env_provenance
+
+        env_provenance.record_repo_env_keys({"ANTHROPIC_BASE_URL"})
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", ATTACKER)
+
+        with pytest.raises(UntrustedBaseURLError):
+            AnthropicProvider(api_key="sk-ant-real-operator-key")
