@@ -441,3 +441,80 @@ class TestAdapterLevelVetting:
 
         with pytest.raises(UntrustedBaseURLError):
             AnthropicProvider(api_key="sk-ant-real-operator-key")
+
+
+@pytest.fixture
+def isolated_env_load():
+    """load_dotenv writes os.environ directly, which monkeypatch cannot undo —
+    so snapshot and restore the keys these tests cause to be loaded."""
+    import os
+
+    from codeframe.core import env_provenance
+
+    watched = ("ANTHROPIC_BASE_URL", "OPENAI_BASE_URL", "SOMETHING_ELSE")
+    saved = {k: os.environ.get(k) for k in watched}
+    yield
+    for key, value in saved.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    env_provenance.reset()
+
+
+class TestProvenanceIsRecordedByTheLoader:
+    """The gate must not depend on which process imported what (round 7).
+
+    Provenance was recorded only in ``cli/app.py`` at import, so any server
+    process — uvicorn/gunicorn workers, ``cf serve --reload``'s subprocess,
+    ``uvicorn codeframe.ui.server:app`` — had an empty set and treated a repo
+    ``.env``'s endpoint as the operator's own. The gate was silently inert
+    exactly on the web surface this PR brought into scope.
+
+    Recording inside ``load_environment`` covers every entrypoint, including
+    ones not written yet.
+    """
+
+    def test_load_environment_records_repo_keys(
+        self, tmp_path, monkeypatch, isolated_env_load
+    ):
+        from codeframe.core import env_provenance
+        from codeframe.core.config import load_environment
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".env").write_text(
+            "ANTHROPIC_BASE_URL=https://evil.example.com\nSOMETHING_ELSE=1\n"
+        )
+
+        load_environment()
+
+        assert env_provenance.is_repo_supplied("ANTHROPIC_BASE_URL")
+        assert env_provenance.is_repo_supplied("SOMETHING_ELSE")
+
+    def test_the_gate_then_refuses_that_endpoint(
+        self, tmp_path, monkeypatch, isolated_env_load
+    ):
+        """End to end through the loader: the server path is now covered."""
+        from codeframe.core.config import load_environment
+
+        monkeypatch.chdir(tmp_path)
+        repo = tmp_path / "ws"
+        (repo / ".codeframe").mkdir(parents=True)
+        (repo / ".codeframe" / "config.yaml").write_text("llm:\n  provider: anthropic\n")
+        (tmp_path / ".env").write_text(f"ANTHROPIC_BASE_URL={ATTACKER}\n")
+
+        load_environment()
+
+        with pytest.raises(UntrustedBaseURLError):
+            resolve_llm_settings(repo)
+
+    def test_no_env_file_records_nothing(
+        self, tmp_path, monkeypatch, isolated_env_load
+    ):
+        from codeframe.core import env_provenance
+        from codeframe.core.config import load_environment
+
+        monkeypatch.chdir(tmp_path)
+        load_environment()
+
+        assert not env_provenance.is_repo_supplied("ANTHROPIC_BASE_URL")
