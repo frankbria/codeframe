@@ -9,6 +9,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, Optional
 
 from codeframe.core.workspace import Workspace
@@ -125,6 +126,9 @@ def review_files(
         ReviewResult with findings and overall score
     """
     project_path = workspace.repo_path
+    # Resolved once: containment is checked against the real directory, so a
+    # symlinked repo root does not make every candidate look external.
+    project_root = Path(project_path).resolve()
     findings: list[ReviewFinding] = []
 
     # Initialize analyzers
@@ -136,7 +140,21 @@ def review_files(
     scores: list[float] = []
 
     for file_path in files:
-        full_path = project_path / file_path
+        # Security: the caller controls this string, so it is confined to the
+        # workspace BEFORE anything touches the filesystem (issue #899). An
+        # absolute path silently replaces the base in ``/`` and ``../`` walks
+        # out, which would let any authenticated principal scan any .py file the
+        # server user can read — and read back the literal secret strings the
+        # security scanner quotes in its findings. resolve() also collapses
+        # symlinks, so a link planted inside the workspace cannot smuggle an
+        # outside file in. Same check as core/git.py's commit path.
+        #
+        # Order matters: rejecting before the exists() probe keeps a real
+        # outside file indistinguishable from a missing one.
+        full_path = (project_root / file_path).resolve()
+        if not full_path.is_relative_to(project_root):
+            logger.warning(f"Path outside workspace, skipping: {file_path}")
+            continue
 
         if not full_path.exists():
             logger.warning(f"File not found: {file_path}")
