@@ -326,7 +326,19 @@ class TestDependencyPreFlight:
 
         assert success is True
         assert "installed" in message.lower() or "success" in message.lower()
-        mock_run.assert_called_once()
+
+        # Two calls now (#908): the venv must be created before the install,
+        # because `uv pip install` errors in exactly the state that triggers
+        # this ("No virtual environment found ... or pass --system").
+        assert mock_run.call_count == 2
+        create_argv, install_argv = (c.args[0] for c in mock_run.call_args_list)
+        assert create_argv[:2] == ["uv", "venv"]
+        assert install_argv[:3] == ["uv", "pip", "install"]
+
+        # And the install must be pinned to the venv just created, never to
+        # whatever VIRTUAL_ENV the parent process happened to have.
+        install_env = mock_run.call_args_list[1].kwargs["env"]
+        assert install_env["VIRTUAL_ENV"] == str(tmp_path / ".venv")
 
     @patch("codeframe.core.gates.subprocess.run")
     @patch("codeframe.core.gates.shutil.which")

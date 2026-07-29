@@ -69,6 +69,15 @@ def build_agent_env(workspace_path: Path | str) -> dict[str, str]:
     sandbox_home = workspace_path / ".codeframe" / "agent-home"
     try:
         sandbox_home.mkdir(parents=True, exist_ok=True)
+        # The sandbox fills with pip/npm/cargo cache files, and it lives inside
+        # the workspace — so without this every one of them shows up as
+        # untracked, marking the tree dirty and (worse) landing in the PROOF9
+        # scope, which is built from `status.untracked_files`. Self-ignoring,
+        # the way `uv venv` does it, needs no git-directory resolution and works
+        # unchanged in the linked worktrees CodeFRAME creates.
+        gitignore = sandbox_home / ".gitignore"
+        if not gitignore.exists():
+            gitignore.write_text("*\n")
     except OSError:
         # Point at it anyway. Deleting HOME does NOT fail closed: with the
         # variable *unset*, `expanduser("~")` and everything built on it fall
@@ -86,10 +95,15 @@ def build_agent_env(workspace_path: Path | str) -> dict[str, str]:
         env[xdg] = str(sandbox_home / xdg.lower())
 
     for venv_dir in (".venv", "venv"):
-        venv_bin = workspace_path / venv_dir / "bin"
-        if venv_bin.is_dir():
-            env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
-            env["VIRTUAL_ENV"] = str(workspace_path / venv_dir)
-            break
+        # "Scripts" on Windows, "bin" everywhere else. Checking both rather than
+        # os.name means a venv created on either platform is recognised (#908
+        # review) — without this, a Windows target repo's pytest resolved from
+        # CodeFRAME's PATH instead of the repo's own venv.
+        for bin_dir in ("bin", "Scripts"):
+            venv_bin = workspace_path / venv_dir / bin_dir
+            if venv_bin.is_dir():
+                env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
+                env["VIRTUAL_ENV"] = str(workspace_path / venv_dir)
+                return env
 
     return env

@@ -7,8 +7,11 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import re
-import subprocess
+import logging
+import os
 import shutil
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -18,6 +21,8 @@ from typing import Any, Callable, Optional
 from codeframe.core.agent_env import build_agent_env
 from codeframe.core.workspace import Workspace
 from codeframe.core import events
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -178,6 +183,124 @@ class GateResult:
         return by_file
 
 
+def _install_python_requirements(
+    repo_path: Path, requirements_txt: Path
+) -> tuple[bool, str]:
+    """Install a target repo's requirements into a venv *of its own* (#908).
+
+    This runs in exactly the state where ``requirements.txt`` exists and no venv
+    does, and the previous implementation ran ``uv pip install -r ...`` straight
+    away — which errors in precisely that state::
+
+        error: No virtual environment found; run `uv venv` to create an
+        environment, or pass `--system` to install into a non-virtual environment
+
+    so the install could never succeed where it was triggered. Worse, when
+    CodeFRAME itself runs inside an activated venv, the inherited ``VIRTUAL_ENV``
+    made the fallback install the *target repo's* dependencies into CodeFRAME's
+    own environment.
+
+    Both are fixed by creating the venv first and pinning ``VIRTUAL_ENV`` to it,
+    never to whatever the parent process happened to be using.
+    """
+    venv_path = repo_path / ".venv"
+
+    # NB: the repo has no venv at this point, so build_agent_env copies
+    # VIRTUAL_ENV straight from the parent — CodeFRAME's own when `cf` is run
+    # from an activated environment. Every install below therefore *sets* it
+    # explicitly to the venv just created; inheriting it is what made the old
+    # fallback install the target repo's dependencies into CodeFRAME's env.
+    env = build_agent_env(repo_path)
+
+    def _run(cmd: list[str], timeout: int = 300) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            cmd, cwd=repo_path, env=env, capture_output=True, text=True, timeout=timeout
+        )
+
+    use_uv = shutil.which("uv") is not None
+    create_cmd = (
+        ["uv", "venv", str(venv_path)] if use_uv
+        else [sys.executable, "-m", "venv", str(venv_path)]
+    )
+
+    try:
+        created = _run(create_cmd, timeout=120)
+        if created.returncode != 0:
+            # Discard the partial venv for the same reason as the install path
+            # below: CPython leaves `.venv/bin` behind when `-m venv` fails
+            # partway (Debian without python3-venv, disk full, permissions), and
+            # a stub directory makes `has_venv` true forever, so the install is
+            # skipped on every later run even once the cause is fixed.
+            _discard_failed_venv(venv_path)
+            return False, f"Failed to create virtualenv: {created.stderr.strip()}"
+
+        _self_ignore(venv_path)
+        env["VIRTUAL_ENV"] = str(venv_path)
+
+        if use_uv:
+            installed = _run(["uv", "pip", "install", "-r", str(requirements_txt)])
+            manager = "uv"
+        else:
+            # `<venv>/bin/python -m pip` rather than the pip executable: it is
+            # the same on Windows (where the binary is `pip.exe`, not `pip`) and
+            # it cannot resolve to CodeFRAME's pip the way a bare name on PATH
+            # could (#908 review).
+            venv_python = _venv_python(venv_path)
+            installed = _run([str(venv_python), "-m", "pip", "install", "-r", str(requirements_txt)])
+            manager = "pip"
+    except (OSError, subprocess.SubprocessError) as exc:
+        _discard_failed_venv(venv_path)
+        return False, f"Error installing Python dependencies: {exc}"
+
+    if installed.returncode != 0:
+        # Remove the venv we just made. Leaving it behind marks the repo as
+        # "already installed (venv exists)" forever, so a transient network
+        # failure would permanently skip the install (#908 review).
+        _discard_failed_venv(venv_path)
+        return False, f"Failed to install Python dependencies: {installed.stderr.strip()}"
+    return True, f"Installed Python dependencies via {manager}: {requirements_txt.name}"
+
+
+def _venv_python(venv_path: Path) -> Path:
+    """The interpreter inside *venv_path*, on either platform."""
+    for bin_dir, exe in (("bin", "python"), ("Scripts", "python.exe")):
+        candidate = venv_path / bin_dir / exe
+        if candidate.exists():
+            return candidate
+    return venv_path / ("Scripts" if os.name == "nt" else "bin") / "python"
+
+
+def _discard_failed_venv(venv_path: Path) -> None:
+    """Remove a venv whose install failed, so the next run retries."""
+    try:
+        shutil.rmtree(venv_path, ignore_errors=True)
+    except OSError as exc:  # pragma: no cover - rmtree already swallows most
+        logger.warning("Could not remove the incomplete virtualenv %s: %s", venv_path, exc)
+
+
+def _self_ignore(venv_path: Path) -> None:
+    """Make the venv ignore itself, the way ``uv venv`` already does.
+
+    A venv we create is untracked, and ``get_changed_scope`` feeds
+    ``status.untracked_files`` straight into the PROOF9 scope — so without this
+    a ``cf review`` reports the tree dirty and drags site-packages into the
+    scope. ``uv venv`` writes this file itself; the stdlib ``venv`` does not.
+
+    A ``.gitignore`` *inside* the venv rather than an entry in
+    ``.git/info/exclude``: it needs no git-directory resolution, works
+    unchanged in the linked worktrees CodeFRAME creates (where ``.git`` is a
+    file), and is the convention the ecosystem already uses.
+
+    Still required despite both of those: CPython only started writing this file
+    in **3.13**, and this project supports ``>=3.11``. On a 3.13 interpreter the
+    stdlib fallback already self-ignores and this is a no-op.
+    """
+    try:
+        (venv_path / ".gitignore").write_text("*\n")
+    except OSError as exc:
+        logger.debug("Could not write %s/.gitignore: %s", venv_path, exc)
+
+
 def _ensure_dependencies_installed(
     repo_path: Path,
     auto_install: bool = True,
@@ -212,38 +335,11 @@ def _ensure_dependencies_installed(
             uv_bin = shutil.which("uv")
             pip_bin = shutil.which("pip")
 
-            if uv_bin:
-                try:
-                    result = subprocess.run(
-                        ["uv", "pip", "install", "-r", str(requirements_txt)],
-                        cwd=repo_path,
-                        env=build_agent_env(repo_path),
-                        capture_output=True,
-                        text=True,
-                        timeout=300,  # 5 minutes
-                    )
-                    if result.returncode == 0:
-                        messages.append(f"Installed Python dependencies via uv: {requirements_txt.name}")
-                    else:
-                        return False, f"Failed to install Python dependencies: {result.stderr}"
-                except Exception as e:
-                    return False, f"Error installing Python dependencies: {e}"
-            elif pip_bin:
-                try:
-                    result = subprocess.run(
-                        ["pip", "install", "-r", str(requirements_txt)],
-                        cwd=repo_path,
-                        env=build_agent_env(repo_path),
-                        capture_output=True,
-                        text=True,
-                        timeout=300,
-                    )
-                    if result.returncode == 0:
-                        messages.append(f"Installed Python dependencies via pip: {requirements_txt.name}")
-                    else:
-                        return False, f"Failed to install Python dependencies: {result.stderr}"
-                except Exception as e:
-                    return False, f"Error installing Python dependencies: {e}"
+            if uv_bin or pip_bin:
+                ok, message = _install_python_requirements(repo_path, requirements_txt)
+                if not ok:
+                    return False, message
+                messages.append(message)
             else:
                 messages.append("Python dependencies needed but no package manager found (uv/pip)")
     elif requirements_txt.exists() and has_venv:
@@ -327,32 +423,18 @@ def run(
     if verbose:
         print(f"[gates] Dependency check: {dep_message}")
 
-    # If dependency installation fails, create an ERROR check and return early
-    if not dep_success:
-        check = GateCheck(
-            name="dependency-check",
-            status=GateStatus.ERROR,
-            output=f"Dependency installation failed: {dep_message}",
-        )
-        result = GateResult(
-            passed=False,
-            checks=[check],
-            started_at=started_at,
-            completed_at=_utc_now(),
-        )
-        events.emit_for_workspace(
-            workspace,
-            events.EventType.GATES_COMPLETED,
-            {
-                "passed": False,
-                "summary": "Dependency installation failed",
-                "checks": [{"name": check.name, "status": check.status.value}],
-            },
-            print_event=True,
-        )
-        return result
-
     checks: list[GateCheck] = []
+
+    # A failed dependency install is recorded and the gates run anyway (#908).
+    # Returning early here blocked *every* gate — including ruff and tsc, which
+    # need no Python dependencies at all — and poisoned every PROOF9 run, since
+    # runner._run_gate calls this per obligation. It also hid the real signal:
+    # if the missing dependencies actually matter, the gate that needs them
+    # fails on its own and says why. SKIPPED rather than ERROR because this
+    # check did not run to a verdict, and SKIPPED does not fail the run.
+    if not dep_success and verbose:
+        print(f"[gates] Dependency install failed (continuing): {dep_message}")
+
     repo_path = workspace.repo_path
 
     # Determine which gates to run
@@ -396,6 +478,20 @@ def run(
                 )
 
         checks.append(check)
+
+    # Recorded after the gates, never before: proof/runner.py reads
+    # result.checks[0] as *the* gate's check, so a pre-flight entry at index 0
+    # would be mistaken for the gate result and reported as FAILED (SKIPPED).
+    if not dep_success:
+        checks.append(
+            GateCheck(
+                name="dependency-check",
+                status=GateStatus.SKIPPED,
+                output=(
+                    f"Dependency installation failed, ran gates anyway: {dep_message}"
+                ),
+            )
+        )
 
     completed_at = _utc_now()
 
