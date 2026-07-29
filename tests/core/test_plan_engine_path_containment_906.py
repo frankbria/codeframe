@@ -134,3 +134,31 @@ def test_symlink_out_of_the_workspace_is_rejected(workspace, outside):
 
     assert result.status == ExecutionStatus.FAILED
     assert outside.exists()
+
+
+def test_rollback_refuses_a_path_outside_the_workspace(workspace, outside):
+    """Rollback writes files too, from a recorded path rather than a fresh one.
+
+    The three guarded operations are the only things that record changes, so
+    this cannot be reached today — the check is here because the guarantee
+    would otherwise depend on a caller three methods away.
+    """
+    from datetime import datetime, timezone
+
+    from codeframe.core.executor import FileChange
+
+    executor = _executor(workspace)
+    executor.changes.append(
+        FileChange(
+            path=str(outside),
+            operation="edit",
+            original_content="OVERWRITTEN-BY-ROLLBACK",
+            new_content=None,
+            timestamp=datetime.now(timezone.utc),
+        )
+    )
+
+    messages = executor.rollback()
+
+    assert outside.read_text() == "ORIGINAL"
+    assert any("Refused to roll back" in m for m in messages)

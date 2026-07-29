@@ -808,6 +808,14 @@ class Executor:
         for change in reversed(self.changes):
             file_path = self.repo_path / change.path
 
+            # Every recorded path came from a guarded operation, so this cannot
+            # currently escape — but that invariant lives at a distance, and
+            # rollback writes files. Vet the join here too (#906).
+            safe, reason = is_path_safe(file_path, self.repo_path)
+            if not safe:
+                rolled_back.append(f"Refused to roll back outside the workspace: {reason}")
+                continue
+
             try:
                 if change.operation == "create":
                     # Delete the created file
