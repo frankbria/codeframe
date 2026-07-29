@@ -99,28 +99,36 @@ class TestHooksConfig:
 class TestRenderHookCommand:
     """Test Jinja2 template variable rendering."""
 
+    # Rendering substitutes *references* to environment variables, never the
+    # values (#905) — see tests/core/test_untrusted_repo_execution_905.py for
+    # why quoting the values was not safe. The value arrives via the hook's
+    # environment, so the hook still sees it.
+
     def test_renders_task_id(self) -> None:
         from codeframe.core.hooks import HookContext, render_hook_command
 
         ctx = HookContext(task_id="abc123", task_title="Fix bug", task_status="in_progress", workspace_path="/tmp/repo")
         result = render_hook_command("git checkout -b cf/{{task_id}}", ctx)
-        assert "abc123" in result
+        assert result == 'git checkout -b cf/"${CF_HOOK_TASK_ID}"'
 
     def test_renders_multiple_variables(self) -> None:
-        from codeframe.core.hooks import HookContext, render_hook_command
+        from codeframe.core.hooks import HookContext, hook_context_env, render_hook_command
 
         ctx = HookContext(task_id="t1", task_title="Add feature", task_status="done", workspace_path="/ws")
         result = render_hook_command("echo {{task_id}} {{task_title}} {{task_status}}", ctx)
-        assert "t1" in result
-        assert "Add feature" in result
-        assert "done" in result
+        assert "CF_HOOK_TASK_ID" in result
+        assert "CF_HOOK_TASK_TITLE" in result
+        assert "CF_HOOK_TASK_STATUS" in result
+        # The values are carried out of band, so the hook still sees them.
+        assert hook_context_env(ctx)["CF_HOOK_TASK_TITLE"] == "Add feature"
 
     def test_renders_workspace_path(self) -> None:
-        from codeframe.core.hooks import HookContext, render_hook_command
+        from codeframe.core.hooks import HookContext, hook_context_env, render_hook_command
 
         ctx = HookContext(task_id="", task_title="", task_status="init", workspace_path="/home/user/repo")
         result = render_hook_command("cd {{workspace_path}} && npm install", ctx)
-        assert "/home/user/repo" in result
+        assert "CF_HOOK_WORKSPACE_PATH" in result
+        assert hook_context_env(ctx)["CF_HOOK_WORKSPACE_PATH"] == "/home/user/repo"
 
     def test_passes_through_non_template_text(self) -> None:
         from codeframe.core.hooks import HookContext, render_hook_command
@@ -129,13 +137,13 @@ class TestRenderHookCommand:
         result = render_hook_command("echo hello world", ctx)
         assert "echo hello world" in result
 
-    def test_shell_escapes_values(self) -> None:
+    def test_hostile_value_never_reaches_the_command_text(self) -> None:
         from codeframe.core.hooks import HookContext, render_hook_command
 
         ctx = HookContext(task_id="t1", task_title="'; rm -rf /; echo '", task_status="", workspace_path="/tmp")
         result = render_hook_command("echo {{task_title}}", ctx)
-        # Should be escaped, not literally '; rm -rf /; echo '
-        assert "rm -rf" not in result or "'" in result
+        # Not "escaped" — absent. The shell never parses the value at all.
+        assert "rm -rf" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +209,18 @@ class TestRunHook:
 
 
 class TestExecuteHook:
-    """Test the execute_hook orchestrator."""
+    """Test the execute_hook orchestrator.
+
+    Hooks require a trust decision (#905); these tests are about the
+    orchestration around a *trusted* hook, so they opt in. The gate itself is
+    covered in tests/core/test_untrusted_repo_execution_905.py.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _trusted(self, monkeypatch):
+        from codeframe.core.hook_trust import ALLOW_HOOKS_ENV
+
+        monkeypatch.setenv(ALLOW_HOOKS_ENV, "1")
 
     def test_returns_none_when_hook_not_configured(self) -> None:
         from codeframe.core.config import EnvironmentConfig
