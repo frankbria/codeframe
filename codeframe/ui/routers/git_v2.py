@@ -10,6 +10,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
@@ -97,7 +98,7 @@ async def get_git_status(
         GitStatusResponse with status information
     """
     try:
-        status = git.get_status(workspace)
+        status = await run_in_threadpool(git.get_status, workspace)
 
         return GitStatusResponse(
             current_branch=status.current_branch,
@@ -137,7 +138,9 @@ async def list_commits(
         raise HTTPException(status_code=400, detail="Limit must be between 1 and 100")
 
     try:
-        commits = git.list_commits(workspace, branch=branch, limit=limit)
+        commits = await run_in_threadpool(
+            git.list_commits, workspace, branch=branch, limit=limit
+        )
 
         return CommitListResponse(
             commits=[
@@ -180,7 +183,8 @@ async def create_commit(
         CommitResultResponse with commit details
     """
     try:
-        result = git.create_commit(
+        result = await run_in_threadpool(
+            git.create_commit,
             workspace,
             files=body.files,
             message=body.message,
@@ -217,7 +221,7 @@ async def get_diff(
         DiffResponse with diff content
     """
     try:
-        diff_content = git.get_diff(workspace, staged=staged)
+        diff_content = await run_in_threadpool(git.get_diff, workspace, staged=staged)
 
         return DiffResponse(
             diff=diff_content,
@@ -247,7 +251,7 @@ async def get_current_branch(
         Dict with branch name
     """
     try:
-        branch = git.get_current_branch(workspace)
+        branch = await run_in_threadpool(git.get_current_branch, workspace)
         return {"branch": branch}
 
     except ValueError as e:
@@ -273,7 +277,7 @@ async def check_clean(
         Dict with is_clean boolean
     """
     try:
-        is_clean = git.is_clean(workspace)
+        is_clean = await run_in_threadpool(git.is_clean, workspace)
         return {"is_clean": is_clean}
 
     except ValueError as e:

@@ -962,6 +962,40 @@ def list_batches(
     return [_row_to_batch(row) for row in rows]
 
 
+
+def count_batches_by_status(workspace: Workspace) -> dict[str, int]:
+    """Count batches per status with one aggregate query (issue #902).
+
+    The batches list endpoint used to call ``list_batches(limit=1000)`` purely
+    to tally statuses — materializing up to a thousand ``BatchRun`` objects,
+    JSON-decoding each one's ``task_ids`` and ``results``, on every poll from
+    every open browser tab. A GROUP BY does the same job in the database and
+    returns a handful of integers.
+
+    Returns:
+        ``{status_value: count}``, omitting statuses with no rows.
+    """
+    conn = get_db_connection(workspace)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT status, COUNT(*) AS n
+            FROM batch_runs
+            WHERE workspace_id = ?
+            GROUP BY status
+            """,
+            (workspace.id,),
+        )
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    # Index access, not key access: this connection's row_factory is not
+    # guaranteed to be sqlite3.Row, and indices work for both.
+    return {row[0]: row[1] for row in rows}
+
+
 def find_batch_by_prefix(workspace: Workspace, prefix: str) -> list[BatchRun]:
     """Resolve batches whose id starts with ``prefix`` (SQL ``LIKE``, no cap).
 

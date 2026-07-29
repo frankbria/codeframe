@@ -10,6 +10,7 @@ import logging
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
@@ -129,7 +130,7 @@ async def review_files(
         ReviewResultResponse with findings and score
     """
     try:
-        result = review.review_files(workspace, body.files)
+        result = await run_in_threadpool(review.review_files, workspace, body.files)
 
         return ReviewResultResponse(
             status=result.status,
@@ -173,7 +174,8 @@ async def review_task(
         ReviewResultResponse with findings and score
     """
     try:
-        result = review.review_task(
+        result = await run_in_threadpool(
+            review.review_task,
             workspace,
             task_id=body.task_id,
             files_modified=body.files_modified,
@@ -222,7 +224,7 @@ async def review_files_summary(
         ReviewSummaryResponse with aggregated metrics
     """
     try:
-        result = review.review_files(workspace, body.files)
+        result = await run_in_threadpool(review.review_files, workspace, body.files)
         summary = review.get_review_summary(result)
 
         return ReviewSummaryResponse(
@@ -265,7 +267,7 @@ async def get_review_diff(
         DiffStatsResponse with diff text and statistics
     """
     try:
-        stats = git.get_diff_stats(workspace, staged=staged)
+        stats = await run_in_threadpool(git.get_diff_stats, workspace, staged=staged)
 
         return DiffStatsResponse(
             diff=stats.diff,
@@ -311,8 +313,8 @@ async def get_review_patch(
         PatchResponse with patch content and suggested filename
     """
     try:
-        patch_content = git.get_patch(workspace, staged=staged)
-        branch = git.get_current_branch(workspace)
+        patch_content = await run_in_threadpool(git.get_patch, workspace, staged=staged)
+        branch = await run_in_threadpool(git.get_current_branch, workspace)
         filename = f"{branch.replace('/', '-')}.patch"
 
         return PatchResponse(
@@ -348,7 +350,9 @@ async def generate_commit_message(
         CommitMessageResponse with suggested message
     """
     try:
-        message = git.generate_commit_message(workspace, staged=staged)
+        message = await run_in_threadpool(
+            git.generate_commit_message, workspace, staged=staged
+        )
 
         return CommitMessageResponse(message=message)
 

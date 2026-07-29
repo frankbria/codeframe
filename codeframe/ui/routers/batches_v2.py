@@ -14,6 +14,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
@@ -127,15 +128,16 @@ async def list_batches(
                 ),
             )
 
-    # Get batches
-    batch_list = conductor.list_batches(workspace, status=status_filter, limit=limit)
+    # Both reads are synchronous SQLite, so they run off the event loop (#902).
+    batch_list = await run_in_threadpool(
+        conductor.list_batches, workspace, status=status_filter, limit=limit
+    )
 
-    # Calculate counts by status
-    all_batches = conductor.list_batches(workspace, limit=1000)
-    status_counts: dict[str, int] = {}
-    for batch in all_batches:
-        status_val = batch.status.value
-        status_counts[status_val] = status_counts.get(status_val, 0) + 1
+    # Counts come from a GROUP BY rather than materializing up to 1000 batches
+    # on every poll from every open tab (#902).
+    status_counts = await run_in_threadpool(
+        conductor.count_batches_by_status, workspace
+    )
 
     return BatchListResponse(
         batches=[_batch_to_response(b) for b in batch_list],
@@ -163,7 +165,7 @@ async def get_batch(
     Raises:
         HTTPException: 404 if batch not found
     """
-    batch = conductor.get_batch(workspace, batch_id)
+    batch = await run_in_threadpool(conductor.get_batch, workspace, batch_id)
 
     if not batch:
         raise HTTPException(
@@ -209,7 +211,9 @@ async def stop_batch(
     force = body.force if body else False
 
     try:
-        batch = conductor.stop_batch(workspace, batch_id, force=force)
+        batch = await run_in_threadpool(
+            conductor.stop_batch, workspace, batch_id, force=force
+        )
         return _batch_to_response(batch)
 
     except ValueError as e:
@@ -252,7 +256,9 @@ async def resume_batch(
     force = body.force if body else False
 
     try:
-        batch = conductor.resume_batch(workspace, batch_id, force=force)
+        batch = await run_in_threadpool(
+            conductor.resume_batch, workspace, batch_id, force=force
+        )
         return _batch_to_response(batch)
 
     except ValueError as e:
@@ -299,7 +305,7 @@ async def cancel_batch(
             - 400: Batch not in cancellable state
     """
     try:
-        batch = conductor.cancel_batch(workspace, batch_id)
+        batch = await run_in_threadpool(conductor.cancel_batch, workspace, batch_id)
         return _batch_to_response(batch)
 
     except ValueError as e:

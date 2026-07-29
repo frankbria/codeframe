@@ -131,7 +131,9 @@ async def check_environment(
     """
     try:
         validator = EnvironmentValidator()
-        result = validator.validate_environment(workspace.repo_path)
+        result = await run_in_threadpool(
+            validator.validate_environment, workspace.repo_path
+        )
 
         return _result_to_response(result)
 
@@ -164,7 +166,8 @@ async def run_doctor(
         validator = EnvironmentValidator()
 
         # Doctor mode validates everything including optional tools
-        result = validator.validate_environment(
+        result = await run_in_threadpool(
+            validator.validate_environment,
             workspace.repo_path,
             # Include optional tools in the check
             optional_tools=["ruff", "black", "mypy", "pre-commit"],
