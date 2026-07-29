@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 # Get configuration from environment
 DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION"
 
+# Placeholder password for the seeded bootstrap admin (id=1). It cannot match
+# any bcrypt hash, so that account can never log in and must not be counted as
+# a real user. Written by SchemaManager._ensure_default_admin_user; re-exported
+# by auth.router, which cannot own it (this module must not import that one).
+DISABLED_PASSWORD = "!DISABLED!"
+
 
 def _read_auth_secret() -> str:
     """Read ``AUTH_SECRET`` from the env, treating blank/whitespace as unset.
@@ -166,6 +172,40 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         logger.info(
             "User registered",
             extra={"user_id": user.id, "email": user.email}
+        )
+        await self._promote_if_bootstrap_user(user)
+
+    async def _promote_if_bootstrap_user(self, user: User) -> None:
+        """Grant ``is_superuser`` to the instance's first real account (#898).
+
+        Admin scope derives from ``is_superuser``, and
+        ``fastapi_users.get_register_router`` forces the field to ``False`` on
+        every registration — so without this no principal would ever hold admin
+        and credential storage, GitHub PAT storage and PR merge would be
+        permanently 403.
+
+        ``/auth/register`` already admits exactly one login-capable account
+        (issues #336, #897), so that account is the operator. The count is
+        re-checked here rather than assumed: if another registration path is
+        ever added, only a genuinely sole account is promoted.
+        """
+        from sqlalchemy import func, select
+
+        session = getattr(self.user_db, "session", None)
+        if session is None:  # pragma: no cover - non-SQLAlchemy user_db
+            return
+
+        result = await session.execute(
+            select(func.count())
+            .select_from(User)
+            .where(User.hashed_password != DISABLED_PASSWORD)
+        )
+        if result.scalar_one() != 1:
+            return
+
+        await self.user_db.update(user, {"is_superuser": True})
+        logger.info(
+            "Promoted bootstrap user to superuser", extra={"user_id": user.id}
         )
 
     async def on_after_login(

@@ -64,6 +64,13 @@ Registration still closes permanently once the first real account exists, token
 or not. The seeded `admin@localhost` row has a disabled password, cannot log in,
 and does not count as that account.
 
+That first account is also the instance's **admin** (`is_superuser`), and it is
+the only one — admin scope is what gates credential storage, GitHub PAT storage
+and PR merge (issue #898). A session for any later, non-superuser account gets
+`[read, write]` and is refused on those endpoints. Grant admin to another
+account by setting `is_superuser = 1` on its `users` row in the control-plane
+DB; there is no in-product promotion flow yet.
+
 **Set the token before the first deploy** — it is in `.env.production.example` /
 `.env.staging.example`:
 

@@ -141,6 +141,62 @@ class TestRegistrationBootstrap:
         )
 
 
+def _superuser_flag(db_path, email):
+    db = Database(db_path)
+    db.initialize()
+    row = db.conn.execute(
+        "SELECT is_superuser FROM users WHERE email = ?", (email,)
+    ).fetchone()
+    db.close()
+    return None if row is None else bool(row[0])
+
+
+class TestBootstrapUserBecomesSuperuser:
+    """#898 / P0.4 — admin scope now derives from ``users.is_superuser``.
+
+    ``fastapi_users.get_register_router`` forces ``is_superuser=False`` on every
+    registration, so without this promotion no principal would ever hold admin
+    and credential storage / PAT storage / PR merge would be permanently 403.
+    The bootstrap route admits exactly one login-capable account (#336/#897), so
+    that account is the operator.
+    """
+
+    def test_bootstrap_user_is_promoted_to_superuser(self, auth_client):
+        resp = _register(auth_client)
+        assert resp.status_code in (200, 201), resp.text
+        assert _superuser_flag(auth_client.db_path, "first@example.com") is True
+
+    def test_seeded_disabled_admin_does_not_block_promotion(self, auth_client):
+        """The seeded id=1 placeholder is already is_superuser=1 but cannot log
+        in, so it must not be mistaken for an existing admin."""
+        _register(auth_client)
+        assert _superuser_flag(auth_client.db_path, "first@example.com") is True
+
+    def test_registration_alongside_an_existing_real_user_does_not_promote(
+        self, auth_client, monkeypatch
+    ):
+        """Belt-and-braces: if a second registration path ever opens, only a
+        genuinely-sole account is promoted."""
+        from codeframe.auth import router as auth_router_module
+
+        _add_real_user(auth_client.db_path)
+        # Bypass the closed-registration gate to exercise the promotion guard
+        # itself rather than the route gate that normally precedes it.
+        async def _allow_anything():
+            yield
+
+        auth_client.app.dependency_overrides[auth_router_module.allow_registration] = (
+            _allow_anything
+        )
+        try:
+            resp = _register(auth_client, email="second@example.com")
+            assert resp.status_code in (200, 201), resp.text
+        finally:
+            auth_client.app.dependency_overrides.clear()
+
+        assert _superuser_flag(auth_client.db_path, "second@example.com") is False
+
+
 class TestBootstrapTokenGate:
     """#897 — a configured token is mandatory, loopback included."""
 

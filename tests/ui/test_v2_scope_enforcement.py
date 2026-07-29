@@ -161,6 +161,38 @@ class TestAdminScope:
         assert r.status_code != 401
 
 
+class TestJwtIsNotAutomaticallyAdmin:
+    """Issue #898 / P0.4 — a browser session no longer implies admin.
+
+    The ``scoped_app`` user (id=1) is seeded ``is_superuser = 0``, so its JWT
+    must be write-capable but admin-forbidden. Before this, every JWT carried
+    ``[read, write, admin]`` and the admin gate was decorative for anyone with a
+    session cookie's worth of token.
+    """
+
+    def _jwt(self):
+        from tests.conftest import create_test_jwt_token
+
+        return {"Authorization": f"Bearer {create_test_jwt_token(user_id=1)}"}
+
+    def test_non_superuser_jwt_forbidden_on_credential_storage(self, scoped_app):
+        app, _ = scoped_app
+        r = TestClient(app).put(
+            "/api/v2/settings/keys/openai", headers=self._jwt(), json={"value": "sk-x"}
+        )
+        assert r.status_code == 403, r.text
+
+    def test_non_superuser_jwt_forbidden_on_pr_merge(self, scoped_app):
+        app, _ = scoped_app
+        r = TestClient(app).post("/api/v2/pr/1/merge", headers=self._jwt(), json={})
+        assert r.status_code == 403, r.text
+
+    def test_non_superuser_jwt_still_allowed_on_write(self, scoped_app):
+        app, _ = scoped_app
+        r = TestClient(app).put("/api/v2/settings", headers=self._jwt(), json={})
+        assert r.status_code not in (401, 403), r.text
+
+
 class TestPatchIsMutating:
     def test_read_key_forbidden_on_patch(self, scoped_app):
         app, keys = scoped_app

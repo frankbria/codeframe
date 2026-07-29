@@ -4,8 +4,9 @@ Supports dual authentication:
 - JWT Bearer tokens (existing FastAPI Users integration)
 - API keys via X-API-Key header (new for programmatic access)
 
-API keys use scope-based permissions (read, write, admin).
-JWT tokens get full permissions for backward compatibility.
+Both credential types use scope-based permissions (read, write, admin). API-key
+scopes are stored on the key; JWT scopes are derived from the user record —
+read+write always, admin only for ``is_superuser`` accounts (issue #898).
 """
 
 import logging
@@ -377,11 +378,18 @@ async def require_auth(
 
     # Fall back to JWT
     if jwt_user is not None:
+        # Scopes come from the user record (#898). Handing every session
+        # [read, write, admin] made require_scope(SCOPE_ADMIN) decorative:
+        # anyone with a browser token could store credentials and merge PRs.
+        # getattr, not attribute access: a principal that somehow lacks the
+        # column must fail closed to non-admin rather than 500.
+        scopes = [SCOPE_READ, SCOPE_WRITE]
+        if getattr(jwt_user, "is_superuser", False):
+            scopes.append(SCOPE_ADMIN)
         return _resolve({
             "type": "jwt",
             "user_id": jwt_user.id,
-            # JWT users get all scopes for backward compatibility
-            "scopes": [SCOPE_READ, SCOPE_WRITE, SCOPE_ADMIN],
+            "scopes": scopes,
             "user": jwt_user,
         })
 
@@ -414,9 +422,10 @@ async def require_method_scope(
 
     Safe methods (GET/HEAD/OPTIONS) require the ``read`` scope; mutating
     methods (POST/PUT/PATCH/DELETE) require ``write``. Admin-only routes layer
-    their own ``Depends(require_scope("admin"))`` on top. JWT principals and the
-    auth-disabled synthetic principal both carry all scopes, so this only
-    constrains scoped API keys — a read-only key can no longer mutate state.
+    their own ``Depends(require_scope("admin"))`` on top. JWT principals carry
+    read+write (admin only when ``is_superuser``, #898) and the auth-disabled
+    synthetic principal carries all scopes, so in practice this guard constrains
+    scoped API keys — a read-only key can no longer mutate state.
     """
     required = SCOPE_READ if request.method.upper() in _SAFE_METHODS else SCOPE_WRITE
     if not has_scope(auth, required):
