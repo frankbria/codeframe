@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from codeframe.adapters.llm import LLMProvider, Purpose
 from codeframe.core import blockers, events
+from codeframe.core.path_safety import is_path_safe
 from codeframe.core.context import ContextLoader, TaskContext
 from codeframe.core.events import EventType
 from codeframe.core.executor import Executor, ExecutionStatus, StepResult
@@ -78,31 +79,9 @@ def _extract_file_from_command(command: str) -> Optional[str]:
     return None
 
 
-def _is_path_safe(file_path: Path, workspace_path: Path) -> tuple[bool, str]:
-    """Check if a file path is safely within the workspace.
-
-    Prevents path traversal attacks via '..' components.
-
-    Args:
-        file_path: The file path to check
-        workspace_path: The workspace root path
-
-    Returns:
-        Tuple of (is_safe, reason) where reason explains any rejection
-    """
-    try:
-        # Resolve both paths to handle symlinks and relative paths
-        resolved_file = file_path.resolve()
-        resolved_workspace = workspace_path.resolve()
-
-        # Check if the file is within the workspace
-        try:
-            resolved_file.relative_to(resolved_workspace)
-            return (True, "")
-        except ValueError:
-            return (False, f"Path escapes workspace: {file_path}")
-    except Exception as e:
-        return (False, f"Path resolution error: {e}")
+# Moved to the leaf module core/path_safety.py (#906): this was the third copy
+# of an identical check. Kept as an alias so existing call sites read the same.
+_is_path_safe = is_path_safe
 
 
 def _parse_command_safely(command: str) -> tuple[list[str], bool, str]:

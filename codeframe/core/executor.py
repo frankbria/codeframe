@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
 from codeframe.core.agent_env import build_agent_env
+from codeframe.core.path_safety import is_path_safe
 from codeframe.core.planner import PlanStep, StepType, ImplementationPlan
 from codeframe.core.context import TaskContext
 from codeframe.adapters.llm import LLMProvider, Purpose
@@ -292,6 +293,29 @@ class Executor:
 
         return result
 
+    def _resolve_target(self, step: PlanStep) -> tuple[Optional[Path], Optional[StepResult]]:
+        """Join ``step.target`` onto the repo root, refusing anything outside it.
+
+        ``step.target`` is LLM-generated from task/PRD/imported-issue text, which
+        this project already treats as an indirect prompt-injection surface. The
+        plain join is unsafe: an absolute target replaces the base entirely and
+        ``..`` walks out, so a poisoned task could overwrite
+        ``~/.ssh/authorized_keys`` (#906).
+
+        Returns:
+            ``(path, None)`` when the target is inside the workspace, otherwise
+            ``(None, failed_result)``.
+        """
+        file_path = self.repo_path / step.target
+        safe, reason = is_path_safe(file_path, self.repo_path)
+        if not safe:
+            return None, StepResult(
+                step=step,
+                status=ExecutionStatus.FAILED,
+                error=f"Blocked file operation outside the workspace: {reason}",
+            )
+        return file_path, None
+
     def _execute_file_create(
         self,
         step: PlanStep,
@@ -303,7 +327,9 @@ class Executor:
         - Identical content: returns SUCCESS (no-op)
         - Different content: falls back to edit behavior
         """
-        file_path = self.repo_path / step.target
+        file_path, blocked = self._resolve_target(step)
+        if blocked is not None:
+            return blocked
 
         # Check if file already exists -- fall back gracefully
         if file_path.exists():
@@ -385,7 +411,9 @@ class Executor:
         context: TaskContext,
     ) -> StepResult:
         """Edit an existing file."""
-        file_path = self.repo_path / step.target
+        file_path, blocked = self._resolve_target(step)
+        if blocked is not None:
+            return blocked
 
         # Check if file exists
         if not file_path.exists():
@@ -430,7 +458,9 @@ class Executor:
 
     def _execute_file_delete(self, step: PlanStep) -> StepResult:
         """Delete a file."""
-        file_path = self.repo_path / step.target
+        file_path, blocked = self._resolve_target(step)
+        if blocked is not None:
+            return blocked
 
         if not file_path.exists():
             return StepResult(
@@ -587,7 +617,13 @@ class Executor:
 
         # If target is a Python file, verify it exists and check syntax
         if target.endswith(".py"):
-            file_path = self.repo_path / target
+            # Same containment as the create/edit/delete steps (#906). This
+            # one reads: without the guard an absolute or ../ target turns the
+            # step into an existence-and-syntax oracle for any .py file on the
+            # host. (The SyntaxError message itself does not echo source text.)
+            file_path, blocked = self._resolve_target(step)
+            if blocked is not None:
+                return blocked
             if not file_path.exists():
                 return StepResult(
                     step=step,
@@ -618,7 +654,9 @@ class Executor:
             return self._execute_shell_command(step)
 
         # Otherwise just check if the path exists
-        target_path = self.repo_path / target
+        target_path, blocked = self._resolve_target(step)
+        if blocked is not None:
+            return blocked
         if target_path.exists():
             return StepResult(
                 step=step,
@@ -777,6 +815,14 @@ class Executor:
         # Process changes in reverse order
         for change in reversed(self.changes):
             file_path = self.repo_path / change.path
+
+            # Every recorded path came from a guarded operation, so this cannot
+            # currently escape — but that invariant lives at a distance, and
+            # rollback writes files. Vet the join here too (#906).
+            safe, reason = is_path_safe(file_path, self.repo_path)
+            if not safe:
+                rolled_back.append(f"Refused to roll back outside the workspace: {reason}")
+                continue
 
             try:
                 if change.operation == "create":
