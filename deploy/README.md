@@ -122,3 +122,39 @@ For an IP-only or internal host, use the IP as the site address and add
 `Caddyfile.example`. Browsers reject the local CA
 (`NET::ERR_CERT_AUTHORITY_INVALID`) until its root cert is trusted on the client
 (`caddy trust`) or the warning is accepted — this is expected, not a broken deploy.
+
+## CI deploy over Tailscale
+
+The `Deploy` workflow SSHes into the box, but port 22 is firewalled off the
+public internet. The runner reaches the box over a Tailscale tailnet instead, so
+`sshd` never needs a public inbound rule. One-time setup:
+
+**On the box**
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up                       # authenticate; note the assigned 100.x IP / MagicDNS name
+sudo ufw allow in on tailscale0 to any port 22   # let tailnet peers reach sshd
+# keep the public :22 rule scoped to your admin IP (or drop it entirely)
+```
+
+**On the tailnet (admin console → Access Controls)** — allow the CI tag to reach
+the box on 22, e.g.:
+```jsonc
+{ "action": "accept", "src": ["tag:ci"], "dst": ["tag:staging:22"] }
+```
+
+**GitHub secrets** — create a Tailscale OAuth client (scopes: `auth_keys`, tag
+`tag:ci`) and set:
+- `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` — the OAuth client (repo-level is fine)
+- `HOST` (per environment) — repoint to the box's **tailnet** MagicDNS name or
+  `100.x` address. `HOST` is only ever an SSH target; the public app URL lives in
+  `API_URL`/`WS_URL` and is unaffected.
+- `SSH_KNOWN_HOSTS` (per environment) — same host key as before, but the label
+  must match the new tailnet `HOST`:
+  ```bash
+  # on the box, HOST = the tailnet name/IP you set above
+  HOST=<tailnet-name-or-100.x>
+  for f in /etc/ssh/ssh_host_ed25519_key.pub /etc/ssh/ssh_host_rsa_key.pub; do
+    awk -v h="$HOST" '{print h, $1, $2}' "$f"
+  done   # → paste into: gh secret set SSH_KNOWN_HOSTS --env staging
+  ```

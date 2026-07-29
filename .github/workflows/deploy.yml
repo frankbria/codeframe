@@ -63,6 +63,17 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
+      # The VPS firewalls port 22 off the public internet; the runner reaches it
+      # over Tailscale instead. HOST must be the box's tailnet MagicDNS name (or
+      # 100.x address), and SSH_KNOWN_HOSTS must be labelled with that same HOST.
+      # Box side: join the tailnet and `ufw allow in on tailscale0 to any port 22`.
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
       - name: Add server to known hosts
         # Pinned host key (no live ssh-keyscan TOFU). Populate the
         # SSH_KNOWN_HOSTS secret from a trusted session with:
@@ -331,6 +342,17 @@ jobs:
         uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      # The VPS firewalls port 22 off the public internet; the runner reaches it
+      # over Tailscale instead. HOST must be the box's tailnet MagicDNS name (or
+      # 100.x address), and SSH_KNOWN_HOSTS must be labelled with that same HOST.
+      # Box side: join the tailnet and `ufw allow in on tailscale0 to any port 22`.
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
 
       - name: Add server to known hosts
         # Pinned host key (no live ssh-keyscan TOFU). Populate the
