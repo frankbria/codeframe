@@ -331,6 +331,32 @@ def test_run_command_xdg_paths_do_not_escape_to_the_operator_home(tmp_path, monk
     assert str(operator_home) not in result.content
 
 
+def test_run_command_refuses_the_credential_store_by_absolute_path(tmp_path, monkeypatch):
+    """The sandboxed HOME does not stop an agent that guessed /home/<user>.
+
+    Defense in depth, not containment — an obfuscated path defeats the pattern.
+    It exists because the realistic case is a prompt-injected agent typing the
+    obvious command, not a human working around the filter.
+    """
+    from codeframe.core.tools import _execute_run_command
+
+    operator_home = tmp_path / "operator4"
+    (operator_home / ".codeframe").mkdir(parents=True)
+    (operator_home / ".codeframe" / "credentials.encrypted").write_text("SECRET-MATERIAL")
+
+    workspace = tmp_path / "ws4"
+    workspace.mkdir()
+
+    result = _execute_run_command(
+        {"command": f"cat {operator_home}/.codeframe/credentials.encrypted"},
+        workspace,
+        "call-4",
+    )
+
+    assert result.is_error
+    assert "SECRET-MATERIAL" not in result.content
+
+
 def test_run_command_home_is_writable(tmp_path, monkeypatch):
     """Fail-closed must not mean broken: tools that write dotfiles still work."""
     from codeframe.core.tools import _execute_run_command
