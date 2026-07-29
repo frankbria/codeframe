@@ -617,7 +617,12 @@ class Executor:
 
         # If target is a Python file, verify it exists and check syntax
         if target.endswith(".py"):
-            file_path = self.repo_path / target
+            # Same containment as the create/edit/delete steps (#906). This one
+            # reads: without the guard an absolute target reads any .py on disk,
+            # and the SyntaxError text below echoes the offending source line.
+            file_path, blocked = self._resolve_target(step)
+            if blocked is not None:
+                return blocked
             if not file_path.exists():
                 return StepResult(
                     step=step,
@@ -648,7 +653,9 @@ class Executor:
             return self._execute_shell_command(step)
 
         # Otherwise just check if the path exists
-        target_path = self.repo_path / target
+        target_path, blocked = self._resolve_target(step)
+        if blocked is not None:
+            return blocked
         if target_path.exists():
             return StepResult(
                 step=step,

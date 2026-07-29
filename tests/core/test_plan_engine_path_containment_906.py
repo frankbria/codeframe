@@ -162,3 +162,37 @@ def test_rollback_refuses_a_path_outside_the_workspace(workspace, outside):
 
     assert outside.read_text() == "ORIGINAL"
     assert any("Refused to roll back" in m for m in messages)
+
+
+# ---------------------------------------------------------------------------
+# verification steps read files too (found in review)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("shape", ["absolute", "dotdot"])
+def test_verification_cannot_read_a_python_file_outside_the_workspace(
+    workspace, tmp_path, shape
+):
+    """The SyntaxError message echoes the offending source line, so an
+    unguarded read here leaks file contents into the step result."""
+    secret = tmp_path / "outside" / "secret.py"
+    secret.parent.mkdir(exist_ok=True)
+    secret.write_text("this is not valid python SECRET-MATERIAL\n")
+    target = str(secret) if shape == "absolute" else f"../outside/{secret.name}"
+
+    result = _executor(workspace)._execute_verification(
+        _step(StepType.VERIFICATION, target)
+    )
+
+    assert result.status == ExecutionStatus.FAILED
+    assert "SECRET-MATERIAL" not in (result.output or "") + (result.error or "")
+
+
+def test_verification_existence_probe_is_contained(workspace, outside):
+    """The bare-path branch probes existence; unguarded it is a disclosure oracle."""
+    result = _executor(workspace)._execute_verification(
+        _step(StepType.VERIFICATION, str(outside))
+    )
+
+    assert result.status == ExecutionStatus.FAILED
+    assert "outside the workspace" in (result.error or "")
