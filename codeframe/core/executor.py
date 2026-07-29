@@ -15,6 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
+from codeframe.core.agent_env import build_agent_env
 from codeframe.core.planner import PlanStep, StepType, ImplementationPlan
 from codeframe.core.context import TaskContext
 from codeframe.adapters.llm import LLMProvider, Purpose
@@ -498,6 +499,11 @@ class Executor:
         shell_operators = ['|', '&&', '||', '>', '<', '>>', '<<', ';', '`', '$(']
         requires_shell = any(op in command for op in shell_operators)
 
+        # Same credential-free env + sandboxed HOME as the ReAct engine (#905
+        # review). These commands are LLM-authored and run in a workspace whose
+        # contents may be untrusted, so the legacy engine gets the same floor.
+        env = build_agent_env(Path(self.repo_path))
+
         try:
             if requires_shell:
                 # Command contains shell operators, must use shell=True
@@ -508,6 +514,7 @@ class Executor:
                     capture_output=True,
                     text=True,
                     timeout=self.command_timeout,
+                    env=env,
                 )
             else:
                 # Safe to use shell=False with parsed arguments
@@ -520,6 +527,7 @@ class Executor:
                         capture_output=True,
                         text=True,
                         timeout=self.command_timeout,
+                        env=env,
                     )
                 except ValueError:
                     # shlex.split failed (malformed command), fall back to shell=True
@@ -530,6 +538,7 @@ class Executor:
                         capture_output=True,
                         text=True,
                         timeout=self.command_timeout,
+                        env=env,
                     )
 
             if result.returncode == 0:

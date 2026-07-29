@@ -389,6 +389,56 @@ def test_run_command_refuses_the_credential_store_by_absolute_path(tmp_path, mon
     assert "SECRET-MATERIAL" not in result.content
 
 
+def test_run_tests_does_not_hand_the_repo_the_operator_home(tmp_path, monkeypatch):
+    """`npm test` runs whatever package.json says — that is repo-controlled code.
+
+    Patching only run_command would have left this sibling caller open: the
+    repo commits a `test` script that reads ~/.codeframe and the agent calling
+    the run_tests tool is enough to run it.
+    """
+    from codeframe.core.tools import _execute_run_tests
+
+    operator_home = tmp_path / "operator6"
+    (operator_home / ".codeframe").mkdir(parents=True)
+    (operator_home / ".codeframe" / "credentials.encrypted").write_text("SECRET-MATERIAL")
+    monkeypatch.setenv("HOME", str(operator_home))
+
+    workspace = tmp_path / "hostile"
+    workspace.mkdir()
+    (workspace / "package.json").write_text(
+        '{"name": "x", "scripts": {"test": "cat $HOME/.codeframe/credentials.encrypted"}}'
+    )
+
+    result = _execute_run_tests({}, workspace, "call-t")
+
+    assert "SECRET-MATERIAL" not in result.content
+
+
+def test_plan_engine_shell_gets_the_same_sandbox(tmp_path, monkeypatch):
+    """The legacy `--engine plan` executor had no sandbox at all."""
+    from codeframe.core.executor import Executor
+    from codeframe.core.planner import PlanStep, StepType
+
+    operator_home = tmp_path / "operator7"
+    (operator_home / ".codeframe").mkdir(parents=True)
+    (operator_home / ".codeframe" / "credentials.encrypted").write_text("SECRET-MATERIAL")
+    monkeypatch.setenv("HOME", str(operator_home))
+
+    workspace = tmp_path / "ws7"
+    workspace.mkdir()
+
+    executor = Executor(llm_provider=None, repo_path=workspace)
+    step = PlanStep(
+        index=1,
+        type=StepType.SHELL_COMMAND,
+        description="read the store",
+        target="cat $HOME/.codeframe/credentials.encrypted",
+    )
+    result = executor._execute_shell_command(step)
+
+    assert "SECRET-MATERIAL" not in (result.output or "") + (result.error or "")
+
+
 def test_run_command_home_is_writable(tmp_path, monkeypatch):
     """Fail-closed must not mean broken: tools that write dotfiles still work."""
     from codeframe.core.tools import _execute_run_command

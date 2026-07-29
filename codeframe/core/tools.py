@@ -23,6 +23,7 @@ import tomllib
 from pathlib import Path
 
 from codeframe.adapters.llm.base import Tool, ToolCall, ToolResult
+from codeframe.core.agent_env import SAFE_ENV_VARS, build_agent_env
 from codeframe.core.context import DEFAULT_IGNORE_PATTERNS
 from codeframe.core.editor import EditOperation, SearchReplaceEditor
 from codeframe.core.executor import is_dangerous_command
@@ -678,6 +679,9 @@ def _execute_run_tests(
             text=True,
             timeout=300,
             cwd=str(workspace_path),
+            # `npm test` runs whatever the repo's package.json says, so this is
+            # repo-controlled code and needs the same sandbox as run_command.
+            env=build_agent_env(workspace_path),
         )
     except subprocess.TimeoutExpired:
         return ToolResult(
@@ -784,28 +788,11 @@ _RUN_COMMAND_MAX_OUTPUT = 4000
 _RUN_COMMAND_MAX_TIMEOUT = 300
 
 # Allowlist of environment variables passed to LLM-driven `run_command` (#721).
-# `command` is steered by task/PRD text and imported GitHub-issue bodies, so
-# inheriting the operator's full env (os.environ.copy) is an indirect-prompt-
-# injection path to exfiltrating ANTHROPIC/OPENAI/GITHUB/E2B keys, DATABASE_URL,
-# AUTH_SECRET, etc. We pass ONLY these non-secret vars needed to run typical
-# build/test/git commands; every credential is excluded by construction. PATH
-# and VIRTUAL_ENV are set explicitly below for venv activation.
-_RUN_COMMAND_SAFE_ENV_VARS = frozenset({
-    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "PWD", "TERM", "TZ",
-    "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE",
-    "TMPDIR", "TMP", "TEMP",
-    "PYTHONPATH", "PYTHONUNBUFFERED", "PYTHONDONTWRITEBYTECODE", "VIRTUAL_ENV",
-    "NODE_ENV", "NODE_PATH", "GOPATH", "GOCACHE", "CARGO_HOME", "RUSTUP_HOME",
-    "JAVA_HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
-    "SYSTEMROOT", "SYSTEMDRIVE", "COMSPEC",  # Windows shell essentials
-    # Proxy config + CI signal (infra, not secrets) so npm/pip/curl and
-    # CI-aware test runners work; git identity for agent commits (#721 review).
-    "HTTP_PROXY", "HTTPS_PROXY", "FTP_PROXY", "ALL_PROXY", "NO_PROXY",
-    "http_proxy", "https_proxy", "ftp_proxy", "all_proxy", "no_proxy",
-    "CI",
-    "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
-    "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL",
-})
+
+# Historical import path: the allowlist and the sandboxed HOME now live in the
+# leaf module core/agent_env.py so the legacy plan engine converges on the same
+# environment (#905 review).
+_RUN_COMMAND_SAFE_ENV_VARS = SAFE_ENV_VARS
 
 
 def _execute_run_command(
@@ -831,43 +818,10 @@ def _execute_run_command(
             is_error=True,
         )
 
-    # Build a minimal, credential-free env from the allowlist (#721), then
-    # layer venv activation on top. Never os.environ.copy() here — that would
-    # hand every host secret to an LLM-authored shell command.
-    env = {k: os.environ[k] for k in _RUN_COMMAND_SAFE_ENV_VARS if k in os.environ}
-
-    # HOME points at a scratch directory, not the operator's (#905). The
-    # allowlist above kept secrets out of the *environment*, but HOME is a
-    # pointer to them: ~/.codeframe holds the credential store, whose Fernet key
-    # is derived from the (non-secret) machine id unless
-    # CODEFRAME_CREDENTIAL_SECRET is set — so a prompt-injected `cat ~/.codeframe/...`
-    # could re-derive it and exfiltrate every provider key and the GitHub PAT.
-    # A real directory rather than a nonexistent path so tools that write dotfiles
-    # (npm, pip, cargo, git) still work; it lives under the workspace's state dir
-    # so it is per-workspace and inspectable.
-    sandbox_home = workspace_path / ".codeframe" / "agent-home"
-    try:
-        sandbox_home.mkdir(parents=True, exist_ok=True)
-        env["HOME"] = str(sandbox_home)
-        # These default to $HOME/... when unset; pin them so nothing resolves
-        # back to the operator's real home through an XDG path.
-        for xdg in ("XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME"):
-            env[xdg] = str(sandbox_home / xdg.lower())
-    except OSError:
-        # If the sandbox cannot be created, drop HOME *and* the XDG paths rather
-        # than fall back to the operator's — fail closed. XDG_CONFIG_HOME is on
-        # the allowlist above, so leaving it set would still point at the
-        # operator's config dir (~/.config/gh/hosts.yml and friends).
-        env.pop("HOME", None)
-        for xdg in ("XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME"):
-            env.pop(xdg, None)
-
-    for venv_dir in (".venv", "venv"):
-        venv_bin = workspace_path / venv_dir / "bin"
-        if venv_bin.is_dir():
-            env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
-            env["VIRTUAL_ENV"] = str(workspace_path / venv_dir)
-            break
+    # Credential-free env with a sandboxed HOME (#721, #905). Never
+    # os.environ.copy() here — that would hand every host secret, and the path
+    # to the credential store, to an LLM-authored shell command.
+    env = build_agent_env(workspace_path)
 
     try:
         proc = subprocess.run(
