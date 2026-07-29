@@ -43,6 +43,19 @@ def _flags(db_path):
     return {row[0]: bool(row[1]) for row in rows}
 
 
+def test_disabled_password_has_exactly_one_definition():
+    """The registration gate, the bootstrap promotion and this backfill all
+    compare against the placeholder. Two copies drifting apart would make fresh
+    deploys unclaimable and silently strip an upgraded deploy's only admin —
+    with no exception and no log line. So pin them to one object.
+    """
+    from codeframe.auth import manager
+    from codeframe.platform_store import schema_manager
+
+    assert manager.DISABLED_PASSWORD is schema_manager.DISABLED_PASSWORD
+    assert schema_manager._DISABLED_PASSWORD is schema_manager.DISABLED_PASSWORD
+
+
 class TestBootstrapSuperuserBackfill:
     def test_promotes_the_only_real_user(self, tmp_path):
         db_path = tmp_path / "state.db"
@@ -86,6 +99,46 @@ class TestBootstrapSuperuserBackfill:
         db.close()
 
         assert _flags(db_path) == {1: True}
+
+    def test_a_demoted_sole_account_is_re_promoted(self, tmp_path):
+        """Intentional, and worth pinning: the backfill runs on every
+        ``initialize()``, so demoting the only login-capable account does not
+        stick. The invariant it defends — an instance always has exactly one
+        reachable admin — outranks honoring a self-demotion that would lock the
+        operator out of credential storage and PR merge with no way back.
+
+        Demoting a *non-earliest* account still sticks (an admin exists), which
+        is the case that actually matters for revoking someone's access.
+        """
+        db_path = tmp_path / "state.db"
+        db = Database(db_path)
+        db.initialize()
+        _add_user(db, 2)
+        db.close()
+        assert _flags(db_path)[2] is True
+
+        db = Database(db_path)
+        db.initialize()
+        db.conn.execute("UPDATE users SET is_superuser = 0 WHERE id = 2")
+        db.conn.commit()
+        db.close()
+
+        assert _flags(db_path)[2] is True  # re-promoted: it is the sole account
+
+    def test_demoting_a_non_earliest_account_sticks(self, tmp_path):
+        db_path = tmp_path / "state.db"
+        db = Database(db_path)
+        db.initialize()
+        _add_user(db, 2)
+        _add_user(db, 3, is_superuser=1)
+        db.conn.execute("UPDATE users SET is_superuser = 0 WHERE id = 3")
+        db.conn.execute("UPDATE users SET is_superuser = 1 WHERE id = 2")
+        db.conn.commit()
+        db.close()
+
+        flags = _flags(db_path)
+        assert flags[3] is False  # stays demoted — user 2 is already admin
+        assert flags[2] is True
 
     def test_backfill_is_idempotent(self, tmp_path):
         db_path = tmp_path / "state.db"

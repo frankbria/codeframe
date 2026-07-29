@@ -11,9 +11,17 @@ logger = logging.getLogger(__name__)
 
 # Password placeholder for the seeded bootstrap admin (id=1). It cannot match any
 # bcrypt hash, so that account can never log in and must never be counted as a
-# real user. Mirrors ``codeframe.auth.manager.DISABLED_PASSWORD``, which this
-# layer must not import (auth depends on platform_store, not the reverse).
-_DISABLED_PASSWORD = "!DISABLED!"
+# real user.
+#
+# THE single definition — ``codeframe.auth`` imports this one (that direction is
+# DAG-legal; the reverse is not). It must not be duplicated: the registration
+# gate, the bootstrap promotion and the admin backfill all compare against it,
+# so two copies drifting apart would silently make a fresh deploy unclaimable
+# AND strip an upgraded deploy's only admin, with no error anywhere.
+DISABLED_PASSWORD = "!DISABLED!"
+
+# Back-compat alias for readers of this module's private name.
+_DISABLED_PASSWORD = DISABLED_PASSWORD
 
 
 class SchemaManager:
@@ -358,10 +366,15 @@ class SchemaManager:
         never counts on either side of the check. Idempotent — the second run
         finds a superuser and does nothing.
 
-        ponytail: earliest-id heuristic, not an ownership record. Fine while
-        registration admits exactly one account (#336/#897); revisit if the
-        product ever grows multi-user signup.
+        Note this runs on *every* ``initialize()``, not once, so demoting the
+        only login-capable account does not stick. That is deliberate: an
+        instance without a reachable admin cannot store credentials or merge
+        PRs and has no in-product way back. Demoting a non-earliest account
+        still sticks, since an admin then exists.
         """
+        # ponytail: earliest-id heuristic, not an ownership record. Fine while
+        # registration admits exactly one account (#336/#897); revisit if the
+        # product ever grows multi-user signup.
         cursor = self.conn.cursor()
         cursor.execute(
             """

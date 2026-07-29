@@ -257,6 +257,43 @@ async def get_current_user_optional(
 # =============================================================================
 
 
+def _scopes_within_owner_grant(db: Any, key_record: Dict[str, Any]) -> list:
+    """Clamp a key's stored scopes to what its owner currently holds (#898).
+
+    ``admin`` is the only scope tied to the user record, so this drops it when
+    the owning account is not ``is_superuser``. Enforcing it here rather than at
+    creation alone makes the invariant *continuous*: it also covers admin keys
+    persisted before the creation guard existed, and a key whose owner is later
+    demoted — neither of which a one-time migration would keep true.
+
+    Fails closed: a missing user row or an unreadable ``is_superuser`` drops
+    admin rather than granting it.
+    """
+    scopes = list(key_record.get("scopes") or [])
+    if SCOPE_ADMIN not in scopes:
+        return scopes
+
+    try:
+        row = db.conn.execute(
+            "SELECT is_superuser FROM users WHERE id = ?", (key_record["user_id"],)
+        ).fetchone()
+        is_superuser = bool(row[0]) if row is not None else False
+    except Exception as e:
+        logger.error(f"Could not verify API key owner's admin status: {e}")
+        is_superuser = False
+
+    if is_superuser:
+        return scopes
+
+    logger.warning(
+        "API key %s carries admin scope but its owner (user_id=%s) is not a "
+        "superuser; admin dropped for this request (#898).",
+        key_record.get("id"),
+        key_record.get("user_id"),
+    )
+    return [s for s in scopes if s != SCOPE_ADMIN]
+
+
 async def get_api_key_auth(
     api_key: Optional[str] = Security(api_key_header),
     request: Request = None,
@@ -321,7 +358,7 @@ async def get_api_key_auth(
         return {
             "type": "api_key",
             "user_id": key_record["user_id"],
-            "scopes": key_record["scopes"],
+            "scopes": _scopes_within_owner_grant(db, key_record),
             "key_id": key_record["id"],
         }
 

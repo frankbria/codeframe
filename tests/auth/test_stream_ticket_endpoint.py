@@ -29,6 +29,11 @@ def auth_client(tmp_path, monkeypatch):
     db = Database(db_path)
     db.initialize()
     setup_test_user(db, user_id=1)
+    # Superuser: TestStreamTicketScopeEnforcement mints an admin-scoped key for
+    # this user, and since #898 a key's scopes are clamped to what its owner
+    # holds — an admin key owned by a non-superuser is no longer admin.
+    db.conn.execute("UPDATE users SET is_superuser = 1 WHERE id = 1")
+    db.conn.commit()
     db.close()
 
     app = FastAPI()

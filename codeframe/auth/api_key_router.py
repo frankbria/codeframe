@@ -175,7 +175,9 @@ async def create_api_key(
     Returns:
         Created API key details including the full key (shown once)
     """
-    if SCOPE_ADMIN in body.scopes and not current_user.is_superuser:
+    # getattr, matching require_auth: a principal lacking the column must fail
+    # closed to 403, never raise into a 500 that leaves the route ungated.
+    if SCOPE_ADMIN in body.scopes and not getattr(current_user, "is_superuser", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only an admin account may create an admin-scoped API key",

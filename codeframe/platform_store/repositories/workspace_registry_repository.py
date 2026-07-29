@@ -33,14 +33,19 @@ class WorkspaceRegistryRepository(BaseRepository):
         """Register (or refresh) a workspace by its repo path.
 
         Idempotent on ``repo_path``: a second call for the same path updates the
-        existing row (name/tech_stack/owner + ``last_opened_at``) instead of
-        creating a duplicate, preserving the original ``id`` and ``created_at``.
+        existing row (name/tech_stack + ``last_opened_at``) instead of creating a
+        duplicate, preserving the original ``id`` and ``created_at``.
+
+        Ownership is **write-once** (#898): a conflict never reassigns an
+        existing ``owner_user_id``. Only an ownerless row (``NULL``, e.g. one
+        registered while auth was disabled) can still be claimed.
 
         Args:
             repo_path: Absolute path to the repository (unique key).
             name: Human-readable display name (defaults to last path segment).
             tech_stack: Natural-language tech stack description.
-            owner_user_id: Owning user id (nullable until auth is enforced).
+            owner_user_id: Owning user id. Recorded on insert, or on a refresh of
+                a row that has no owner yet; ignored when the row already has one.
 
         Returns:
             The registry entry as a dict.
