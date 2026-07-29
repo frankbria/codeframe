@@ -84,7 +84,12 @@ def get_provider(provider_type: str = "anthropic", **kwargs) -> LLMProvider:
         return OpenAIProvider(
             api_key=api_key,
             model=kwargs.get("model", os.environ.get("CODEFRAME_LLM_MODEL", "gpt-4o")),
-            base_url=kwargs.get("base_url", os.environ.get("OPENAI_BASE_URL")),
+            # Pass through only what the caller gave us. Reading
+            # OPENAI_BASE_URL here would hand the adapter a non-None value and
+            # skip its vet in exactly the dangerous case — a repo .env having
+            # set the variable (#903). OpenAIProvider resolves and vets the env
+            # itself when this is None.
+            base_url=kwargs.get("base_url"),
         )
     elif provider_type == "anthropic":
         model_selector = None

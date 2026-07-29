@@ -61,7 +61,9 @@ class TestGenerateWithRichMetadata:
             },
         ]
         mock = _make_mock_provider(rich_tasks)
-        monkeypatch.setattr("codeframe.adapters.llm.get_provider", lambda: mock)
+        monkeypatch.setattr(
+            "codeframe.core.llm_resolution.create_provider", lambda settings: mock
+        )
 
         created = tasks.generate_from_prd(workspace, sample_prd, use_llm=True)
 
@@ -102,7 +104,9 @@ class TestGenerateWithRichMetadata:
             },
         ]
         mock = _make_mock_provider(rich_tasks)
-        monkeypatch.setattr("codeframe.adapters.llm.get_provider", lambda: mock)
+        monkeypatch.setattr(
+            "codeframe.core.llm_resolution.create_provider", lambda settings: mock
+        )
 
         created = tasks.generate_from_prd(workspace, sample_prd, use_llm=True)
 
@@ -134,7 +138,9 @@ class TestGenerateWithRichMetadata:
             },
         ]
         mock = _make_mock_provider(rich_tasks)
-        monkeypatch.setattr("codeframe.adapters.llm.get_provider", lambda: mock)
+        monkeypatch.setattr(
+            "codeframe.core.llm_resolution.create_provider", lambda settings: mock
+        )
 
         created = tasks.generate_from_prd(workspace, sample_prd, use_llm=True)
 
@@ -147,7 +153,9 @@ class TestGenerateWithRichMetadata:
             {"title": "Minimal task", "description": "Just title and desc"},
         ]
         mock = _make_mock_provider(minimal_tasks)
-        monkeypatch.setattr("codeframe.adapters.llm.get_provider", lambda: mock)
+        monkeypatch.setattr(
+            "codeframe.core.llm_resolution.create_provider", lambda settings: mock
+        )
 
         created = tasks.generate_from_prd(workspace, sample_prd, use_llm=True)
 
@@ -164,7 +172,9 @@ class TestGenerateWithRichMetadata:
             {"title": "Task two", "description": "Do thing two"},
         ]
         mock = _make_mock_provider(simple_tasks)
-        monkeypatch.setattr("codeframe.adapters.llm.get_provider", lambda: mock)
+        monkeypatch.setattr(
+            "codeframe.core.llm_resolution.create_provider", lambda settings: mock
+        )
 
         created = tasks.generate_from_prd(workspace, sample_prd, use_llm=True)
 
@@ -185,7 +195,9 @@ class TestGenerateWithRichMetadata:
             },
         ]
         mock = _make_mock_provider(rich_tasks)
-        monkeypatch.setattr("codeframe.adapters.llm.get_provider", lambda: mock)
+        monkeypatch.setattr(
+            "codeframe.core.llm_resolution.create_provider", lambda settings: mock
+        )
 
         created = tasks.generate_from_prd(workspace, sample_prd, use_llm=True)
 
@@ -205,7 +217,9 @@ class TestGenerateWithRichMetadata:
             },
         ]
         mock = _make_mock_provider(rich_tasks)
-        monkeypatch.setattr("codeframe.adapters.llm.get_provider", lambda: mock)
+        monkeypatch.setattr(
+            "codeframe.core.llm_resolution.create_provider", lambda settings: mock
+        )
 
         created = tasks.generate_from_prd(workspace, sample_prd, use_llm=True)
 
@@ -222,7 +236,9 @@ class TestGenerateWithRichMetadata:
             },
         ]
         mock = _make_mock_provider(rich_tasks)
-        monkeypatch.setattr("codeframe.adapters.llm.get_provider", lambda: mock)
+        monkeypatch.setattr(
+            "codeframe.core.llm_resolution.create_provider", lambda settings: mock
+        )
 
         created = tasks.generate_from_prd(workspace, sample_prd, use_llm=True)
 

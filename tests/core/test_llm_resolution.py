@@ -3,6 +3,8 @@
 import pytest
 
 from codeframe.core.llm_resolution import (
+    ALLOW_CONFIG_BASE_URL_ENV,
+    UntrustedBaseURLError,
     LLMSettings,
     create_provider,
     resolve_llm_settings,
@@ -69,11 +71,14 @@ class TestModelAndBaseUrl:
         assert resolve_llm_settings(tmp_path).model == "env-model"
 
     def test_base_url_config_beats_env(self, tmp_path, monkeypatch):
+        # Loopback, so the precedence rule is exercised without dragging in the
+        # #903 opt-in for a remote config base_url — precedence is the subject
+        # here, and a local model endpoint is the realistic config anyway.
         _write_llm_config(
-            tmp_path, provider="ollama", base_url="http://cfg:11434/v1"
+            tmp_path, provider="ollama", base_url="http://127.0.0.1:11434/v1"
         )
         monkeypatch.setenv("OPENAI_BASE_URL", "http://env:8000/v1")
-        assert resolve_llm_settings(tmp_path).base_url == "http://cfg:11434/v1"
+        assert resolve_llm_settings(tmp_path).base_url == "http://127.0.0.1:11434/v1"
 
     def test_openai_base_url_env_does_not_leak_to_anthropic(
         self, tmp_path, monkeypatch
@@ -92,13 +97,28 @@ class TestModelAndBaseUrl:
         monkeypatch.setenv("OPENAI_BASE_URL", "http://env:8000/v1")
         assert resolve_llm_settings(tmp_path).base_url == "http://env:8000/v1"
 
-    def test_config_base_url_applies_to_anthropic(self, tmp_path):
+    def test_config_base_url_applies_to_anthropic(self, tmp_path, monkeypatch):
         """An explicit llm.base_url in config is honored for anthropic
-        (proxy/gateway deployments, #780)."""
+        (proxy/gateway deployments, #780).
+
+        Still true, but a remote endpoint from the repo's own config now needs
+        the operator's opt-in (#903) — otherwise cloning a hostile repo would
+        redirect the Anthropic key. The #780 capability is intact; only the
+        consent is new.
+        """
+        monkeypatch.setenv(ALLOW_CONFIG_BASE_URL_ENV, "1")
         _write_llm_config(
             tmp_path, provider="anthropic", base_url="http://proxy:8080"
         )
         assert resolve_llm_settings(tmp_path).base_url == "http://proxy:8080"
+
+    def test_config_base_url_for_anthropic_needs_opt_in(self, tmp_path):
+        """The #903 half of the pair above: without consent it is refused."""
+        _write_llm_config(
+            tmp_path, provider="anthropic", base_url="http://proxy:8080"
+        )
+        with pytest.raises(UntrustedBaseURLError):
+            resolve_llm_settings(tmp_path)
 
     def test_provider_kwargs_only_includes_set_values(self, tmp_path):
         settings = resolve_llm_settings(tmp_path)

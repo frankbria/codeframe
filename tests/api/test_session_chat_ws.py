@@ -409,23 +409,30 @@ class TestRunStreamingAdapterResolution:
             while not q.empty():
                 events.append(q.get_nowait())
 
+        # Provider construction moved behind resolve_llm_settings (#903) so a
+        # repo .env cannot redirect chat via ANTHROPIC_BASE_URL. The subject is
+        # unchanged — which provider type a session resolves to — so the
+        # stand-in moves to that seam and the assertion reads the resolved
+        # settings instead of a bare positional argument.
         with patch.object(mod, "StreamingChatAdapter", self._fake_adapter_factory(captured)), \
-                patch("codeframe.adapters.llm.get_provider") as get_provider:
-            get_provider.return_value = MagicMock(name="provider")
+                patch("codeframe.core.llm_resolution.create_provider") as create_provider:
+            create_provider.return_value = MagicMock(name="provider")
             asyncio.run(drive())
-            self._last_get_provider = get_provider
+            self._last_get_provider = create_provider
         return captured, events
 
     def test_claude_session_resolves_anthropic_and_honors_model(self):
         captured, events = self._run("claude", "claude-opus-4-6")
-        self._last_get_provider.assert_called_once_with("anthropic")
+        self._last_get_provider.assert_called_once()
+        assert self._last_get_provider.call_args[0][0].provider_type == "anthropic"
         assert captured["model"] == "claude-opus-4-6"
         assert captured["provider"] is self._last_get_provider.return_value
         assert not any(e["type"] == "error" for e in events)
 
     def test_missing_agent_type_defaults_to_claude(self):
         captured, events = self._run(None, None)
-        self._last_get_provider.assert_called_once_with("anthropic")
+        self._last_get_provider.assert_called_once()
+        assert self._last_get_provider.call_args[0][0].provider_type == "anthropic"
         # No model override → adapter default used (no "model" kwarg passed).
         assert "model" not in captured
         assert not any(e["type"] == "error" for e in events)

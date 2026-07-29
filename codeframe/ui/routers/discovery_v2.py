@@ -29,6 +29,7 @@ from codeframe.core.prd_discovery import (
     ValidationError,
     IncompleteSessionError,
 )
+from codeframe.core.llm_resolution import UntrustedBaseURLError
 from codeframe.ui.dependencies import get_v2_workspace
 
 logger = logging.getLogger(__name__)
@@ -434,6 +435,11 @@ async def generate_tasks_from_prd(
         )
 
     except HTTPException:
+        raise
+    except UntrustedBaseURLError:
+        # A deliberate refusal (#903). The generic handler below would rewrite
+        # it into a 500 "task generation failed", hiding both the reason and
+        # the registered 400 handler.
         raise
     except Exception as e:
         logger.error(f"Failed to generate tasks: {e}", exc_info=True)

@@ -960,7 +960,9 @@ def generate_from_prd(
     """
     if use_llm:
         try:
-            tasks_data = _generate_tasks_with_llm(prd.content, provider)
+            tasks_data = _generate_tasks_with_llm(
+                prd.content, provider, repo_path=workspace.repo_path
+            )
         except json.JSONDecodeError as e:
             # Invalid JSON from LLM response — fall back to simple extraction
             logger.warning(f"LLM generation failed ({e}), using simple extraction")
@@ -1000,7 +1002,9 @@ def generate_from_prd(
     return created_tasks
 
 
-def _generate_tasks_with_llm(prd_content: str, provider=None) -> list[dict]:
+def _generate_tasks_with_llm(
+    prd_content: str, provider=None, repo_path=None
+) -> list[dict]:
     """Use LLM to generate tasks from PRD content.
 
     Args:
@@ -1011,10 +1015,15 @@ def _generate_tasks_with_llm(prd_content: str, provider=None) -> list[dict]:
         List of task dicts with rich metadata fields
     """
     # Use the LLM adapter for provider-agnostic access
-    from codeframe.adapters.llm import get_provider, Purpose
+    from codeframe.adapters.llm import Purpose
 
     if provider is None:
-        provider = get_provider()
+        # Not get_provider() bare (#903): with base_url unset the Anthropic SDK
+        # reads ANTHROPIC_BASE_URL from the environment, which a repo .env
+        # controls. resolve_llm_settings is the one place that vets it.
+        from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+
+        provider = create_provider(resolve_llm_settings(repo_path))
 
     prompt = f"""Analyze the following PRD and generate a list of actionable development tasks.
 

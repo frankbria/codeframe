@@ -33,6 +33,7 @@ would be redundant. Revisit if multi-tenant workspace isolation is required.
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -106,8 +107,24 @@ async def _run_streaming_adapter(
                 ),
             })
             return
-        from codeframe.adapters.llm import get_provider
-        provider = get_provider(provider_type)
+        # Route through resolve_llm_settings rather than building the provider
+        # bare (#903). With base_url unset the Anthropic SDK reads
+        # ANTHROPIC_BASE_URL from the environment itself — which a repo .env
+        # controls — so a bare get_provider() here would redirect interactive
+        # chat and ship the operator's key, behind the resolution gate's back.
+        from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+
+        # Only treat workspace_path as a path when it actually is one: the
+        # config tier is a convenience here, and failing to resolve it must
+        # never break chat. The gate still applies either way, because the env
+        # tier is checked regardless of repo_path.
+        repo_path = (
+            Path(workspace_path)
+            if isinstance(workspace_path, (str, os.PathLike))
+            else None
+        )
+        settings = resolve_llm_settings(repo_path, provider_flag=provider_type)
+        provider = create_provider(settings)
         # Honor the session's stored model; fall back to the adapter default only
         # when unset, instead of always using the hardcoded default (#764).
         adapter_kwargs = {"model": model} if model else {}

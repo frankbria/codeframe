@@ -678,6 +678,30 @@ app = FastAPI(
 # Add rate limiting exception handler
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
+
+from fastapi.responses import JSONResponse  # noqa: E402
+
+from codeframe.core.llm_resolution import UntrustedBaseURLError  # noqa: E402
+from codeframe.ui.response_models import ErrorCodes, api_error  # noqa: E402
+
+
+@app.exception_handler(UntrustedBaseURLError)
+async def untrusted_base_url_handler(request, exc: UntrustedBaseURLError):
+    """A repo-supplied ``llm.base_url`` was refused (#903).
+
+    A deliberate refusal, so it answers 400 with the reason rather than a 500
+    with a stack trace — the operator needs to see which endpoint was blocked
+    and how to allow it.
+    """
+    return JSONResponse(
+        status_code=400,
+        content=api_error(
+            "Untrusted LLM endpoint in workspace config",
+            ErrorCodes.INVALID_REQUEST,
+            str(exc),
+        ),
+    )
+
 # Add rate limiting middleware if enabled
 # Initialize limiter immediately so it's available before lifespan runs
 rate_limit_config = get_rate_limit_config()

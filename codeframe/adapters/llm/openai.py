@@ -65,6 +65,13 @@ class OpenAIProvider(LLMProvider):
         super().__init__(model_selector)
 
         self.model = model
+        # Same reasoning as the Anthropic adapter (#903): the OpenAI SDK reads
+        # OPENAI_BASE_URL when base_url is None, so a repo .env can redirect any
+        # construction that did not go through resolve_llm_settings.
+        if base_url is None:
+            from codeframe.core.env_provenance import vet_env_base_url
+
+            base_url = vet_env_base_url("OPENAI_BASE_URL")
         self.base_url = base_url
         self.api_key = api_key
 

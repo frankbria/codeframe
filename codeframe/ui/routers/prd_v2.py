@@ -25,6 +25,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from codeframe.core.workspace import Workspace
+from codeframe.core.llm_resolution import UntrustedBaseURLError
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import prd
 from codeframe.core.prd import PrdHasDependentTasksError
@@ -278,7 +279,11 @@ async def _stress_test_event_stream(
     # browser EventSource can display them.
     try:
         provider = _resolve_llm_provider(workspace)
-    except ValueError as exc:
+    except (ValueError, UntrustedBaseURLError) as exc:
+        # UntrustedBaseURLError included deliberately (#903): the StreamingResponse
+        # has already sent 200 OK by the time this generator runs, so the app-level
+        # 400 handler can never fire here — letting it escape would kill the
+        # EventSource with no frame and no explanation.
         yield _sse({"type": "error", "message": str(exc)})
         return
 
