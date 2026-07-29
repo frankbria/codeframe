@@ -854,9 +854,13 @@ def _execute_run_command(
         for xdg in ("XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME"):
             env[xdg] = str(sandbox_home / xdg.lower())
     except OSError:
-        # If the sandbox cannot be created, drop HOME entirely rather than fall
-        # back to the operator's — fail closed.
+        # If the sandbox cannot be created, drop HOME *and* the XDG paths rather
+        # than fall back to the operator's — fail closed. XDG_CONFIG_HOME is on
+        # the allowlist above, so leaving it set would still point at the
+        # operator's config dir (~/.config/gh/hosts.yml and friends).
         env.pop("HOME", None)
+        for xdg in ("XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME"):
+            env.pop(xdg, None)
 
     for venv_dir in (".venv", "venv"):
         venv_bin = workspace_path / venv_dir / "bin"

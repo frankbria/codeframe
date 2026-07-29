@@ -331,6 +331,38 @@ def test_run_command_xdg_paths_do_not_escape_to_the_operator_home(tmp_path, monk
     assert str(operator_home) not in result.content
 
 
+def test_unbuildable_sandbox_drops_home_and_xdg(tmp_path, monkeypatch):
+    """Fail closed on both: XDG_CONFIG_HOME is on the allowlist too.
+
+    Leaving it set would still point at ~/.config (gh/hosts.yml and friends),
+    which the credential-store pattern does not cover.
+    """
+    from codeframe.core import tools
+
+    operator_home = tmp_path / "operator5"
+    operator_home.mkdir()
+    monkeypatch.setenv("HOME", str(operator_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(operator_home / ".config"))
+
+    workspace = tmp_path / "ws5"
+    workspace.mkdir()
+
+    real_mkdir = Path.mkdir
+
+    def refuse_sandbox(self, *args, **kwargs):
+        if self.name == "agent-home":
+            raise OSError("read-only filesystem")
+        return real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", refuse_sandbox)
+
+    result = tools._execute_run_command(
+        {"command": "echo [$HOME][$XDG_CONFIG_HOME][$XDG_CACHE_HOME]"}, workspace, "call-5"
+    )
+
+    assert str(operator_home) not in result.content
+
+
 def test_run_command_refuses_the_credential_store_by_absolute_path(tmp_path, monkeypatch):
     """The sandboxed HOME does not stop an agent that guessed /home/<user>.
 
