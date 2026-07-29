@@ -9,6 +9,7 @@ Issue #654 (P6.8.1): test coverage hardening for untested core modules.
 """
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -215,6 +216,141 @@ class TestReviewTask:
         assert result.status == "approved"
         assert captured["ws"] is workspace
         assert captured["files"] == ["a.py"]
+
+
+class TestWorkspaceContainment:
+    """Issue #899 / P0.5 — caller-supplied paths must not escape the workspace.
+
+    ``review_files`` joined caller input straight onto ``repo_path`` with only an
+    existence + ``.py`` suffix check. An absolute path replaces the base and
+    ``../`` walks out, so any authenticated principal could scan any ``.py`` file
+    the server user can read and get back existence plus per-line findings —
+    including the literal secret strings bandit quotes back. Cross-tenant read in
+    hosted mode.
+
+    Note the assertions below check *which path the analyzer was handed*, not
+    merely that the result had no findings: the autouse fixture stubs the
+    scanners out, so a findings-empty assertion would pass with or without the
+    guard. What must be true is that an out-of-workspace path never reaches an
+    analyzer at all.
+    """
+
+    @pytest.fixture
+    def outsider(self, tmp_path):
+        """A readable .py file that lives OUTSIDE the workspace."""
+        secret = tmp_path / "outside.py"
+        secret.write_text('API_KEY = "super-secret-value"\n')
+        return secret
+
+    @pytest.fixture
+    def analyzed(self, monkeypatch):
+        """Record every path handed to an analyzer, and report one finding for
+        each so an escape would also be visible in the result."""
+        seen: list = []
+
+        def _record(self, path):
+            seen.append(Path(path))
+            return [_Finding("high")]
+
+        monkeypatch.setattr(ComplexityAnalyzer, "analyze_file", _record)
+        return seen
+
+    @pytest.mark.parametrize(
+        "attack",
+        [
+            "../outside.py",
+            "sub/../../outside.py",
+            "./../outside.py",
+            "../../../../../../etc/passwd.py",
+        ],
+    )
+    def test_traversal_never_reaches_an_analyzer(
+        self, workspace, outsider, analyzed, attack
+    ):
+        result = review_files(workspace, [attack])
+
+        assert analyzed == [], f"analyzer was handed {analyzed}"
+        assert result.findings == []
+
+    def test_absolute_path_never_reaches_an_analyzer(
+        self, workspace, outsider, analyzed
+    ):
+        """An absolute path silently replaces the base in ``project_path / p``."""
+        result = review_files(workspace, [str(outsider)])
+
+        assert analyzed == [], f"analyzer was handed {analyzed}"
+        assert result.findings == []
+
+    def test_symlink_out_of_the_workspace_is_rejected(
+        self, workspace, outsider, analyzed
+    ):
+        """``resolve()`` follows symlinks, so a planted link inside the workspace
+        cannot smuggle an outside file past the check."""
+        (workspace.repo_path / "link.py").symlink_to(outsider)
+
+        review_files(workspace, ["link.py"])
+
+        assert analyzed == [], f"analyzer was handed {analyzed}"
+
+    def test_traversal_does_not_leak_existence(self, workspace, tmp_path, analyzed):
+        """The guard must run BEFORE the existence probe, so a real outside file
+        and a missing one are indistinguishable to the caller."""
+        (tmp_path / "real.py").write_text("x = 1\n")
+
+        real = review_files(workspace, ["../real.py"])
+        absent = review_files(workspace, ["../definitely-absent.py"])
+
+        assert analyzed == []
+        assert (real.status, real.overall_score, real.findings) == (
+            absent.status,
+            absent.overall_score,
+            absent.findings,
+        )
+
+    def test_legitimate_relative_paths_still_work(self, workspace, analyzed):
+        nested = workspace.repo_path / "pkg"
+        nested.mkdir()
+        (nested / "mod.py").write_text("def f():\n    return 1\n")
+
+        result = review_files(workspace, ["pkg/mod.py"])
+
+        assert analyzed == [(workspace.repo_path / "pkg" / "mod.py").resolve()]
+        assert len(result.findings) == 1
+        assert result.findings[0].file_path == "pkg/mod.py"
+
+    def test_a_good_path_is_still_reviewed_alongside_a_rejected_one(
+        self, workspace, outsider, analyzed
+    ):
+        """One bad entry must not abort the whole request."""
+        (workspace.repo_path / "ok.py").write_text("def f():\n    return 1\n")
+
+        result = review_files(workspace, [str(outsider), "ok.py"])
+
+        assert analyzed == [(workspace.repo_path / "ok.py").resolve()]
+        assert len(result.findings) == 1
+
+    @pytest.mark.parametrize("malformed", ["bad\x00.py", "\x00", "x\x00y.py"])
+    def test_malformed_path_is_skipped_not_raised(
+        self, workspace, analyzed, malformed
+    ):
+        """``resolve()`` raises ValueError on an embedded NUL. That call sits
+        outside the per-analyzer try/except, so an unhandled raise would 500 the
+        endpoint and discard every other file in the same request."""
+        (workspace.repo_path / "ok.py").write_text("def f():\n    return 1\n")
+
+        result = review_files(workspace, [malformed, "ok.py"])
+
+        assert analyzed == [(workspace.repo_path / "ok.py").resolve()]
+        assert len(result.findings) == 1
+
+    def test_review_task_is_covered_by_the_same_guard(
+        self, workspace, outsider, analyzed
+    ):
+        """review_task delegates to review_files, so it inherits the guard —
+        pinned because the issue names it as a shared code path."""
+        review_task(workspace, task_id="T-1", files_modified=[str(outsider)])
+
+        assert analyzed == [], f"analyzer was handed {analyzed}"
 
 
 # --- get_review_summary -----------------------------------------------------
