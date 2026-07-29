@@ -539,6 +539,18 @@ class BatchStatus(str, Enum):
     CANCELLED = "CANCELLED"   # User cancelled
 
 
+#: Statuses from which a batch never moves again. A batch outside this set is
+#: still "in flight" as far as any observer is concerned.
+TERMINAL_BATCH_STATUSES = frozenset(
+    {
+        BatchStatus.COMPLETED,
+        BatchStatus.PARTIAL,
+        BatchStatus.FAILED,
+        BatchStatus.CANCELLED,
+    }
+)
+
+
 class OnFailure(str, Enum):
     """Behavior when a task fails."""
 
@@ -826,6 +838,37 @@ def execute_batch(
     if max_retries > 0:
         _execute_retries(workspace, batch, max_retries, on_event)
 
+    return batch
+
+
+
+def fail_batch(workspace: Workspace, batch_id: str, reason: str) -> Optional[BatchRun]:
+    """Force a non-terminal batch to FAILED and emit BATCH_FAILED.
+
+    For a batch whose execution died before it could finalize itself — the
+    detached server thread raising before ``_execute_parallel``'s own handler,
+    for instance (issue #901). Without this the row stays RUNNING forever: the
+    client already has its 200, and ``resume_batch`` accepts only
+    PARTIAL/FAILED/CANCELLED, so a wedged batch could not even be resumed.
+
+    No-op when the batch is missing or already terminal, so it is safe to call
+    unconditionally from an error path.
+    """
+    batch = get_batch(workspace, batch_id)
+    if batch is None or batch.status in TERMINAL_BATCH_STATUSES:
+        return batch
+
+    batch.status = BatchStatus.FAILED
+    batch.completed_at = _utc_now()
+    _save_batch(workspace, batch)
+
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.BATCH_FAILED,
+        {"batch_id": batch_id, "reason": reason},
+        print_event=True,
+    )
+    logger.error("Batch %s marked FAILED: %s", batch_id[:8], reason)
     return batch
 
 

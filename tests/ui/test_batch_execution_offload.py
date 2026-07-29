@@ -100,6 +100,7 @@ def app(test_workspace, monkeypatch):
         return {"status": "ok"}
 
     app.dependency_overrides[get_v2_workspace] = lambda: test_workspace
+    app.state.workspace = test_workspace
     return app
 
 
@@ -138,8 +139,15 @@ async def test_health_responds_while_a_batch_runs(app, slow_batch):
         execute_task = asyncio.create_task(
             client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]})
         )
-        # Yield so the handler starts (and, unfixed, blocks the loop here).
-        await asyncio.sleep(0.05)
+        # Wait for the batch to be genuinely in flight before measuring, so a
+        # merely-slow-to-start thread cannot make this pass vacuously. Awaited
+        # via the executor so the wait itself never blocks the loop; on the
+        # unfixed code the POST holds the loop and this times out, which is the
+        # failure we want.
+        await asyncio.get_running_loop().run_in_executor(
+            None, slow_batch["started"].wait, 5
+        )
+        assert slow_batch["started"].is_set(), "batch never started"
 
         health = await client.get("/health")
         elapsed = time.monotonic() - start
@@ -216,3 +224,126 @@ async def test_batch_is_visible_immediately_after_the_handler_returns(
 
     batch_id = resp.json()["batch_id"]
     assert conductor.get_batch(test_workspace, batch_id) is not None
+
+
+class TestOneBatchPerWorkspace:
+    """Offloading removed an accidental safety property (#901 review).
+
+    While execution ran inline on the event loop, a second POST could not even
+    be *served* until the first batch finished — the bug serialized batches.
+    Nothing replaced that: ``check_assignment_status`` counts IN_PROGRESS tasks,
+    but tasks only move inside the detached thread, long after the handler has
+    responded. Two clicks would both pass and run two agent subprocesses against
+    the same git worktree.
+    """
+
+    async def test_second_execute_is_refused_while_one_runs(self, app, slow_batch):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            first = await client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]})
+            assert first.status_code == 200, first.text
+            assert slow_batch["started"].wait(timeout=5)
+
+            second = await client.post("/api/v2/tasks/execute", json={"task_ids": ["t2"]})
+
+        assert second.status_code == 409, second.text
+
+    async def test_concurrent_executes_admit_exactly_one(self, app, slow_batch):
+        """The race itself: both requests in flight at once."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            results = await asyncio.gather(
+                client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]}),
+                client.post("/api/v2/tasks/execute", json={"task_ids": ["t2"]}),
+            )
+
+        codes = sorted(r.status_code for r in results)
+        assert codes == [200, 409], f"expected exactly one to win, got {codes}"
+
+    async def test_approve_is_guarded_too(self, app, slow_batch, monkeypatch):
+        """/approve never called the assignment guard at all."""
+        from codeframe.ui.routers import tasks_v2
+
+        monkeypatch.setattr(
+            tasks_v2.runtime,
+            "approve_tasks",
+            lambda ws, excluded_task_ids=None: type(
+                "R",
+                (),
+                {
+                    "approved_count": 1,
+                    "excluded_count": 0,
+                    "approved_task_ids": ["t1"],
+                    "excluded_task_ids": [],
+                },
+            )(),
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]})
+            assert slow_batch["started"].wait(timeout=5)
+
+            resp = await client.post(
+                "/api/v2/tasks/approve", json={"start_execution": True}
+            )
+
+        assert resp.status_code == 409, resp.text
+
+    async def test_a_finished_batch_does_not_block_the_next_one(self, app, slow_batch):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]})
+            assert slow_batch["started"].wait(timeout=5)
+            slow_batch["release"].set()
+            assert slow_batch["finished"].wait(timeout=5)
+
+            # The stand-in returns the batch without finalizing it, so mark it
+            # terminal the way a real run would before asserting the gate lifts.
+            from codeframe.core import conductor
+
+            for batch in conductor.list_batches(app.state.workspace, limit=5):
+                conductor.fail_batch(app.state.workspace, batch.id, reason="test")
+
+            second = await client.post("/api/v2/tasks/execute", json={"task_ids": ["t2"]})
+
+        assert second.status_code == 200, second.text
+
+
+class TestWedgedBatchIsFinalized:
+    """A crash in the detached thread must not leave the batch RUNNING forever.
+
+    The client already has its 200 + batch_id, and ``resume_batch`` accepts only
+    PARTIAL/FAILED/CANCELLED — so a wedged RUNNING batch could not even be
+    resumed. Work before ``_execute_parallel``'s own try (plan building,
+    starting the reconciliation thread) is exactly what can raise here.
+    """
+
+    async def test_thread_failure_marks_the_batch_failed(
+        self, app, test_workspace, monkeypatch
+    ):
+        from codeframe.core import conductor
+        from codeframe.ui.routers import tasks_v2
+
+        def _boom(workspace, batch, max_retries=0, on_event=None):
+            raise RuntimeError("plan building exploded")
+
+        monkeypatch.setattr(tasks_v2.conductor, "execute_batch", _boom)
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]})
+
+        batch_id = resp.json()["batch_id"]
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            batch = conductor.get_batch(test_workspace, batch_id)
+            if batch and batch.status in conductor.TERMINAL_BATCH_STATUSES:
+                break
+            time.sleep(0.05)
+
+        batch = conductor.get_batch(test_workspace, batch_id)
+        assert batch is not None
+        assert batch.status == conductor.BatchStatus.FAILED, (
+            f"batch left {batch.status} — a wedged batch cannot even be resumed"
+        )

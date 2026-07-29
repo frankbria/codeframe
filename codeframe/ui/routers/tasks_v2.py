@@ -460,6 +460,76 @@ def delete_task(
 
 
 
+# One batch per workspace at a time. Before #901 the blocking call *accidentally*
+# provided this: a second POST could not even be served until the first batch
+# finished. Offloading removes that, and `check_assignment_status` alone is
+# check-then-act — it counts IN_PROGRESS tasks, but tasks only flip to
+# IN_PROGRESS inside the detached thread, long after the handler responded. Two
+# clicks within that window would both pass, both persist, and run two agent
+# subprocesses against the same git worktree.
+_workspace_batch_locks: dict[str, threading.Lock] = {}
+_workspace_batch_locks_guard = threading.Lock()
+
+
+def _workspace_batch_lock(workspace: Workspace) -> threading.Lock:
+    """Process-wide lock for starting a batch in a given workspace."""
+    key = str(workspace.repo_path)
+    with _workspace_batch_locks_guard:
+        return _workspace_batch_locks.setdefault(key, threading.Lock())
+
+
+def _reject_if_batch_active(workspace: Workspace) -> None:
+    """Refuse to start a second batch in a workspace that already has one.
+
+    Checked against persisted state rather than task status, because the batch
+    record exists from the moment it is created — before any task has moved.
+    Callers must hold ``_workspace_batch_lock(workspace)``.
+    """
+    for status in (conductor.BatchStatus.RUNNING, conductor.BatchStatus.PENDING):
+        active = conductor.list_batches(workspace, status=status, limit=1)
+        if active:
+            raise HTTPException(
+                status_code=409,
+                detail=api_error(
+                    "A batch is already running in this workspace",
+                    ErrorCodes.CONFLICT,
+                    f"Batch {active[0].id[:8]} is {status.value}. Wait for it to "
+                    f"finish, or cancel it with POST /api/v2/batches/{active[0].id}/cancel.",
+                ),
+            )
+
+
+def _create_batch_exclusively(workspace: Workspace, **kwargs):
+    """Refuse a second concurrent batch, then create one — atomically.
+
+    The check and the create must share one lock: checking first and creating
+    after leaves exactly the window two clicks need to both pass. Runs on a
+    worker thread (both callers wrap it in ``run_in_threadpool``), so the lock
+    never blocks the event loop.
+    """
+    with _workspace_batch_lock(workspace):
+        _reject_if_batch_active(workspace)
+        return conductor.create_batch(workspace, **kwargs)
+
+
+def _finalize_wedged_batch(workspace: Workspace, batch_id: str, reason: str) -> None:
+    """Mark a batch FAILED if its detached run died before finalizing it.
+
+    Without this the batch is stuck RUNNING forever: the client already has its
+    200 + batch_id, and ``resume_batch`` only accepts PARTIAL/FAILED/CANCELLED,
+    so a wedged batch could not even be resumed. Work that runs *before*
+    ``_execute_parallel``'s own try (plan building, starting the reconciliation
+    thread) is exactly what can raise here.
+    """
+    try:
+        batch = conductor.get_batch(workspace, batch_id)
+        if batch is None or batch.status in conductor.TERMINAL_BATCH_STATUSES:
+            return
+        conductor.fail_batch(workspace, batch_id, reason=reason)
+    except Exception:
+        logger.error("Could not finalize wedged batch %s", batch_id, exc_info=True)
+
+
 def _run_batch_in_background(workspace: Workspace, batch_id: str, max_retries: int = 0) -> None:
     """Execute an already-created batch on a worker thread (issue #901).
 
@@ -473,14 +543,15 @@ def _run_batch_in_background(workspace: Workspace, batch_id: str, max_retries: i
     Failures are logged and left on the batch record rather than raised: there
     is no request left to fail, and the conductor already records task outcomes.
     """
-    batch = conductor.get_batch(workspace, batch_id)
-    if batch is None:  # pragma: no cover - the caller just persisted it
-        logger.error("Batch %s vanished before execution", batch_id)
-        return
     try:
+        batch = conductor.get_batch(workspace, batch_id)
+        if batch is None:  # pragma: no cover - the caller just persisted it
+            logger.error("Batch %s vanished before execution", batch_id)
+            return
         conductor.execute_batch(workspace, batch, max_retries=max_retries)
     except Exception as exc:
         logger.error("Background batch %s failed: %s", batch_id, exc, exc_info=True)
+        _finalize_wedged_batch(workspace, batch_id, reason=str(exc))
 
 
 def _start_batch_detached(workspace: Workspace, batch_id: str, max_retries: int = 0) -> None:
@@ -545,10 +616,11 @@ async def approve_tasks_endpoint(
         if body.start_execution:
             # Persist first, then execute off the event loop (#901). The
             # persist is a synchronous SQLite write, so it is offloaded too —
-            # small, but it is still the event loop's time.
+            # small, but it is still the event loop's time. The guard and the
+            # create happen under one lock so two requests cannot both pass it.
             batch = await run_in_threadpool(
                 functools.partial(
-                    conductor.create_batch,
+                    _create_batch_exclusively,
                     workspace,
                     task_ids=result.approved_task_ids,
                     strategy="serial",
@@ -571,6 +643,10 @@ async def approve_tasks_endpoint(
             message=message,
         )
 
+    except HTTPException:
+        # e.g. the 409 from the one-batch-per-workspace guard — a deliberate
+        # status must not be re-wrapped as a 500 by the catch-all below.
+        raise
     except Exception as e:
         logger.error(f"Failed to approve tasks: {e}", exc_info=True)
         raise HTTPException(
@@ -663,7 +739,7 @@ async def start_execution(
         # while the batch runs.
         batch = await run_in_threadpool(
             functools.partial(
-                conductor.create_batch,
+                _create_batch_exclusively,
                 workspace,
                 task_ids=task_ids,
                 strategy=body.strategy,
