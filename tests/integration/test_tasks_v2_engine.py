@@ -1,7 +1,7 @@
 """Integration tests for engine parameter on task execution endpoints.
 
 Tests that the engine parameter is correctly validated, defaulted, and
-passed through to conductor.start_batch() and runtime.execute_agent()
+passed through to conductor.create_batch() and runtime.execute_agent()
 on all three execution endpoints:
 - POST /api/v2/tasks/execute
 - POST /api/v2/tasks/approve
@@ -115,7 +115,8 @@ class TestExecuteEndpointEngine:
         with (
             patch("codeframe.ui.routers.tasks_v2.runtime.check_assignment_status", return_value=_assignment_ok()),
             patch("codeframe.ui.routers.tasks_v2.runtime.get_ready_task_ids", return_value=[task.id]),
-            patch("codeframe.ui.routers.tasks_v2.conductor.start_batch", return_value=_make_batch_run(ws.id, [task.id])) as mock_batch,
+            patch("codeframe.ui.routers.tasks_v2._start_batch_detached"),
+            patch("codeframe.ui.routers.tasks_v2.conductor.create_batch", return_value=_make_batch_run(ws.id, [task.id])) as mock_batch,
         ):
             resp = client.post(
                 "/api/v2/tasks/execute",
@@ -138,7 +139,8 @@ class TestExecuteEndpointEngine:
         with (
             patch("codeframe.ui.routers.tasks_v2.runtime.check_assignment_status", return_value=_assignment_ok()),
             patch("codeframe.ui.routers.tasks_v2.runtime.get_ready_task_ids", return_value=[task.id]),
-            patch("codeframe.ui.routers.tasks_v2.conductor.start_batch", return_value=_make_batch_run(ws.id, [task.id], engine="react")) as mock_batch,
+            patch("codeframe.ui.routers.tasks_v2._start_batch_detached"),
+            patch("codeframe.ui.routers.tasks_v2.conductor.create_batch", return_value=_make_batch_run(ws.id, [task.id], engine="react")) as mock_batch,
         ):
             resp = client.post(
                 "/api/v2/tasks/execute",
@@ -173,7 +175,8 @@ class TestExecuteEndpointEngine:
         with (
             patch("codeframe.ui.routers.tasks_v2.runtime.check_assignment_status", return_value=_assignment_ok()),
             patch("codeframe.ui.routers.tasks_v2.runtime.get_ready_task_ids", return_value=[task.id]),
-            patch("codeframe.ui.routers.tasks_v2.conductor.start_batch", return_value=_make_batch_run(ws.id, [task.id], engine="react")),
+            patch("codeframe.ui.routers.tasks_v2._start_batch_detached"),
+            patch("codeframe.ui.routers.tasks_v2.conductor.create_batch", return_value=_make_batch_run(ws.id, [task.id], engine="react")),
         ):
             resp = client.post(
                 "/api/v2/tasks/execute",
@@ -276,7 +279,8 @@ class TestApproveEndpointEngine:
 
         with (
             patch("codeframe.ui.routers.tasks_v2.runtime.approve_tasks", return_value=approval),
-            patch("codeframe.ui.routers.tasks_v2.conductor.start_batch", return_value=_make_batch_run(ws.id, [task.id], engine="react")) as mock_batch,
+            patch("codeframe.ui.routers.tasks_v2._start_batch_detached"),
+            patch("codeframe.ui.routers.tasks_v2.conductor.create_batch", return_value=_make_batch_run(ws.id, [task.id], engine="react")) as mock_batch,
         ):
             resp = client.post(
                 "/api/v2/tasks/approve",
@@ -324,7 +328,8 @@ class TestApproveEndpointEngine:
 
         with (
             patch("codeframe.ui.routers.tasks_v2.runtime.approve_tasks", return_value=approval),
-            patch("codeframe.ui.routers.tasks_v2.conductor.start_batch") as mock_batch,
+            patch("codeframe.ui.routers.tasks_v2._start_batch_detached"),
+            patch("codeframe.ui.routers.tasks_v2.conductor.create_batch") as mock_batch,
         ):
             resp = client.post(
                 "/api/v2/tasks/approve",

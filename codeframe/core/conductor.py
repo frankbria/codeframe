@@ -539,6 +539,18 @@ class BatchStatus(str, Enum):
     CANCELLED = "CANCELLED"   # User cancelled
 
 
+#: Statuses from which a batch never moves again. A batch outside this set is
+#: still "in flight" as far as any observer is concerned.
+TERMINAL_BATCH_STATUSES = frozenset(
+    {
+        BatchStatus.COMPLETED,
+        BatchStatus.PARTIAL,
+        BatchStatus.FAILED,
+        BatchStatus.CANCELLED,
+    }
+)
+
+
 class OnFailure(str, Enum):
     """Behavior when a task fails."""
 
@@ -582,14 +594,13 @@ class BatchRun:
     llm_model: Optional[str] = None
 
 
-def start_batch(
+def create_batch(
     workspace: Workspace,
     task_ids: list[str],
     strategy: str = "serial",
     max_parallel: int = 4,
     on_failure: str = "continue",
     dry_run: bool = False,
-    max_retries: int = 0,
     on_event: Optional[Callable[[str, dict], None]] = None,
     engine: str = "react",
     stall_timeout_s: int = 300,
@@ -600,7 +611,13 @@ def start_batch(
     llm_provider: Optional[str] = None,
     llm_model: Optional[str] = None,
 ) -> BatchRun:
-    """Start a batch execution of multiple tasks.
+    """Validate and persist a batch record, without executing it.
+
+    The first half of the old ``start_batch``, split out so a server handler
+    can persist a batch and return its id immediately, then run
+    ``execute_batch`` on a worker thread (issue #901). Returns with the batch
+    PENDING (or COMPLETED for a dry run) and ``BATCH_STARTED`` already emitted,
+    so a client polling ``/batches`` sees it right away.
 
     Args:
         workspace: Target workspace
@@ -609,12 +626,11 @@ def start_batch(
         max_parallel: Max concurrent tasks for parallel strategy
         on_failure: Behavior on task failure ("continue" or "stop")
         dry_run: If True, don't actually execute tasks
-        max_retries: Max retry attempts for failed tasks (0 = no retries)
         on_event: Optional callback for batch events
         engine: Agent engine to use ("react" default, or "plan" for legacy)
 
     Returns:
-        BatchRun with results populated
+        The persisted BatchRun, PENDING and not yet executed.
 
     Raises:
         ValueError: If task_ids is empty or contains invalid IDs
@@ -681,7 +697,93 @@ def start_batch(
         batch.status = BatchStatus.COMPLETED
         batch.completed_at = _utc_now()
         _save_batch(workspace, batch)
+
+    return batch
+
+
+def start_batch(
+    workspace: Workspace,
+    task_ids: list[str],
+    strategy: str = "serial",
+    max_parallel: int = 4,
+    on_failure: str = "continue",
+    dry_run: bool = False,
+    max_retries: int = 0,
+    on_event: Optional[Callable[[str, dict], None]] = None,
+    engine: str = "react",
+    stall_timeout_s: int = 300,
+    stall_action: str = "blocker",
+    concurrency_by_status: Optional[dict[str, int]] = None,
+    isolation: str = "none",
+    cloud_timeout_minutes: int = 30,
+    llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
+) -> BatchRun:
+    """Create a batch and run it to completion. **Blocks.**
+
+    Convenience wrapper over ``create_batch`` + ``execute_batch`` for callers
+    that genuinely want to wait — the CLI, and tests.
+
+    **Server request handlers must not call this.** Execution drives every task
+    through a subprocess ``wait()``, so on an async handler it pins the uvicorn
+    event loop for the batch's whole duration — freezing every other request,
+    SSE stream, WebSocket and ``/health`` for potentially hours (issue #901).
+    Handlers should call ``create_batch``, return the id, and hand
+    ``execute_batch`` to a worker thread.
+
+    Returns:
+        BatchRun with results populated.
+    """
+    batch = create_batch(
+        workspace,
+        task_ids=task_ids,
+        strategy=strategy,
+        max_parallel=max_parallel,
+        on_failure=on_failure,
+        dry_run=dry_run,
+        on_event=on_event,
+        engine=engine,
+        stall_timeout_s=stall_timeout_s,
+        stall_action=stall_action,
+        concurrency_by_status=concurrency_by_status,
+        isolation=isolation,
+        cloud_timeout_minutes=cloud_timeout_minutes,
+        llm_provider=llm_provider,
+        llm_model=llm_model,
+    )
+    if dry_run:
         return batch
+    return execute_batch(workspace, batch, max_retries=max_retries, on_event=on_event)
+
+
+def execute_batch(
+    workspace: Workspace,
+    batch: BatchRun,
+    max_retries: int = 0,
+    on_event: Optional[Callable[[str, dict], None]] = None,
+) -> BatchRun:
+    """Run an already-created batch to completion. **Blocks.**
+
+    The second half of ``start_batch``, split out so a server handler can
+    persist the batch, return its id immediately, and run this on a worker
+    thread (issue #901). Every task ends in a subprocess ``wait()``, so calling
+    this on the event loop freezes the whole server for the batch's duration.
+
+    Reads strategy/max_parallel/engine off the ``batch`` record, so a resumed
+    or requeued batch executes exactly as it was created.
+
+    Args:
+        workspace: Target workspace
+        batch: A batch already persisted by ``create_batch``
+        max_retries: Max retry attempts for failed tasks (0 = no retries)
+        on_event: Optional callback for batch events
+
+    Returns:
+        The same BatchRun, with results populated.
+    """
+    strategy = batch.strategy
+    max_parallel = batch.max_parallel
+    task_ids = batch.task_ids
 
     # Update status to running
     batch.status = BatchStatus.RUNNING
@@ -736,6 +838,37 @@ def start_batch(
     if max_retries > 0:
         _execute_retries(workspace, batch, max_retries, on_event)
 
+    return batch
+
+
+
+def fail_batch(workspace: Workspace, batch_id: str, reason: str) -> Optional[BatchRun]:
+    """Force a non-terminal batch to FAILED and emit BATCH_FAILED.
+
+    For a batch whose execution died before it could finalize itself — the
+    detached server thread raising before ``_execute_parallel``'s own handler,
+    for instance (issue #901). Without this the row stays RUNNING forever: the
+    client already has its 200, and ``resume_batch`` accepts only
+    PARTIAL/FAILED/CANCELLED, so a wedged batch could not even be resumed.
+
+    No-op when the batch is missing or already terminal, so it is safe to call
+    unconditionally from an error path.
+    """
+    batch = get_batch(workspace, batch_id)
+    if batch is None or batch.status in TERMINAL_BATCH_STATUSES:
+        return batch
+
+    batch.status = BatchStatus.FAILED
+    batch.completed_at = _utc_now()
+    _save_batch(workspace, batch)
+
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.BATCH_FAILED,
+        {"batch_id": batch_id, "reason": reason},
+        print_event=True,
+    )
+    logger.error("Batch %s marked FAILED: %s", batch_id[:8], reason)
     return batch
 
 
