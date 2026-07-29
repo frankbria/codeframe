@@ -390,38 +390,50 @@ def test_run_command_refuses_the_credential_store_by_absolute_path(tmp_path, mon
 
 
 def test_run_tests_does_not_hand_the_repo_the_operator_home(tmp_path, monkeypatch):
-    """`npm test` runs whatever package.json says — that is repo-controlled code.
+    """`npm test` / `pytest` run whatever the repo says — repo-controlled code.
 
-    Patching only run_command would have left this sibling caller open: the
-    repo commits a `test` script that reads ~/.codeframe and the agent calling
-    the run_tests tool is enough to run it.
+    Patching only run_command would have left this sibling caller open. The
+    test script records the $HOME it was given into a workspace file, so the
+    assertion is on what the subprocess actually saw, not on tool output
+    formatting (run_tests returns only a summary line when tests pass).
     """
     from codeframe.core.tools import _execute_run_tests
 
     operator_home = tmp_path / "operator6"
-    (operator_home / ".codeframe").mkdir(parents=True)
-    (operator_home / ".codeframe" / "credentials.encrypted").write_text("SECRET-MATERIAL")
+    operator_home.mkdir()
     monkeypatch.setenv("HOME", str(operator_home))
 
     workspace = tmp_path / "hostile"
     workspace.mkdir()
-    (workspace / "package.json").write_text(
-        '{"name": "x", "scripts": {"test": "cat $HOME/.codeframe/credentials.encrypted"}}'
+    (workspace / "pyproject.toml").write_text(
+        '[project]\nname = "hostile"\nversion = "0"\n'
+    )
+    (workspace / "test_leak.py").write_text(
+        "import os, pathlib\n"
+        "def test_record_home():\n"
+        "    pathlib.Path('seen_home.txt').write_text(os.environ.get('HOME', ''))\n"
     )
 
-    result = _execute_run_tests({}, workspace, "call-t")
+    _execute_run_tests({}, workspace, "call-t")
 
-    assert "SECRET-MATERIAL" not in result.content
+    seen = workspace / "seen_home.txt"
+    assert seen.exists(), "the repo's test suite did not run; the test proves nothing"
+    assert seen.read_text().strip() != str(operator_home)
 
 
 def test_plan_engine_shell_gets_the_same_sandbox(tmp_path, monkeypatch):
-    """The legacy `--engine plan` executor had no sandbox at all."""
+    """The legacy `--engine plan` executor had no sandbox at all.
+
+    Deliberately does NOT name the credential store: that string is caught by
+    the dangerous-command regex, which would make this pass whether or not the
+    environment is sandboxed.
+    """
     from codeframe.core.executor import Executor
     from codeframe.core.planner import PlanStep, StepType
 
     operator_home = tmp_path / "operator7"
-    (operator_home / ".codeframe").mkdir(parents=True)
-    (operator_home / ".codeframe" / "credentials.encrypted").write_text("SECRET-MATERIAL")
+    (operator_home / ".ssh").mkdir(parents=True)
+    (operator_home / ".ssh" / "id_rsa").write_text("SECRET-MATERIAL")
     monkeypatch.setenv("HOME", str(operator_home))
 
     workspace = tmp_path / "ws7"
@@ -431,8 +443,8 @@ def test_plan_engine_shell_gets_the_same_sandbox(tmp_path, monkeypatch):
     step = PlanStep(
         index=1,
         type=StepType.SHELL_COMMAND,
-        description="read the store",
-        target="cat $HOME/.codeframe/credentials.encrypted",
+        description="read an operator dotfile",
+        target="cat $HOME/.ssh/id_rsa",
     )
     result = executor._execute_shell_command(step)
 
