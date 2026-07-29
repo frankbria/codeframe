@@ -162,3 +162,85 @@ def vet_env_base_url(env_var: str) -> Optional[str]:
     if not is_repo_supplied(env_var):
         return value  # the operator's own environment
     return vet_base_url(value, source=f"the repository's .env ({env_var})")
+
+
+# ---------------------------------------------------------------------------
+# The shared .env loader (issue #904)
+# ---------------------------------------------------------------------------
+
+#: Keys a repository's ``.env`` may never set. These steer *where the process
+#: sends things* or *which credential it uses* — a repo that could set them
+#: would redirect logins, API traffic and telemetry, or point the tool at
+#: another database. Prefixes match any key ending in them.
+_REPO_FORBIDDEN_EXACT = frozenset(
+    {
+        "CODEFRAME_API_URL",      # `cf auth login` POSTs email+password here
+        "CODEFRAME_TOKEN",        # the session token itself
+        "DATABASE_PATH",          # which state DB is read and written
+        "CODEFRAME_TELEMETRY_ENDPOINT",
+        "CODEFRAME_BOOTSTRAP_TOKEN",
+        "AUTH_SECRET",
+        "CODEFRAME_API_KEY_SECRET",
+        "CODEFRAME_CREDENTIAL_SECRET",
+    }
+)
+
+#: Suffixes a repository's ``.env`` may never set, for the same reason.
+_REPO_FORBIDDEN_SUFFIXES = ("_BASE_URL", "_API_URL")
+
+
+def is_forbidden_from_repo(name: str) -> bool:
+    """Whether a repository ``.env`` is allowed to define ``name``."""
+    upper = name.upper()
+    return upper in _REPO_FORBIDDEN_EXACT or upper.endswith(_REPO_FORBIDDEN_SUFFIXES)
+
+
+def load_env_files(cwd: Optional[Path] = None, home: Optional[Path] = None) -> None:
+    """Load ``~/.env`` then ``<cwd>/.env`` — the one place that does this (#904).
+
+    Two rules the previous four copies of this logic did not follow:
+
+    1. **The repository never overrides the operator.** ``<cwd>/.env`` used to be
+       loaded with ``override=True``, so a committed file won over what the
+       operator exported. A repo could therefore point ``CODEFRAME_API_URL`` at
+       its own host and ``cf auth login`` would POST the user's email and
+       password there — the insecure-transport warning only fires for ``http://``,
+       so an ``https://`` attacker host is silent.
+    2. **Security-steering keys are never taken from a repo at all**, even when
+       the operator has not set them, because "unset" is the common case and
+       silence is what makes this dangerous. See ``is_forbidden_from_repo``.
+
+    The home ``.env`` is the operator's own file and is not restricted.
+    Provenance is still recorded for what the repo did supply (#903).
+    """
+    from dotenv import load_dotenv
+
+    home_env = (home or Path.home()) / ".env"
+    if home_env.exists():
+        load_dotenv(home_env)
+
+    cwd_env = (cwd or Path.cwd()) / ".env"
+    if not cwd_env.exists():
+        return
+
+    repo_keys = keys_defined_in(cwd_env)
+    record_repo_env_keys(repo_keys)
+
+    blocked = {k for k in repo_keys if is_forbidden_from_repo(k)}
+    if blocked:
+        logger.warning(
+            "Ignoring %d security-sensitive key(s) from the repository's .env: %s",
+            len(blocked),
+            ", ".join(sorted(blocked)),
+        )
+
+    # override=False: whatever the operator exported stands. Then remove any
+    # forbidden key this file introduced — dotenv has no per-key filter, so the
+    # cheap correct approach is to snapshot those names first and restore them.
+    preserved = {k: os.environ.get(k) for k in blocked}
+    load_dotenv(cwd_env)
+    for key, original in preserved.items():
+        if original is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = original

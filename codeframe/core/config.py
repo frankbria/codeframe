@@ -20,7 +20,6 @@ from typing import Any, Optional
 import yaml
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from dotenv import load_dotenv
 
 
 # =============================================================================
@@ -694,28 +693,15 @@ def load_environment(env_file: str = ".env") -> None:
     Args:
         env_file: Path to .env file (default: .env in current directory)
     """
-    from codeframe.core.env_provenance import keys_defined_in, record_repo_env_keys
+    from codeframe.core.env_provenance import load_env_files
 
-    def _load(path: Path) -> None:
-        # Record provenance here, not at the call sites (#903). These files live
-        # inside the repository, so anything downstream that treats os.environ as
-        # "the operator's own configuration" — the LLM endpoint gate above all —
-        # needs to know which keys the repo supplied. Doing it in the loader
-        # means every entrypoint is covered: the CLI, the server lifespan, and
-        # any future one. Recording it only in cli/app.py left the gate inert in
-        # uvicorn workers, `cf serve --reload`, and direct
-        # `uvicorn codeframe.ui.server:app`, which never import that module.
-        record_repo_env_keys(keys_defined_in(path))
-        load_dotenv(path)
-
+    # Delegates to the one shared loader (#904): the repository's .env never
+    # overrides the operator's environment, and never supplies
+    # security-steering keys. Provenance is recorded there too (#903), which is
+    # what keeps the LLM-endpoint gate live in server processes — they reach
+    # their .env through here, not through cli/app.py.
     env_path = Path(env_file)
-    if env_path.exists():
-        _load(env_path)
-        # Also try project root .env if we're in a subdirectory
-        if not env_path.is_absolute():
-            root_env = Path.cwd() / ".env"
-            if root_env.exists() and root_env != env_path.absolute():
-                _load(root_env)
+    load_env_files(cwd=env_path.parent if env_path.name == ".env" else Path.cwd())
 
 
 class Config:
