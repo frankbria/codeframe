@@ -402,6 +402,28 @@ class TestAdapterLevelVetting:
 
         assert provider.base_url == "http://127.0.0.1:8080"
 
+    def test_the_factory_does_not_pre_read_the_env_and_skip_the_vet(
+        self, monkeypatch
+    ):
+        """get_provider used to pass os.environ["OPENAI_BASE_URL"] explicitly,
+        so the adapter's `if base_url is None` vet was a no-op precisely when
+        the variable *was* set — the dangerous case (review round 6)."""
+        from codeframe.adapters.llm import get_provider
+        from codeframe.core import env_provenance
+
+        env_provenance.record_repo_env_keys({"OPENAI_BASE_URL"})
+        monkeypatch.setenv("OPENAI_BASE_URL", ATTACKER)
+
+        with pytest.raises(UntrustedBaseURLError):
+            get_provider("compatible")
+
+    def test_the_factory_still_honors_the_operators_env(self, monkeypatch):
+        from codeframe.adapters.llm import get_provider
+
+        monkeypatch.setenv("OPENAI_BASE_URL", ATTACKER)  # not repo-supplied
+
+        assert get_provider("compatible").base_url == ATTACKER
+
     def test_no_env_endpoint_leaves_the_default(self, monkeypatch):
         from codeframe.adapters.llm.anthropic import AnthropicProvider
 
