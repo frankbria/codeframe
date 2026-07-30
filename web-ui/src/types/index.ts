@@ -262,6 +262,8 @@ export interface GateCheck {
 export interface GateResult {
   passed: boolean;
   checks: GateCheck[];
+  /** Diagnostics that are not gate verdicts (e.g. a failed dependency install). */
+  notes?: string[];
   summary: string;
   started_at: string | null;
   completed_at: string | null;

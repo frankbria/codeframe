@@ -120,13 +120,18 @@ class GateResult:
 
     Attributes:
         passed: Whether all gates passed
-        checks: List of individual gate checks
+        checks: List of individual gate checks — real gates only
+        notes: Diagnostics that are not gate verdicts (e.g. a failed dependency
+            install). Deliberately not ``checks``: a SKIPPED entry there means
+            "a gate did not run", which PROOF9 reads as unverifiable evidence
+            (#909), and a diagnostic must not carry that meaning.
         started_at: When gates started
         completed_at: When gates completed
     """
 
     passed: bool
     checks: list[GateCheck] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
@@ -479,19 +484,13 @@ def run(
 
         checks.append(check)
 
-    # Recorded after the gates, never before: proof/runner.py reads
-    # result.checks[0] as *the* gate's check, so a pre-flight entry at index 0
-    # would be mistaken for the gate result and reported as FAILED (SKIPPED).
+    notes: list[str] = []
     if not dep_success:
-        checks.append(
-            GateCheck(
-                name="dependency-check",
-                status=GateStatus.SKIPPED,
-                output=(
-                    f"Dependency installation failed, ran gates anyway: {dep_message}"
-                ),
-            )
-        )
+        # A note, not a check: `checks` carries gate verdicts, and a SKIPPED
+        # verdict now means "this gate could not be verified" (#909). A failed
+        # dependency install is a diagnostic — if it actually matters, the gate
+        # that needed those dependencies fails on its own and says why.
+        notes.append(f"Dependency installation failed, ran gates anyway: {dep_message}")
 
     completed_at = _utc_now()
 
@@ -503,6 +502,7 @@ def run(
     result = GateResult(
         passed=passed,
         checks=checks,
+        notes=notes,
         started_at=started_at,
         completed_at=completed_at,
     )
@@ -515,6 +515,10 @@ def run(
             "passed": passed,
             "summary": result.summary,
             "checks": [{"name": c.name, "status": c.status.value} for c in checks],
+            # Diagnostics that are not gate verdicts (#909). Carried alongside
+            # the checks so an event consumer still sees, e.g., that the
+            # dependency install failed even when every gate passed.
+            "notes": notes,
         },
         print_event=True,
     )

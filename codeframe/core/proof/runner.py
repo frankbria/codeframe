@@ -120,6 +120,7 @@ def _run_gate(
 
         lines: list[str] = []
         all_passed = True
+        unverifiable = False
 
         for rule in enforced:
             result = core_gates.run(
@@ -157,13 +158,41 @@ def _run_gate(
             lines.extend(
                 f"{check.name}: {check.status.value}" for check in result.checks
             )
+            lines.extend(result.notes)
+
+            # A SKIPPED gate is not proof (#909). `result.passed` counts SKIPPED
+            # as passing — reasonable for "did anything break?", fatal for
+            # evidence: on a machine without ruff the SEC gate reported PASSED,
+            # attach_evidence recorded satisfied=True, the requirement flipped to
+            # SATISFIED, and the #731 merge gate unblocked on evidence that was
+            # never produced. The scoped path above already refuses this; the
+            # whole-suite path used to contradict it.
             all_passed = all_passed and result.passed
+
+            skipped = [
+                c for c in result.checks if c.status == core_gates.GateStatus.SKIPPED
+            ]
+            # Only downgrade a *pass*: a real failure is the stronger signal and
+            # must never be softened into "could not verify". `result.passed` is
+            # true when every check is PASSED or SKIPPED, so this is exactly the
+            # case where the skips are what produced the pass.
+            if result.passed and skipped:
+                unverifiable = True
+                lines.append(
+                    "UNVERIFIABLE — "
+                    + ", ".join(f"{c.name} did not run ({c.output.strip()[:80]})" for c in skipped)
+                )
 
         for rule in rules:
             if not rule.must_pass:
                 lines.append(f"{rule.test_id}: informational (must_pass=False, not enforced)")
 
-        outcome = GateOutcome.PASSED if all_passed else GateOutcome.FAILED
+        if not all_passed:
+            outcome = GateOutcome.FAILED
+        elif unverifiable:
+            outcome = GateOutcome.UNVERIFIABLE
+        else:
+            outcome = GateOutcome.PASSED
         return outcome, "\n".join(lines)
     except Exception as exc:
         logger.warning("Gate %s failed to run: %s", gate.value, exc)
