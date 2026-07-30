@@ -55,6 +55,7 @@ DEFAULT_CONTEXT_WINDOW = 200_000  # All Claude 4.x models
 # Reason string emitted when a stall timeout triggers a blocker — used to
 # set the correct BlockerOrigin ("system") vs agent-generated blockers.
 _REASON_STALL_DETECTED = "stall_detected"
+_REASON_COST_CAP_EXCEEDED = "cost_cap_exceeded"
 
 # Map tool names to agent phases for progress reporting.
 _TOOL_PHASE_MAP = {
@@ -136,6 +137,7 @@ class ReactAgent:
         self.workspace = workspace
         self.llm_provider = llm_provider
         self.max_iterations = max_iterations
+        self._max_cost_usd: Optional[float] = None
         self.max_verification_retries = max_verification_retries
         self._stall_timeout_s = stall_timeout_s
         self._stall_action = stall_action
@@ -204,6 +206,8 @@ class ReactAgent:
 
             packager = TaskContextPackager(self.workspace)
             context = packager.load_context(task_id)
+
+            self._max_cost_usd = self._resolve_cost_cap()
 
             # Adaptive budget based on task complexity
             adaptive = self._calculate_adaptive_budget(context)
@@ -461,6 +465,26 @@ class ReactAgent:
                     self._create_text_blocker(
                         stall_ctx or "Agent stalled with no tool activity",
                         _REASON_STALL_DETECTED,
+                    )
+                    return AgentStatus.BLOCKED
+
+            # Spend cap (#911). Checked before each LLM call: a call's cost is
+            # not knowable until it returns, so the cap means "stop as soon as
+            # we are over", not "never exceed by a cent". BLOCKED rather than
+            # FAILED — the work is not wrong, it needs a human decision (raise
+            # the cap, or stop), which is exactly what a blocker is for.
+            cap = self._max_cost_usd
+            if cap is not None:
+                spent = self._estimate_total_cost()
+                if spent >= cap:
+                    self._verbose_print(
+                        f"[ReactAgent] Cost cap reached: ${spent:.4f} >= ${cap:.2f}"
+                    )
+                    self._create_text_blocker(
+                        f"Task stopped after {iterations} iteration(s): estimated spend "
+                        f"${spent:.4f} reached the configured cap of ${cap:.2f}. "
+                        f"Raise 'Max cost per task (USD)' in Settings to continue.",
+                        _REASON_COST_CAP_EXCEEDED,
                     )
                     return AgentStatus.BLOCKED
 
@@ -1000,6 +1024,35 @@ class ReactAgent:
             return check.output[:2000]
 
         return ""
+
+    def _resolve_cost_cap(self) -> Optional[float]:
+        """The configured per-task spend cap, or None when unset.
+
+        Read from the same ``.codeframe/config.yaml`` the Settings page writes
+        (``max_cost_usd``). Before #911 nothing read it: a user could set a $5
+        cap and get no cost limiting at all, while the sibling ``max_turns``
+        control genuinely worked — so an inert cap was indistinguishable from a
+        working one.
+        """
+        from codeframe.core.config import load_environment_config
+
+        try:
+            env_config = load_environment_config(self.workspace.repo_path)
+        except Exception as exc:  # pragma: no cover - config read is best effort
+            logger.warning("Could not read the cost cap: %s", exc)
+            return None
+
+        cap = getattr(env_config, "max_cost_usd", None) if env_config else None
+        if cap is None:
+            return None
+        try:
+            cap = float(cap)
+        except (TypeError, ValueError):
+            logger.warning("Ignoring non-numeric max_cost_usd: %r", cap)
+            return None
+        # 0 would stop before the first call; treat it as "no cap" rather than
+        # bricking every run, and let validation reject negatives upstream.
+        return cap if cap > 0 else None
 
     def _calculate_adaptive_budget(self, context: TaskContext) -> int:
         """Calculate iteration budget based on task complexity.
