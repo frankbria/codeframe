@@ -57,6 +57,15 @@ DEFAULT_CONTEXT_WINDOW = 200_000  # All Claude 4.x models
 _REASON_STALL_DETECTED = "stall_detected"
 _REASON_COST_CAP_EXCEEDED = "cost_cap_exceeded"
 
+#: Verification-failure reasons that mean "a blocker was created", so the run is
+#: BLOCKED rather than FAILED. Anything not listed falls through to FAILED —
+#: which would leave a blocker attached to a failed run.
+_BLOCKED_REASONS = frozenset({
+    "escalated_to_blocker",
+    _REASON_STALL_DETECTED,
+    _REASON_COST_CAP_EXCEEDED,
+})
+
 # Map tool names to agent phases for progress reporting.
 _TOOL_PHASE_MAP = {
     "read_file": AgentPhase.EXPLORING,
@@ -138,6 +147,7 @@ class ReactAgent:
         self.llm_provider = llm_provider
         self.max_iterations = max_iterations
         self._max_cost_usd: Optional[float] = None
+        self._prior_task_cost_usd: float = 0.0
         self.max_verification_retries = max_verification_retries
         self._stall_timeout_s = stall_timeout_s
         self._stall_action = stall_action
@@ -208,6 +218,8 @@ class ReactAgent:
             context = packager.load_context(task_id)
 
             self._max_cost_usd = self._resolve_cost_cap()
+            if self._max_cost_usd is not None:
+                self._prior_task_cost_usd = self._load_prior_task_cost(task_id)
 
             # Adaptive budget based on task complexity
             adaptive = self._calculate_adaptive_budget(context)
@@ -263,7 +275,7 @@ class ReactAgent:
                     self._emit_stream_completion(task_id)
                     return AgentStatus.COMPLETED
 
-                if reason == "escalated_to_blocker" or reason == _REASON_STALL_DETECTED:
+                if reason in _BLOCKED_REASONS:
                     self._emit(EventType.AGENT_FAILED, {
                         "task_id": task_id,
                         "reason": "blocked",
@@ -470,23 +482,18 @@ class ReactAgent:
 
             # Spend cap (#911). Checked before each LLM call: a call's cost is
             # not knowable until it returns, so the cap means "stop as soon as
-            # we are over", not "never exceed by a cent". BLOCKED rather than
-            # FAILED — the work is not wrong, it needs a human decision (raise
-            # the cap, or stop), which is exactly what a blocker is for.
-            cap = self._max_cost_usd
-            if cap is not None:
-                spent = self._estimate_total_cost()
-                if spent >= cap:
-                    self._verbose_print(
-                        f"[ReactAgent] Cost cap reached: ${spent:.4f} >= ${cap:.2f}"
-                    )
-                    self._create_text_blocker(
-                        f"Task stopped after {iterations} iteration(s): estimated spend "
-                        f"${spent:.4f} reached the configured cap of ${cap:.2f}. "
-                        f"Raise 'Max cost per task (USD)' in Settings to continue.",
-                        _REASON_COST_CAP_EXCEEDED,
-                    )
-                    return AgentStatus.BLOCKED
+            # we are over", not "never exceed by a cent".
+            over = self._cost_cap_message()
+            if over is not None:
+                self._verbose_print(f"[ReactAgent] {over}")
+                # BLOCKED rather than FAILED — the work is not wrong, it needs a
+                # human decision (raise the cap, or stop), which is what a
+                # blocker is for.
+                self._create_text_blocker(
+                    f"Task stopped after {iterations} iteration(s). {over}",
+                    _REASON_COST_CAP_EXCEEDED,
+                )
+                return AgentStatus.BLOCKED
 
             self._verbose_print(f"[ReactAgent] Iteration {iterations + 1}/{self.max_iterations}")
             self._emit(EventType.AGENT_ITERATION_STARTED, {
@@ -794,6 +801,19 @@ class ReactAgent:
             ]
 
             for _turn in range(max_fix_turns):
+                # The correction loop spends too. Without this a run could sit
+                # at $4.99 under a $5 cap, fail verification, and then spend
+                # max_verification_retries * max_fix_turns more calls — a cap
+                # the correction loop ignores is not a cap (#911 review).
+                over = self._cost_cap_message()
+                if over is not None:
+                    self._verbose_print(f"[ReactAgent] Verification fixes stopped. {over}")
+                    self._create_text_blocker(
+                        f"Verification fixes stopped. {over}",
+                        _REASON_COST_CAP_EXCEEDED,
+                    )
+                    return (False, _REASON_COST_CAP_EXCEEDED)
+
                 response = self.llm_provider.complete(
                     messages=fix_messages,
                     purpose=Purpose.CORRECTION,
@@ -1024,6 +1044,66 @@ class ReactAgent:
             return check.output[:2000]
 
         return ""
+
+    def _unpriced_models(self) -> set[str]:
+        """Models used so far that MetricsTracker has no pricing for."""
+        from codeframe.lib.metrics_tracker import MODEL_PRICING, normalize_model_name
+
+        return {
+            record["model"]
+            for record in self._token_records
+            if normalize_model_name(record["model"]) not in MODEL_PRICING
+        }
+
+    def _cost_cap_message(self) -> Optional[str]:
+        """Why spending must stop, or None to continue.
+
+        The single place any spending loop asks "may I make another call?" —
+        the main ReAct loop and the verification self-correction loop both go
+        through it, because a cap the correction loop ignores is not a cap
+        (#911 review).
+        """
+        cap = self._max_cost_usd
+        if cap is None:
+            return None
+
+        # A cap we cannot measure is not a cap. MetricsTracker.calculate_cost
+        # returns $0.00 for models it has no pricing for, so with e.g.
+        # --llm-provider openai the guard below would see $0.00 forever and
+        # never fire — the same silently-inert control this issue is about, one
+        # layer down. Refuse before spending rather than pretend (#911 review).
+        unpriced = self._unpriced_models()
+        if unpriced:
+            return (
+                f"A cost cap of ${cap:.2f} is configured, but there is no pricing "
+                f"data for {', '.join(sorted(unpriced))}, so spend cannot be "
+                "measured. Remove the cap, or use a model with known pricing."
+            )
+
+        spent = self._prior_task_cost_usd + self._estimate_total_cost()
+        if spent >= cap:
+            return (
+                f"Estimated spend ${spent:.4f} reached the configured cap of "
+                f"${cap:.2f}. Raise 'Max cost per task (USD)' in Settings to continue."
+            )
+        return None
+
+    def _load_prior_task_cost(self, task_id: str) -> float:
+        """Spend already recorded against this task by earlier runs.
+
+        The setting is "max cost per *task*", and ``_estimate_total_cost`` only
+        sums this agent instance's in-memory records. Without this, answering
+        the blocker and resuming would hand the task a fresh full budget every
+        time — a cap trivially bypassed by clicking resume (#911 review).
+        """
+        try:
+            from codeframe.platform_store.database import Database
+
+            summary = Database().get_task_token_summary(task_id)
+            return float(summary.get("total_cost_usd") or 0.0)
+        except Exception as exc:  # pragma: no cover - best effort
+            logger.debug("Could not read prior spend for task %s: %s", task_id, exc)
+            return 0.0
 
     def _resolve_cost_cap(self) -> Optional[float]:
         """The configured per-task spend cap, or None when unset.

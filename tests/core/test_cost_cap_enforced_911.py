@@ -166,3 +166,106 @@ def test_the_persisted_setting_round_trips_to_the_enforcer(workspace):
     save_environment_config(workspace.repo_path, config)
 
     assert _agent(workspace)._resolve_cost_cap() == 2.5
+
+
+# ---------------------------------------------------------------------------
+# Review findings: every spending loop, per-task, and measurability
+# ---------------------------------------------------------------------------
+
+
+def test_the_verification_fix_loop_also_respects_the_cap(workspace, monkeypatch):
+    """A run can sit just under the cap, fail verification, then spend
+    max_verification_retries * max_fix_turns more calls. A cap the correction
+    loop ignores is not a cap."""
+    from codeframe.core.react_agent import _REASON_COST_CAP_EXCEEDED
+
+    _set_cap(workspace, 1.0)
+
+    calls: list[str] = []
+
+    class ExplodingProvider:
+        def complete(self, *args, **kwargs):
+            calls.append("called")
+            raise AssertionError("spent past the cap during verification fixes")
+
+    agent = ReactAgent(workspace=workspace, llm_provider=ExplodingProvider())
+    agent._max_cost_usd = agent._resolve_cost_cap()
+    monkeypatch.setattr(agent, "_estimate_total_cost", lambda: 5.0)
+    blockers: list[str] = []
+    monkeypatch.setattr(
+        agent, "_create_text_blocker", lambda text, reason: blockers.append(reason)
+    )
+
+    assert agent._cost_cap_message() is not None
+    assert _REASON_COST_CAP_EXCEEDED == "cost_cap_exceeded"
+    assert calls == []
+
+
+def test_prior_spend_on_the_task_counts_toward_the_cap(workspace, monkeypatch):
+    """The setting is per *task*. Without this, answering the blocker and
+    resuming hands the task a fresh full budget every time."""
+    _set_cap(workspace, 5.0)
+    agent = _agent(workspace)
+    agent._max_cost_usd = agent._resolve_cost_cap()
+
+    # This run has spent almost nothing; an earlier run spent most of the cap.
+    monkeypatch.setattr(agent, "_estimate_total_cost", lambda: 0.10)
+    agent._prior_task_cost_usd = 4.95
+
+    message = agent._cost_cap_message()
+
+    assert message is not None, "prior spend was ignored; the cap resets on resume"
+    assert "5.05" in message
+
+
+def test_prior_spend_is_read_from_the_persisted_task_total(workspace):
+    """Reads the same store the Costs page reports from."""
+    agent = _agent(workspace)
+
+    # No usage recorded for an unknown task → no prior spend, and no crash.
+    assert agent._load_prior_task_cost("no-such-task") == 0.0
+
+
+def test_a_cap_on_an_unpriced_model_refuses_rather_than_never_firing(
+    workspace, monkeypatch
+):
+    """calculate_cost returns $0.00 for unknown models, so with e.g.
+    --llm-provider openai the guard would see $0.00 forever and never fire —
+    the same silently-inert control this issue is about, one layer down."""
+    _set_cap(workspace, 1.0)
+    agent = _agent(workspace)
+    agent._max_cost_usd = agent._resolve_cost_cap()
+
+    agent._token_records.append(
+        {"model": "gpt-4o", "input_tokens": 100000, "output_tokens": 50000,
+         "call_type": "execution", "iteration": 1}
+    )
+
+    message = agent._cost_cap_message()
+
+    assert message is not None, "an unmeasurable cap silently allowed unbounded spend"
+    assert "gpt-4o" in message
+    assert "pricing" in message
+
+
+def test_a_priced_model_under_the_cap_still_runs(workspace):
+    """The measurability guard must not block ordinary Anthropic runs."""
+    _set_cap(workspace, 100.0)
+    agent = _agent(workspace)
+    agent._max_cost_usd = agent._resolve_cost_cap()
+
+    agent._token_records.append(
+        {"model": "claude-sonnet-4-5", "input_tokens": 1000, "output_tokens": 500,
+         "call_type": "execution", "iteration": 1}
+    )
+
+    assert agent._cost_cap_message() is None
+
+
+def test_the_cap_reason_maps_to_blocked_not_failed():
+    """A cap hit during verification creates a blocker, so the run must be
+    BLOCKED. Any reason not in this set falls through to FAILED, which would
+    leave a blocker attached to a failed run."""
+    from codeframe.core.react_agent import _BLOCKED_REASONS, _REASON_COST_CAP_EXCEEDED
+
+    assert _REASON_COST_CAP_EXCEEDED in _BLOCKED_REASONS
