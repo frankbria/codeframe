@@ -515,6 +515,10 @@ def run(
             "passed": passed,
             "summary": result.summary,
             "checks": [{"name": c.name, "status": c.status.value} for c in checks],
+            # Diagnostics that are not gate verdicts (#909). Carried alongside
+            # the checks so an event consumer still sees, e.g., that the
+            # dependency install failed even when every gate passed.
+            "notes": notes,
         },
         print_event=True,
     )

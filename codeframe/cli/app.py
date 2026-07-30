@@ -687,6 +687,12 @@ def review(
             if check.output and (check.status == GateStatus.FAILED or verbose):
                 console.print(f"    [dim]{check.output}[/dim]")
 
+        # Diagnostics that are not gate verdicts (#909) — e.g. a failed
+        # dependency install. Always shown: the gates may all have passed, and
+        # the operator still needs to know the environment was incomplete.
+        for note in result.notes:
+            console.print(f"  [yellow]note:[/yellow] {note}")
+
         # Summary
         console.print()
         if result.passed:

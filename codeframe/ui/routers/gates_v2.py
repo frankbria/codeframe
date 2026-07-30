@@ -47,6 +47,10 @@ class GateResultResponse(BaseModel):
 
     passed: bool
     checks: list[GateCheckResponse]
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Diagnostics that are not gate verdicts (e.g. a failed dependency install)",
+    )
     summary: str
     started_at: Optional[str]
     completed_at: Optional[str]
@@ -80,6 +84,7 @@ def _result_to_response(result: GateResult) -> GateResultResponse:
     return GateResultResponse(
         passed=result.passed,
         checks=[_check_to_response(c) for c in result.checks],
+        notes=list(result.notes),
         summary=result.summary,
         started_at=result.started_at.isoformat() if result.started_at else None,
         completed_at=result.completed_at.isoformat() if result.completed_at else None,

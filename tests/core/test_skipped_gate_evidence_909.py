@@ -194,3 +194,74 @@ def test_the_dependency_note_is_not_a_check(tmp_path, monkeypatch):
 
     assert [c.name for c in result.checks] == ["ruff"]
     assert any("simulated install failure" in n for n in result.notes)
+
+
+# ---------------------------------------------------------------------------
+# The note must reach every surface, not just the proof runner
+# ---------------------------------------------------------------------------
+
+
+def _result_with_note() -> core_gates.GateResult:
+    return core_gates.GateResult(
+        passed=True,
+        checks=[core_gates.GateCheck(name="ruff", status=core_gates.GateStatus.PASSED)],
+        notes=["Dependency installation failed, ran gates anyway: boom"],
+    )
+
+
+def test_the_note_reaches_the_gates_completed_event(tmp_path, monkeypatch):
+    """Otherwise an event consumer sees 'All gates passed' and nothing else."""
+    from codeframe.core import events, gates as gates_module
+
+    repo = tmp_path / "evt-repo"
+    repo.mkdir()
+    (repo / "requirements.txt").write_text("packaging\n")
+    (repo / "clean.py").write_text("x = 1\n")
+    ws = create_or_load_workspace(repo)
+
+    monkeypatch.setattr(
+        gates_module,
+        "_ensure_dependencies_installed",
+        lambda *a, **k: (False, "simulated install failure"),
+    )
+
+    captured: list[dict] = []
+    monkeypatch.setattr(
+        events,
+        "emit_for_workspace",
+        lambda ws_, type_, payload, **kw: captured.append(payload),
+    )
+
+    gates_module.run(ws, gates=["ruff"], verbose=False)
+
+    assert captured, "no event emitted"
+    assert any(
+        "simulated install failure" in n for n in captured[-1].get("notes", [])
+    ), f"event payload dropped the diagnostic: {captured[-1]}"
+
+
+def test_the_note_reaches_the_v2_api_response():
+    """The API response schema carried only `checks`."""
+    from codeframe.ui.routers.gates_v2 import _result_to_response
+
+    response = _result_to_response(_result_with_note())
+
+    assert any("Dependency installation failed" in n for n in response.notes)
+
+
+def test_the_note_reaches_the_cli(tmp_path, monkeypatch):
+    """`cf review` printed only checks, so the diagnostic was invisible."""
+    from typer.testing import CliRunner
+
+    from codeframe.cli import app as cli_app
+
+    repo = tmp_path / "cli-repo"
+    repo.mkdir()
+    create_or_load_workspace(repo)
+
+    # `review` imports gates inside the function, so patch the source module.
+    monkeypatch.setattr(core_gates, "run", lambda *a, **k: _result_with_note())
+
+    result = CliRunner().invoke(cli_app.app, ["review", "--workspace", str(repo)])
+
+    assert "Dependency installation failed" in result.output, result.output
