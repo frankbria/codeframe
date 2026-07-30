@@ -5,6 +5,7 @@ Scans code for security vulnerabilities using bandit and maps severity levels.
 
 import json
 import logging
+import shutil
 import subprocess
 from pathlib import Path
 from typing import List
@@ -59,6 +60,18 @@ class SecurityScanner:
         # Skip non-Python files
         if file_path.suffix != ".py":
             return []
+
+        # Availability is checked BEFORE the early returns below (#910 review).
+        # An unreadable or empty file returns [] without ever reaching the
+        # bandit subprocess, so the FileNotFoundError branch never fired and a
+        # review of, say, a newly added empty __init__.py came back
+        # "approved"/100 on an install with no bandit — the original bug,
+        # surviving in the empty-file subset.
+        if shutil.which("bandit") is None:
+            raise ScannerUnavailableError(
+                "bandit is not installed, so no security analysis was performed. "
+                "Reinstall codeframe, or: pip install bandit"
+            )
 
         # Read file to check if empty
         try:

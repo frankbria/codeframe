@@ -41,7 +41,14 @@ def bandit_missing(monkeypatch):
             raise FileNotFoundError("bandit")
         return real_run(cmd, *args, **kwargs)
 
+    real_which = scanner_module.shutil.which
+
     monkeypatch.setattr(scanner_module.subprocess, "run", no_bandit)
+    monkeypatch.setattr(
+        scanner_module.shutil,
+        "which",
+        lambda name, *a, **k: None if name == "bandit" else real_which(name, *a, **k),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -245,3 +252,50 @@ def test_both_review_endpoints_populate_the_new_fields():
         assert "analyzers_unavailable" in kwargs, (
             f"line {call.lineno} drops analyzers_unavailable"
         )
+
+
+def test_an_empty_python_file_still_reports_the_missing_scanner(
+    workspace, bandit_missing
+):
+    """The early returns ran before the bandit call, so the empty-file subset
+    kept the original bug — a newly added `__init__.py` on a clean install came
+    back approved/100 with no security scan."""
+    (workspace.repo_path / "__init__.py").write_text("")
+
+    result = review.review_files(workspace, ["__init__.py"])
+
+    assert result.status != "approved", f"{result.status} @ {result.overall_score}"
+    assert result.overall_score != 100.0
+    assert "security" in result.analyzers_unavailable
+
+
+def test_an_unreadable_python_file_still_reports_the_missing_scanner(
+    workspace, bandit_missing, monkeypatch
+):
+    """The `read_text` failure branch returned [] before the scanner ran too."""
+    target = workspace.repo_path / "locked.py"
+    target.write_text("x = 1\n")
+
+    real_read = Path.read_text
+
+    def deny(self, *args, **kwargs):
+        if self.name == "locked.py":
+            raise PermissionError("denied")
+        return real_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", deny)
+
+    result = review.review_files(workspace, ["locked.py"])
+
+    assert "security" in result.analyzers_unavailable
+    assert result.status != "approved"
+
+
+def test_an_empty_file_with_bandit_present_is_still_clean(workspace):
+    """The availability check must not turn empty files into findings."""
+    (workspace.repo_path / "__init__.py").write_text("")
+
+    result = review.review_files(workspace, ["__init__.py"])
+
+    assert result.status == "approved"
+    assert not result.analyzers_unavailable
