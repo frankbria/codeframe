@@ -24,6 +24,11 @@ classifiers = [
 
 dependencies = [
     "anthropic>=0.18.0",
+    # Runtime, not dev (#910): `cf review`'s security leg shells out to bandit,
+    # and when it was missing the scan silently produced no findings — so every
+    # clean `pip install` scored 100 and reported "approved" without ever
+    # running a security check.
+    "bandit>=1.8.6",
     "tenacity>=8.2.0",
     "openai>=1.12.0",
     "fastapi>=0.109.0",
@@ -168,6 +173,5 @@ exclude_lines = [
 
 [dependency-groups]
 dev = [
-    "bandit>=1.8.6",
     "pytest-cov>=7.0.0",
 ]

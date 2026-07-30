@@ -42,8 +42,16 @@ class ReviewFindingResponse(BaseModel):
 class ReviewResultResponse(BaseModel):
     """Response model for review result."""
 
-    status: Literal["approved", "changes_requested", "rejected"]
+    status: Literal["approved", "changes_requested", "rejected", "not_analyzed"]
     overall_score: float
+    files_skipped: list[str] = Field(
+        default_factory=list,
+        description="Files no analyzer examined (unsupported language, or not found)",
+    )
+    analyzers_unavailable: list[str] = Field(
+        default_factory=list,
+        description="Analyzers that could not run at all — the review is incomplete",
+    )
     findings: list[ReviewFindingResponse]
     summary: str
 
@@ -135,6 +143,8 @@ async def review_files(
         return ReviewResultResponse(
             status=result.status,
             overall_score=result.overall_score,
+            files_skipped=list(result.files_skipped),
+            analyzers_unavailable=list(result.analyzers_unavailable),
             findings=[
                 ReviewFindingResponse(
                     category=f.category,
@@ -184,6 +194,8 @@ async def review_task(
         return ReviewResultResponse(
             status=result.status,
             overall_score=result.overall_score,
+            files_skipped=list(result.files_skipped),
+            analyzers_unavailable=list(result.analyzers_unavailable),
             findings=[
                 ReviewFindingResponse(
                     category=f.category,

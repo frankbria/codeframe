@@ -5,6 +5,7 @@ Scans code for security vulnerabilities using bandit and maps severity levels.
 
 import json
 import logging
+import shutil
 import subprocess
 from pathlib import Path
 from typing import List
@@ -12,6 +13,14 @@ from typing import List
 from codeframe.core.models import ReviewFinding
 
 logger = logging.getLogger(__name__)
+
+
+class ScannerUnavailableError(RuntimeError):
+    """The scanner binary is absent, so no analysis was performed.
+
+    Distinct from "the scan ran and found nothing": callers must not treat this
+    as a clean result (#910).
+    """
 
 
 class SecurityScanner:
@@ -52,6 +61,18 @@ class SecurityScanner:
         if file_path.suffix != ".py":
             return []
 
+        # Availability is checked BEFORE the early returns below (#910 review).
+        # An unreadable or empty file returns [] without ever reaching the
+        # bandit subprocess, so the FileNotFoundError branch never fired and a
+        # review of, say, a newly added empty __init__.py came back
+        # "approved"/100 on an install with no bandit — the original bug,
+        # surviving in the empty-file subset.
+        if shutil.which("bandit") is None:
+            raise ScannerUnavailableError(
+                "bandit is not installed, so no security analysis was performed. "
+                "Reinstall codeframe, or: pip install bandit"
+            )
+
         # Read file to check if empty
         try:
             code = file_path.read_text()
@@ -82,8 +103,14 @@ class SecurityScanner:
             logger.error(f"Bandit timeout analyzing {file_path}")
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing bandit output for {file_path}: {e}")
-        except FileNotFoundError:
-            logger.warning("bandit not found. Install with: pip install bandit")
+        except FileNotFoundError as exc:
+            # Not a clean scan — a scan that never happened. Returning [] here
+            # made "no security findings" indistinguishable from "no security
+            # scan", which scored 100 and reported "approved" (#910).
+            raise ScannerUnavailableError(
+                "bandit is not installed, so no security analysis was performed. "
+                "Reinstall codeframe, or: pip install bandit"
+            ) from exc
         except Exception as e:
             logger.error(f"Error running bandit on {file_path}: {e}")
 
@@ -210,6 +237,12 @@ class SecurityScanner:
             try:
                 findings = self.analyze_file(file_path)
                 all_findings.extend(findings)
+            except ScannerUnavailableError:
+                # Deliberately not swallowed (#910). A scanner that never ran
+                # must not read as "analyzed and clean" — `calculate_score`
+                # below would otherwise hand back a perfect 100 for code nothing
+                # examined, which is the bug this module was fixed for.
+                raise
             except Exception as e:
                 logger.error(f"Error analyzing {file_path}: {e}")
 
