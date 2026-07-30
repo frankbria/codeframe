@@ -63,6 +63,17 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
+      # The VPS firewalls port 22 off the public internet; the runner reaches it
+      # over Tailscale instead. HOST must be the box's tailnet MagicDNS name (or
+      # 100.x address), and SSH_KNOWN_HOSTS must be labelled with that same HOST.
+      # Box side: join the tailnet and `ufw allow in on tailscale0 to any port 22`.
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
       - name: Add server to known hosts
         # Pinned host key (no live ssh-keyscan TOFU). Populate the
         # SSH_KNOWN_HOSTS secret from a trusted session with:
@@ -71,7 +82,9 @@ jobs:
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
           if [ -z "${SSH_KNOWN_HOSTS}" ]; then
-            echo "❌ SSH_KNOWN_HOSTS secret is not set — see this step's comment to populate it."
+            echo "❌ SSH_KNOWN_HOSTS secret is not set — the deploy cannot verify the server host key."
+            echo "   Populate it from a trusted machine (verify the fingerprint out-of-band first):"
+            echo "     ssh-keyscan -H <host> | gh secret set SSH_KNOWN_HOSTS --env <staging|production>"
             exit 1
           fi
           mkdir -p ~/.ssh
@@ -243,20 +256,15 @@ jobs:
             echo "Debug: BACKEND_NAME='\${BACKEND_NAME}'"
             echo "Debug: FRONTEND_NAME='\${FRONTEND_NAME}'"
 
-            # Function to check if a PM2 process is online
-            is_process_online() {
-              pm2 describe "\$1" 2>/dev/null | grep -q "online"
-            }
-
-            # Restart both frontend and backend via config file
-            if is_process_online "\${BACKEND_NAME}" && is_process_online "\${FRONTEND_NAME}"; then
-              echo "♻️  Restarting PM2 services..."
-              pm2 restart "\${BACKEND_NAME}" --update-env
-              pm2 restart "\${FRONTEND_NAME}" --update-env
-            else
-              echo "🚀 Starting PM2 services from config..."
-              pm2 start ecosystem.staging.config.js
-            fi
+            # Cold-start from the ecosystem file so its dotenv.config() re-reads
+            # .env.staging on every deploy. A plain `pm2 restart <name> --update-env`
+            # refreshes env from the deploy shell (which never sources .env.staging),
+            # so newly-added vars like WORKSPACE_ROOT (#896) never reach the process
+            # and the backend crash-loops. Delete by name (NOT `pm2 delete all`,
+            # which would kill unrelated apps on this shared box), then start fresh.
+            echo "🔁 (Re)starting PM2 services from config..."
+            pm2 delete "\${BACKEND_NAME}" "\${FRONTEND_NAME}" 2>/dev/null || true
+            pm2 start ecosystem.staging.config.js --update-env
 
             pm2 save
             echo "✅ PM2 services updated"
@@ -330,6 +338,17 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_KEY }}
 
+      # The VPS firewalls port 22 off the public internet; the runner reaches it
+      # over Tailscale instead. HOST must be the box's tailnet MagicDNS name (or
+      # 100.x address), and SSH_KNOWN_HOSTS must be labelled with that same HOST.
+      # Box side: join the tailnet and `ufw allow in on tailscale0 to any port 22`.
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
       - name: Add server to known hosts
         # Pinned host key (no live ssh-keyscan TOFU). Populate the
         # SSH_KNOWN_HOSTS secret from a trusted session with:
@@ -338,7 +357,9 @@ jobs:
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
           if [ -z "${SSH_KNOWN_HOSTS}" ]; then
-            echo "❌ SSH_KNOWN_HOSTS secret is not set — see this step's comment to populate it."
+            echo "❌ SSH_KNOWN_HOSTS secret is not set — the deploy cannot verify the server host key."
+            echo "   Populate it from a trusted machine (verify the fingerprint out-of-band first):"
+            echo "     ssh-keyscan -H <host> | gh secret set SSH_KNOWN_HOSTS --env <staging|production>"
             exit 1
           fi
           mkdir -p ~/.ssh
@@ -607,28 +628,13 @@ jobs:
             BACKEND_NAME="${BACKEND_NAME_PROD}"
             FRONTEND_NAME="${FRONTEND_NAME_PROD}"
 
-            # Function to check if a PM2 process is online
-            is_process_online() {
-              pm2 describe "\$1" 2>/dev/null | grep -q "online"
-            }
-
-            # Handle backend process
-            if is_process_online "\${BACKEND_NAME}"; then
-              echo "♻️  Restarting \${BACKEND_NAME}..."
-              pm2 restart "\${BACKEND_NAME}"
-            else
-              echo "🚀 Starting \${BACKEND_NAME}..."
-              pm2 start ecosystem.production.config.js --only "\${BACKEND_NAME}"
-            fi
-
-            # Handle frontend process
-            if is_process_online "\${FRONTEND_NAME}"; then
-              echo "♻️  Restarting \${FRONTEND_NAME}..."
-              pm2 restart "\${FRONTEND_NAME}"
-            else
-              echo "🚀 Starting \${FRONTEND_NAME}..."
-              pm2 start ecosystem.production.config.js --only "\${FRONTEND_NAME}"
-            fi
+            # Cold-start from the ecosystem file so its dotenv.config() re-reads
+            # .env.production on every deploy — see the staging job for why a plain
+            # `pm2 restart <name>` silently drops newly-added .env vars (#896).
+            # Delete by name (NOT `pm2 delete all`) to spare unrelated apps.
+            echo "🔁 (Re)starting PM2 services from config..."
+            pm2 delete "\${BACKEND_NAME}" "\${FRONTEND_NAME}" 2>/dev/null || true
+            pm2 start ecosystem.production.config.js --update-env
 
             pm2 save
             echo "✅ PM2 services updated"
