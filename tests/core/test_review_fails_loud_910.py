@@ -202,3 +202,46 @@ def test_calculate_score_does_not_return_a_perfect_score_when_unavailable(
 
     with pytest.raises(ScannerUnavailableError):
         SecurityScanner(tmp_path).calculate_score([target])
+
+
+# ---------------------------------------------------------------------------
+# The v2 API must carry what was not examined
+# ---------------------------------------------------------------------------
+
+
+def test_the_api_response_model_carries_the_new_fields():
+    """An API client could see status='not_analyzed' with no way to learn which
+    files went unexamined, or that an analyzer never ran."""
+    from codeframe.ui.routers.review_v2 import ReviewResultResponse
+
+    fields = ReviewResultResponse.model_fields
+    assert "files_skipped" in fields
+    assert "analyzers_unavailable" in fields
+    # Defaults, so existing clients are unaffected.
+    assert fields["files_skipped"].default_factory is list
+    assert fields["analyzers_unavailable"].default_factory is list
+
+
+def test_both_review_endpoints_populate_the_new_fields():
+    """`/files` and `/task` each build the response separately."""
+    import ast
+
+    from codeframe.ui.routers import review_v2
+
+    source = Path(review_v2.__file__).read_text()
+    tree = ast.parse(source)
+
+    constructions = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "ReviewResultResponse"
+    ]
+    assert len(constructions) == 2, f"expected 2 constructors, found {len(constructions)}"
+    for call in constructions:
+        kwargs = {kw.arg for kw in call.keywords}
+        assert "files_skipped" in kwargs, f"line {call.lineno} drops files_skipped"
+        assert "analyzers_unavailable" in kwargs, (
+            f"line {call.lineno} drops analyzers_unavailable"
+        )
