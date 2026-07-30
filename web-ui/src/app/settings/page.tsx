@@ -335,11 +335,6 @@ function AgentSettingsForm({
               if (!Number.isNaN(v)) onMaxCostChange(v);
             }}
           />
-          <p className="mt-1 text-xs text-muted-foreground">
-            Stops the run and raises a blocker once estimated spend reaches the
-            cap. Applies to the built-in agent; delegated engines (Claude Code,
-            Codex, OpenCode) bill through their own CLI and are not counted.
-          </p>
         </div>
       </div>
 
