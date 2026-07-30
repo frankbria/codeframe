@@ -155,16 +155,22 @@ class TestReviewFiles:
         assert result.overall_score == 87.5
         assert result.status == "approved"
 
-    def test_non_python_file_is_skipped(self, workspace):
+    def test_non_python_file_is_reported_as_skipped(self, workspace):
+        """Skipped, not clean (#910). Scoring an unexamined file 100/approved
+        is how a TypeScript-only change got approved without being read."""
         (workspace.repo_path / "notes.txt").write_text("not code")
         result = review_files(workspace, ["notes.txt"])
         assert result.findings == []
-        assert result.overall_score == 100.0
+        assert result.status == "not_analyzed"
+        assert result.overall_score != 100.0
+        assert result.files_skipped == ["notes.txt"]
 
-    def test_missing_file_is_skipped(self, workspace):
+    def test_missing_file_is_reported_as_skipped(self, workspace):
         result = review_files(workspace, ["ghost.py"])
         assert result.findings == []
-        assert result.overall_score == 100.0
+        assert result.status == "not_analyzed"
+        assert result.overall_score != 100.0
+        assert result.files_skipped == ["ghost.py"]
 
     def test_analyzer_exception_is_caught(self, workspace, monkeypatch):
         name = _write_py(workspace)

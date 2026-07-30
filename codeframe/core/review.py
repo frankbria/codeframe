@@ -181,6 +181,9 @@ def review_files(
 
         if not full_path.exists():
             logger.warning(f"File not found: {file_path}")
+            # Recorded like any other unexamined file, so the summary's count
+            # matches what the caller asked for (#910).
+            files_skipped.append(file_path)
             continue
 
         if full_path.suffix != ".py":
