@@ -173,3 +173,32 @@ def test_a_real_finding_is_still_reported(workspace):
 
     assert result.findings, "bandit reported nothing on a known-risky file"
     assert result.status != "not_analyzed"
+
+
+# ---------------------------------------------------------------------------
+# Sibling methods must not re-open the hole
+# ---------------------------------------------------------------------------
+
+
+def test_analyze_files_does_not_swallow_the_unavailable_error(tmp_path, bandit_missing):
+    """Its generic `except Exception` would have silenced the new signal."""
+    target = tmp_path / "code.py"
+    target.write_text("x = 1\n")
+
+    with pytest.raises(ScannerUnavailableError):
+        SecurityScanner(tmp_path).analyze_files([target])
+
+
+def test_calculate_score_does_not_return_a_perfect_score_when_unavailable(
+    tmp_path, bandit_missing
+):
+    """The same 100-for-nothing-examined shape, one method over.
+
+    These two have no production callers today; the guard is here so the next
+    one does not inherit the bug.
+    """
+    target = tmp_path / "code.py"
+    target.write_text("x = 1\n")
+
+    with pytest.raises(ScannerUnavailableError):
+        SecurityScanner(tmp_path).calculate_score([target])

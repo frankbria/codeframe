@@ -224,6 +224,12 @@ class SecurityScanner:
             try:
                 findings = self.analyze_file(file_path)
                 all_findings.extend(findings)
+            except ScannerUnavailableError:
+                # Deliberately not swallowed (#910). A scanner that never ran
+                # must not read as "analyzed and clean" — `calculate_score`
+                # below would otherwise hand back a perfect 100 for code nothing
+                # examined, which is the bug this module was fixed for.
+                raise
             except Exception as e:
                 logger.error(f"Error analyzing {file_path}: {e}")
 
