@@ -11,10 +11,10 @@ WorkingDirectory=/home/frankbria/projects/codeframe
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=/home/frankbria/projects/codeframe/.env.staging
 ExecStart=/usr/bin/pm2 start /home/frankbria/projects/codeframe/ecosystem.staging.config.js
-ExecStop=/usr/bin/pm2 stop all
+ExecStop=/usr/bin/pm2 stop /home/frankbria/projects/codeframe/ecosystem.staging.config.js
 ExecStop=/bin/sleep 5
-ExecStop=/usr/bin/pm2 delete all
-ExecReload=/usr/bin/pm2 restart all
+ExecStop=/usr/bin/pm2 delete /home/frankbria/projects/codeframe/ecosystem.staging.config.js
+ExecReload=/usr/bin/pm2 restart /home/frankbria/projects/codeframe/ecosystem.staging.config.js
 Restart=on-failure
 RestartSec=10s
 
