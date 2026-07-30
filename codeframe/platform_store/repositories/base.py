@@ -44,6 +44,17 @@ class BaseRepository:
         if sync_conn is None and async_conn is None:
             raise ValueError("At least one connection (sync or async) must be provided")
 
+        if sync_conn is not None:
+            # Repository methods read columns by name (row["total_tokens"]), so
+            # they need a Row factory. `Database` sets this on its own
+            # connection, which is why they work when reached that way — a
+            # caller passing a bare `sqlite3.connect()` got tuples and a
+            # `TypeError: tuple indices must be integers` from the first named
+            # access (#911 review). Set it here so every caller is correct by
+            # construction. sqlite3.Row still supports integer indexing and
+            # iteration, so tuple-style access keeps working.
+            sync_conn.row_factory = sqlite3.Row
+
         self.conn = sync_conn  # For backward compatibility
         self._async_conn = async_conn
         self._database = database  # Reference to parent Database instance

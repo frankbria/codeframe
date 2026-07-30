@@ -247,11 +247,41 @@ def test_prior_spend_on_the_task_counts_toward_the_cap(workspace, monkeypatch):
 
 
 def test_prior_spend_is_read_from_the_persisted_task_total(workspace):
-    """Reads the same store the Costs page reports from."""
-    agent = _agent(workspace)
+    """Writes a real usage row and reads it back.
 
-    # No usage recorded for an unknown task → no prior spend, and no crash.
-    assert agent._load_prior_task_cost("no-such-task") == 0.0
+    The first version of this test only asserted `== 0.0` for an unknown task,
+    so it passed whether the read worked or raised — and it did raise:
+    `Database()` needs an explicit db_path, and the broad `except` swallowed the
+    TypeError, leaving prior spend permanently 0.0.
+    """
+    import sqlite3
+
+    from codeframe.lib.metrics_tracker import MetricsTracker
+    from codeframe.platform_store.repositories.token_repository import TokenRepository
+
+    conn = sqlite3.connect(str(workspace.db_path))
+    try:
+        tracker = MetricsTracker(db=TokenRepository(sync_conn=conn))
+        tracker.record_token_usage_sync(
+            task_id="task-prior",
+            agent_id="react",
+            project_id=1,
+            model_name="claude-sonnet-4-5",
+            input_tokens=1_000_000,
+            output_tokens=0,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    prior = _agent(workspace)._load_prior_task_cost("task-prior")
+
+    assert prior > 0.0, "the persisted spend was not read back"
+    assert prior == pytest.approx(3.0, rel=0.01)  # $3.00/MTok input
+
+
+def test_an_unknown_task_has_no_prior_spend(workspace):
+    assert _agent(workspace)._load_prior_task_cost("no-such-task") == 0.0
 
 
 def test_a_cap_on_an_unpriced_model_refuses_rather_than_never_firing(

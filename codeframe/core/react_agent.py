@@ -1045,15 +1045,15 @@ class ReactAgent:
 
         return ""
 
-    def _unpriced_models(self) -> set[str]:
-        """Models used so far that MetricsTracker has no pricing for."""
-        from codeframe.lib.metrics_tracker import MODEL_PRICING, normalize_model_name
+    def _tokens_recorded(self) -> int:
+        """Total tokens this run has actually spent."""
+        return sum(
+            r["input_tokens"] + r["output_tokens"] for r in self._token_records
+        )
 
-        return {
-            record["model"]
-            for record in self._token_records
-            if normalize_model_name(record["model"]) not in MODEL_PRICING
-        }
+    def _models_used(self) -> set[str]:
+        """Model names seen in this run's token records."""
+        return {r["model"] for r in self._token_records}
 
     def _cost_cap_message(self) -> Optional[str]:
         """Why spending must stop, or None to continue.
@@ -1072,15 +1072,24 @@ class ReactAgent:
         # --llm-provider openai the guard below would see $0.00 forever and
         # never fire — the same silently-inert control this issue is about, one
         # layer down. Refuse before spending rather than pretend (#911 review).
-        unpriced = self._unpriced_models()
-        if unpriced:
+        spent = self._prior_task_cost_usd + self._estimate_total_cost()
+
+        # A cap we cannot measure is not a cap. `calculate_cost` returns $0.00
+        # for models it has no pricing for, so the check below would see $0.00
+        # forever and never fire — the same silently-inert control this issue is
+        # about, one layer down.
+        #
+        # Detected by *outcome* (tokens recorded but zero cost) rather than by
+        # MODEL_PRICING membership: the table holds three keys, so a membership
+        # test false-fires on ordinary Anthropic models like the default
+        # claude-haiku-4-5 and blocks a legitimately-priced run (#911 review).
+        if spent == 0.0 and self._tokens_recorded() > 0:
             return (
-                f"A cost cap of ${cap:.2f} is configured, but there is no pricing "
-                f"data for {', '.join(sorted(unpriced))}, so spend cannot be "
-                "measured. Remove the cap, or use a model with known pricing."
+                f"A cost cap of ${cap:.2f} is configured, but spend cannot be "
+                f"measured for {', '.join(sorted(self._models_used())) or 'this model'} "
+                "— no pricing data. Remove the cap, or use a model with known pricing."
             )
 
-        spent = self._prior_task_cost_usd + self._estimate_total_cost()
         if spent >= cap:
             return (
                 f"Estimated spend ${spent:.4f} reached the configured cap of "
@@ -1096,14 +1105,30 @@ class ReactAgent:
         the blocker and resuming would hand the task a fresh full budget every
         time — a cap trivially bypassed by clicking resume (#911 review).
         """
+        conn = None
         try:
-            from codeframe.platform_store.database import Database
+            from codeframe.platform_store.repositories.token_repository import (
+                TokenRepository,
+            )
 
-            summary = Database().get_task_token_summary(task_id)
+            # Same per-workspace connection the write path uses
+            # (`_persist_token_usage`). `Database()` is control-plane and needs
+            # an explicit db_path — calling it bare raised TypeError straight
+            # into the except below, so this method silently returned 0.0 and
+            # the resume bypass it exists to close stayed wide open. The
+            # repository sets the Row factory it needs on this connection.
+            conn = sqlite3.connect(str(self.workspace.db_path))
+            summary = TokenRepository(sync_conn=conn).get_task_token_summary(task_id)
             return float(summary.get("total_cost_usd") or 0.0)
         except Exception as exc:  # pragma: no cover - best effort
             logger.debug("Could not read prior spend for task %s: %s", task_id, exc)
             return 0.0
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def _resolve_cost_cap(self) -> Optional[float]:
         """The configured per-task spend cap, or None when unset.
