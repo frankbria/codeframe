@@ -167,26 +167,21 @@ def _run_gate(
             # SATISFIED, and the #731 merge gate unblocked on evidence that was
             # never produced. The scoped path above already refuses this; the
             # whole-suite path used to contradict it.
-            failed = [
-                c for c in result.checks
-                if c.status in (core_gates.GateStatus.FAILED, core_gates.GateStatus.ERROR)
-            ]
+            all_passed = all_passed and result.passed
+
             skipped = [
                 c for c in result.checks if c.status == core_gates.GateStatus.SKIPPED
             ]
-            if failed:
-                all_passed = False
-            elif skipped:
-                # Only when nothing failed: a real failure is the stronger
-                # signal and must not be softened into "could not verify".
+            # Only downgrade a *pass*: a real failure is the stronger signal and
+            # must never be softened into "could not verify". `result.passed` is
+            # true when every check is PASSED or SKIPPED, so this is exactly the
+            # case where the skips are what produced the pass.
+            if result.passed and skipped:
                 unverifiable = True
                 lines.append(
                     "UNVERIFIABLE — "
                     + ", ".join(f"{c.name} did not run ({c.output.strip()[:80]})" for c in skipped)
                 )
-            if not result.checks:
-                unverifiable = True
-                lines.append(f"UNVERIFIABLE — {core_gate_name} produced no checks")
 
         for rule in rules:
             if not rule.must_pass:

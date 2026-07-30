@@ -21,7 +21,6 @@ from pathlib import Path
 import pytest
 
 from codeframe.core.gates import (
-    GateStatus,
     _ensure_dependencies_installed,
     _install_python_requirements,
 )
@@ -121,9 +120,9 @@ def test_failed_install_still_runs_the_gates(tmp_path, monkeypatch):
     names = {c.name for c in result.checks}
     assert "ruff" in names, f"gates did not run; only got {names}"
 
-    dep_check = next(c for c in result.checks if c.name == "dependency-check")
-    assert dep_check.status == GateStatus.SKIPPED
-    assert "simulated install failure" in dep_check.output
+    # The note lives in `notes`, not `checks` (#909): a SKIPPED *check* means
+    # "this gate could not be verified", which a dependency diagnostic is not.
+    assert any("simulated install failure" in n for n in result.notes)
 
 
 def test_a_failed_install_alone_does_not_fail_the_run(tmp_path, monkeypatch):
@@ -173,11 +172,11 @@ def test_auto_install_disabled_is_reported_not_attempted(pip_repo):
 
 
 def test_dependency_note_never_displaces_the_gate_check(tmp_path, monkeypatch):
-    """proof/runner.py reads `result.checks[0]` as *the* gate's check.
+    """`checks` carries gate verdicts only.
 
-    A pre-flight entry at index 0 would be mistaken for the gate result and
-    reported as `FAILED (SKIPPED)` for every enforced PROOF9 rule — a failure
-    with nothing to do with the test it names.
+    proof/runner.py reads `result.checks[0]` as *the* gate's check and treats a
+    SKIPPED check as unverifiable evidence (#909), so a pre-flight diagnostic
+    in that list would be reported as a failure of the test it names.
     """
     from codeframe.core import gates as gates_module
     from codeframe.core.workspace import create_or_load_workspace
@@ -196,11 +195,11 @@ def test_dependency_note_never_displaces_the_gate_check(tmp_path, monkeypatch):
 
     result = gates_module.run(workspace, gates=["ruff"], verbose=False)
 
-    assert result.checks[0].name == "ruff", (
-        f"checks[0] is {result.checks[0].name!r}; the proof runner would read "
-        "the dependency note as the gate result"
+    assert [c.name for c in result.checks] == ["ruff"], (
+        f"checks contains {[c.name for c in result.checks]}; the proof runner "
+        "would read a diagnostic as a gate verdict"
     )
-    assert result.checks[-1].name == "dependency-check"
+    assert result.notes, "the diagnostic must still surface somewhere"
 
 
 # ---------------------------------------------------------------------------

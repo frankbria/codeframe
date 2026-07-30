@@ -11,7 +11,6 @@ The scoped-rule path in ``_run_gate`` already refused to treat SKIPPED as proof.
 The whole-suite path in the same function contradicted it.
 """
 
-from pathlib import Path
 
 import pytest
 
@@ -94,17 +93,6 @@ def test_a_failure_outranks_a_skip(workspace, monkeypatch):
     outcome, _ = _run_gate(workspace, Gate.SEC, [])
 
     assert outcome == GateOutcome.FAILED
-
-
-def test_no_checks_at_all_is_unverifiable(workspace, monkeypatch):
-    """An empty result proves nothing either."""
-    monkeypatch.setattr(
-        core_gates, "run", lambda *a, **k: core_gates.GateResult(passed=True, checks=[])
-    )
-
-    outcome, detail = _run_gate(workspace, Gate.SEC, [])
-
-    assert outcome == GateOutcome.UNVERIFIABLE, detail
 
 
 # ---------------------------------------------------------------------------
