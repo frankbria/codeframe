@@ -14,6 +14,14 @@ from codeframe.core.models import ReviewFinding
 logger = logging.getLogger(__name__)
 
 
+class ScannerUnavailableError(RuntimeError):
+    """The scanner binary is absent, so no analysis was performed.
+
+    Distinct from "the scan ran and found nothing": callers must not treat this
+    as a clean result (#910).
+    """
+
+
 class SecurityScanner:
     """Scans code for security vulnerabilities using bandit.
 
@@ -82,8 +90,14 @@ class SecurityScanner:
             logger.error(f"Bandit timeout analyzing {file_path}")
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing bandit output for {file_path}: {e}")
-        except FileNotFoundError:
-            logger.warning("bandit not found. Install with: pip install bandit")
+        except FileNotFoundError as exc:
+            # Not a clean scan — a scan that never happened. Returning [] here
+            # made "no security findings" indistinguishable from "no security
+            # scan", which scored 100 and reported "approved" (#910).
+            raise ScannerUnavailableError(
+                "bandit is not installed, so no security analysis was performed. "
+                "Reinstall codeframe, or: pip install bandit"
+            ) from exc
         except Exception as e:
             logger.error(f"Error running bandit on {file_path}: {e}")
 

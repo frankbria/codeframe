@@ -42,7 +42,7 @@ class ReviewFindingResponse(BaseModel):
 class ReviewResultResponse(BaseModel):
     """Response model for review result."""
 
-    status: Literal["approved", "changes_requested", "rejected"]
+    status: Literal["approved", "changes_requested", "rejected", "not_analyzed"]
     overall_score: float
     findings: list[ReviewFindingResponse]
     summary: str

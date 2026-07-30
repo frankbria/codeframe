@@ -8,13 +8,13 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
 from typing import Literal, Optional
 
 from codeframe.core.workspace import Workspace
 from codeframe.lib.quality.complexity_analyzer import ComplexityAnalyzer
-from codeframe.lib.quality.security_scanner import SecurityScanner
+from codeframe.lib.quality.security_scanner import ScannerUnavailableError, SecurityScanner
 from codeframe.lib.quality.owasp_patterns import OWASPPatterns
 
 logger = logging.getLogger(__name__)
@@ -41,10 +41,16 @@ class ReviewFinding:
 class ReviewResult:
     """Result of a code review."""
 
-    status: Literal["approved", "changes_requested", "rejected"]
+    status: Literal["approved", "changes_requested", "rejected", "not_analyzed"]
     overall_score: float
     findings: list[ReviewFinding]
     summary: str
+    #: Files that no analyzer looked at (e.g. non-Python files, #910). Reported
+    #: rather than silently counted as clean.
+    files_skipped: list[str] = dataclass_field(default_factory=list)
+    #: Analyzers that could not run at all. A non-empty list means the review is
+    #: incomplete, and the result is never "approved".
+    analyzers_unavailable: list[str] = dataclass_field(default_factory=list)
 
 
 @dataclass
@@ -138,6 +144,11 @@ def review_files(
 
     # Track scores for averaging
     scores: list[float] = []
+    # Analyzer name -> why it could not run. Non-empty means the review is
+    # incomplete and must never come back "approved" (#910).
+    analyzers_unavailable: dict[str, str] = {}
+    files_skipped: list[str] = []
+    files_analyzed = 0
 
     for file_path in files:
         # Security: the caller controls this string, so it is confined to the
@@ -172,9 +183,14 @@ def review_files(
             logger.warning(f"File not found: {file_path}")
             continue
 
-        if not full_path.suffix == ".py":
-            # Only analyze Python files for now
+        if full_path.suffix != ".py":
+            # No analyzer handles this language yet. Recorded and reported
+            # rather than silently dropped: a TypeScript-only change used to
+            # fall straight through to score 100 / "approved" (#910).
+            files_skipped.append(file_path)
             continue
+
+        files_analyzed += 1
 
         # Complexity analysis
         try:
@@ -213,6 +229,11 @@ def review_files(
                 # Security issues have heavier weight on score
                 severity_scores = {"critical": 20, "high": 40, "medium": 60, "low": 80, "info": 95}
                 scores.append(severity_scores.get(finding.severity, 60))
+        except ScannerUnavailableError as exc:
+            # The scanner is absent, not clean. Recorded once and reported as a
+            # finding so it drags the score and blocks "approved" (#910).
+            if "security" not in analyzers_unavailable:
+                analyzers_unavailable["security"] = str(exc)
         except Exception as e:
             logger.warning(f"Security scan failed for {file_path}: {e}")
 
@@ -236,6 +257,22 @@ def review_files(
         except Exception as e:
             logger.warning(f"OWASP check failed for {file_path}: {e}")
 
+    # An unavailable analyzer becomes a finding of its own, so it is visible in
+    # every surface that shows findings, drags the score, and cannot be mistaken
+    # for a clean scan (#910).
+    for analyzer, reason in analyzers_unavailable.items():
+        findings.append(
+            ReviewFinding(
+                category="tooling",
+                severity="high",
+                message=f"{analyzer} analysis did not run: {reason}",
+                file_path="",
+                line_number=0,
+                suggestion="Install the missing tool and re-run the review.",
+            )
+        )
+        scores.append(40)  # same weight as any other high-severity finding
+
     # Calculate overall score
     if scores:
         overall_score = sum(scores) / len(scores)
@@ -243,23 +280,43 @@ def review_files(
         # No issues found = perfect score
         overall_score = 100.0
 
-    status = _determine_status(overall_score)
+    if files_analyzed == 0:
+        # Nothing was examined — a perfect score here is a lie. This is the
+        # TypeScript-only change to a Next.js app that came back "approved"
+        # unexamined (#910).
+        status: str = "not_analyzed"
+        overall_score = 0.0
+    else:
+        status = _determine_status(overall_score)
 
     # Generate summary
-    if not findings:
-        summary = "No issues found. Code looks good!"
-    else:
+    parts: list[str] = []
+    if findings:
         critical_count = sum(1 for f in findings if f.severity == "critical")
         high_count = sum(1 for f in findings if f.severity == "high")
-        summary = f"Found {len(findings)} issues: {critical_count} critical, {high_count} high severity"
+        parts.append(
+            f"Found {len(findings)} issues: {critical_count} critical, "
+            f"{high_count} high severity"
+        )
+    elif files_analyzed:
+        parts.append("No issues found. Code looks good!")
+
+    if files_analyzed == 0:
+        parts.insert(0, f"No files were analyzed ({len(files_skipped)} skipped)")
+    elif files_skipped:
+        parts.append(f"{len(files_skipped)} file(s) skipped: no analyzer for this language")
+
+    summary = ". ".join(parts) if parts else "Nothing to review."
 
     logger.info(f"Review completed: {status} (score: {overall_score:.1f})")
 
     return ReviewResult(
-        status=status,
+        status=status,  # type: ignore[arg-type]
         overall_score=round(overall_score, 1),
         findings=findings,
         summary=summary,
+        files_skipped=files_skipped,
+        analyzers_unavailable=sorted(analyzers_unavailable),
     )
 
 
