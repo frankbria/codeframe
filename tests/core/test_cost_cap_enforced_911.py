@@ -176,7 +176,13 @@ def test_the_persisted_setting_round_trips_to_the_enforcer(workspace):
 def test_the_verification_fix_loop_also_respects_the_cap(workspace, monkeypatch):
     """A run can sit just under the cap, fail verification, then spend
     max_verification_retries * max_fix_turns more calls. A cap the correction
-    loop ignores is not a cap."""
+    loop ignores is not a cap.
+
+    Drives the real `_run_final_verification` — asserting only that
+    `_cost_cap_message()` returns something would test the helper, not the
+    loop's use of it, and would pass with the guard deleted.
+    """
+    from codeframe.core import gates as core_gates
     from codeframe.core.react_agent import _REASON_COST_CAP_EXCEEDED
 
     _set_cap(workspace, 1.0)
@@ -190,15 +196,37 @@ def test_the_verification_fix_loop_also_respects_the_cap(workspace, monkeypatch)
 
     agent = ReactAgent(workspace=workspace, llm_provider=ExplodingProvider())
     agent._max_cost_usd = agent._resolve_cost_cap()
+    agent._current_task_id = "task-1"
     monkeypatch.setattr(agent, "_estimate_total_cost", lambda: 5.0)
+
+    # Gates fail, so verification enters the LLM fix loop.
+    monkeypatch.setattr(
+        core_gates,
+        "run",
+        lambda *a, **k: core_gates.GateResult(
+            passed=False,
+            checks=[
+                core_gates.GateCheck(
+                    name="pytest",
+                    status=core_gates.GateStatus.FAILED,
+                    output="1 failed",
+                )
+            ],
+        ),
+    )
+    monkeypatch.setattr(agent, "_try_quick_fix", lambda summary: False)
+
     blockers: list[str] = []
     monkeypatch.setattr(
         agent, "_create_text_blocker", lambda text, reason: blockers.append(reason)
     )
 
-    assert agent._cost_cap_message() is not None
-    assert _REASON_COST_CAP_EXCEEDED == "cost_cap_exceeded"
-    assert calls == []
+    ok, reason = agent._run_final_verification("do the thing")
+
+    assert calls == [], "the LLM was called after the cap was reached"
+    assert ok is False
+    assert reason == _REASON_COST_CAP_EXCEEDED
+    assert _REASON_COST_CAP_EXCEEDED in blockers
 
 
 def test_prior_spend_on_the_task_counts_toward_the_cap(workspace, monkeypatch):
