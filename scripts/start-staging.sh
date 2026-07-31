@@ -76,8 +76,8 @@ for port in $FRONTEND_PORT $BACKEND_PORT; do
     if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
         echo -e "${YELLOW}Warning: Port $port already in use${NC}"
         echo "Stopping existing PM2 processes..."
-        pm2 stop all 2>/dev/null || true
-        pm2 delete all 2>/dev/null || true
+        pm2 stop "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
+        pm2 delete "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
         sleep 2
     fi
 done
@@ -101,6 +101,6 @@ echo ""
 echo -e "${BLUE}Useful PM2 commands:${NC}"
 echo "  pm2 list         - Show running processes"
 echo "  pm2 logs         - View all logs"
-echo "  pm2 stop all     - Stop all processes"
-echo "  pm2 restart all  - Restart all processes"
-echo "  pm2 delete all   - Delete all processes"
+echo "  pm2 stop ecosystem.staging.config.js     - Stop staging"
+echo "  pm2 restart ecosystem.staging.config.js  - Restart staging"
+echo "  pm2 delete ecosystem.staging.config.js   - Remove staging"

@@ -103,9 +103,9 @@ restart_services() {
     log "🔄 Attempting to restart staging server..."
 
     # Stop existing processes with graceful shutdown
-    pm2 stop all 2>/dev/null || true
+    pm2 stop "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
     sleep 5
-    pm2 delete all 2>/dev/null || true
+    pm2 delete "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
     sleep 2
 
     # Start services using the startup script if available

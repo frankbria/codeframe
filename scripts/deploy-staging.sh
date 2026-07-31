@@ -84,8 +84,8 @@ for port in $FRONTEND_PORT $BACKEND_PORT; do
     if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
         echo -e "${YELLOW}⚠ Warning: Port $port already in use${NC}"
         echo "Attempting to stop existing services..."
-        pm2 stop all 2>/dev/null || true
-        pm2 delete all 2>/dev/null || true
+        pm2 stop "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
+        pm2 delete "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
         sleep 2
 
         if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
@@ -190,8 +190,8 @@ echo -e "${BLUE}[9/10] Starting Services with PM2${NC}"
 
 # Stop any existing processes
 echo "Stopping existing PM2 processes..."
-pm2 stop all 2>/dev/null || true
-pm2 delete all 2>/dev/null || true
+pm2 stop "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
+pm2 delete "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
 sleep 2
 
 # Start services
@@ -266,9 +266,9 @@ echo -e "${BLUE}Useful PM2 Commands:${NC}"
 echo "  pm2 list              - Show running processes"
 echo "  pm2 logs              - View all logs"
 echo "  pm2 logs --lines 100  - View last 100 log lines"
-echo "  pm2 stop all          - Stop all processes"
-echo "  pm2 restart all       - Restart all processes"
-echo "  pm2 delete all        - Delete all processes"
+echo "  pm2 stop ecosystem.staging.config.js     - Stop staging"
+echo "  pm2 restart ecosystem.staging.config.js  - Restart staging"
+echo "  pm2 delete ecosystem.staging.config.js   - Remove staging"
 echo ""
 echo -e "${BLUE}Log Files:${NC}"
 echo "  Backend:  $PROJECT_ROOT/logs/backend-error.log"
