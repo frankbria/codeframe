@@ -84,8 +84,8 @@ for port in $FRONTEND_PORT $BACKEND_PORT; do
     if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
         echo -e "${YELLOW}⚠ Warning: Port $port already in use${NC}"
         echo "Attempting to stop existing services..."
-        pm2 stop ecosystem.staging.config.js 2>/dev/null || true
-        pm2 delete ecosystem.staging.config.js 2>/dev/null || true
+        pm2 stop "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
+        pm2 delete "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
         sleep 2
 
         if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
@@ -190,8 +190,8 @@ echo -e "${BLUE}[9/10] Starting Services with PM2${NC}"
 
 # Stop any existing processes
 echo "Stopping existing PM2 processes..."
-pm2 stop ecosystem.staging.config.js 2>/dev/null || true
-pm2 delete ecosystem.staging.config.js 2>/dev/null || true
+pm2 stop "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
+pm2 delete "$PROJECT_ROOT/ecosystem.staging.config.js" 2>/dev/null || true
 sleep 2
 
 # Start services
