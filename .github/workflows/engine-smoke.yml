@@ -78,25 +78,34 @@ jobs:
 
       - name: Install engine CLIs
         if: steps.changed.outputs.relevant == 'true'
-        # Best-effort: any CLI that fails to install is simply absent, and the
-        # tier skips that engine rather than failing. A missing CLI must never
-        # look like a passing check, so the summary below reports what ran.
+        # No `|| true` here. A failed install leaves the binary absent, the tier
+        # skips that engine, and pytest still exits 0 — a required check that is
+        # green while covering nothing, which is the exact failure mode this
+        # tier exists to end.
         run: |
-          npm install -g @anthropic-ai/claude-code || echo "claude-code CLI unavailable"
-          npm install -g @openai/codex || echo "codex CLI unavailable"
-          npm install -g opencode-ai || echo "opencode CLI unavailable"
-          npm install -g @kilocode/cli || echo "kilocode CLI unavailable"
+          npm install -g \
+            @anthropic-ai/claude-code \
+            @openai/codex \
+            opencode-ai \
+            @kilocode/cli
 
-      - name: Report which engine CLIs are present
+      - name: Verify every engine CLI is present
         if: steps.changed.outputs.relevant == 'true'
         run: |
+          missing=()
           for b in claude codex opencode kilo; do
             if command -v "$b" >/dev/null; then
-              echo "$b: $(command -v $b)"
+              echo "ok: $b -> $(command -v "$b")"
             else
-              echo "$b: ABSENT — its contract checks will skip"
+              missing+=("$b")
             fi
           done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::engine CLIs missing: ${missing[*]}. The contract" \
+                 "checks for these would skip, leaving this required check" \
+                 "green while covering nothing."
+            exit 1
+          fi
 
       - name: Run the contract leg
         if: steps.changed.outputs.relevant == 'true'
@@ -135,10 +144,28 @@ jobs:
 
       - name: Install engine CLIs
         run: |
-          npm install -g @anthropic-ai/claude-code || echo "claude-code CLI unavailable"
-          npm install -g @openai/codex || echo "codex CLI unavailable"
-          npm install -g opencode-ai || echo "opencode CLI unavailable"
-          npm install -g @kilocode/cli || echo "kilocode CLI unavailable"
+          npm install -g \
+            @anthropic-ai/claude-code \
+            @openai/codex \
+            opencode-ai \
+            @kilocode/cli
+
+      - name: Verify every engine CLI is present
+        # Same reasoning as the contract job: a canary that silently stops
+        # canarying is worse than no canary.
+        run: |
+          missing=()
+          for b in claude codex opencode kilo; do
+            if command -v "$b" >/dev/null; then
+              echo "ok: $b -> $(command -v "$b")"
+            else
+              missing+=("$b")
+            fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::engine CLIs missing: ${missing[*]}"
+            exit 1
+          fi
 
       - name: Configure git
         run: |
