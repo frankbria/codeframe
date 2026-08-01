@@ -2634,6 +2634,14 @@ def work_start(
 @work_app.command("resume")
 def work_resume(
     task_id: str = typer.Argument(..., help="Task ID to resume (can be partial)"),
+    execute: bool = typer.Option(
+        True,
+        "--execute/--no-execute",
+        help="Run the agent on the resumed run (default: yes)",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without making changes"),
+    verbose: bool = typer.Option(False, "--verbose", help="Show detailed progress"),
+    engine: str = typer.Option("react", "--engine", help="Execution engine: react or plan"),
     workspace_path: Optional[Path] = typer.Option(
         None,
         "--workspace",
@@ -2642,6 +2650,10 @@ def work_resume(
     ),
 ) -> None:
     """Resume work on a blocked task.
+
+    Unlike ``work start``, execution is **on by default**: resuming flips the run
+    to RUNNING, and without a worker the task holds an active run that
+    ``work start`` then refuses to restart — with no way out (#1005).
 
     Example:
         codeframe work resume abc123
@@ -2676,6 +2688,30 @@ def work_resume(
         console.print(f"  Task: {task.title}")
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
         console.print("  Status: [yellow]RUNNING[/yellow]")
+
+        if execute:
+            from codeframe.core.agent import AgentStatus
+
+            mode = " [dim](dry run)[/dim]" if dry_run else ""
+            console.print(f"\n[bold]Executing agent...{mode}[/bold]")
+            state = runtime.execute_agent(
+                workspace, run, dry_run=dry_run, verbose=verbose, engine=engine
+            )
+
+            if state.status == AgentStatus.COMPLETED:
+                console.print("[bold green]Task completed successfully![/bold green]")
+            elif state.status == AgentStatus.BLOCKED:
+                console.print("[yellow]Task blocked - human input needed[/yellow]")
+                if state.blocker:
+                    console.print(f"  Question: {state.blocker.question}")
+                console.print("  Use 'codeframe blocker list' to see blockers")
+            elif state.status == AgentStatus.FAILED:
+                console.print("[red]Task execution failed[/red]")
+        else:
+            console.print(
+                "\n[yellow]Not executed.[/yellow] The run is RUNNING with no worker; "
+                "re-run with --execute to continue it."
+            )
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")

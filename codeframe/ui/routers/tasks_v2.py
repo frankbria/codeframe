@@ -769,6 +769,66 @@ async def start_execution(
         )
 
 
+def _spawn_agent_worker(
+    workspace: Workspace,
+    run: Any,
+    task_id: str,
+    *,
+    dry_run: bool = False,
+    verbose: bool = False,
+    engine: str = "react",
+) -> None:
+    """Run the agent for ``run`` on a background thread.
+
+    Shared by ``start`` and ``resume``. It lives in one place because they drifted:
+    resume flipped the run to RUNNING and returned without ever spawning a worker,
+    so the task held an *active* run that nothing executed — and `start_task_run`
+    then refused to start it again, wedging the task until someone edited the
+    database (#1005).
+    """
+    from codeframe.core.models import ErrorEvent
+    from codeframe.ui.routers.streaming_v2 import get_event_publisher
+
+    publisher = get_event_publisher()
+
+    def _run_agent() -> None:
+        try:
+            runtime.execute_agent(
+                workspace,
+                run,
+                dry_run=dry_run,
+                verbose=verbose,
+                event_publisher=publisher,
+                engine=engine,
+            )
+        except Exception as exc:
+            logger.error(f"Background agent failed for task {task_id}: {exc}", exc_info=True)
+            # Reset the run so the task doesn't stay IN_PROGRESS forever
+            # (#722). execute_agent handles errors raised inside its own
+            # try, but common misconfig (missing ANTHROPIC_API_KEY /
+            # unknown provider) raises up front, before that try — this
+            # is the only place that can fail the run. Guarded so an
+            # already-FAILED run (double-fail) can't break the handler.
+            try:
+                runtime.fail_run(workspace, run.id, reason=str(exc))
+            except Exception:
+                logger.debug(
+                    "fail_run skipped for task %s (run not active)",
+                    task_id, exc_info=True,
+                )
+            publisher.publish_sync(
+                task_id,
+                ErrorEvent(
+                    task_id=task_id,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                ),
+            )
+            publisher.complete_task_sync(task_id)
+
+    threading.Thread(target=_run_agent, daemon=True).start()
+
+
 @router.post("/{task_id}/start")
 @rate_limit_ai()
 async def start_single_task(
@@ -815,48 +875,9 @@ async def start_single_task(
         }
 
         if execute:
-            from codeframe.ui.routers.streaming_v2 import get_event_publisher
-            from codeframe.core.models import ErrorEvent
-
-            publisher = get_event_publisher()
-
-            def _run_agent():
-                try:
-                    runtime.execute_agent(
-                        workspace,
-                        run,
-                        dry_run=dry_run,
-                        verbose=verbose,
-                        event_publisher=publisher,
-                        engine=engine,
-                    )
-                except Exception as exc:
-                    logger.error(f"Background agent failed for task {task_id}: {exc}", exc_info=True)
-                    # Reset the run so the task doesn't stay IN_PROGRESS forever
-                    # (#722). execute_agent handles errors raised inside its own
-                    # try, but common misconfig (missing ANTHROPIC_API_KEY /
-                    # unknown provider) raises up front, before that try — this
-                    # is the only place that can fail the run. Guarded so an
-                    # already-FAILED run (double-fail) can't break the handler.
-                    try:
-                        runtime.fail_run(workspace, run.id, reason=str(exc))
-                    except Exception:
-                        logger.debug(
-                            "fail_run skipped for task %s (run not active)",
-                            task_id, exc_info=True,
-                        )
-                    publisher.publish_sync(
-                        task_id,
-                        ErrorEvent(
-                            task_id=task_id,
-                            error=str(exc),
-                            error_type=type(exc).__name__,
-                        ),
-                    )
-                    publisher.complete_task_sync(task_id)
-
-            thread = threading.Thread(target=_run_agent, daemon=True)
-            thread.start()
+            _spawn_agent_worker(
+                workspace, run, task_id, dry_run=dry_run, verbose=verbose, engine=engine
+            )
 
             result["status"] = "executing"
             result["message"] = f"Execution started in background for task {task_id[:8]}. Connect to GET /{task_id}/stream for events."
@@ -934,14 +955,25 @@ async def stop_task(
 async def resume_task(
     request: Request,
     task_id: str,
+    execute: bool = Query(True, description="Run the agent on the resumed run"),
+    dry_run: bool = Query(False, description="Preview changes without making them"),
+    verbose: bool = Query(False, description="Show detailed progress output"),
+    engine: Literal["plan", "react"] = Query("react", description="Execution engine: 'react' (default, ReAct loop) or 'plan' (legacy step-based)"),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict[str, Any]:
     """Resume a blocked task.
 
     This is the v2 equivalent of `cf work resume <task-id>`.
 
+    ``execute`` defaults to **True**, unlike ``start``: the web UI posts here
+    with no query params, and a resumed run nobody executes leaves the task
+    holding an active run that ``start`` then refuses to restart (#1005).
+
     Args:
         task_id: Task to resume
+        execute: Whether to run the agent (default True)
+        dry_run: Preview mode (no actual changes)
+        verbose: Show detailed output
         workspace: v2 Workspace
 
     Returns:
@@ -954,12 +986,21 @@ async def resume_task(
     """
     try:
         run = runtime.resume_run(workspace, task_id)
+
+        message = f"Resumed run {run.id[:8]} for task {task_id[:8]}."
+        if execute:
+            _spawn_agent_worker(
+                workspace, run, task_id, dry_run=dry_run, verbose=verbose, engine=engine
+            )
+            message += f" Connect to GET /{task_id}/stream for events."
+
         return {
             "success": True,
             "run_id": run.id,
             "task_id": task_id,
             "status": run.status.value,
-            "message": f"Resumed run {run.id[:8]} for task {task_id[:8]}.",
+            "executing": execute,
+            "message": message,
         }
     except ValueError as e:
         error_msg = str(e)
