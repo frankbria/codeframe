@@ -327,6 +327,26 @@ class TestCodexTurnStreaming:
         assert result.status == "failed"
         assert any(e.type == "error" for e in events)
 
+    def test_rejected_turn_start_fails_immediately(self) -> None:
+        """A rejected turn never emits turn/completed — don't wait out the timeouts.
+
+        Verified against the real server: a bad threadId/cwd comes back as
+        ``{"id":3,"error":{"code":-32600,"message":"invalid thread id: ..."}}``.
+        """
+        adapter = _make_adapter(stall_timeout_ms=30_000, turn_timeout_ms=30_000)
+
+        started = time.monotonic()
+        result, _ = _run_with_script(
+            adapter,
+            _handshake_lines() + [_error_response(3, -32600, "invalid thread id")],
+            close_stdout=False,
+        )
+        elapsed = time.monotonic() - started
+
+        assert result.status == "failed"
+        assert "invalid thread id" in (result.error or "")
+        assert elapsed < 2.0, f"waited {elapsed:.1f}s for a rejection already on the wire"
+
     def test_eof_before_terminal_event_fails(self) -> None:
         adapter = _make_adapter()
         result, _ = _run_with_script(adapter, _handshake_lines())

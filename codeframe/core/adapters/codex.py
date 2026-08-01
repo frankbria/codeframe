@@ -189,8 +189,10 @@ class CodexAdapter:
         reader = _MessageReader(process.stdout)
         try:
             thread_id = self._handshake(process.stdin, reader, workspace_path)
-            self._start_turn(process.stdin, thread_id, prompt, workspace_path)
-            result = self._stream_turn(reader, process.stdin, on_event=on_event)
+            turn_request_id = self._start_turn(process.stdin, thread_id, prompt, workspace_path)
+            result = self._stream_turn(
+                reader, process.stdin, turn_request_id=turn_request_id, on_event=on_event
+            )
         except _ProtocolError as exc:
             result = AgentResult(status="failed", error=str(exc))
         except Exception as exc:  # unexpected — still report, never leak the process
@@ -287,8 +289,14 @@ class CodexAdapter:
             raise _ProtocolError("Codex app-server returned no thread id from 'thread/start'")
         return thread_id
 
-    def _start_turn(self, stdin: Any, thread_id: str, prompt: str, workspace_path: Path) -> None:
-        """Send turn/start. The response is a plain ack; events arrive as notifications."""
+    def _start_turn(self, stdin: Any, thread_id: str, prompt: str, workspace_path: Path) -> int:
+        """Send turn/start and return its request id.
+
+        The success response is a plain ack (events arrive as notifications),
+        but a rejected turn — bad cwd, bad threadId, auth or model refusal —
+        comes back as a JSON-RPC error on this id and never produces a
+        ``turn/completed``, so the caller has to watch for it.
+        """
         self._next_id += 1
         self._send(
             stdin,
@@ -302,6 +310,7 @@ class CodexAdapter:
                 },
             },
         )
+        return self._next_id
 
     # ------------------------------------------------------------------
     # Turn streaming
@@ -312,6 +321,7 @@ class CodexAdapter:
         reader: _MessageReader,
         stdin: Any,
         *,
+        turn_request_id: int | None = None,
         on_event: Callable[[AgentEvent], None] | None = None,
     ) -> AgentResult:
         """Consume notifications until ``turn/completed`` (or a timeout)."""
@@ -359,7 +369,19 @@ class CodexAdapter:
             if "id" in msg:
                 if method:
                     self._answer_server_request(stdin, msg, on_event=on_event)
-                continue  # a late response to one of our requests: nothing to do
+                elif msg.get("id") == turn_request_id and "error" in msg:
+                    # A rejected turn never emits turn/completed — surface the
+                    # server's reason now instead of waiting out the timeouts.
+                    error = msg["error"] or {}
+                    return AgentResult(
+                        status="failed",
+                        output="\n".join(output_parts),
+                        error=(
+                            f"Codex app-server rejected 'turn/start': "
+                            f"{error.get('message', error)} (code {error.get('code')})"
+                        ),
+                    )
+                continue  # any other response to one of our requests: nothing to do
 
             if method == "turn/completed":
                 turn = params.get("turn") or {}
