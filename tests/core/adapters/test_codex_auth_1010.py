@@ -221,3 +221,23 @@ def test_engines_check_still_flags_an_unauthenticated_codex(codex_home):
 
     # `not all(...)` would pass trivially wherever the binary is absent.
     assert reqs["authenticated"] is False
+
+
+def test_a_non_utf8_auth_json_is_not_authenticated(codex_home):
+    """Review finding (bot, [minor]): read_text() raises UnicodeDecodeError — a
+    ValueError, not an OSError — on a corrupt file, which crashed the check
+    instead of failing closed."""
+    from codeframe.core.adapters.codex import CodexAdapter
+
+    (codex_home / "auth.json").write_bytes(b"\xff\xfe\x00\x00not-utf8")
+
+    assert CodexAdapter.is_authenticated() is False
+
+
+def test_a_directory_where_auth_json_should_be_is_not_authenticated(codex_home):
+    """The OSError half of the same guard."""
+    from codeframe.core.adapters.codex import CodexAdapter
+
+    (codex_home / "auth.json").mkdir()
+
+    assert CodexAdapter.is_authenticated() is False

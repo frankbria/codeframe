@@ -183,7 +183,11 @@ class CodexAdapter:
 
         try:
             auth = json.loads((cls.codex_home() / "auth.json").read_text())
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError, ValueError):
+            # ValueError also covers UnicodeDecodeError from read_text() — a
+            # genuinely corrupt auth.json must read as "not authenticated",
+            # not crash the caller. JSONDecodeError is itself a ValueError, so
+            # this is the whole family. (#1010 review)
             return False
 
         if not isinstance(auth, dict):
