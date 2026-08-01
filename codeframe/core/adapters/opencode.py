@@ -127,6 +127,24 @@ class OpenCodeAdapter(SubprocessAdapter):
     def name(self) -> str:  # noqa: D102
         return "opencode"
 
+    @classmethod
+    def requirements(cls) -> dict[str, str]:
+        """Environment variables ``cf engines check`` reports on."""
+        return {
+            "ANTHROPIC_API_KEY": "Anthropic API key (or `opencode auth login`)",
+            "OPENAI_API_KEY": "OpenAI API key (or `opencode auth login`)",
+        }
+
+    @classmethod
+    def credential_env_vars(cls) -> tuple[str, ...]:
+        """opencode is genuinely multi-provider, so both keys are in scope (#996)."""
+        return ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL")
+
+    @classmethod
+    def home_passthrough(cls) -> tuple[str, ...]:
+        """`opencode auth login` writes to both — config and stored credentials."""
+        return (".config/opencode", ".local/share/opencode")
+
     @staticmethod
     def _prompt_exceeds_argv(prompt: str) -> bool:
         """True when the prompt is too large to survive as a single argv entry."""

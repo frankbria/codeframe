@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 import subprocess
 import threading
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 from codeframe.core.adapters.agent_adapter import AgentEvent, AgentResult
+from codeframe.core.agent_env import build_delegated_agent_env
 from codeframe.core.adapters.git_utils import detect_modified_files
 from codeframe.core.blocker_detection import classify_error_for_blocker
 
@@ -95,17 +95,44 @@ class SubprocessAdapter:
         return prompt
 
     def get_env(self, workspace_path: Path) -> dict[str, str] | None:
-        """Extra environment variables to layer over the inherited environment.
+        """Extra environment variables to layer over the sanitized base.
 
         Override to point a CLI at a config the adapter controls — e.g. opencode's
-        ``OPENCODE_CONFIG`` permission deny-list (#916). None means "inherit
-        unchanged".
+        ``OPENCODE_CONFIG`` permission deny-list (#916). None means "no extras".
 
-        Note this *adds to* the operator's environment rather than replacing it;
-        confining what a delegated agent inherits is #996's subject, not this
-        hook's.
+        Since #996 the base is ``build_delegated_agent_env`` — a deny-by-default
+        allowlist — rather than the operator's whole environment. To let a
+        variable *through* from the operator's shell, declare it in
+        ``credential_env_vars``; this hook is for values the adapter itself
+        computes.
         """
         return None
+
+    @classmethod
+    def credential_env_vars(cls) -> tuple[str, ...]:
+        """Operator environment variables to forward to the CLI (#996).
+
+        Everything else is dropped, so a key exported into the operator's shell
+        later is excluded by construction. Defaults to whatever the adapter
+        already declares as required — override to add optional ones (gateway
+        base URLs, alternate auth tokens).
+        """
+        return tuple(cls.requirements())
+
+    @classmethod
+    def home_passthrough(cls) -> tuple[str, ...]:
+        """Paths under the operator's real home to link into the sandbox home.
+
+        These CLIs keep their own login in ``~/.claude``, ``~/.codex`` etc., so a
+        HOME sandbox without this logs them out. Paths are relative to the real
+        home; missing ones are skipped.
+        """
+        return ()
+
+    @classmethod
+    def requirements(cls) -> dict[str, str]:
+        """Environment variables ``cf engines check`` reports on."""
+        return {}
 
     def run(
         self,
@@ -127,8 +154,15 @@ class SubprocessAdapter:
         stdout_lines: list[str] = []
         stderr_chunks: list[str] = []
 
-        extra_env = self.get_env(workspace_path)
-        child_env = {**os.environ, **extra_env} if extra_env else None
+        # Deny-by-default rather than the operator's whole environment, and a
+        # per-adapter HOME rather than the one holding the credential store (#996).
+        child_env = build_delegated_agent_env(
+            workspace_path,
+            adapter_name=self.name,
+            credential_vars=self.credential_env_vars(),
+            home_passthrough=self.home_passthrough(),
+        )
+        child_env.update(self.get_env(workspace_path) or {})
 
         try:
             process = subprocess.Popen(

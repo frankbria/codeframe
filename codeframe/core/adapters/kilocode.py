@@ -80,6 +80,11 @@ class KilocodeAdapter(SubprocessAdapter):
         }
 
     @classmethod
+    def home_passthrough(cls) -> tuple[str, ...]:
+        """`kilo` keeps its login here; a bare sandbox home logs it out (#996)."""
+        return (".kilocode",)
+
+    @classmethod
     def check_ready(cls) -> dict[str, bool]:
         """Check if the kilo binary is available on PATH."""
         return {"kilo_binary": shutil.which(cls._resolve_binary()) is not None}

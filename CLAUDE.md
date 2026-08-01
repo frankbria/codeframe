@@ -340,6 +340,30 @@ CODEFRAME_ENABLE_TEST_ENDPOINTS=1     # Registers the integration-test-only
                                       # production — leave unset except in CI /
                                       # WebSocket integration test runs.
 
+# Delegated-agent HOME sandbox (#996) — default ON (sandboxed)
+CODEFRAME_AGENT_INHERIT_HOME=1        # Run delegated coding CLIs (claude-code,
+                                      # codex, opencode, kilocode) with the
+                                      # operator's REAL $HOME instead of a
+                                      # per-adapter one. Off by default: those
+                                      # subprocesses used to inherit the whole
+                                      # environment and the real HOME, which
+                                      # resolves ~/.codeframe/credentials,
+                                      # ~/.ssh and ~/.config/gh/hosts.yml — on a
+                                      # test machine, 69 env vars (5 of them API
+                                      # keys) down to 12 (0 keys) once fixed.
+                                      # Each adapter now declares the credentials
+                                      # it needs (`credential_env_vars`) and its
+                                      # own login dir (`home_passthrough`, e.g.
+                                      # ~/.claude, ~/.codex), which is symlinked
+                                      # into ~/.codeframe/agent-homes/<adapter>
+                                      # so `claude`/`codex` stay logged in. Set
+                                      # this only if a CLI keeps state somewhere
+                                      # CodeFrame does not forward. It does NOT
+                                      # reopen the env allowlist — separate knob.
+                                      # Like build_agent_env, not containment: an
+                                      # absolute path still reaches whatever the
+                                      # operator can read.
+
 # LLM Provider selection (multi-provider support)
 # Priority: CLI flag > env var > .codeframe/config.yaml > default (anthropic)
 CODEFRAME_LLM_PROVIDER=anthropic      # Provider: anthropic (default), openai, ollama, vllm, compatible
