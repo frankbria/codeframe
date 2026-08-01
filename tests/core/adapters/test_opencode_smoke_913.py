@@ -17,6 +17,7 @@ shipped multi-model options.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -27,6 +28,14 @@ from codeframe.core.adapters.opencode import OpenCodeAdapter
 
 pytestmark = [
     pytest.mark.v2,
+    # Opt-in, not merely binary-gated. These drive real opencode sessions —
+    # real credentials, real model calls, real money — so a plain
+    # `uv run pytest` must not start doing that just because the CLI happens to
+    # be installed on the machine. (#1012 review)
+    pytest.mark.skipif(
+        os.environ.get("CODEFRAME_ENGINE_SMOKE") != "1",
+        reason="engine smoke tier is opt-in: set CODEFRAME_ENGINE_SMOKE=1",
+    ),
     pytest.mark.skipif(
         shutil.which("opencode") is None, reason="opencode CLI not installed"
     ),
