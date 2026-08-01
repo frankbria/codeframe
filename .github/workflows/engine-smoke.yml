@@ -1,0 +1,157 @@
+name: Engine Smoke
+
+# Runs the shipped engine adapters against their REAL CLIs (#915).
+#
+# Three engines shipped with invocations that could not do any work — #913
+# (opencode's non-existent --non-interactive), #914 (codex's invented
+# app-server handshake), #1012 (kilocode's non-existent `run` subcommand) —
+# every one of them behind a green suite, because the adapter tests mock
+# subprocess.Popen and assert the adapter agrees with itself.
+#
+# Two legs, gated differently on purpose:
+#   contract — CLI exists, responds, still documents the adapter's entry point.
+#              No credentials, no model calls, seconds. Runs on every PR so it
+#              can be a required check for adapter changes.
+#   task     — one trivial task per engine driven to a terminal state with a
+#              real file written. Needs credentials, costs money, takes minutes.
+#              Scheduled and manual only.
+
+on:
+  pull_request:
+  schedule:
+    # Weekly — Sunday 4am UTC, an hour after the lifecycle run.
+    - cron: '0 4 * * 0'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  contract:
+    # Always runs — a path-filtered required check reports "skipped" and blocks
+    # the merge forever, so the filtering happens inside the job instead.
+    name: Engine CLI Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Detect engine adapter changes
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base="origin/${{ github.base_ref }}"
+          git fetch -q origin "${{ github.base_ref }}"
+          if git diff --name-only "$base"...HEAD \
+              | grep -qE '^(codeframe/core/adapters/|tests/core/adapters/|\.github/workflows/engine-smoke\.yml)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "No engine adapter changes — contract checks not required."
+          fi
+
+      - name: Set up Python
+        if: steps.changed.outputs.relevant == 'true'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        if: steps.changed.outputs.relevant == 'true'
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        if: steps.changed.outputs.relevant == 'true'
+        run: |
+          uv venv
+          uv sync --extra dev
+          uv pip install -e .
+
+      - name: Install engine CLIs
+        if: steps.changed.outputs.relevant == 'true'
+        # Best-effort: any CLI that fails to install is simply absent, and the
+        # tier skips that engine rather than failing. A missing CLI must never
+        # look like a passing check, so the summary below reports what ran.
+        run: |
+          npm install -g @anthropic-ai/claude-code || echo "claude-code CLI unavailable"
+          npm install -g @openai/codex || echo "codex CLI unavailable"
+          npm install -g opencode-ai || echo "opencode CLI unavailable"
+          npm install -g @kilocode/cli || echo "kilocode CLI unavailable"
+
+      - name: Report which engine CLIs are present
+        if: steps.changed.outputs.relevant == 'true'
+        run: |
+          for b in claude codex opencode kilo; do
+            if command -v "$b" >/dev/null; then
+              echo "$b: $(command -v $b)"
+            else
+              echo "$b: ABSENT — its contract checks will skip"
+            fi
+          done
+
+      - name: Run the contract leg
+        if: steps.changed.outputs.relevant == 'true'
+        # No CODEFRAME_ENGINE_SMOKE and no secrets: the task leg stays skipped.
+        run: |
+          uv run pytest tests/core/adapters/test_engine_smoke_tier.py \
+            -v --no-header -p no:randomly
+
+  task:
+    # Real credentials and real model calls — never on a pull request.
+    name: Engine Task Smoke
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv sync --extra dev
+          uv pip install -e .
+
+      - name: Install engine CLIs
+        run: |
+          npm install -g @anthropic-ai/claude-code || echo "claude-code CLI unavailable"
+          npm install -g @openai/codex || echo "codex CLI unavailable"
+          npm install -g opencode-ai || echo "opencode CLI unavailable"
+          npm install -g @kilocode/cli || echo "kilocode CLI unavailable"
+
+      - name: Configure git
+        run: |
+          git config --global user.name "Engine Smoke"
+          git config --global user.email "engine-smoke@codeframe.test"
+
+      - name: Run the full tier
+        env:
+          CODEFRAME_ENGINE_SMOKE: '1'
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          uv run pytest tests/core/adapters/test_engine_smoke_tier.py \
+            tests/core/adapters/test_opencode_smoke_913.py \
+            tests/core/adapters/test_kilocode_smoke_1012.py \
+            -v --no-header -p no:randomly -rs
