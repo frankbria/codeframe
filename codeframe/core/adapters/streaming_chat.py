@@ -137,6 +137,55 @@ _TOOLS_FOR_API: list[dict] = [
 
 
 # ---------------------------------------------------------------------------
+# Tool-loop continuation
+# ---------------------------------------------------------------------------
+
+
+def build_tool_continuation(
+    *,
+    assistant_text: str,
+    tool_calls: list[dict],
+    tool_results: list[dict],
+) -> list[dict]:
+    """Build the two messages that re-enter the stream after running tools.
+
+    Uses the **internal neutral keys** (``tool_calls`` / ``tool_results``), which
+    every provider already translates: ``AnthropicProvider._convert_messages``
+    turns them into ``tool_use`` / ``tool_result`` blocks, and
+    ``OpenAIProvider._convert_messages`` into ``tool_calls`` /  ``role="tool"``
+    messages.
+
+    This adapter previously emitted Anthropic block form directly. OpenAI's
+    converter only special-cases the neutral keys, so those blocks hit its
+    passthrough branch and raw Anthropic content was POSTed to Chat Completions —
+    a 400 for every openai/ollama/vllm session the moment a tool was called
+    (#918). Emitting neutral keys in this one place fixes every provider at once,
+    rather than adding a second translation layer to each.
+
+    Args:
+        assistant_text: Any prose the model streamed before calling tools.
+        tool_calls: ``{"id", "name", "input"}`` per call, in call order.
+        tool_results: ``{"tool_call_id", "content"}`` per result.
+
+    Returns:
+        ``[assistant_turn, tool_result_turn]``, in that order — Anthropic rejects
+        a tool_result that is not immediately preceded by the assistant message
+        carrying the matching tool_use.
+    """
+    return [
+        {
+            "role": "assistant",
+            "content": assistant_text,
+            "tool_calls": [
+                {"id": tc["id"], "name": tc["name"], "input": tc.get("input") or {}}
+                for tc in tool_calls
+            ],
+        },
+        {"role": "user", "content": "", "tool_results": tool_results},
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Adapter
 # ---------------------------------------------------------------------------
 
@@ -487,34 +536,14 @@ class StreamingChatAdapter:
                 )
 
                 tool_result_blocks.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tc["id"],
-                        "content": result_text,
-                    }
+                    {"tool_call_id": tc["id"], "content": result_text}
                 )
 
-            # Replay the assistant turn (text + tool_use blocks) followed by the
-            # tool results. The Anthropic API rejects (400) a tool_result user
-            # message that isn't immediately preceded by the assistant message
-            # carrying the matching tool_use blocks.
-            assistant_content: list[dict] = []
-            if assistant_text:
-                assistant_content.append({"type": "text", "text": assistant_text})
-            for tc in pending_tool_calls:
-                assistant_content.append(
-                    {
-                        "type": "tool_use",
-                        "id": tc["id"],
-                        "name": tc["name"],
-                        "input": tc.get("input") or {},
-                    }
-                )
-
-            current_messages = current_messages + [
-                {"role": "assistant", "content": assistant_content},
-                {"role": "user", "content": tool_result_blocks},
-            ]
+            current_messages = current_messages + build_tool_continuation(
+                assistant_text=assistant_text,
+                tool_calls=pending_tool_calls,
+                tool_results=tool_result_blocks,
+            )
 
 
 # ---------------------------------------------------------------------------
