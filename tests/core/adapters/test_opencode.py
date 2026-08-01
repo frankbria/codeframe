@@ -159,6 +159,22 @@ class TestOpenCodeAdapter:
             matched = [g for g in _DENIED_BASH_GLOBS if fnmatch.fnmatch(command, g)]
             assert not matched, f"{command!r} wrongly denied by {matched}"
 
+    def test_the_deny_config_is_one_file_per_process(self) -> None:
+        """Adapters are built per task, so a per-instance temp file would leak.
+
+        The deny-list is a constant; writing a fresh /tmp entry per task would
+        grow without bound once --auto is wired in. (#916 review)
+        """
+        with patch("shutil.which", return_value="/usr/bin/opencode"):
+            paths = {
+                OpenCodeAdapter(auto_approve=True).get_env(Path("/tmp/repo"))[
+                    "OPENCODE_CONFIG"
+                ]
+                for _ in range(25)
+            }
+
+        assert len(paths) == 1, f"{len(paths)} config files for 25 adapters"
+
     def test_no_config_is_imposed_without_auto_approval(self) -> None:
         """Without `--auto` the operator's own opencode config governs.
 

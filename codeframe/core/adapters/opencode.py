@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import tempfile
 from pathlib import Path
@@ -39,6 +40,31 @@ _DENIED_BASH_GLOBS = (
     # The operator's credential store
     "*.codeframe/credentials*",
 )
+
+#: The deny-list is a constant, so one file per *process* — not per adapter.
+#: Adapters are constructed per task, so an instance-scoped temp file would leak
+#: one /tmp entry per task once --auto is wired in. (#916 review)
+_PERMISSION_CONFIG: Path | None = None
+
+
+def _permission_config_path() -> Path:
+    """Path to the deny-list config `--auto` is checked against, written once."""
+    global _PERMISSION_CONFIG
+
+    if _PERMISSION_CONFIG is not None and _PERMISSION_CONFIG.exists():
+        return _PERMISSION_CONFIG
+
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", prefix="codeframe-opencode-", delete=False
+    )
+    with handle:
+        json.dump(
+            {"permission": {"bash": {glob: "deny" for glob in _DENIED_BASH_GLOBS}}},
+            handle,
+        )
+    _PERMISSION_CONFIG = Path(handle.name)
+    atexit.register(_PERMISSION_CONFIG.unlink, missing_ok=True)
+    return _PERMISSION_CONFIG
 
 #: Linux caps a *single* argv entry at MAX_ARG_STRLEN — 32 pages, 128 KiB —
 #: independently of the much larger total ARG_MAX. CodeFrame's context packager
@@ -96,7 +122,6 @@ class OpenCodeAdapter(SubprocessAdapter):
             require_file_changes=True,
         )
         self._auto_approve = auto_approve
-        self._permission_config: Path | None = None
 
     @property
     def name(self) -> str:  # noqa: D102
@@ -129,24 +154,6 @@ class OpenCodeAdapter(SubprocessAdapter):
             cmd.append(prompt)
         return cmd
 
-    def _permission_config_path(self) -> Path:
-        """Write (once) the deny-list config `--auto` is checked against.
-
-        Kept for the adapter's lifetime rather than per run: opencode reads it at
-        startup, and regenerating it per task would be churn for a constant.
-        """
-        if self._permission_config is None:
-            handle = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".json", prefix="codeframe-opencode-", delete=False
-            )
-            with handle:
-                json.dump(
-                    {"permission": {"bash": {glob: "deny" for glob in _DENIED_BASH_GLOBS}}},
-                    handle,
-                )
-            self._permission_config = Path(handle.name)
-        return self._permission_config
-
     def get_env(self, workspace_path: Path) -> dict[str, str] | None:
         """Point opencode at the deny-list config when auto-approval is on (#916).
 
@@ -162,7 +169,7 @@ class OpenCodeAdapter(SubprocessAdapter):
         """
         if not self._auto_approve:
             return None
-        return {"OPENCODE_CONFIG": str(self._permission_config_path())}
+        return {"OPENCODE_CONFIG": str(_permission_config_path())}
 
     def get_stdin(self, prompt: str) -> str | None:
         """The prompt, but only when it did not fit in argv.
