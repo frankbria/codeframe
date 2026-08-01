@@ -41,6 +41,16 @@ def repo(tmp_path: Path) -> Path:
     workspace = tmp_path / "repo"
     workspace.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
+    # A repo with no commits has an unborn HEAD, so `git rev-parse HEAD` fails,
+    # `_git_head` returns None, and `require_file_changes` reads the workspace as
+    # "not a git repo" and never fires — which would silently neuter the
+    # writes-nothing assertion below. Give it a baseline commit.
+    subprocess.run(
+        ["git", "-c", "user.email=test@example.com", "-c", "user.name=test",
+         "commit", "-q", "--allow-empty", "-m", "baseline"],
+        cwd=workspace,
+        check=True,
+    )
     return workspace
 
 

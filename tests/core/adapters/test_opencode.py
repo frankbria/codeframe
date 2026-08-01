@@ -52,15 +52,43 @@ class TestOpenCodeAdapter:
         assert "--non-interactive" not in cmd
 
     def test_the_prompt_is_an_argument_not_stdin(self) -> None:
-        """`opencode run` declares `message` as a positional; it reads no stdin.
+        """`opencode run` declares `message` as a positional.
 
-        Returning the prompt here as well would send the instruction twice.
+        Returning the prompt from get_stdin as well would send it twice.
         """
         with patch("shutil.which", return_value="/usr/bin/opencode"):
             adapter = OpenCodeAdapter()
 
         assert adapter.get_stdin("my prompt") is None
         assert adapter.build_command("my prompt", Path("/tmp"))[-1] == "my prompt"
+
+    def test_an_oversized_prompt_moves_to_stdin(self) -> None:
+        """Linux caps one argv entry at 128 KiB, well under the 100K-token budget.
+
+        Passing such a prompt positionally raises OSError(E2BIG) before opencode
+        starts — every large-prompt run would fail. Verified: `/bin/true` with a
+        200 KB argument raises "Argument list too long".
+        """
+        big = "x" * 200_000
+        with patch("shutil.which", return_value="/usr/bin/opencode"):
+            adapter = OpenCodeAdapter()
+
+        cmd = adapter.build_command(big, Path("/tmp"))
+        assert cmd == ["/usr/bin/opencode", "run"], "oversized prompt must leave argv"
+        assert adapter.get_stdin(big) == big, "…and must still reach opencode"
+
+        # The real limit, not just a big number: this is executable as argv.
+        assert all(len(a.encode()) < 128 * 1024 for a in cmd)
+
+    def test_the_prompt_is_never_sent_twice(self) -> None:
+        """Whichever transport is chosen, exactly one of them carries the prompt."""
+        with patch("shutil.which", return_value="/usr/bin/opencode"):
+            adapter = OpenCodeAdapter()
+
+        for prompt in ("small", "x" * 200_000):
+            in_argv = prompt in adapter.build_command(prompt, Path("/tmp"))
+            in_stdin = adapter.get_stdin(prompt) is not None
+            assert in_argv != in_stdin, f"prompt of {len(prompt)} bytes sent {in_argv + in_stdin}x"
 
     def test_a_zero_work_run_is_not_reported_completed(self) -> None:
         """Exit 0 with nothing written is a false completion: gates would then

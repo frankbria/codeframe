@@ -6,6 +6,13 @@ from pathlib import Path
 
 from codeframe.core.adapters.subprocess_adapter import SubprocessAdapter
 
+#: Linux caps a *single* argv entry at MAX_ARG_STRLEN — 32 pages, 128 KiB —
+#: independently of the much larger total ARG_MAX. CodeFrame's context packager
+#: budgets 100K tokens (~400 KB of prompt), so a large task prompt passed as a
+#: positional raises OSError(E2BIG) before opencode ever starts. Verified:
+#: ``subprocess.run(["/bin/true", "x" * 200_000])`` → "Argument list too long".
+_MAX_ARG_BYTES = 128 * 1024
+
 
 class OpenCodeAdapter(SubprocessAdapter):
     """Adapter that delegates code execution to OpenCode CLI.
@@ -55,24 +62,39 @@ class OpenCodeAdapter(SubprocessAdapter):
     def name(self) -> str:  # noqa: D102
         return "opencode"
 
+    @staticmethod
+    def _prompt_exceeds_argv(prompt: str) -> bool:
+        """True when the prompt is too large to survive as a single argv entry."""
+        return len(prompt.encode("utf-8")) >= _MAX_ARG_BYTES
+
     def build_command(self, prompt: str, workspace_path: Path) -> list[str]:
         """Build the opencode CLI command.
 
+        ``opencode run`` declares ``message`` as a positional array, and that is
+        the form verified end-to-end against the CLI. An oversized prompt cannot
+        go that way (see ``_MAX_ARG_BYTES``), so it is omitted from argv and sent
+        on stdin instead — ``opencode run`` with no positional reads the message
+        from stdin, confirmed by its own ``prompt_submit`` log carrying the piped
+        text verbatim.
+
         Args:
-            prompt: The task prompt — a positional argument to ``run``, not
-                stdin. ``opencode run`` declares ``message`` as a positional
-                array; it does not read the prompt from stdin.
+            prompt: The task prompt.
             workspace_path: Workspace root (cwd is set by the base class).
 
         Returns:
             Command list for subprocess.Popen.
         """
-        return [self._binary_path, *self._cli_args, prompt]
+        cmd = [self._binary_path, *self._cli_args]
+        if not self._prompt_exceeds_argv(prompt):
+            cmd.append(prompt)
+        return cmd
 
     def get_stdin(self, prompt: str) -> str | None:
-        """No stdin: the prompt travels as an argument to ``run``.
+        """The prompt, but only when it did not fit in argv.
 
         Returns:
-            None — sending it twice would duplicate the instruction.
+            None for a normal prompt — it is already a positional argument, and
+            sending it twice would duplicate the instruction. The prompt itself
+            when it was too large for argv.
         """
-        return None
+        return prompt if self._prompt_exceeds_argv(prompt) else None
