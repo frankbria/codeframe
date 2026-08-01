@@ -26,10 +26,14 @@ class OpenCodeAdapter(SubprocessAdapter):
     Requires OpenCode to be installed: https://github.com/sst/opencode
     """
 
-    def __init__(self, auto_approve: bool = False) -> None:
+    def __init__(self, auto_approve: bool = False, timeout_s: int | None = None) -> None:
         """Initialize the OpenCode adapter.
 
         Args:
+            timeout_s: Max execution time, forwarded to ``SubprocessAdapter``
+                (same knob as ``KilocodeAdapter``). None keeps the 30-minute
+                default; tests bound it far lower so an opencode hang fails in
+                seconds rather than stalling the suite.
             auto_approve: Pass ``--auto``, which opencode documents as
                 "auto-approve permissions that are not explicitly denied
                 (dangerous!)". **Off by default.** Verified against opencode
@@ -50,6 +54,7 @@ class OpenCodeAdapter(SubprocessAdapter):
         super().__init__(
             binary="opencode",
             cli_args=cli_args,
+            timeout_s=timeout_s,
             # A coding agent that exits 0 having written nothing is a false
             # completion: gates then run on an unchanged tree and the task can be
             # marked DONE with no code. Same guard the claude-code adapter got

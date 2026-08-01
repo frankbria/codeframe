@@ -128,16 +128,19 @@ def test_the_old_invocation_does_no_work(repo: Path) -> None:
 def test_a_run_that_writes_nothing_is_not_reported_completed(repo: Path) -> None:
     """End to end through `adapter.run`, in a real git repo, with a prompt that
     asks for no file changes — the guard must catch it."""
-    adapter = OpenCodeAdapter()
+    # Bound the run: SubprocessAdapter.run catches TimeoutExpired itself and
+    # returns status="failed", so it never propagates — catching it here would
+    # be dead code, and without an explicit timeout an opencode hang would sit
+    # on the 30-minute default and then "pass" for the wrong reason.
+    adapter = OpenCodeAdapter(timeout_s=_TIMEOUT_S)
 
-    try:
-        result = adapter.run(
-            "task-smoke",
-            "Reply with the single word ACKNOWLEDGED. Do not create, edit or "
-            "delete any files.",
-            repo,
-        )
-    except subprocess.TimeoutExpired:
+    result = adapter.run(
+        "task-smoke",
+        "Reply with the single word ACKNOWLEDGED. Do not create, edit or "
+        "delete any files.",
+        repo,
+    )
+    if (result.error or "").startswith("Process timed out"):
         pytest.skip("opencode did not complete in time")
 
     changed = subprocess.run(
