@@ -39,6 +39,7 @@ from codeframe.core.adapters.agent_adapter import (
     AgentResult,
 )
 from codeframe.core.adapters.git_utils import detect_modified_files
+from codeframe.core.agent_env import build_delegated_agent_env
 from codeframe.core.dangerous_commands import is_dangerous_command
 
 logger = logging.getLogger(__name__)
@@ -150,6 +151,16 @@ class CodexAdapter:
         """Return required environment variables for ``cf engines check``."""
         return {"OPENAI_API_KEY": "OpenAI API key"}
 
+    @classmethod
+    def credential_env_vars(cls) -> tuple[str, ...]:
+        """Plus the gateway override — an operator proxying OpenAI still needs it."""
+        return ("OPENAI_API_KEY", "OPENAI_BASE_URL")
+
+    @classmethod
+    def home_passthrough(cls) -> tuple[str, ...]:
+        """``codex login`` writes here; without it the sandbox home logs it out."""
+        return (".codex",)
+
     # ------------------------------------------------------------------
     # AgentAdapter.run
     # ------------------------------------------------------------------
@@ -173,6 +184,14 @@ class CodexAdapter:
                 stderr=subprocess.PIPE,
                 cwd=str(workspace_path),
                 text=True,
+                # Codex spawns its own process rather than going through
+                # SubprocessAdapter.run, so it needs the #996 env explicitly.
+                env=build_delegated_agent_env(
+                    workspace_path,
+                    adapter_name=self.name,
+                    credential_vars=self.credential_env_vars(),
+                    home_passthrough=self.home_passthrough(),
+                ),
             )
         except FileNotFoundError:
             return AgentResult(
