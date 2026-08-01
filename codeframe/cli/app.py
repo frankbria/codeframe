@@ -1507,7 +1507,9 @@ def prd_generate(
                     session.start_discovery()
             except NoApiKeyError as e:
                 console.print(f"[red]Error:[/red] {e}")
-                console.print("\n[dim]Set ANTHROPIC_API_KEY environment variable to use AI discovery.[/dim]")
+                # The NoApiKeyError text already names the resolved provider's
+                # key; a hardcoded ANTHROPIC_API_KEY hint contradicts it (#917).
+                console.print("\n[dim]Set the API key named above to use AI discovery.[/dim]")
                 raise typer.Exit(1)
 
         console.print("\n[bold]Starting AI-driven PRD discovery...[/bold]")

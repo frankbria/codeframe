@@ -836,7 +836,7 @@ def get_active_session(workspace: Workspace) -> Optional[PrdDiscoverySession]:
         PrdDiscoverySession if found, None if no active session exists
 
     Raises:
-        NoApiKeyError: If session exists but ANTHROPIC_API_KEY is not set
+        NoApiKeyError: If a session exists but the resolved provider's API key is unset
     """
     _ensure_discovery_schema(workspace)
 
@@ -858,20 +858,15 @@ def get_active_session(workspace: Workspace) -> Optional[PrdDiscoverySession]:
     if not row:
         return None
 
-    # Need API key to load session
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        logger.warning(
-            "Cannot load discovery session %s: ANTHROPIC_API_KEY environment "
-            "variable is not set. Set the API key to resume this session.",
-            row[0],
-        )
-        raise NoApiKeyError(
-            "ANTHROPIC_API_KEY is required to load discovery session. "
-            "Set the environment variable to resume."
-        )
-
-    session = PrdDiscoverySession(workspace, api_key=api_key)
+    # Construct with no api_key so __post_init__ runs the resolution chain
+    # (CODEFRAME_LLM_PROVIDER -> .codeframe/config.yaml -> anthropic, #861).
+    # Reading ANTHROPIC_API_KEY here and passing it explicitly took the legacy
+    # branch and forced the Anthropic path, so a workspace configured for
+    # openai/ollama could start discovery but never resume it — and when an
+    # Anthropic key merely happened to be present, resuming silently switched
+    # provider mid-session. NoApiKeyError from __post_init__ already names the
+    # resolved provider's key. (#917)
+    session = PrdDiscoverySession(workspace)
     session.load_session(row[0])
     return session
 
@@ -1056,14 +1051,16 @@ def get_discovery_status(
     else:
         try:
             session = get_active_session(workspace)
-        except NoApiKeyError:
-            # Session exists but can't load without API key
+        except NoApiKeyError as e:
+            # Session exists but can't load without an API key. Surface the
+            # resolved provider's key from the exception rather than naming
+            # ANTHROPIC_API_KEY unconditionally (#917).
             return {
                 "state": "unknown",
                 "session_id": None,
                 "progress": {},
                 "current_question": None,
-                "error": "ANTHROPIC_API_KEY required to load session",
+                "error": str(e),
             }
 
     if session is None:
