@@ -48,7 +48,9 @@ class TestOpenCodeAdapter:
             adapter = OpenCodeAdapter()
             cmd = adapter.build_command("prompt", Path("/tmp"))
 
-        assert cmd == ["/usr/bin/opencode", "run", "prompt"]
+        # --dir because opencode resolves its project directory from the parent
+        # process and ignores the subprocess cwd (#1007).
+        assert cmd == ["/usr/bin/opencode", "run", "--dir", "/tmp", "prompt"]
         assert "--non-interactive" not in cmd
 
     def test_the_prompt_is_an_argument_not_stdin(self) -> None:
@@ -74,7 +76,9 @@ class TestOpenCodeAdapter:
             adapter = OpenCodeAdapter()
 
         cmd = adapter.build_command(big, Path("/tmp"))
-        assert cmd == ["/usr/bin/opencode", "run"], "oversized prompt must leave argv"
+        assert cmd == ["/usr/bin/opencode", "run", "--dir", "/tmp"], (
+            "oversized prompt must leave argv — but the workspace must not"
+        )
         assert adapter.get_stdin(big) == big, "…and must still reach opencode"
 
         # The real limit, not just a big number: this is executable as argv.

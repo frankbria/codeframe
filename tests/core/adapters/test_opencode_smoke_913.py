@@ -100,13 +100,9 @@ def test_the_adapter_command_actually_writes_a_file(repo: Path) -> None:
         pytest.skip(f"opencode did not complete within {_TIMEOUT_S}s")
 
     produced = repo / "smoke.txt"
-    if not produced.exists() and "smoke.txt" in proc.stdout:
-        # opencode reported writing the file but it is not in the workspace —
-        # it resolves its project directory from the *parent* process, ignoring
-        # the subprocess cwd every other adapter relies on. Tracked as
-        # #1007 [P0.27]; distinct from this issue's contract.
-        pytest.xfail("opencode ignored cwd and wrote outside the workspace")
-
+    # The xfail that used to sit here — opencode reporting a write that landed
+    # outside the workspace, because it resolves its project directory from the
+    # parent process — is fixed in #1007: build_command now passes --dir.
     assert produced.exists(), (
         f"the adapter's command wrote nothing.\n"
         f"cmd={cmd}\nstdout={proc.stdout[-2000:]}\nstderr={proc.stderr[-2000:]}"
