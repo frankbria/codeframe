@@ -18,6 +18,7 @@ but it is **launch-gating**, not deferred: kilocode is a shipped engine.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -28,6 +29,14 @@ from codeframe.core.adapters.kilocode import KilocodeAdapter
 
 pytestmark = [
     pytest.mark.v2,
+    # Opt-in, not merely binary-gated. These drive real kilocode sessions —
+    # real credentials, real model calls, real money, 20-240s each — so a plain
+    # `uv run pytest` must not start doing that just because the CLI happens to
+    # be installed on the machine.
+    pytest.mark.skipif(
+        os.environ.get("CODEFRAME_ENGINE_SMOKE") != "1",
+        reason="engine smoke tier is opt-in: set CODEFRAME_ENGINE_SMOKE=1",
+    ),
     pytest.mark.skipif(
         shutil.which(KilocodeAdapter._resolve_binary()) is None,
         reason="kilo CLI not installed",
