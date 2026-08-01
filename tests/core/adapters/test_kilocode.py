@@ -72,6 +72,29 @@ class TestKilocodeAdapter:
         assert "run" not in cmd, "`kilo run` opens the TUI and does no work"
         assert cmd[1] == "do the thing", "the prompt must be the first positional"
 
+    def test_permissions_are_never_blanket_auto_approved(self) -> None:
+        """`--yolo` must never be passed (#916).
+
+        Verified against kilocode 0.22.0's own help, the two flags are distinct:
+
+            -a, --auto   Run in autonomous mode (non-interactive)
+                --yolo   Auto-approve all tool permissions
+
+        So `--auto` is the headless-execution flag, *not* a permission bypass —
+        the adapter is not blanket-approving anything today. This test exists so
+        that stays true: adding `--yolo` would hand a delegated agent, driven by
+        externally-authored issue text (#565), unreviewed tool permissions.
+
+        NOTE: kilocode 7.x redefines `--auto` as "auto-approve all permissions",
+        which would make the adapter's existing flag a blanket bypass on a
+        current install. That is part of the migration tracked in #1015.
+        """
+        with patch(_WHICH, return_value="/usr/bin/kilo"):
+            adapter = KilocodeAdapter()
+        cmd = adapter.build_command("do the thing", Path("/tmp/repo"))
+
+        assert "--yolo" not in cmd
+
     def test_a_zero_work_run_is_not_reported_completed(self) -> None:
         """The TUI path exits 0 having written nothing — that must not read as success."""
         with patch(_WHICH, return_value="/usr/bin/kilo"):

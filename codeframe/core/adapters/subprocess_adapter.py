@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import threading
@@ -93,6 +94,19 @@ class SubprocessAdapter:
         """
         return prompt
 
+    def get_env(self, workspace_path: Path) -> dict[str, str] | None:
+        """Extra environment variables to layer over the inherited environment.
+
+        Override to point a CLI at a config the adapter controls — e.g. opencode's
+        ``OPENCODE_CONFIG`` permission deny-list (#916). None means "inherit
+        unchanged".
+
+        Note this *adds to* the operator's environment rather than replacing it;
+        confining what a delegated agent inherits is #996's subject, not this
+        hook's.
+        """
+        return None
+
     def run(
         self,
         task_id: str,
@@ -113,6 +127,9 @@ class SubprocessAdapter:
         stdout_lines: list[str] = []
         stderr_chunks: list[str] = []
 
+        extra_env = self.get_env(workspace_path)
+        child_env = {**os.environ, **extra_env} if extra_env else None
+
         try:
             process = subprocess.Popen(
                 cmd,
@@ -121,6 +138,7 @@ class SubprocessAdapter:
                 stderr=subprocess.PIPE,
                 cwd=str(workspace_path),
                 text=True,
+                env=child_env,
             )
 
             # Drain stderr in a background thread to prevent deadlock.

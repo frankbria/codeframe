@@ -2,9 +2,69 @@
 
 from __future__ import annotations
 
+import atexit
+import json
+import tempfile
 from pathlib import Path
 
 from codeframe.core.adapters.subprocess_adapter import SubprocessAdapter
+
+#: opencode's `--auto` approves anything "not explicitly denied", so its native
+#: permission config is a deny-list — the one mechanism that composes with the
+#: flag rather than fighting it (https://opencode.ai/docs/permissions).
+#:
+#: These mirror the families in `core.dangerous_commands.DANGEROUS_PATTERNS`, but
+#: they cannot be shared verbatim: ours are regexes, opencode's rules are globs.
+#: The translation is lossy in the safe direction — a glob matches at least as
+#: much as its regex counterpart's common shapes — and the regex list stays the
+#: single source of truth for the engines that can use it (ReAct, claude-code's
+#: hook, codex's approval guard).
+_DENIED_BASH_GLOBS = (
+    # Recursive delete of root or home
+    "rm -rf /*", "rm -rf ~*", "rm -fr /*", "rm -fr ~*",
+    "rm -r /*", "rm -r ~*", "rm -f /*", "rm -f ~*",
+    "sudo rm *",
+    "*--no-preserve-root*",
+    # Filesystem destruction
+    "mkfs*", "*mkfs *", "fdisk*", "*fdisk *",
+    # dd against devices, either direction
+    "dd if=/dev/*", "*of=/dev/*", "*dd if=/dev/*",
+    # Fork bombs — the classic `:(){ :|:& };:` and its spaced variants
+    ":()*", ": ()*", "*:|:&*", "*: | : &*",
+    # chmod 777 on root
+    "chmod 777 /*", "chmod -R 777 /*", "chmod -r 777 /*",
+    # Redirects over devices and system directories
+    "*> /dev/*", "*> /etc/*", "*> /bin/*", "*> /usr/*", "*> /lib/*", "*> /sbin/*",
+    # Download piped to a shell
+    "*curl *|*sh*", "*wget *|*sh*",
+    # The operator's credential store
+    "*.codeframe/credentials*",
+)
+
+#: The deny-list is a constant, so one file per *process* — not per adapter.
+#: Adapters are constructed per task, so an instance-scoped temp file would leak
+#: one /tmp entry per task once --auto is wired in. (#916 review)
+_PERMISSION_CONFIG: Path | None = None
+
+
+def _permission_config_path() -> Path:
+    """Path to the deny-list config `--auto` is checked against, written once."""
+    global _PERMISSION_CONFIG
+
+    if _PERMISSION_CONFIG is not None and _PERMISSION_CONFIG.exists():
+        return _PERMISSION_CONFIG
+
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", prefix="codeframe-opencode-", delete=False
+    )
+    with handle:
+        json.dump(
+            {"permission": {"bash": {glob: "deny" for glob in _DENIED_BASH_GLOBS}}},
+            handle,
+        )
+    _PERMISSION_CONFIG = Path(handle.name)
+    atexit.register(_PERMISSION_CONFIG.unlink, missing_ok=True)
+    return _PERMISSION_CONFIG
 
 #: Linux caps a *single* argv entry at MAX_ARG_STRLEN — 32 pages, 128 KiB —
 #: independently of the much larger total ARG_MAX. CodeFrame's context packager
@@ -93,6 +153,23 @@ class OpenCodeAdapter(SubprocessAdapter):
         if not self._prompt_exceeds_argv(prompt):
             cmd.append(prompt)
         return cmd
+
+    def get_env(self, workspace_path: Path) -> dict[str, str] | None:
+        """Point opencode at the deny-list config when auto-approval is on (#916).
+
+        Only when ``auto_approve`` is set: without ``--auto`` the operator's own
+        opencode permission config governs, and overriding it would be the
+        adapter quietly changing their settings.
+
+        **Known limitation**: ``OPENCODE_CONFIG`` loads *between* the global and
+        project configs, so a repository's own ``opencode.json`` still takes
+        precedence and can re-allow a denied command. That is the repo-supplied
+        config trust problem #903/#905 address elsewhere; this raises the floor
+        for the ordinary case, it is not a containment boundary.
+        """
+        if not self._auto_approve:
+            return None
+        return {"OPENCODE_CONFIG": str(_permission_config_path())}
 
     def get_stdin(self, prompt: str) -> str | None:
         """The prompt, but only when it did not fit in argv.

@@ -39,6 +39,7 @@ from codeframe.core.adapters.agent_adapter import (
     AgentResult,
 )
 from codeframe.core.adapters.git_utils import detect_modified_files
+from codeframe.core.dangerous_commands import is_dangerous_command
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,10 @@ _APPROVAL_METHODS = (
     "item/commandExecution/requestApproval",
     "item/fileChange/requestApproval",
 )
+
+#: The approval that carries a shell command to vet. File-change approvals have
+#: no command; the sandbox is what bounds those.
+_COMMAND_APPROVAL = "item/commandExecution/requestApproval"
 
 _METHOD_NOT_FOUND = -32601
 
@@ -454,14 +459,35 @@ class CodexAdapter:
             )
             return
 
+        params = request.get("params") or {}
         decision = "accept" if self._approval_policy == "auto" else "decline"
+        blocked_reason = ""
+
+        # Auto-approval must not mean "approve anything". Task prompts are
+        # assembled from PRD and GitHub issue bodies (#565) — externally
+        # authored text — so an injected `rm -rf /` would otherwise be approved
+        # sight-unseen. Same patterns the built-in ReAct engine applies to every
+        # command it runs, and the same guard claude-code got in #819. (#916)
+        if decision == "accept" and method == _COMMAND_APPROVAL:
+            command = params.get("command")
+            if isinstance(command, str) and command.strip():
+                dangerous, description = is_dangerous_command(command)
+                if dangerous:
+                    decision = "decline"
+                    blocked_reason = description
+
         self._send(stdin, {"id": msg_id, "result": {"decision": decision}})
         if on_event:
+            message = (
+                f"Blocked dangerous command ({blocked_reason}): {params.get('command')}"
+                if blocked_reason
+                else f"{decision}ed approval request: {method}"
+            )
             on_event(
                 AgentEvent(
-                    type="tool_call",
-                    message=f"{decision}ed approval request: {method}",
-                    data=request.get("params") or {},
+                    type="error" if blocked_reason else "tool_call",
+                    message=message,
+                    data=params,
                 )
             )
 
