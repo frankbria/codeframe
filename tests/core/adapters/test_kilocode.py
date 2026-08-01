@@ -19,8 +19,17 @@ class TestKilocodeAdapter:
 
     @pytest.fixture(autouse=True)
     def _no_git(self):
-        """Prevent _detect_modified_files from calling real git."""
-        with patch.object(KilocodeAdapter, "_detect_modified_files", return_value=[]):
+        """Prevent _detect_modified_files from calling real git.
+
+        Returns a modified file, i.e. a run that actually did work. With
+        ``require_file_changes=True`` (#1012) an empty list means "wrote
+        nothing", which is now a *failure* — so an empty default would make
+        every test here exercise the false-completion guard rather than the
+        behaviour it names. The no-work case has its own test below.
+        """
+        with patch.object(
+            KilocodeAdapter, "_detect_modified_files", return_value=["main.py"]
+        ), patch.object(KilocodeAdapter, "_git_head", return_value="abc123"):
             yield
 
     def test_name(self) -> None:
@@ -43,11 +52,32 @@ class TestKilocodeAdapter:
             adapter = KilocodeAdapter()
         cmd = adapter.build_command("do the thing", Path("/tmp/repo"))
         assert cmd[0] == "/usr/bin/kilo"
-        assert cmd[1] == "run"
         assert "do the thing" in cmd
         assert "--auto" in cmd
         assert "--workspace" in cmd
         assert "/tmp/repo" in cmd
+
+    def test_the_prompt_is_the_first_positional_not_a_run_subcommand(self) -> None:
+        """`kilo` has no `run` command — the prompt is a bare positional.
+
+        Verified against kilocode 0.22.0: `Usage: kilocode [options] [command]
+        [prompt]`, commands are auth/config/debug/models only. With a bogus
+        `run` in front, `run` is consumed as the prompt, `--auto` never takes
+        effect, and the CLI opens the TUI and hangs until the timeout (#1012).
+        """
+        with patch(_WHICH, return_value="/usr/bin/kilo"):
+            adapter = KilocodeAdapter()
+        cmd = adapter.build_command("do the thing", Path("/tmp/repo"))
+
+        assert "run" not in cmd, "`kilo run` opens the TUI and does no work"
+        assert cmd[1] == "do the thing", "the prompt must be the first positional"
+
+    def test_a_zero_work_run_is_not_reported_completed(self) -> None:
+        """The TUI path exits 0 having written nothing — that must not read as success."""
+        with patch(_WHICH, return_value="/usr/bin/kilo"):
+            adapter = KilocodeAdapter()
+
+        assert adapter._require_file_changes is True
 
     def test_prompt_is_not_sent_via_stdin(self) -> None:
         with patch(_WHICH, return_value="/usr/bin/kilo"):

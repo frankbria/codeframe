@@ -17,9 +17,16 @@ _KILO_TIMEOUT_EXIT_CODE = 124
 class KilocodeAdapter(SubprocessAdapter):
     """Adapter that delegates code execution to Kilocode CLI.
 
-    Invokes ``kilo run <prompt> --auto --workspace <path>`` for headless
-    non-interactive execution.  The prompt is passed as a positional argument
-    (not via stdin), matching Kilocode's CLI interface.
+    Invokes ``kilo <prompt> --auto --workspace <path>`` for headless
+    non-interactive execution.  The prompt is the CLI's leading positional
+    (not stdin, and **not** behind a subcommand).
+
+    There is no ``run`` subcommand: verified against kilocode 0.22.0, whose
+    usage is ``kilocode [options] [command] [prompt]`` with commands
+    ``auth``/``config``/``debug``/``models`` only. The adapter used to prepend
+    ``run``, which was then swallowed as the prompt — ``--auto`` never took
+    effect, the interactive TUI opened, and the delegated run hung until the
+    timeout having written nothing (#1012).
 
     Note on prompt length: the prompt is passed as a single positional argument.
     Linux supports up to ~2 MB per argument, but macOS caps individual arguments
@@ -45,7 +52,16 @@ class KilocodeAdapter(SubprocessAdapter):
         *,
         timeout_s: int | None = None,
     ) -> None:
-        super().__init__(binary=self._resolve_binary(), timeout_s=timeout_s)
+        super().__init__(
+            binary=self._resolve_binary(),
+            timeout_s=timeout_s,
+            # A coding agent that exits 0 having written nothing is a false
+            # completion: gates then run on an unchanged tree and the task can
+            # be marked DONE with no code. The TUI path this adapter used to
+            # take did exactly that. Same guard as claude-code (#739/#819) and
+            # opencode (#913).
+            require_file_changes=True,
+        )
 
     @property
     def name(self) -> str:  # noqa: D102
@@ -83,7 +99,6 @@ class KilocodeAdapter(SubprocessAdapter):
         """
         cmd = [
             self._binary_path,
-            "run",
             prompt,
             "--auto",
             "--workspace",
