@@ -22,6 +22,7 @@ their own id — an unanswered one hangs the turn.
 
 from __future__ import annotations
 
+import os
 import json
 import logging
 import queue
@@ -148,8 +149,57 @@ class CodexAdapter:
 
     @classmethod
     def requirements(cls) -> dict[str, str]:
-        """Return required environment variables for ``cf engines check``."""
-        return {"OPENAI_API_KEY": "OpenAI API key"}
+        """No *required* environment variables (#1010).
+
+        ``OPENAI_API_KEY`` used to be listed here, and ``cf engines check`` marks
+        any unsatisfied entry as an unmet requirement and exits 1 — so a codex
+        authenticated by ``codex login`` (which sets no variable at all, and
+        records ``"OPENAI_API_KEY": null`` in its own auth.json) was reported as
+        broken while working perfectly. ``check_ready`` below answers the real
+        question, by either route.
+        """
+        return {}
+
+    @classmethod
+    def codex_home(cls) -> Path:
+        """Where codex keeps its state. ``$CODEX_HOME`` is documented by the CLI."""
+        override = os.environ.get("CODEX_HOME")
+        return Path(override) if override else Path.home() / ".codex"
+
+    @classmethod
+    def is_authenticated(cls) -> bool:
+        """True when codex can actually talk to a model (#1010).
+
+        ``OPENAI_API_KEY`` is *not* the test. ``codex login`` writes ChatGPT-plan
+        credentials to ``auth.json`` and records ``"OPENAI_API_KEY": null`` in
+        the very same file — so gating on the environment variable refuses the
+        common case, where the CLI works perfectly well.
+
+        Presence of the file is not the test either: ``codex logout`` can leave
+        it behind with empty tokens.
+        """
+        if os.environ.get("OPENAI_API_KEY"):
+            return True
+
+        try:
+            auth = json.loads((cls.codex_home() / "auth.json").read_text())
+        except (OSError, json.JSONDecodeError):
+            return False
+
+        if not isinstance(auth, dict):
+            return False
+        if auth.get("OPENAI_API_KEY"):
+            return True
+        tokens = auth.get("tokens")
+        return bool(isinstance(tokens, dict) and tokens.get("access_token"))
+
+    @classmethod
+    def check_ready(cls) -> dict[str, bool]:
+        """What ``cf engines check`` reports for codex."""
+        return {
+            "codex_binary": shutil.which("codex") is not None,
+            "authenticated": cls.is_authenticated(),
+        }
 
     @classmethod
     def credential_env_vars(cls) -> tuple[str, ...]:

@@ -122,3 +122,32 @@ def require_e2b_api_key() -> str:
         "Get your key at https://e2b.dev"
     )
     raise typer.Exit(1)
+
+
+def require_codex_auth() -> None:
+    """Ensure the codex CLI can reach a model, by either route (#1010).
+
+    Not ``require_openai_api_key``: ``codex login`` stores ChatGPT-plan
+    credentials in ``auth.json`` and writes ``"OPENAI_API_KEY": null`` in that
+    same file, so gating on the environment variable refused the common case —
+    ``--engine codex`` was unusable for anyone who had simply logged in, even
+    though the adapter and the binary both worked.
+
+    Raises:
+        typer.Exit: If codex is authenticated by neither route.
+    """
+    from codeframe.core.adapters.codex import CodexAdapter
+
+    if CodexAdapter.is_authenticated():
+        return
+
+    load_env_files()
+    if CodexAdapter.is_authenticated():
+        return
+
+    console.print(
+        "[red]Error:[/red] codex is not authenticated. "
+        "Run [bold]codex login[/bold], or set OPENAI_API_KEY in your "
+        "environment or a .env file."
+    )
+    raise typer.Exit(1)
