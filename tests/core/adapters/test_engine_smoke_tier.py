@@ -97,6 +97,12 @@ class Engine:
     #: point the adapter depends on, asserted against the CLI rather than
     #: against our code, so an upstream rename fails here.
     help_must_contain: tuple[str, ...]
+    #: A subcommand whose own ``--help`` is appended before matching. Modern CLIs
+    #: document their real flags there, not at the top level: ``--dir``, which
+    #: the opencode adapter now depends on (#1007), appears only under
+    #: ``opencode run --help``. Without this the tier would silently under-cover
+    #: exactly the flags most likely to drift.
+    help_subcommand: str | None = None
     #: Set when the adapter is known to target a different CLI version than the
     #: one likely installed. The contract check then xfails instead of blocking
     #: every adapter PR — but it is `strict=False`, so it flips to a pass the
@@ -145,7 +151,10 @@ ENGINES = (
     Engine("codex", lambda: "codex", _codex, ("app-server",)),
     # The headless entry point. #913 shipped `--non-interactive`, which does
     # not exist; its own smoke file pins that specific regression.
-    Engine("opencode", lambda: "opencode", _opencode, ("opencode run",)),
+    Engine(
+        "opencode", lambda: "opencode", _opencode,
+        ("opencode run", "--dir"), help_subcommand="run",
+    ),
     # kilocode 0.22.0 takes a bare positional prompt plus these flags and has no
     # `run` subcommand (#1012). kilocode 7.x reinstated `run` and renamed
     # --workspace to --dir, so the adapter is stale against a current install —
@@ -163,12 +172,17 @@ ENGINES = (
 )
 
 
-def _cli_help(binary: str) -> str:
+def _cli_help(binary: str, subcommand: str | None = None) -> str:
     """Return a CLI's help text. Several of these print help on stderr."""
-    proc = subprocess.run(
-        [binary, "--help"], capture_output=True, text=True, timeout=90
-    )
-    return proc.stdout + proc.stderr
+
+    def _run(args: list[str]) -> str:
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=90)
+        return proc.stdout + proc.stderr
+
+    text = _run([binary, "--help"])
+    if subcommand:
+        text += "\n" + _run([binary, subcommand, "--help"])
+    return text
 
 
 def _require_binary(engine: Engine) -> str:
@@ -220,7 +234,7 @@ def test_the_cli_still_documents_the_adapters_entry_point(engine: Engine) -> Non
     rename or removal fails here instead of silently producing no-op runs.
     """
     binary = _require_binary(engine)
-    help_text = _cli_help(binary)
+    help_text = _cli_help(binary, engine.help_subcommand)
 
     missing = [s for s in engine.help_must_contain if s not in help_text]
     if missing and engine.known_drift:

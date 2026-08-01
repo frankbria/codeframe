@@ -160,14 +160,24 @@ class OpenCodeAdapter(SubprocessAdapter):
         from stdin, confirmed by its own ``prompt_submit`` log carrying the piped
         text verbatim.
 
+        ``--dir`` is **required**, not belt-and-braces: opencode resolves its
+        project directory from the *parent* process and ignores the ``cwd=``
+        every other adapter relies on, so without it a delegated task edits
+        whatever directory CodeFrame itself was launched from — under
+        ``codeframe serve``, the server's own checkout (#1007). ``require_file_
+        changes`` does not save us: it inspects the workspace, finds nothing and
+        fails the run, correctly reporting failure while the edits have already
+        landed somewhere else.
+
         Args:
             prompt: The task prompt.
-            workspace_path: Workspace root (cwd is set by the base class).
+            workspace_path: Workspace root. Also passed as ``cwd`` by the base
+                class, which opencode does not honour — hence ``--dir``.
 
         Returns:
             Command list for subprocess.Popen.
         """
-        cmd = [self._binary_path, *self._cli_args]
+        cmd = [self._binary_path, *self._cli_args, "--dir", str(workspace_path)]
         if not self._prompt_exceeds_argv(prompt):
             cmd.append(prompt)
         return cmd
