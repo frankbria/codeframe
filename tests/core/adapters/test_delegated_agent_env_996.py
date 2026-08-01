@@ -415,39 +415,75 @@ def test_each_delegated_adapter_declares_what_it_needs(
 
 
 @pytest.mark.parametrize(
-    "var",
+    "selector,needed",
     [
-        "CLAUDE_CODE_USE_BEDROCK",
-        "AWS_PROFILE",
-        "AWS_SESSION_TOKEN",
-        "CLAUDE_CODE_USE_VERTEX",
-        "ANTHROPIC_VERTEX_PROJECT_ID",
-        "CLOUD_ML_REGION",
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        "CLAUDE_CODE_USE_FOUNDRY",
-        "ANTHROPIC_FOUNDRY_API_KEY",
+        ("CLAUDE_CODE_USE_BEDROCK", ["AWS_PROFILE", "AWS_SESSION_TOKEN", "AWS_REGION"]),
+        (
+            "CLAUDE_CODE_USE_VERTEX",
+            ["ANTHROPIC_VERTEX_PROJECT_ID", "CLOUD_ML_REGION",
+             "GOOGLE_APPLICATION_CREDENTIALS"],
+        ),
+        ("CLAUDE_CODE_USE_FOUNDRY", ["ANTHROPIC_FOUNDRY_API_KEY",
+                                     "ANTHROPIC_FOUNDRY_RESOURCE"]),
     ],
 )
-def test_claude_code_cloud_backends_keep_working(var):
+def test_claude_code_cloud_backends_keep_working(selector, needed, monkeypatch):
     """Review finding: Bedrock/Vertex/Foundry are configured *purely* through the
     environment, so an allowlist stopping at ANTHROPIC_API_KEY breaks a setup
     that works fine outside CodeFrame."""
     from codeframe.core.adapters.claude_code import ClaudeCodeAdapter
 
-    assert var in ClaudeCodeAdapter.credential_env_vars()
+    monkeypatch.setenv(selector, "1")
+    forwarded = ClaudeCodeAdapter.credential_env_vars()
+
+    assert selector in forwarded
+    for var in needed:
+        assert var in forwarded
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "ANTHROPIC_FOUNDRY_API_KEY",
+    ],
+)
+def test_cloud_secrets_are_withheld_unless_that_backend_is_selected(
+    env_dumper, operator_home, workspace, monkeypatch, secret
+):
+    """Review finding (bot, [major]): exported AWS keys are near-universal on a
+    developer machine and belong to a service `claude` has nothing to do with
+    unless Bedrock is in use. Asserted on what actually reaches the child, not
+    just on the declared tuple."""
+    from codeframe.core.adapters.claude_code import ClaudeCodeAdapter
+
+    for selector in ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
+                     "CLAUDE_CODE_USE_FOUNDRY"):
+        monkeypatch.delenv(selector, raising=False)
+    monkeypatch.setenv(secret, "cloud-SHOULD-NOT-LEAK")
+
+    adapter = _make_adapter(env_dumper)
+    adapter.credential_env_vars = ClaudeCodeAdapter.credential_env_vars
+
+    assert "SHOULD-NOT-LEAK" not in _run(adapter, workspace)
 
 
 def test_aws_credentials_are_only_exposed_when_bedrock_is_selected(
     operator_home, monkeypatch
 ):
-    """Forwarding the vars is required; handing every run ~/.aws is not."""
+    """Both halves move together: the directory *and* the variables."""
     from codeframe.core.adapters.claude_code import ClaudeCodeAdapter
 
     monkeypatch.delenv("CLAUDE_CODE_USE_BEDROCK", raising=False)
     assert ".aws" not in ClaudeCodeAdapter.home_passthrough()
+    assert "AWS_ACCESS_KEY_ID" not in ClaudeCodeAdapter.credential_env_vars()
 
     monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
     assert ".aws" in ClaudeCodeAdapter.home_passthrough()
+    assert "AWS_ACCESS_KEY_ID" in ClaudeCodeAdapter.credential_env_vars()
 
 
 def test_the_defaults_are_deny_by_default():

@@ -59,45 +59,64 @@ def _guard_settings() -> str:
     )
 
 
-#: Every variable `claude` reads to decide *who it talks to and as whom*, per
+#: What `claude` reads to decide who it talks to and as whom, per
 #: code.claude.com/docs/en/bedrock-vertex-proxies + /settings. Enumerated rather
-#: than prefix-matched: `ANTHROPIC_*` would be a wildcard over a namespace we do
-#: not own, and `AWS_*` would hand over the operator's whole AWS identity.
-_CLAUDE_AUTH_VARS: tuple[str, ...] = (
-    # Anthropic API / LLM gateway
+#: than prefix-matched: `ANTHROPIC_*` is a namespace we do not own, and `AWS_*`
+#: would hand over the operator's whole AWS identity.
+#:
+#: Always forwarded — Anthropic API / LLM gateway, plus the model pins, none of
+#: which are another service's credential.
+_ANTHROPIC_VARS: tuple[str, ...] = (
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_MODEL",
-    # Amazon Bedrock
-    "CLAUDE_CODE_USE_BEDROCK",
-    "CLAUDE_CODE_SKIP_BEDROCK_AUTH",
-    "ANTHROPIC_BEDROCK_BASE_URL",
-    "ANTHROPIC_AWS_BASE_URL",
-    "AWS_REGION",
-    "AWS_DEFAULT_REGION",
-    "AWS_PROFILE",
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-    # Google Cloud Agent Platform (Vertex)
-    "CLAUDE_CODE_USE_VERTEX",
-    "CLAUDE_CODE_SKIP_VERTEX_AUTH",
-    "ANTHROPIC_VERTEX_BASE_URL",
-    "ANTHROPIC_VERTEX_PROJECT_ID",
-    "CLOUD_ML_REGION",
-    "GOOGLE_APPLICATION_CREDENTIALS",
-    # Microsoft Foundry
-    "CLAUDE_CODE_USE_FOUNDRY",
-    "ANTHROPIC_FOUNDRY_RESOURCE",
-    "ANTHROPIC_FOUNDRY_API_KEY",
-    "ANTHROPIC_FOUNDRY_BASE_URL",
-    # Model pinning — recommended for every cloud-provider deployment
     "ANTHROPIC_DEFAULT_FABLE_MODEL",
     "ANTHROPIC_DEFAULT_OPUS_MODEL",
     "ANTHROPIC_DEFAULT_SONNET_MODEL",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL",
 )
+
+#: Forwarded only when the operator has selected that backend, keyed by its
+#: selector variable. Exported AWS keys are near-universal on a developer
+#: machine — anyone with the AWS CLI installed — and belong to a service
+#: `claude` has nothing to do with unless Bedrock is actually in use. Handing
+#: them over on every run would be the same leak this module exists to close,
+#: just through a narrower hole. (#996 review)
+_CLOUD_BACKEND_VARS: dict[str, tuple[str, ...]] = {
+    "CLAUDE_CODE_USE_BEDROCK": (
+        "CLAUDE_CODE_USE_BEDROCK",
+        "CLAUDE_CODE_SKIP_BEDROCK_AUTH",
+        "ANTHROPIC_BEDROCK_BASE_URL",
+        "ANTHROPIC_AWS_BASE_URL",
+        "AWS_REGION",
+        "AWS_DEFAULT_REGION",
+        "AWS_PROFILE",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+    ),
+    "CLAUDE_CODE_USE_VERTEX": (
+        "CLAUDE_CODE_USE_VERTEX",
+        "CLAUDE_CODE_SKIP_VERTEX_AUTH",
+        "ANTHROPIC_VERTEX_BASE_URL",
+        "ANTHROPIC_VERTEX_PROJECT_ID",
+        "CLOUD_ML_REGION",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+    ),
+    "CLAUDE_CODE_USE_FOUNDRY": (
+        "CLAUDE_CODE_USE_FOUNDRY",
+        "ANTHROPIC_FOUNDRY_RESOURCE",
+        "ANTHROPIC_FOUNDRY_API_KEY",
+        "ANTHROPIC_FOUNDRY_BASE_URL",
+    ),
+}
+
+#: The credential *directory* each backend needs, same gating.
+_CLOUD_BACKEND_HOMES: dict[str, str] = {
+    "CLAUDE_CODE_USE_BEDROCK": ".aws",
+    "CLAUDE_CODE_USE_VERTEX": ".config/gcloud",
+}
 
 
 class ClaudeCodeAdapter(SubprocessAdapter):
@@ -176,24 +195,31 @@ class ClaudeCodeAdapter(SubprocessAdapter):
         configured purely through environment variables, so an allowlist that
         stopped at the API key would silently break every operator running
         `claude` against a cloud provider — a working setup outside CodeFrame
-        that stopped working inside it. No OpenAI/AWS-unrelated key is forwarded.
+        that stopped working inside it.
+
+        A backend's credentials ride on its selector, so an ordinary API-key run
+        never sees the operator's AWS or GCP identity.
         """
-        return _CLAUDE_AUTH_VARS
+        return _ANTHROPIC_VARS + tuple(
+            var
+            for selector, group in _CLOUD_BACKEND_VARS.items()
+            if os.environ.get(selector)
+            for var in group
+        )
 
     @classmethod
     def home_passthrough(cls) -> tuple[str, ...]:
         """`claude` keeps its login here; a bare sandbox home logs it out (#996).
 
-        Cloud credential directories are linked **only** when the operator has
-        actually selected that backend — an ordinary API-key or subscription run
-        has no business reaching ``~/.aws``.
+        Cloud credential directories are linked on the same selector as their
+        variables above — an ordinary API-key or subscription run has no business
+        reaching ``~/.aws``.
         """
-        entries = [".claude", ".claude.json"]
-        if os.environ.get("CLAUDE_CODE_USE_BEDROCK"):
-            entries.append(".aws")
-        if os.environ.get("CLAUDE_CODE_USE_VERTEX"):
-            entries.append(".config/gcloud")
-        return tuple(entries)
+        return (".claude", ".claude.json") + tuple(
+            entry
+            for selector, entry in _CLOUD_BACKEND_HOMES.items()
+            if os.environ.get(selector)
+        )
 
     def build_command(self, prompt: str, workspace_path: Path) -> list[str]:
         """Build claude CLI command.

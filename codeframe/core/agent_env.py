@@ -24,6 +24,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -236,32 +237,41 @@ def _link_home_passthrough(
             continue  # operator has never run this CLI
         target = agent_home / entry
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if target.is_symlink():
-                if target.readlink() == source:
-                    continue
-                target.unlink()
-            elif target.exists():
-                # A config dir the CLI made for itself on a run that happened
-                # *before* the operator logged in. Leaving it in place would keep
-                # the delegated agent logged out forever even after they do log
-                # in — the real home is the authority once it exists. Moved
-                # aside rather than deleted: it may hold a login made from
-                # inside the sandbox.
-                stale = target.with_name(target.name + ".superseded")
-                if stale.is_symlink() or not stale.is_dir():
-                    stale.unlink(missing_ok=True)
-                elif stale.is_dir():
-                    shutil.rmtree(stale)
-                target.rename(stale)
-            target.symlink_to(source, target_is_directory=source.is_dir())
-        except OSError as e:
-            # Batch execution runs several workers against the *same* adapter
-            # home, so two of them can reach symlink_to() together and one loses
-            # with FileExistsError. The loser's work is already done.
             if target.is_symlink() and target.readlink() == source:
-                continue
+                continue  # already linked
+
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists() and not target.is_symlink():
+                _move_stale_config_aside(target)
+
+            # Build the link under a private name and rename it into place.
+            # `cf work batch run --strategy parallel` points several workers at
+            # this one home, so check-then-symlink races against itself:
+            # os.replace is atomic and has no such window, and two workers
+            # racing simply both land on the same source.
+            staging = target.with_name(
+                f".{target.name}.codeframe-{os.getpid()}-{threading.get_ident()}"
+            )
+            staging.unlink(missing_ok=True)
+            staging.symlink_to(source, target_is_directory=source.is_dir())
+            os.replace(staging, target)
+        except OSError as e:
             logger.warning(
                 "Could not link %s into the delegated agent home: %s. That CLI "
                 "may need to be re-authenticated.", entry, e
             )
+
+
+def _move_stale_config_aside(target: Path) -> None:
+    """Retire a config dir the CLI made for itself before the operator logged in.
+
+    Leaving it would keep the delegated agent logged out forever even after they
+    do log in — the real home is the authority once it exists. Moved rather than
+    deleted: it may hold a login made from inside the sandbox.
+    """
+    stale = target.with_name(target.name + ".superseded")
+    if stale.is_symlink() or not stale.is_dir():
+        stale.unlink(missing_ok=True)
+    else:
+        shutil.rmtree(stale)
+    target.rename(stale)
