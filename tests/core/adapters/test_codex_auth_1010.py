@@ -205,8 +205,13 @@ def test_engines_check_calls_codex_ready_when_logged_in(codex_home):
 
     reqs = check_requirements("codex")
 
-    assert all(reqs.values()), f"logged-in codex reported not ready: {reqs}"
     assert reqs["authenticated"] is True
+    # The specific claim: no *credential* entry is reported unmet. Not
+    # `all(reqs.values())` — codex_binary is legitimately False wherever the CLI
+    # is not installed, which is every CI runner.
+    assert "OPENAI_API_KEY" not in reqs, (
+        f"a logged-in codex is still flagged for a missing key: {reqs}"
+    )
 
 
 def test_engines_check_still_flags_an_unauthenticated_codex(codex_home):
@@ -214,5 +219,5 @@ def test_engines_check_still_flags_an_unauthenticated_codex(codex_home):
 
     reqs = check_requirements("codex")
 
+    # `not all(...)` would pass trivially wherever the binary is absent.
     assert reqs["authenticated"] is False
-    assert not all(reqs.values())
