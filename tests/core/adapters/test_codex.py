@@ -459,6 +459,91 @@ class TestCodexApproval:
         reply = next(m for m in sent if m.get("id") == 77 and "method" not in m)
         assert reply["result"]["decision"] == "decline"
 
+    def test_a_dangerous_command_is_declined_even_under_auto_approval(self) -> None:
+        """Auto-approval must not mean "approve anything" (#916).
+
+        Task prompts are assembled from PRD and GitHub issue bodies (#565) —
+        externally authored text — so an injected destructive command would
+        otherwise be approved sight-unseen.
+        """
+        result, sent = self._approval_run(
+            "item/commandExecution/requestApproval",
+            {"threadId": "th-1", "turnId": "turn-1", "itemId": "i1",
+             "startedAtMs": 1, "command": "rm -rf /"},
+        )
+        assert result.status == "completed"
+        reply = next(m for m in sent if m.get("id") == 77 and "method" not in m)
+        assert reply["result"]["decision"] == "decline"
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "rm -rf /",
+            "sudo rm -rf /*",
+            "dd if=/dev/zero of=/dev/sda",
+            "mkfs.ext4 /dev/sda1",
+            ":(){ :|:& };:",
+        ],
+    )
+    def test_destructive_commands_are_declined(self, command: str) -> None:
+        _, sent = self._approval_run(
+            "item/commandExecution/requestApproval",
+            {"threadId": "th-1", "turnId": "turn-1", "itemId": "i1",
+             "startedAtMs": 1, "command": command},
+        )
+        reply = next(m for m in sent if m.get("id") == 77 and "method" not in m)
+        assert reply["result"]["decision"] == "decline", f"{command!r} was approved"
+
+    def test_an_ordinary_command_is_still_approved(self) -> None:
+        """The guard must not break the engine — normal work still runs."""
+        _, sent = self._approval_run(
+            "item/commandExecution/requestApproval",
+            {"threadId": "th-1", "turnId": "turn-1", "itemId": "i1",
+             "startedAtMs": 1, "command": "pytest tests/ -q"},
+        )
+        reply = next(m for m in sent if m.get("id") == 77 and "method" not in m)
+        assert reply["result"]["decision"] == "accept"
+
+    def test_blocking_a_command_emits_an_error_event(self) -> None:
+        """A silent block looks like the model choosing not to act."""
+        adapter = _make_adapter()
+        events: list[AgentEvent] = []
+        _run_with_script(
+            adapter,
+            _handshake_lines()
+            + [
+                _server_request(
+                    77,
+                    "item/commandExecution/requestApproval",
+                    {"threadId": "th-1", "turnId": "turn-1", "itemId": "i1",
+                     "startedAtMs": 1, "command": "rm -rf /"},
+                ),
+                _turn_completed(),
+            ],
+            on_event=events.append,
+        )
+        blocked = [e for e in events if e.type == "error" and "Blocked" in e.message]
+        assert blocked, f"no block event emitted; got {[e.message for e in events]}"
+
+    def test_a_file_change_approval_has_no_command_to_vet(self) -> None:
+        """File-change approvals carry no command — the sandbox bounds those."""
+        _, sent = self._approval_run(
+            "item/fileChange/requestApproval",
+            {"threadId": "th-1", "turnId": "turn-1", "itemId": "i2", "startedAtMs": 1},
+        )
+        reply = next(m for m in sent if m.get("id") == 77 and "method" not in m)
+        assert reply["result"]["decision"] == "accept"
+
+    def test_the_sandbox_default_is_restrictive(self) -> None:
+        """The engine must not inherit whatever ~/.codex/config.toml allows (#916)."""
+        adapter = _make_adapter()
+        assert adapter._sandbox_mode == "workspace-write"
+
+        _, sent = _run_with_script(adapter, _handshake_lines() + [_turn_completed()])
+        thread_start = next(m for m in sent if m["method"] == "thread/start")
+        assert thread_start["params"]["sandbox"] == "workspace-write"
+        assert thread_start["params"]["sandbox"] != "danger-full-access"
+
     def test_unsupported_server_request_gets_error_reply(self) -> None:
         """Never leave a server request unanswered — that hangs the turn."""
         result, sent = self._approval_run("attestation/generate", {"nonce": "x"})

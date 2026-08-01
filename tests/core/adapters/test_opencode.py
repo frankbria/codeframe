@@ -90,6 +90,59 @@ class TestOpenCodeAdapter:
             in_stdin = adapter.get_stdin(prompt) is not None
             assert in_argv != in_stdin, f"prompt of {len(prompt)} bytes sent {in_argv + in_stdin}x"
 
+    def test_auto_approval_is_paired_with_a_deny_list(self) -> None:
+        """`--auto` approves anything "not explicitly denied" — so deny things (#916).
+
+        opencode's native permission config is the only mechanism that composes
+        with the flag rather than fighting it.
+        """
+        import json
+
+        with patch("shutil.which", return_value="/usr/bin/opencode"):
+            adapter = OpenCodeAdapter(auto_approve=True)
+
+        env = adapter.get_env(Path("/tmp/repo"))
+        assert env and "OPENCODE_CONFIG" in env
+
+        config = json.loads(Path(env["OPENCODE_CONFIG"]).read_text())
+        bash_rules = config["permission"]["bash"]
+        assert all(v == "deny" for v in bash_rules.values())
+        # The families that matter, not merely "some rules exist".
+        joined = " ".join(bash_rules)
+        for family in ("rm -rf /", "mkfs", "dd if=/dev/", "curl ", ".codeframe/credentials"):
+            assert family in joined, f"no deny rule covering {family!r}"
+
+    def test_no_config_is_imposed_without_auto_approval(self) -> None:
+        """Without `--auto` the operator's own opencode config governs.
+
+        Overriding it would be the adapter quietly changing their settings.
+        """
+        with patch("shutil.which", return_value="/usr/bin/opencode"):
+            adapter = OpenCodeAdapter()
+
+        assert adapter.get_env(Path("/tmp/repo")) is None
+
+    def test_the_deny_config_reaches_the_subprocess(self) -> None:
+        """The env hook is wired into Popen, not merely computed."""
+        with patch("shutil.which", return_value="/usr/bin/opencode"):
+            adapter = OpenCodeAdapter(auto_approve=True)
+
+        mock_process = MagicMock()
+        mock_process.stdout = iter([])
+        mock_process.stderr = MagicMock()
+        mock_process.stderr.read.return_value = ""
+        mock_process.stdin = None
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process) as popen:
+            adapter.run("task-1", "do work", Path("/tmp/repo"))
+
+        env = popen.call_args.kwargs["env"]
+        assert env is not None and "OPENCODE_CONFIG" in env
+        # Layered over the real environment, not replacing it.
+        assert "PATH" in env
+
     def test_a_zero_work_run_is_not_reported_completed(self) -> None:
         """Exit 0 with nothing written is a false completion: gates would then
         run on an unchanged tree and the task could be marked DONE with no code

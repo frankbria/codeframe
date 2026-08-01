@@ -2,9 +2,31 @@
 
 from __future__ import annotations
 
+import json
+import tempfile
 from pathlib import Path
 
 from codeframe.core.adapters.subprocess_adapter import SubprocessAdapter
+
+#: opencode's `--auto` approves anything "not explicitly denied", so its native
+#: permission config is a deny-list — the one mechanism that composes with the
+#: flag rather than fighting it (https://opencode.ai/docs/permissions).
+#:
+#: These mirror the families in `core.dangerous_commands.DANGEROUS_PATTERNS`, but
+#: they cannot be shared verbatim: ours are regexes, opencode's rules are globs.
+#: The translation is lossy in the safe direction — a glob matches at least as
+#: much as its regex counterpart's common shapes — and the regex list stays the
+#: single source of truth for the engines that can use it (ReAct, claude-code's
+#: hook, codex's approval guard).
+_DENIED_BASH_GLOBS = (
+    "rm -rf /*", "rm -rf ~*", "rm -fr /*", "rm -fr ~*", "rm * --no-preserve-root*",
+    "sudo rm *", "mkfs*", "fdisk*",
+    "dd if=/dev/*", "dd *of=/dev/*",
+    "chmod 777 /*", "chmod -R 777 /*",
+    "*> /dev/*", "*> /etc/*", "*> /bin/*", "*> /usr/*", "*> /lib/*", "*> /sbin/*",
+    "*curl *| sh*", "*curl *| bash*", "*wget *| sh*", "*wget *| bash*",
+    "*.codeframe/credentials*",
+)
 
 #: Linux caps a *single* argv entry at MAX_ARG_STRLEN — 32 pages, 128 KiB —
 #: independently of the much larger total ARG_MAX. CodeFrame's context packager
@@ -62,6 +84,7 @@ class OpenCodeAdapter(SubprocessAdapter):
             require_file_changes=True,
         )
         self._auto_approve = auto_approve
+        self._permission_config: Path | None = None
 
     @property
     def name(self) -> str:  # noqa: D102
@@ -93,6 +116,41 @@ class OpenCodeAdapter(SubprocessAdapter):
         if not self._prompt_exceeds_argv(prompt):
             cmd.append(prompt)
         return cmd
+
+    def _permission_config_path(self) -> Path:
+        """Write (once) the deny-list config `--auto` is checked against.
+
+        Kept for the adapter's lifetime rather than per run: opencode reads it at
+        startup, and regenerating it per task would be churn for a constant.
+        """
+        if self._permission_config is None:
+            handle = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", prefix="codeframe-opencode-", delete=False
+            )
+            with handle:
+                json.dump(
+                    {"permission": {"bash": {glob: "deny" for glob in _DENIED_BASH_GLOBS}}},
+                    handle,
+                )
+            self._permission_config = Path(handle.name)
+        return self._permission_config
+
+    def get_env(self, workspace_path: Path) -> dict[str, str] | None:
+        """Point opencode at the deny-list config when auto-approval is on (#916).
+
+        Only when ``auto_approve`` is set: without ``--auto`` the operator's own
+        opencode permission config governs, and overriding it would be the
+        adapter quietly changing their settings.
+
+        **Known limitation**: ``OPENCODE_CONFIG`` loads *between* the global and
+        project configs, so a repository's own ``opencode.json`` still takes
+        precedence and can re-allow a denied command. That is the repo-supplied
+        config trust problem #903/#905 address elsewhere; this raises the floor
+        for the ordinary case, it is not a containment boundary.
+        """
+        if not self._auto_approve:
+            return None
+        return {"OPENCODE_CONFIG": str(self._permission_config_path())}
 
     def get_stdin(self, prompt: str) -> str | None:
         """The prompt, but only when it did not fit in argv.
