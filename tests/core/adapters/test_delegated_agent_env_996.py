@@ -237,7 +237,45 @@ def test_a_config_dir_the_cli_made_first_is_superseded_by_a_later_login(
     assert linked.is_symlink()
     assert (linked / "session.json").read_text() == "LOGIN-TOKEN"
     # Moved aside, not destroyed — it may hold a login made inside the sandbox.
-    assert (sandbox / ".claude.superseded" / "settings.json").exists()
+    backups = list(sandbox.glob(".claude.superseded-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "settings.json").exists()
+
+
+def test_concurrent_retirement_does_not_destroy_a_sandbox_login(
+    operator_home, workspace
+):
+    """Review finding (bot, [minor]): the retirement step was check-then-rmtree.
+
+    Two workers both pass the "target is a real dir" check; the first renames it
+    to a fixed `.superseded`, the second then rmtree's that backup — deleting a
+    login made from inside the sandbox, exactly what the move exists to keep.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from codeframe.core.agent_env import build_delegated_agent_env
+
+    kwargs = dict(adapter_name="claude-code", home_passthrough=(".claude",))
+
+    login = operator_home / ".claude"
+    stashed = login.rename(operator_home / ".claude-not-yet")
+    sandbox = Path(build_delegated_agent_env(workspace, **kwargs)["HOME"])
+    (sandbox / ".claude").mkdir(parents=True, exist_ok=True)
+    (sandbox / ".claude" / "sandbox-login.json").write_text("MADE-IN-SANDBOX")
+    stashed.rename(login)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        [f.result() for f in [
+            pool.submit(build_delegated_agent_env, workspace, **kwargs)
+            for _ in range(8)
+        ]]
+
+    assert (sandbox / ".claude").is_symlink()
+    preserved = [
+        p for p in sandbox.glob(".claude.superseded-*")
+        if (p / "sandbox-login.json").exists()
+    ]
+    assert preserved, "the sandbox-side login was destroyed by a racing worker"
 
 
 def test_concurrent_workers_do_not_fight_over_the_link(operator_home, workspace):

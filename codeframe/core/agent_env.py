@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-import shutil
 import threading
 from collections.abc import Iterable
 from pathlib import Path
@@ -268,10 +267,18 @@ def _move_stale_config_aside(target: Path) -> None:
     Leaving it would keep the delegated agent logged out forever even after they
     do log in — the real home is the authority once it exists. Moved rather than
     deleted: it may hold a login made from inside the sandbox.
+
+    The backup name is unique per worker. `cf work batch run --strategy parallel`
+    shares one adapter home, so two workers can retire the same directory
+    together; with a fixed ``.superseded`` name the loser would clear the
+    winner's just-moved backup — destroying the very login this preserves.
+    Uniquely named, the loser's rename simply raises FileNotFoundError (the
+    caller's OSError handler swallows it) and the winner's link still lands.
+
+    Retirement happens once per entry — afterwards the target is a symlink and
+    never reaches this branch again — so the unique names do not accumulate.
     """
-    stale = target.with_name(target.name + ".superseded")
-    if stale.is_symlink() or not stale.is_dir():
-        stale.unlink(missing_ok=True)
-    else:
-        shutil.rmtree(stale)
+    stale = target.with_name(
+        f"{target.name}.superseded-{os.getpid()}-{threading.get_ident()}"
+    )
     target.rename(stale)
