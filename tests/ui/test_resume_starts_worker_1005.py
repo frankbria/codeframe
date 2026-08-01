@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from codeframe.core import blockers, runtime, tasks
+from codeframe.core.runtime import RunStatus
 from codeframe.core.state_machine import TaskStatus
 
 pytestmark = pytest.mark.v2
@@ -210,3 +211,73 @@ def test_cli_resume_no_execute_opts_out(blocked, recorder, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert calls == []
+
+
+def test_cli_resume_does_not_wedge_when_the_agent_raises(blocked, monkeypatch):
+    """Review finding (bot, [major]): the CLI path re-introduced the very wedge
+    this change fixes.
+
+    `resume_run` has already flipped the run to RUNNING and the task to
+    IN_PROGRESS. `execute_agent` then raises up front for a missing key — before
+    its own try — and the CLI's outer `except ValueError` printed and exited
+    without failing the run. `work start` then rejects the task on "already has
+    an active run", with `work stop` the only way out.
+
+    The web worker recovers from exactly this via fail_run (#722); the CLI had
+    no equivalent, and the recorder in the tests above returns a fake state
+    rather than raising, so nothing covered it.
+    """
+    from typer.testing import CliRunner
+
+    _, ws, task_id, run_id = blocked
+
+    def _boom(*a, **k):
+        raise ValueError("ANTHROPIC_API_KEY is not set")
+
+    monkeypatch.setattr(runtime, "execute_agent", _boom)
+
+    from codeframe.cli.app import app
+    from codeframe.core import workspace as ws_module
+
+    monkeypatch.setattr(ws_module, "get_workspace", lambda p: ws)
+
+    result = CliRunner().invoke(app, ["work", "resume", task_id[:8]])
+
+    assert result.exit_code == 1
+    assert runtime.get_run(ws, run_id).status != RunStatus.RUNNING, (
+        "run left RUNNING with no worker — the task is wedged"
+    )
+    assert tasks.get(ws, task_id).status == TaskStatus.FAILED
+
+
+def test_cli_resume_reports_the_real_error_when_recovery_also_fails(
+    blocked, monkeypatch
+):
+    """The nested except must not itself raise.
+
+    It caught a NameError in review: `logger` is not defined in cli/app.py, so
+    the recovery handler would have masked the actual failure with its own.
+    """
+    from typer.testing import CliRunner
+
+    _, ws, task_id, run_id = blocked
+
+    def _boom(*a, **k):
+        raise ValueError("ANTHROPIC_API_KEY is not set")
+
+    monkeypatch.setattr(runtime, "execute_agent", _boom)
+    monkeypatch.setattr(
+        runtime, "fail_run", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("nope"))
+    )
+
+    from codeframe.cli.app import app
+    from codeframe.core import workspace as ws_module
+
+    monkeypatch.setattr(ws_module, "get_workspace", lambda p: ws)
+
+    result = CliRunner().invoke(app, ["work", "resume", task_id[:8]])
+
+    assert result.exit_code == 1
+    assert "ANTHROPIC_API_KEY is not set" in result.output, (
+        f"the real error was masked: {result.output!r}"
+    )

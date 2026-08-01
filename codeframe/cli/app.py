@@ -2694,9 +2694,26 @@ def work_resume(
 
             mode = " [dim](dry run)[/dim]" if dry_run else ""
             console.print(f"\n[bold]Executing agent...{mode}[/bold]")
-            state = runtime.execute_agent(
-                workspace, run, dry_run=dry_run, verbose=verbose, engine=engine
-            )
+            try:
+                state = runtime.execute_agent(
+                    workspace, run, dry_run=dry_run, verbose=verbose, engine=engine
+                )
+            except Exception as exc:
+                # resume_run already flipped the run to RUNNING. A misconfig
+                # (missing ANTHROPIC_API_KEY, unknown provider) raises *before*
+                # execute_agent's own try, so without this the run stays RUNNING
+                # with no worker and `work start` refuses the task — the very
+                # wedge this command is being fixed for. Mirrors the web
+                # worker's #722 recovery.
+                try:
+                    runtime.fail_run(workspace, run.id, reason=str(exc))
+                except Exception:
+                    # Only reachable when the run is already terminal (a
+                    # double-fail), which needs no recovery. Swallowed so it
+                    # cannot mask the real error printed below.
+                    pass
+                console.print(f"[red]Error:[/red] {exc}")
+                raise typer.Exit(1)
 
             if state.status == AgentStatus.COMPLETED:
                 console.print("[bold green]Task completed successfully![/bold green]")
