@@ -156,7 +156,9 @@ async def start_discovery(
     except NoApiKeyError as e:
         raise HTTPException(
             status_code=500,
-            detail=f"ANTHROPIC_API_KEY not configured: {e}",
+            # `e` already names the *resolved* provider's key (#917) — do not
+            # prepend ANTHROPIC_API_KEY, which misdirects an openai/ollama user.
+            detail=f"LLM API key not configured: {e}",
         )
     except Exception as e:
         logger.error(f"Failed to start discovery: {e}", exc_info=True)
