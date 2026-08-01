@@ -19,12 +19,24 @@ from codeframe.core.adapters.subprocess_adapter import SubprocessAdapter
 #: single source of truth for the engines that can use it (ReAct, claude-code's
 #: hook, codex's approval guard).
 _DENIED_BASH_GLOBS = (
-    "rm -rf /*", "rm -rf ~*", "rm -fr /*", "rm -fr ~*", "rm * --no-preserve-root*",
-    "sudo rm *", "mkfs*", "fdisk*",
-    "dd if=/dev/*", "dd *of=/dev/*",
-    "chmod 777 /*", "chmod -R 777 /*",
+    # Recursive delete of root or home
+    "rm -rf /*", "rm -rf ~*", "rm -fr /*", "rm -fr ~*",
+    "rm -r /*", "rm -r ~*", "rm -f /*", "rm -f ~*",
+    "sudo rm *",
+    "*--no-preserve-root*",
+    # Filesystem destruction
+    "mkfs*", "*mkfs *", "fdisk*", "*fdisk *",
+    # dd against devices, either direction
+    "dd if=/dev/*", "*of=/dev/*", "*dd if=/dev/*",
+    # Fork bombs — the classic `:(){ :|:& };:` and its spaced variants
+    ":()*", ": ()*", "*:|:&*", "*: | : &*",
+    # chmod 777 on root
+    "chmod 777 /*", "chmod -R 777 /*", "chmod -r 777 /*",
+    # Redirects over devices and system directories
     "*> /dev/*", "*> /etc/*", "*> /bin/*", "*> /usr/*", "*> /lib/*", "*> /sbin/*",
-    "*curl *| sh*", "*curl *| bash*", "*wget *| sh*", "*wget *| bash*",
+    # Download piped to a shell
+    "*curl *|*sh*", "*wget *|*sh*",
+    # The operator's credential store
     "*.codeframe/credentials*",
 )
 
