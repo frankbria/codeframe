@@ -44,10 +44,17 @@ _TIMEOUT_S = 240
 
 _SMOKE_OPT_IN = os.environ.get("CODEFRAME_ENGINE_SMOKE") == "1"
 
-#: Error prefixes meaning the engine ran out of time locally.
+#: Error prefixes meaning the engine ran out of time locally. Each adapter
+#: words this differently, so they are enumerated rather than pattern-matched —
+#: a loose "contains 'timeout'" would start swallowing real defects.
 _TIMEOUT_PREFIXES = (
+    # SubprocessAdapter (claude-code, opencode, kilocode)
     "Process timed out",
     "Kilocode execution timed out",
+    # CodexAdapter's three distinct timeout paths (codex.py:229/345/351)
+    "Codex app-server timed out",
+    "Stall timeout:",
+    "Turn timeout:",
 )
 
 #: Substrings identifying a fault in the *provider* behind a CLI, not in our
