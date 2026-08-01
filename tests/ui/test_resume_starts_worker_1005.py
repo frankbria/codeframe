@@ -281,3 +281,44 @@ def test_cli_resume_reports_the_real_error_when_recovery_also_fails(
     assert "ANTHROPIC_API_KEY is not set" in result.output, (
         f"the real error was masked: {result.output!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Exit codes must match `work start` (#1005 follow-up review)
+# ---------------------------------------------------------------------------
+
+
+def _invoke_resume_with_status(ws, task_id, status, monkeypatch):
+    from typer.testing import CliRunner
+
+    from codeframe.core.agent import AgentStatus
+
+    class _State:
+        blocker = None
+
+    _State.status = getattr(AgentStatus, status)
+    monkeypatch.setattr(runtime, "execute_agent", lambda *a, **k: _State())
+
+    from codeframe.cli.app import app
+    from codeframe.core import workspace as ws_module
+
+    monkeypatch.setattr(ws_module, "get_workspace", lambda p: ws)
+    return CliRunner().invoke(app, ["work", "resume", task_id[:8]])
+
+
+@pytest.mark.parametrize("status,expected", [
+    ("COMPLETED", 0),
+    ("FAILED", 1),
+    ("BLOCKED", 1),
+])
+def test_cli_resume_exit_code_matches_work_start(
+    blocked, monkeypatch, status, expected
+):
+    """Review finding: resume exited 0 even on FAILED, so
+    `cf work resume <id> && next_step` proceeded on a failed run. `work start`
+    exits 1 for anything short of COMPLETED (app.py) — resume now does too."""
+    _, ws, task_id, _ = blocked
+
+    result = _invoke_resume_with_status(ws, task_id, status, monkeypatch)
+
+    assert result.exit_code == expected, result.output

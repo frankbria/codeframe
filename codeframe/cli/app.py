@@ -2724,6 +2724,14 @@ def work_resume(
                 console.print("  Use 'codeframe blocker list' to see blockers")
             elif state.status == AgentStatus.FAILED:
                 console.print("[red]Task execution failed[/red]")
+
+            # Same rule as `work start`: anything short of COMPLETED exits 1, so
+            # `cf work resume <id> && next_step` cannot proceed on a task that
+            # did not finish. Exiting 0 on FAILED made the shell read a failed
+            # run as success. BLOCKED is included for parity with start — it is
+            # equally "normal" there, and one predictable rule beats two.
+            if state.status in (AgentStatus.BLOCKED, AgentStatus.FAILED):
+                raise typer.Exit(1)
         else:
             console.print(
                 "\n[yellow]Not executed.[/yellow] The run is RUNNING with no worker; "
