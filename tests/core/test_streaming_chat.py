@@ -364,6 +364,11 @@ class TestToolCallEvents:
 
         Asserts on the message list actually sent to the provider (via
         MockProvider.calls) rather than only the emitted events.
+
+        Since #918 the adapter emits the *provider-neutral* tool_calls /
+        tool_results keys and each provider translates them, so the pairing is
+        asserted both at the adapter boundary and after Anthropic conversion —
+        the layer the 400 actually came from.
         """
         tool_id = "tool_abc"
         tool_input = {"path": "README.md"}
@@ -398,24 +403,34 @@ class TestToolCallEvents:
         assert len(provider.calls) == 2
         second_turn = provider.calls[1]["messages"]
 
-        # Find the assistant tool_use message and the following tool_result message
+        # Adapter boundary: neutral keys, assistant turn immediately before the
+        # tool_results turn.
         assistant_idx = next(
             i for i, m in enumerate(second_turn)
+            if m["role"] == "assistant" and m.get("tool_calls")
+        )
+        call = second_turn[assistant_idx]["tool_calls"][0]
+        assert call == {"id": tool_id, "name": "read_file", "input": tool_input}
+        results_msg = second_turn[assistant_idx + 1]
+        assert results_msg["role"] == "user"
+        assert results_msg["tool_results"][0]["tool_call_id"] == tool_id
+
+        # Anthropic wire shape after conversion — the original 400 condition.
+        from codeframe.adapters.llm.anthropic import AnthropicProvider
+
+        converted = AnthropicProvider.__new__(AnthropicProvider)._convert_messages(
+            second_turn
+        )
+        wire_idx = next(
+            i for i, m in enumerate(converted)
             if m["role"] == "assistant"
             and isinstance(m["content"], list)
             and any(b.get("type") == "tool_use" for b in m["content"])
         )
-        blocks = second_turn[assistant_idx]["content"]
         # Any preceding text block must come before the tool_use block
-        types = [b["type"] for b in blocks]
-        assert types == ["text", "tool_use"]
-        tool_use_block = next(b for b in blocks if b["type"] == "tool_use")
-        assert tool_use_block["id"] == tool_id
-        assert tool_use_block["name"] == "read_file"
-        assert tool_use_block["input"] == tool_input
-
+        assert [b["type"] for b in converted[wire_idx]["content"]] == ["text", "tool_use"]
         # The very next message pairs the matching tool_result
-        result_msg = second_turn[assistant_idx + 1]
+        result_msg = converted[wire_idx + 1]
         assert result_msg["role"] == "user"
         result_block = next(
             b for b in result_msg["content"] if b["type"] == "tool_result"
@@ -450,9 +465,16 @@ class TestToolCallEvents:
             mock_tool.return_value = "contents"
             _ = [e async for e in adapter.send_message("read main", [])]
 
+        from codeframe.adapters.llm.anthropic import AnthropicProvider
+
         second_turn = provider.calls[1]["messages"]
+        assert next(m for m in second_turn if m.get("tool_calls"))["content"] == ""
+
+        converted = AnthropicProvider.__new__(AnthropicProvider)._convert_messages(
+            second_turn
+        )
         assistant_msg = next(
-            m for m in second_turn
+            m for m in converted
             if m["role"] == "assistant" and isinstance(m["content"], list)
             and any(b.get("type") == "tool_use" for b in m["content"])
         )
