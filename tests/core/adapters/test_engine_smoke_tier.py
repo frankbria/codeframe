@@ -103,6 +103,9 @@ class Engine:
     #: ``opencode run --help``. Without this the tier would silently under-cover
     #: exactly the flags most likely to drift.
     help_subcommand: str | None = None
+    #: Currently unused — #1015 was the last standing drift. Kept because three
+    #: of four engines drifted in a single week, so the next one is a matter of
+    #: time, and re-deriving this mechanism then would be wasted work.
     #: Set when the adapter is known to target a different CLI version than the
     #: one likely installed. The contract check then xfails instead of blocking
     #: every adapter PR — but it is `strict=False`, so it flips to a pass the
@@ -155,19 +158,17 @@ ENGINES = (
         "opencode", lambda: "opencode", _opencode,
         ("opencode run", "--dir"), help_subcommand="run",
     ),
-    # kilocode 0.22.0 takes a bare positional prompt plus these flags and has no
-    # `run` subcommand (#1012). kilocode 7.x reinstated `run` and renamed
-    # --workspace to --dir, so the adapter is stale against a current install —
-    # tracked in #1015. This tier caught that drift on its own first CI run.
+    # kilocode 7.x is the supported floor: `kilo run <message> --dir <path>`.
+    # The adapter still drives 0.22.0 when that is what is installed, detecting
+    # the surface from --help rather than assuming one (#1015) — so the tier
+    # pins the *modern* entry point, which is what a fresh CI install gets.
+    # This tier caught the rewrite on its own first CI run, which is its purpose.
     Engine(
         "kilocode",
         _kilo_binary,
         _kilocode,
-        ("--auto", "--workspace"),
-        known_drift=(
-            "adapter targets @kilocode/cli 0.22.0; 7.x renamed --workspace to "
-            "--dir and reinstated `run` (#1015)"
-        ),
+        ("kilo run", "--dir"),
+        help_subcommand="run",
     ),
 )
 
@@ -243,7 +244,8 @@ def test_the_cli_still_documents_the_adapters_entry_point(engine: Engine) -> Non
         pytest.xfail(f"{engine.name}: known drift — {engine.known_drift}; missing {missing}")
     assert not missing, (
         f"{engine.name}: {missing} absent from `{binary} --help` — the adapter's "
-        f"invocation may no longer be valid"
+        f"invocation may no longer be valid, or the installed CLI predates the "
+        f"version floor documented on the adapter class"
     )
 
 
