@@ -18,8 +18,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { buildCsp } = require('../security-headers');
+// security-headers.js is CommonJS (next.config.js requires it); the bundler
+// handles the interop. ESM here because the lint gate forbids require().
+import { buildCsp } from '../security-headers';
 
 export function proxy(request: NextRequest) {
   // crypto.getRandomValues: available on the Edge runtime, unlike node:crypto.

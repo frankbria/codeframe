@@ -94,7 +94,7 @@ function buildCsp(env = process.env, { nonce } = {}) {
  * intersected by the browser, so leaving the static one in place would have
  * re-imposed the weaker policy's absence of a nonce and blocked every script.
  */
-function securityHeaders(env = process.env) {
+function securityHeaders() {
   return [
     { key: 'X-Content-Type-Options', value: 'nosniff' },
     { key: 'X-Frame-Options', value: 'DENY' },

@@ -5,6 +5,9 @@
  * object-src / base-uri / frame-ancestors — these tests pin that lockdown so a
  * future edit can't silently widen it (e.g. to `connect-src *`).
  */
+import fs from 'fs';
+import path from 'path';
+
 import { buildCsp, buildConnectSrc, securityHeaders } from '../../security-headers';
 
 describe('security headers (#657)', () => {
@@ -127,9 +130,6 @@ describe('production CSP carries a nonce, not unsafe-inline (#936)', () => {
 });
 
 describe('the nonce requires dynamic rendering (#936)', () => {
-  const fs = require('fs');
-  const path = require('path');
-
   test('the root layout forces dynamic rendering', () => {
     // Next.js can only stamp a per-request nonce onto a document it renders at
     // request time. Measured on a statically prerendered route: 0 of 21 scripts
