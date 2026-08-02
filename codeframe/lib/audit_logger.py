@@ -9,11 +9,17 @@ This module provides centralized audit logging for security-relevant events incl
 All audit logs are stored in the database with timestamps, user context, and event metadata.
 """
 
+import logging
 from datetime import datetime, UTC
+from contextvars import ContextVar
+
+from starlette.requests import Request
 from typing import Optional, Dict, Any
 from enum import Enum
 
 from codeframe.platform_store.database import Database
+
+logger = logging.getLogger(__name__)
 
 
 class AuditEventType(Enum):
@@ -43,6 +49,11 @@ class AuditEventType(Enum):
     USER_UPDATED = "user.updated"
     USER_DELETED = "user.deleted"
     USER_ROLE_CHANGED = "user.role.changed"
+
+    # API key lifecycle (#937). Minting and revoking a credential are the
+    # security-relevant events here; a key's *use* is covered by the auth events.
+    API_KEY_CREATED = "api_key.created"
+    API_KEY_REVOKED = "api_key.revoked"
 
     # Rate limiting events
     RATE_LIMIT_EXCEEDED = "rate_limit.exceeded"
@@ -237,12 +248,90 @@ class AuditLogger:
             ip_address: Client IP address
             metadata: Additional event metadata
         """
-        self.db.create_audit_log(
-            event_type=event_type.value,
-            user_id=user_id,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            ip_address=ip_address,
-            metadata=metadata,
-            timestamp=datetime.now(UTC),
-        )
+        # Never raise: an audit write must not fail the operation being audited
+        # — refusing a login because the audit table is unavailable would be a
+        # self-inflicted outage. But it is logged at WARNING, not debug: a
+        # silently missing audit trail is indistinguishable from "nothing
+        # happened", which is exactly what an audit trail exists to rule out
+        # (#937).
+        try:
+            self.db.create_audit_log(
+                event_type=event_type.value,
+                user_id=user_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                ip_address=ip_address,
+                metadata=metadata,
+                timestamp=datetime.now(UTC),
+            )
+        except Exception:  # noqa: BLE001 - see comment
+            logger.warning(
+                "Audit write failed for %s (user_id=%s) — the event happened but "
+                "was NOT recorded.",
+                event_type.value,
+                user_id,
+                exc_info=True,
+            )
+
+
+def audit_from_request(
+    request,
+    event_type: "AuditEventType",
+    *,
+    user_id: Optional[int] = None,
+    email: Optional[str] = None,
+    resource_type: str = "auth",
+    resource_id: Optional[int] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Write one audit event using the Database on the app state (#937).
+
+    A single funnel for the call sites that only have a ``Request``: it resolves
+    the store, records the client IP, and is guarded end to end so no caller
+    needs its own try/except. Returns quietly when there is no database (unit
+    tests build routers without app state) but logs when a write is attempted
+    and fails.
+    """
+    db = getattr(getattr(getattr(request, "app", None), "state", None), "db", None)
+    if db is None:
+        return
+
+    client = getattr(request, "client", None)
+    AuditLogger(db)._log_event(
+        event_type=event_type,
+        user_id=user_id,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        ip_address=getattr(client, "host", None),
+        metadata={**(metadata or {}), **({"email": email} if email else {})},
+    )
+
+
+#: The in-flight Request, for audit call sites that cannot receive one.
+#: ``UserManager.authenticate`` is the motivating case: fastapi-users calls it
+#: with only the submitted credentials, but a failed login is precisely the
+#: event worth auditing, and the row needs the client IP. Set by the
+#: ``capture_audit_request`` dependency on the auth routes (#937).
+_current_request: ContextVar[Optional[Any]] = ContextVar(
+    "codeframe_audit_request", default=None
+)
+
+
+async def capture_audit_request(request: Request):
+    """FastAPI dependency: expose this request to request-less audit call sites.
+
+    The annotation is load-bearing: without it FastAPI reads ``request`` as a
+    query parameter and every login 422s.
+    """
+    token = _current_request.set(request)
+    try:
+        yield
+    finally:
+        # Reset rather than clear: ContextVar state leaking between requests on a
+        # reused worker task would attribute one user's IP to another's event.
+        _current_request.reset(token)
+
+
+def current_audit_request():
+    """The in-flight Request, or None outside a captured route."""
+    return _current_request.get()
