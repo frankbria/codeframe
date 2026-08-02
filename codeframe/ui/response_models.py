@@ -203,3 +203,35 @@ def retrieved_message(resource: str, count: Optional[int] = None) -> str:
     if count is not None:
         return f"Retrieved {count} {resource}(s)"
     return f"{resource} retrieved successfully"
+
+
+def internal_error(exc: BaseException, *, operation: str, logger=None) -> dict:
+    """Log an unexpected exception and return a client-safe error body (#934).
+
+    ``str(exc)`` on an unexpected exception leaks host filesystem paths, SQL,
+    library internals and sometimes credentials in connection strings — to any
+    authenticated tenant, and inside SSE ``error`` events too. The client gets a
+    generic message plus a correlation id; the id is what ties their report to
+    the full traceback in the operator's logs.
+
+    Args:
+        exc: The caught exception. Never rendered into the response.
+        operation: Short human description, e.g. "generate PRD".
+        logger: Logger to record against; falls back to this module's.
+
+    Returns:
+        A standard error dict carrying only the correlation id as detail.
+    """
+    import logging as _logging
+    import uuid as _uuid
+
+    correlation_id = str(_uuid.uuid4())
+    (logger or _logging.getLogger(__name__)).error(
+        "[%s] Failed to %s: %s", correlation_id, operation, exc, exc_info=True
+    )
+    return {
+        "error": f"Failed to {operation}",
+        "code": ErrorCodes.EXECUTION_FAILED,
+        "detail": f"An internal error occurred. Reference: {correlation_id}",
+        "correlation_id": correlation_id,
+    }

@@ -50,6 +50,7 @@ _AUTH_FALSY = {"0", "false", "no", "off"}
 _QUERY_TICKET_PATHS = (
     re.compile(r"^/api/v2/tasks/[^/]+/stream$"),  # task event stream (SSE)
     re.compile(r"^/api/v2/prd/stress-test$"),  # PRD stress-test stream (SSE)
+    re.compile(r"^/api/v2/tasks/[^/]+/output$"),  # raw task output stream (SSE, #934)
 )
 
 

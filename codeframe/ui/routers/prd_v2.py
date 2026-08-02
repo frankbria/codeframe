@@ -26,11 +26,23 @@ from pydantic import BaseModel, Field, field_validator
 
 from codeframe.core.workspace import Workspace
 from codeframe.core.llm_resolution import UntrustedBaseURLError
-from codeframe.lib.rate_limiter import rate_limit_standard
+from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import prd
+
+# Payload caps (#934). Every value below is fed into an LLM prompt, so an
+# uncapped request body is an unbounded provider bill and a DoS vector. Pydantic
+# enforces these before the handler runs, so overflow is a 422 with a field-level
+# message rather than work the operator pays for.
+#: ~200k characters is roughly 50k tokens — comfortably above a real PRD and far
+#: below a context-window-filling upload.
+MAX_PRD_CONTENT_CHARS = 200_000
+#: A single stress-test answer.
+MAX_ANSWER_CHARS = 10_000
+#: How many ambiguities one refine request may carry.
+MAX_REFINE_ANSWERS = 100
 from codeframe.core.prd import PrdHasDependentTasksError
 from codeframe.ui.dependencies import get_v2_workspace
-from codeframe.ui.response_models import api_error, ErrorCodes
+from codeframe.ui.response_models import api_error, internal_error, ErrorCodes
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +90,16 @@ class PrdListResponse(BaseModel):
 class CreatePrdRequest(BaseModel):
     """Request for creating a PRD."""
 
-    content: str = Field(..., min_length=1, description="PRD content (markdown)")
+    content: str = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_PRD_CONTENT_CHARS,
+        description=(
+            "PRD content (markdown). Capped at "
+            f"{MAX_PRD_CONTENT_CHARS} characters — this text is fed to an LLM, "
+            "so an uncapped body is an unbounded bill. Overflow returns 422."
+        ),
+    )
     title: Optional[str] = Field(None, description="Optional title (extracted from content if not provided)")
     metadata: Optional[dict] = Field(None, description="Optional metadata")
 
@@ -86,7 +107,12 @@ class CreatePrdRequest(BaseModel):
 class CreateVersionRequest(BaseModel):
     """Request for creating a new PRD version."""
 
-    content: str = Field(..., min_length=1, description="New PRD content")
+    content: str = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_PRD_CONTENT_CHARS,
+        description=f"New PRD content. Capped at {MAX_PRD_CONTENT_CHARS} characters (#934).",
+    )
     change_summary: str = Field(..., min_length=1, description="Description of changes")
 
 
@@ -101,11 +127,18 @@ class PrdDiffResponse(BaseModel):
 class AmbiguityAnswer(BaseModel):
     """A single answered ambiguity from the stress-test results view (#562)."""
 
-    label: str = Field(..., min_length=1, description="Short ambiguity label")
+    label: str = Field(
+        ..., min_length=1, max_length=500, description="Short ambiguity label"
+    )
     questions: list[str] = Field(
         default_factory=list, description="The unanswered questions"
     )
-    answer: str = Field(..., min_length=1, description="The user's answer")
+    answer: str = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_ANSWER_CHARS,
+        description=f"The user's answer. Capped at {MAX_ANSWER_CHARS} characters (#934).",
+    )
 
     @field_validator("answer")
     @classmethod
@@ -127,7 +160,13 @@ class StressTestRefineRequest(BaseModel):
 
     prd_id: str = Field(..., description="ID of the PRD to refine")
     answers: list[AmbiguityAnswer] = Field(
-        ..., min_length=1, description="Resolved ambiguities to fold into the PRD"
+        ...,
+        min_length=1,
+        max_length=MAX_REFINE_ANSWERS,
+        description=(
+            "Resolved ambiguities to fold into the PRD. At most "
+            f"{MAX_REFINE_ANSWERS} — each one lengthens the LLM prompt (#934)."
+        ),
     )
 
 
@@ -284,7 +323,14 @@ async def _stress_test_event_stream(
         # has already sent 200 OK by the time this generator runs, so the app-level
         # 400 handler can never fire here — letting it escape would kill the
         # EventSource with no frame and no explanation.
-        yield _sse({"type": "error", "message": str(exc)})
+        # A generic message + correlation id, not str(exc): SSE error events
+        # are rendered in the browser and used to leak host paths (#934).
+        _err = internal_error(exc, operation="run the stress test", logger=logger)
+        yield _sse({
+            "type": "error",
+            "message": _err["detail"],
+            "correlation_id": _err["correlation_id"],
+        })
         return
 
     # Latched so the *recursion* can see it, not just this loop. Breaking here
@@ -338,7 +384,9 @@ async def _stress_test_event_stream(
 
 
 @router.get("/stress-test")
-@rate_limit_standard()
+# LLM route -> AI tier (#934). On the standard tier one tenant burned the
+# operator's provider budget five times faster than any other LLM endpoint.
+@rate_limit_ai()
 async def stress_test_prd_stream_endpoint(
     request: Request,
     max_depth: int = Query(3, ge=1, le=10, description="Maximum recursion depth"),
@@ -375,7 +423,8 @@ async def stress_test_prd_stream_endpoint(
 # NOTE: registered before the "/{prd_id}" catch-all so FastAPI does not match
 # "stress-test/refine" as a PRD id.
 @router.post("/stress-test/refine", response_model=PrdResponse)
-@rate_limit_standard()
+# LLM route -> AI tier (#934), same reason as the stream above.
+@rate_limit_ai()
 async def refine_prd_from_stress_test(
     request: Request,
     body: StressTestRefineRequest,
@@ -471,12 +520,9 @@ async def refine_prd_from_stress_test(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to refine PRD: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=api_error(
-                "Failed to refine PRD", ErrorCodes.EXECUTION_FAILED, str(e)
-            ),
+            detail=internal_error(e, operation="refine PRD", logger=logger),
         )
 
 
@@ -540,7 +586,7 @@ async def create_prd(
         logger.error(f"Failed to create PRD: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=api_error("Failed to create PRD", ErrorCodes.EXECUTION_FAILED, str(e)),
+            detail=internal_error(e, operation="create PRD", logger=logger),
         )
 
 
@@ -672,7 +718,7 @@ async def create_prd_version(
         logger.error(f"Failed to create PRD version: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=api_error("Failed to create version", ErrorCodes.EXECUTION_FAILED, str(e)),
+            detail=internal_error(e, operation="create version", logger=logger),
         )
 
 

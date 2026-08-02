@@ -17,6 +17,7 @@ from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import git
 from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.response_models import internal_error
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,12 @@ async def get_git_status(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to get git status: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            # Generic body + correlation id: str(e) here leaked host paths and
+            # git internals to any authenticated tenant (#934).
+            detail=internal_error(e, operation="get git status", logger=logger),
+        )
 
 
 @router.get("/commits", response_model=CommitListResponse)
@@ -160,7 +166,12 @@ async def list_commits(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to list commits: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            # Generic body + correlation id: str(e) here leaked host paths and
+            # git internals to any authenticated tenant (#934).
+            detail=internal_error(e, operation="list commits", logger=logger),
+        )
 
 
 @router.post("/commit", response_model=CommitResultResponse, status_code=201)
@@ -201,7 +212,12 @@ async def create_commit(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to create commit: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            # Generic body + correlation id: str(e) here leaked host paths and
+            # git internals to any authenticated tenant (#934).
+            detail=internal_error(e, operation="create commit", logger=logger),
+        )
 
 
 @router.get("/diff", response_model=DiffResponse)
@@ -233,7 +249,12 @@ async def get_diff(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to get diff: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            # Generic body + correlation id: str(e) here leaked host paths and
+            # git internals to any authenticated tenant (#934).
+            detail=internal_error(e, operation="get diff", logger=logger),
+        )
 
 
 @router.get("/branch")
@@ -259,7 +280,12 @@ async def get_current_branch(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to get current branch: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            # Generic body + correlation id: str(e) here leaked host paths and
+            # git internals to any authenticated tenant (#934).
+            detail=internal_error(e, operation="get current branch", logger=logger),
+        )
 
 
 @router.get("/clean")
@@ -285,4 +311,9 @@ async def check_clean(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to check if clean: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            # Generic body + correlation id: str(e) here leaked host paths and
+            # git internals to any authenticated tenant (#934).
+            detail=internal_error(e, operation="check if clean", logger=logger),
+        )
