@@ -70,7 +70,9 @@ def _load_proof_config(workspace: Workspace) -> tuple[Optional[set[Gate]], str]:
 _GATE_TO_CORE: dict[Gate, str] = {
     Gate.UNIT: "pytest",
     Gate.CONTRACT: "pytest",
-    Gate.SEC: "ruff",
+    # bandit, not ruff: a clean *lint* used to record checksummed "security"
+    # evidence in the ledger (#925).
+    Gate.SEC: "bandit",
 }
 
 # Map a gate outcome to the persisted obligation status string.
