@@ -48,13 +48,74 @@ from codeframe.platform_store.database import Database
 
 logger = logging.getLogger(__name__)
 
-# Model pricing as of 2025-11 (per million tokens)
-# Source: Anthropic pricing page
+# Model pricing (per million tokens).
+#
+# Every model named by a DEFAULT_*_MODEL constant in adapters/llm/base.py MUST
+# have an entry here — a missing default silently prices the whole shipped path
+# at $0 (#932), which is what happened to claude-haiku-4-5.
+# tests/core/test_cost_accounting_932.py enforces that.
+#
+# This table is a convenience, not the source of truth: rates change and new
+# models ship between releases, so CODEFRAME_MODEL_PRICING overrides it without
+# needing a new version.
 MODEL_PRICING = {
+    # Anthropic
     "claude-sonnet-4-5": {"input": 3.00, "output": 15.00},
     "claude-opus-4": {"input": 15.00, "output": 75.00},
+    "claude-opus-4-5": {"input": 5.00, "output": 25.00},
     "claude-haiku-4": {"input": 0.80, "output": 4.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+    # OpenAI (advertised as a supported provider)
+    "gpt-4o": {"input": 2.50, "output": 10.00},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
 }
+
+#: JSON object merged over MODEL_PRICING, e.g.
+#: CODEFRAME_MODEL_PRICING='{"qwen2.5-coder:7b": {"input": 0, "output": 0}}'
+#: Local models are legitimately free — an explicit 0 records $0.00 as a fact,
+#: which is different from having no pricing at all.
+MODEL_PRICING_ENV_VAR = "CODEFRAME_MODEL_PRICING"
+
+
+def _pricing_table() -> Dict[str, Dict[str, float]]:
+    """MODEL_PRICING with any CODEFRAME_MODEL_PRICING overrides applied.
+
+    Never mutates MODEL_PRICING, and never raises: a malformed override is
+    logged and ignored, because breaking all pricing would be worse than
+    ignoring one bad setting.
+    """
+    raw = os.environ.get(MODEL_PRICING_ENV_VAR)
+    if not raw:
+        return MODEL_PRICING
+
+    try:
+        overrides = json.loads(raw)
+        if not isinstance(overrides, dict):
+            raise ValueError(f"expected an object, got {type(overrides).__name__}")
+        clean = {
+            model: {"input": float(p["input"]), "output": float(p["output"])}
+            for model, p in overrides.items()
+        }
+    except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
+        logger.warning(
+            "Ignoring malformed %s (%s). Using built-in pricing.",
+            MODEL_PRICING_ENV_VAR,
+            exc,
+        )
+        return MODEL_PRICING
+
+    return {**MODEL_PRICING, **clean}
+
+
+def _priced(cost: Optional[float]) -> float:
+    """Coerce an unpriced (None) cost to 0.0 **for summation only**.
+
+    An unpriced call must not crash an aggregator, and must not be counted as
+    spend either. Callers pair this with an ``unpriced_calls`` counter so the
+    gap is reported rather than hidden (#932).
+    """
+    return 0.0 if cost is None else cost
+
 
 # Regex to strip -YYYYMMDD date suffixes from Anthropic API model names
 # (e.g., "claude-sonnet-4-5-20250514" → "claude-sonnet-4-5")
@@ -74,13 +135,15 @@ def normalize_model_name(raw_model: str) -> str:
     Returns:
         Normalized model name (e.g., 'claude-sonnet-4-5')
     """
+    table = _pricing_table()
+
     # If it already matches a known model, return as-is
-    if raw_model in MODEL_PRICING:
+    if raw_model in table:
         return raw_model
 
     # Try stripping date suffix (8 digits at the end)
     stripped = _DATE_SUFFIX_RE.sub("", raw_model)
-    if stripped in MODEL_PRICING:
+    if stripped in table:
         return stripped
 
     # Unknown model - return as-is
@@ -117,17 +180,14 @@ class MetricsTracker:
         self.db = db
 
     @staticmethod
-    def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
+    def calculate_cost(
+        model_name: str, input_tokens: int, output_tokens: int
+    ) -> Optional[float]:
         """Calculate estimated cost in USD for an LLM call.
 
-        Uses current Anthropic pricing (as of 2025-11):
-        - Claude Sonnet 4.5: $3.00 input / $15.00 output per MTok
-        - Claude Opus 4: $15.00 input / $75.00 output per MTok
-        - Claude Haiku 4: $0.80 input / $4.00 output per MTok
-
-        Handles model names with date suffixes (e.g., 'claude-sonnet-4-5-20250514')
-        by normalizing them first. Unknown models return $0.00 cost instead of
-        raising, to avoid crashing the agent during recording.
+        Rates come from ``MODEL_PRICING``, overridable per-deployment via the
+        ``CODEFRAME_MODEL_PRICING`` environment variable. Model names with date
+        suffixes ('claude-sonnet-4-5-20250514') are normalized first.
 
         Args:
             model_name: Model identifier (e.g., "claude-sonnet-4-5" or "claude-sonnet-4-5-20250514")
@@ -135,7 +195,11 @@ class MetricsTracker:
             output_tokens: Number of output tokens
 
         Returns:
-            Estimated cost in USD (rounded to 6 decimal places), or 0.0 for unknown models
+            Estimated cost in USD (rounded to 6 decimal places), or **None** when
+            the model has no pricing. ``None`` and ``0.0`` mean different things:
+            ``0.0`` is a priced-at-free call, ``None`` is "we cannot say".
+            Callers must not coerce ``None`` to ``0.0`` — that is the
+            silent under-reporting this signature exists to prevent (#932).
 
         Example:
             >>> cost = MetricsTracker.calculate_cost(
@@ -144,16 +208,20 @@ class MetricsTracker:
             >>> print(f"${cost:.4f}")
             $0.0105
         """
+        table = _pricing_table()
         normalized = normalize_model_name(model_name)
 
-        if normalized not in MODEL_PRICING:
+        if normalized not in table:
             logger.warning(
-                f"Unknown model '{model_name}' (normalized: '{normalized}'). "
-                f"Returning $0.00 cost. Supported: {', '.join(MODEL_PRICING.keys())}"
+                f"No pricing for model '{model_name}' (normalized: '{normalized}'). "
+                f"Recording as UNPRICED, not $0.00. Known: {', '.join(sorted(table))}. "
+                f"Set {MODEL_PRICING_ENV_VAR} to supply a rate."
             )
-            return 0.0
+            # None, not 0.0 (#932): summing an unknown model as free under-reports
+            # spend silently. $0.00 must mean free, never "we don't know".
+            return None
 
-        prices = MODEL_PRICING[normalized]
+        prices = table[normalized]
 
         # Calculate cost: (tokens * price_per_mtok) / 1,000,000
         input_cost = (input_tokens * prices["input"]) / 1_000_000
@@ -193,7 +261,11 @@ class MetricsTracker:
             Database ID of the created token usage record
 
         Raises:
-            ValueError: If model_name is unknown or token counts are negative
+            ValueError: If input_tokens or output_tokens is negative.
+                An unknown ``model_name`` does NOT raise — the docstring used to
+                claim it did (#932). It is stored with
+                ``estimated_cost_usd = None`` (SQL NULL) instead, so unpriced
+                usage is excluded from cost sums rather than counted as free.
 
         Example:
             >>> usage_id = await tracker.record_token_usage(
@@ -210,7 +282,8 @@ class MetricsTracker:
         if input_tokens < 0 or output_tokens < 0:
             raise ValueError("Token counts cannot be negative")
 
-        # Calculate cost (returns 0.0 for unknown models)
+        # None when the model has no pricing — stored as NULL so it is excluded
+        # from cost sums rather than counted as free (#932).
         estimated_cost = self.calculate_cost(model_name, input_tokens, output_tokens)
 
         # Create TokenUsage model
@@ -233,7 +306,8 @@ class MetricsTracker:
 
         logger.info(
             f"Recorded token usage: agent={agent_id}, model={model_name}, "
-            f"tokens={input_tokens + output_tokens}, cost=${estimated_cost:.6f}"
+            f"tokens={input_tokens + output_tokens}, "
+            f"cost={'UNPRICED' if estimated_cost is None else f'${estimated_cost:.6f}'}"
         )
 
         return usage_id
@@ -293,7 +367,8 @@ class MetricsTracker:
 
         logger.info(
             f"Recorded token usage (sync): agent={agent_id}, model={model_name}, "
-            f"tokens={input_tokens + output_tokens}, cost=${estimated_cost:.6f}"
+            f"tokens={input_tokens + output_tokens}, "
+            f"cost={'UNPRICED' if estimated_cost is None else f'${estimated_cost:.6f}'}"
         )
 
         return usage_id
@@ -501,11 +576,15 @@ class MetricsTracker:
         )
 
         # Initialize result
-        result = {
+        result: Dict[str, Any] = {
             "project_id": project_id,
             "total_cost_usd": 0.0,
             "total_tokens": 0,
             "total_calls": len(usage_records),
+            # Calls whose model has no pricing: excluded from total_cost_usd
+            # rather than counted as free, and surfaced so the UI can say so
+            # instead of under-reporting silently (#932).
+            "unpriced_calls": 0,
             "by_agent": [],
             "by_model": [],
         }
@@ -517,8 +596,12 @@ class MetricsTracker:
         agent_stats: Dict[str, Dict[str, Any]] = {}
         model_stats: Dict[str, Dict[str, Any]] = {}
 
+        unpriced_calls = 0
         for record in usage_records:
-            cost = record["estimated_cost_usd"]
+            raw_cost = record["estimated_cost_usd"]
+            if raw_cost is None:
+                unpriced_calls += 1
+            cost = _priced(raw_cost)
             tokens = record["input_tokens"] + record["output_tokens"]
             agent_id = record["agent_id"]
             model_name = record["model_name"]
@@ -553,6 +636,7 @@ class MetricsTracker:
 
         # Convert to lists and round costs
         result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
+        result["unpriced_calls"] = unpriced_calls
         result["by_agent"] = [
             {**stats, "cost_usd": round(stats["cost_usd"], 6)}
             for stats in agent_stats.values()
@@ -595,7 +679,7 @@ class MetricsTracker:
         usage_records = self.db.get_token_usage(agent_id=agent_id)
 
         # Initialize result
-        result = {
+        result: Dict[str, Any] = {
             "agent_id": agent_id,
             "total_cost_usd": 0.0,
             "total_tokens": 0,
@@ -611,8 +695,12 @@ class MetricsTracker:
         call_type_stats: Dict[str, Dict[str, Any]] = {}
         project_stats: Dict[int, Dict[str, Any]] = {}
 
+        unpriced_calls = 0
         for record in usage_records:
-            cost = record["estimated_cost_usd"]
+            raw_cost = record["estimated_cost_usd"]
+            if raw_cost is None:
+                unpriced_calls += 1
+            cost = _priced(raw_cost)
             tokens = record["input_tokens"] + record["output_tokens"]
             call_type = record["call_type"]
             project_id = record["project_id"]
@@ -638,6 +726,7 @@ class MetricsTracker:
 
         # Convert to lists and round costs
         result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
+        result["unpriced_calls"] = unpriced_calls
         result["by_call_type"] = [
             {**stats, "cost_usd": round(stats["cost_usd"], 6)}
             for stats in call_type_stats.values()
@@ -690,7 +779,7 @@ class MetricsTracker:
         )
 
         # Initialize result
-        result = {
+        result: Dict[str, Any] = {
             "project_id": project_id,
             "total_cost_usd": 0.0,
             "total_tokens": 0,
@@ -705,12 +794,16 @@ class MetricsTracker:
             return result
 
         # Aggregate totals
+        unpriced_calls = 0
         for record in usage_records:
-            result["total_cost_usd"] += record["estimated_cost_usd"]
+            if record["estimated_cost_usd"] is None:
+                unpriced_calls += 1
+            result["total_cost_usd"] += _priced(record["estimated_cost_usd"])
             result["total_tokens"] += record["input_tokens"] + record["output_tokens"]
 
         # Round cost
         result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
+        result["unpriced_calls"] = unpriced_calls
 
         return result
 
@@ -805,7 +898,7 @@ class MetricsTracker:
             buckets[bucket_key]["total_tokens"] += (
                 record["input_tokens"] + record["output_tokens"]
             )
-            buckets[bucket_key]["cost_usd"] += record["estimated_cost_usd"]
+            buckets[bucket_key]["cost_usd"] += _priced(record["estimated_cost_usd"])
 
         # Round costs and sort by timestamp
         result = []

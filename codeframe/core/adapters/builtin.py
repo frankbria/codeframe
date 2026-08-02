@@ -10,7 +10,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
-from codeframe.core.adapters.agent_adapter import AgentEvent, AgentResult
+from codeframe.core.adapters.agent_adapter import (
+    AdapterTokenUsage,
+    AgentEvent,
+    AgentResult,
+)
 
 if TYPE_CHECKING:
     from codeframe.adapters.llm.base import LLMProvider
@@ -22,6 +26,34 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _MAX_STALL_RETRIES = 1
+
+
+def _adapter_token_usage(agent: object) -> Optional[AdapterTokenUsage]:
+    """Build AdapterTokenUsage from a builtin agent's accumulated records.
+
+    Returns None when the agent recorded nothing — an absent figure is honest,
+    a zero one claims the run was free. Never raises: token reporting must not
+    be able to fail a run that already succeeded.
+    """
+    if agent is None:
+        return None
+    try:
+        totals = agent.get_total_tokens()  # type: ignore[attr-defined]
+        if not totals or not (totals.get("input_tokens") or totals.get("output_tokens")):
+            return None
+        records = agent.get_token_usage()  # type: ignore[attr-defined]
+        models = {r.get("model") for r in records if r.get("model")}
+        return AdapterTokenUsage(
+            input_tokens=totals.get("input_tokens", 0),
+            output_tokens=totals.get("output_tokens", 0),
+            # Only name a model when the run used exactly one; a mixed run has
+            # no single answer and guessing would mis-price it downstream.
+            model=next(iter(models)) if len(models) == 1 else None,
+            cost_usd=totals.get("estimated_cost_usd"),
+        )
+    except Exception:  # noqa: BLE001 - see docstring
+        logger.warning("Could not read token usage from agent", exc_info=True)
+        return None
 
 
 class BuiltinReactAdapter:
@@ -107,7 +139,7 @@ class BuiltinReactAdapter:
             try:
                 agent = _build_agent()
                 status = agent.run(task_id)
-                return self._map_status(status)
+                return self._map_status(status, agent)
             except StallDetectedError as exc:
                 logger.warning(
                     "Stall detected (attempt %d): %s",
@@ -124,8 +156,14 @@ class BuiltinReactAdapter:
         return AgentResult(status="failed", error="Unexpected: stall retry loop exhausted")
 
     @staticmethod
-    def _map_status(status: object) -> AgentResult:
-        """Map AgentStatus enum to AgentResult."""
+    def _map_status(status: object, agent: object = None) -> AgentResult:
+        """Map AgentStatus enum to AgentResult, carrying the agent's token usage.
+
+        The builtin engines are the *default*, and this used to drop the token
+        counts on the floor — so engine stats and the Costs page reported 0 for
+        every ordinary run while the delegated adapters reported real figures
+        (#932). ReactAgent already accumulates the numbers.
+        """
         from codeframe.core.agent import AgentStatus
 
         status_map = {
@@ -137,6 +175,7 @@ class BuiltinReactAdapter:
         return AgentResult(
             status=result_status,
             output=f"ReactAgent finished with status: {status.value}",  # type: ignore[union-attr]
+            token_usage=_adapter_token_usage(agent),
         )
 
 
