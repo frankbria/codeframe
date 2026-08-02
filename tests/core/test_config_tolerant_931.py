@@ -64,6 +64,27 @@ class TestUnknownKeysAreIgnored:
         for key in ("alpha", "beta", "gamma"):
             assert key in caplog.text
 
+    def test_non_string_keys_do_not_crash_the_warning(self, tmp_path, caplog):
+        """YAML keys need not be strings: `123: x` and `true: y` are valid.
+
+        Surfaced by `codex review`'s own probe on this PR — both sorted() and
+        join() raise on a mixed-type key set, so reporting the bad key crashed
+        for the same class of input the fix exists to survive.
+        """
+        _write_config(tmp_path, "123: x\ntrue: y\npackage_manager: poetry\n")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_environment_config(tmp_path)
+
+        assert config is not None
+        assert config.package_manager == "poetry"
+        assert "123" in caplog.text
+
+    def test_from_dict_survives_mixed_type_keys(self):
+        config = EnvironmentConfig.from_dict({"package_manager": "pip", 123: "x"})
+
+        assert config.package_manager == "pip"
+
     def test_from_dict_is_tolerant_directly(self):
         config = EnvironmentConfig.from_dict(
             {"package_manager": "pip", "not_a_real_key": True}

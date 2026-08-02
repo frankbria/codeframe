@@ -144,7 +144,11 @@ def _build_config(cls: type, data: dict[str, Any], where: str):
     load. (#931)
     """
     known = {f.name for f in dataclass_fields(cls)}
-    unknown = sorted(set(data) - known)
+    # key=str / repr: YAML keys are not necessarily strings — `123: x` and
+    # `true: y` are valid mappings — and both sorted() and join() raise on a
+    # mixed-type set. Crashing while reporting a bad key would reintroduce the
+    # very failure this function exists to prevent.
+    unknown = sorted(set(data) - known, key=str)
     if unknown:
         logger.warning(
             "Ignoring unknown %s key%s in %s (%s): %s",
@@ -152,7 +156,7 @@ def _build_config(cls: type, data: dict[str, Any], where: str):
             "s" if len(unknown) > 1 else "",
             ENV_CONFIG_FILE,
             cls.__name__,
-            ", ".join(unknown),
+            ", ".join(repr(k) for k in unknown),
         )
 
     usable = {k: v for k, v in data.items() if k in known}
