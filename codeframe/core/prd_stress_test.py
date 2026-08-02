@@ -65,6 +65,9 @@ class StressTestResult:
     ambiguities: list[Ambiguity]
     tech_spec_markdown: str
     ambiguity_report: str
+    # True when the call budget ran out mid-walk: the ambiguities found are
+    # real, but absence of others is not evidence of their absence (#927).
+    partial: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -498,7 +501,14 @@ def stress_test_prd(
     tree: list[DecompositionNode] = []
     ambiguities: list[Ambiguity] = []
 
+    # One budget for the whole run, matching the streaming path. Letting each
+    # goal default to its own ``_Budget()`` would bound the walk at
+    # ``len(goals) × MAX_LLM_CALLS`` instead of the documented total (#927).
+    budget = _Budget()
+
     for goal in goals:
+        if budget.stopped_early:
+            break
         node = recursive_decompose(
             title=goal,
             description=goal,
@@ -508,6 +518,7 @@ def stress_test_prd(
             max_depth=max_depth,
             ambiguities=ambiguities,
             provider=provider,
+            budget=budget,
         )
         tree.append(node)
 
@@ -531,6 +542,7 @@ def stress_test_prd(
         ambiguities=ambiguities,
         tech_spec_markdown=tech_spec,
         ambiguity_report=amb_report,
+        partial=budget.stopped_early,
     )
 
 

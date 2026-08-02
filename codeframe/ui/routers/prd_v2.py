@@ -292,17 +292,42 @@ async def _stress_test_event_stream(
     # goal kept issuing billable calls (#927).
     disconnected = False
 
-    async for event in stress_test_prd_stream(
-        record.content, provider, max_depth=max_depth,
-        is_cancelled=lambda: disconnected,
-    ):
-        # If the browser has gone away, stop iterating the core generator so its
-        # next (blocking, billable) LLM call is never made.
-        if request is not None and await request.is_disconnected():
-            logger.info("Client disconnected from stress-test stream; aborting")
-            disconnected = True
-            break
-        yield _sse(event)
+    async def _watch_disconnect() -> None:
+        # A whole top-level goal decomposes inside one `asyncio.to_thread`, so
+        # the per-event check below cannot fire during that walk — the loop is
+        # not running the generator's frame. This polls on the loop alongside
+        # the worker thread, so the recursion sees the latch at its next node
+        # rather than only at its next goal.
+        # ponytail: 1s poll, not a disconnect callback — a classification call
+        # takes seconds, so finer granularity saves nothing.
+        nonlocal disconnected
+        while not disconnected:
+            if await request.is_disconnected():
+                logger.info("Client disconnected from stress-test stream; aborting")
+                disconnected = True
+                return
+            await asyncio.sleep(1.0)
+
+    watcher = asyncio.create_task(_watch_disconnect()) if request is not None else None
+    try:
+        async for event in stress_test_prd_stream(
+            record.content, provider, max_depth=max_depth,
+            is_cancelled=lambda: disconnected,
+        ):
+            # Still checked per event as well as on the poll interval: a stream
+            # that produces events faster than the poll would otherwise run to
+            # completion for a client that has already gone away.
+            if disconnected or (
+                request is not None and await request.is_disconnected()
+            ):
+                logger.info("Client disconnected from stress-test stream; aborting")
+                disconnected = True
+                break
+            yield _sse(event)
+    finally:
+        if watcher is not None:
+            disconnected = True  # stops the poll loop on the normal path too
+            watcher.cancel()
 
 
 @router.get("/stress-test")
