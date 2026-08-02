@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
 from codeframe.core import blockers, tasks
 from codeframe.core.state_machine import TaskStatus
@@ -52,18 +52,10 @@ class ReconciliationEngine:
 
     Args:
         workspace: The workspace to check tasks in.
-        github_checker: Optional callable(task_id, task) -> list[ExternalStateChange]
-            for GitHub issue state sync. If None, GitHub checks are skipped.
     """
 
-    def __init__(
-        self,
-        workspace: Workspace,
-        *,
-        github_checker: Optional[Callable] = None,
-    ) -> None:
+    def __init__(self, workspace: Workspace) -> None:
         self._workspace = workspace
-        self._github_checker = github_checker
 
     def check_task(self, task_id: str) -> list[ExternalStateChange]:
         """Check a single task for external state changes.
@@ -98,13 +90,12 @@ class ReconciliationEngine:
                     details={"blockers_resolved": len(task_blockers)},
                 ))
 
-        # Check GitHub issue state if checker is available
-        if self._github_checker:
-            try:
-                gh_changes = self._github_checker(task_id, task)
-                changes.extend(gh_changes)
-            except Exception as exc:
-                logger.warning("GitHub check failed for task %s: %s", task_id, exc)
+        # An injectable GitHub issue-state check used to hang off this point.
+        # It was passed at neither conductor call site, so it advertised a
+        # capability that did not exist. Removed rather than half-built: a real
+        # check means a network call per task per tick, against a PAT, with its
+        # own rate-limit and caching design — that is a feature with its own
+        # issue, not a parameter. (#921)
 
         return changes
 
@@ -168,9 +159,16 @@ class ReconciliationEngine:
                 elif change.change_type == "blocker_resolved":
                     result.tasks_requeued.append(change.task_id)
 
-                    # Update batch results to signal re-queue
+                    # Clear any recorded outcome instead of writing "READY".
+                    # RunStatus has no such value, and resume_batch's retryable
+                    # set is {FAILED, BLOCKED, RUNNING} — so the marker made the
+                    # task permanently ineligible for `cf work batch resume`
+                    # while RECONCILIATION_TASK_REQUEUED told the user it would
+                    # re-run. With no entry at all, resume's `tid not in
+                    # batch.results` branch picks it up, which is what
+                    # "re-queued" means. (#921)
                     if hasattr(batch, "results"):
-                        batch.results[change.task_id] = "READY"
+                        batch.results.pop(change.task_id, None)
 
                     logger.info(
                         "Task %s blocker resolved — re-queued",
