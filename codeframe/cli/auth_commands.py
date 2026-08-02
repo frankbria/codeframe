@@ -1016,3 +1016,158 @@ def api_key_rotate(
     else:
         console.print("[red]Error:[/red] API key not found or not owned by user")
         raise typer.Exit(1)
+
+
+# =============================================================================
+# Offline account administration (#919)
+#
+# There was no reachable path to reset a password or re-enable an account: the
+# reset-password and verify routers are commented out, registration is
+# bootstrap-only and closes after the first user, and nothing offline existed.
+# A single-operator deployment that lost its password had no recovery at all.
+#
+# These talk to the database directly, so they work with no server running —
+# the same contract as the rest of the Golden Path CLI.
+# =============================================================================
+
+
+def _set_user_password(db, email: str, password: str) -> None:
+    """Set a user's password hash directly in the database.
+
+    Uses the same ``PasswordHelper`` the application authenticates with, so the
+    resulting hash is indistinguishable from one set through the API.
+
+    Raises:
+        LookupError: If no user has that email.
+    """
+    from fastapi_users.password import PasswordHelper
+
+    row = db.conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    if row is None:
+        raise LookupError(f"No user with email {email!r}")
+
+    db.conn.execute(
+        "UPDATE users SET hashed_password = ? WHERE id = ?",
+        (PasswordHelper().hash(password), row[0]),
+    )
+    db.conn.commit()
+
+
+def _set_user_active(db, email: str, active: bool) -> None:
+    """Enable or disable an account.
+
+    Since #919 this is also key revocation: an API key is only as live as the
+    account behind it, so deactivating here kills that user's keys too.
+
+    Raises:
+        LookupError: If no user has that email.
+    """
+    row = db.conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    if row is None:
+        raise LookupError(f"No user with email {email!r}")
+
+    db.conn.execute(
+        "UPDATE users SET is_active = ? WHERE id = ?", (int(active), row[0])
+    )
+    db.conn.commit()
+
+
+@auth_app.command("set-password")
+def set_password(
+    email: str = typer.Argument(..., help="Email of the account to reset"),
+    password: Optional[str] = typer.Option(
+        None, "--password", "-p", help="New password (prompted if omitted)",
+    ),
+) -> None:
+    """Reset a user's password offline, without a running server.
+
+    The recovery path for a lost password: the HTTP reset router is not enabled
+    and registration closes after the first account (#919).
+
+    Example:
+
+        codeframe auth set-password admin@example.com
+    """
+    if not password:
+        password = typer.prompt("New password", hide_input=True, confirmation_prompt=True)
+
+    try:
+        _set_user_password(get_db_for_cli(), email, password)
+    except LookupError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    console.print(f"[green]✓ Password updated for {email}[/green]")
+
+
+@auth_app.command("deactivate")
+def deactivate_user(
+    email: str = typer.Argument(..., help="Email of the account to disable"),
+) -> None:
+    """Disable an account and revoke its API keys.
+
+    Since #919 an API key is only as live as the account behind it, so this is
+    the supported way to cut off a user completely.
+
+    Example:
+
+        codeframe auth deactivate former.employee@example.com
+    """
+    try:
+        _set_user_active(get_db_for_cli(), email, False)
+    except LookupError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    console.print(f"[green]✓ {email} deactivated; its API keys no longer authenticate[/green]")
+
+
+@auth_app.command("activate")
+def activate_user(
+    email: str = typer.Argument(..., help="Email of the account to re-enable"),
+) -> None:
+    """Re-enable a previously deactivated account.
+
+    Example:
+
+        codeframe auth activate returning@example.com
+    """
+    try:
+        _set_user_active(get_db_for_cli(), email, True)
+    except LookupError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    console.print(f"[green]✓ {email} activated[/green]")
+
+
+@auth_app.command("user-list")
+def user_list() -> None:
+    """List accounts and whether they are active.
+
+    Example:
+
+        codeframe auth user-list
+    """
+    db = get_db_for_cli()
+    rows = db.conn.execute(
+        "SELECT id, email, is_active, is_superuser FROM users ORDER BY id"
+    ).fetchall()
+
+    if not rows:
+        console.print("[yellow]No accounts.[/yellow]")
+        return
+
+    table = Table(title="Accounts")
+    table.add_column("ID", style="dim")
+    table.add_column("Email", style="cyan")
+    table.add_column("Active")
+    table.add_column("Admin")
+    for row in rows:
+        table.add_row(
+            str(row[0]),
+            row[1],
+            "[green]yes[/green]" if row[2] else "[red]no[/red]",
+            "yes" if row[3] else "",
+        )
+    console.print(table)

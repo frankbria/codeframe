@@ -33,7 +33,7 @@ async def test_transient_db_error_surfaced_at_warning_plus(caplog):
     full_key, _hash, _prefix = generate_api_key()
 
     db = MagicMock()
-    db.api_keys.get_by_prefix.side_effect = RuntimeError("database is locked")
+    db.api_keys.get_all_by_prefix.side_effect = RuntimeError("database is locked")
     request = _fake_request(app_db=db)
 
     with caplog.at_level(logging.DEBUG, logger="codeframe.auth.dependencies"):
@@ -51,7 +51,7 @@ async def test_transient_db_error_surfaced_at_warning_plus(caplog):
 async def test_fallback_db_is_closed(monkeypatch):
     """When no db is in state, the fallback Database is created and then closed."""
     fallback = MagicMock()
-    fallback.api_keys.get_by_prefix.return_value = None  # key not found -> returns None
+    fallback.api_keys.get_all_by_prefix.return_value = []  # key not found -> returns None
 
     ctor = MagicMock(return_value=fallback)
     monkeypatch.setattr("codeframe.platform_store.database.Database", ctor)

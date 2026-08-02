@@ -109,9 +109,23 @@ class APIKeyRepository(BaseRepository):
         Returns:
             Key record dict or None if not found/inactive
         """
+        candidates = self.get_all_by_prefix(prefix)
+        return candidates[0] if candidates else None
+
+    def get_all_by_prefix(self, prefix: str) -> List[Dict[str, Any]]:
+        """Every live key sharing this prefix (#919).
+
+        The prefix is ``cf_live_`` plus 4 hex characters — 65,536 values, so two
+        keys collide with ~50% probability somewhere near 300 keys — and the
+        index on it is not UNIQUE. Returning a single arbitrary row meant one of
+        two colliding keys could never authenticate, permanently.
+
+        Callers verify the presented key's hash against each candidate, which
+        fixes existing keys with no re-issue and no migration.
+        """
         now = datetime.now(timezone.utc).isoformat()
 
-        row = self._fetchone(
+        rows = self._fetchall(
             """
             SELECT id, user_id, name, key_hash, prefix, scopes,
                    created_at, last_used_at, expires_at, is_active
@@ -123,10 +137,7 @@ class APIKeyRepository(BaseRepository):
             (prefix, now),
         )
 
-        if row is None:
-            return None
-
-        return self._row_to_api_key(row)
+        return [self._row_to_api_key(row) for row in rows]
 
     def list_user_keys(self, user_id: int) -> List[Dict[str, Any]]:
         """List all API keys for a user (active and inactive).
