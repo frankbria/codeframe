@@ -181,6 +181,37 @@ class TestMalformedShapesAreActionable:
         assert "hooks" in caplog.text
 
 
+class TestNoSpuriousWarnings:
+    """A warning that fires on normal use trains people to ignore warnings."""
+
+    def test_save_then_load_round_trip_is_silent(self, tmp_path, caplog):
+        """`save_environment_config` writes `llm: null` for the unset default.
+
+        Raised by the PR bot review: the nested-block guard treated that as a
+        wrong-shaped value and warned on every ordinary round trip.
+        """
+        from codeframe.core.config import save_environment_config
+
+        save_environment_config(tmp_path, EnvironmentConfig())
+
+        with caplog.at_level(logging.WARNING):
+            config = load_environment_config(tmp_path)
+
+        assert config is not None
+        assert config.llm is None
+        assert caplog.text == "", f"unexpected warning on a clean round trip: {caplog.text}"
+
+    def test_explicit_null_nested_block_uses_defaults(self, tmp_path, caplog):
+        _write_config(tmp_path, "hooks: null\npackage_manager: poetry\n")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_environment_config(tmp_path)
+
+        assert config.package_manager == "poetry"
+        assert config.hooks.hook_timeout == 60, "defaulted, not dropped to None"
+        assert caplog.text == ""
+
+
 class TestValidConfigStillWorks:
     def test_full_config_round_trips(self, tmp_path):
         _write_config(

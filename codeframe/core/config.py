@@ -397,6 +397,12 @@ class EnvironmentConfig:
             if key not in data:
                 continue
             value = data[key]
+            if value is None:
+                # `llm: null` is what save_environment_config writes for an unset
+                # Optional block, so warning here would fire on every ordinary
+                # save->load round trip. Drop it and let the field default.
+                data.pop(key)
+                continue
             if isinstance(value, nested_cls):
                 continue  # already built (programmatic caller)
             if isinstance(value, dict):
