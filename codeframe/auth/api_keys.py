@@ -102,11 +102,17 @@ def verify_api_key(key: str, key_hash: str) -> bool:
             return hmac.compare_digest(expected_digest, actual_digest)
 
         elif key_hash.startswith("$2"):
-            # Bcrypt hash (legacy or if we switch back)
-            # Import here to avoid startup issues with bcrypt compatibility
-            from passlib.context import CryptContext
-            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-            return pwd_context.verify(key, key_hash)
+            # Legacy bcrypt, verified with the bcrypt library directly (#919).
+            #
+            # This used to go through passlib's CryptContext, which is broken on
+            # the installed stack: passlib 1.7.4 reads `bcrypt.__about__`, which
+            # bcrypt 5.0.0 removed, so every call raised AttributeError — and the
+            # blanket `except Exception` below turned that into `return False`.
+            # The effect was total: a real bcrypt hash of the correct key never
+            # verified, so no legacy key could authenticate at all.
+            import bcrypt
+
+            return bcrypt.checkpw(key.encode(), key_hash.encode())
 
         else:
             # Unknown hash format
@@ -114,8 +120,10 @@ def verify_api_key(key: str, key_hash: str) -> bool:
             return False
 
     except Exception as e:
-        # Handle malformed hashes gracefully
-        logger.debug(f"API key verification failed: {e}")
+        # A malformed stored hash is a real problem — it means a key that can
+        # never authenticate — so this is WARNING, not DEBUG (#919). It was the
+        # DEBUG level that let the bcrypt breakage above go unnoticed.
+        logger.warning(f"API key verification failed: {type(e).__name__}: {e}")
         return False
 
 

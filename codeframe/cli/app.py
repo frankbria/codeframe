@@ -2543,8 +2543,10 @@ def work_start(
         if execute:
             from codeframe.core.engine_registry import is_external_engine
             if engine == "codex":
-                from codeframe.cli.validators import require_openai_api_key
-                require_openai_api_key()
+                # Not the OpenAI key check: `codex login` is the common way in
+                # and sets no env var at all (#1010).
+                from codeframe.cli.validators import require_codex_auth
+                require_codex_auth()
             elif engine == "cloud":
                 from codeframe.cli.validators import require_e2b_api_key
                 require_e2b_api_key()
@@ -3997,8 +3999,10 @@ def batch_run(
         # Validate API key before batch execution
         from codeframe.core.engine_registry import is_external_engine
         if engine == "codex":
-            from codeframe.cli.validators import require_openai_api_key
-            require_openai_api_key()
+            # Not the OpenAI key check: `codex login` is the common way in
+            # and sets no env var at all (#1010).
+            from codeframe.cli.validators import require_codex_auth
+            require_codex_auth()
         elif engine == "cloud":
             from codeframe.cli.validators import require_e2b_api_key
             require_e2b_api_key()
