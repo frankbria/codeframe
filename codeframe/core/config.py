@@ -13,7 +13,12 @@ v2 environment config is stored in .codeframe/config.yaml and controls:
 
 import json
 import logging
-from dataclasses import dataclass, field as dataclass_field, asdict
+from dataclasses import (
+    dataclass,
+    field as dataclass_field,
+    fields as dataclass_fields,
+    asdict,
+)
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
@@ -118,6 +123,52 @@ class HooksConfig:
     after_task_failure: Optional[str] = None
     before_remove: Optional[str] = None
     hook_timeout: int = 60
+
+
+#: Keys of ``EnvironmentConfig`` whose YAML value is a nested settings block.
+_NESTED_CONFIGS: dict[str, type] = {
+    "context": ContextConfig,
+    "agent_budget": AgentBudgetConfig,
+    "batch": BatchConfig,
+    "hooks": HooksConfig,
+    "llm": LLMConfig,
+}
+
+
+def _build_config(cls: type, data: dict[str, Any], where: str):
+    """Build a config dataclass from YAML data, dropping what it cannot use.
+
+    Unknown keys are logged (by name — that is what makes the warning
+    actionable) and discarded. A known key holding an unusable value is dropped
+    the same way, so one bad line degrades to a default instead of aborting the
+    load. (#931)
+    """
+    known = {f.name for f in dataclass_fields(cls)}
+    unknown = sorted(set(data) - known)
+    if unknown:
+        logger.warning(
+            "Ignoring unknown %s key%s in %s (%s): %s",
+            where,
+            "s" if len(unknown) > 1 else "",
+            ENV_CONFIG_FILE,
+            cls.__name__,
+            ", ".join(unknown),
+        )
+
+    usable = {k: v for k, v in data.items() if k in known}
+    try:
+        return cls(**usable)
+    except (TypeError, ValueError) as exc:
+        # Dataclasses do not validate field types, so this is reached only for
+        # genuinely unusable input (e.g. an unhashable default override).
+        logger.warning(
+            "Ignoring %s %s in %s: %s. Using defaults for this section.",
+            where,
+            cls.__name__,
+            ENV_CONFIG_FILE,
+            exc,
+        )
+        return cls()
 
 
 @dataclass
@@ -319,19 +370,43 @@ class EnvironmentConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "EnvironmentConfig":
-        """Create from dictionary (YAML deserialization)."""
-        # Handle nested ContextConfig
-        if "context" in data and isinstance(data["context"], dict):
-            data["context"] = ContextConfig(**data["context"])
-        if "agent_budget" in data and isinstance(data["agent_budget"], dict):
-            data["agent_budget"] = AgentBudgetConfig(**data["agent_budget"])
-        if "batch" in data and isinstance(data["batch"], dict):
-            data["batch"] = BatchConfig(**data["batch"])
-        if "hooks" in data and isinstance(data["hooks"], dict):
-            data["hooks"] = HooksConfig(**data["hooks"])
-        if "llm" in data and isinstance(data["llm"], dict):
-            data["llm"] = LLMConfig(**data["llm"])
-        return cls(**data)
+        """Create from dictionary (YAML deserialization).
+
+        `.codeframe/config.yaml` is hand-edited, so it is treated as untrusted
+        input: unknown keys are dropped with a warning naming them, and a known
+        key holding the wrong shape is dropped rather than propagated. This used
+        to end in ``cls(**data)``, where a single typo raised TypeError and took
+        down `cf work start`, `cf work batch run` and provider resolution with a
+        raw traceback (#931).
+        """
+        if not isinstance(data, dict):
+            logger.warning(
+                "Ignoring %s: expected a mapping of settings, got %s.",
+                ENV_CONFIG_FILE,
+                type(data).__name__,
+            )
+            return cls()
+
+        data = dict(data)  # never mutate the caller's dict
+
+        for key, nested_cls in _NESTED_CONFIGS.items():
+            if key not in data:
+                continue
+            value = data[key]
+            if isinstance(value, nested_cls):
+                continue  # already built (programmatic caller)
+            if isinstance(value, dict):
+                data[key] = _build_config(nested_cls, value, f"{key}:")
+            else:
+                logger.warning(
+                    "Ignoring '%s' in %s: expected a block of settings, got %s.",
+                    key,
+                    ENV_CONFIG_FILE,
+                    type(value).__name__,
+                )
+                data.pop(key)
+
+        return _build_config(cls, data, "top level")
 
 
 # Environment config file name
@@ -353,8 +428,18 @@ def load_environment_config(workspace_path: Path) -> Optional[EnvironmentConfig]
     # Try .codeframe/config.yaml first (existing behavior)
     config_file = workspace_path / ".codeframe" / ENV_CONFIG_FILE
     if config_file.exists():
-        with open(config_file) as f:
-            data = yaml.safe_load(f)
+        # This file is hand-edited and sits on the Golden Path, so a broken one
+        # must degrade to defaults rather than abort the command (#931). Guarding
+        # here — the single funnel every caller goes through — covers `cf work
+        # start`, `cf work batch run`, provider resolution and the rest at once.
+        try:
+            with open(config_file) as f:
+                data = yaml.safe_load(f)
+        except (yaml.YAMLError, OSError) as exc:
+            logger.warning(
+                "Could not read %s: %s. Falling back to defaults.", config_file, exc
+            )
+            return EnvironmentConfig()
 
         if data is None:
             return EnvironmentConfig()  # empty file = defaults
