@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from codeframe.cli.app import app, tasks_show
+from codeframe.cli.app import app
 from codeframe.core import tasks
 from codeframe.core.state_machine import TaskStatus
 from codeframe.core.workspace import create_or_load_workspace
@@ -216,6 +216,11 @@ class TestTasksShowExists:
         for doc in ("README.md", "CLAUDE.md"):
             content = (REPO_ROOT / doc).read_text()
             if "tasks show" in content:
+                # Imported here, not at module scope: a module-level import
+                # would turn "the command is missing" into a collection error
+                # that hides every other test in this file.
+                from codeframe.cli.app import tasks_show
+
                 assert tasks_show is not None
                 break
         else:
