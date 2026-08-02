@@ -66,11 +66,17 @@ def _detect_surface(binary_path: str) -> str:
         return _SURFACE_CACHE[binary_path]
 
     try:
+        # Bytes, decoded permissively. `text=True` decodes with the locale
+        # encoding and no error handler, so under a non-UTF-8 locale
+        # (LC_ALL=C with UTF-8 coercion disabled — verified: encoding becomes
+        # ANSI_X3.4-1968) kilo 7.x's box-drawing banner raises
+        # UnicodeDecodeError. That is a ValueError, so it sailed straight past
+        # the handler below and crashed build_command. (#1015 review)
         proc = subprocess.run(
-            [binary_path, "--help"], capture_output=True, text=True, timeout=90
+            [binary_path, "--help"], capture_output=True, timeout=90
         )
-        help_text = proc.stdout + proc.stderr
-    except (OSError, subprocess.SubprocessError):
+        help_text = (proc.stdout + proc.stderr).decode("utf-8", errors="replace")
+    except (OSError, subprocess.SubprocessError, ValueError):
         logger.warning(
             "Could not read `%s --help`; assuming the modern kilo surface.",
             binary_path,

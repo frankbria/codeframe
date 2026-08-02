@@ -54,8 +54,8 @@ def adapter():
 
 def _with_help(monkeypatch, help_text: str) -> None:
     class _Proc:
-        stdout = help_text
-        stderr = ""
+        stdout = help_text.encode("utf-8")
+        stderr = b""
 
     monkeypatch.setattr(kilo_mod.subprocess, "run", lambda *a, **k: _Proc())
 
@@ -98,8 +98,8 @@ def test_detection_is_cached(monkeypatch):
     calls: list[int] = []
 
     class _Proc:
-        stdout = _MODERN_HELP
-        stderr = ""
+        stdout = _MODERN_HELP.encode("utf-8")
+        stderr = b""
 
     def _counted(*a, **k):
         calls.append(1)
@@ -243,3 +243,38 @@ def test_the_detected_surface_documents_the_flags_the_adapter_uses(tmp_path):
 
     for flag in (f for f in cmd if f.startswith("--")):
         assert flag in help_text, f"adapter emits {flag}, absent from the CLI's help"
+
+
+def test_detection_survives_a_non_utf8_locale(monkeypatch):
+    """Review finding (bot, [major]): `text=True` decodes with the locale
+    encoding and no error handler, so under LC_ALL=C with UTF-8 coercion
+    disabled — verified: encoding becomes ANSI_X3.4-1968 — kilo 7.x's
+    box-drawing banner raises UnicodeDecodeError. That is a ValueError, so it
+    sailed past `(OSError, SubprocessError)` and crashed build_command.
+    """
+    banner = "██  ██ ██🬺🬏\n".encode("utf-8")
+
+    class _Proc:
+        stdout = banner + b"  kilo run [message..]     run kilo with a message\n"
+        stderr = b""
+
+    def _bytes_mode(args, **kwargs):
+        assert not kwargs.get("text"), "help must be read as bytes and decoded leniently"
+        return _Proc()
+
+    monkeypatch.setattr(kilo_mod.subprocess, "run", _bytes_mode)
+
+    assert kilo_mod._detect_surface("/usr/local/bin/kilo") == kilo_mod._MODERN
+
+
+def test_undecodable_help_does_not_crash(monkeypatch):
+    """Even genuinely invalid bytes must degrade, not raise."""
+    class _Proc:
+        stdout = b"\xff\xfe\x00garbage"
+        stderr = b""
+
+    monkeypatch.setattr(kilo_mod.subprocess, "run", lambda *a, **k: _Proc())
+
+    assert kilo_mod._detect_surface("/usr/local/bin/kilo") in (
+        kilo_mod._MODERN, kilo_mod._LEGACY,
+    )
