@@ -300,11 +300,25 @@ class TestRunGateEnforcement:
         assert "custom_check_foo" in output
         assert "no pytest-style test_id" in output
 
-    def test_unmapped_gate_still_unverifiable(self, workspace):
+    def test_an_unmapped_gate_with_no_rules_is_unverifiable(self, workspace):
+        """Still honest where nothing can be checked.
+
+        This used to pass a rule and expect UNVERIFIABLE, because _GATE_TO_CORE
+        short-circuited before the rules were read. Since #924 a gate with
+        pytest-style rules runs them, so the unverifiable case is now
+        specifically "no runner *and* nothing enforceable".
+        """
+        from codeframe.core.proof.runner import _run_gate
+
+        outcome, _ = _run_gate(workspace, Gate.E2E, [])
+        assert outcome == GateOutcome.UNVERIFIABLE
+
+    def test_an_unmapped_gate_with_rules_is_enforced(self, workspace):
+        """The #924 fix: E2E is verified through its evidence rules."""
         from codeframe.core.proof.runner import _run_gate
 
         outcome, _ = _run_gate(workspace, Gate.E2E, [self._rule(gate=Gate.E2E)])
-        assert outcome == GateOutcome.UNVERIFIABLE
+        assert outcome != GateOutcome.UNVERIFIABLE
 
 
 class TestRunProofEnforcement:
