@@ -13,6 +13,8 @@ from fastapi_users.authentication import (
 from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
+from pwdlib.exceptions import UnknownHashError
+
 from codeframe.auth.models import User
 from codeframe.lib.audit_logger import (
     AuditEventType,
@@ -182,7 +184,22 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         the signature of credential stuffing. This is the documented extension
         point that sees both the submitted identity and the outcome.
         """
-        user = await super().authenticate(credentials)
+        try:
+            user = await super().authenticate(credentials)
+        except UnknownHashError:
+            # Every database seeds admin@localhost with the sentinel
+            # '!DISABLED!' as its hashed_password. fastapi-users 15.x calls
+            # password_helper.verify_and_update with no try/except, and pwdlib
+            # raises UnknownHashError on anything it cannot identify — so
+            # POST /auth/jwt/login?username=admin@localhost was a trivially
+            # triggerable unauthenticated 500 with a logged traceback, on a
+            # publicly reachable endpoint, that also confirmed the account
+            # exists (#938).
+            #
+            # Returning None makes it an ordinary failed login: a 400 that looks
+            # exactly like any other bad credential, and one that is audited.
+            user = None
+
         if user is None:
             audit_from_request(
                 current_audit_request(),
