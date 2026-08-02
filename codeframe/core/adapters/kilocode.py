@@ -2,36 +2,119 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 import shutil
+import subprocess
 from pathlib import Path
 
 from codeframe.core.adapters.agent_adapter import AgentResult
 from codeframe.core.adapters.subprocess_adapter import SubprocessAdapter
 
+logger = logging.getLogger(__name__)
+
 # Exit code used by kilo when the timeout is exceeded
 _KILO_TIMEOUT_EXIT_CODE = 124
+
+
+#: The two incompatible CLIs that both answer to ``kilo``.
+_MODERN = "modern"  # 7.x: `kilo run <message> --dir <path>`
+_LEGACY = "legacy"  # 0.22.0: `kilo <prompt> --auto --workspace <path>`
+
+#: Substring that appears in ``kilo --help`` only once ``run`` exists. Detection
+#: reads the CLI's own help rather than parsing ``--version``: #1015 requires
+#: that the invocation never be guessed from a version string, and this repo has
+#: been bitten three times by adapters that assumed a CLI surface (#913/#914/
+#: #1012). Help text is what the binary actually offers.
+_RUN_SUBCOMMAND_MARKER = "kilo run"
+
+#: Linux caps a *single* argv entry at MAX_ARG_STRLEN — 128 KiB — independently
+#: of the much larger total ARG_MAX. Same constraint opencode hit in #913.
+_MAX_ARG_BYTES = 128 * 1024
+
+#: Detection runs a subprocess, so it is cached per binary path for the process.
+_SURFACE_CACHE: dict[str, str] = {}
+
+
+def _prompt_exceeds_argv(prompt: str) -> bool:
+    return len(prompt.encode("utf-8")) >= _MAX_ARG_BYTES
+
+
+def _detect_surface(binary_path: str) -> str:
+    """Which kilo CLI is installed, according to its own ``--help``.
+
+    ``@kilocode/cli`` was rewritten between 0.22.0 (2026-01-15) and 7.x
+    (2026-07-29) — 213 releases apart. The invocations share nothing:
+
+    ==============  ============================  ==========================
+    \\               0.22.0                        7.4.17
+    ==============  ============================  ==========================
+    usage           ``kilocode [options] [prompt]``  ``kilo run [message..]``
+    workspace       ``--workspace <path>``        ``--dir <path>``
+    ``--auto``      non-interactive               **auto-approve ALL perms**
+    ==============  ============================  ==========================
+
+    That last row is why this cannot be a blind rename: on 7.x ``--auto`` is the
+    old ``--yolo``, the permission bypass #916 established must stay off.
+
+    An unreadable or failing ``--help`` falls back to modern — the version any
+    new install gets, and the one whose ``run`` subcommand fails loudly rather
+    than opening a TUI that hangs until the timeout (#1012).
+    """
+    if binary_path in _SURFACE_CACHE:
+        return _SURFACE_CACHE[binary_path]
+
+    try:
+        # Bytes, decoded permissively. `text=True` decodes with the locale
+        # encoding and no error handler, so under a non-UTF-8 locale
+        # (LC_ALL=C with UTF-8 coercion disabled — verified: encoding becomes
+        # ANSI_X3.4-1968) kilo 7.x's box-drawing banner raises
+        # UnicodeDecodeError. That is a ValueError, so it sailed straight past
+        # the handler below and crashed build_command. (#1015 review)
+        proc = subprocess.run(
+            [binary_path, "--help"], capture_output=True, timeout=90
+        )
+        help_text = (proc.stdout + proc.stderr).decode("utf-8", errors="replace")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        logger.warning(
+            "Could not read `%s --help`; assuming the modern kilo surface.",
+            binary_path,
+        )
+        help_text = ""
+
+    surface = _MODERN if (not help_text or _RUN_SUBCOMMAND_MARKER in help_text) else _LEGACY
+    _SURFACE_CACHE[binary_path] = surface
+    return surface
 
 
 class KilocodeAdapter(SubprocessAdapter):
     """Adapter that delegates code execution to Kilocode CLI.
 
-    Invokes ``kilo <prompt> --auto --workspace <path>`` for headless
-    non-interactive execution.  The prompt is the CLI's leading positional
-    (not stdin, and **not** behind a subcommand).
+    **Supported version floor: ``@kilocode/cli`` 7.x**, the surface any new
+    install gets. 0.22.0 is still driven correctly when that is what is
+    installed, because #1012 verified it end-to-end and an unupgraded machine
+    should not silently break — but it is not the target, and support for it
+    can be dropped once nobody is on it.
 
-    There is no ``run`` subcommand: verified against kilocode 0.22.0, whose
-    usage is ``kilocode [options] [command] [prompt]`` with commands
-    ``auth``/``config``/``debug``/``models`` only. The adapter used to prepend
-    ``run``, which was then swallowed as the prompt — ``--auto`` never took
-    effect, the interactive TUI opened, and the delegated run hung until the
-    timeout having written nothing (#1012).
+    Which invocation to use is **detected from the CLI's own ``--help``**, never
+    inferred from a version string (#1015). ``_detect_surface`` has the table:
 
-    Note on prompt length: the prompt is passed as a single positional argument.
-    Linux supports up to ~2 MB per argument, but macOS caps individual arguments
-    at 256 KB. Very large task contexts assembled by TaskContextPackager may fail
-    on macOS. If Kilocode adds stdin support in a future release, prefer that path.
+    * 7.x — ``kilo run --dir <path> <message>``. No ``--auto``: on this CLI that
+      flag means "auto-approve all permissions", i.e. the old ``--yolo`` the
+      adapter has always withheld (#916). ``run`` is non-interactive on its own,
+      exactly like ``opencode run``.
+    * 0.22.0 — ``kilo <prompt> --auto --workspace <path>``, where ``--auto`` is
+      merely "non-interactive". There is no ``run`` subcommand; prepending one
+      got it swallowed as the prompt, opening the TUI to hang until the timeout
+      having written nothing (#1012).
+
+    Prompt length: the prompt is a single argv entry, and Linux caps one entry
+    at 128 KiB (macOS at 256 KB) — well under CodeFrame's ~100K-token budget. On
+    7.x an oversized prompt goes to stdin instead, which ``kilo run`` accepts
+    when given no positional (verified: ``echo "say ok" | kilo run --dir /tmp``
+    reaches the model call). 0.22.0 has no stdin path, so there it still goes
+    positionally and fails loudly.
 
     Exit codes:
         0   — success
@@ -89,26 +172,44 @@ class KilocodeAdapter(SubprocessAdapter):
         """Check if the kilo binary is available on PATH."""
         return {"kilo_binary": shutil.which(cls._resolve_binary()) is not None}
 
-    def build_command(self, prompt: str, workspace_path: Path) -> list[str]:
-        """Build the kilo CLI command.
+    def _surface(self) -> str:
+        """Which kilo CLI this adapter is talking to."""
+        return _detect_surface(self._binary_path)
 
-        Kilocode takes the prompt as a positional argument, with ``--auto``
-        for non-interactive execution and ``--workspace`` for the repo root.
+    def build_command(self, prompt: str, workspace_path: Path) -> list[str]:
+        """Build the kilo CLI command for whichever CLI is actually installed.
+
+        The two eras take completely different invocations (see
+        ``_detect_surface``). Modern is the documented target; legacy is kept
+        because it is what #1012 verified end-to-end and what an unupgraded
+        install still speaks.
 
         Args:
-            prompt: The task prompt passed as a positional argument.
-            workspace_path: Workspace root passed as ``--workspace``.
+            prompt: The task prompt.
+            workspace_path: Workspace root.
 
         Returns:
             Command list for subprocess.Popen.
         """
-        cmd = [
-            self._binary_path,
-            prompt,
-            "--auto",
-            "--workspace",
-            str(workspace_path),
-        ]
+        if self._surface() == _MODERN:
+            # `run` is non-interactive by itself, exactly like `opencode run`.
+            # --auto is deliberately NOT passed: in 7.x it means "auto-approve
+            # all permissions", the 0.22 `--yolo` that #916 established must
+            # stay off. Renaming --workspace to --dir while keeping --auto
+            # would have silently upgraded the adapter into a permission bypass.
+            cmd = [self._binary_path, "run", "--dir", str(workspace_path)]
+            if not _prompt_exceeds_argv(prompt):
+                cmd.append(prompt)
+        else:
+            # 0.22.0: bare positional prompt, --auto is merely non-interactive
+            # and --yolo (never passed) is the bypass. Verified in #1012/#916.
+            cmd = [
+                self._binary_path,
+                prompt,
+                "--auto",
+                "--workspace",
+                str(workspace_path),
+            ]
 
         model = os.environ.get("KILOCODE_MODEL")
         if model:
@@ -121,7 +222,20 @@ class KilocodeAdapter(SubprocessAdapter):
         return cmd
 
     def get_stdin(self, prompt: str) -> str | None:
-        """Return None — prompt is passed as a positional CLI argument, not stdin."""
+        """The prompt, only when it is too large to survive as an argv entry.
+
+        Normally None — both eras take the prompt positionally. But Linux caps a
+        *single* argv entry at 128 KiB while CodeFrame budgets ~100K tokens of
+        prompt, so a large task would raise OSError(E2BIG) before kilo starts.
+
+        ``kilo run`` with no positional reads the message from stdin: verified
+        against 7.4.17, where `echo "say ok" | kilo run --dir /tmp` gets past
+        message validation to the model call. The legacy CLI has no such path,
+        so an oversized prompt still goes positionally there and fails loudly
+        rather than silently doing nothing.
+        """
+        if self._surface() == _MODERN and _prompt_exceeds_argv(prompt):
+            return prompt
         return None
 
     def _map_result(
