@@ -38,9 +38,11 @@ import json
 import logging
 import os
 import platform
+import tempfile
 import threading
+from functools import lru_cache
 import uuid
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -243,6 +245,33 @@ class CredentialInfo:
 
 
 def derive_encryption_key(salt_file: Path) -> bytes:
+    """Derive the store's Fernet key, memoized per (salt file, secret).
+
+    PBKDF2 at 480,000 iterations costs hundreds of milliseconds, and the Fernet
+    was cached only per ``CredentialStore`` instance — while ``CredentialManager``
+    is built per request via ``Depends``. So a headless server with no keyring
+    paid a full derivation *per provider per request* on the event loop (#920).
+
+    Keyed on the secret as well as the salt file: a changed
+    ``CODEFRAME_CREDENTIAL_SECRET`` must produce a different key, not a stale
+    cached one.
+    """
+    return _derive_key_cached(
+        str(salt_file), os.environ.get("CODEFRAME_CREDENTIAL_SECRET")
+    )
+
+
+@lru_cache(maxsize=32)
+def _derive_key_cached(salt_file_str: str, _secret: str | None) -> bytes:
+    """Memoization boundary. ``_secret`` is part of the cache key only."""
+    return _derive_key_uncached(Path(salt_file_str))
+
+
+#: So callers (and tests) can drop the memo, e.g. after rotating the secret.
+derive_encryption_key.cache_clear = _derive_key_cached.cache_clear  # type: ignore[attr-defined]
+
+
+def _derive_key_uncached(salt_file: Path) -> bytes:
     """Derive encryption key from machine-specific data.
 
     Uses PBKDF2 with machine ID and a persistent salt to create
@@ -448,6 +477,25 @@ class CredentialStore:
         except Exception:
             return False
 
+    @contextmanager
+    def _store_lock(self):
+        """Serialize a read-modify-write of the encrypted store.
+
+        Reuses the migration locks so both paths contend on the same pair: a
+        thread lock within the process, plus a cross-process file lock when
+        ``filelock`` is installed.
+        """
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
+        thread_lock, file_lock = _get_migration_locks(self.storage_dir)
+        with thread_lock:
+            if file_lock is None:
+                # Single-process serialization only. Same degradation the
+                # migration path documents.
+                yield
+            else:
+                with file_lock:
+                    yield
+
     def _get_fernet(self) -> Fernet:
         """Get or create Fernet instance for encryption."""
         if self._fernet is None:
@@ -519,10 +567,16 @@ class CredentialStore:
         data = json.dumps(store).encode()
         encrypted = fernet.encrypt(data)
 
-        # Write atomically
-        temp_path = file_path.with_suffix(".tmp")
+        # Write atomically, through a name unique to this writer. A fixed
+        # ``.tmp`` let two concurrent writers share one path, so the loser's
+        # cleanup in the ``finally`` could delete the winner's in-flight file
+        # (#920).
+        fd, temp_name = tempfile.mkstemp(
+            dir=str(file_path.parent), prefix=f".{file_path.name}.", suffix=".tmp"
+        )
+        temp_path = Path(temp_name)
         try:
-            with open(temp_path, "wb") as f:
+            with os.fdopen(fd, "wb") as f:
                 f.write(encrypted)
             temp_path.chmod(0o600)
             temp_path.replace(file_path)
@@ -558,10 +612,13 @@ class CredentialStore:
                     pass
                 self._keyring_available = False
 
-        # Fall back to encrypted file
-        store = self._load_encrypted_store()
-        store[key] = credential.to_dict()
-        self._save_encrypted_store(store)
+        # Fall back to encrypted file. The whole read-modify-write runs under
+        # the lock: unlocked, two writers each read the same base and the last
+        # to save silently dropped the other's credential (#920).
+        with self._store_lock():
+            store = self._load_encrypted_store()
+            store[key] = credential.to_dict()
+            self._save_encrypted_store(store)
         logger.debug(f"Stored {key} in encrypted file")
 
     def retrieve(self, provider: CredentialProvider) -> Optional[Credential]:
@@ -620,12 +677,15 @@ class CredentialStore:
                 logger.warning(f"Keyring deletion failed: {e}")
                 raise
 
-        # Also remove from encrypted file (if exists)
-        store = self._load_encrypted_store()
-        if key in store:
-            del store[key]
-            self._save_encrypted_store(store)
-            logger.debug(f"Deleted {key} from encrypted file")
+        # Also remove from encrypted file (if exists), under the same lock as
+        # store() — a delete is a read-modify-write too, and unlocked it would
+        # resurrect credentials written concurrently (#920).
+        with self._store_lock():
+            store = self._load_encrypted_store()
+            if key in store:
+                del store[key]
+                self._save_encrypted_store(store)
+                logger.debug(f"Deleted {key} from encrypted file")
 
     def list_providers(self) -> list[CredentialProvider]:
         """List all stored provider types from encrypted file storage.
