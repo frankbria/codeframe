@@ -28,6 +28,12 @@ def db():
     return database
 
 
+def _seeded_user_id(database):
+    """The bootstrap account's id. audit_logs.user_id is a foreign key."""
+    conn = database.conn if hasattr(database, "conn") else database._conn
+    return conn.execute("SELECT id FROM users LIMIT 1").fetchone()["id"]
+
+
 def _rows(database, event_type=None):
     conn = database.conn if hasattr(database, "conn") else database._conn
     sql = "SELECT event_type, user_id, ip_address, metadata FROM audit_logs"
@@ -208,6 +214,128 @@ class TestFailedLoginProducesAnAuditRow:
             )
 
         assert len(_rows(db, "auth.login.failed")) == 3
+
+
+class TestForeignKeyOnUserId:
+    """Found while writing the inactive-account test: a user_id with no `users`
+    row fails the INSERT outright, and the guard then swallows it — so the event
+    is lost rather than partially recorded. Worth pinning so the behaviour is a
+    known constraint on call sites, not a surprise."""
+
+    def test_an_unknown_user_id_loses_the_row_and_warns(self, db, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            AuditLogger(db)._log_event(
+                event_type=AuditEventType.AUTH_LOGIN_FAILED,
+                user_id=999999,  # no such users row
+                resource_type="auth",
+                resource_id=None,
+                ip_address=None,
+                metadata=None,
+            )
+
+        assert _rows(db, "auth.login.failed") == []
+        assert "foreign key" in caplog.text.lower()
+
+    def test_a_null_user_id_always_works(self, db):
+        """Which is why the bad-credentials path passes None."""
+        AuditLogger(db)._log_event(
+            event_type=AuditEventType.AUTH_LOGIN_FAILED,
+            user_id=None,
+            resource_type="auth",
+            resource_id=None,
+            ip_address=None,
+            metadata=None,
+        )
+
+        assert len(_rows(db, "auth.login.failed")) == 1
+
+
+class TestInactiveAccountLoginIsAudited:
+    """Raised by the PR bot.
+
+    fastapi-users' route rejects an inactive account with the same 400
+    BAD_CREDENTIALS *after* authenticate() returns the user. Auditing only the
+    None case made repeated correct-password attempts against a disabled or
+    compromised account invisible — the exact credential-stuffing signal this
+    feature exists to capture.
+    """
+
+    @pytest.mark.asyncio
+    async def test_an_inactive_user_with_the_right_password_is_audited(self, db):
+        from unittest.mock import AsyncMock, patch
+
+        from fastapi_users import BaseUserManager
+
+        from codeframe.auth.manager import UserManager
+        from codeframe.lib.audit_logger import _current_request
+
+        # A REAL user row: audit_logs.user_id is a foreign key, so a fabricated
+        # id would make the write fail and the guard would swallow it — the test
+        # would then pass for the wrong reason once the code was fixed.
+        real_id = _seeded_user_id(db)
+        inactive = type(
+            "U", (), {"id": real_id, "is_active": False, "email": "x@y.z"}
+        )()
+
+        class FakeRequest:
+            def __init__(self):
+                self.app = type("A", (), {"state": type("S", (), {"db": db})()})()
+                self.client = None
+
+        manager = UserManager.__new__(UserManager)
+        token = _current_request.set(FakeRequest())
+        try:
+            with patch.object(
+                BaseUserManager, "authenticate", AsyncMock(return_value=inactive)
+            ):
+                result = await manager.authenticate(
+                    type("C", (), {"username": "x@y.z", "password": "pw"})()
+                )
+        finally:
+            _current_request.reset(token)
+
+        assert result is inactive, "authenticate must still return what it returned"
+        rows = _rows(db, "auth.login.failed")
+        assert len(rows) == 1, "an inactive-account login wrote no audit row"
+
+        import json
+
+        assert json.loads(rows[0]["metadata"])["reason"] == "inactive_account"
+
+    @pytest.mark.asyncio
+    async def test_an_active_user_is_not_audited_as_a_failure(self, db):
+        """on_after_login records the success; a duplicate failure row would lie."""
+        from unittest.mock import AsyncMock, patch
+
+        from fastapi_users import BaseUserManager
+
+        from codeframe.auth.manager import UserManager
+        from codeframe.lib.audit_logger import _current_request
+
+        active = type(
+            "U", (), {"id": _seeded_user_id(db), "is_active": True, "email": "x@y.z"}
+        )()
+
+        class FakeRequest:
+            def __init__(self):
+                self.app = type("A", (), {"state": type("S", (), {"db": db})()})()
+                self.client = None
+
+        manager = UserManager.__new__(UserManager)
+        token = _current_request.set(FakeRequest())
+        try:
+            with patch.object(
+                BaseUserManager, "authenticate", AsyncMock(return_value=active)
+            ):
+                await manager.authenticate(
+                    type("C", (), {"username": "x@y.z", "password": "pw"})()
+                )
+        finally:
+            _current_request.reset(token)
+
+        assert _rows(db, "auth.login.failed") == []
 
 
 class TestWritesAreDeferredPastTheAuthSession:

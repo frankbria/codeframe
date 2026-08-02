@@ -183,11 +183,24 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         point that sees both the submitted identity and the outcome.
         """
         user = await super().authenticate(credentials)
-        if user is None:
+
+        # `user is not None` is not the same as "logged in": fastapi-users'
+        # generated route rejects an inactive account with the same 400
+        # BAD_CREDENTIALS *after* authenticate() returns. Auditing only the None
+        # case made repeated correct-password attempts against a disabled or
+        # compromised account invisible — which is precisely the
+        # credential-stuffing signal this exists to capture (PR review on #937).
+        if user is None or not user.is_active:
             audit_from_request(
                 current_audit_request(),
                 AuditEventType.AUTH_LOGIN_FAILED,
+                user_id=getattr(user, "id", None),
                 email=getattr(credentials, "username", None),
+                metadata=(
+                    {"reason": "inactive_account"}
+                    if user is not None
+                    else {"reason": "bad_credentials"}
+                ),
             )
         return user
 
