@@ -482,7 +482,7 @@ def status(
         console.print("\n[bold]PRD[/bold]")
         latest_prd = prd.get_latest(workspace)
         if latest_prd:
-            console.print(f"  Title: [green]{latest_prd.title}[/green]")
+            console.print(f"  Title: [green]{escape(latest_prd.title)}[/green]")
             console.print(f"  Added: {latest_prd.created_at.strftime('%Y-%m-%d %H:%M')}")
         else:
             console.print("  [dim]No PRD loaded. Run 'codeframe prd add <file>'[/dim]")
@@ -583,7 +583,7 @@ def summary(
         # PRD
         latest_prd = prd.get_latest(workspace)
         if latest_prd:
-            console.print(f"[bold]PRD:[/bold] {latest_prd.title}")
+            console.print(f"[bold]PRD:[/bold] {escape(latest_prd.title)}")
         else:
             console.print("[bold]PRD:[/bold] [dim]None[/dim]")
 
@@ -819,7 +819,7 @@ def prd_templates_list() -> None:
     for template in templates:
         section_count = len(template.sections)
         console.print(f"  [green]{template.id}[/green] - {template.name}")
-        console.print(f"    {template.description}")
+        console.print(f"    {escape(template.description)}")
         console.print(f"    Sections: {section_count} | Version: {template.version}")
         console.print()
 
@@ -850,13 +850,13 @@ def prd_templates_show(
         raise typer.Exit(1)
 
     console.print(f"\n[bold]{template.name}[/bold] ({template.id})\n")
-    console.print(f"{template.description}\n")
+    console.print(f"{escape(template.description)}\n")
     console.print(f"Version: {template.version}")
 
     console.print("\n[bold]Sections:[/bold]\n")
     for i, section in enumerate(template.sections, 1):
         required = "[green]required[/green]" if section.required else "[dim]optional[/dim]"
-        console.print(f"  {i}. {section.title} ({section.id})")
+        console.print(f"  {i}. {escape(section.title)} ({section.id})")
         console.print(f"     Source: {section.source} | {required}")
         console.print()
 
@@ -971,7 +971,7 @@ def prd_add(
         )
 
         console.print("[green]PRD added[/green]")
-        console.print(f"  Title: {record.title}")
+        console.print(f"  Title: {escape(record.title)}")
         console.print(f"  ID: {record.id}")
         console.print(f"  Source: {file_path}")
         console.print()
@@ -1027,7 +1027,7 @@ def prd_show(
             console.print("Add one with: codeframe prd add <file.md>")
             return
 
-        console.print(f"\n[bold]PRD:[/bold] {record.title}")
+        console.print(f"\n[bold]PRD:[/bold] {escape(record.title)}")
         console.print(f"[dim]ID: {record.id}[/dim]")
         console.print(f"[dim]Added: {record.created_at}[/dim]")
 
@@ -1081,7 +1081,7 @@ def prd_list(
 
         console.print(f"\n[bold]PRDs ({len(records)}):[/bold]\n")
         for record in records:
-            console.print(f"  {record.id[:8]}...  [bold]{record.title}[/bold]")
+            console.print(f"  {record.id[:8]}...  [bold]{escape(record.title)}[/bold]")
             console.print(f"           [dim]Added: {record.created_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
             console.print()
 
@@ -1152,7 +1152,7 @@ def prd_delete(
             print_event=False,
         )
 
-        console.print(f"[green]PRD deleted:[/green] {record.title}")
+        console.print(f"[green]PRD deleted:[/green] {escape(record.title)}")
 
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
@@ -1662,7 +1662,7 @@ def prd_generate(
         )
 
         # Show result
-        console.print(f"\n[green]✓[/green] PRD generated: [bold]{prd_record.title}[/bold]")
+        console.print(f"\n[green]✓[/green] PRD generated: [bold]{escape(prd_record.title)}[/bold]")
         console.print(f"[dim]ID: {prd_record.id}[/dim]")
 
         # Show preview
@@ -1781,7 +1781,7 @@ def prd_stress_test(
         console.print("[red]Error:[/red] No PRD found. Run 'codeframe prd generate' first.")
         raise typer.Exit(1)
 
-    console.print(f"[dim]Stress-testing PRD: {record.title} (v{record.version})[/dim]")
+    console.print(f"[dim]Stress-testing PRD: {escape(record.title)} (v{record.version})[/dim]")
 
     # Build provider: flag → env → config → anthropic, validating the
     # matching API key (#768)
@@ -1960,7 +1960,7 @@ def tasks_generate(
             {t.id for t in tasks.list_tasks(workspace)} if overwrite else set()
         )
 
-        console.print(f"Generating tasks from PRD: [bold]{prd_record.title}[/bold]")
+        console.print(f"Generating tasks from PRD: [bold]{escape(prd_record.title)}[/bold]")
 
         if recursive and no_llm:
             console.print(
@@ -2355,7 +2355,7 @@ def tasks_set(
             if len(matching) > 1:
                 console.print(f"[red]Error:[/red] Multiple tasks match '{actual_task_id}':")
                 for t in matching:
-                    console.print(f"  {t.id}: {t.title[:40]}")
+                    console.print(f"  {t.id}: {escape(t.title[:40])}")
                 console.print("Please provide a more specific ID.")
                 raise typer.Exit(1)
         else:
@@ -2493,7 +2493,7 @@ def tasks_delete(
             if len(matching) > 1:
                 console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
                 for t in matching:
-                    console.print(f"  {t.id}: {t.title[:40]}")
+                    console.print(f"  {t.id}: {escape(t.title[:40])}")
                 console.print("Please provide a more specific ID.")
                 raise typer.Exit(1)
 
@@ -2512,7 +2512,7 @@ def tasks_delete(
                     f"[yellow]Warning:[/yellow] {len(dependents)} task(s) depend on this task"
                 )
                 for dep in dependents[:3]:
-                    console.print(f"  - {dep.id[:8]}: {dep.title[:40]}")
+                    console.print(f"  - {dep.id[:8]}: {escape(dep.title[:40])}")
                 if len(dependents) > 3:
                     console.print(f"  ... and {len(dependents) - 3} more")
 
@@ -2662,7 +2662,7 @@ def work_start(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -2815,7 +2815,7 @@ def work_resume(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -2920,7 +2920,7 @@ def work_stop(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -3128,7 +3128,7 @@ def work_diagnose(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -3276,7 +3276,7 @@ def work_retry(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -3386,7 +3386,7 @@ def work_update_description(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -3469,7 +3469,7 @@ def work_follow(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -4097,7 +4097,7 @@ def batch_run(
                 if len(matching) > 1:
                     console.print(f"[red]Error:[/red] Multiple tasks match '{partial_id}':")
                     for t in matching[:3]:
-                        console.print(f"  {t.id[:8]} - {t.title}")
+                        console.print(f"  {t.id[:8]} - {escape(t.title)}")
                     raise typer.Exit(1)
                 ids_to_execute.append(matching[0].id)
         else:
@@ -5004,7 +5004,7 @@ def blocker_show(
 
         if blocker.answer:
             console.print("\n[bold]Answer:[/bold]")
-            console.print(f"  {blocker.answer}")
+            console.print(f"  {escape(blocker.answer)}")
             if blocker.answered_at:
                 console.print(f"  [dim]Answered: {blocker.answered_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
 
@@ -5943,7 +5943,7 @@ def templates_list(
     for template in templates:
         hours = template.total_estimated_hours
         console.print(f"  [green]{template.id}[/green] - {template.name}")
-        console.print(f"    {template.description}")
+        console.print(f"    {escape(template.description)}")
         console.print(f"    Category: {template.category} | Tasks: {len(template.tasks)} | Est: {hours:.1f}h")
         console.print()
 
@@ -5969,7 +5969,7 @@ def templates_show(
         raise typer.Exit(1)
 
     console.print(f"\n[bold]{template.name}[/bold] ({template.id})\n")
-    console.print(f"{template.description}\n")
+    console.print(f"{escape(template.description)}\n")
     console.print(f"Category: {template.category}")
     console.print(f"Total Estimated Hours: {template.total_estimated_hours:.1f}h")
     if template.tags:
@@ -5981,7 +5981,7 @@ def templates_show(
         if task.depends_on_indices:
             deps = f" (depends on: {', '.join(str(d+1) for d in task.depends_on_indices)})"
         console.print(f"  {i}. {escape(task.title)}{deps}")
-        console.print(f"     {task.description}")
+        console.print(f"     {escape(task.description)}")
         console.print(f"     Est: {task.estimated_hours}h | Complexity: {task.complexity_score}/5 | Uncertainty: {task.uncertainty_level}")
         console.print()
 

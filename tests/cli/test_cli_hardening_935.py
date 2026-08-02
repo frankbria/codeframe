@@ -152,11 +152,17 @@ class TestRichMarkupIsEscaped:
         """Scanner, not a point check: a new console.print with user data should
         fail the build rather than wait to be found in review."""
         source = (REPO_ROOT / "codeframe" / "cli" / "app.py").read_text()
+        # Match on the FIELD NAME, not on an enumerated set of variable names.
+        # The first version listed `task.title|blocker.question|description`
+        # anchored right after `{`, so it missed `{task.description}`,
+        # `{blocker.answer}` and `{t.title}` — the PR bot found all three. Any
+        # `{<anything>.title}` / `.description` / `.question` / `.answer` now
+        # counts, so a new variable name cannot slip past.
         offenders = [
             line.strip()
             for line in source.splitlines()
             if "console.print(f" in line
-            and re.search(r"\{(task\.title|blocker\.question|description)[^}]*\}", line)
+            and re.search(r"\{[A-Za-z_][A-Za-z0-9_]*\.(title|description|question|answer)\b", line)
             and "escape(" not in line
         ]
 
