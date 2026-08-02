@@ -881,7 +881,7 @@ app.include_router(workspace_v2.router, dependencies=_AUTH)     # /api/v2/worksp
 # ============================================================================
 
 
-def run_server(host: str = "0.0.0.0", port: int = 8080):
+def run_server(host: str = "127.0.0.1", port: int = 8080):
     """Run the Status Server."""
     import uvicorn
 
@@ -896,7 +896,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--host",
         type=str,
-        default=os.environ.get("HOST", "0.0.0.0"),
+        # Loopback by default (#935): this process exposes SQLite state,
+        # workspace file access and agent execution. Set HOST=0.0.0.0 to expose it.
+        default=os.environ.get("HOST", "127.0.0.1"),
         help="Host to bind to (default: 0.0.0.0 or HOST env var)",
     )
     parser.add_argument(

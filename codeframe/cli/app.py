@@ -23,6 +23,7 @@ from typing import Optional
 import click
 import typer
 from rich.console import Console
+from rich.markup import escape
 
 # Import auth subapp for credential management
 from codeframe.cli.auth_commands import auth_app
@@ -707,10 +708,46 @@ def review(
         raise typer.Exit(1)
 
 
+#: Bind addresses that accept connections from outside this machine.
+_NON_LOOPBACK_BINDS = {"0.0.0.0", "::", "*", ""}
+
+
+def _warn_if_exposed(host: str) -> None:
+    """Warn when binding beyond loopback, loudly if auth is off (#935).
+
+    The server exposes SQLite state, workspace file access and
+    agent-execution endpoints. Exposing that on a LAN is a deliberate choice;
+    doing it with CODEFRAME_AUTH_REQUIRED=false — which the dev docs suggest —
+    is an unauthenticated remote shell, so that combination gets a stronger
+    warning rather than a quiet default.
+    """
+    if host.strip() not in _NON_LOOPBACK_BINDS:
+        return
+
+    auth_off = os.environ.get("CODEFRAME_AUTH_REQUIRED", "").strip().lower() in {
+        "0", "false", "no", "off",
+    }
+    console.print(
+        f"[yellow]WARNING:[/yellow] binding {escape(host)} accepts connections "
+        "from other machines on your network."
+    )
+    if auth_off:
+        console.print(
+            "[bold red]CODEFRAME_AUTH_REQUIRED is disabled.[/bold red] The API — "
+            "including workspace file access and agent execution — is reachable "
+            "with no credentials. Do not use this combination outside a trusted "
+            "network."
+        )
+
+
 @app.command()
 def serve(
     port: int = typer.Option(8080, "--port", "-p", help="Port to run server on"),
-    host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to"),
+    host: str = typer.Option(
+        "127.0.0.1",
+        "--host",
+        help="Host to bind to. Use 0.0.0.0 to expose on the network (see warning).",
+    ),
     reload: bool = typer.Option(False, "--reload", help="Enable auto-reload (development)"),
 ) -> None:
     """Start the optional FastAPI server (wraps core).
@@ -718,12 +755,18 @@ def serve(
     The server is NOT required for Golden Path commands.
     It provides the v2 REST API that wraps the same core functions.
 
+    Binds 127.0.0.1 by default (#935). This process exposes SQLite state,
+    workspace file access and agent-execution endpoints, so it is loopback-only
+    until you explicitly ask for otherwise.
+
     Examples:
         cf serve
         cf serve --port 3000
-        cf serve --reload
+        cf serve --host 0.0.0.0        # expose on the network — see the warning
     """
     import uvicorn
+
+    _warn_if_exposed(host)
 
     console.print(f"Starting CodeFRAME API server on {host}:{port}")
     console.print(f"  Swagger UI: http://localhost:{port}/docs")
@@ -1999,7 +2042,7 @@ def tasks_generate(
         console.print(f"\n[green]Generated {len(created)} tasks[/green]\n")
 
         for i, task in enumerate(created, 1):
-            console.print(f"  {i}. {task.title}")
+            console.print(f"  {i}. {escape(task.title)}")
             if task.description:
                 # Show first line of description
                 desc_preview = task.description.split("\n")[0][:60]
@@ -2117,7 +2160,7 @@ def tasks_list(
                 f"[{status_style}]{task.status.value}[/{status_style}]",
                 str(task.priority),
                 deps_str,
-                task.title[:55] + ("..." if len(task.title) > 55 else ""),
+                escape(task.title[:55]) + ("..." if len(task.title) > 55 else ""),
             )
 
         console.print(table)
@@ -2136,6 +2179,84 @@ def tasks_list(
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+
+
+@tasks_app.command("show")
+def tasks_show(
+    task_id: str = typer.Argument(..., help="Task ID (may be a unique prefix)"),
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Show a task's details and dependencies.
+
+    README.md and CLAUDE.md have advertised this command for some time while it
+    did not exist (#935).
+
+    Examples:
+        cf tasks show 3f2a1b
+        cf tasks show 3f2a1b8c-... --workspace ../other-repo
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {workspace_path}")
+        console.print("Run 'codeframe init' to initialize a workspace first.")
+        raise typer.Exit(1)
+
+    task = tasks.get(workspace, task_id)
+    if task is None:
+        matches = tasks.find_by_prefix(workspace, task_id)
+        if not matches:
+            console.print(f"[red]Error:[/red] No task matching '{escape(task_id)}'")
+            raise typer.Exit(1)
+        if len(matches) > 1:
+            console.print(
+                f"[red]Error:[/red] '{escape(task_id)}' matches {len(matches)} tasks:"
+            )
+            for match in matches[:10]:
+                console.print(f"  {match.id[:8]}  {escape(match.title[:60])}")
+            raise typer.Exit(1)
+        task = matches[0]
+
+    # escape(): a title or description may contain Rich markup like '[/b]',
+    # which would otherwise raise MarkupError instead of printing (#935).
+    console.print(f"\n[bold]{escape(task.title)}[/bold]")
+    console.print(f"[dim]{task.id}[/dim]\n")
+    console.print(f"  Status:     {task.status.value}")
+    console.print(f"  Priority:   {task.priority}")
+    if task.estimated_hours is not None:
+        console.print(f"  Estimated:  {task.estimated_hours}h")
+    if task.complexity_score is not None:
+        console.print(f"  Complexity: {task.complexity_score}")
+    console.print(f"  Created:    {task.created_at:%Y-%m-%d %H:%M}")
+    console.print(f"  Updated:    {task.updated_at:%Y-%m-%d %H:%M}")
+
+    if task.github_issue_number:
+        console.print(f"  GitHub:     #{task.github_issue_number} {escape(task.external_url or '')}")
+
+    deps = task.depends_on or []
+    console.print(f"\n[bold]Dependencies[/bold] ({len(deps)})")
+    if not deps:
+        console.print("  [dim]none[/dim]")
+    else:
+        titles = tasks.get_titles(workspace, deps)
+        for dep_id in deps:
+            title = titles.get(dep_id)
+            label = escape(title) if title else "[dim](missing)[/dim]"
+            console.print(f"  {dep_id[:8]}  {label}")
+
+    if task.description:
+        console.print("\n[bold]Description[/bold]")
+        console.print(escape(task.description))
+    console.print()
 
 
 @tasks_app.command("set")
@@ -2277,7 +2398,7 @@ def tasks_set(
             task = matching[0]
             if updated_count:
                 console.print("[green]Task updated[/green]")
-                console.print(f"  {task.title[:50]}")
+                console.print(f"  {escape(task.title[:50])}")
                 console.print(f"  Status: {task.status.value} -> {new_status.value}")
             else:
                 console.print(f"[yellow]Task already {new_status.value}[/yellow]")
@@ -2379,7 +2500,7 @@ def tasks_delete(
             task = matching[0]
 
             if not force:
-                confirm = typer.confirm(f"Delete task '{task.title[:50]}'?")
+                confirm = typer.confirm(f"Delete task '{task.title[:50]}'?")  # typer.confirm is not Rich-rendered
                 if not confirm:
                     console.print("[dim]Cancelled[/dim]")
                     raise typer.Exit(0)
@@ -2397,7 +2518,7 @@ def tasks_delete(
 
             deleted = tasks.delete(workspace, task.id)
             if deleted:
-                console.print(f"[green]Deleted task:[/green] {task.title[:50]}")
+                console.print(f"[green]Deleted task:[/green] {escape(task.title[:50])}")
             else:
                 console.print("[red]Error:[/red] Failed to delete task")
                 raise typer.Exit(1)
@@ -2580,7 +2701,7 @@ def work_start(
         run = runtime.start_task_run(workspace, task.id)
 
         console.print("\n[bold green]Run started[/bold green]")
-        console.print(f"  Task: {task.title}")
+        console.print(f"  Task: {escape(task.title)}")
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
         console.print("  Status: [yellow]RUNNING[/yellow]")
 
@@ -2608,7 +2729,7 @@ def work_start(
                 elif state.status == AgentStatus.BLOCKED:
                     console.print("[yellow]Task blocked - human input needed[/yellow]")
                     if state.blocker:
-                        console.print(f"  Question: {state.blocker.question}")
+                        console.print(f"  Question: {escape(state.blocker.question)}")
                     console.print("  Use 'codeframe blocker list' to see blockers")
                 elif state.status == AgentStatus.FAILED:
                     console.print("[red]Task execution failed[/red]")
@@ -2703,7 +2824,7 @@ def work_resume(
         run = runtime.resume_run(workspace, task.id)
 
         console.print("\n[bold green]Run resumed[/bold green]")
-        console.print(f"  Task: {task.title}")
+        console.print(f"  Task: {escape(task.title)}")
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
         console.print("  Status: [yellow]RUNNING[/yellow]")
 
@@ -2738,7 +2859,7 @@ def work_resume(
             elif state.status == AgentStatus.BLOCKED:
                 console.print("[yellow]Task blocked - human input needed[/yellow]")
                 if state.blocker:
-                    console.print(f"  Question: {state.blocker.question}")
+                    console.print(f"  Question: {escape(state.blocker.question)}")
                 console.print("  Use 'codeframe blocker list' to see blockers")
             elif state.status == AgentStatus.FAILED:
                 console.print("[red]Task execution failed[/red]")
@@ -2808,7 +2929,7 @@ def work_stop(
         run = runtime.stop_run(workspace, task.id)
 
         console.print("\n[bold yellow]Run stopped[/bold yellow]")
-        console.print(f"  Task: {task.title}")
+        console.print(f"  Task: {escape(task.title)}")
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
         console.print("  Task returned to: [blue]READY[/blue]")
 
@@ -3017,7 +3138,7 @@ def work_diagnose(
         failed_runs = [r for r in runs if r.status == runtime.RunStatus.FAILED]
 
         if not failed_runs:
-            console.print(f"[yellow]No failed run found for task '{task.title}'[/yellow]")
+            console.print(f"[yellow]No failed run found for task '{escape(task.title)}'[/yellow]")
             console.print("[dim]Diagnosis is only available for failed tasks.[/dim]")
             raise typer.Exit(1)
 
@@ -3188,7 +3309,7 @@ def work_retry(
             raise typer.Exit(0)
 
         # Start new run
-        console.print(f"\n[bold]Retrying task:[/bold] {task.title}")
+        console.print(f"\n[bold]Retrying task:[/bold] {escape(task.title)}")
         run = runtime.start_task_run(workspace, task.id)
 
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
@@ -3208,7 +3329,7 @@ def work_retry(
         elif state.status == AgentStatus.BLOCKED:
             console.print("[yellow]Task blocked - human input needed[/yellow]")
             if state.blocker:
-                console.print(f"  Question: {state.blocker.question}")
+                console.print(f"  Question: {escape(state.blocker.question)}")
             console.print("  Use 'codeframe blocker list' to see blockers")
         elif state.status == AgentStatus.FAILED:
             console.print("[red]Task execution failed[/red]")
@@ -3274,7 +3395,7 @@ def work_update_description(
         tasks_module.update(workspace, task.id, description=description)
 
         console.print("[green]Task description updated[/green]")
-        console.print(f"  Task: {task.title}")
+        console.print(f"  Task: {escape(task.title)}")
         console.print(f"  New description: {description[:100]}{'...' if len(description) > 100 else ''}")
         console.print("\nNext steps:")
         console.print(f"  codeframe work retry {task.id[:8]}  # Retry with updated description")
@@ -3367,7 +3488,7 @@ def work_follow(
 
                 console.print(
                     f"[{status_color}]Run {last_run.status.value}[/{status_color}] "
-                    f"for task: {task.title}"
+                    f"for task: {escape(task.title)}"
                 )
 
                 # Show final output if available
@@ -3385,13 +3506,13 @@ def work_follow(
 
                 raise typer.Exit(0)
             else:
-                console.print(f"[yellow]No active run found for task:[/yellow] {task.title}")
+                console.print(f"[yellow]No active run found for task:[/yellow] {escape(task.title)}")
                 console.print("[dim]Start a run with:[/dim]")
                 console.print(f"  cf work start {task.id[:8]} --execute")
                 raise typer.Exit(1)
 
         # We have an active run - stream it
-        console.print(f"[blue]Following task:[/blue] {task.title}")
+        console.print(f"[blue]Following task:[/blue] {escape(task.title)}")
         console.print(f"[dim]Run: {active_run.id[:8]} | Status: {active_run.status.value}[/dim]")
 
         # Show buffered output if requested
@@ -5942,7 +6063,7 @@ def templates_apply(
 
         console.print(f"\n[green]Created {len(created_task_list)} tasks from template '{template_id}'[/green]\n")
         for i, task in enumerate(created_task_list, 1):
-            console.print(f"  {i}. {task.title}")
+            console.print(f"  {i}. {escape(task.title)}")
 
         console.print("\nNext steps:")
         console.print("  codeframe tasks list              View all tasks")

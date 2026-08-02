@@ -35,6 +35,8 @@ Usage:
 
 import logging
 import os
+import sys
+from pathlib import Path
 from typing import Optional, Tuple
 
 import requests
@@ -537,7 +539,24 @@ def setup_credential(
         None, "--provider", "-p", help="Provider name (e.g., anthropic, github, openai)"
     ),
     value: Optional[str] = typer.Option(
-        None, "--value", "-v", help="Credential value (API key or token)", hide_input=True
+        None,
+        "--value",
+        "-v",
+        help=(
+            "DEPRECATED — the value appears in /proc/<pid>/cmdline and your "
+            "shell history. Pipe it on stdin or omit this to be prompted."
+        ),
+        hidden=True,
+    ),
+    value_stdin: bool = typer.Option(
+        False,
+        "--value-stdin",
+        help="Read the credential value from stdin (for scripts and CI).",
+    ),
+    value_file: Optional[Path] = typer.Option(
+        None,
+        "--value-file",
+        help="Read the credential value from a file (the first line).",
     ),
 ):
     """Configure a credential for a provider.
@@ -546,15 +565,29 @@ def setup_credential(
     and other integrations. Credentials are stored in the system keyring
     or an encrypted file.
 
+    The value is never taken from the command line by default (#935): anything
+    in argv is world-readable via /proc/<pid>/cmdline while the process runs and
+    is written to your shell history.
+
     Examples:
 
-        codeframe auth setup  # Interactive mode
+        codeframe auth setup  # interactive — prompts, input hidden
 
-        codeframe auth setup --provider anthropic --value sk-ant-...
+        codeframe auth setup --provider anthropic  # prompts for the value
 
-        codeframe auth setup -p github -v ghp_...
+        echo "$MY_KEY" | codeframe auth setup -p github --value-stdin
+
+        codeframe auth setup -p github --value-file ~/.secrets/gh-token
     """
     manager = CredentialManager()
+
+    if value is not None:
+        console.print(
+            "[yellow]WARNING:[/yellow] --value puts the credential in this "
+            "process's command line, readable by any local process via "
+            "/proc/<pid>/cmdline, and in your shell history. Use --value-stdin "
+            "or --value-file instead."
+        )
 
     # Interactive provider selection if not provided
     if not provider:
@@ -580,6 +613,18 @@ def setup_credential(
     except ValueError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+
+    # stdin/file take precedence over the deprecated option.
+    if value_stdin:
+        # .readline() not .read(): a trailing newline from `echo` is not part of
+        # the secret, and a here-doc may carry more than one line.
+        value = sys.stdin.readline().strip()
+    elif value_file is not None:
+        try:
+            value = value_file.read_text(encoding="utf-8").splitlines()[0].strip()
+        except (OSError, IndexError, UnicodeDecodeError) as exc:
+            console.print(f"[red]Error:[/red] could not read {value_file}: {exc}")
+            raise typer.Exit(1)
 
     # Prompt for value if not provided
     if not value:

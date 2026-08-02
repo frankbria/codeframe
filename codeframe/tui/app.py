@@ -6,6 +6,8 @@ with auto-refresh and keyboard navigation.
 
 from typing import Optional
 
+from rich.markup import escape
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -219,7 +221,7 @@ class DashboardApp(App):
             color = _STATUS_COLORS.get(status_val, "white")
             table.add_row(
                 task.id[:8],
-                task.title[:50],
+                escape(task.title[:50]),
                 f"[{color}]{status_val}[/{color}]",
                 str(task.priority),
             )
@@ -241,7 +243,7 @@ class DashboardApp(App):
             return
 
         for blocker in data.blockers:
-            log.write(f"[red bold]{blocker.id[:8]}[/red bold]: {blocker.question[:60]}")
+            log.write(f"[red bold]{blocker.id[:8]}[/red bold]: {escape(blocker.question[:60])}")
 
     _SEVERITY_COLORS: dict[str, str] = {
         "critical": "red bold",
