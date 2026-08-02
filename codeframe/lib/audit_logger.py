@@ -267,7 +267,8 @@ class AuditLogger:
         except Exception:  # noqa: BLE001 - see comment
             logger.warning(
                 "Audit write failed for %s (user_id=%s) — the event happened but "
-                "was NOT recorded.",
+                "was NOT recorded. (audit_logs.user_id is a foreign key: passing "
+                "an id with no users row fails the whole insert.)",
                 event_type.value,
                 user_id,
                 exc_info=True,

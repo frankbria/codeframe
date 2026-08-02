@@ -188,7 +188,7 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
             user = await super().authenticate(credentials)
         except UnknownHashError:
             # Every database seeds admin@localhost with the sentinel
-            # '!DISABLED!' as its hashed_password. fastapi-users 15.x calls
+            # '!DISABLED!' as its stored hash. fastapi-users 15.x calls
             # password_helper.verify_and_update with no try/except, and pwdlib
             # raises UnknownHashError on anything it cannot identify — so
             # POST /auth/jwt/login?username=admin@localhost was a trivially
@@ -200,11 +200,23 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
             # exactly like any other bad credential, and one that is audited.
             user = None
 
-        if user is None:
+        # `user is not None` is not the same as "logged in": fastapi-users'
+        # generated route rejects an inactive account with the same 400
+        # BAD_CREDENTIALS *after* authenticate() returns. Auditing only the None
+        # case made repeated correct-password attempts against a disabled or
+        # compromised account invisible — which is precisely the
+        # credential-stuffing signal this exists to capture (PR review on #937).
+        if user is None or not user.is_active:
             audit_from_request(
                 current_audit_request(),
                 AuditEventType.AUTH_LOGIN_FAILED,
+                user_id=getattr(user, "id", None),
                 email=getattr(credentials, "username", None),
+                metadata=(
+                    {"reason": "inactive_account"}
+                    if user is not None
+                    else {"reason": "bad_credentials"}
+                ),
             )
         return user
 
