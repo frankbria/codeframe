@@ -683,7 +683,9 @@ class GlobalConfig(BaseSettings):
     database_path: str = Field(".codeframe/state.db", alias="DATABASE_PATH")
 
     # Status Server configuration
-    api_host: str = Field("0.0.0.0", alias="API_HOST")
+    # Loopback by default (#935): the API exposes SQLite state, workspace
+    # file access and agent execution. Set API_HOST=0.0.0.0 to expose it.
+    api_host: str = Field("127.0.0.1", alias="API_HOST")
     api_port: int = Field(8080, alias="API_PORT")
     cors_origins: str = Field("http://localhost:3000,http://localhost:5173", alias="CORS_ORIGINS")
 

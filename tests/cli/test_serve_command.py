@@ -27,7 +27,13 @@ class TestServeCommand:
     """`cf serve` wires uvicorn with the requested host/port/reload."""
 
     def test_default_host_port_and_app(self):
-        """No flags → uvicorn.run on the v2 app at 0.0.0.0:8080, reload off."""
+        """No flags → uvicorn.run on the v2 app at 127.0.0.1:8080, reload off.
+
+        The default was 0.0.0.0 until #935 — this test asserted it, which meant
+        the suite was pinning the vulnerability in place: the server exposes
+        SQLite state, workspace file access and agent execution, and binding
+        every interface by default put all of it on the LAN.
+        """
         with patch("uvicorn.run") as mock_run:
             result = runner.invoke(app, ["serve"])
 
@@ -36,7 +42,7 @@ class TestServeCommand:
         args, kwargs = mock_run.call_args
         # The app import string is passed positionally to uvicorn.run.
         assert args[0] == "codeframe.ui.server:app"
-        assert kwargs["host"] == "0.0.0.0"
+        assert kwargs["host"] == "127.0.0.1"
         assert kwargs["port"] == 8080
         assert kwargs["reload"] is False
 
