@@ -225,15 +225,21 @@ class TestRunGateEnforcement:
         assert "test_unit_b" in output
 
     @patch("codeframe.core.gates.run")
-    def test_sec_gate_enforces_pytest_rule_alongside_ruff(self, mock_run, workspace):
-        """A SEC requirement is NOT satisfied by a green ruff run alone when
-        its named test_sec_* regression test is missing."""
+    def test_sec_gate_enforces_pytest_rule_alongside_its_scanner(
+        self, mock_run, workspace
+    ):
+        """A SEC requirement is NOT satisfied by a green scanner run alone when
+        its named test_sec_* regression test is missing.
+
+        The scanner is bandit since #925 — SEC used to map to ruff, so a clean
+        *lint* recorded checksummed security evidence.
+        """
         from codeframe.core.proof.runner import _run_gate
 
         def fake_run(ws, gates=None, verbose=False, test_selector=None, **kw):
             if test_selector:  # scoped pytest run for the rule → missing
                 return _gate_result(GateStatus.FAILED, 5, "no tests ran")
-            return _gate_result(GateStatus.PASSED, 0, "ruff clean")
+            return _gate_result(GateStatus.PASSED, 0, "no security findings")
 
         mock_run.side_effect = fake_run
         outcome, output = _run_gate(
@@ -244,7 +250,10 @@ class TestRunGateEnforcement:
         # Both the scoped pytest run and the ruff run happened
         called_gates = [c.kwargs.get("gates") or c.args[1] for c in mock_run.call_args_list]
         assert ["pytest"] in called_gates
-        assert ["ruff"] in called_gates
+        assert ["bandit"] in called_gates
+        assert ["ruff"] not in called_gates, (
+            "the SEC gate must not be verified by a linter"
+        )
 
     def test_unit_stub_name_matches_evidence_rule(self):
         """The generated UNIT stub must define the exact function the
@@ -291,11 +300,25 @@ class TestRunGateEnforcement:
         assert "custom_check_foo" in output
         assert "no pytest-style test_id" in output
 
-    def test_unmapped_gate_still_unverifiable(self, workspace):
+    def test_an_unmapped_gate_with_no_rules_is_unverifiable(self, workspace):
+        """Still honest where nothing can be checked.
+
+        This used to pass a rule and expect UNVERIFIABLE, because _GATE_TO_CORE
+        short-circuited before the rules were read. Since #924 a gate with
+        pytest-style rules runs them, so the unverifiable case is now
+        specifically "no runner *and* nothing enforceable".
+        """
+        from codeframe.core.proof.runner import _run_gate
+
+        outcome, _ = _run_gate(workspace, Gate.E2E, [])
+        assert outcome == GateOutcome.UNVERIFIABLE
+
+    def test_an_unmapped_gate_with_rules_is_enforced(self, workspace):
+        """The #924 fix: E2E is verified through its evidence rules."""
         from codeframe.core.proof.runner import _run_gate
 
         outcome, _ = _run_gate(workspace, Gate.E2E, [self._rule(gate=Gate.E2E)])
-        assert outcome == GateOutcome.UNVERIFIABLE
+        assert outcome != GateOutcome.UNVERIFIABLE
 
 
 class TestRunProofEnforcement:

@@ -263,6 +263,21 @@ cf proof list                         # List all proof requirements
 cf proof status                       # Summary status across all gates
 cf proof show <id>                    # Detail for a specific requirement
 cf proof waive <id> --reason "..."    # Waive a requirement with justification
+```
+
+**How each gate is verified.** `UNIT` and `CONTRACT` run pytest and `SEC` runs
+ruff directly. The other gates — `E2E`, `VISUAL`, `A11Y`, `PERF`, `DEMO` — have
+no dedicated tool runner and are enforced through their **evidence rules**:
+`cf proof capture` generates a `test_a11y_*` / `test_perf_*` / … stub per
+obligation, and once you implement that test it is run scoped by name, so the
+obligation passes or fails on real evidence. A named test that does not exist
+is a failure, not a pass.
+
+`MANUAL` is deliberately never machine-verified — its `manual_check_*` rules
+mean a human has to look — so a MANUAL obligation reports `unverifiable` and is
+resolved by waiving it with a justification.
+
+```bash
 
 # Checkpoints and gates
 cf review                             # Run verification gates

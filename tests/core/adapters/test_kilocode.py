@@ -11,6 +11,18 @@ from codeframe.core.adapters.kilocode import KilocodeAdapter
 pytestmark = pytest.mark.v2
 
 _WHICH = "codeframe.core.adapters.subprocess_adapter.shutil.which"
+
+
+def _pin_legacy_surface(binary_path: str) -> None:
+    """Drive the 0.22.0 invocation regardless of what is installed.
+
+    Since #1015 `build_command` asks the CLI's own `--help` which era it is
+    talking to. These tests use a fake binary path, so detection would fail and
+    fall back to modern — pin it instead of asserting whatever the fallback is.
+    """
+    from codeframe.core.adapters import kilocode as kilo_mod
+
+    kilo_mod._SURFACE_CACHE[binary_path] = kilo_mod._LEGACY
 _WHICH_KILOCODE = "codeframe.core.adapters.kilocode.shutil.which"
 
 
@@ -48,8 +60,11 @@ class TestKilocodeAdapter:
                 KilocodeAdapter()
 
     def test_build_command_includes_prompt_and_auto_flag(self) -> None:
+        """The 0.22.0 form. Pinned to that surface explicitly since #1015: which
+        invocation is built now depends on the installed CLI's own --help."""
         with patch(_WHICH, return_value="/usr/bin/kilo"):
             adapter = KilocodeAdapter()
+        _pin_legacy_surface("/usr/bin/kilo")
         cmd = adapter.build_command("do the thing", Path("/tmp/repo"))
         assert cmd[0] == "/usr/bin/kilo"
         assert "do the thing" in cmd
@@ -64,9 +79,13 @@ class TestKilocodeAdapter:
         [prompt]`, commands are auth/config/debug/models only. With a bogus
         `run` in front, `run` is consumed as the prompt, `--auto` never takes
         effect, and the CLI opens the TUI and hangs until the timeout (#1012).
+
+        Still true *for that CLI*. 7.x reinstated `run`, which is why the
+        adapter now detects the surface rather than assuming one (#1015).
         """
         with patch(_WHICH, return_value="/usr/bin/kilo"):
             adapter = KilocodeAdapter()
+        _pin_legacy_surface("/usr/bin/kilo")
         cmd = adapter.build_command("do the thing", Path("/tmp/repo"))
 
         assert "run" not in cmd, "`kilo run` opens the TUI and does no work"
