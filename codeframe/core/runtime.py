@@ -13,7 +13,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
 from codeframe.core import engine_stats, events, tasks
-from codeframe.core.state_machine import TaskStatus
+from codeframe.core.state_machine import TaskStatus, can_transition
 from codeframe.core.workspace import Workspace, get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -429,8 +429,19 @@ def fail_run(workspace: Workspace, run_id: str, reason: str = "") -> Run:
         print_event=True,
     )
 
-    # Update task status to FAILED
-    tasks.update_status(workspace, run.task_id, TaskStatus.FAILED)
+    # Update task status to FAILED — but only when the state machine permits it.
+    # A task completed outside the batch is already DONE, which allows only
+    # {READY, MERGED}; raising here left the run row written and the event
+    # emitted, then threw into the caller. The run really did fail; the task's
+    # terminal state is the user's and is not ours to overturn. (#921)
+    task = tasks.get(workspace, run.task_id)
+    if task and can_transition(task.status, TaskStatus.FAILED):
+        tasks.update_status(workspace, run.task_id, TaskStatus.FAILED)
+    elif task:
+        logger.info(
+            "Run %s failed but task %s is %s; leaving the task status alone",
+            run_id, run.task_id, task.status.value,
+        )
 
     run.status = RunStatus.FAILED
     run.completed_at = datetime.fromisoformat(now)
