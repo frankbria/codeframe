@@ -576,7 +576,7 @@ class MetricsTracker:
         )
 
         # Initialize result
-        result = {
+        result: Dict[str, Any] = {
             "project_id": project_id,
             "total_cost_usd": 0.0,
             "total_tokens": 0,
@@ -596,10 +596,11 @@ class MetricsTracker:
         agent_stats: Dict[str, Dict[str, Any]] = {}
         model_stats: Dict[str, Dict[str, Any]] = {}
 
+        unpriced_calls = 0
         for record in usage_records:
             raw_cost = record["estimated_cost_usd"]
             if raw_cost is None:
-                result["unpriced_calls"] = result.get("unpriced_calls", 0) + 1
+                unpriced_calls += 1
             cost = _priced(raw_cost)
             tokens = record["input_tokens"] + record["output_tokens"]
             agent_id = record["agent_id"]
@@ -635,6 +636,7 @@ class MetricsTracker:
 
         # Convert to lists and round costs
         result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
+        result["unpriced_calls"] = unpriced_calls
         result["by_agent"] = [
             {**stats, "cost_usd": round(stats["cost_usd"], 6)}
             for stats in agent_stats.values()
@@ -677,7 +679,7 @@ class MetricsTracker:
         usage_records = self.db.get_token_usage(agent_id=agent_id)
 
         # Initialize result
-        result = {
+        result: Dict[str, Any] = {
             "agent_id": agent_id,
             "total_cost_usd": 0.0,
             "total_tokens": 0,
@@ -693,10 +695,11 @@ class MetricsTracker:
         call_type_stats: Dict[str, Dict[str, Any]] = {}
         project_stats: Dict[int, Dict[str, Any]] = {}
 
+        unpriced_calls = 0
         for record in usage_records:
             raw_cost = record["estimated_cost_usd"]
             if raw_cost is None:
-                result["unpriced_calls"] = result.get("unpriced_calls", 0) + 1
+                unpriced_calls += 1
             cost = _priced(raw_cost)
             tokens = record["input_tokens"] + record["output_tokens"]
             call_type = record["call_type"]
@@ -723,6 +726,7 @@ class MetricsTracker:
 
         # Convert to lists and round costs
         result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
+        result["unpriced_calls"] = unpriced_calls
         result["by_call_type"] = [
             {**stats, "cost_usd": round(stats["cost_usd"], 6)}
             for stats in call_type_stats.values()
@@ -775,7 +779,7 @@ class MetricsTracker:
         )
 
         # Initialize result
-        result = {
+        result: Dict[str, Any] = {
             "project_id": project_id,
             "total_cost_usd": 0.0,
             "total_tokens": 0,
@@ -790,14 +794,16 @@ class MetricsTracker:
             return result
 
         # Aggregate totals
+        unpriced_calls = 0
         for record in usage_records:
             if record["estimated_cost_usd"] is None:
-                result["unpriced_calls"] = result.get("unpriced_calls", 0) + 1
+                unpriced_calls += 1
             result["total_cost_usd"] += _priced(record["estimated_cost_usd"])
             result["total_tokens"] += record["input_tokens"] + record["output_tokens"]
 
         # Round cost
         result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
+        result["unpriced_calls"] = unpriced_calls
 
         return result
 

@@ -285,3 +285,34 @@ class TestExplicitlyFreePricingIsMeasured:
         assert agent._cost_cap_message() is None, (
             "an explicitly free model was treated as unmeasurable and aborted"
         )
+
+
+class TestUnpricedCallsIsAlwaysReported:
+    """The bot review noted the key was emitted inconsistently across
+    aggregators — present only when an unpriced record existed in two of them,
+    zero-initialized in the third. A caller should not have to guess."""
+
+    @pytest.mark.asyncio
+    async def test_project_costs_reports_zero_when_all_priced(self):
+        from codeframe.core.models import CallType
+
+        db = MagicMock()
+        db.get_token_usage = MagicMock(return_value=[
+            {"estimated_cost_usd": 0.02, "input_tokens": 10, "output_tokens": 5,
+             "agent_id": "a1", "model_name": "claude-sonnet-4-5", "project_id": 1,
+             "call_type": CallType.OTHER.value,
+             "timestamp": "2026-08-01T00:00:00+00:00"},
+        ])
+
+        result = await MetricsTracker(db).get_project_costs(project_id=1)
+
+        assert result["unpriced_calls"] == 0
+
+    @pytest.mark.asyncio
+    async def test_project_costs_reports_zero_with_no_records_at_all(self):
+        db = MagicMock()
+        db.get_token_usage = MagicMock(return_value=[])
+
+        result = await MetricsTracker(db).get_project_costs(project_id=1)
+
+        assert result["unpriced_calls"] == 0
