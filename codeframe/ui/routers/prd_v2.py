@@ -29,6 +29,10 @@ from codeframe.core.llm_resolution import UntrustedBaseURLError
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import prd
 
+from codeframe.core.prd import PrdHasDependentTasksError
+from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.response_models import api_error, internal_error, ErrorCodes
+
 # Payload caps (#934). Every value below is fed into an LLM prompt, so an
 # uncapped request body is an unbounded provider bill and a DoS vector. Pydantic
 # enforces these before the handler runs, so overflow is a 422 with a field-level
@@ -40,9 +44,6 @@ MAX_PRD_CONTENT_CHARS = 200_000
 MAX_ANSWER_CHARS = 10_000
 #: How many ambiguities one refine request may carry.
 MAX_REFINE_ANSWERS = 100
-from codeframe.core.prd import PrdHasDependentTasksError
-from codeframe.ui.dependencies import get_v2_workspace
-from codeframe.ui.response_models import api_error, internal_error, ErrorCodes
 
 logger = logging.getLogger(__name__)
 
