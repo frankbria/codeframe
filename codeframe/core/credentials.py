@@ -37,6 +37,7 @@ import hashlib
 import json
 import logging
 import os
+import time
 import platform
 import tempfile
 import threading
@@ -292,22 +293,31 @@ def _derive_key_uncached(salt_file: Path) -> bytes:
     """
     # Get or create salt
     if salt_file.exists():
-        with open(salt_file, "rb") as f:
-            salt = f.read()
-        # Validate salt file integrity
-        if len(salt) != 16:
-            raise ValueError(
-                f"Invalid salt file at {salt_file}: expected 16 bytes, got {len(salt)}. "
-                "Delete the salt file to regenerate (note: this will make existing "
-                "credentials inaccessible)."
-            )
+        # Waits out a concurrent creator that has made the file but not yet
+        # written to it, and raises the same explicit error as before for a
+        # salt that is genuinely the wrong size (#920 review).
+        salt = _read_salt_when_written(salt_file)
     else:
-        salt = os.urandom(16)
+        # Create exclusively, and on a lost race read back the winner's salt.
+        #
+        # `open(..., "wb")` truncates, so two first-time derivations each wrote
+        # their own random salt and the second clobbered the first. Every caller
+        # used to re-read the disk salt, so the mismatch self-healed on the next
+        # call; with the derivation memoized (#920) the losing key is pinned for
+        # the whole process lifetime — the process encrypts under a key the
+        # on-disk salt can never reproduce, and after a restart every credential
+        # written in that window fails to decrypt and reads as an empty store.
+        # (#920 review)
         salt_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(salt_file, "wb") as f:
-            f.write(salt)
-        # Secure permissions
-        salt_file.chmod(0o600)
+        salt = os.urandom(16)
+        try:
+            fd = os.open(salt_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            salt = _read_salt_when_written(salt_file)
+        else:
+            with os.fdopen(fd, "wb") as f:
+                f.write(salt)
+            salt_file.chmod(0o600)
 
     # Get machine-specific identifier; optionally mix in a real user secret so
     # the key isn't recoverable from the (non-secret) machine ID alone (#772).
@@ -330,6 +340,30 @@ def _derive_key_uncached(salt_file: Path) -> bytes:
     key = base64.urlsafe_b64encode(kdf.derive(key_material))
 
     return key
+
+
+def _read_salt_when_written(salt_file: Path) -> bytes:
+    """Read a salt another process/thread is in the middle of creating (#920).
+
+    Losing the ``O_EXCL`` race means the file exists but the winner may not have
+    written to it yet, so a plain read can return zero bytes — which derives a
+    different key just as surely as a clobbered salt would. The write is a
+    single 16-byte call immediately after the create, so this settles within
+    microseconds; the bound is here so a genuinely truncated salt raises the
+    same explicit error as the validation path above rather than spinning.
+    """
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        data = salt_file.read_bytes()
+        if len(data) == 16:
+            return data
+        time.sleep(0.005)
+
+    raise ValueError(
+        f"Invalid salt file at {salt_file}: expected 16 bytes, got "
+        f"{len(salt_file.read_bytes())}. Delete the salt file to regenerate "
+        "(note: this will make existing credentials inaccessible)."
+    )
 
 
 def _get_machine_id() -> str:

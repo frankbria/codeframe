@@ -219,3 +219,66 @@ class TestConcurrentWrites:
 
         store.delete(provider)
         assert store.retrieve(provider) is None
+
+
+class TestSaltCreationIsIdempotent:
+    """Review finding: the memo turned a self-healing race into a permanent one.
+
+    `open(..., "wb")` truncates, so two first-time derivations each wrote their
+    own random salt and the second clobbered the first. Before the memo every
+    caller re-read the disk salt, so the mismatch corrected itself on the next
+    call. Memoized, the losing key is pinned for the whole process lifetime: the
+    process encrypts under a key the on-disk salt can never reproduce, and after
+    a restart every credential written in that window fails to decrypt — and the
+    store treats InvalidToken as "empty", so it fails *silently*.
+    """
+
+    def test_concurrent_first_derivations_agree_with_the_disk_salt(
+        self, tmp_path, monkeypatch
+    ):
+        from codeframe.core import credentials as creds
+
+        creds.derive_encryption_key.cache_clear()
+        monkeypatch.delenv("CODEFRAME_CREDENTIAL_SECRET", raising=False)
+        salt_file = tmp_path / "creds" / "salt.bin"
+
+        # Force every racer past the existence check together, and give each a
+        # distinct salt so a clobber is detectable.
+        start = threading.Barrier(6)
+        counter = iter(range(100))
+        real_urandom = creds.os.urandom
+
+        def _distinct(n):
+            if n == 16:
+                return bytes([next(counter)]) * 16
+            return real_urandom(n)
+
+        monkeypatch.setattr(creds.os, "urandom", _distinct)
+
+        def _derive():
+            start.wait()
+            return creds._derive_key_uncached(salt_file)
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            keys = [f.result() for f in [pool.submit(_derive) for _ in range(6)]]
+
+        assert len(set(keys)) == 1, (
+            "concurrent first derivations produced different keys; the memo "
+            "would pin one while the disk holds another salt"
+        )
+
+        # And the surviving key must be the one the persisted salt reproduces.
+        creds.derive_encryption_key.cache_clear()
+        assert creds._derive_key_uncached(salt_file) == keys[0]
+
+    def test_an_existing_salt_is_never_overwritten(self, tmp_path, monkeypatch):
+        from codeframe.core import credentials as creds
+
+        monkeypatch.delenv("CODEFRAME_CREDENTIAL_SECRET", raising=False)
+        salt_file = tmp_path / "creds" / "salt.bin"
+        salt_file.parent.mkdir(parents=True)
+        salt_file.write_bytes(b"A" * 16)
+
+        creds._derive_key_uncached(salt_file)
+
+        assert salt_file.read_bytes() == b"A" * 16
