@@ -199,7 +199,25 @@ def _run_gate(
         return GateOutcome.FAILED, str(exc)
 
 
+def _report_scope_skipped(run_id: str, skipped: list[str]) -> None:
+    """Surface requirements a scoped run did not evaluate (#922).
+
+    Dropping them with a bare ``continue`` is how ``overall_passed=True`` came
+    to coexist with a merge gate that still blocked on the very same
+    requirements — the user had no way to see the two were talking about
+    different sets.
+    """
+    if not skipped:
+        return
+    logger.warning(
+        "Proof run %s: %d requirement(s) not evaluated — out of scope for the "
+        "current changes: %s. Re-run with --full to include them.",
+        run_id, len(skipped), ", ".join(sorted(skipped)),
+    )
+
+
 def run_proof(
+
     workspace: Workspace,
     *,
     full: bool = False,
@@ -266,11 +284,14 @@ def run_proof(
     artifact_dir = workspace.state_dir / "proof_artifacts"
     artifact_dir.mkdir(exist_ok=True)
 
+    scope_skipped: list[str] = []
+
     for req in reqs:
         # Check scope intersection (unless full mode or scope detection failed)
         # None changed_scope means "failed to detect" → run everything (fail closed)
         if not full and changed_scope is not None:
             if not intersects(req.scope, changed_scope):
+                scope_skipped.append(req.id)
                 continue
 
         req_results: list[tuple[Gate, GateOutcome]] = []
@@ -352,5 +373,7 @@ def run_proof(
             duration_ms=duration_ms,
         ),
     )
+
+    _report_scope_skipped(run_id, scope_skipped)
 
     return results
