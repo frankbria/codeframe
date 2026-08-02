@@ -210,6 +210,74 @@ class TestFailedLoginProducesAnAuditRow:
         assert len(_rows(db, "auth.login.failed")) == 3
 
 
+class TestWritesAreDeferredPastTheAuthSession:
+    """Raised by `codex review` as a P1.
+
+    fastapi-users' async SQLAlchemy session and app.state.db are two connections
+    to the SAME SQLite file, and authenticate() can leave a write open (it
+    rewrites a legacy password hash). An inline audit write would queue behind
+    that transaction on busy_timeout=5000 — a 5s stall on every failed login,
+    and a LOST audit row once the wait expires.
+    """
+
+    def test_events_are_queued_not_written_during_the_request(self, db):
+        from codeframe.lib.audit_logger import _pending
+
+        class FakeRequest:
+            def __init__(self):
+                self.app = type("A", (), {"state": type("S", (), {"db": db})()})()
+                self.client = None
+
+        token = _pending.set([])
+        try:
+            audit_from_request(FakeRequest(), AuditEventType.AUTH_LOGIN_FAILED)
+            assert _rows(db) == [], "the row was written inline, not deferred"
+            assert len(_pending.get()) == 1, "the event was not queued"
+        finally:
+            _pending.reset(token)
+
+    def test_without_a_capture_context_the_write_is_immediate(self, db):
+        """Call sites outside a captured route must still work."""
+
+        class FakeRequest:
+            def __init__(self):
+                self.app = type("A", (), {"state": type("S", (), {"db": db})()})()
+                self.client = None
+
+        audit_from_request(FakeRequest(), AuditEventType.AUTH_LOGOUT)
+
+        assert len(_rows(db, "auth.logout")) == 1
+
+    def test_the_context_is_reset_even_if_a_flush_fails(self):
+        """A stranded ContextVar would leak one request's identity into the next."""
+        import asyncio
+
+        from codeframe.lib.audit_logger import _pending, capture_audit_request
+
+        class BrokenDb:
+            def create_audit_log(self, **_kwargs):
+                raise RuntimeError("boom")
+
+        async def drive():
+            gen = capture_audit_request(
+                type("R", (), {"app": None, "client": None})()
+            )
+            await gen.asend(None)
+            _pending.get().append((BrokenDb(), {
+                "event_type": AuditEventType.AUTH_LOGOUT,
+                "user_id": None, "resource_type": "auth",
+                "resource_id": None, "ip_address": None, "metadata": None,
+            }))
+            try:
+                await gen.asend(None)
+            except StopAsyncIteration:
+                pass
+
+        asyncio.run(drive())
+
+        assert _pending.get() is None, "the pending buffer leaked past the request"
+
+
 class TestTaxonomyCoversTheWiredEvents:
     @pytest.mark.parametrize(
         "name",

@@ -297,7 +297,7 @@ def audit_from_request(
         return
 
     client = getattr(request, "client", None)
-    AuditLogger(db)._log_event(
+    kwargs = dict(
         event_type=event_type,
         user_id=user_id,
         resource_type=resource_type,
@@ -305,6 +305,16 @@ def audit_from_request(
         ip_address=getattr(client, "host", None),
         metadata={**(metadata or {}), **({"email": email} if email else {})},
     )
+
+    queue = _pending.get()
+    if queue is not None:
+        # Inside a captured route: flush after the other dependencies close, so
+        # the write never contends with an open auth transaction on the same
+        # SQLite file (#937).
+        queue.append((db, kwargs))
+        return
+
+    AuditLogger(db)._log_event(**kwargs)
 
 
 #: The in-flight Request, for audit call sites that cannot receive one.
@@ -316,20 +326,41 @@ _current_request: ContextVar[Optional[Any]] = ContextVar(
     "codeframe_audit_request", default=None
 )
 
+#: Events queued for after the request's other dependencies have torn down.
+_pending: ContextVar[Optional[list]] = ContextVar(
+    "codeframe_audit_pending", default=None
+)
+
 
 async def capture_audit_request(request: Request):
-    """FastAPI dependency: expose this request to request-less audit call sites.
+    """FastAPI dependency: expose this request to request-less audit call sites,
+    and defer their writes until the rest of the request has torn down.
 
     The annotation is load-bearing: without it FastAPI reads ``request`` as a
     query parameter and every login 422s.
+
+    Deferral matters on the auth routes (codex review on #937). fastapi-users'
+    async SQLAlchemy session and ``app.state.db`` are two connections to the SAME
+    SQLite file, and ``authenticate()`` can leave a write open (it rewrites a
+    legacy password hash). Writing the audit row inline would then queue behind
+    that transaction on ``busy_timeout = 5000`` — a 5s stall on every failed
+    login, and then a lost audit row when the wait expires. Router-level
+    dependencies tear down LAST, after the route's session dependency has
+    closed, so flushing here writes against an uncontended file.
     """
-    token = _current_request.set(request)
+    request_token = _current_request.set(request)
+    pending_token = _pending.set([])
     try:
         yield
     finally:
+        queued = _pending.get() or []
+        # Reset BEFORE flushing so a failure below cannot strand the context.
         # Reset rather than clear: ContextVar state leaking between requests on a
         # reused worker task would attribute one user's IP to another's event.
-        _current_request.reset(token)
+        _pending.reset(pending_token)
+        _current_request.reset(request_token)
+        for db, kwargs in queued:
+            AuditLogger(db)._log_event(**kwargs)
 
 
 def current_audit_request():
