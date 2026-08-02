@@ -16,6 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
+from codeframe.auth.api_keys import SCOPE_ADMIN
+from codeframe.auth.dependencies import require_scope
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core.environment import EnvironmentValidator, ValidationResult, ToolInfo
@@ -189,6 +191,9 @@ async def install_tool(
     request: Request,
     body: InstallToolRequest,
     workspace: Workspace = Depends(get_v2_workspace),
+    # Installing a package on the HOST is machine-wide and irreversible from the
+    # app's side — it is administration, not ordinary write access (#934).
+    _auth: dict = Depends(require_scope(SCOPE_ADMIN)),
 ) -> InstallResultResponse:
     """Install a missing tool.
 
