@@ -59,23 +59,55 @@ def get_changed_scope(workspace: Workspace) -> "RequirementScope | None":
 
 
 def intersects(req_scope: RequirementScope, changed_scope: RequirementScope) -> bool:
-    """Check if a requirement scope overlaps with changed scope.
+    """Whether a requirement's scope overlaps the changed scope.
 
-    Returns True if any field has common elements. File matching
-    supports prefix matching (req file "src/auth/" matches changed
-    file "src/auth/login.py").
+    Two rules, in order:
+
+    **Comparable dimensions.** ``routes``, ``apis``, ``components`` and ``tags``
+    match by exact set intersection; ``files`` match by prefix, so a requirement
+    scoped to ``src/auth/`` covers a changed ``src/auth/login.py``. Prefix
+    matching respects path boundaries — ``src/auth`` does not swallow
+    ``src/authentication/x.py``.
+
+    **Nothing comparable → in scope.** ``get_changed_scope`` can only report
+    *files*, but a requirement captured as ``GET /api/tasks`` or ``/login`` has
+    no file dimension at all. Requiring same-field overlap therefore excluded
+    such requirements from every default (scoped) run, permanently: the run
+    reported ``overall_passed=True`` while the merge gate still blocked on them
+    (#922). When no dimension of the requirement can be compared against the
+    changed scope, it is treated as in scope — the same fail-closed convention
+    ``run_proof`` already applies when scope detection fails outright.
     """
-    # Direct set intersection for routes, apis, components, tags
+    compared_any = False
+
     for field_name in ("routes", "apis", "components", "tags"):
         req_items = set(getattr(req_scope, field_name))
         changed_items = set(getattr(changed_scope, field_name))
-        if req_items & changed_items:
-            return True
+        if req_items and changed_items:
+            compared_any = True
+            if req_items & changed_items:
+                return True
 
-    # File matching — exact match only (no directory expansion)
     req_files = set(req_scope.files)
     changed_files = set(changed_scope.files)
-    if req_files & changed_files:
-        return True
+    if req_files and changed_files:
+        compared_any = True
+        if _files_intersect(req_files, changed_files):
+            return True
 
+    # Nothing could be compared — fail closed rather than silently skip.
+    return not compared_any
+
+
+def _files_intersect(req_files: set[str], changed_files: set[str]) -> bool:
+    """Exact or directory-prefix match between two file sets."""
+    for req_file in req_files:
+        prefix = req_file.rstrip("/")
+        for changed_file in changed_files:
+            if changed_file == req_file or changed_file == prefix:
+                return True
+            # Path-boundary aware: "src/auth" covers "src/auth/login.py" but
+            # not "src/authentication/x.py".
+            if changed_file.startswith(prefix + "/"):
+                return True
     return False
