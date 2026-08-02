@@ -428,15 +428,23 @@ def _check_merge_gate(
     """
     from codeframe.core.proof import ledger as proof_ledger
     from codeframe.core.proof.models import ReqStatus
-    from codeframe.core.workspace import get_workspace
+    from codeframe.core.workspace import find_workspace_root, get_workspace
 
     reason = (override_reason or "").strip()
     if override and not reason:
         console.print("[red]Error:[/red] --reason is required with --override")
         raise typer.Exit(1)
 
+    # Resolve upward: get_workspace looks only in the exact directory given, so
+    # running this from any subdirectory of a workspace raised FileNotFoundError
+    # and the gate silently did not apply — no warning, no audit record,
+    # indistinguishable from the genuine no-workspace case (#926).
+    root = find_workspace_root(Path.cwd())
+    if root is None:
+        return None
+
     try:
-        workspace = get_workspace(Path.cwd())
+        workspace = get_workspace(root)
     except FileNotFoundError:
         return None
 
