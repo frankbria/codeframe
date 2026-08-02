@@ -106,6 +106,17 @@ def _pricing_table() -> Dict[str, Dict[str, float]]:
 
     return {**MODEL_PRICING, **clean}
 
+
+def _priced(cost: Optional[float]) -> float:
+    """Coerce an unpriced (None) cost to 0.0 **for summation only**.
+
+    An unpriced call must not crash an aggregator, and must not be counted as
+    spend either. Callers pair this with an ``unpriced_calls`` counter so the
+    gap is reported rather than hidden (#932).
+    """
+    return 0.0 if cost is None else cost
+
+
 # Regex to strip -YYYYMMDD date suffixes from Anthropic API model names
 # (e.g., "claude-sonnet-4-5-20250514" → "claude-sonnet-4-5")
 _DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
@@ -570,6 +581,10 @@ class MetricsTracker:
             "total_cost_usd": 0.0,
             "total_tokens": 0,
             "total_calls": len(usage_records),
+            # Calls whose model has no pricing: excluded from total_cost_usd
+            # rather than counted as free, and surfaced so the UI can say so
+            # instead of under-reporting silently (#932).
+            "unpriced_calls": 0,
             "by_agent": [],
             "by_model": [],
         }
@@ -582,7 +597,10 @@ class MetricsTracker:
         model_stats: Dict[str, Dict[str, Any]] = {}
 
         for record in usage_records:
-            cost = record["estimated_cost_usd"]
+            raw_cost = record["estimated_cost_usd"]
+            if raw_cost is None:
+                result["unpriced_calls"] = result.get("unpriced_calls", 0) + 1
+            cost = _priced(raw_cost)
             tokens = record["input_tokens"] + record["output_tokens"]
             agent_id = record["agent_id"]
             model_name = record["model_name"]
@@ -676,7 +694,10 @@ class MetricsTracker:
         project_stats: Dict[int, Dict[str, Any]] = {}
 
         for record in usage_records:
-            cost = record["estimated_cost_usd"]
+            raw_cost = record["estimated_cost_usd"]
+            if raw_cost is None:
+                result["unpriced_calls"] = result.get("unpriced_calls", 0) + 1
+            cost = _priced(raw_cost)
             tokens = record["input_tokens"] + record["output_tokens"]
             call_type = record["call_type"]
             project_id = record["project_id"]
@@ -770,7 +791,9 @@ class MetricsTracker:
 
         # Aggregate totals
         for record in usage_records:
-            result["total_cost_usd"] += record["estimated_cost_usd"]
+            if record["estimated_cost_usd"] is None:
+                result["unpriced_calls"] = result.get("unpriced_calls", 0) + 1
+            result["total_cost_usd"] += _priced(record["estimated_cost_usd"])
             result["total_tokens"] += record["input_tokens"] + record["output_tokens"]
 
         # Round cost
@@ -869,7 +892,7 @@ class MetricsTracker:
             buckets[bucket_key]["total_tokens"] += (
                 record["input_tokens"] + record["output_tokens"]
             )
-            buckets[bucket_key]["cost_usd"] += record["estimated_cost_usd"]
+            buckets[bucket_key]["cost_usd"] += _priced(record["estimated_cost_usd"])
 
         # Round costs and sort by timestamp
         result = []

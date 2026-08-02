@@ -223,3 +223,65 @@ class TestRecordTokenUsageDocstring:
 
         recorded = db.save_token_usage.call_args.args[0]
         assert recorded.estimated_cost_usd == pytest.approx(1.00)
+
+
+class TestAggregatorsToleratNullCosts:
+    """Raised by `codex review`: unpriced rows now persist NULL, and the Python
+    aggregators added the raw value — so viewing metrics after an ollama run
+    raised TypeError instead of excluding the unknown spend."""
+
+    @pytest.fixture
+    def tracker_with_mixed_records(self):
+        from codeframe.core.models import CallType
+
+        db = MagicMock()
+        db.get_token_usage = MagicMock(return_value=[
+            {"estimated_cost_usd": 0.01, "input_tokens": 100, "output_tokens": 50,
+             "agent_id": "a1", "model_name": "claude-sonnet-4-5", "project_id": 1,
+             "call_type": CallType.OTHER.value, "timestamp": "2026-08-01T00:00:00+00:00"},
+            {"estimated_cost_usd": None, "input_tokens": 200, "output_tokens": 80,
+             "agent_id": "a1", "model_name": "some-local-model", "project_id": 1,
+             "call_type": CallType.OTHER.value, "timestamp": "2026-08-01T00:00:00+00:00"},
+        ])
+        return MetricsTracker(db)
+
+    @pytest.mark.asyncio
+    async def test_project_costs_excludes_unpriced_and_counts_it(
+        self, tracker_with_mixed_records
+    ):
+        result = await tracker_with_mixed_records.get_project_costs(project_id=1)
+
+        assert result["total_cost_usd"] == pytest.approx(0.01), (
+            "unpriced spend must be excluded, not summed as free"
+        )
+        assert result["total_tokens"] == 430, "tokens are still counted"
+        assert result.get("unpriced_calls") == 1, (
+            "the gap must be reported so the UI can render 'unpriced'"
+        )
+
+
+class TestExplicitlyFreePricingIsMeasured:
+    """Raised by `codex review`: a local model priced 0/0 is measured at $0,
+    which is different from having no pricing — the cost cap must not abort."""
+
+    def test_zero_priced_model_is_not_unpriced(self, monkeypatch, tmp_path):
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.workspace import create_or_load_workspace
+
+        monkeypatch.setenv(
+            "CODEFRAME_MODEL_PRICING",
+            json.dumps({"my-free-local": {"input": 0.0, "output": 0.0}}),
+        )
+        agent = ReactAgent(
+            workspace=create_or_load_workspace(tmp_path), llm_provider=MagicMock()
+        )
+        agent._max_cost_usd = 5.0
+        agent._token_records.append({
+            "model": "my-free-local", "input_tokens": 100000,
+            "output_tokens": 50000, "call_type": "execution", "iteration": 1,
+        })
+
+        assert agent._has_unpriced_records() is False
+        assert agent._cost_cap_message() is None, (
+            "an explicitly free model was treated as unmeasurable and aborted"
+        )

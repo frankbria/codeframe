@@ -1121,12 +1121,13 @@ class ReactAgent:
         # — tokens recorded but $0 spent — because MODEL_PRICING was missing the
         # shipped default (claude-haiku-4-5), so a membership test false-fired on
         # a legitimately-priced run. calculate_cost now returns None for unpriced
-        # models, so the question has a real answer. The outcome heuristic is
-        # kept as a second condition: it also catches a run whose prior recorded
-        # cost is unexpectedly zero.
-        if self._has_unpriced_records() or (
-            spent == 0.0 and self._tokens_recorded() > 0
-        ):
+        # models, so the question has a real answer.
+        #
+        # The outcome heuristic is NOT kept as a fallback: a deployment can price
+        # a local model at 0/0 via CODEFRAME_MODEL_PRICING, which is a real $0 —
+        # "spent nothing" would then read as "cannot measure" and abort a run
+        # that is correctly measured as free.
+        if self._has_unpriced_records():
             return (
                 f"A cost cap of ${cap:.2f} is configured, but spend cannot be "
                 f"measured for {', '.join(sorted(self._models_used())) or 'this model'} "
