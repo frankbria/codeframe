@@ -218,7 +218,7 @@ def init(
                 if hook_result.success:
                     console.print(f"  Hook after_init: [green]OK[/green] ({hook_result.duration_ms}ms)")
                 else:
-                    console.print(f"  Hook after_init: [yellow]failed[/yellow] ({hook_result.stderr[:100]})")
+                    console.print(f"  Hook after_init: [yellow]failed[/yellow] ({escape(hook_result.stderr[:100])})")
 
         # Generate CODEFRAME.md if requested (never clobber an existing one, #778)
         if generate_config:
@@ -682,11 +682,11 @@ def review(
                 status_str = "[yellow]ERROR[/yellow]"
 
             duration_str = f" ({check.duration_ms}ms)" if check.duration_ms else ""
-            console.print(f"  {check.name}: {status_str}{duration_str}")
+            console.print(f"  {escape(check.name)}: {status_str}{duration_str}")
 
             # Show output for failures or verbose mode
             if check.output and (check.status == GateStatus.FAILED or verbose):
-                console.print(f"    [dim]{check.output}[/dim]")
+                console.print(f"    [dim]{escape(check.output)}[/dim]")
 
         # Diagnostics that are not gate verdicts (#909) — e.g. a failed
         # dependency install. Always shown: the gates may all have passed, and
@@ -697,9 +697,9 @@ def review(
         # Summary
         console.print()
         if result.passed:
-            console.print(f"[bold green]All gates passed[/bold green] ({result.summary})")
+            console.print(f"[bold green]All gates passed[/bold green] ({escape(result.summary)})")
         else:
-            console.print(f"[bold red]Gates failed[/bold red] ({result.summary})")
+            console.print(f"[bold red]Gates failed[/bold red] ({escape(result.summary)})")
             raise typer.Exit(1)
 
     except FileNotFoundError:
@@ -818,7 +818,7 @@ def prd_templates_list() -> None:
     console.print("\n[bold]Available PRD Templates:[/bold]\n")
     for template in templates:
         section_count = len(template.sections)
-        console.print(f"  [green]{template.id}[/green] - {template.name}")
+        console.print(f"  [green]{template.id}[/green] - {escape(template.name)}")
         console.print(f"    {escape(template.description)}")
         console.print(f"    Sections: {section_count} | Version: {template.version}")
         console.print()
@@ -849,7 +849,7 @@ def prd_templates_show(
             console.print(f"  {t.id}")
         raise typer.Exit(1)
 
-    console.print(f"\n[bold]{template.name}[/bold] ({template.id})\n")
+    console.print(f"\n[bold]{escape(template.name)}[/bold] ({template.id})\n")
     console.print(f"{escape(template.description)}\n")
     console.print(f"Version: {template.version}")
 
@@ -916,7 +916,7 @@ def prd_templates_import(
     try:
         # Import and persist to project directory
         template = manager.import_template(source_path, persist=True)
-        console.print(f"[green]✓[/green] Imported template '{template.id}' ({template.name})")
+        console.print(f"[green]✓[/green] Imported template '{template.id}' ({escape(template.name)})")
         console.print(f"[dim]Sections: {len(template.sections)}[/dim]")
         console.print(f"[dim]Saved to: .codeframe/templates/prd/{template.id}.yaml[/dim]")
     except Exception as e:
@@ -1504,10 +1504,10 @@ def prd_generate(
         console.print(f"[red]Error:[/red] Template '{template}' not found.")
         console.print("\nAvailable templates:")
         for t in template_manager.list_templates():
-            console.print(f"  {t.id} - {t.name}")
+            console.print(f"  {t.id} - {escape(t.name)}")
         raise typer.Exit(1)
 
-    console.print(f"[dim]Using template: {template_obj.name}[/dim]")
+    console.print(f"[dim]Using template: {escape(template_obj.name)}[/dim]")
 
     try:
         workspace = get_workspace(workspace_path)
@@ -1805,11 +1805,11 @@ def prd_stress_test(
     if result.ambiguities:
         console.print(f"\n[bold yellow]⚠ {len(result.ambiguities)} ambiguities found[/bold yellow]\n")
         for i, amb in enumerate(result.ambiguities, 1):
-            console.print(f"[bold yellow]{i}. {amb.label}[/bold yellow] (from \"{amb.source_node_title}\")")
+            console.print(f"[bold yellow]{i}. {escape(amb.label)}[/bold yellow] (from \"{escape(amb.source_node_title)}\")")
             console.print("   The PRD doesn't specify:")
             for q in amb.questions:
                 console.print(f"   [cyan]- {q}[/cyan]")
-            console.print(f"   → {amb.recommendation}")
+            console.print(f"   → {escape(amb.recommendation)}")
             console.print()
     else:
         console.print("\n[green]✓ No ambiguities found — PRD is well-specified.[/green]\n")
@@ -1818,7 +1818,7 @@ def prd_stress_test(
     if interactive and result.ambiguities:
         console.print("[bold]Interactive mode — resolve ambiguities:[/bold]\n")
         for amb in result.ambiguities:
-            console.print(f"[yellow]{amb.label}[/yellow]: {', '.join(amb.questions)}")
+            console.print(f"[yellow]{escape(amb.label)}[/yellow]: {', '.join(amb.questions)}")
             answer = typer.prompt("Your answer")
             amb.resolved_answer = answer
             console.print("[green]✓[/green] Recorded.\n")
@@ -2736,7 +2736,7 @@ def work_start(
                     if state.step_results:
                         last_result = state.step_results[-1]
                         if last_result.error:
-                            console.print(f"  Error: {last_result.error[:200]}")
+                            console.print(f"  Error: {escape(last_result.error[:200])}")
 
                 # Show debug log location if debugging was enabled
                 if debug:
@@ -3204,7 +3204,7 @@ def _display_diagnostic_report(
         console.print("\n[bold]Recommendations:[/bold]\n")
         for i, rec in enumerate(report.recommendations, 1):
             console.print(f"  {i}. [cyan]{rec.action.value}[/cyan]")
-            console.print(f"     {rec.reason}")
+            console.print(f"     {escape(rec.reason)}")
             console.print(f"     [dim]Command:[/dim] [green]{rec.command}[/green]")
             console.print()
 
@@ -3220,7 +3220,7 @@ def _display_diagnostic_report(
         if logs:
             console.print(f"\n[bold]Recent Errors ({len(logs)}):[/bold]")
             for log in logs[:5]:
-                console.print(f"  [red]ERROR[/red] {log.category.value}: {log.message[:100]}")
+                console.print(f"  [red]ERROR[/red] {log.category.value}: {escape(log.message[:100])}")
 
     console.print("━" * 60)
     console.print(f"[dim]Report ID: {report.id}[/dim]")
@@ -4209,7 +4209,7 @@ def batch_run(
                 console.print("\n[bold]Code Review Results[/bold]")
                 for check in gate_result.checks:
                     status_color = "green" if check.status.value == "PASSED" else "red"
-                    console.print(f"  [{status_color}]{check.name}[/{status_color}]: {check.status.value}")
+                    console.print(f"  [{status_color}]{escape(check.name)}[/{status_color}]: {check.status.value}")
                     if check.output and check.status.value != "PASSED":
                         # Show truncated output for failures
                         output_lines = check.output.strip().split("\n")[:5]
@@ -5341,7 +5341,7 @@ def commit_create(
 
         console.print("\n[bold green]Commit created[/bold green]")
         console.print(f"  Hash: {commit_info.hash}")
-        console.print(f"  Message: {commit_info.message}")
+        console.print(f"  Message: {escape(commit_info.message)}")
         console.print(
             f"  Changes: {commit_info.files_changed} files, "
             f"+{commit_info.insertions}/-{commit_info.deletions}"
@@ -5393,7 +5393,7 @@ def checkpoint_create(
         summary = checkpoint.snapshot.get("summary", {})
 
         console.print("\n[bold green]Checkpoint created[/bold green]")
-        console.print(f"  Name: {checkpoint.name}")
+        console.print(f"  Name: {escape(checkpoint.name)}")
         console.print(f"  ID: [dim]{checkpoint.id[:8]}[/dim]")
         console.print(f"  Tasks: {summary.get('total_tasks', 0)}")
 
@@ -5491,7 +5491,7 @@ def checkpoint_show(
         summary = checkpoint.snapshot.get("summary", {})
         tasks_by_status = summary.get("tasks_by_status", {})
 
-        console.print(f"\n[bold]Checkpoint:[/bold] {checkpoint.name}")
+        console.print(f"\n[bold]Checkpoint:[/bold] {escape(checkpoint.name)}")
         console.print(f"  ID: {checkpoint.id}")
         console.print(f"  Created: {checkpoint.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -5544,7 +5544,7 @@ def checkpoint_restore(
         summary = checkpoint.snapshot.get("summary", {})
 
         console.print("\n[bold green]Checkpoint restored[/bold green]")
-        console.print(f"  Name: {checkpoint.name}")
+        console.print(f"  Name: {escape(checkpoint.name)}")
         console.print(f"  Tasks restored: {summary.get('total_tasks', 0)}")
 
     except FileNotFoundError:
@@ -5884,7 +5884,7 @@ def schedule_bottlenecks(
                 console.print(f"[yellow]Task {bn.task_id}:[/yellow] {title}")
                 console.print(f"  Type: {bn.bottleneck_type}")
                 console.print(f"  Impact: {bn.impact_hours:.1f} hours")
-                console.print(f"  Recommendation: {bn.recommendation}")
+                console.print(f"  Recommendation: {escape(bn.recommendation)}")
                 console.print()
 
     except FileNotFoundError as e:
@@ -5942,7 +5942,7 @@ def templates_list(
     console.print("\n[bold]Available Templates:[/bold]\n")
     for template in templates:
         hours = template.total_estimated_hours
-        console.print(f"  [green]{template.id}[/green] - {template.name}")
+        console.print(f"  [green]{template.id}[/green] - {escape(template.name)}")
         console.print(f"    {escape(template.description)}")
         console.print(f"    Category: {template.category} | Tasks: {len(template.tasks)} | Est: {hours:.1f}h")
         console.print()
@@ -5968,7 +5968,7 @@ def templates_show(
             console.print(f"  {t.id}")
         raise typer.Exit(1)
 
-    console.print(f"\n[bold]{template.name}[/bold] ({template.id})\n")
+    console.print(f"\n[bold]{escape(template.name)}[/bold] ({template.id})\n")
     console.print(f"{escape(template.description)}\n")
     console.print(f"Category: {template.category}")
     console.print(f"Total Estimated Hours: {template.total_estimated_hours:.1f}h")

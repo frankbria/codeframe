@@ -184,11 +184,21 @@ class TestRichMarkupIsEscaped:
                 statements.append(buf)
                 buf, depth = "", 0
 
-        # Match on the FIELD NAME, not an enumerated set of variable names. The
-        # first version listed `task.title|blocker.question|description` anchored
-        # after `{`, so `{task.description}`, `{blocker.answer}` and `{t.title}`
-        # all slipped through.
-        field = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\.(title|description|question|answer)\b")
+        # A denylist of free-text FIELD names — deliberately, after trying the
+        # alternatives. Enumerating variable names failed (missed 17 sites);
+        # deny-by-default on every attribute over-fires on 89 statements that
+        # interpolate timestamps, counts and enum accessors, which would be
+        # churn rather than safety. This list covers the free-prose fields that
+        # actually exist in this codebase; a real lint rule is the durable
+        # answer and is filed as a follow-up.
+        FREE_TEXT = (
+            "title|description|question|answer|label|recommendation|message|"
+            "output|error|name|summary|content|text|reason|stderr|stdout|"
+            "source_node_title|feedback|detail|hint|notes"
+        )
+        field = re.compile(
+            r"\{[A-Za-z_][A-Za-z0-9_]*\.(?:" + FREE_TEXT + r")\b"
+        )
         renders = ("console.print", "log.write", "add_row")
 
         offenders = [
