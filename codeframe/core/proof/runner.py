@@ -103,20 +103,30 @@ def _run_gate(
     distinguish "named test missing" from "collected but failing".
     """
     core_gate_name = _GATE_TO_CORE.get(gate)
-    if not core_gate_name:
+
+    # Only pytest-style test_ids can be enforced by a scoped pytest run; e.g.
+    # SEC's test_sec_* rules are pytest tests even though the SEC gate's own
+    # runner is ruff.
+    enforced = [r for r in rules if r.must_pass and r.test_id.startswith("test_")]
+    unenforceable = [r for r in rules if r.must_pass and not r.test_id.startswith("test_")]
+
+    # A gate with no dedicated runner is still verifiable through its evidence
+    # rules — the scoped-pytest machinery below works for any test_-prefixed
+    # id, and TEST_ID_PREFIXES gives every gate except MANUAL exactly such a
+    # prefix. This lookup used to return early, so A11Y/PERF/VISUAL/E2E/DEMO
+    # obligations reported UNVERIFIABLE forever, even after the developer
+    # implemented the generated stub. Five of the seven glitch types include at
+    # least one of those gates, so most captured glitches could never be
+    # satisfied — only waived (#924).
+    if not core_gate_name and not enforced:
         return (
             GateOutcome.UNVERIFIABLE,
-            f"Gate {gate.value} has no automated runner — cannot verify",
+            f"Gate {gate.value} has no automated runner and no pytest-style "
+            f"evidence rules — cannot verify",
         )
 
     try:
         from codeframe.core import gates as core_gates
-
-        # Only pytest-style test_ids can be enforced by a scoped pytest run;
-        # e.g. SEC's test_sec_* rules are pytest tests even though the SEC
-        # gate's own runner is ruff.
-        enforced = [r for r in rules if r.must_pass and r.test_id.startswith("test_")]
-        unenforceable = [r for r in rules if r.must_pass and not r.test_id.startswith("test_")]
 
         lines: list[str] = []
         all_passed = True
@@ -152,8 +162,10 @@ def _run_gate(
             all_passed = False
 
         # Run the gate's own runner unless it is pytest and the enforced rules
-        # already covered it (scoped runs replace the whole-suite run).
-        if core_gate_name != "pytest" or not enforced:
+        # already covered it (scoped runs replace the whole-suite run). A gate
+        # with no runner at all has nothing to fall back to — its evidence
+        # rules above are the whole verification (#924).
+        if core_gate_name and (core_gate_name != "pytest" or not enforced):
             result = core_gates.run(workspace, gates=[core_gate_name], verbose=False)
             lines.extend(
                 f"{check.name}: {check.status.value}" for check in result.checks
