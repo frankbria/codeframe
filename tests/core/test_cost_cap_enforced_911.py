@@ -287,10 +287,35 @@ def test_an_unknown_task_has_no_prior_spend(workspace):
 def test_a_cap_on_an_unpriced_model_refuses_rather_than_never_firing(
     workspace, monkeypatch
 ):
-    """calculate_cost returns $0.00 for unknown models, so with e.g.
-    --llm-provider openai the guard would see $0.00 forever and never fire —
-    the same silently-inert control this issue is about, one layer down."""
+    """A cap we cannot measure is not a cap: refuse instead of never firing.
+
+    The model here was `gpt-4o` until #932 added pricing for the advertised
+    providers — so the example had to change to one that is genuinely unpriced.
+    The behaviour under test is unchanged; only the stand-in moved.
+    """
     _set_cap(workspace, 1.0)
+    agent = _agent(workspace)
+    agent._max_cost_usd = agent._resolve_cost_cap()
+
+    agent._token_records.append(
+        {"model": "some-unlisted-local-model", "input_tokens": 100000,
+         "output_tokens": 50000, "call_type": "execution", "iteration": 1}
+    )
+
+    message = agent._cost_cap_message()
+
+    assert message is not None, "an unmeasurable cap silently allowed unbounded spend"
+    assert "some-unlisted-local-model" in message
+    assert "pricing" in message
+
+
+def test_an_advertised_openai_model_is_priced_and_does_not_refuse(workspace):
+    """#932 AC4: pricing covers the advertised providers.
+
+    gpt-4o used to hit the "no pricing data" refusal above, which meant a cap
+    made the whole OpenAI path unusable rather than bounded.
+    """
+    _set_cap(workspace, 100.0)
     agent = _agent(workspace)
     agent._max_cost_usd = agent._resolve_cost_cap()
 
@@ -299,11 +324,30 @@ def test_a_cap_on_an_unpriced_model_refuses_rather_than_never_firing(
          "call_type": "execution", "iteration": 1}
     )
 
+    assert agent._cost_cap_message() is None
+    assert agent._estimate_total_cost() == pytest.approx(0.75)  # 0.25 in + 0.50 out
+
+
+def test_an_unpriced_model_is_refused_even_when_a_priced_one_also_ran(workspace):
+    """A mixed run must not hide the unmeasurable part behind a measurable one."""
+    _set_cap(workspace, 100.0)
+    agent = _agent(workspace)
+    agent._max_cost_usd = agent._resolve_cost_cap()
+
+    agent._token_records.append(
+        {"model": "claude-sonnet-4-5", "input_tokens": 1000, "output_tokens": 500,
+         "call_type": "execution", "iteration": 1}
+    )
+    agent._token_records.append(
+        {"model": "some-unlisted-local-model", "input_tokens": 1000,
+         "output_tokens": 500, "call_type": "execution", "iteration": 2}
+    )
+
     message = agent._cost_cap_message()
 
-    assert message is not None, "an unmeasurable cap silently allowed unbounded spend"
-    assert "gpt-4o" in message
-    assert "pricing" in message
+    assert message is not None, (
+        "spend on an unpriced model was masked by a priced call in the same run"
+    )
 
 
 def test_a_priced_model_under_the_cap_still_runs(workspace):
