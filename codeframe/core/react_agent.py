@@ -52,6 +52,25 @@ DEFAULT_COMPACTION_THRESHOLD = 0.85
 PRESERVE_RECENT_PAIRS = 5
 DEFAULT_CONTEXT_WINDOW = 200_000  # All Claude 4.x models
 
+
+def _assistant_user_pairs(messages: list[dict], cutoff: int):
+    """Yield the index of each (assistant, user) turn pair below ``cutoff``.
+
+    Position-based, not parity-based: a leading user message (as ``_react_loop``
+    seeds) or any stray system row shifts every later turn by one, and an
+    even/odd assumption then misses every pair (#929).
+    """
+    i = 0
+    while i < cutoff - 1:
+        if (
+            messages[i].get("role") == "assistant"
+            and messages[i + 1].get("role") == "user"
+        ):
+            yield i
+            i += 2
+        else:
+            i += 1
+
 # Reason string emitted when a stall timeout triggers a blocker — used to
 # set the correct BlockerOrigin ("system") vs agent-generated blockers.
 _REASON_STALL_DETECTED = "stall_detected"
@@ -1576,15 +1595,14 @@ class ReactAgent:
         cutoff = len(messages) - preserve_count
         indices_to_remove: set[int] = set()
 
-        # Build a map of file reads and edits in the compactable zone
-        # Process pairs: assistant at even index, user at odd index
-        for i in range(0, cutoff - 1, 2):
+        # Pair (assistant, user) turns wherever they occur in the compactable
+        # zone. This used to walk range(0, cutoff-1, 2) and assume assistants sat
+        # at even indices — but _react_loop seeds a *user* message at index 0, so
+        # in production the role check rejected every pair and tier 2 removed
+        # nothing, dropping every long run straight to lossy tier 3 (#929).
+        for i in _assistant_user_pairs(messages, cutoff):
             assistant = messages[i]
             user = messages[i + 1]
-
-            # Validate expected role pairing before processing
-            if assistant.get("role") != "assistant" or user.get("role") != "user":
-                continue
 
             tool_calls = assistant.get("tool_calls", [])
             if not tool_calls:
@@ -1599,8 +1617,10 @@ class ReactAgent:
                 # Look for a later read of the same file without an edit in between
                 has_edit_between = False
                 has_later_read = False
-                for j in range(i + 2, len(messages) - 1, 2):
+                for j in range(i + 2, len(messages)):
                     later_assistant = messages[j]
+                    if later_assistant.get("role") != "assistant":
+                        continue
                     later_tcs = later_assistant.get("tool_calls", [])
                     if not later_tcs:
                         continue
