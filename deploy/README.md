@@ -34,6 +34,31 @@ ever travel over HTTPS/WSS between the browser and Caddy. Plaintext
 4. Firewall: allow `80`/`443` only. The app ports (`14100`/`14200`) must **not**
    be reachable from the network — Caddy reaches them over loopback.
 
+## Security headers
+
+`Caddyfile.example` sets these on the **site block**, so they cover the backend
+routes as well (#933). That placement matters: `web-ui/security-headers.js` only
+applies to responses Next.js serves, so `/api/*`, `/auth/*` and `/ws/*` — where
+JWTs and API keys are exchanged — previously carried none of them.
+
+| Header | Value | Why |
+|---|---|---|
+| `Strict-Transport-Security` | `max-age=31536000` | Without HSTS the **first** visit over plain HTTP is SSL-strippable — precisely when the login POST carries a password. |
+| `X-Content-Type-Options` | `nosniff` | Stops the browser guessing a content type and executing an uploaded or echoed file as script in your origin. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Keeps workspace paths and session-bearing URLs out of third-party referer logs. |
+| `X-Frame-Options` | `DENY` | The UI is not built to be framed; blocks clickjacking of the authenticated app. |
+
+Operator notes:
+
+- **`preload` is deliberately omitted** from HSTS. Preloading is hard to reverse
+  (removal takes months to propagate) and requires submitting the domain at
+  <https://hstspreload.org>. Add `preload` **and** `includeSubDomains` only once
+  every subdomain is HTTPS-only.
+- Use `X-Frame-Options "SAMEORIGIN"` instead if you embed CodeFrame in your own
+  page.
+- If you replace Caddy with another proxy, port these headers over — nothing in
+  the application emits them for the API routes.
+
 ## Creating the first account
 
 `POST /auth/register` is how the very first account is made, so it cannot itself
