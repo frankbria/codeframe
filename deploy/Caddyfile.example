@@ -29,6 +29,34 @@
 codeframe.example.com {
 	encode zstd gzip
 
+	# Security headers on the SITE block, so they cover the backend routes too
+	# (#933). web-ui/security-headers.js only applies to responses Next.js
+	# serves — the /api/*, /auth/* and /ws/* routes where JWTs and API keys are
+	# exchanged got none of them. See deploy/README.md → "Security headers".
+	header {
+		# Force HTTPS for a year. Without HSTS the FIRST visit over plain HTTP is
+		# SSL-strippable, which is exactly when the login POST carries a password.
+		# `preload` is deliberately omitted: it is hard to reverse and requires
+		# submitting the domain to hstspreload.org. Add `preload` and
+		# `includeSubDomains` only once every subdomain is HTTPS-only.
+		Strict-Transport-Security "max-age=31536000"
+
+		# Stop browsers guessing a content type — an uploaded or echoed file
+		# becomes a download rather than script running in your origin.
+		X-Content-Type-Options "nosniff"
+
+		# Keep workspace paths and session-bearing URLs out of third-party
+		# referer logs.
+		Referrer-Policy "strict-origin-when-cross-origin"
+
+		# The UI is not designed to be framed; blocks clickjacking of the
+		# authenticated app. Use "SAMEORIGIN" if you embed it in your own page.
+		X-Frame-Options "DENY"
+
+		# Do not advertise the proxy.
+		-Server
+	}
+
 	# Backend: REST API, auth, WebSockets, health, and API docs. Caddy proxies
 	# WebSocket upgrades (/ws/*) transparently — no extra config needed.
 	#
