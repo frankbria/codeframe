@@ -278,6 +278,54 @@ def get_task(
     return TaskResponse.from_task(task)
 
 
+def _restore_task(
+    workspace,
+    task_id: str,
+    snapshot,
+    restore_fields: bool,
+    restore_auto_close: bool,
+) -> None:
+    """Best-effort revert of the writes THIS failed PATCH actually made (#930).
+
+    Only the writes that landed are undone. Restoring unconditionally from the
+    snapshot would let a status-only PATCH that loses the compare-and-set race
+    rewrite title/description/priority it never touched — clobbering the field
+    updates of whichever concurrent request won.
+
+    Never raises: it runs on an error path, and masking the original failure
+    would be worse than an incomplete undo.
+    """
+    restores = []
+    if restore_fields:
+        restores.append(
+            lambda: tasks.update(
+                workspace,
+                task_id,
+                title=snapshot.title,
+                description=snapshot.description,
+                priority=snapshot.priority,
+            )
+        )
+    if restore_auto_close:
+        restores.append(
+            lambda: tasks.update_auto_close(
+                workspace, task_id, snapshot.auto_close_github_issue
+            )
+        )
+
+    # Independently, so a restore that fails for the same reason the write did
+    # (a broken tasks.update, say) does not skip the others.
+    for restore in restores:
+        try:
+            restore()
+        except Exception:  # noqa: BLE001 - see docstring
+            logger.error(
+                "Failed to roll back PATCH for task %s; state may be partial",
+                task_id,
+                exc_info=True,
+            )
+
+
 @router.patch("/{task_id}", response_model=TaskResponse)
 @rate_limit_standard()
 def update_task(
@@ -345,58 +393,88 @@ def update_task(
                     ),
                 )
 
-        # Persist the auto-close preference FIRST so the DONE transition below
-        # sees the value requested in THIS PATCH. That makes a combined request
-        # behave correctly both ways: {status: DONE, opt-in} closes the issue and
-        # {status: DONE, opt-OUT} does not — core reads the freshly-saved flag.
+        # These writes are separate commits across separate core calls, so the
+        # order matters: everything reversible first, and the ONE irreversible
+        # step — the status transition, which dispatches the GitHub issue close —
+        # strictly last. A failure before it leaves nothing to undo externally,
+        # and `_restore_task` reverts the DB values this request had already
+        # written (#930). Previously the status change committed before the field
+        # update, so a failure there returned 500 with the task already DONE and
+        # the issue possibly closed, and the retry 400'd on DONE -> DONE.
+        snapshot = current if current is not None else tasks.get(workspace, task_id)
+        if snapshot is None:
+            raise HTTPException(
+                status_code=404,
+                detail=api_error(
+                    "Task not found", ErrorCodes.NOT_FOUND, f"No task with id {task_id}"
+                ),
+            )
         original_auto_close = (
-            current.auto_close_github_issue
-            if (current is not None and body.auto_close_github_issue is not None)
+            snapshot.auto_close_github_issue
+            if body.auto_close_github_issue is not None
             else None
         )
-        if body.auto_close_github_issue is not None:
-            tasks.update_auto_close(
-                workspace, task_id, body.auto_close_github_issue
-            )
+        # Tracked per write, not as one flag: rolling back a field this request
+        # never touched would clobber whatever concurrent request did touch it.
+        wrote_auto_close = False
+        wrote_fields = False
 
-        # Apply the (pre-validated) status transition. Core closes the linked
-        # issue here when the task is opted in and transitions to DONE.
-        if new_status is not None:
-            try:
-                tasks.update_status(workspace, task_id, new_status)
-            except InvalidTransitionError:
-                # Pre-validation passed, so the task state changed concurrently
-                # between the check and the apply. Roll back the flag we just
-                # persisted so this failed request leaves no side effect.
-                if original_auto_close is not None:
-                    tasks.update_auto_close(workspace, task_id, original_auto_close)
-                raise HTTPException(
-                    status_code=409,
-                    detail=api_error(
-                        "Task state changed concurrently; please retry.",
-                        ErrorCodes.CONFLICT,
-                    ),
+        try:
+            # The auto-close preference must land before the transition so a
+            # combined request behaves correctly both ways: {status: DONE, opt-in}
+            # closes the issue and {status: DONE, opt-OUT} does not — core reads
+            # the freshly-saved flag. (#565)
+            if body.auto_close_github_issue is not None:
+                tasks.update_auto_close(workspace, task_id, body.auto_close_github_issue)
+                wrote_auto_close = True
+
+            if any(v is not None for v in (body.title, body.description, body.priority)):
+                tasks.update(
+                    workspace,
+                    task_id,
+                    title=body.title,
+                    description=body.description,
+                    priority=body.priority,
                 )
+                wrote_fields = True
 
-        # Late opt-in: enabling the flag (false -> true) on a task that is ALREADY
-        # DONE — with no status transition in this request — won't trigger core's
-        # transition-based close, so fire it explicitly here.
-        if (
-            body.auto_close_github_issue
-            and original_auto_close is False
-            and new_status is None
-        ):
-            tasks.autoclose_if_done(workspace, tasks.get(workspace, task_id))
+            # Late opt-in: enabling the flag (false -> true) on a task that is
+            # ALREADY DONE — with no status transition in this request — won't
+            # trigger core's transition-based close, so fire it explicitly.
+            if (
+                body.auto_close_github_issue
+                and original_auto_close is False
+                and new_status is None
+            ):
+                tasks.autoclose_if_done(workspace, tasks.get(workspace, task_id))
 
-        # Update remaining fields; re-reads current state so the returned task
-        # reflects every change (including the auto-close flag above).
-        task = tasks.update(
-            workspace,
-            task_id,
-            title=body.title,
-            description=body.description,
-            priority=body.priority,
-        )
+            # Last: applies the transition and, on DONE, closes the linked issue.
+            if new_status is not None:
+                tasks.update_status(workspace, task_id, new_status)
+
+        except InvalidTransitionError:
+            # Pre-validation passed, so the task moved between the check and the
+            # apply. Undo this request's writes so it leaves no side effect.
+            _restore_task(
+                workspace, task_id, snapshot, wrote_fields, wrote_auto_close
+            )
+            raise HTTPException(
+                status_code=409,
+                detail=api_error(
+                    "Task state changed concurrently; please retry.",
+                    ErrorCodes.CONFLICT,
+                ),
+            )
+        except HTTPException:
+            raise
+        except Exception:
+            _restore_task(
+                workspace, task_id, snapshot, wrote_fields, wrote_auto_close
+            )
+            raise
+
+        # Re-read so the response reflects every change above.
+        task = tasks.get(workspace, task_id)
 
         return TaskResponse.from_task(task)
 

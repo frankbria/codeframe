@@ -17,7 +17,11 @@ from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
-from codeframe.core.state_machine import TaskStatus, validate_transition
+from codeframe.core.state_machine import (
+    InvalidTransitionError,
+    TaskStatus,
+    validate_transition,
+)
 from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core.prd import PrdRecord
 
@@ -467,14 +471,30 @@ def update_status(
     conn = get_db_connection(workspace)
     try:
         cursor = conn.cursor()
+        # Compare-and-set on the status we just validated against (#930). Without
+        # `AND status = ?` two writers could each validate against stale state and
+        # both commit — landing a transition the state machine rejects, and firing
+        # the GitHub auto-close twice for one DONE.
         cursor.execute(
             """
             UPDATE tasks
             SET status = ?, updated_at = ?
-            WHERE workspace_id = ? AND id = ?
+            WHERE workspace_id = ? AND id = ? AND status = ?
             """,
-            (new_status.value, now, workspace.id, task_id),
+            (new_status.value, now, workspace.id, task_id, task.status.value),
         )
+        if cursor.rowcount == 0:
+            conn.rollback()
+            observed = cursor.execute(
+                "SELECT status FROM tasks WHERE workspace_id = ? AND id = ?",
+                (workspace.id, task_id),
+            ).fetchone()
+            if observed is None:
+                raise ValueError(f"Task not found: {task_id}")
+            # Someone else moved the row between our read and this write. Surfaced
+            # as InvalidTransitionError so existing handlers (409 in the router)
+            # keep working; `.current` carries the status we actually observed.
+            raise InvalidTransitionError(TaskStatus(observed[0]), new_status)
         conn.commit()
     finally:
         conn.close()
