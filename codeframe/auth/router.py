@@ -20,6 +20,11 @@ from codeframe.auth.manager import (
 from codeframe.auth.models import User
 from codeframe.auth.api_key_router import router as api_key_router
 from codeframe.auth.dependencies import require_auth
+from codeframe.lib.audit_logger import (
+    AuditEventType,
+    audit_from_request,
+    capture_audit_request,
+)
 from codeframe.auth.stream_tickets import TICKET_TTL_SECONDS, mint_ticket
 from codeframe.lib.rate_limiter import enforce_auth_rate_limit
 
@@ -216,13 +221,36 @@ async def allow_registration(request: Request):
         yield
 
 
+
+async def audit_logout(request: Request) -> None:
+    """Record a logout (#937).
+
+    fastapi-users has no ``on_after_logout`` hook, and this dependency runs on
+    the whole /auth/jwt include, so it filters by path. It fires *before* the
+    handler: with the JWT strategy, logout for an authenticated caller does not
+    fail, so "attempted" and "succeeded" are the same event. The alternative —
+    wrapping the generated route's endpoint — means rebuilding FastAPI's
+    dependant graph, which is far more fragile than one path check.
+    """
+    if not request.url.path.endswith("/logout"):
+        return
+    audit_from_request(request, AuditEventType.AUTH_LOGOUT)
+
+
 # Authentication routes (login, logout) - JWT endpoints at /auth/jwt/*
 # enforce_auth_rate_limit throttles credential brute-force (#644).
 router.include_router(
     fastapi_users.get_auth_router(auth_backend),
     prefix="/auth/jwt",
     tags=["auth"],
-    dependencies=[Depends(enforce_auth_rate_limit)],
+    # capture_audit_request exposes the Request to UserManager.authenticate,
+    # which fastapi-users calls with only the credentials — so a failed login
+    # can still be audited with its client IP (#937).
+    dependencies=[
+        Depends(enforce_auth_rate_limit),
+        Depends(capture_audit_request),
+        Depends(audit_logout),
+    ],
 )
 
 # Registration route at /auth/register (bootstrap-first-user only).
@@ -231,7 +259,11 @@ router.include_router(
     fastapi_users.get_register_router(UserRead, UserCreate),
     prefix="/auth",
     tags=["auth"],
-    dependencies=[Depends(enforce_auth_rate_limit), Depends(allow_registration)],
+    dependencies=[
+        Depends(enforce_auth_rate_limit),
+        Depends(allow_registration),
+        Depends(capture_audit_request),
+    ],
 )
 
 # User management routes (get me, update me) at /users/*

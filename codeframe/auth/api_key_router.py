@@ -29,6 +29,7 @@ from codeframe.auth.api_keys import (
 )
 from codeframe.core.api_key_service import ApiKeyService
 from codeframe.platform_store.database import Database
+from codeframe.lib.audit_logger import AuditEventType, audit_from_request
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +193,17 @@ async def create_api_key(
         expires_at=body.expires_at,
     )
 
+    # Minting a credential is a security-relevant event; the scopes matter as
+    # much as the fact, since an admin-scoped key can store credentials and
+    # merge PRs (#937).
+    audit_from_request(
+        request,
+        AuditEventType.API_KEY_CREATED,
+        user_id=current_user.id,
+        resource_type="api_key",
+        metadata={"name": body.name, "scopes": list(body.scopes or [])},
+    )
+
     return CreateApiKeyResponse(
         key=result.key,
         id=result.id,
@@ -260,5 +272,13 @@ async def revoke_api_key(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="API key not found",
         )
+
+    audit_from_request(
+        request,
+        AuditEventType.API_KEY_REVOKED,
+        user_id=auth["user_id"],
+        resource_type="api_key",
+        metadata={"key_id": key_id},
+    )
 
     return RevokeApiKeyResponse(id=key_id, revoked=True)

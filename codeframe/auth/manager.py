@@ -14,6 +14,11 @@ from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from codeframe.auth.models import User
+from codeframe.lib.audit_logger import (
+    AuditEventType,
+    audit_from_request,
+    current_audit_request,
+)
 
 # Re-exported, never redefined. The placeholder password for the seeded
 # bootstrap admin (id=1) is owned by the layer that writes it
@@ -169,11 +174,44 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
     reset_password_token_secret = SECRET
     verification_token_secret = SECRET
 
+    async def authenticate(self, credentials):
+        """Authenticate, recording failures (#937).
+
+        fastapi-users exposes `on_after_login` but has no failed-login hook, and
+        a failed login is the event an audit trail exists for — repeated ones are
+        the signature of credential stuffing. This is the documented extension
+        point that sees both the submitted identity and the outcome.
+        """
+        user = await super().authenticate(credentials)
+
+        # `user is not None` is not the same as "logged in": fastapi-users'
+        # generated route rejects an inactive account with the same 400
+        # BAD_CREDENTIALS *after* authenticate() returns. Auditing only the None
+        # case made repeated correct-password attempts against a disabled or
+        # compromised account invisible — which is precisely the
+        # credential-stuffing signal this exists to capture (PR review on #937).
+        if user is None or not user.is_active:
+            audit_from_request(
+                current_audit_request(),
+                AuditEventType.AUTH_LOGIN_FAILED,
+                user_id=getattr(user, "id", None),
+                email=getattr(credentials, "username", None),
+                metadata=(
+                    {"reason": "inactive_account"}
+                    if user is not None
+                    else {"reason": "bad_credentials"}
+                ),
+            )
+        return user
+
     async def on_after_register(self, user: User, request: Optional[Request] = None):
         """Called after successful registration."""
         logger.info(
             "User registered",
             extra={"user_id": user.id, "email": user.email}
+        )
+        audit_from_request(
+            request, AuditEventType.USER_CREATED, user_id=user.id, email=user.email
         )
         await self._promote_if_bootstrap_user(user)
 
@@ -235,6 +273,9 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         """Called after successful login."""
         # Only log user_id on login (avoid excessive email logging)
         logger.info("User logged in", extra={"user_id": user.id})
+        audit_from_request(
+            request, AuditEventType.AUTH_LOGIN_SUCCESS, user_id=user.id
+        )
 
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
