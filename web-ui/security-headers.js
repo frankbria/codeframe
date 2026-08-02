@@ -25,26 +25,54 @@ function buildConnectSrc({ apiUrl, wsUrl } = {}) {
   return Array.from(sources).join(' ');
 }
 
-function buildCsp(env = process.env) {
+/**
+ * Build the script-src directive.
+ *
+ * With a per-request nonce (the production path, set by proxy.ts) this is
+ * `'self' 'nonce-<n>' 'strict-dynamic'` and contains NO 'unsafe-inline', so an
+ * injected inline script simply does not execute — which is what protects the
+ * localStorage JWT (#936). 'strict-dynamic' lets Next.js's nonced bootstrap
+ * load the chunks it needs without enumerating them.
+ *
+ * Browsers that understand 'strict-dynamic' ignore 'self' for scripts; it is
+ * kept for older ones, which then fall back to a host allow-list rather than
+ * to nothing.
+ *
+ * Without a nonce we cannot serve a working App Router page, so the nonce-less
+ * form keeps 'unsafe-inline'. That form must only ever reach responses that are
+ * not HTML documents — see next.config.js.
+ */
+function buildScriptSrc({ nonce, isDev } = {}) {
+  // unsafe-eval is only needed by the Next.js dev runtime (React Refresh /
+  // eval source maps); production bundles never eval, so it ships dev-only.
+  const devEval = isDev ? " 'unsafe-eval'" : '';
+  if (nonce) {
+    return `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${devEval}`;
+  }
+  return `script-src 'self' 'unsafe-inline'${devEval}`;
+}
+
+function buildCsp(env = process.env, { nonce } = {}) {
   const connectSrc = buildConnectSrc({
     apiUrl: env.NEXT_PUBLIC_API_URL,
     wsUrl: env.NEXT_PUBLIC_WS_URL,
   });
-  // unsafe-eval is only needed by the Next.js dev runtime (React Refresh /
-  // eval source maps); production bundles never eval, so it ships dev-only.
-  const scriptSrc = env.NODE_ENV === 'development'
-    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-    : "script-src 'self' 'unsafe-inline'";
+  const scriptSrc = buildScriptSrc({
+    nonce,
+    isDev: env.NODE_ENV === 'development',
+  });
   return [
     "default-src 'self'",
-    // ponytail: 'unsafe-inline' is required by the Next.js App Router without
-    // a per-request nonce middleware (a much larger change). Residual risk
-    // (#783): with the JWT in localStorage and inline scripts allowed, an
-    // injected inline script can read the token. connect-src/img-src/
-    // object-src below close the fetch/XHR/img/plugin exfil channels, but NOT
-    // top-level navigation (`window.location = attacker + token`) — CSP has
-    // no deployable navigate-to directive, so that channel stays open until
-    // the real fix: nonce middleware and/or an httpOnly-cookie token.
+    // script-src carries a per-request nonce in production (#936), so an
+    // injected inline script does not run and cannot read the localStorage
+    // JWT. That closes the top-level-navigation exfil channel too
+    // (`window.location = attacker + token`), which no CSP directive could
+    // block once the script was already executing — the residual risk this
+    // comment used to concede (#783).
+    //
+    // style-src deliberately keeps 'unsafe-inline': Tailwind and React set
+    // style attributes directly, and a stolen *style* is not a stolen session.
+    // The threat this addresses is script execution.
     scriptSrc,
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: ${AVATAR_HOST}`,
@@ -57,13 +85,21 @@ function buildCsp(env = process.env) {
   ].join('; ');
 }
 
-function securityHeaders(env = process.env) {
+/**
+ * Static headers for next.config.js.
+ *
+ * NOTE (#936): no Content-Security-Policy here. HTML documents get their CSP
+ * from proxy.ts, which mints a per-request nonce; a static CSP cannot carry one
+ * and would have to keep 'unsafe-inline'. Two CSP headers on one response are
+ * intersected by the browser, so leaving the static one in place would have
+ * re-imposed the weaker policy's absence of a nonce and blocked every script.
+ */
+function securityHeaders() {
   return [
-    { key: 'Content-Security-Policy', value: buildCsp(env) },
     { key: 'X-Content-Type-Options', value: 'nosniff' },
     { key: 'X-Frame-Options', value: 'DENY' },
     { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   ];
 }
 
-module.exports = { buildCsp, buildConnectSrc, securityHeaders };
+module.exports = { buildCsp, buildConnectSrc, buildScriptSrc, securityHeaders };
