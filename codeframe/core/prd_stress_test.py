@@ -9,14 +9,14 @@ This module is headless — no FastAPI or HTTP dependencies.
 """
 
 import asyncio
-import json
 import logging
 import uuid
 from dataclasses import dataclass
 from enum import Enum
-from typing import AsyncGenerator, Literal, Optional
+from typing import AsyncGenerator, Callable, Literal, Optional
 
 from codeframe.adapters.llm.base import Purpose
+from codeframe.core.llm_json import LLMJsonError, parse_json_response
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,67 @@ AMBIGUITY_RESOLUTION_SYSTEM = (
 # ---------------------------------------------------------------------------
 
 
+#: A model can return an arbitrarily long ``children`` list. The depth cap alone
+#: does not bound the walk: breadth multiplies at every level, and each node is
+#: one paid LLM call (#927).
+MAX_CHILDREN_PER_NODE = 12
+
+#: Total classification calls for one stress-test run. Depth 10 (the API
+#: maximum) with even modest breadth is thousands of calls; this is the ceiling
+#: the user's bill actually cares about.
+MAX_LLM_CALLS = 200
+
+
+class StressTestError(RuntimeError):
+    """The stress test could not produce a usable result.
+
+    Raised rather than returning an empty result: the CLI and web UI report
+    "No ambiguities found — PRD is well-specified" for an empty run, so a
+    silent failure reads to the user as a passing grade (#927).
+    """
+
+
+@dataclass
+class _Budget:
+    """Bounds one stress-test walk: total calls, plus caller cancellation.
+
+    ``is_cancelled`` is polled before every call so a disconnected SSE client
+    stops paying for work nobody will read (#927).
+    """
+
+    max_calls: int = MAX_LLM_CALLS
+    is_cancelled: Optional[Callable[[], bool]] = None
+    spent: int = 0
+    exhausted: bool = False
+    cancelled: bool = False
+
+    def take(self) -> bool:
+        """Claim one LLM call. False means stop walking."""
+        if self.is_cancelled is not None and self.is_cancelled():
+            self.cancelled = True
+            return False
+        if self.spent >= self.max_calls:
+            self.exhausted = True
+            return False
+        self.spent += 1
+        return True
+
+    @property
+    def stopped_early(self) -> bool:
+        return self.exhausted or self.cancelled
+
+
+def _cap_children(children: list[dict]) -> list[dict]:
+    """Truncate a model-supplied children list to a sane breadth."""
+    if len(children) <= MAX_CHILDREN_PER_NODE:
+        return children
+    logger.warning(
+        "Model returned %d children; keeping the first %d",
+        len(children), MAX_CHILDREN_PER_NODE,
+    )
+    return children[:MAX_CHILDREN_PER_NODE]
+
+
 def extract_goals(prd_content: str, provider) -> list[str]:
     """Extract high-level deliverable goals from a PRD."""
     response = provider.complete(
@@ -130,13 +191,26 @@ def extract_goals(prd_content: str, provider) -> list[str]:
         temperature=0.0,
     )
     try:
-        goals = json.loads(response.content)
-        if isinstance(goals, list):
-            return [str(g) for g in goals]
-        logger.warning("Goal extraction returned non-list: %s", type(goals).__name__)
-    except (json.JSONDecodeError, TypeError) as exc:
-        logger.warning("Failed to parse goal extraction response: %s", exc)
-    return []
+        goals = parse_json_response(response.content, what="goal extraction")
+    except LLMJsonError as exc:
+        # Never return [] here. The caller reads an empty list as "no goals to
+        # analyse" and reports "No ambiguities found — PRD is well-specified",
+        # so a provider that fenced its JSON produced a clean bill of health
+        # after the user had paid for the call (#927).
+        raise StressTestError(f"Could not read the model's goal list: {exc}") from exc
+
+    if not isinstance(goals, list):
+        raise StressTestError(
+            f"Goal extraction returned {type(goals).__name__}, expected a list"
+        )
+
+    extracted = [str(g) for g in goals if str(g).strip()]
+    if not extracted:
+        raise StressTestError(
+            "The model returned no goals for this PRD. That is not a "
+            "well-specified PRD — it is an unusable response."
+        )
+    return extracted
 
 
 def classify_and_decompose(
@@ -170,9 +244,19 @@ def classify_and_decompose(
     )
 
     try:
-        data = json.loads(response.content)
-    except (json.JSONDecodeError, TypeError) as exc:
+        data = parse_json_response(response.content, what=f"classification of {title!r}")
+    except LLMJsonError as exc:
+        # A single unparseable node degrades to a leaf rather than failing the
+        # whole run — unlike goal extraction, where an empty result is
+        # indistinguishable from success (#927).
         logger.warning("Failed to parse classification for '%s': %s", title, exc)
+        return Classification.ATOMIC, [], None, "Low"
+
+    if not isinstance(data, dict):
+        logger.warning(
+            "Classification for '%s' returned %s, expected an object",
+            title, type(data).__name__,
+        )
         return Classification.ATOMIC, [], None, "Low"
 
     raw_cls = data.get("classification", "atomic").lower()
@@ -184,10 +268,10 @@ def classify_and_decompose(
     complexity = data.get("complexity_hint", "Low")
     raw_children = data.get("children", []) if cls == Classification.COMPOSITE else []
     # Validate children are dicts with expected keys
-    children = [
+    children = _cap_children([
         c for c in raw_children
         if isinstance(c, dict) and ("title" in c or "description" in c)
-    ]
+    ])
 
     ambiguity = None
     if cls == Classification.AMBIGUOUS:
@@ -214,10 +298,19 @@ def recursive_decompose(
     max_depth: int,
     ambiguities: list[Ambiguity],
     provider,
+    budget: Optional["_Budget"] = None,
 ) -> DecompositionNode:
-    """Recursively decompose a goal, collecting ambiguities along the way."""
-    # Force leaf at max depth
-    if depth >= max_depth:
+    """Recursively decompose a goal, collecting ambiguities along the way.
+
+    ``budget`` bounds the total number of LLM calls and lets a disconnected
+    caller stop the walk. A run that stops early returns the partial tree built
+    so far rather than raising — the ambiguities already found are real (#927).
+    """
+    if budget is None:
+        budget = _Budget()
+
+    # Force leaf at max depth, when the call budget is spent, or on cancellation
+    if depth >= max_depth or not budget.take():
         return DecompositionNode(
             id=str(uuid.uuid4()),
             title=title,
@@ -249,8 +342,11 @@ def recursive_decompose(
                 max_depth,
                 ambiguities,
                 provider,
+                budget,
             )
             children.append(child_node)
+            if budget.stopped_early:
+                break
 
     return DecompositionNode(
         id=str(uuid.uuid4()),
@@ -439,7 +535,10 @@ def stress_test_prd(
 
 
 async def stress_test_prd_stream(
-    prd_content: str, provider, max_depth: int = 3
+    prd_content: str,
+    provider,
+    max_depth: int = 3,
+    is_cancelled: Optional[Callable[[], bool]] = None,
 ) -> AsyncGenerator[dict, None]:
     """Async streaming variant of :func:`stress_test_prd`.
 
@@ -465,7 +564,15 @@ async def stress_test_prd_stream(
         ambiguities: list[Ambiguity] = []
         tree: list[DecompositionNode] = []
 
+        # One budget for the whole run: the total-call ceiling and the
+        # cancellation check both live inside the recursion, so a disconnected
+        # client stops paying at the next node rather than at the next
+        # top-level goal (#927).
+        budget = _Budget(is_cancelled=is_cancelled)
+
         for goal in goals:
+            if budget.stopped_early:
+                break
             node = await asyncio.to_thread(
                 recursive_decompose,
                 goal,            # title
@@ -476,6 +583,7 @@ async def stress_test_prd_stream(
                 max_depth,
                 ambiguities,
                 provider,
+                budget,
             )
             tree.append(node)
             yield {
@@ -493,6 +601,9 @@ async def stress_test_prd_stream(
             "ambiguities": [ambiguity_to_dict(a) for a in ambiguities],
             "tech_spec_markdown": tech_spec,
             "ambiguity_report": amb_report,
+            # Honest about a truncated walk: the ambiguities found are real,
+            # but absence of others is not evidence of their absence (#927).
+            "partial": budget.stopped_early,
         }
     except Exception as exc:  # noqa: BLE001 — surface any failure to the client
         logger.warning("Stress test stream failed: %s", exc, exc_info=True)

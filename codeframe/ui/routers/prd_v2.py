@@ -287,13 +287,20 @@ async def _stress_test_event_stream(
         yield _sse({"type": "error", "message": str(exc)})
         return
 
+    # Latched so the *recursion* can see it, not just this loop. Breaking here
+    # only stopped between top-level goals, while the decomposition inside one
+    # goal kept issuing billable calls (#927).
+    disconnected = False
+
     async for event in stress_test_prd_stream(
         record.content, provider, max_depth=max_depth,
+        is_cancelled=lambda: disconnected,
     ):
         # If the browser has gone away, stop iterating the core generator so its
         # next (blocking, billable) LLM call is never made.
         if request is not None and await request.is_disconnected():
             logger.info("Client disconnected from stress-test stream; aborting")
+            disconnected = True
             break
         yield _sse(event)
 
