@@ -148,25 +148,60 @@ class TestRichMarkupIsEscaped:
         assert result.exception is None, f"{title!r} crashed: {result.exception!r}"
         assert result.exit_code == 0
 
-    def test_no_unescaped_user_text_reaches_console_print(self):
-        """Scanner, not a point check: a new console.print with user data should
-        fail the build rather than wait to be found in review."""
-        source = (REPO_ROOT / "codeframe" / "cli" / "app.py").read_text()
-        # Match on the FIELD NAME, not on an enumerated set of variable names.
-        # The first version listed `task.title|blocker.question|description`
-        # anchored right after `{`, so it missed `{task.description}`,
-        # `{blocker.answer}` and `{t.title}` — the PR bot found all three. Any
-        # `{<anything>.title}` / `.description` / `.question` / `.answer` now
-        # counts, so a new variable name cannot slip past.
+    @pytest.mark.parametrize(
+        "module",
+        [
+            "codeframe/cli/app.py",
+            # The TUI renders the same user text through RichLog/DataTable and
+            # was invisible to the first version of this scanner, which read only
+            # cli/app.py — the PR bot found req.title unescaped there.
+            "codeframe/tui/app.py",
+        ],
+    )
+    def test_no_unescaped_user_text_reaches_rich_output(self, module):
+        """Scanner, not a point check: a new render of user data should fail the
+        build rather than wait to be found in review.
+
+        Operates on whole *statements*, not lines. The line-based version missed
+        `log.write(\n    f"... {req.title} ...")` in the TUI because the call and
+        the f-string sit on different lines — which is how the reviewer found two
+        sites the scanner had just declared clean.
+        """
+        source = (REPO_ROOT / module).read_text()
+
+        # Join physical lines into logical ones by tracking paren depth. The
+        # line-based version missed `log.write(\n    f"... {req.title} ...")` in
+        # the TUI because the call and the f-string sit on different lines —
+        # which is how the reviewer found two sites the scanner had just
+        # declared clean. (Simple depth counting, not tokenize: 3.12 splits
+        # f-strings into separate tokens and the brace never survives.)
+        statements, buf, depth = [], "", 0
+        for line in source.splitlines():
+            stripped = line.strip()
+            buf = f"{buf} {stripped}" if buf else stripped
+            depth += line.count("(") - line.count(")")
+            if depth <= 0:
+                statements.append(buf)
+                buf, depth = "", 0
+
+        # Match on the FIELD NAME, not an enumerated set of variable names. The
+        # first version listed `task.title|blocker.question|description` anchored
+        # after `{`, so `{task.description}`, `{blocker.answer}` and `{t.title}`
+        # all slipped through.
+        field = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\.(title|description|question|answer)\b")
+        renders = ("console.print", "log.write", "add_row")
+
         offenders = [
-            line.strip()
-            for line in source.splitlines()
-            if "console.print(f" in line
-            and re.search(r"\{[A-Za-z_][A-Za-z0-9_]*\.(title|description|question|answer)\b", line)
-            and "escape(" not in line
+            st for st in statements
+            if any(r in st for r in renders)
+            and field.search(st)
+            and "escape" not in st
         ]
 
-        assert not offenders, "unescaped user text in Rich output:\n" + "\n".join(offenders)
+        assert not offenders, (
+            f"unescaped user text rendered through Rich in {module}:\n"
+            + "\n".join(o[:160] for o in offenders)
+        )
 
     def test_markup_is_shown_literally_not_interpreted(self, workspace, tmp_path):
         tasks.create(

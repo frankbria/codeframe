@@ -271,7 +271,7 @@ class DashboardApp(App):
             from datetime import date
             days = (req.waiver.expires - date.today()).days
             log.write(
-                f"[yellow bold]⚠ {req.id}[/yellow bold]: waiver expires in {days}d — {req.title[:50]}"
+                f"[yellow bold]⚠ {req.id}[/yellow bold]: waiver expires in {days}d — {escape(req.title[:50])}"
             )
 
         for req in data.open_requirements:
@@ -283,7 +283,7 @@ class DashboardApp(App):
             sev_color = self._SEVERITY_COLORS.get(req.severity.value, "white")
             log.write(
                 f"[red]{req.id}[/red] [{sev_color}]{req.severity.value}[/{sev_color}]"
-                f" {req.title[:45]} | {gate_summary}"
+                f" {escape(req.title[:45])} | {gate_summary}"
             )
 
     def action_refresh(self) -> None:

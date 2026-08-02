@@ -3679,7 +3679,7 @@ def work_replay(
         for s in steps_to_show:
             status_color = {"completed": "green", "failed": "red"}.get(s.status, "yellow")
             console.print(
-                f"\n[bold]Step {s.step_number}:[/bold] {s.description} "
+                f"\n[bold]Step {s.step_number}:[/bold] {escape(s.description)} "
                 f"[{status_color}][{s.status}][/{status_color}]"
             )
 
