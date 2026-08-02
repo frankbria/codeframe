@@ -300,13 +300,20 @@ async def _stress_test_event_stream(
         # rather than only at its next goal.
         # ponytail: 1s poll, not a disconnect callback — a classification call
         # takes seconds, so finer granularity saves nothing.
+        #
+        # Sleeps *before* its first poll deliberately. The loop below already
+        # checks on every event, so an immediate poll here would only duplicate
+        # that one — and the duplicate is observable, because it advances any
+        # caller whose disconnect signal is stateful rather than idempotent.
         nonlocal disconnected
         while not disconnected:
+            await asyncio.sleep(1.0)
+            if disconnected:
+                return
             if await request.is_disconnected():
                 logger.info("Client disconnected from stress-test stream; aborting")
                 disconnected = True
                 return
-            await asyncio.sleep(1.0)
 
     watcher = asyncio.create_task(_watch_disconnect()) if request is not None else None
     try:
