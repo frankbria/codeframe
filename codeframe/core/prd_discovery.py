@@ -209,6 +209,36 @@ What we're explicitly NOT building in the first version.
 Keep it concise but complete. Focus on actionable requirements.
 This PRD should be sufficient to generate development tasks."""
 
+_FALSEY_STRINGS = {"false", "no", "0", "none", "null", ""}
+
+
+def _normalize_validation(parsed: Any) -> dict[str, Any]:
+    """Coerce an answer-validation reply into ``{adequate, reason, follow_up}``.
+
+    The LLM is free to return whatever it likes: a list, a bare string, or a dict
+    missing ``reason``. ``submit_answer`` indexes ``reason`` unguarded, so anything
+    unexpected used to surface as a KeyError/TypeError mid-session (#928). A shape
+    we cannot read is treated as adequate — the same lenient default that an
+    unparseable reply has always had.
+    """
+    if not isinstance(parsed, dict):
+        return {"adequate": True, "reason": "Accepted", "follow_up": None}
+
+    adequate = parsed.get("adequate", True)
+    if isinstance(adequate, str):
+        # bool("false") is True — read the intent, not the truthiness.
+        adequate = adequate.strip().lower() not in _FALSEY_STRINGS
+    adequate = bool(adequate)
+
+    reason = parsed.get("reason") or ("Accepted" if adequate else "Please add more detail.")
+    follow_up = parsed.get("follow_up")
+
+    return {
+        "adequate": adequate,
+        "reason": str(reason),
+        "follow_up": str(follow_up) if follow_up else None,
+    }
+
 
 @dataclass
 class PrdDiscoverySession:
@@ -280,17 +310,28 @@ class PrdDiscoverySession:
 
         Creates a session record and generates the first question.
         """
+        _ensure_discovery_schema(self.workspace)
+
         self.session_id = str(uuid.uuid4())
         self.state = SessionState.DISCOVERING
         self._qa_history = []
         self._is_complete = False
+        self._current_question = None
 
-        # Ensure schema exists and save initial session
-        _ensure_discovery_schema(self.workspace)
+        # Claim the workspace's single active-session slot before the opening LLM
+        # call, which takes minutes (#902) — a concurrent /start must see it.
         self._save_session()
-
-        # Generate first question and persist it
-        self._current_question = self._generate_opening_question()
+        try:
+            self._current_question = self._generate_opening_question()
+        except BaseException:
+            # ...but roll the claim back if that call fails. Leaving it behind was
+            # the #928 bug: a DISCOVERING row with current_question=NULL that
+            # get_active_session kept returning, so /start 400'd forever on a
+            # session with no question to answer.
+            self._delete_session()
+            self.session_id = None
+            self.state = SessionState.IDLE
+            raise
         self._save_session()
 
         logger.info(f"Started discovery session {self.session_id}")
@@ -453,11 +494,13 @@ Be warm and encouraging. Just output the question, nothing else."""
                 content = content.split("```")[1]
                 if content.startswith("json"):
                     content = content[4:]
-            return json.loads(content)
+            parsed = json.loads(content)
         except json.JSONDecodeError:
             # If AI doesn't return valid JSON, be lenient and accept
             logger.warning(f"Could not parse validation response: {response.content}")
-            return {"adequate": True, "reason": "Accepted"}
+            parsed = None
+
+        return _normalize_validation(parsed)
 
     def _update_coverage(self) -> None:
         """Update the coverage assessment based on conversation history."""
@@ -479,7 +522,12 @@ Be warm and encouraging. Just output the question, nothing else."""
                 content = content.split("```")[1]
                 if content.startswith("json"):
                     content = content[4:]
-            self._coverage = json.loads(content)
+            parsed = json.loads(content)
+            # Same call path as _validate_answer: a list/scalar here would blow up
+            # _coverage_is_sufficient's .get() one frame later (#928).
+            self._coverage = parsed if isinstance(parsed, dict) else None
+            if self._coverage is None:
+                logger.warning(f"Unexpected coverage shape: {response.content}")
         except json.JSONDecodeError:
             logger.warning(f"Could not parse coverage response: {response.content}")
             self._coverage = None
@@ -749,6 +797,16 @@ Follow the template structure exactly. This PRD should be sufficient to generate
             return title[:100]  # Limit length
 
         return "Untitled Project"
+
+    def _delete_session(self) -> None:
+        """Remove this session's row. Used to roll back a failed start (#928)."""
+        conn = get_db_connection(self.workspace)
+        conn.execute(
+            "DELETE FROM discovery_sessions WHERE id = ? AND workspace_id = ?",
+            (self.session_id, self.workspace.id),
+        )
+        conn.commit()
+        conn.close()
 
     def _save_session(self) -> None:
         """Save session state to database."""
