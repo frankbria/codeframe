@@ -120,7 +120,12 @@ class TestCaptureRequirement:
             assert (repo / rel).exists()
 
     def test_capture_with_optional_fields(self, test_client):
-        """Optional fields (created_by, source_issue) are accepted."""
+        """source_issue is accepted from the body; created_by is not (#923).
+
+        created_by used to be taken from the request, so a capture record was
+        whatever the caller typed. It now comes from the authenticated
+        principal — "local-admin" here, since the test suite runs auth-off.
+        """
         body = self._valid_body(
             created_by="ci-bot",
             source_issue="GH-123",
@@ -128,7 +133,9 @@ class TestCaptureRequirement:
         response = test_client.post("/api/v2/proof/requirements", json=body)
         assert response.status_code == 201
         data = response.json()
-        assert data["created_by"] == "ci-bot"
+        assert data["created_by"] != "ci-bot", (
+            "created_by must not be forgeable from the request body"
+        )
         assert data["source_issue"] == "GH-123"
 
     def test_capture_status_defaults_to_open(self, test_client):

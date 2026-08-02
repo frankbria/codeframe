@@ -7,7 +7,8 @@ Tables live in the workspace's state.db alongside PRDs and tasks.
 import json
 import sqlite3
 from datetime import date, datetime, timezone
-from typing import Optional
+import logging
+from typing import Any, Optional
 
 from codeframe.core.proof.models import (
     Evidence,
@@ -24,6 +25,8 @@ from codeframe.core.proof.models import (
     Waiver,
 )
 from codeframe.core.workspace import Workspace, get_db_connection
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -293,11 +296,28 @@ def _row_to_requirement(row: tuple) -> Requirement:
 
 # --- CRUD ---
 
-def save_requirement(workspace: Workspace, req: Requirement) -> None:
-    """Insert or replace a requirement in the ledger."""
+def save_requirement(
+    workspace: Workspace, req: Requirement, *, create_only: bool = False
+) -> None:
+    """Insert or replace a requirement in the ledger.
+
+    Args:
+        create_only: Refuse to overwrite an existing id. Capture passes this so
+            a racing allocation cannot silently clobber another requirement —
+            INSERT OR REPLACE made that failure invisible (#923). The runner
+            leaves it False, since updating in place is exactly its job.
+    """
     _ensure_tables(workspace)
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
+    if create_only:
+        existing = cursor.execute(
+            "SELECT 1 FROM proof_requirements WHERE id = ? AND workspace_id = ?",
+            (req.id, workspace.id),
+        ).fetchone()
+        if existing:
+            conn.close()
+            raise ValueError(f"Requirement {req.id} already exists")
     cursor.execute(
         """INSERT OR REPLACE INTO proof_requirements
            (id, title, description, severity, source, scope, obligations,
@@ -395,6 +415,116 @@ def next_req_id(workspace: Workspace) -> str:
     max_num = row[0] if row and row[0] is not None else 0
     conn.close()
     return f"REQ-{max_num + 1:04d}"
+
+
+def allocate_requirement(workspace: Workspace, **kwargs: Any) -> str:
+    """Reserve the next REQ id and insert the row in one transaction (#923).
+
+    ``next_req_id`` computed MAX+1 and closed its connection; ``save_requirement``
+    then inserted on another. Two concurrent captures therefore read the same
+    max, produced the same id, and the second silently replaced the first —
+    sharing its stub directory. The allocate-and-insert now happens under one
+    IMMEDIATE transaction, and the retry covers the cross-process case where
+    another writer wins the id between attempts.
+    """
+    from codeframe.core.proof.models import (
+        Obligation,
+        ReqStatus,
+        RequirementScope,
+        Severity,
+        Source,
+    )
+
+    _ensure_tables(workspace)
+
+    for _ in range(_ALLOCATE_ATTEMPTS):
+        conn = get_db_connection(workspace)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT MAX(CAST(SUBSTR(id, 5) AS INTEGER)) FROM proof_requirements "
+                "WHERE workspace_id = ?",
+                (workspace.id,),
+            ).fetchone()
+            max_num = row[0] if row and row[0] is not None else 0
+            req_id = f"REQ-{max_num + 1:04d}"
+
+            conn.execute(
+                "INSERT INTO proof_requirements (id, title, description, severity, "
+                "source, scope, obligations, evidence_rules, status, waiver, "
+                "created_at, satisfied_at, created_by, source_issue, related_reqs, "
+                "glitch_type, workspace_id) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    req_id,
+                    kwargs.get("title", ""),
+                    kwargs.get("description", ""),
+                    kwargs.get("severity", Severity.HIGH).value,
+                    kwargs.get("source", Source.QA).value,
+                    _scope_to_json(kwargs.get("scope") or RequirementScope()),
+                    _obligations_to_json(kwargs.get("obligations") or [Obligation(gate=Gate.UNIT)]),
+                    _evidence_rules_to_json(kwargs.get("evidence_rules") or []),
+                    ReqStatus.OPEN.value,
+                    None,
+                    datetime.now(timezone.utc).isoformat(),
+                    None,
+                    kwargs.get("created_by", "human"),
+                    kwargs.get("source_issue"),
+                    json.dumps(kwargs.get("related_reqs") or []),
+                    kwargs.get("glitch_type"),
+                    workspace.id,
+                ),
+            )
+            conn.commit()
+            return req_id
+        except sqlite3.IntegrityError:
+            # Another writer took this id between our read and insert.
+            conn.rollback()
+            continue
+        finally:
+            conn.close()
+
+    raise RuntimeError("Could not allocate a REQ id after repeated collisions")
+
+
+#: A handful of retries absorbs realistic contention; beyond that something is
+#: wrong and a loud failure beats a silent overwrite.
+_ALLOCATE_ATTEMPTS = 10
+
+
+def mark_satisfied(workspace: Workspace, req: Requirement) -> None:
+    """Record a requirement as SATISFIED, stamping ``satisfied_at`` (#923).
+
+    The runner set the status and never the timestamp, so the ledger column and
+    the API field were permanently null.
+    """
+    from codeframe.core.proof.models import ReqStatus
+
+    req.status = ReqStatus.SATISFIED
+    req.satisfied_at = datetime.now(timezone.utc)
+    save_requirement(workspace, req)
+
+
+def reopen_requirement(workspace: Workspace, req_id: str, *, reason: str = "") -> None:
+    """Return a SATISFIED requirement to OPEN after a regression (#923).
+
+    Without this there was no path back: the runner loaded only OPEN
+    requirements, so once satisfied a requirement could never re-fail, and the
+    #731 merge gate — which inspects only open requirements — blocked nothing.
+
+    A WAIVED requirement is left alone. A waiver is a human decision about an
+    accepted risk, and a gate result must not silently overturn it.
+    """
+    from codeframe.core.proof.models import ReqStatus
+
+    req = get_requirement(workspace, req_id)
+    if req is None or req.status == ReqStatus.WAIVED:
+        return
+
+    req.status = ReqStatus.OPEN
+    req.satisfied_at = None
+    save_requirement(workspace, req)
+    logger.info("REQ %s re-opened: %s", req_id, reason or "regressed")
 
 
 def save_evidence(workspace: Workspace, evidence: Evidence) -> None:
