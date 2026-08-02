@@ -377,14 +377,39 @@ class ReactAgent:
 
             total = 0.0
             for record in self._token_records:
-                total += MetricsTracker.calculate_cost(
+                cost = MetricsTracker.calculate_cost(
                     record["model"],
                     record["input_tokens"],
                     record["output_tokens"],
                 )
+                # None = unpriced; skip it rather than adding 0.0. Callers that
+                # care whether anything was unpriced ask _has_unpriced_records().
+                if cost is not None:
+                    total += cost
             return round(total, 6)
         except Exception:
             return 0.0
+
+    def _has_unpriced_records(self) -> bool:
+        """True when any recorded call used a model with no pricing.
+
+        Asked directly now that ``calculate_cost`` returns None for unpriced
+        models. The cost cap used to infer this from the *outcome* ($0 spent
+        despite tokens recorded) because the pricing table was missing the
+        shipped default and a membership test false-fired on it (#932).
+        """
+        try:
+            from codeframe.lib.metrics_tracker import MetricsTracker
+
+            return any(
+                MetricsTracker.calculate_cost(
+                    r["model"], r["input_tokens"], r["output_tokens"]
+                )
+                is None
+                for r in self._token_records
+            )
+        except Exception:
+            return False
 
     def _persist_token_usage(self, task_id: str) -> None:
         """Persist accumulated token records to the workspace database.
@@ -1086,23 +1111,22 @@ class ReactAgent:
         if cap is None:
             return None
 
-        # A cap we cannot measure is not a cap. MetricsTracker.calculate_cost
-        # returns $0.00 for models it has no pricing for, so with e.g.
-        # --llm-provider openai the guard below would see $0.00 forever and
-        # never fire — the same silently-inert control this issue is about, one
-        # layer down. Refuse before spending rather than pretend (#911 review).
+        # A cap we cannot measure is not a cap: an unpriced model would keep the
+        # running total at $0.00 forever and the guard would never fire — the
+        # same silently-inert control #911 was about, one layer down. Refuse
+        # before spending rather than pretend.
         spent = self._prior_task_cost_usd + self._estimate_total_cost()
 
-        # A cap we cannot measure is not a cap. `calculate_cost` returns $0.00
-        # for models it has no pricing for, so the check below would see $0.00
-        # forever and never fire — the same silently-inert control this issue is
-        # about, one layer down.
-        #
-        # Detected by *outcome* (tokens recorded but zero cost) rather than by
-        # MODEL_PRICING membership: the table holds three keys, so a membership
-        # test false-fires on ordinary Anthropic models like the default
-        # claude-haiku-4-5 and blocks a legitimately-priced run (#911 review).
-        if spent == 0.0 and self._tokens_recorded() > 0:
+        # Asked directly (#932). This used to infer "unpriced" from the outcome
+        # — tokens recorded but $0 spent — because MODEL_PRICING was missing the
+        # shipped default (claude-haiku-4-5), so a membership test false-fired on
+        # a legitimately-priced run. calculate_cost now returns None for unpriced
+        # models, so the question has a real answer. The outcome heuristic is
+        # kept as a second condition: it also catches a run whose prior recorded
+        # cost is unexpectedly zero.
+        if self._has_unpriced_records() or (
+            spent == 0.0 and self._tokens_recorded() > 0
+        ):
             return (
                 f"A cost cap of ${cap:.2f} is configured, but spend cannot be "
                 f"measured for {', '.join(sorted(self._models_used())) or 'this model'} "

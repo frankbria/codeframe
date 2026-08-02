@@ -688,7 +688,10 @@ class TokenUsage(BaseModel):
     model_name: str = Field(..., description="e.g., claude-sonnet-4-5")
     input_tokens: int = Field(..., ge=0)
     output_tokens: int = Field(..., ge=0)
-    estimated_cost_usd: float = Field(..., ge=0.0)
+    # None = the model has no pricing, so spend is UNKNOWN for this call. Kept
+    # distinct from 0.0 (a priced-at-free call) so unpriced usage is excluded
+    # from cost sums instead of counted as free (#932).
+    estimated_cost_usd: Optional[float] = Field(None, ge=0.0)
     actual_cost_usd: Optional[float] = Field(None, ge=0.0)
     call_type: CallType = CallType.OTHER
     session_id: Optional[str] = Field(None, description="SDK session ID for conversation tracking")
