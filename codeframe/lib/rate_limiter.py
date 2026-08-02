@@ -19,6 +19,7 @@ Security:
 - Configure RATE_LIMIT_TRUSTED_PROXIES to define trusted proxy networks
 """
 
+import asyncio
 import logging
 from typing import Any, Callable, Optional
 
@@ -182,6 +183,51 @@ def get_rate_limiter() -> Optional[Limiter]:
     return _limiter
 
 
+def _limit_object(exc):
+    """The underlying ``limits`` object behind slowapi's Limit wrapper."""
+    return getattr(getattr(exc, "limit", None), "limit", None)
+
+
+def retry_after_seconds(exc, default: int = 60) -> int:
+    """Seconds until the window resets — RFC 9110 delta-seconds (#939).
+
+    The handler used ``str(exc.detail)``, but slowapi sets ``detail`` to
+    ``str(limit.limit)`` — the human description, e.g. "100 per 1 minute". So
+    every 429 sent ``Retry-After: 100 per 1 minute``, which no client can parse,
+    and the same string appeared in the body's ``retry_after``.
+
+    The window is derived from the limit instead: GRANULARITY.seconds times
+    multiples, so "2 per 5 minutes" yields 300.
+    """
+    limit = _limit_object(exc)
+    seconds = getattr(getattr(limit, "GRANULARITY", None), "seconds", None)
+    if not seconds:
+        return default
+    try:
+        return int(seconds) * max(1, int(getattr(limit, "multiples", 1) or 1))
+    except (TypeError, ValueError):
+        return default
+
+
+def limit_string(exc) -> Optional[str]:
+    """The limit as '100/minute' for X-RateLimit-Limit (#939).
+
+    ``exc.limit`` is slowapi's Limit *wrapper*, which defines no ``__str__`` —
+    so ``str(exc.limit)`` leaked an object repr like
+    ``<slowapi.wrappers.Limit object at 0x7f...>`` into the response header.
+    """
+    limit = _limit_object(exc)
+    if limit is None:
+        return None
+    amount = getattr(limit, "amount", None)
+    name = getattr(getattr(limit, "GRANULARITY", None), "name", None)
+    if amount is None or not name:
+        return str(limit)
+    multiples = int(getattr(limit, "multiples", 1) or 1)
+    return f"{amount}/{name}" if multiples == 1 else f"{amount}/{multiples}{name}"
+
+
+
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """Custom exception handler for rate limit exceeded errors.
 
@@ -206,44 +252,51 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) 
         f"ip={client_ip}, user_id={user_id}"
     )
 
-    # Log to audit log for security monitoring
-    try:
-        db = getattr(getattr(request, "app", None), "state", None)
-        db = getattr(db, "db", None) if db else None
-        if db:
-            from codeframe.lib.audit_logger import AuditLogger, AuditEventType
+    retry_after = retry_after_seconds(exc)
+    limit_str = limit_string(exc)
 
-            audit = AuditLogger(db)
-            audit.log_rate_limit_event(
+    # Offloaded to a worker thread (#939). This is a synchronous SQLite
+    # INSERT+COMMIT, and running it inline blocks the event loop for every
+    # rejected request — during a burst or a brute-force attempt, which is
+    # precisely when the handler is hot and when the write can sit on the 5s
+    # busy_timeout. Fire-and-forget: the 429 must not wait on an audit row.
+    db = getattr(getattr(request, "app", None), "state", None)
+    db = getattr(db, "db", None) if db else None
+    if db is not None:
+        from codeframe.lib.audit_logger import AuditEventType, AuditLogger
+
+        def _write_audit() -> None:
+            # AuditLogger._log_event already guards and logs at WARNING (#937);
+            # a silently missing audit trail is the failure mode that matters.
+            AuditLogger(db).log_rate_limit_event(
                 event_type=AuditEventType.RATE_LIMIT_EXCEEDED,
                 user_id=user_id,
                 ip_address=client_ip,
                 endpoint=endpoint,
                 limit_category=None,  # Not easily determinable from exception
-                metadata={
-                    "limit": str(exc.limit) if hasattr(exc, "limit") else None,
-                    "retry_after": str(exc.detail) if hasattr(exc, "detail") else "60",
-                },
+                metadata={"limit": limit_str, "retry_after": retry_after},
             )
-    except Exception as e:
-        # Don't let audit logging failure affect the rate limit response
-        logger.debug(f"Failed to log rate limit event to audit log: {e}")
 
-    # Build response headers
-    headers = {
-        "Retry-After": str(exc.detail) if hasattr(exc, "detail") else "60",
-    }
+        try:
+            asyncio.get_running_loop().run_in_executor(None, _write_audit)
+        except RuntimeError:
+            # No loop (sync test client / direct call): write inline rather than
+            # drop the event.
+            _write_audit()
 
-    # Add rate limit info headers if available
-    if hasattr(exc, "limit"):
-        headers["X-RateLimit-Limit"] = str(exc.limit)
+    # RFC 9110 delta-seconds: an integer number of seconds, nothing else.
+    headers = {"Retry-After": str(retry_after)}
+    if limit_str:
+        headers["X-RateLimit-Limit"] = limit_str
 
     response = JSONResponse(
         status_code=429,
         content={
             "error": "rate_limit_exceeded",
             "detail": "Too many requests. Please try again later.",
-            "retry_after": headers.get("Retry-After", "60"),
+            # int, not str: the header is a string by protocol, but a JSON body
+            # field typed as a string invites clients to concatenate it.
+            "retry_after": retry_after,
         },
         headers=headers,
     )
