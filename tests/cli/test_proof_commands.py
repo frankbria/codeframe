@@ -183,12 +183,20 @@ class TestRun:
         assert result.exit_code == 1, result.output
         assert "FAIL" in result.output
 
-    def test_run_unverifiable_only_prints_unverifiable_and_exits_zero(self, ws):
-        """A REQ whose only obligations are unrunnable gates (e2e/demo) should
-        print UNVERIFIABLE, exit 0, and tell the user the gates can be waived."""
+    def test_run_fails_while_the_captured_stubs_are_unimplemented(self, ws):
+        """Since #924, E2E and DEMO are enforced through their evidence rules.
+
+        This used to expect UNVERIFIABLE and exit 0, because those gates had no
+        runner and short-circuited before their rules were read. They now run
+        the generated `test_e2e_*` / `test_demo_*` stub scoped by name, and a
+        stub that does not exist yet fails — the same rule the pytest-backed
+        gates always had.
+
+        The requirement still stays OPEN, which is the point: before, it could
+        never leave that state by any means except a waiver.
+        """
         workspace, workspace_path = ws
-        # "button click" classifies as UI_WIRING_BUG → obligations [E2E, DEMO],
-        # both without an automated runner → unverifiable.
+        # "button click" classifies as UI_WIRING_BUG → obligations [E2E, DEMO].
         result = runner.invoke(app, [
             "proof", "capture", "-w", str(workspace_path),
             "--title", "Button click does nothing",
@@ -199,10 +207,9 @@ class TestRun:
         assert result.exit_code == 0, result.output
 
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_path), "--full"])
-        assert result.exit_code == 0, result.output
-        assert "UNVERIFIABLE" in result.output
-        assert "waive" in result.output.lower()
-        # The requirement stays open (unverifiable never satisfies).
+        assert result.exit_code == 1, result.output
+        assert "FAIL" in result.output
+        # Still open — implementing the stubs is what satisfies it now.
         req = ledger.get_requirement(workspace, "REQ-0001")
         assert req.status == ReqStatus.OPEN
 

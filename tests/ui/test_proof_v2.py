@@ -378,10 +378,21 @@ class TestRunProof:
             assert "status" in gr
             assert gr["status"] in ("passed", "failed", "unverifiable")
 
-    def test_unverifiable_only_run_passes(self, test_client):
-        """A run whose only obligations are unrunnable gates passes (not failed)."""
-        # "button click" → UI_WIRING_BUG → obligations [e2e, demo], both
-        # without an automated runner → unverifiable.
+    def test_a_freshly_captured_requirement_fails_until_its_stubs_exist(
+        self, test_client
+    ):
+        """Since #924, E2E/DEMO are enforced through their evidence rules.
+
+        This used to assert the run *passed* with every gate `unverifiable`,
+        because those gates had no runner and short-circuited before their
+        rules were consulted. They now run the generated `test_e2e_*` /
+        `test_demo_*` stub scoped by name, and a stub that does not exist yet
+        is a FAILED obligation — the same rule pytest-backed gates always had.
+
+        That is the point of the change: previously such a requirement could
+        never be satisfied, only waived.
+        """
+        # "button click" → UI_WIRING_BUG → obligations [e2e, demo].
         test_client.post(
             "/api/v2/proof/requirements",
             json={
@@ -397,11 +408,13 @@ class TestRunProof:
 
         gate_results = [gr for reqs in post["results"].values() for gr in reqs]
         assert gate_results
-        assert all(gr["status"] == "unverifiable" for gr in gate_results)
+        assert all(gr["status"] == "failed" for gr in gate_results), (
+            "an unimplemented evidence stub must fail, not report unverifiable"
+        )
         assert all(gr["satisfied"] is False for gr in gate_results)
 
         status = test_client.get(f"/api/v2/proof/runs/{run_id}").json()
-        assert status["passed"] is True
+        assert status["passed"] is False
 
 
 # ============================================================================
@@ -738,7 +751,8 @@ class TestGetRunEvidence:
             assert "artifact_text" in ev, "Evidence item missing artifact_text"
 
     def test_run_evidence_carries_status(self, test_client):
-        """Unverifiable gates surface status='unverifiable' on run evidence."""
+        """Evidence records carry the gate outcome (#924: 'failed' for an
+        unimplemented stub, where this used to be 'unverifiable')."""
         test_client.post(
             "/api/v2/proof/requirements",
             json={
@@ -754,4 +768,5 @@ class TestGetRunEvidence:
         assert data["evidence"], "expected evidence records"
         for ev in data["evidence"]:
             assert "status" in ev
-            assert ev["status"] == "unverifiable"
+            assert ev["status"] in ("passed", "failed", "unverifiable")
+        assert any(ev["status"] == "failed" for ev in data["evidence"])
