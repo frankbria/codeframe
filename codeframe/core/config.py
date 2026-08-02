@@ -576,7 +576,10 @@ def save_environment_config(workspace_path: Path, config: EnvironmentConfig) -> 
 
     config_file = config_dir / ENV_CONFIG_FILE
 
-    with open(config_file, "w") as f:
+    # Must match the reader's encoding (#931). allow_unicode=True emits non-ASCII
+    # verbatim, so with the locale default here a value like "café" would be
+    # written as cp1252 on stock Windows and then rejected by our own UTF-8 read.
+    with open(config_file, "w", encoding="utf-8") as f:
         yaml.dump(
             config.to_dict(),
             f,

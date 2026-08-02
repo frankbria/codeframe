@@ -201,6 +201,28 @@ class TestNoSpuriousWarnings:
         assert config.llm is None
         assert caplog.text == "", f"unexpected warning on a clean round trip: {caplog.text}"
 
+    def test_non_ascii_value_survives_a_save_load_round_trip(self, tmp_path, caplog):
+        """Reader and writer must agree on encoding.
+
+        Raised by the PR bot review: pinning only the read to UTF-8 meant that on
+        a cp1252 locale (stock Windows) a non-ASCII value was written in the
+        locale encoding and then rejected by our own reader, silently dropping
+        the whole saved config on every later load.
+        """
+        from codeframe.core.config import save_environment_config
+
+        original = EnvironmentConfig(test_command="pytest -k café_tests")
+        save_environment_config(tmp_path, original)
+
+        raw = (tmp_path / ".codeframe" / "config.yaml").read_bytes()
+        assert "café".encode("utf-8") in raw, "writer did not emit UTF-8"
+
+        with caplog.at_level(logging.WARNING):
+            reloaded = load_environment_config(tmp_path)
+
+        assert reloaded.test_command == "pytest -k café_tests"
+        assert caplog.text == ""
+
     def test_explicit_null_nested_block_uses_defaults(self, tmp_path, caplog):
         _write_config(tmp_path, "hooks: null\npackage_manager: poetry\n")
 
