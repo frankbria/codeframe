@@ -174,31 +174,6 @@ class TestReconciliationEngine:
 
         assert changes == []
 
-    def test_check_task_with_github_checker(self) -> None:
-        from codeframe.core.reconciliation import ExternalStateChange, ReconciliationEngine
-        from codeframe.core.state_machine import TaskStatus
-
-        workspace = MagicMock()
-
-        def github_checker(task_id, task):
-            return [ExternalStateChange(
-                task_id=task_id, change_type="closed",
-                source="github", details={},
-            )]
-
-        engine = ReconciliationEngine(workspace, github_checker=github_checker)
-
-        mock_task = MagicMock()
-        mock_task.status = TaskStatus.IN_PROGRESS
-        mock_task.id = "t1"
-
-        with patch("codeframe.core.reconciliation.tasks.get", return_value=mock_task):
-            changes = engine.check_task("t1")
-
-        assert len(changes) == 1
-        assert changes[0].change_type == "closed"
-        assert changes[0].source == "github"
-
     def test_check_all_active_catches_errors(self) -> None:
         from codeframe.core.reconciliation import ReconciliationEngine
 

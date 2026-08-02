@@ -1,0 +1,53 @@
+Usage: kilocode [options] [command] [prompt]
+
+Kilo Code Terminal User Interface - AI-powered coding assistant
+
+Arguments:
+  prompt                           The prompt or command to execute
+
+Options:
+  -V, --version                    output the version number
+  -m, --mode <mode>                Set the mode of operation (architect, code,
+                                   ask, debug, orchestrator)
+  -w, --workspace <path>           Path to the workspace directory (default:
+                                   "/home/frankbria/projects/codeframe")
+  -a, --auto                       Run in autonomous mode (non-interactive)
+                                   (default: false)
+  --yolo                           Auto-approve all tool permissions (default:
+                                   false)
+  -j, --json                       Output messages as JSON (requires --auto)
+                                   (default: false)
+  -i, --json-io                    Bidirectional JSON mode (no TUI,
+                                   stdin/stdout enabled) (default: false)
+  -c, --continue                   Resume the last conversation from this
+                                   workspace (default: false)
+  -t, --timeout <seconds>          Timeout in seconds for autonomous mode
+                                   (requires --auto)
+  -p, --parallel                   Run in parallel mode - the agent will create
+                                   a separate git branch, unless you provide
+                                   the --existing-branch option
+  -eb, --existing-branch <branch>  (Parallel mode only) Instructs the agent to
+                                   work on an existing branch
+  -pv, --provider <id>             Select provider by ID (e.g., 'kilocode-1')
+  -mo, --model <model>             Override model for the selected provider
+  -s, --session <sessionId>        Restore a session by ID
+  -f, --fork <shareId>             Fork a session by ID
+  --nosplash                       Disable the welcome message and update
+                                   notifications (default: false)
+  --append-system-prompt <text>    Append custom instructions to the system
+                                   prompt
+  --on-task-completed <prompt>     Send a custom prompt to the agent when the
+                                   task completes
+  --attach <path>                  Attach a file to the prompt (can be
+                                   repeated). Currently supports images: png,
+                                   jpg, jpeg, webp, gif, tiff (default: [])
+  -h, --help                       display help for command
+
+Commands:
+  auth                             Manage authentication for the Kilo Code CLI
+  config                           Open the configuration file in your default
+                                   editor
+  debug [mode]                     Run a system compatibility check for the
+                                   Kilo Code CLI
+  models [options]                 List available models for the current
+                                   provider as JSON

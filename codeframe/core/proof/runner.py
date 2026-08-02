@@ -70,7 +70,9 @@ def _load_proof_config(workspace: Workspace) -> tuple[Optional[set[Gate]], str]:
 _GATE_TO_CORE: dict[Gate, str] = {
     Gate.UNIT: "pytest",
     Gate.CONTRACT: "pytest",
-    Gate.SEC: "ruff",
+    # bandit, not ruff: a clean *lint* used to record checksummed "security"
+    # evidence in the ledger (#925).
+    Gate.SEC: "bandit",
 }
 
 # Map a gate outcome to the persisted obligation status string.
@@ -103,20 +105,30 @@ def _run_gate(
     distinguish "named test missing" from "collected but failing".
     """
     core_gate_name = _GATE_TO_CORE.get(gate)
-    if not core_gate_name:
+
+    # Only pytest-style test_ids can be enforced by a scoped pytest run; e.g.
+    # SEC's test_sec_* rules are pytest tests even though the SEC gate's own
+    # runner is ruff.
+    enforced = [r for r in rules if r.must_pass and r.test_id.startswith("test_")]
+    unenforceable = [r for r in rules if r.must_pass and not r.test_id.startswith("test_")]
+
+    # A gate with no dedicated runner is still verifiable through its evidence
+    # rules — the scoped-pytest machinery below works for any test_-prefixed
+    # id, and TEST_ID_PREFIXES gives every gate except MANUAL exactly such a
+    # prefix. This lookup used to return early, so A11Y/PERF/VISUAL/E2E/DEMO
+    # obligations reported UNVERIFIABLE forever, even after the developer
+    # implemented the generated stub. Five of the seven glitch types include at
+    # least one of those gates, so most captured glitches could never be
+    # satisfied — only waived (#924).
+    if not core_gate_name and not enforced:
         return (
             GateOutcome.UNVERIFIABLE,
-            f"Gate {gate.value} has no automated runner — cannot verify",
+            f"Gate {gate.value} has no automated runner and no pytest-style "
+            f"evidence rules — cannot verify",
         )
 
     try:
         from codeframe.core import gates as core_gates
-
-        # Only pytest-style test_ids can be enforced by a scoped pytest run;
-        # e.g. SEC's test_sec_* rules are pytest tests even though the SEC
-        # gate's own runner is ruff.
-        enforced = [r for r in rules if r.must_pass and r.test_id.startswith("test_")]
-        unenforceable = [r for r in rules if r.must_pass and not r.test_id.startswith("test_")]
 
         lines: list[str] = []
         all_passed = True
@@ -152,8 +164,10 @@ def _run_gate(
             all_passed = False
 
         # Run the gate's own runner unless it is pytest and the enforced rules
-        # already covered it (scoped runs replace the whole-suite run).
-        if core_gate_name != "pytest" or not enforced:
+        # already covered it (scoped runs replace the whole-suite run). A gate
+        # with no runner at all has nothing to fall back to — its evidence
+        # rules above are the whole verification (#924).
+        if core_gate_name and (core_gate_name != "pytest" or not enforced):
             result = core_gates.run(workspace, gates=[core_gate_name], verbose=False)
             lines.extend(
                 f"{check.name}: {check.status.value}" for check in result.checks
@@ -199,6 +213,40 @@ def _run_gate(
         return GateOutcome.FAILED, str(exc)
 
 
+def _report_scope_skipped(run_id: str, skipped: list[str]) -> None:
+    """Surface requirements a scoped run did not evaluate (#922).
+
+    Dropping them with a bare ``continue`` is how ``overall_passed=True`` came
+    to coexist with a merge gate that still blocked on the very same
+    requirements — the user had no way to see the two were talking about
+    different sets.
+    """
+    if not skipped:
+        return
+    logger.warning(
+        "Proof run %s: %d requirement(s) not evaluated — out of scope for the "
+        "current changes: %s. Re-run with --full to include them.",
+        run_id, len(skipped), ", ".join(sorted(skipped)),
+    )
+
+def _requirements_for_run(workspace: Workspace, *, full: bool) -> list:
+    """Which requirements a run evaluates (#923).
+
+    A scoped run keeps the cheap behaviour — open requirements only. A ``--full``
+    run also re-verifies SATISFIED ones, because otherwise there was no path
+    back: the runner loaded only OPEN, so once satisfied a requirement could
+    never re-fail on a later regression, and the #731 merge gate — which
+    inspects only *open* requirements — then blocked nothing.
+
+    WAIVED requirements stay out of both. A waiver is an accepted risk recorded
+    by a human, not something a gate result should quietly overturn.
+    """
+    reqs = ledger.list_requirements(workspace, status=ReqStatus.OPEN)
+    if full:
+        reqs = reqs + ledger.list_requirements(workspace, status=ReqStatus.SATISFIED)
+    return reqs
+
+
 def run_proof(
     workspace: Workspace,
     *,
@@ -231,7 +279,7 @@ def run_proof(
         logger.info("Expired %d waivers", len(expired))
 
     # Get all open requirements
-    reqs = ledger.list_requirements(workspace, status=ReqStatus.OPEN)
+    reqs = _requirements_for_run(workspace, full=full)
     if not reqs:
         completed_at = datetime.now(timezone.utc)
         ledger.save_run(
@@ -266,11 +314,14 @@ def run_proof(
     artifact_dir = workspace.state_dir / "proof_artifacts"
     artifact_dir.mkdir(exist_ok=True)
 
+    scope_skipped: list[str] = []
+
     for req in reqs:
         # Check scope intersection (unless full mode or scope detection failed)
         # None changed_scope means "failed to detect" → run everything (fail closed)
         if not full and changed_scope is not None:
             if not intersects(req.scope, changed_scope):
+                scope_skipped.append(req.id)
                 continue
 
         req_results: list[tuple[Gate, GateOutcome]] = []
@@ -317,8 +368,19 @@ def run_proof(
             # an unverifiable obligation leaves it OPEN (and waivable).
             all_passed = all(o == GateOutcome.PASSED for _, o in req_results)
             if all_passed and len(req_results) == len(req.obligations):
-                req.status = ReqStatus.SATISFIED
-            ledger.save_requirement(workspace, req)
+                # mark_satisfied stamps satisfied_at, which the ledger column
+                # and the API field never carried before (#923).
+                ledger.mark_satisfied(workspace, req)
+            elif req.status == ReqStatus.SATISFIED:
+                # A previously satisfied requirement that no longer passes is a
+                # regression: return it to OPEN so it re-fails and the merge
+                # gate sees it again (#923).
+                ledger.reopen_requirement(
+                    workspace, req.id,
+                    reason="obligations no longer all pass",
+                )
+            else:
+                ledger.save_requirement(workspace, req)
 
     completed_at = datetime.now(timezone.utc)
     duration_ms = int((completed_at - started_at).total_seconds() * 1000)
@@ -352,5 +414,7 @@ def run_proof(
             duration_ms=duration_ms,
         ),
     )
+
+    _report_scope_skipped(run_id, scope_skipped)
 
     return results

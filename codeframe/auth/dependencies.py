@@ -260,6 +260,23 @@ async def get_current_user_optional(
 # =============================================================================
 
 
+def _owner_is_active(db: Any, user_id: Any) -> bool:
+    """Whether the account behind a key is still active (#919).
+
+    Fails closed: a missing row or an unreadable column denies rather than
+    grants, so a deleted or unreadable owner cannot keep a key alive.
+    """
+    try:
+        row = db.conn.execute(
+            "SELECT is_active FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+    except Exception as e:
+        logger.error(f"Could not verify API key owner's active status: {e}")
+        return False
+
+    return bool(row[0]) if row is not None else False
+
+
 def _scopes_within_owner_grant(db: Any, key_record: Dict[str, Any]) -> list:
     """Clamp a key's stored scopes to what its owner currently holds (#898).
 
@@ -396,14 +413,30 @@ def _resolve_api_key(api_key: str, request: Optional[Request]) -> Optional[Dict[
             logger.warning("API key auth failed: invalid key format")
             return None
 
-        key_record = db.api_keys.get_by_prefix(prefix)
-        if key_record is None:
+        # Every live key sharing this prefix, not one arbitrary row: the prefix
+        # carries only 4 random hex characters and its index is not UNIQUE, so a
+        # collision used to leave one of the two keys permanently dead (#919).
+        candidates = db.api_keys.get_all_by_prefix(prefix)
+        if not candidates:
             logger.warning(f"API key auth failed: key not found (prefix: {prefix[:4]}...)")
             return None
 
-        # Verify the full key against stored hash
-        if not verify_api_key(api_key, key_record["key_hash"]):
+        key_record = next(
+            (c for c in candidates if verify_api_key(api_key, c["key_hash"])), None
+        )
+        if key_record is None:
             logger.warning(f"API key auth failed: verification failed (prefix: {prefix[:4]}...)")
+            return None
+
+        # An API key is only as live as the account behind it. Without this,
+        # `users.is_active = 0` revoked browser sessions but left every API key
+        # of that user working — there was no revocation-by-account at all
+        # (#919). Fails closed on a missing or unreadable row.
+        if not _owner_is_active(db, key_record["user_id"]):
+            logger.warning(
+                "API key auth failed: owner (user_id=%s) is inactive",
+                key_record["user_id"],
+            )
             return None
 
         # Refresh last_used_at at most once per key per window (#902) — this is
