@@ -1818,7 +1818,7 @@ def prd_stress_test(
     if interactive and result.ambiguities:
         console.print("[bold]Interactive mode — resolve ambiguities:[/bold]\n")
         for amb in result.ambiguities:
-            console.print(f"[yellow]{escape(amb.label)}[/yellow]: {', '.join(amb.questions)}")
+            console.print(f"[yellow]{escape(amb.label)}[/yellow]: {escape(', '.join(amb.questions))}")
             answer = typer.prompt("Your answer")
             amb.resolved_answer = answer
             console.print("[green]✓[/green] Recorded.\n")

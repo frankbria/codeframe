@@ -196,16 +196,26 @@ class TestRichMarkupIsEscaped:
             "output|error|name|summary|content|text|reason|stderr|stdout|"
             "source_node_title|feedback|detail|hint|notes"
         )
-        field = re.compile(
-            r"\{[A-Za-z_][A-Za-z0-9_]*\.(?:" + FREE_TEXT + r")\b"
-        )
+        # The field may appear ANYWHERE inside the interpolation, not only as a
+        # bare `{obj.field}` — `{', '.join(amb.questions)}` was the fifth gap
+        # found in this review cycle. Match `{...}` spans, then look inside.
+        interpolation = re.compile(r"\{[^{}]*\}")
+        # `s?`: the attribute is often plural (`amb.questions`), and \b after a
+        # singular name refuses to match it — which is why the reviewer found
+        # `', '.join(amb.questions)` still unescaped.
+        free_field = re.compile(r"\.(?:" + FREE_TEXT + r")s?\b")
+
+        def _has_unescaped_field(statement: str) -> bool:
+            return any(
+                free_field.search(span) and "escape(" not in span
+                for span in interpolation.findall(statement)
+            )
         renders = ("console.print", "log.write", "add_row")
 
         offenders = [
             st for st in statements
             if any(r in st for r in renders)
-            and field.search(st)
-            and "escape" not in st
+            and _has_unescaped_field(st)
         ]
 
         assert not offenders, (
