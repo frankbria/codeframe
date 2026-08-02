@@ -315,18 +315,24 @@ class TestThinkPhaseProviderResolution:
     def test_stress_test_ollama_provider_skips_anthropic_key(
         self, workspace_with_prd, isolated_keys, monkeypatch
     ):
-        from types import SimpleNamespace
-
         from codeframe.adapters.llm import OpenAIProvider
         from codeframe.cli.app import app
         from codeframe.core import prd_stress_test
+        from codeframe.core.prd_stress_test import StressTestResult
 
         seen_providers = []
 
         def fake_stress_test(content, provider, max_depth=3):
             seen_providers.append(provider)
-            return SimpleNamespace(
-                ambiguities=[], tree=[], tech_spec_markdown="# Spec"
+            # The real dataclass, not a SimpleNamespace: this stub only cares
+            # about which provider was resolved, so it must not also encode a
+            # guess at the result's shape that goes stale when a field is added.
+            return StressTestResult(
+                prd_title="Sample PRD",
+                tree=[],
+                ambiguities=[],
+                tech_spec_markdown="# Spec",
+                ambiguity_report="",
             )
 
         monkeypatch.setattr(

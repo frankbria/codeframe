@@ -189,16 +189,21 @@ class TestExtractGoals:
         assert goals == ["User Authentication", "Invoice Management", "PDF Export"]
         mock_provider.complete.assert_called_once()
 
-    def test_empty_prd_returns_empty(self, mock_provider):
-        from codeframe.core.prd_stress_test import extract_goals
+    def test_empty_prd_raises_rather_than_reporting_success(self, mock_provider):
+        """An empty goal list used to return []. The caller reports
+        "No ambiguities found — PRD is well-specified" for an empty run, so an
+        empty PRD came back as a passing grade (#927)."""
+        import pytest
+
+        from codeframe.core.prd_stress_test import StressTestError, extract_goals
 
         mock_provider.complete.side_effect = None
         resp = MagicMock()
         resp.content = json.dumps([])
         mock_provider.complete.return_value = resp
 
-        goals = extract_goals("", mock_provider)
-        assert goals == []
+        with pytest.raises(StressTestError):
+            extract_goals("", mock_provider)
 
 
 class TestClassifyAndDecompose:
@@ -604,16 +609,30 @@ def _provider_returning(content: str):
 
 
 class TestExtractGoalsErrorPaths:
-    def test_invalid_json_returns_empty(self):
+    def test_invalid_json_raises(self):
+        """Silently returning [] made a fenced-JSON provider look like a
+        well-specified PRD (#927)."""
+        import pytest
+
+        from codeframe.core.prd_stress_test import StressTestError, extract_goals
+
+        with pytest.raises(StressTestError):
+            extract_goals("PRD", _provider_returning("not json at all"))
+
+    def test_non_list_json_raises(self):
+        import pytest
+
+        from codeframe.core.prd_stress_test import StressTestError, extract_goals
+
+        with pytest.raises(StressTestError):
+            extract_goals("PRD", _provider_returning('{"a": 1}'))
+
+    def test_a_fenced_list_is_parsed(self):
+        """The actual trigger: every OpenAI-compatible provider fences JSON."""
         from codeframe.core.prd_stress_test import extract_goals
 
-        assert extract_goals("PRD", _provider_returning("not json at all")) == []
-
-    def test_non_list_json_returns_empty(self):
-        from codeframe.core.prd_stress_test import extract_goals
-
-        # Valid JSON, but an object rather than a list → treated as no goals.
-        assert extract_goals("PRD", _provider_returning('{"a": 1}')) == []
+        fenced = "```json\n[\"Ship auth\"]\n```"
+        assert extract_goals("PRD", _provider_returning(fenced)) == ["Ship auth"]
 
     def test_list_of_non_strings_is_stringified(self):
         from codeframe.core.prd_stress_test import extract_goals

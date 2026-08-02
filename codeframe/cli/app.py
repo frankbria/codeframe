@@ -1713,6 +1713,7 @@ def prd_stress_test(
     from codeframe.core.llm_resolution import resolve_llm_settings, create_provider
     from codeframe.cli.validators import require_api_key_for_provider
     from codeframe.core.prd_stress_test import (
+        StressTestError,
         stress_test_prd,
         resolve_ambiguities_into_prd,
     )
@@ -1749,7 +1750,13 @@ def prd_stress_test(
 
     # Run stress test
     console.print(f"[dim]Recursively decomposing (max depth: {max_depth})...[/dim]")
-    result = stress_test_prd(record.content, provider, max_depth=max_depth)
+    try:
+        result = stress_test_prd(record.content, provider, max_depth=max_depth)
+    except StressTestError as e:
+        # extract_goals now raises rather than returning [] (#927). Without this
+        # the CLI shows a traceback where every other failure here is a red line.
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
 
     # Show ambiguity report
     if result.ambiguities:
@@ -1791,7 +1798,11 @@ def prd_stress_test(
             )
             # Re-run stress test on updated PRD to reflect resolved ambiguities
             console.print("[dim]Re-analyzing updated PRD...[/dim]")
-            result = stress_test_prd(new_record.content, provider, max_depth=max_depth)
+            try:
+                result = stress_test_prd(new_record.content, provider, max_depth=max_depth)
+            except StressTestError as e:
+                console.print(f"[red]Error:[/red] {e}")
+                raise typer.Exit(1)
         else:
             console.print("[yellow]Warning:[/yellow] Failed to create new PRD version.")
 
@@ -1806,6 +1817,11 @@ def prd_stress_test(
     # Summary
     node_count = _count_nodes(result.tree)
     console.print(f"\n[bold]Summary:[/bold] {len(result.tree)} goals, {node_count} nodes, {len(result.ambiguities)} ambiguities")
+    if result.partial:
+        console.print(
+            "[yellow]Warning:[/yellow] LLM call budget exhausted — the walk is "
+            "partial. Ambiguities listed are real, but others may be unreported."
+        )
     if result.ambiguities and not interactive:
         console.print("[dim]Tip: Run with --interactive to resolve ambiguities and update the PRD[/dim]")
 
