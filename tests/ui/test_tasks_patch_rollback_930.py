@@ -21,7 +21,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from codeframe.core import tasks
-from codeframe.core.state_machine import TaskStatus
+from codeframe.core.state_machine import InvalidTransitionError, TaskStatus
 from codeframe.core.workspace import create_or_load_workspace
 
 pytestmark = pytest.mark.v2
@@ -110,6 +110,54 @@ class TestPatchLeavesNoPartialState:
         assert after.status == TaskStatus.DONE
         assert after.title == "new title"
         assert after.priority == 9
+
+
+class TestRollbackOnlyUndoesThisRequestsWrites:
+    """The rollback must not clobber a concurrent writer's fields.
+
+    Raised by `codex review` on this PR: a status-only PATCH that loses the new
+    compare-and-set race must not rewrite title/description/priority from its
+    snapshot — it never wrote them, and the request that won may have.
+    """
+
+    def test_status_only_patch_losing_the_race_leaves_fields_alone(
+        self, client_and_task
+    ):
+        """The winner must write AFTER our snapshot, or the test proves nothing."""
+        client, ws, task_id = client_and_task
+
+        def winner_lands_then_we_lose(*_args, **_kwargs):
+            # Runs inside the request, after `current` was snapshotted — exactly
+            # the interleaving the compare-and-set surfaces as a lost update.
+            tasks.update(ws, task_id, title="winner's title", priority=1)
+            raise InvalidTransitionError(TaskStatus.DONE, TaskStatus.DONE)
+
+        with patch.object(tasks, "update_status", side_effect=winner_lands_then_we_lose):
+            response = client.patch(f"/api/v2/tasks/{task_id}", json={"status": "DONE"})
+
+        assert response.status_code == 409, response.text
+        after = tasks.get(ws, task_id)
+        assert after.title == "winner's title", "rollback clobbered a field it never wrote"
+        assert after.priority == 1
+
+    def test_status_only_patch_losing_the_race_leaves_auto_close_alone(
+        self, client_and_task
+    ):
+        """Guard, not a reproduction: the flagged version skipped the auto-close
+        restore for a status-only PATCH anyway (`original_auto_close` was None).
+        This pins the behavior now that the skip is driven by `wrote_auto_close`.
+        """
+        client, ws, task_id = client_and_task
+
+        def winner_lands_then_we_lose(*_args, **_kwargs):
+            tasks.update_auto_close(ws, task_id, True)
+            raise InvalidTransitionError(TaskStatus.DONE, TaskStatus.DONE)
+
+        with patch.object(tasks, "update_status", side_effect=winner_lands_then_we_lose):
+            response = client.patch(f"/api/v2/tasks/{task_id}", json={"status": "DONE"})
+
+        assert response.status_code == 409
+        assert tasks.get(ws, task_id).auto_close_github_issue is True
 
 
 class TestPatchHappyPathUnchanged:

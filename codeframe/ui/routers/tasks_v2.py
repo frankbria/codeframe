@@ -278,26 +278,39 @@ def get_task(
     return TaskResponse.from_task(task)
 
 
-def _restore_task(workspace, task_id: str, snapshot, original_auto_close) -> None:
-    """Best-effort revert of the reversible writes a failed PATCH made (#930).
+def _restore_task(
+    workspace,
+    task_id: str,
+    snapshot,
+    restore_fields: bool,
+    restore_auto_close: bool,
+) -> None:
+    """Best-effort revert of the writes THIS failed PATCH actually made (#930).
 
-    Restores from the pre-PATCH snapshot rather than tracking which individual
-    writes landed — rewriting a field to the value it already holds is a no-op
-    beyond ``updated_at``. Never raises: it runs on an error path, and masking
-    the original failure would be worse than an incomplete undo.
+    Only the writes that landed are undone. Restoring unconditionally from the
+    snapshot would let a status-only PATCH that loses the compare-and-set race
+    rewrite title/description/priority it never touched — clobbering the field
+    updates of whichever concurrent request won.
+
+    Never raises: it runs on an error path, and masking the original failure
+    would be worse than an incomplete undo.
     """
-    restores = [
-        lambda: tasks.update(
-            workspace,
-            task_id,
-            title=snapshot.title,
-            description=snapshot.description,
-            priority=snapshot.priority,
-        ),
-    ]
-    if original_auto_close is not None:
+    restores = []
+    if restore_fields:
         restores.append(
-            lambda: tasks.update_auto_close(workspace, task_id, original_auto_close)
+            lambda: tasks.update(
+                workspace,
+                task_id,
+                title=snapshot.title,
+                description=snapshot.description,
+                priority=snapshot.priority,
+            )
+        )
+    if restore_auto_close:
+        restores.append(
+            lambda: tasks.update_auto_close(
+                workspace, task_id, snapshot.auto_close_github_issue
+            )
         )
 
     # Independently, so a restore that fails for the same reason the write did
@@ -384,10 +397,10 @@ def update_task(
         # order matters: everything reversible first, and the ONE irreversible
         # step — the status transition, which dispatches the GitHub issue close —
         # strictly last. A failure before it leaves nothing to undo externally,
-        # and `_snapshot` restores the DB values this request had already written
-        # (#930). Previously the status change committed before the field update,
-        # so a failure there returned 500 with the task already DONE and the issue
-        # possibly closed, and the retry 400'd on DONE -> DONE.
+        # and `_restore_task` reverts the DB values this request had already
+        # written (#930). Previously the status change committed before the field
+        # update, so a failure there returned 500 with the task already DONE and
+        # the issue possibly closed, and the retry 400'd on DONE -> DONE.
         snapshot = current if current is not None else tasks.get(workspace, task_id)
         if snapshot is None:
             raise HTTPException(
@@ -401,7 +414,10 @@ def update_task(
             if body.auto_close_github_issue is not None
             else None
         )
-        wrote_anything = False
+        # Tracked per write, not as one flag: rolling back a field this request
+        # never touched would clobber whatever concurrent request did touch it.
+        wrote_auto_close = False
+        wrote_fields = False
 
         try:
             # The auto-close preference must land before the transition so a
@@ -410,7 +426,7 @@ def update_task(
             # the freshly-saved flag. (#565)
             if body.auto_close_github_issue is not None:
                 tasks.update_auto_close(workspace, task_id, body.auto_close_github_issue)
-                wrote_anything = True
+                wrote_auto_close = True
 
             if any(v is not None for v in (body.title, body.description, body.priority)):
                 tasks.update(
@@ -420,7 +436,7 @@ def update_task(
                     description=body.description,
                     priority=body.priority,
                 )
-                wrote_anything = True
+                wrote_fields = True
 
             # Late opt-in: enabling the flag (false -> true) on a task that is
             # ALREADY DONE — with no status transition in this request — won't
@@ -439,7 +455,9 @@ def update_task(
         except InvalidTransitionError:
             # Pre-validation passed, so the task moved between the check and the
             # apply. Undo this request's writes so it leaves no side effect.
-            _restore_task(workspace, task_id, snapshot, original_auto_close)
+            _restore_task(
+                workspace, task_id, snapshot, wrote_fields, wrote_auto_close
+            )
             raise HTTPException(
                 status_code=409,
                 detail=api_error(
@@ -450,8 +468,9 @@ def update_task(
         except HTTPException:
             raise
         except Exception:
-            if wrote_anything:
-                _restore_task(workspace, task_id, snapshot, original_auto_close)
+            _restore_task(
+                workspace, task_id, snapshot, wrote_fields, wrote_auto_close
+            )
             raise
 
         # Re-read so the response reflects every change above.
