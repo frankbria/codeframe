@@ -31,6 +31,8 @@ def _make_db_repo(messages: list[dict] | None = None):
     """Create a mock DB repo with pre-loaded messages."""
     repo = MagicMock()
     repo.get_messages.return_value = messages or []
+    # _load_history reads the newest window, not the oldest page (#929).
+    repo.get_recent_messages.return_value = messages or []
     repo.add_message.return_value = {"id": str(uuid.uuid4())}
     return repo
 

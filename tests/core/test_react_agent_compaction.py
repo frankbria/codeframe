@@ -441,151 +441,15 @@ class TestTier1CompactToolResults:
 # ---------------------------------------------------------------------------
 
 
-class TestTier2RemoveIntermediateSteps:
-    """Tests for _remove_intermediate_steps (Tier 2)."""
-
-    def test_removes_redundant_file_reads(self, workspace, provider):
-        """If same file is read twice, earlier read should be removed."""
-        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
-
-        agent = ReactAgent(workspace=workspace, llm_provider=provider)
-        messages = []
-        # First read of main.py (old, should be removed)
-        a, u = _make_pair(
-            tool_name="read_file",
-            tool_input={"path": "main.py"},
-            tool_result_content="old contents",
-            tc_id="tc-old-read",
-        )
-        messages.extend([a, u])
-        # Second read of main.py (newer, should be kept)
-        a, u = _make_pair(
-            tool_name="read_file",
-            tool_input={"path": "main.py"},
-            tool_result_content="new contents",
-            tc_id="tc-new-read",
-        )
-        messages.extend([a, u])
-        # Add recent pairs to push old reads outside preserve zone
-        for i in range(PRESERVE_RECENT_PAIRS):
-            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
-            messages.extend([a, u])
-
-        result, saved = agent._remove_intermediate_steps(list(messages))
-        # First read pair should be removed
-        assert saved > 0
-        assert len(result) < len(messages)
-        # The remaining read_file for main.py should have "new contents"
-        remaining_reads = [
-            m for m in result
-            if m.get("tool_results") and any(
-                "new contents" in tr["content"] for tr in m["tool_results"]
-            )
-        ]
-        assert len(remaining_reads) >= 1
-
-    def test_keeps_reads_with_intervening_edit(self, workspace, provider):
-        """If a file was edited between reads, both reads should be kept."""
-        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
-
-        agent = ReactAgent(workspace=workspace, llm_provider=provider)
-        messages = []
-        # Read main.py
-        a, u = _make_pair(
-            tool_name="read_file",
-            tool_input={"path": "main.py"},
-            tool_result_content="before edit",
-            tc_id="tc-read1",
-        )
-        messages.extend([a, u])
-        # Edit main.py (intervening write)
-        a, u = _make_pair(
-            tool_name="edit_file",
-            tool_input={"path": "main.py", "edits": []},
-            tool_result_content="edit applied",
-            tc_id="tc-edit",
-        )
-        messages.extend([a, u])
-        # Read main.py again
-        a, u = _make_pair(
-            tool_name="read_file",
-            tool_input={"path": "main.py"},
-            tool_result_content="after edit",
-            tc_id="tc-read2",
-        )
-        messages.extend([a, u])
-        for i in range(PRESERVE_RECENT_PAIRS):
-            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
-            messages.extend([a, u])
-
-        result, saved = agent._remove_intermediate_steps(list(messages))
-        # First read should NOT be removed because there was an edit in between
-        assert saved == 0
-
-    def test_removes_passed_test_results(self, workspace, provider):
-        """Test outputs showing 'passed' should be removed when outside preserve zone."""
-        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
-
-        agent = ReactAgent(workspace=workspace, llm_provider=provider)
-        messages = []
-        # Passed test result
-        a, u = _make_pair(
-            tool_name="run_tests",
-            tool_input={"test_path": "tests/"},
-            tool_result_content="5 passed in 0.3s",
-            tc_id="tc-test",
-        )
-        messages.extend([a, u])
-        for i in range(PRESERVE_RECENT_PAIRS):
-            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
-            messages.extend([a, u])
-
-        result, saved = agent._remove_intermediate_steps(list(messages))
-        assert saved > 0
-        assert len(result) < len(messages)
-
-    def test_preserves_recent_pairs(self, workspace, provider):
-        """Last PRESERVE_RECENT_PAIRS*2 messages should not be removed."""
-        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
-
-        agent = ReactAgent(workspace=workspace, llm_provider=provider)
-        messages = []
-        for i in range(PRESERVE_RECENT_PAIRS):
-            a, u = _make_pair(
-                tool_name="read_file",
-                tool_input={"path": "same.py"},
-                tool_result_content=f"content_{i}",
-                tc_id=f"tc{i}",
-            )
-            messages.extend([a, u])
-
-        result, saved = agent._remove_intermediate_steps(list(messages))
-        # All within preserve zone — nothing removed
-        assert saved == 0
-        assert len(result) == len(messages)
-
-    def test_keeps_test_results_with_failures(self, workspace, provider):
-        """Test output containing both 'passed' and 'failed' should NOT be removed."""
-        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
-
-        agent = ReactAgent(workspace=workspace, llm_provider=provider)
-        messages = []
-        # Mixed test result (has failures — should be kept)
-        a, u = _make_pair(
-            tool_name="run_tests",
-            tool_input={"test_path": "tests/"},
-            tool_result_content="5 passed, 3 failed in 2.1s",
-            tc_id="tc-mixed",
-        )
-        messages.extend([a, u])
-        for i in range(PRESERVE_RECENT_PAIRS):
-            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
-            messages.extend([a, u])
-
-        result, saved = agent._remove_intermediate_steps(list(messages))
-        # Should NOT be removed because it contains failure info
-        assert saved == 0
-        assert len(result) == len(messages)
+# Tier-2 tests live in test_react_agent_tier2_shape_929.py.
+#
+# The versions that used to be here built [assistant, user, assistant, ...] —
+# assistants at even indices. _react_loop seeds a *user* message at index 0, so
+# that shape never occurs in production; the tests passed against a branch the
+# real agent could not reach and hid the fact that tier 2 removed nothing (#929).
+# They were replaced (not merely reshaped) with assertions on the loop's actual
+# message shape, which also check *which* messages survive rather than only that
+# the list shrank.
 
 
 # ---------------------------------------------------------------------------
@@ -814,32 +678,10 @@ class TestCompactConversation:
         assert [id(m) for m in messages] == original_ids
 
 
-# ---------------------------------------------------------------------------
-# Tests: Tier 2 role validation
-# ---------------------------------------------------------------------------
-
-
-class TestTier2RoleValidation:
-    """Tests for tier 2 role-checking in message pairing."""
-
-    def test_skips_non_standard_role_pairs(self, workspace, provider):
-        """Tier 2 should skip message pairs that don't follow assistant/user pattern."""
-        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
-
-        agent = ReactAgent(workspace=workspace, llm_provider=provider)
-        # Create messages with a system message breaking the pair pattern
-        messages = [
-            {"role": "system", "content": "system prompt"},
-            {"role": "user", "content": "hello"},
-        ]
-        # Add enough normal pairs for the preserve zone
-        for i in range(PRESERVE_RECENT_PAIRS + 1):
-            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
-            messages.extend([a, u])
-
-        # Should not crash on non-standard pair
-        result, saved = agent._remove_intermediate_steps(list(messages))
-        assert isinstance(result, list)
+# Tier-2 role validation now lives in test_react_agent_tier2_shape_929.py
+# (test_unrelated_roles_do_not_desync_pairing), which asserts a stray system row
+# does not hide the pairs after it — the version here only asserted the result
+# was still a list, which stayed true while tier 2 silently did nothing (#929).
 
 
 # ---------------------------------------------------------------------------
@@ -994,29 +836,8 @@ class TestTier1TokenSavings:
         assert saved > 0
 
 
-class TestTier2UniqueReads:
-    """Additional Tier 2 tests."""
-
-    def test_keeps_unique_reads(self, workspace, provider):
-        """Reads of different files should all be kept."""
-        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
-
-        agent = ReactAgent(workspace=workspace, llm_provider=provider)
-        messages = []
-        # Each file is read only once
-        for i in range(PRESERVE_RECENT_PAIRS + 2):
-            a, u = _make_pair(
-                tool_name="read_file",
-                tool_input={"path": f"unique_{i}.py"},
-                tool_result_content=f"unique content {i}",
-                tc_id=f"tc{i}",
-            )
-            messages.extend([a, u])
-
-        result, saved = agent._remove_intermediate_steps(list(messages))
-        # No redundant reads — nothing should be removed
-        assert saved == 0
-        assert len(result) == len(messages)
+# test_keeps_unique_reads moved to test_react_agent_tier2_shape_929.py
+# (test_unique_reads_are_all_kept), rebuilt on the _react_loop message shape.
 
 
 class TestCompactionOrchestrationAdvanced:

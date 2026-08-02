@@ -152,6 +152,11 @@ class InteractiveSessionRepository(BaseRepository):
     def get_messages(
         self, session_id: str, limit: int = 100, offset: int = 0
     ) -> list[dict]:
+        """Page through a session's messages oldest-first.
+
+        For chat replay use :meth:`get_recent_messages` — this one's ascending
+        order plus a default limit means it returns the *oldest* window (#929).
+        """
         rows = self._fetchall(
             """
             SELECT * FROM session_messages
@@ -161,13 +166,31 @@ class InteractiveSessionRepository(BaseRepository):
             """,
             (session_id, limit, offset),
         )
-        result = []
-        for row in rows:
-            d = self._row_to_dict(row)
-            if d.get("metadata"):
-                try:
-                    d["metadata"] = json.loads(d["metadata"])
-                except (json.JSONDecodeError, TypeError):
-                    d["metadata"] = None
-            result.append(d)
-        return result
+        return [self._message_row_to_dict(row) for row in rows]
+
+    def get_recent_messages(self, session_id: str, limit: int = 100) -> list[dict]:
+        """Return the NEWEST ``limit`` messages, in chronological order.
+
+        Chat replay needs the tail of the conversation, not its head. Selecting
+        with the ascending `get_messages` default fed the model the first 100
+        rows forever once a session passed 100 messages (#929).
+        """
+        rows = self._fetchall(
+            """
+            SELECT * FROM session_messages
+            WHERE session_id = ?
+            ORDER BY created_at DESC, rowid DESC
+            LIMIT ?
+            """,
+            (session_id, limit),
+        )
+        return [self._message_row_to_dict(row) for row in reversed(rows)]
+
+    def _message_row_to_dict(self, row) -> dict:
+        d = self._row_to_dict(row)
+        if d.get("metadata"):
+            try:
+                d["metadata"] = json.loads(d["metadata"])
+            except (json.JSONDecodeError, TypeError):
+                d["metadata"] = None
+        return d

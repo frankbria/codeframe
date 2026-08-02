@@ -44,6 +44,10 @@ _MAX_HISTORY_TOKENS = 180_000
 # Maps the persisted (display-oriented) message roles onto the two roles the
 # Anthropic Messages API accepts. Roles absent from this map (e.g. "system",
 # "error") are UI-only and dropped from the replay list. See _load_history.
+# How many of the most recent persisted messages to replay. _truncate_history
+# trims further by token budget; this only bounds the query.
+_MAX_REPLAY_MESSAGES = 100
+
 _REPLAY_ROLE_MAP = {
     "user": "user",
     "assistant": "assistant",
@@ -277,7 +281,10 @@ class StreamingChatAdapter:
             List of ``{"role": "user"|"assistant", "content": str}`` dicts in
             chronological order.
         """
-        rows = self._db_repo.get_messages(self._session_id)
+        # The NEWEST window, not the oldest: get_messages() orders ascending and
+        # defaults to LIMIT 100, so past 100 messages this replayed the opening
+        # of the conversation every turn and never the current one (#929).
+        rows = self._db_repo.get_recent_messages(self._session_id, limit=_MAX_REPLAY_MESSAGES)
         history: list[dict] = []
         for r in rows:
             role = _REPLAY_ROLE_MAP.get(r["role"])
