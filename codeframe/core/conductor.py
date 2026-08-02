@@ -2104,11 +2104,35 @@ def _execute_parallel(
             config_watcher_p.stop()
 
 
+#: Results the reconciler may have recorded from *outside* the batch. A worker
+#: must not clobber them: when a task is completed manually mid-batch, the
+#: reconciler kills the subprocess and records COMPLETED, and the worker then
+#: sees the non-zero exit and would report FAILED — reverting the user's own
+#: DONE in the batch accounting and counting it as a failure. (#921)
+_TERMINAL_BATCH_RESULTS = frozenset({"COMPLETED"})
+
+
+def _record_task_result(batch: "BatchRun", task_id: str, status: str) -> None:
+    """Record a worker's result unless a terminal one is already recorded.
+
+    Only COMPLETED is protected. A recorded FAILED or BLOCKED is the worker's
+    own earlier verdict and may legitimately be replaced, and RUNNING is a
+    placeholder that must still resolve.
+    """
+    if batch.results.get(task_id) in _TERMINAL_BATCH_RESULTS:
+        logger.info(
+            "Task %s already recorded as %s (completed outside the batch); "
+            "not overwriting with %s",
+            task_id, batch.results[task_id], status,
+        )
+        return
+    batch.results[task_id] = status
+
+
 def _start_reconciliation_thread(
     workspace: Workspace,
     batch: BatchRun,
     interval_seconds: int = 30,
-    github_checker: Optional[Callable] = None,
 ) -> threading.Event:
     """Start a daemon thread that periodically reconciles batch state.
 
@@ -2121,7 +2145,7 @@ def _start_reconciliation_thread(
     from codeframe.core.reconciliation import ReconciliationEngine
 
     stop_event = threading.Event()
-    engine = ReconciliationEngine(workspace, github_checker=github_checker)
+    engine = ReconciliationEngine(workspace)
 
     def _loop() -> None:
         while not stop_event.wait(timeout=interval_seconds):
@@ -2351,10 +2375,10 @@ def _execute_group_parallel(
             exec_ctx.cleanup()
 
         # Record result (thread-safe due to GIL for simple dict operations)
-        batch.results[task_id] = result_status
+        _record_task_result(batch, task_id, result_status)
         _save_batch(workspace, batch)
 
-        return task_id, result_status
+        return task_id, batch.results[task_id]
 
     # Execute tasks in parallel using thread pool
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
