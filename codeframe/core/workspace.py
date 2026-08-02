@@ -897,6 +897,35 @@ def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) 
     )
 
 
+def find_workspace_root(start: Path) -> Optional[Path]:
+    """The nearest enclosing workspace root, or None (#926).
+
+    ``get_workspace`` looks for ``.codeframe/`` in exactly the directory it is
+    given. So ``cf pr merge`` from ``repo/src/`` raised FileNotFoundError, which
+    ``_check_merge_gate`` reads as "no workspace here, nothing to gate" — the
+    #731 PROOF9 merge gate silently did not apply, with no warning and no audit
+    record, from the directory people actually run git commands in.
+
+    Walks up from ``start``, so a nested workspace wins over its parent: the one
+    you are *in* is the one that governs.
+
+    The marker is the state database, not the ``.codeframe/`` directory alone.
+    The machine-wide ``~/.codeframe`` holds the credential store, agent homes
+    and logs — so matching on the directory name would make every path under
+    ``$HOME`` resolve to a "workspace" rooted at the home directory, and
+    ``/tmp/.codeframe`` would do the same for every temp path.
+    """
+    try:
+        current = start.resolve()
+    except OSError:
+        return None
+
+    for candidate in (current, *current.parents):
+        if (candidate / CODEFRAME_DIR / STATE_DB_NAME).is_file():
+            return candidate
+    return None
+
+
 def get_workspace(repo_path: Path) -> Workspace:
     """Load an existing workspace.
 
