@@ -88,6 +88,45 @@ class TestFailedFirstQuestionLeavesNoSession:
         conn.close()
         assert [r[0] for r in rows] == ["What are you building?"]
 
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_slot_is_claimed_during_the_opening_llm_call(
+        self, mock_provider_class, workspace: Workspace
+    ):
+        """The row must exist *while* the (minutes-long) LLM call runs.
+
+        Rolling the claim back on failure is only safe if it is taken up front —
+        otherwise a concurrent POST /start sees an unclaimed workspace and opens a
+        second active session.
+        """
+        from codeframe.core.prd_discovery import PrdDiscoverySession
+
+        observed = {}
+
+        def slow_opening_question(*_args, **_kwargs):
+            # The same row get_active_session() selects on — queried directly so
+            # the probe does not re-run provider resolution.
+            conn = get_db_connection(workspace)
+            observed["active_mid_call"] = conn.execute(
+                "SELECT id FROM discovery_sessions "
+                "WHERE workspace_id = ? AND state != 'completed'",
+                (workspace.id,),
+            ).fetchall()
+            conn.close()
+            response = MagicMock()
+            response.content = "What are you building?"
+            return response
+
+        provider = MagicMock()
+        provider.complete.side_effect = slow_opening_question
+        mock_provider_class.return_value = provider
+
+        PrdDiscoverySession(workspace, api_key="test-key").start_discovery()
+
+        assert observed["active_mid_call"], (
+            "workspace was unclaimed during the opening LLM call — a concurrent "
+            "/start would have created a second active session"
+        )
+
 
 class TestValidationResponseNormalization:
     """_validate_answer must return {adequate, reason, follow_up} for any parse."""

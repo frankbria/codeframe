@@ -312,17 +312,26 @@ class PrdDiscoverySession:
         """
         _ensure_discovery_schema(self.workspace)
 
-        # Generate the opening question BEFORE persisting anything (#928). Saving
-        # first meant a rate-limited/unauthorized LLM call left a DISCOVERING row
-        # with current_question=NULL: get_active_session kept returning it, so
-        # /start 400'd forever on a session that had no question to answer.
-        question = self._generate_opening_question()
-
         self.session_id = str(uuid.uuid4())
         self.state = SessionState.DISCOVERING
         self._qa_history = []
         self._is_complete = False
-        self._current_question = question
+        self._current_question = None
+
+        # Claim the workspace's single active-session slot before the opening LLM
+        # call, which takes minutes (#902) — a concurrent /start must see it.
+        self._save_session()
+        try:
+            self._current_question = self._generate_opening_question()
+        except BaseException:
+            # ...but roll the claim back if that call fails. Leaving it behind was
+            # the #928 bug: a DISCOVERING row with current_question=NULL that
+            # get_active_session kept returning, so /start 400'd forever on a
+            # session with no question to answer.
+            self._delete_session()
+            self.session_id = None
+            self.state = SessionState.IDLE
+            raise
         self._save_session()
 
         logger.info(f"Started discovery session {self.session_id}")
@@ -788,6 +797,16 @@ Follow the template structure exactly. This PRD should be sufficient to generate
             return title[:100]  # Limit length
 
         return "Untitled Project"
+
+    def _delete_session(self) -> None:
+        """Remove this session's row. Used to roll back a failed start (#928)."""
+        conn = get_db_connection(self.workspace)
+        conn.execute(
+            "DELETE FROM discovery_sessions WHERE id = ? AND workspace_id = ?",
+            (self.session_id, self.workspace.id),
+        )
+        conn.commit()
+        conn.close()
 
     def _save_session(self) -> None:
         """Save session state to database."""
