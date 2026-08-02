@@ -160,6 +160,11 @@ async def start_discovery(
             # prepend ANTHROPIC_API_KEY, which misdirects an openai/ollama user.
             detail=f"LLM API key not configured: {e}",
         )
+    except HTTPException:
+        # The `already active` 400 above is raised inside this try — without this
+        # the blanket handler re-raised it as a 500 with the structured detail
+        # stringified, losing both the status and the session_id/hint (#928).
+        raise
     except Exception as e:
         logger.error(f"Failed to start discovery: {e}", exc_info=True)
         raise HTTPException(
