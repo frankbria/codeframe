@@ -1211,6 +1211,9 @@ async def stream_task_output_lines(
 
 
 @router.get("/{task_id}/stream")
+# An unlimited SSE route lets one client hold open arbitrarily many server-side
+# subscriptions; every other streaming route here is limited (#934).
+@rate_limit_standard()
 async def stream_task_events(
     request: Request,
     task_id: str,

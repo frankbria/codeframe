@@ -723,8 +723,20 @@ cors_origins_env = os.environ.get("CORS_ALLOWED_ORIGINS", "")
 # Parse comma-separated origins
 if cors_origins_env:
     allowed_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+elif os.environ.get("CODEFRAME_DEPLOYMENT_MODE", "self_hosted").strip().lower() == "hosted":
+    # Fail closed (#934). The localhost fallback below is paired with
+    # allow_credentials=True, so on a multi-tenant deployment an unset
+    # CORS_ALLOWED_ORIGINS would let a page served from any localhost origin —
+    # including one an attacker persuades a logged-in operator to open — make
+    # credentialed cross-origin calls. A hosted deploy that has not declared its
+    # origins gets none, not convenient ones.
+    allowed_origins = []
+    logger.error(
+        "CORS_ALLOWED_ORIGINS is unset in hosted mode — refusing all cross-origin "
+        "requests. Set it to your public origin(s)."
+    )
 else:
-    # Fallback to development defaults if not configured
+    # Self-hosted/local default: the dev servers, on the same machine as the API.
     allowed_origins = [
         "http://localhost:3000",  # Next.js dev server
         "http://localhost:3001",  # Next.js E2E test server
