@@ -447,7 +447,7 @@ def run(
         gates = _detect_available_gates(repo_path)
 
     # Known gate names
-    known_gates = {"pytest", "ruff", "mypy", "npm-test", "npm-lint", "tsc", "python-build", "npm-build"}
+    known_gates = {"pytest", "ruff", "bandit", "mypy", "npm-test", "npm-lint", "tsc", "python-build", "npm-build"}
 
     # Run each gate
     for gate_name in gates:
@@ -455,6 +455,8 @@ def run(
             check = _run_pytest(repo_path, verbose, test_selector=test_selector)
         elif gate_name == "ruff":
             check = _run_ruff(repo_path, verbose)
+        elif gate_name == "bandit":
+            check = _run_bandit(repo_path, verbose)
         elif gate_name == "mypy":
             check = _run_mypy(repo_path, verbose)
         elif gate_name == "npm-test":
@@ -685,6 +687,76 @@ def _run_pytest(
             status=GateStatus.ERROR,
             output=str(e),
         )
+
+
+def _run_bandit(repo_path: Path, verbose: bool = False) -> GateCheck:
+    """Run bandit — the security scanner behind the PROOF9 SEC gate (#925).
+
+    SEC used to map to ``ruff``, so a clean *lint* recorded checksummed
+    "security" evidence in the ledger while the repo's own bandit-based
+    SecurityScanner sat unwired behind /api/v2/review.
+
+    SKIPPED, not PASSED, when bandit is absent. A security gate that cannot run
+    must never report clean — the proof layer turns SKIPPED into UNVERIFIABLE
+    (#909), which is the honest answer.
+    """
+    import time
+
+    start = time.time()
+
+    if not shutil.which("bandit") and not shutil.which("uv"):
+        return GateCheck(
+            name="bandit",
+            status=GateStatus.SKIPPED,
+            output="bandit not found — no security analysis was performed",
+        )
+
+    if shutil.which("bandit"):
+        cmd = ["bandit", "-r", ".", "-q", "-f", "txt"]
+    else:
+        cmd = ["uv", "run", "bandit", "-r", ".", "-q", "-f", "txt"]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=repo_path,
+            env=build_agent_env(repo_path),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except FileNotFoundError:
+        return GateCheck(
+            name="bandit",
+            status=GateStatus.SKIPPED,
+            output="bandit could not be executed — no security analysis was performed",
+        )
+    except subprocess.TimeoutExpired:
+        return GateCheck(
+            name="bandit",
+            status=GateStatus.ERROR,
+            output="bandit timed out after 300s",
+        )
+
+    duration_ms = int((time.time() - start) * 1000)
+    output = result.stdout + ("\n" + result.stderr if result.stderr else "")
+
+    # bandit exits 1 when it reports findings, 0 when clean. Anything else is
+    # the scanner itself failing, which is not evidence of a clean tree.
+    if result.returncode == 0:
+        status = GateStatus.PASSED
+    elif result.returncode == 1:
+        status = GateStatus.FAILED
+    else:
+        status = GateStatus.ERROR
+
+    return GateCheck(
+        name="bandit",
+        status=status,
+        exit_code=result.returncode,
+        output=output if verbose else output[:4000],
+        duration_ms=duration_ms,
+    )
 
 
 def _run_ruff(repo_path: Path, verbose: bool = False) -> GateCheck:
