@@ -42,6 +42,8 @@ class CreatedApiKey:
     id: str
     prefix: str
     created_at: str
+    #: Carried so a caller (and a test) can see whether the key expires (#919).
+    expires_at: Optional[str] = None
 
 
 class ApiKeyService:
@@ -86,6 +88,11 @@ class ApiKeyService:
         if not validate_scopes(scopes):
             raise ValueError(f"Invalid scopes: {scopes}. Valid scopes: read, write, admin")
 
+        # The repository binds a datetime; rotation carries the old value
+        # straight from a DB row, where it is an ISO string (#919).
+        if isinstance(expires_at, str):
+            expires_at = datetime.fromisoformat(expires_at)
+
         # Generate the key
         full_key, key_hash, prefix = generate_api_key()
 
@@ -106,6 +113,7 @@ class ApiKeyService:
             id=key_id,
             prefix=prefix,
             created_at=datetime.now(timezone.utc).isoformat(),
+            expires_at=expires_at.isoformat() if expires_at else None,
         )
 
     def list_api_keys(self, user_id: int) -> List[ApiKeyInfo]:
@@ -172,11 +180,14 @@ class ApiKeyService:
             return None
 
         # Create new key first - if this fails, old key stays active
+        # Carry the old expiry forward. Passing None silently turned an
+        # expiring key into a permanent one — rotation is meant to replace the
+        # secret, not extend the grant (#919).
         new_key = self.create_api_key(
             user_id=user_id,
             name=old_key["name"],
             scopes=old_key["scopes"],
-            expires_at=None,  # New key starts fresh
+            expires_at=old_key.get("expires_at"),
         )
 
         # Now revoke the old key (brief window where both are active)
