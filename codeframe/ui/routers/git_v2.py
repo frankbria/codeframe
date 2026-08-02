@@ -113,7 +113,6 @@ async def get_git_status(
         logger.error(f"Git status failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to get git status: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             # Generic body + correlation id: str(e) here leaked host paths and
@@ -165,7 +164,6 @@ async def list_commits(
         logger.error(f"List commits failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to list commits: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             # Generic body + correlation id: str(e) here leaked host paths and
@@ -211,7 +209,6 @@ async def create_commit(
         logger.error(f"Create commit failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to create commit: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             # Generic body + correlation id: str(e) here leaked host paths and
@@ -248,7 +245,6 @@ async def get_diff(
         logger.error(f"Get diff failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to get diff: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             # Generic body + correlation id: str(e) here leaked host paths and
@@ -279,7 +275,6 @@ async def get_current_branch(
         logger.error(f"Get branch failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to get current branch: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             # Generic body + correlation id: str(e) here leaked host paths and
@@ -310,7 +305,6 @@ async def check_clean(
         logger.error(f"Check clean failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to check if clean: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             # Generic body + correlation id: str(e) here leaked host paths and

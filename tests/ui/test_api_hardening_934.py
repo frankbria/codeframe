@@ -100,6 +100,30 @@ class TestPayloadCaps:
                 prd_id="p", answers=[one] * (MAX_REFINE_ANSWERS + 1)
             )
 
+    def test_restated_questions_are_capped(self):
+        """Raised by codex review: `questions` is joined into the refine prompt
+        too, so capping only `answer` left the same vector open."""
+        from pydantic import ValidationError
+
+        from codeframe.ui.routers.prd_v2 import (
+            MAX_QUESTION_CHARS,
+            MAX_QUESTIONS_PER_AMBIGUITY,
+            AmbiguityAnswer,
+        )
+
+        with pytest.raises(ValidationError):
+            AmbiguityAnswer(
+                label="l", answer="a", questions=["x" * (MAX_QUESTION_CHARS + 1)]
+            )
+        with pytest.raises(ValidationError):
+            AmbiguityAnswer(
+                label="l", answer="a", questions=["q"] * (MAX_QUESTIONS_PER_AMBIGUITY + 1)
+            )
+
+        assert AmbiguityAnswer(
+            label="l", answer="a", questions=["q"] * MAX_QUESTIONS_PER_AMBIGUITY
+        )
+
     def test_the_cap_is_documented_in_the_field_description(self):
         from codeframe.ui.routers.prd_v2 import CreatePrdRequest
 
@@ -168,12 +192,34 @@ class TestNoRawExceptionText:
             offenders
         )
 
-    def test_sse_error_events_do_not_carry_exception_text(self):
+    def test_unexpected_sse_failures_use_a_correlation_id(self):
+        """The stream had NO except clause: an unexpected failure killed the
+        EventSource with no frame. It now emits a generic error event.
+
+        The *configuration* branch above it deliberately keeps `str(exc)` —
+        "ANTHROPIC_API_KEY environment variable required" is operator guidance,
+        not an internal leak, and the AC scopes the rule to *unexpected*
+        exceptions. An earlier revision of this fix genericized both and
+        swallowed that guidance; a router test caught it.
+        """
+        source = _source("codeframe/ui/routers/prd_v2.py")
+        generator = source[
+            source.index("async def _stress_test_event_stream") if
+            "async def _stress_test_event_stream" in source else 0
+            : source.index('@router.get("/stress-test")')
+        ]
+
+        assert "except Exception as exc" in generator, (
+            "an unexpected mid-stream failure still has no handler"
+        )
+        assert "internal_error(exc" in generator
+        assert "correlation_id" in generator
+
+    def test_configuration_errors_keep_their_actionable_message(self):
+        """Genericizing these would hide 'ANTHROPIC_API_KEY required' from the operator."""
         source = _source("codeframe/ui/routers/prd_v2.py")
 
-        assert '"message": str(exc)' not in source, (
-            "the SSE error event leaks exception text into the browser"
-        )
+        assert 'yield _sse({"type": "error", "message": str(exc)})' in source
 
 
 class TestCorsFailsClosedInHostedMode:

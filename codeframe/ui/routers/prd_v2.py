@@ -18,7 +18,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import AsyncGenerator, Optional
+from typing import Annotated, AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -44,6 +44,11 @@ MAX_PRD_CONTENT_CHARS = 200_000
 MAX_ANSWER_CHARS = 10_000
 #: How many ambiguities one refine request may carry.
 MAX_REFINE_ANSWERS = 100
+#: A single restated question, and how many may accompany one answer. These are
+#: joined into the refine prompt too, so capping only `answer` left the same
+#: billing/DoS vector open through `questions` (codex review on #934).
+MAX_QUESTION_CHARS = 2_000
+MAX_QUESTIONS_PER_AMBIGUITY = 20
 
 logger = logging.getLogger(__name__)
 
@@ -131,8 +136,14 @@ class AmbiguityAnswer(BaseModel):
     label: str = Field(
         ..., min_length=1, max_length=500, description="Short ambiguity label"
     )
-    questions: list[str] = Field(
-        default_factory=list, description="The unanswered questions"
+    questions: list[Annotated[str, Field(max_length=MAX_QUESTION_CHARS)]] = Field(
+        default_factory=list,
+        max_length=MAX_QUESTIONS_PER_AMBIGUITY,
+        description=(
+            "The unanswered questions. At most "
+            f"{MAX_QUESTIONS_PER_AMBIGUITY}, each up to {MAX_QUESTION_CHARS} "
+            "characters — these are joined into the refine prompt (#934)."
+        ),
     )
     answer: str = Field(
         ...,
@@ -324,14 +335,12 @@ async def _stress_test_event_stream(
         # has already sent 200 OK by the time this generator runs, so the app-level
         # 400 handler can never fire here — letting it escape would kill the
         # EventSource with no frame and no explanation.
-        # A generic message + correlation id, not str(exc): SSE error events
-        # are rendered in the browser and used to leak host paths (#934).
-        _err = internal_error(exc, operation="run the stress test", logger=logger)
-        yield _sse({
-            "type": "error",
-            "message": _err["detail"],
-            "correlation_id": _err["correlation_id"],
-        })
+        # str(exc) is kept HERE on purpose (#934). These are configuration
+        # errors with messages authored for the operator ("ANTHROPIC_API_KEY
+        # environment variable required", an untrusted base_url) — actionable,
+        # and they contain no internals. The generic-message rule applies to
+        # *unexpected* exceptions, handled below.
+        yield _sse({"type": "error", "message": str(exc)})
         return
 
     # Latched so the *recursion* can see it, not just this loop. Breaking here
@@ -378,6 +387,17 @@ async def _stress_test_event_stream(
                 disconnected = True
                 break
             yield _sse(event)
+    except Exception as exc:  # noqa: BLE001 - the stream is already 200 OK
+        # There was no except here at all: an unexpected failure mid-stream
+        # killed the EventSource with no frame and no explanation. Emit a
+        # generic error event with a correlation id — unlike the configuration
+        # errors above, str(exc) here is arbitrary internals (#934).
+        _err = internal_error(exc, operation="run the stress test", logger=logger)
+        yield _sse({
+            "type": "error",
+            "message": _err["detail"],
+            "correlation_id": _err["correlation_id"],
+        })
     finally:
         if watcher is not None:
             disconnected = True  # stops the poll loop on the normal path too
@@ -584,9 +604,9 @@ async def create_prd(
         return _prd_to_response(record)
 
     except Exception as e:
-        logger.error(f"Failed to create PRD: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
+            # internal_error logs the traceback under the correlation id.
             detail=internal_error(e, operation="create PRD", logger=logger),
         )
 
@@ -716,9 +736,9 @@ async def create_prd_version(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to create PRD version: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
+            # internal_error logs the traceback under the correlation id.
             detail=internal_error(e, operation="create version", logger=logger),
         )
 
