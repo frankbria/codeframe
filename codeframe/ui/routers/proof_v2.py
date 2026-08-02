@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from codeframe.core.proof import ledger as proof_ledger
 from codeframe.core.proof.capture import capture_requirement
 from codeframe.core.proof.ledger import (
     get_requirement,
@@ -47,6 +48,7 @@ from codeframe.core.proof.models import (
 from codeframe.core.proof.runner import run_proof
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
+from codeframe.auth.dependencies import require_auth
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import ErrorCodes, api_error
 from codeframe.ui.routers._helpers import atomic_write_json
@@ -81,6 +83,19 @@ def _evict_run_cache() -> None:
 # ============================================================================
 
 
+def _actor(auth: dict) -> str:
+    """The audit identity for an authenticated request (#923).
+
+    Same convention as the merge-override audit in ``pr_v2``: "local-admin"
+    only when auth is explicitly disabled, and an authenticated principal
+    without a user_id stays "unknown" rather than being invented.
+    """
+    return str(
+        auth.get("user_id")
+        or ("local-admin" if auth.get("type") == "disabled" else "unknown")
+    )
+
+
 class CaptureRequirementRequest(BaseModel):
     """Request body for capturing a requirement from a glitch."""
 
@@ -89,7 +104,8 @@ class CaptureRequirementRequest(BaseModel):
     where: str = Field(..., min_length=1, description="Location (file, route, API, tag) where glitch occurred")
     severity: Severity = Field(..., description="Severity: critical, high, medium, low")
     source: Source = Field(..., description="Source: production, qa, dogfooding, monitoring, user_report")
-    created_by: str = Field(default="human", description="Who captured this requirement")
+    # created_by is NOT accepted from the body: it is taken from the
+    # authenticated principal, so the record cannot be forged (#923).
     source_issue: Optional[str] = Field(default=None, description="External issue reference (e.g. GH-123)")
 
 
@@ -99,7 +115,9 @@ class WaiveRequirementRequest(BaseModel):
     reason: str = Field(..., min_length=1, description="Why this requirement is being waived")
     expires: Optional[date] = Field(default=None, description="ISO date when waiver expires (e.g. 2026-06-01)")
     manual_checklist: list[str] = Field(default_factory=list, description="Manual verification steps")
-    approved_by: str = Field(default="", description="Who approved this waiver")
+    # approved_by is NOT accepted from the body. A waiver bypasses the #731
+    # merge gate, so who approved it must be the authenticated principal
+    # rather than whatever the caller typed (#923).
 
 
 class RunProofRequest(BaseModel):
@@ -315,6 +333,7 @@ async def capture_requirement_endpoint(
     request: Request,
     body: CaptureRequirementRequest,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> CaptureRequirementResponse:
     """Capture a requirement from a glitch report.
 
@@ -329,7 +348,7 @@ async def capture_requirement_endpoint(
             where=body.where,
             severity=body.severity,
             source=body.source,
-            created_by=body.created_by,
+            created_by=_actor(auth),
             source_issue=body.source_issue,
         )
         resp = _req_to_response(req)
@@ -492,7 +511,21 @@ async def get_run_status_endpoint(
     the POST returns. Returns 404 if run_id is unknown.
     """
     cached = _run_cache.get((str(workspace.repo_path), run_id))
-    if cached is None:
+    if cached is not None:
+        return RunStatusResponse(
+            run_id=run_id,
+            status="complete",
+            results=cached["results"],
+            passed=cached["passed"],
+            message=cached["message"],
+        )
+
+    # Fall back to the ledger. The cache is in-process and expires after 300s,
+    # so a run that is durably persisted 404'd after expiry or a restart — the
+    # record existed and the API denied it (#923). The per-gate results live
+    # only in the cache, so a ledger hit reports the durable facts.
+    persisted = proof_ledger.get_run(workspace, run_id)
+    if persisted is None:
         raise HTTPException(
             status_code=404,
             detail=api_error(
@@ -501,12 +534,16 @@ async def get_run_status_endpoint(
                 f"No proof run with id {run_id}",
             ),
         )
+
     return RunStatusResponse(
         run_id=run_id,
         status="complete",
-        results=cached["results"],
-        passed=cached["passed"],
-        message=cached["message"],
+        results={},
+        passed=persisted.overall_passed,
+        message=(
+            "Run recovered from the ledger; per-gate results are no longer "
+            "cached. Use GET /proof/runs/{run_id}/evidence for the detail."
+        ),
     )
 
 
@@ -517,6 +554,7 @@ async def waive_requirement_endpoint(
     req_id: str,
     body: WaiveRequirementRequest,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> RequirementResponse:
     """Waive a requirement with a reason and optional expiry date."""
     existing = get_requirement(workspace, req_id)
@@ -534,7 +572,7 @@ async def waive_requirement_endpoint(
         reason=body.reason,
         expires=body.expires,
         manual_checklist=body.manual_checklist,
-        approved_by=body.approved_by,
+        approved_by=_actor(auth),
     )
     updated = waive_requirement(workspace, req_id, waiver)
     return _req_to_response(updated)
