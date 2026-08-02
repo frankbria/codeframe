@@ -144,6 +144,23 @@ class TestMalformedShapesAreActionable:
 
         assert config is not None, "a broken file must fall back, not explode"
 
+    def test_undecodable_bytes_do_not_traceback(self, tmp_path, caplog):
+        """UnicodeDecodeError is a ValueError, not an OSError.
+
+        Raised by the PR bot review: it sailed past the (yaml.YAMLError, OSError)
+        read guard and crashed the command — the exact AC2 failure. Same defect
+        class as #1029.
+        """
+        cf = tmp_path / ".codeframe"
+        cf.mkdir(parents=True, exist_ok=True)
+        (cf / "config.yaml").write_bytes(b"package_manager: \xff\xfe binary junk\n")
+
+        with caplog.at_level(logging.WARNING):
+            config = load_environment_config(tmp_path)
+
+        assert config is not None
+        assert config.package_manager == "uv", "falls back to defaults"
+
     def test_top_level_scalar_does_not_traceback(self, tmp_path, caplog):
         """A YAML file that parses to a string, not a mapping."""
         _write_config(tmp_path, "just a string\n")

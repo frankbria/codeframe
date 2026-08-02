@@ -437,9 +437,13 @@ def load_environment_config(workspace_path: Path) -> Optional[EnvironmentConfig]
         # here — the single funnel every caller goes through — covers `cf work
         # start`, `cf work batch run`, provider resolution and the rest at once.
         try:
-            with open(config_file) as f:
+            # encoding pinned: the default is locale-dependent, so the same file
+            # decodes differently across machines. UnicodeDecodeError is a
+            # ValueError, not an OSError, so it needs naming explicitly — it
+            # would otherwise sail past this guard and crash the command (#931).
+            with open(config_file, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
-        except (yaml.YAMLError, OSError) as exc:
+        except (yaml.YAMLError, OSError, UnicodeDecodeError) as exc:
             logger.warning(
                 "Could not read %s: %s. Falling back to defaults.", config_file, exc
             )
