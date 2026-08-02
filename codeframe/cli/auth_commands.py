@@ -581,6 +581,18 @@ def setup_credential(
     """
     manager = CredentialManager()
 
+    # A non-interactive value source is incompatible with the interactive
+    # provider prompt: typer.prompt() reads stdin, so with `--value-stdin` and
+    # no --provider it would consume the piped SECRET as the provider choice and
+    # then echo it back in "Unknown provider: sk-ant-..." — leaking the exact
+    # thing this flag exists to protect (PR review on #935).
+    if (value_stdin or value_file is not None) and not provider:
+        console.print(
+            "[red]Error:[/red] --provider is required with --value-stdin/--value-file."
+        )
+        console.print("  e.g. echo \"$KEY\" | codeframe auth setup -p github --value-stdin")
+        raise typer.Exit(1)
+
     if value is not None:
         console.print(
             "[yellow]WARNING:[/yellow] --value puts the credential in this "
@@ -588,6 +600,19 @@ def setup_credential(
             "/proc/<pid>/cmdline, and in your shell history. Use --value-stdin "
             "or --value-file instead."
         )
+
+    # Read the non-interactive value FIRST: stdin can only be consumed once, and
+    # the provider prompt below also reads it.
+    if value_stdin:
+        # .readline() not .read(): a trailing newline from `echo` is not part of
+        # the secret, and a here-doc may carry more than one line.
+        value = sys.stdin.readline().strip()
+    elif value_file is not None:
+        try:
+            value = value_file.read_text(encoding="utf-8").splitlines()[0].strip()
+        except (OSError, IndexError, UnicodeDecodeError) as exc:
+            console.print(f"[red]Error:[/red] could not read {value_file}: {exc}")
+            raise typer.Exit(1)
 
     # Interactive provider selection if not provided
     if not provider:
@@ -610,21 +635,14 @@ def setup_credential(
     # Resolve provider name
     try:
         provider_enum = resolve_provider_name(provider)
-    except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+    except ValueError:
+        # Deliberately does NOT echo the rejected value: if stdin were ever
+        # mis-consumed the value would be the credential itself.
+        console.print(
+            "[red]Error:[/red] Unknown provider. Expected one of: "
+            "anthropic, openai, github, gitlab."
+        )
         raise typer.Exit(1)
-
-    # stdin/file take precedence over the deprecated option.
-    if value_stdin:
-        # .readline() not .read(): a trailing newline from `echo` is not part of
-        # the secret, and a here-doc may carry more than one line.
-        value = sys.stdin.readline().strip()
-    elif value_file is not None:
-        try:
-            value = value_file.read_text(encoding="utf-8").splitlines()[0].strip()
-        except (OSError, IndexError, UnicodeDecodeError) as exc:
-            console.print(f"[red]Error:[/red] could not read {value_file}: {exc}")
-            raise typer.Exit(1)
 
     # Prompt for value if not provided
     if not value:
@@ -720,8 +738,13 @@ def validate_credential(
     # Resolve provider
     try:
         provider_enum = resolve_provider_name(provider)
-    except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+    except ValueError:
+        # Deliberately does NOT echo the rejected value: if stdin were ever
+        # mis-consumed the value would be the credential itself.
+        console.print(
+            "[red]Error:[/red] Unknown provider. Expected one of: "
+            "anthropic, openai, github, gitlab."
+        )
         raise typer.Exit(1)
 
     # Get credential
@@ -778,8 +801,13 @@ def rotate_credential(
     # Resolve provider
     try:
         provider_enum = resolve_provider_name(provider)
-    except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+    except ValueError:
+        # Deliberately does NOT echo the rejected value: if stdin were ever
+        # mis-consumed the value would be the credential itself.
+        console.print(
+            "[red]Error:[/red] Unknown provider. Expected one of: "
+            "anthropic, openai, github, gitlab."
+        )
         raise typer.Exit(1)
 
     # Check if credential exists
@@ -845,8 +873,13 @@ def remove_credential(
     # Resolve provider
     try:
         provider_enum = resolve_provider_name(provider)
-    except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+    except ValueError:
+        # Deliberately does NOT echo the rejected value: if stdin were ever
+        # mis-consumed the value would be the credential itself.
+        console.print(
+            "[red]Error:[/red] Unknown provider. Expected one of: "
+            "anthropic, openai, github, gitlab."
+        )
         raise typer.Exit(1)
 
     # Check if credential exists in storage (not just environment)

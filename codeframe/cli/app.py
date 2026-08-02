@@ -3396,7 +3396,12 @@ def work_update_description(
 
         console.print("[green]Task description updated[/green]")
         console.print(f"  Task: {escape(task.title)}")
-        console.print(f"  New description: {description[:100]}{'...' if len(description) > 100 else ''}")
+        # escape(): the description is user input and Rich renders markup —
+        # "Array indexing a[0] and b[1]" would raise MarkupError (#935).
+        console.print(
+            f"  New description: {escape(description[:100])}"
+            f"{'...' if len(description) > 100 else ''}"
+        )
         console.print("\nNext steps:")
         console.print(f"  codeframe work retry {task.id[:8]}  # Retry with updated description")
 
@@ -4995,7 +5000,7 @@ def blocker_show(
         console.print(f"  Created: {blocker.created_at.strftime('%Y-%m-%d %H:%M')}")
 
         console.print("\n[bold]Question:[/bold]")
-        console.print(f"  {blocker.question}")
+        console.print(f"  {escape(blocker.question)}")
 
         if blocker.answer:
             console.print("\n[bold]Answer:[/bold]")
@@ -5975,7 +5980,7 @@ def templates_show(
         deps = ""
         if task.depends_on_indices:
             deps = f" (depends on: {', '.join(str(d+1) for d in task.depends_on_indices)})"
-        console.print(f"  {i}. {task.title}{deps}")
+        console.print(f"  {i}. {escape(task.title)}{deps}")
         console.print(f"     {task.description}")
         console.print(f"     Est: {task.estimated_hours}h | Complexity: {task.complexity_score}/5 | Uncertainty: {task.uncertainty_level}")
         console.print()

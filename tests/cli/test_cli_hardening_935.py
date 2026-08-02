@@ -16,6 +16,7 @@ Four separate problems:
 """
 
 import inspect
+import re
 from pathlib import Path
 
 import pytest
@@ -147,6 +148,20 @@ class TestRichMarkupIsEscaped:
         assert result.exception is None, f"{title!r} crashed: {result.exception!r}"
         assert result.exit_code == 0
 
+    def test_no_unescaped_user_text_reaches_console_print(self):
+        """Scanner, not a point check: a new console.print with user data should
+        fail the build rather than wait to be found in review."""
+        source = (REPO_ROOT / "codeframe" / "cli" / "app.py").read_text()
+        offenders = [
+            line.strip()
+            for line in source.splitlines()
+            if "console.print(f" in line
+            and re.search(r"\{(task\.title|blocker\.question|description)[^}]*\}", line)
+            and "escape(" not in line
+        ]
+
+        assert not offenders, "unescaped user text in Rich output:\n" + "\n".join(offenders)
+
     def test_markup_is_shown_literally_not_interpreted(self, workspace, tmp_path):
         tasks.create(
             workspace, title="Fix [/b] now", description="d", status=TaskStatus.READY
@@ -163,6 +178,43 @@ class TestRichMarkupIsEscaped:
         console = Console(file=open("/dev/null", "w"))
         with pytest.raises(Exception):
             console.print(f"[cyan]Title:[/cyan] {HOSTILE_TITLES[0]}")
+
+
+class TestStdinValueNeverLeaks:
+    """Raised by the PR bot: `--value-stdin` without `--provider` let the
+    interactive provider prompt consume the piped SECRET as the provider choice,
+    and the error path then echoed it back — leaking the exact thing the flag
+    exists to protect."""
+
+    def test_stdin_without_provider_is_rejected_before_any_prompt(self):
+        result = CliRunner().invoke(
+            app, ["auth", "setup", "--value-stdin"], input="sk-ant-SUPERSECRET\n"
+        )
+
+        assert result.exit_code == 1
+        assert "--provider is required" in result.output
+        assert "SUPERSECRET" not in result.output, "the piped secret was echoed"
+
+    def test_value_file_without_provider_is_rejected(self, tmp_path):
+        secret = tmp_path / "k"
+        secret.write_text("ghp_SUPERSECRET\n")
+
+        result = CliRunner().invoke(
+            app, ["auth", "setup", "--value-file", str(secret)]
+        )
+
+        assert result.exit_code == 1
+        assert "SUPERSECRET" not in result.output
+
+    def test_an_unknown_provider_is_not_echoed_back(self):
+        """The rejected value could be a mis-consumed credential."""
+        result = CliRunner().invoke(
+            app, ["auth", "setup", "--provider", "sk-ant-SUPERSECRET"]
+        )
+
+        assert result.exit_code == 1
+        assert "SUPERSECRET" not in result.output
+        assert "Unknown provider" in result.output
 
 
 class TestTasksShowExists:
