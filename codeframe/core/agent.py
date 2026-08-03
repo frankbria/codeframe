@@ -25,6 +25,11 @@ from codeframe.core import blockers, events
 from codeframe.core.agent_env import build_agent_env
 from codeframe.core.path_safety import is_path_safe
 from codeframe.core.context import ContextLoader, TaskContext
+from codeframe.core.cost_tracker import (
+    CostTracker,
+    load_prior_task_cost,
+    resolve_cost_cap,
+)
 from codeframe.core.events import EventType
 from codeframe.core.executor import Executor, ExecutionStatus, StepResult
 from codeframe.core.fix_tracker import EscalationDecision, FixAttemptTracker, FixOutcome
@@ -298,6 +303,13 @@ class Agent:
         self.context: Optional[TaskContext] = None
         self.executor: Optional[Executor] = None
 
+        # Per-task spend accounting (#1004). The plan engine had none, so
+        # `max_cost_usd` — honoured by the ReAct engine since #911 — had nothing
+        # to compare against here and could never fire. Resolved once per run;
+        # `prior_cost_usd` is filled in when the task id is known so answering a
+        # blocker and resuming cannot hand the task a fresh full budget.
+        self.cost_tracker = CostTracker(cap_usd=resolve_cost_cap(workspace.repo_path))
+
         # Fix attempt tracking for loop prevention and escalation
         self.fix_tracker = FixAttemptTracker()
 
@@ -341,6 +353,13 @@ class Agent:
             Final AgentState
         """
         self.state = AgentState(task_id=task_id, status=AgentStatus.IDLE)
+        # "Max cost per TASK" — so spend from earlier runs of this same task
+        # counts. Without it, answering a blocker and resuming would grant a
+        # fresh full budget every time (#911 review, #1004).
+        if self.cost_tracker.cap_usd is not None:
+            self.cost_tracker.prior_cost_usd = load_prior_task_cost(
+                self.workspace, task_id
+            )
         self._emit_event("agent_started", {"task_id": task_id})
 
         try:
@@ -389,6 +408,13 @@ class Agent:
             Final AgentState
         """
         self.state = state
+        # Resume is exactly the bypass the prior-cost lookup exists to close: a
+        # blocked task answered and resumed would otherwise start again at $0
+        # spent, so a cap could be defeated by clicking resume (#911, #1004).
+        if self.cost_tracker.cap_usd is not None:
+            self.cost_tracker.prior_cost_usd = load_prior_task_cost(
+                self.workspace, task_id
+            )
         self._emit_event("agent_resumed", {"task_id": task_id, "step": state.current_step})
 
         # Reload context
@@ -432,6 +458,7 @@ class Agent:
             repo_path=self.workspace.repo_path,
             dry_run=self.dry_run,
             event_publisher=self.event_publisher,
+            cost_tracker=self.cost_tracker,
         )
 
         consecutive_failures = 0
@@ -445,6 +472,39 @@ class Agent:
 
         while self.state.current_step < len(self.state.plan.steps):
             step = self.state.plan.steps[self.state.current_step]
+
+            # Stop the RUN, not just the step (#1004 review). Executor refuses a
+            # capped step by returning FAILED — but FAILED is the trigger for
+            # self-correction, which makes up to MAX_SELF_CORRECTION_ATTEMPTS
+            # more LLM calls on the stepped-up CORRECTION model plus a blocker
+            # question, and then the loop advances and repeats. So the cap was
+            # actively CAUSING spend. Checked here, ahead of the step, it ends
+            # the run instead. BLOCKED rather than FAILED, matching ReactAgent:
+            # the work is not wrong, it needs a human decision.
+            cap_message = self.cost_tracker.cap_message()
+            if cap_message:
+                self._debug_log(cap_message, level="WARNING", always=True)
+                self._emit_event("cost_cap_exceeded", {
+                    "step": step.index,
+                    "message": cap_message,
+                })
+                # A real blocker row, not just in-memory state: a run that
+                # stops for a spend cap must be visible to `cf blocker list`
+                # and to the web UI, or it looks like a silent hang.
+                blocker = blockers.create(
+                    self.workspace,
+                    question=cap_message,
+                    task_id=self.state.task_id or None,
+                    created_by="agent",
+                )
+                self.state.status = AgentStatus.BLOCKED
+                self.state.blocker = BlockerInfo(
+                    reason="Cost cap reached",
+                    question=blocker.question,
+                    context=f"Step {step.index}: {step.description}",
+                    step_index=step.index,
+                )
+                return
 
             self._debug_log(
                 f"=== STEP {step.index} ({step.type.value}) ===",
@@ -895,6 +955,8 @@ class Agent:
                 cwd=self.workspace.repo_path,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=30,
                 env=build_agent_env(self.workspace.repo_path),
             )
@@ -962,7 +1024,7 @@ class Agent:
             config_path = self.workspace.repo_path / config_name
             if config_path.exists():
                 try:
-                    content = config_path.read_text()[:2000]  # Limit size
+                    content = config_path.read_text(encoding="utf-8", errors="replace")[:2000]  # Limit size
                     sections.append(f"## {config_name}")
                     sections.append("```")
                     sections.append(content)
@@ -1185,6 +1247,9 @@ IMPORTANT:
                 max_tokens=4096,
                 temperature=0.0,
             )
+            # Counts toward the cap (#1004): these calls used to be
+            # invisible to it, so a capped run kept spending here.
+            self.cost_tracker.record_response(response, call_type="diagnostic_fix")
 
             # Parse the fix plan
             import json
@@ -1254,7 +1319,7 @@ IMPORTANT:
                         elif not old_code:
                             self._debug_log(f"No old_code for {file_path}", level="WARN")
                         else:
-                            content = file_path.read_text()
+                            content = file_path.read_text(encoding="utf-8", errors="replace")
                             if old_code not in content:
                                 self._debug_log(
                                     f"old_code not found in {file_path}",
@@ -1321,6 +1386,8 @@ IMPORTANT:
                                     cwd=self.workspace.repo_path,
                                     capture_output=True,
                                     text=True,
+                                    encoding="utf-8",
+                                    errors="replace",
                                     timeout=120,
                                     # LLM-authored argv (#907).
                                     env=build_agent_env(self.workspace.repo_path),
@@ -1500,6 +1567,9 @@ Your decision:"""
                 max_tokens=256,
                 temperature=0.0,
             )
+            # Counts toward the cap (#1004): these calls used to be
+            # invisible to it, so a capped run kept spending here.
+            self.cost_tracker.record_response(response, call_type="tactical_resolution")
 
             resolution = response.strip()
             self._emit_event(
@@ -1585,6 +1655,12 @@ Your decision:"""
         Returns:
             New StepResult if correction was attempted, None if can't correct
         """
+        # A cap the correction loop ignores is not a cap (#911 review, #1004).
+        # This loop is the expensive one: it steps UP to the CORRECTION model
+        # and runs up to MAX_SELF_CORRECTION_ATTEMPTS times per failed step.
+        if self.cost_tracker.cap_message():
+            return None
+
         self._emit_event("self_correction_started", {
             "step": step.index,
             "attempt": attempt,
@@ -1645,6 +1721,9 @@ Respond with ONLY the corrected code/content, no explanation."""
                 max_tokens=4000,
                 temperature=0.0,
             )
+            # Counts toward the cap (#1004): these calls used to be
+            # invisible to it, so a capped run kept spending here.
+            self.cost_tracker.record_response(response, call_type="self_correction")
 
             corrected_details = response.content.strip()
 
@@ -1948,6 +2027,9 @@ Generate a single question OR a RESOLVE_AUTONOMOUSLY/TECHNICAL_FIX directive:"""
                 max_tokens=300,
                 temperature=0.0,
             )
+            # Counts toward the cap (#1004): these calls used to be
+            # invisible to it, so a capped run kept spending here.
+            self.cost_tracker.record_response(response, call_type="blocker_question")
             return response.content.strip()
         except Exception:
             # Fallback to generic question
