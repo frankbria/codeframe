@@ -78,65 +78,97 @@ uv run ruff check codeframe tests
 
 ## Architecture Documentation
 
-Before contributing, review relevant architecture documentation in [`docs/architecture/`](docs/architecture/):
+Before contributing, read the documents that actually govern the codebase:
 
-- **Task Identifiers**: Understand the dual-identifier system (`id` vs `task_number`) and dependency semantics
-- **Design Decisions**: Review existing patterns before introducing new ones
+- [`CLAUDE.md`](CLAUDE.md) — the non-negotiable architecture rules (core is headless, the
+  CLI never requires a server, agent state transitions flow through the runtime)
+- [`docs/GOLDEN_PATH.md`](docs/GOLDEN_PATH.md) — the CLI-first workflow contract
+- [`docs/CLI_WIREFRAME.md`](docs/CLI_WIREFRAME.md) — command → module mapping
+- [`docs/AGENT_SYSTEM_REFERENCE.md`](docs/AGENT_SYSTEM_REFERENCE.md) — components and execution flows
+- [`docs/PHASE_2_DEVELOPER_GUIDE.md`](docs/PHASE_2_DEVELOPER_GUIDE.md) — the server layer and v2 router patterns
+- [`docs/PHASE_3_UI_ARCHITECTURE.md`](docs/PHASE_3_UI_ARCHITECTURE.md) — the Next.js web UI
 
-Add new architecture documentation when introducing cross-cutting patterns or data model changes.
+Add documentation when introducing a cross-cutting pattern or a data-model change.
 
 ## Authentication & Security
 
-CodeFRAME uses FastAPI Users for authentication and implements comprehensive authorization checks.
-
-### Authentication Requirements
-
-Authentication is **always required** for all API endpoints. All requests must include a valid JWT Bearer token in the Authorization header. Requests without valid tokens receive 401 Unauthorized.
-
-For testing, test fixtures automatically create JWT tokens. See `tests/api/conftest.py` for examples.
-
-### Adding Protected Endpoints
-
-When creating new API endpoints that access project resources:
+Auth is enforced centrally, not per handler. `codeframe/ui/server.py` mounts every v2
+router with a router-level dependency:
 
 ```python
-from fastapi import HTTPException, Depends
-from codeframe.platform_store.database import Database
-from codeframe.ui.dependencies import get_db, get_current_user, User
-
-@router.get("/api/projects/{project_id}/resource")
-async def get_resource(
-    project_id: int,
-    db: Database = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    # 1. Verify project exists
-    project = db.get_project(project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    # 2. Authorization check
-    if not db.user_has_project_access(current_user.id, project_id):
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    # 3. Proceed with operation
-    return {"resource": "data"}
+_AUTH = [Depends(require_method_scope)]
+app.include_router(tasks_v2.router, dependencies=_AUTH)   # /api/v2/tasks
 ```
 
-**Key Requirements**:
-- Add `current_user: User = Depends(get_current_user)` parameter
-- Check project existence before authorization check
-- Use `db.user_has_project_access()` for authorization
-- Return 403 Forbidden (not 404) for unauthorized access
+So **a new router is protected by mounting it that way, and by nothing else.** A router
+added without `dependencies=_AUTH` is publicly reachable.
+A companion suite enumerates `app.routes` and fails when any `/api/v2` route is missing
+the dependency, so that mistake cannot reach `main`.
 
-**See Also**: [docs/authentication.md](docs/authentication.md) for complete guide.
+### What a caller must present
+
+`require_auth` accepts either a JWT `Authorization: Bearer <token>` or an `X-API-Key`
+header, and resolves both to a principal dict. Enforcement is gated by
+`CODEFRAME_AUTH_REQUIRED`, read **at request time**, default **on**; set it to `false`
+for local development. With auth disabled the dependency yields a synthetic principal
+carrying every scope — the single-operator local opt-out.
+
+Streams never carry a JWT in the URL. `POST /auth/stream-ticket` mints a 60-second
+single-use ticket, redeemed as `?ticket=` on the two SSE routes and the two WebSocket
+routes only.
+
+### Scopes
+
+A JWT principal's scopes come from its user row: `read` and `write` always, plus `admin`
+only when `is_superuser`. Use `require_scope(SCOPE_ADMIN)` for anything that stores a
+credential or merges a PR:
+
+```python
+@router.post("/{pr_number}/merge")
+async def merge_pull_request(
+    request: Request,
+    pr_number: int,
+    workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
+    _: None = Depends(require_scope(SCOPE_ADMIN)),
+) -> MergeResponse:
+    ...
+```
+
+### Tenancy
+
+Handlers do not hand-roll ownership checks. `get_v2_workspace` resolves the caller's
+workspace and enforces the `WORKSPACE_ROOT` allowlist, returning 403 for a path outside
+it; in hosted mode each user is further confined to `<root>/<user_id>`. Take the
+workspace from that dependency rather than from a client-supplied path.
+
+### Writing tests for a protected endpoint
+
+`tests/conftest.py` sets `CODEFRAME_AUTH_REQUIRED=false` for the suite, so most tests
+need nothing. Tests that exercise auth opt back in explicitly — see
+`tests/ui/test_v2_auth_enforcement.py` for the app fixture, and its companion for a real
+register → login → authorized-request round-trip.
+
+**See also**: the "Environment Variables" section of [`CLAUDE.md`](CLAUDE.md) documents
+every auth-related switch (`CODEFRAME_AUTH_REQUIRED`, `AUTH_SECRET`,
+`CODEFRAME_BOOTSTRAP_TOKEN`, `WORKSPACE_ROOT`, `JWT_LIFETIME_SECONDS`) and what happens
+when each is unset.
 
 ## Testing
 
-- Write unit tests for new features
-- Maintain >85% code coverage
-- Run `uv run pytest` before submitting PRs
-- Include authentication/authorization tests for protected endpoints
+- Write tests for new behaviour, before the code where you can
+- Coverage is gated in CI at the floor in `.coveragerc` (currently 80%)
+- Run the full check before submitting a PR:
+
+  ```bash
+  uv run pytest && uv run ruff check . && uv run mypy codeframe/
+  cd web-ui && npm test && npm run build
+  ```
+
+- Include an auth test for a protected endpoint
+- Real-LLM lifecycle tests are opt-in and cost money: `scripts/lifecycle --mode cli`
+
+See [`TESTING.md`](TESTING.md) for how the suites are laid out and which markers exist.
 
 ## Pull Request Process
 
@@ -147,24 +179,21 @@ async def get_resource(
 5. Run tests and linting
 6. Submit PR with description of changes
 
-## Adding New Providers
+## Adding an LLM Provider
 
-See `codeframe/providers/base.py` for the provider interface.
+Implement [`codeframe/adapters/llm/base.py`](codeframe/adapters/llm/base.py)'s
+`LLMProvider`, alongside the existing `anthropic.py`, `openai.py` and `mock.py`, then
+register it in the resolution chain (`codeframe/core/llm_resolution.py`). Any
+OpenAI-compatible endpoint already works without new code — use
+`--llm-provider openai --llm-model <name>` with `OPENAI_BASE_URL`.
 
-Example:
-```python
-from codeframe.providers.base import AgentProvider
+## Adding a Coding-Agent Adapter
 
-class GeminiProvider(AgentProvider):
-    def initialize(self, config: dict) -> None:
-        # Implementation
-        pass
-    # etc.
-```
-
-## Adding New Language Support
-
-See `codeframe/tasks/test_runner.py` for test runner configuration.
+Implement [`codeframe/core/adapters/agent_adapter.py`](codeframe/core/adapters/agent_adapter.py)'s
+interface, alongside `claude_code.py`, `codex.py`, `opencode.py` and `kilocode.py`. Declare
+the credentials your CLI needs (`credential_env_vars`) and its login directory
+(`home_passthrough`): delegated agents run with a sandboxed `$HOME` by default, so a CLI
+that keeps state elsewhere will not find it.
 
 ## Questions?
 
