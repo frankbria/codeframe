@@ -256,7 +256,13 @@ def create_commit(
     if to_add:
         repo.index.add(to_add)
     if to_remove:
-        repo.index.remove(to_remove, working_tree=False, r=True)
+        # Only stage the removal for paths still IN the index. `git rm` already
+        # removed the entry for an already-staged deletion, and index.remove on
+        # a path that is not there fails with "pathspec did not match any
+        # files" — rejecting a deletion the user had correctly staged.
+        still_indexed = [p for p in to_remove if _in_index(repo, p)]
+        if still_indexed:
+            repo.index.remove(still_indexed, working_tree=False, r=True)
 
     # Commit ONLY the requested paths (#942). repo.index.commit() writes the
     # WHOLE index, so any unrelated change already staged — an agent run's
@@ -276,11 +282,27 @@ def create_commit(
     )
 
 
-def _is_tracked(repo, rel_path: str) -> bool:
-    """Whether git knows about this path in HEAD (so it can be deleted)."""
+def _in_index(repo, rel_path: str) -> bool:
+    """Whether the path currently has an index entry."""
     try:
-        repo.git.ls_files("--error-unmatch", "--", rel_path)
+        return bool(repo.git.ls_files("--error-unmatch", "--", rel_path))
+    except Exception:
+        return False
+
+
+def _is_tracked(repo, rel_path: str) -> bool:
+    """Whether git knows this path, in the INDEX or in HEAD.
+
+    Checking only ``ls-files`` (the index) misread an already-staged deletion:
+    ``git rm`` removes the entry from the index, so a path the user had already
+    staged for deletion looked untracked and was rejected. Consulting HEAD too
+    means both "deleted in the working tree" and "already staged for deletion"
+    count as committable.
+    """
+    if _in_index(repo, rel_path):
         return True
+    try:
+        return bool(repo.git.ls_tree("HEAD", "--", rel_path).strip())
     except Exception:
         return False
 
@@ -404,7 +426,7 @@ def get_diff_stats(workspace: Workspace, staged: bool = False) -> DiffStats:
                 change_type = "added"
             elif "deleted file mode" in file_section:
                 change_type = "deleted"
-            elif "rename from" in file_section or "rename to" in file_section:
+            elif re.search(r"^rename (from|to) ", file_section, re.MULTILINE):
                 # Was always "modified": the rename marker lives in the diff
                 # header, and the old per-file regex keyed on the numstat path
                 # frequently missed the section entirely (#942).

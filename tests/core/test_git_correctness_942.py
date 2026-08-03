@@ -155,7 +155,14 @@ class TestDiffStatsLabelsRenames:
         source = inspect.getsource(core_git.get_diff_stats)
 
         assert "_index_diff_sections(" in source
-        assert "re.search(" not in source, "still scanning the diff per file"
+        # The intent is "not re-scanning the WHOLE DIFF per file", not "no
+        # regex at all" — the rename check legitimately uses an anchored one.
+        # Assert the OLD PATTERN is gone, not that `re` is unused: the rename
+        # check legitimately runs an anchored regex over one already-extracted
+        # section. What was slow was re-scanning the whole diff per file.
+        assert "re.escape(file_path)" not in source, (
+            "still building a per-file regex over the whole diff"
+        )
 
 
 class TestStagedOnlyPatchDoesNotExportUnstagedWork:
@@ -214,3 +221,37 @@ class TestStateDirIsIgnored:
         create_or_load_workspace(tmp_path)
 
         assert "user's own" in (state / ".gitignore").read_text()
+
+
+class TestReviewFindings:
+    """Three findings from the PR review, all real."""
+
+    def test_an_already_staged_deletion_is_committable(self, workspace, repo):
+        """`_is_tracked` checked the INDEX, but `git rm` removes the entry from
+        it — so a deletion the user had already staged looked untracked."""
+        _run("git", "rm", "-q", "doomed.txt", cwd=repo)
+
+        result = core_git.create_commit(workspace, ["doomed.txt"], "remove")
+
+        assert result.files_changed == 1
+        assert "doomed.txt" not in _run("git", "ls-files", cwd=repo).stdout
+
+    def test_skipped_reaches_the_api_response(self):
+        """It was computed in core and discarded by the response model, so the
+        caller got a 201 with no way to learn a path was dropped."""
+        from codeframe.ui.routers.git_v2 import CommitResultResponse
+
+        assert "skipped" in CommitResultResponse.model_fields
+
+    def test_prose_mentioning_rename_is_not_labelled_renamed(self, workspace, repo):
+        """The check was an unanchored substring scan, so a diff hunk containing
+        the words 'rename from' mislabelled an ordinary edit."""
+        (repo / "MIGRATION.md").write_text("rename from users to accounts\n")
+        _run("git", "add", "MIGRATION.md", cwd=repo)
+
+        stats = core_git.get_diff_stats(workspace, staged=True)
+        types = {f.path: f.change_type for f in stats.changed_files}
+
+        assert types.get("MIGRATION.md") == "added", (
+            f"prose containing 'rename from' was labelled {types.get('MIGRATION.md')}"
+        )
