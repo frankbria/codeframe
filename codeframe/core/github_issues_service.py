@@ -102,18 +102,26 @@ def _raise_for_status(status_code: int, *, context: str) -> None:
         )
 
 
-def _total_from_link_header(link: Optional[str], items_len: int, per_page: int) -> int:
+def _total_from_link_header(
+    link: Optional[str], items_len: int, per_page: int, page: int = 1
+) -> int:
     """Estimate total issue count from the ``Link`` header's rel="last" page.
 
     GitHub does not return an exact count on the list endpoint; the last-page
     number times ``per_page`` is the standard upper-bound estimate used for
-    pagination controls. Falls back to ``items_len`` when there is no next page.
+    pagination controls.
+
+    GitHub omits rel="last" ON the last page, and the old fallback returned
+    ``items_len`` — the count of items on the CURRENT page. So paging to the end
+    of a 103-issue repo reported a total of 3 and the UI's pagination collapsed
+    (#940). Offsetting by the pages already behind us makes the fallback exact
+    on the last page and monotonic everywhere else.
     """
     if link:
         match = _LAST_PAGE_RE.search(link)
         if match:
             return int(match.group(1)) * per_page
-    return items_len
+    return (max(1, page) - 1) * per_page + items_len
 
 
 async def list_issues(
@@ -204,7 +212,9 @@ async def _list_issues(
         raw_items = []
     # The /issues endpoint includes pull requests — drop them.
     issues = [_simplify(it) for it in raw_items if "pull_request" not in it]
-    total = _total_from_link_header(resp.headers.get("Link"), len(issues), per_page)
+    total = _total_from_link_header(
+        resp.headers.get("Link"), len(issues), per_page, page
+    )
     return issues, total
 
 
