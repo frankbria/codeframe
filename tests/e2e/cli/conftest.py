@@ -22,22 +22,12 @@ CODEFRAME_ROOT = Path(
 )
 
 
-def _ensure_api_key() -> None:
-    """Eagerly load ANTHROPIC_API_KEY from .env if not already set."""
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return
-    env_file = CODEFRAME_ROOT / ".env"
-    if env_file.exists():
-        for line in env_file.read_text().splitlines():
-            line = line.strip()
-            if line.startswith("ANTHROPIC_API_KEY="):
-                key = line.split("=", 1)[1].strip().strip('"').strip("'")
-                os.environ["ANTHROPIC_API_KEY"] = key
-                return
-
-
-# Load API key at import time so subprocesses inherit it
-_ensure_api_key()
+# The production key used to be copied out of the repo's .env into os.environ
+# at IMPORT time (#946), so merely COLLECTING `pytest tests/` mutated the
+# ambient environment of the whole run — which also flipped every
+# requires_api_key gate from skip to run. Nothing needed it there: the
+# `anthropic_api_key` fixture below loads it for tests that ask, and
+# GoldenPathRunner._build_env reads .env itself for the subprocesses it spawns.
 
 
 def pytest_collection_modifyitems(config, items):
@@ -67,11 +57,17 @@ def codeframe_root() -> Path:
 
 
 @pytest.fixture(scope="session")
-def anthropic_api_key() -> str:
-    """Load ANTHROPIC_API_KEY from codeframe .env or environment."""
+def anthropic_api_key():
+    """Load ANTHROPIC_API_KEY from the environment or the repo's .env.
+
+    The only place the key enters os.environ (#946), and it is removed again
+    when the last requesting test finishes — so a run that also collects other
+    suites cannot inherit it and silently un-skip their requires_api_key gates.
+    """
     key = os.environ.get("ANTHROPIC_API_KEY")
     if key:
-        return key
+        yield key
+        return
 
     env_file = CODEFRAME_ROOT / ".env"
     if env_file.exists():
@@ -81,7 +77,11 @@ def anthropic_api_key() -> str:
                 key = line.split("=", 1)[1].strip().strip('"').strip("'")
                 if key:
                     os.environ["ANTHROPIC_API_KEY"] = key
-                    return key
+                    try:
+                        yield key
+                    finally:
+                        os.environ.pop("ANTHROPIC_API_KEY", None)
+                    return
 
     pytest.skip("ANTHROPIC_API_KEY not available")
 
