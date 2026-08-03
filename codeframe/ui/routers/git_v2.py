@@ -68,6 +68,10 @@ class CommitResultResponse(BaseModel):
     commit_hash: str
     commit_message: str
     files_changed: int
+    #: Requested paths that were NOT committed (#942). Without this the caller
+    #: got a 201 and a files_changed count with no way to learn that one of the
+    #: paths they asked for was silently dropped.
+    skipped: list[str] = []
 
 
 class DiffResponse(BaseModel):
@@ -203,6 +207,7 @@ async def create_commit(
             commit_hash=result.commit_hash,
             commit_message=result.commit_message,
             files_changed=result.files_changed,
+            skipped=result.skipped,
         )
 
     except ValueError as e:
