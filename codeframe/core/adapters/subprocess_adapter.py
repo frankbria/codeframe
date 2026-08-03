@@ -172,6 +172,8 @@ class SubprocessAdapter:
                 stderr=subprocess.PIPE,
                 cwd=str(workspace_path),
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 env=child_env,
             )
 
@@ -373,6 +375,8 @@ class SubprocessAdapter:
                 cwd=str(workspace_path),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
             )
             if result.returncode != 0:

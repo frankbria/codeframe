@@ -2476,6 +2476,8 @@ def _execute_task_subprocess(
             stdout=None,  # Let output flow to terminal
             stderr=None,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
 
         # Track process if batch_id provided (thread-safe)

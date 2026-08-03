@@ -72,7 +72,7 @@ class OWASPPatterns:
 
         # Read file content
         try:
-            code = file_path.read_text()
+            code = file_path.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
             logger.error(f"Error reading file {file_path}: {e}")
             return []

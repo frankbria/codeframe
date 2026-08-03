@@ -182,7 +182,7 @@ class CodexAdapter:
             return True
 
         try:
-            auth = json.loads((cls.codex_home() / "auth.json").read_text())
+            auth = json.loads((cls.codex_home() / "auth.json").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, ValueError):
             # ValueError also covers UnicodeDecodeError from read_text() — a
             # genuinely corrupt auth.json must read as "not authenticated",
@@ -238,6 +238,8 @@ class CodexAdapter:
                 stderr=subprocess.PIPE,
                 cwd=str(workspace_path),
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 # Codex spawns its own process rather than going through
                 # SubprocessAdapter.run, so it needs the #996 env explicitly.
                 env=build_delegated_agent_env(

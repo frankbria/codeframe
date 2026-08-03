@@ -75,7 +75,7 @@ class SecurityScanner:
 
         # Read file to check if empty
         try:
-            code = file_path.read_text()
+            code = file_path.read_text(encoding="utf-8", errors="replace")
         except Exception as e:
             logger.error(f"Error reading file {file_path}: {e}")
             return []
@@ -91,6 +91,8 @@ class SecurityScanner:
                 ["bandit", "-f", "json", str(file_path)],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=30,
             )
 
