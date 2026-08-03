@@ -841,6 +841,55 @@ def get_dependents(workspace: Workspace, task_id: str) -> list[Task]:
     return [t for t in all_tasks if task_id in t.depends_on]
 
 
+#: Tables holding rows that belong to a task, ordered grandchildren-first so
+#: each DELETE runs while its own parent rows still exist. The second element
+#: selects the rows by whichever ancestor column the table actually carries.
+#: The FK declarations in workspace.py have no ON DELETE CASCADE, so nothing
+#: removes these on our behalf — before #943 every one was orphaned and left
+#: behind forever. run_engine_log and cloud_run_metadata declare no FK at all
+#: but key off the same ids, so they orphan identically and are cleaned too.
+_TASK_CHILD_TABLES: tuple[tuple[str, str], ...] = (
+    # llm_interactions and file_operations also FK to execution_steps(id), so
+    # they must go before it, not just before runs.
+    ("llm_interactions", "run_id IN (SELECT id FROM runs WHERE {where})"),
+    ("file_operations", "run_id IN (SELECT id FROM runs WHERE {where})"),
+    ("execution_steps", "run_id IN (SELECT id FROM runs WHERE {where})"),
+    ("cloud_run_metadata", "run_id IN (SELECT id FROM runs WHERE {where})"),
+    # run_logs and diagnostic_reports each declare BOTH a task_id and a run_id
+    # FK. Matching on either catches rows whose run row is already gone — the
+    # pre-#943 orphans that would otherwise block enforcement forever.
+    ("run_logs", "{where} OR run_id IN (SELECT id FROM runs WHERE {where})"),
+    ("diagnostic_reports", "{where} OR run_id IN (SELECT id FROM runs WHERE {where})"),
+    ("run_engine_log", "{where}"),
+    ("runs", "{where}"),
+    ("blockers", "{where}"),
+)
+
+
+def _delete_task_children(
+    cursor: sqlite3.Cursor, where: str, params: tuple
+) -> None:
+    """Delete every row belonging to the task(s) matched by ``where``.
+
+    ``where`` is a predicate over a task_id column ("task_id = ?", or
+    "task_id IN (SELECT ...)"); ``params`` are its placeholders. Callers must
+    run this inside the same transaction as the task delete itself — a
+    half-deleted task with surviving children is worse than either outcome.
+    """
+    for table, template in _TASK_CHILD_TABLES:
+        # The predicate is substituted once per {where}, so its placeholders
+        # repeat the same number of times.
+        sql = template.format(where=where)
+        try:
+            cursor.execute(
+                f"DELETE FROM {table} WHERE {sql}",
+                params * template.count("{where}"),
+            )
+        except sqlite3.OperationalError:
+            # Table absent in an older workspace; nothing to clean up.
+            pass
+
+
 def delete(workspace: Workspace, task_id: str) -> bool:
     """Delete a task by ID, cascading the dependency cleanup.
 
@@ -861,24 +910,10 @@ def delete(workspace: Workspace, task_id: str) -> bool:
     try:
         cursor = conn.cursor()
 
-        # Delete child rows FIRST (#943). The FK declarations carry no
-        # ON DELETE CASCADE, and foreign keys are now actually enforced — so
-        # without this every deletion of an executed task fails outright on its
-        # runs/run_logs/blockers. Before enforcement these rows were simply
-        # orphaned and left behind forever, which is what the pragma exists to
-        # stop. Same transaction as the task delete: a half-deleted task with
-        # surviving children would be worse than either outcome.
-        cursor.execute(
-            "DELETE FROM run_logs WHERE run_id IN "
-            "(SELECT id FROM runs WHERE task_id = ?)",
-            (task_id,),
-        )
-        for table in ("diagnostic_reports", "runs", "blockers"):
-            try:
-                cursor.execute(f"DELETE FROM {table} WHERE task_id = ?", (task_id,))
-            except sqlite3.OperationalError:
-                # Table absent in an older workspace; nothing to clean up.
-                pass
+        # Delete child rows FIRST (#943) — see _delete_task_children. Ordering
+        # matters even before PRAGMA foreign_keys goes on (#1061): the
+        # grandchild deletes select through `runs`.
+        _delete_task_children(cursor, "task_id = ?", (task_id,))
 
         cursor.execute(
             """
@@ -931,6 +966,15 @@ def delete_all(workspace: Workspace) -> int:
     conn = get_db_connection(workspace)
     try:
         cursor = conn.cursor()
+
+        # Same child cleanup as delete() (#943). This function skipped it
+        # entirely, so clearing a workspace left every run, log and blocker of
+        # every task behind with nothing left to point at.
+        _delete_task_children(
+            cursor,
+            "task_id IN (SELECT id FROM tasks WHERE workspace_id = ?)",
+            (workspace.id,),
+        )
 
         cursor.execute(
             """
