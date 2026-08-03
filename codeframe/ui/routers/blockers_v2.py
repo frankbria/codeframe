@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
-from codeframe.core import blockers
+from codeframe.core import blockers, tasks
 from codeframe.core.blockers import BlockerStatus, BlockerOrigin
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
@@ -203,6 +203,20 @@ async def create_blocker(
     Returns:
         Created blocker
     """
+    # A client-supplied task_id that does not exist is the caller's mistake, not
+    # a server fault (#1061). Foreign keys are enforced now, so this used to
+    # surface as an IntegrityError and a 500; before enforcement it silently
+    # created a blocker attached to nothing.
+    if body.task_id is not None and tasks.get(workspace, body.task_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error(
+                "Task not found",
+                ErrorCodes.NOT_FOUND,
+                f"No task {body.task_id} in this workspace",
+            ),
+        )
+
     try:
         blocker = blockers.create(
             workspace,

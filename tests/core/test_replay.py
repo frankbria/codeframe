@@ -27,13 +27,47 @@ def workspace(tmp_path: Path):
 
 
 @pytest.fixture
-def run_id():
-    return str(uuid.uuid4())
+def task_id(workspace):
+    """A REAL task row (#1061).
+
+    This was a bare ``uuid4()``. Every child row these tests insert —
+    execution_steps, llm_interactions, file_operations — references it, so with
+    foreign keys enforced they were inserting orphans. They were orphaning them
+    in production too; the tests were simply asserting against a state the
+    schema forbids.
+    """
+    from codeframe.core import tasks
+
+    return tasks.create(workspace, title="replay fixture", description="").id
 
 
 @pytest.fixture
-def task_id():
-    return str(uuid.uuid4())
+def run_id(workspace, task_id):
+    """A REAL run row, parented by ``task_id`` (#1061)."""
+    from codeframe.core import runtime
+
+    return runtime.start_task_run(workspace, task_id).id
+
+
+@pytest.fixture
+def step_id(workspace, run_id):
+    """A REAL execution_steps row (#1061).
+
+    ``llm_interactions`` and ``file_operations`` both FK to
+    ``execution_steps(id)``, so a literal "step-1" is an orphan.
+    """
+    from codeframe.core.replay import ExecutionStep, save_execution_step
+
+    step = ExecutionStep(
+        id=f"step-{run_id}",
+        run_id=run_id,
+        step_number=1,
+        step_type="tool_call",
+        description="fixture step",
+        started_at=datetime.now(timezone.utc),
+    )
+    save_execution_step(workspace, step)
+    return step.id
 
 
 # =============================================================================
@@ -92,7 +126,7 @@ class TestLLMInteractionModel:
         interaction = LLMInteraction(
             id="llm-1",
             run_id="run-1",
-            step_id="step-1",
+            step_id=step_id,
             prompt="Implement the feature",
             response="I'll start by reading the file...",
             model="claude-sonnet-4-20250514",
@@ -114,7 +148,7 @@ class TestFileOperationModel:
         op = FileOperation(
             id="fop-1",
             run_id="run-1",
-            step_id="step-1",
+            step_id=step_id,
             operation_type="create",
             file_path="src/main.py",
             content_before=None,
@@ -282,7 +316,7 @@ class TestExecutionStepCRUD:
 class TestLLMInteractionCRUD:
     """Tests for saving and loading LLM interactions."""
 
-    def test_save_and_load_interaction(self, workspace, run_id):
+    def test_save_and_load_interaction(self, workspace, run_id, step_id):
         from codeframe.core.replay import (
             LLMInteraction,
             save_llm_interaction,
@@ -293,7 +327,7 @@ class TestLLMInteractionCRUD:
         interaction = LLMInteraction(
             id="llm-1",
             run_id=run_id,
-            step_id="step-1",
+            step_id=step_id,
             prompt="Implement feature X",
             response="I'll read the file first...",
             model="claude-sonnet-4-20250514",
@@ -311,7 +345,7 @@ class TestLLMInteractionCRUD:
 class TestFileOperationCRUD:
     """Tests for saving and loading file operations."""
 
-    def test_save_and_load_file_op(self, workspace, run_id):
+    def test_save_and_load_file_op(self, workspace, run_id, step_id):
         from codeframe.core.replay import (
             FileOperation,
             save_file_operation,
@@ -322,7 +356,7 @@ class TestFileOperationCRUD:
         op = FileOperation(
             id="fop-1",
             run_id=run_id,
-            step_id="step-1",
+            step_id=step_id,
             operation_type="create",
             file_path="src/main.py",
             content_before=None,
@@ -335,7 +369,7 @@ class TestFileOperationCRUD:
         assert ops[0].file_path == "src/main.py"
         assert ops[0].content_after == "print('hello')"
 
-    def test_file_ops_ordered_by_timestamp(self, workspace, run_id):
+    def test_file_ops_ordered_by_timestamp(self, workspace, run_id, step_id):
         from codeframe.core.replay import (
             FileOperation,
             save_file_operation,
@@ -351,7 +385,7 @@ class TestFileOperationCRUD:
                 FileOperation(
                     id=f"fop-{i}",
                     run_id=run_id,
-                    step_id=f"step-{i}",
+                    step_id=step_id,
                     operation_type="edit",
                     file_path=f"file{i}.py",
                     content_before="old",
@@ -369,12 +403,20 @@ class TestFileOperationCRUD:
 
 
 def _insert_run(workspace, run_id, task_id, status="COMPLETED"):
-    """Helper to insert a run record directly into the database."""
+    """Ensure a run row exists with this id and status.
+
+    Upsert rather than insert (#1061). The ``run_id`` fixture now creates a REAL
+    run via ``runtime.start_task_run`` — it has to, because every child row here
+    references it and foreign keys are enforced — so a plain INSERT collides on
+    the primary key. The intent was always "a run with this id and status
+    exists", which is what this does.
+    """
     conn = get_db_connection(workspace)
     try:
         conn.execute(
             "INSERT INTO runs (id, workspace_id, task_id, status, started_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET status = excluded.status",
             (run_id, workspace.id, task_id, status, datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
@@ -503,10 +545,30 @@ class TestLoadExecutionTrace:
         assert result is None
 
     def test_load_trace_without_run_record(self, workspace, run_id):
-        """Steps exist but no run record - should still return a trace."""
+        """Steps whose run row is gone still yield a trace (#1061).
+
+        With foreign keys enforced this state can no longer be CREATED — an
+        execution_steps row requires its run — so the fixture has to construct
+        it deliberately. That is not a workaround: the fallback exists for data
+        orphaned BEFORE enforcement, which is exactly what this reproduces, and
+        deleting the test would drop coverage of a path real workspaces can
+        still hit after upgrading.
+
+        The pragma is turned back ON in the same block, so nothing that follows
+        runs unenforced.
+        """
         from codeframe.core.replay import load_execution_trace
 
         _seed_three_step_trace(workspace, run_id)
+
+        conn = get_db_connection(workspace)
+        try:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+        finally:
+            conn.close()
 
         trace = load_execution_trace(workspace, run_id)
         assert trace is not None

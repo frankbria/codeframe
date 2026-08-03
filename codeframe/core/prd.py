@@ -391,6 +391,61 @@ def delete(
             conn.close()
             raise PrdHasDependentTasksError(prd_id, task_count)
 
+    # Detach everything that references this PRD BEFORE removing it (#1061).
+    # With foreign keys enforced a delete would otherwise fail outright; before
+    # enforcement it left dangling references behind — silently, forever.
+    #
+    # Tasks are KEPT, only unlinked: a task is real work, and losing it because
+    # its source document was deleted would be far worse than losing the link.
+    cursor.execute(
+        "UPDATE tasks SET prd_id = NULL WHERE workspace_id = ? AND prd_id = ?",
+        (workspace.id, prd_id),
+    )
+
+    # prds references ITSELF twice — parent_id and chain_id — so deleting any
+    # non-latest version of a versioned PRD hit the same wall (raised in
+    # review). A v1 whose v2 carries parent_id=v1 AND chain_id=v1 could not be
+    # deleted at all.
+    #
+    # Re-parent rather than null: the surviving versions keep their lineage by
+    # skipping the deleted one, which is what a version chain means. chain_id
+    # falls back to the row's own id, matching how store() seeds a new chain.
+    cursor.execute(
+        "SELECT parent_id FROM prds WHERE workspace_id = ? AND id = ?",
+        (workspace.id, prd_id),
+    )
+    row = cursor.fetchone()
+    grandparent = row[0] if row else None
+
+    cursor.execute(
+        "UPDATE prds SET parent_id = ? WHERE workspace_id = ? AND parent_id = ?",
+        (grandparent, workspace.id, prd_id),
+    )
+    # Keep the survivors in ONE chain by repointing them at the oldest
+    # surviving version — the new root. Giving each survivor its OWN chain_id
+    # (the first cut) shattered the chain on a root delete: get_versions and
+    # list_chains key entirely off chain_id, so one evolving document became two
+    # separate PRDs, and v3 kept parent_id=v2 while landing in a different chain
+    # than v2 — a state no version query can reconstruct.
+    #
+    # The new root is computed BEFORE the UPDATE so SQLite's row-by-row
+    # evaluation cannot pick a different root for different rows. No-op for a
+    # non-root delete: no row carries a non-root's id as its chain_id.
+    cursor.execute(
+        """
+        SELECT id FROM prds
+        WHERE workspace_id = ? AND chain_id = ? AND id != ?
+        ORDER BY version ASC, created_at ASC
+        LIMIT 1
+        """,
+        (workspace.id, prd_id, prd_id),
+    )
+    new_root = cursor.fetchone()
+    cursor.execute(
+        "UPDATE prds SET chain_id = ? WHERE workspace_id = ? AND chain_id = ? AND id != ?",
+        (new_root[0] if new_root else None, workspace.id, prd_id, prd_id),
+    )
+
     cursor.execute(
         """
         DELETE FROM prds

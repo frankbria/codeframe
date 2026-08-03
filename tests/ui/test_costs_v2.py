@@ -159,7 +159,6 @@ def _record_usage_text_task(
     timestamp = (when or datetime.now(timezone.utc)).isoformat()
     conn = sqlite3.connect(str(workspace.db_path))
     try:
-        conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute(
             """
             INSERT INTO token_usage (

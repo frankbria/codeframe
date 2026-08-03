@@ -20,6 +20,43 @@ def workspace(tmp_path: Path) -> Workspace:
     return create_or_load_workspace(tmp_path)
 
 
+@pytest.fixture
+def seeded_req(workspace) -> str:
+    """A REAL proof_requirements row for the evidence tests (#1061).
+
+    ``proof_evidence.req_id`` FKs to ``proof_requirements(id)``, so evidence
+    attached to a bare "REQ-0001" was an orphan — in these tests and in
+    production. Returns the id so a test can attach to it by name.
+    """
+    from codeframe.core.proof.ledger import save_requirement
+    from codeframe.core.proof.models import (
+        Gate,
+        GlitchType,
+        Obligation,
+        Requirement,
+        RequirementScope,
+        Severity,
+        Source,
+    )
+
+    save_requirement(
+        workspace,
+        Requirement(
+            id="REQ-0001",
+            title="evidence fixture",
+            description="",
+            severity=Severity.MEDIUM,
+            source=Source.QA,
+            scope=RequirementScope(files=["src/test.py"]),
+            obligations=[Obligation(gate=Gate.UNIT)],
+            evidence_rules=[],
+            created_at=datetime.now(timezone.utc),
+            glitch_type=GlitchType.LOGIC_BUG,
+        ),
+    )
+    return "REQ-0001"
+
+
 # --- Model Tests ---
 
 
@@ -167,7 +204,7 @@ class TestLedger:
         save_requirement(workspace, req)
         assert next_req_id(workspace) == "REQ-0002"
 
-    def test_save_and_list_evidence(self, workspace):
+    def test_save_and_list_evidence(self, workspace, seeded_req):
         from codeframe.core.proof.ledger import save_evidence, list_evidence
         from codeframe.core.proof.models import Evidence, Gate
 
@@ -363,7 +400,7 @@ class TestScope:
 
 
 class TestEvidence:
-    def test_attach_evidence(self, workspace, tmp_path):
+    def test_attach_evidence(self, workspace, seeded_req, tmp_path):
         from codeframe.core.proof.evidence import attach_evidence
         from codeframe.core.proof.models import Gate, GateOutcome
         from codeframe.core.proof import ledger
@@ -385,7 +422,7 @@ class TestEvidence:
         evidence_list = ledger.list_evidence(workspace, "REQ-0001")
         assert len(evidence_list) == 1
 
-    def test_check_obligation_satisfied(self, workspace, tmp_path):
+    def test_check_obligation_satisfied(self, workspace, seeded_req, tmp_path):
         from codeframe.core.proof.evidence import attach_evidence, check_obligation_satisfied
         from codeframe.core.proof.models import (
             Gate, GateOutcome, Requirement, Severity, Source, RequirementScope, Obligation,
@@ -696,7 +733,7 @@ class TestCLI:
 
 
 class TestEvidenceStatus:
-    def test_evidence_status_round_trip(self, workspace, tmp_path):
+    def test_evidence_status_round_trip(self, workspace, seeded_req, tmp_path):
         """Evidence.status persists and reads back through the ledger."""
         from codeframe.core.proof.ledger import save_evidence, list_evidence
         from codeframe.core.proof.models import Evidence, Gate
@@ -714,19 +751,19 @@ class TestEvidenceStatus:
         assert loaded[0].status == "unverifiable"
         assert loaded[0].satisfied is False
 
-    def test_evidence_status_defaults_none(self, workspace, tmp_path):
+    def test_evidence_status_defaults_none(self, workspace, seeded_req, tmp_path):
         """Evidence saved without an explicit status reads back status=None."""
         from codeframe.core.proof.ledger import save_evidence, list_evidence
         from codeframe.core.proof.models import Evidence, Gate
 
         ev = Evidence(
-            req_id="REQ-0002", gate=Gate.UNIT, satisfied=True,
+            req_id=seeded_req, gate=Gate.UNIT, satisfied=True,
             artifact_path="/tmp/unit.txt", artifact_checksum="def",
             timestamp=datetime.now(timezone.utc), run_id="run-2",
         )
         save_evidence(workspace, ev)
 
-        loaded = list_evidence(workspace, "REQ-0002")
+        loaded = list_evidence(workspace, seeded_req)
         assert loaded[0].status is None
 
     def test_legacy_db_without_status_column_migrates(self, tmp_path):
@@ -789,7 +826,7 @@ class TestEvidenceStatus:
         assert "unverifiable" in statuses
         assert None in statuses
 
-    def test_check_obligation_not_satisfied_by_unverifiable(self, workspace, tmp_path):
+    def test_check_obligation_not_satisfied_by_unverifiable(self, workspace, seeded_req, tmp_path):
         """Unverifiable evidence must NOT satisfy an obligation."""
         from codeframe.core.proof.evidence import (
             attach_evidence, check_obligation_satisfied,
@@ -805,6 +842,12 @@ class TestEvidenceStatus:
             scope=RequirementScope(), obligations=[Obligation(gate=Gate.E2E)],
             evidence_rules=[],
         )
+        # Built in memory but never persisted, while evidence was attached to
+        # its id — an orphan (#1061). proof_evidence.req_id FKs to
+        # proof_requirements(id), so the parent has to exist.
+        from codeframe.core.proof.ledger import save_requirement
+
+        save_requirement(workspace, req)
 
         artifact = tmp_path / "e2e.txt"
         artifact.write_text("cannot verify")

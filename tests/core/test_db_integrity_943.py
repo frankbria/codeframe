@@ -19,9 +19,10 @@ from codeframe.core.workspace import _open_db, create_or_load_workspace
 pytestmark = pytest.mark.v2
 
 
-# The foreign-key enforcement tests moved to #1061 with the pragma itself: they
-# only mean anything once PRAGMA foreign_keys is on, and turning it on requires
-# migrating 66 test fixtures that currently insert orphan rows.
+# The foreign-key enforcement tests live in test_foreign_keys_enforced_1061.py,
+# which is where the pragma was turned on. The child-row cleanup below is what
+# makes enforcement survivable — the FKs carry no ON DELETE CASCADE — so the two
+# files are the two halves of one guarantee.
 
 
 class TestDuplicateExternalUrlDoesNotBrickTheWorkspace:
@@ -148,7 +149,7 @@ class TestTaskDeleteCleansUpChildren:
 
 #: Every table the cleanup must reach, with a row keyed to a run or a task.
 #: The columns are the NOT NULL ones; anything nullable is left out.
-def _seed_every_child_table(db_path, task_id: str, run_id: str) -> None:
+def _seed_every_child_table(db_path, task_id: str, run_id: str, workspace_id: str) -> None:
     conn = _open_db(db_path)
     conn.execute(
         "INSERT INTO run_logs (run_id, task_id, timestamp, log_level, category,"
@@ -164,7 +165,7 @@ def _seed_every_child_table(db_path, task_id: str, run_id: str) -> None:
     conn.execute(
         "INSERT INTO blockers (id, workspace_id, task_id, question, created_at)"
         " VALUES (?,?,?,?,?)",
-        (f"blk-{run_id}", "ws", task_id, "q?", "2026-01-01"),
+        (f"blk-{run_id}", workspace_id, task_id, "q?", "2026-01-01"),
     )
     step_id = f"step-{run_id}"
     conn.execute(
@@ -185,7 +186,7 @@ def _seed_every_child_table(db_path, task_id: str, run_id: str) -> None:
     conn.execute(
         "INSERT INTO run_engine_log (run_id, engine, task_id, workspace_id,"
         " status, created_at) VALUES (?,?,?,?,?,?)",
-        (run_id, "react", task_id, "ws", "done", "2026-01-01"),
+        (run_id, "react", task_id, workspace_id, "done", "2026-01-01"),
     )
     conn.execute(
         "INSERT INTO cloud_run_metadata (run_id, sandbox_minutes,"
@@ -237,7 +238,7 @@ class TestEveryDescendantTableIsCleaned:
         task = tasks.create(ws, title="executed", description="")
         run = runtime.start_task_run(ws, task.id)
         db = tmp_path / ".codeframe" / "state.db"
-        _seed_every_child_table(db, task.id, run.id)
+        _seed_every_child_table(db, task.id, run.id, ws.id)
 
         assert all(v > 0 for v in _remaining_rows(db).values()), "seed failed"
 
@@ -255,13 +256,19 @@ class TestEveryDescendantTableIsCleaned:
         task = tasks.create(ws, title="t", description="")
         db = tmp_path / ".codeframe" / "state.db"
 
+        # This orphan can no longer be CREATED — foreign keys are enforced
+        # (#1061) — but it is exactly what pre-enforcement workspaces contain,
+        # and cleaning it up is what this test is about. Constructed
+        # deliberately, with the pragma turned back on in the same block.
         conn = _open_db(db)
+        conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute(
             "INSERT INTO run_logs (run_id, task_id, timestamp, log_level,"
             " category, message) VALUES (?,?,?,?,?,?)",
             ("run-that-never-existed", task.id, "2026-01-01", "INFO", "X", "m"),
         )
         conn.commit()
+        conn.execute("PRAGMA foreign_keys = ON")
         conn.close()
 
         tasks.delete(ws, task.id)
@@ -281,7 +288,7 @@ class TestDeleteAllCleansUpToo:
         for i in range(2):
             task = tasks.create(ws, title=f"t{i}", description="")
             run = runtime.start_task_run(ws, task.id)
-            _seed_every_child_table(db, task.id, run.id)
+            _seed_every_child_table(db, task.id, run.id, ws.id)
 
         assert tasks.delete_all(ws) == 2
 

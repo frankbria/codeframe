@@ -911,8 +911,9 @@ def delete(workspace: Workspace, task_id: str) -> bool:
         cursor = conn.cursor()
 
         # Delete child rows FIRST (#943) — see _delete_task_children. Ordering
-        # matters even before PRAGMA foreign_keys goes on (#1061): the
-        # grandchild deletes select through `runs`.
+        # is now load-bearing, not defensive: PRAGMA foreign_keys is enforced
+        # (#1061) and the FKs carry no ON DELETE CASCADE, so without this every
+        # deletion of an executed task fails outright.
         _delete_task_children(cursor, "task_id = ?", (task_id,))
 
         cursor.execute(
