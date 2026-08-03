@@ -564,7 +564,7 @@ OPENAPI_TAGS = [
     },
     {
         "name": "review-v2",
-        "description": "Code review - inspect the working diff and export it as a patch.",
+        "description": "Code review - inspect the working diff, export it as a patch, run an AI review over changed files or a task, and draft a commit message.",
     },
     {
         "name": "git-v2",
