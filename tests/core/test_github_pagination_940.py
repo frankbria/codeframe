@@ -219,11 +219,26 @@ class TestImportFanOutIsBounded:
 
         source = inspect.getsource(github_integrations_v2.import_issues)
 
-        assert "async with httpx.AsyncClient() as client" in source
+        assert "async with httpx.AsyncClient(timeout=GITHUB_TIMEOUT) as client" in source
         assert "asyncio.gather" in source
         assert "asyncio.Semaphore(IMPORT_CONCURRENCY)" in source
         # The old shape: one client per issue, awaited in a loop.
         assert "await get_issue(pat, repo, number)" not in source
+
+    def test_the_shared_client_keeps_the_services_timeout(self):
+        """Raised by codex review: sharing one client silently dropped the
+        issue service's 15s timeout to httpx's 5s default, so imports would
+        start failing at 5s on slower GitHub responses."""
+        import inspect
+
+        from codeframe.core.github_issues_service import _TIMEOUT
+        from codeframe.ui.routers import github_integrations_v2
+
+        assert github_integrations_v2.GITHUB_TIMEOUT == _TIMEOUT
+
+        source = inspect.getsource(github_integrations_v2.import_issues)
+        assert "httpx.AsyncClient(timeout=GITHUB_TIMEOUT)" in source
+        assert "httpx.AsyncClient()" not in source, "back to the 5s default"
 
     @pytest.mark.asyncio
     async def test_a_hundred_issues_share_one_client(self):

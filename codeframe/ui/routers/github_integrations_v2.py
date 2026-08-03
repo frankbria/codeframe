@@ -37,6 +37,7 @@ from codeframe.core.github_connect_service import (
     validate_connection,
 )
 from codeframe.core.github_issues_service import (
+    _TIMEOUT,
     IssueNotFoundError,
     NotAnIssueError,
     get_issue,
@@ -116,6 +117,10 @@ class GitHubIssuesResponse(BaseModel):
 #: the PAT's hourly budget, so an unbounded select-all could exhaust it in a
 #: single click. 200 is well above any realistic manual selection.
 MAX_IMPORT_ISSUES = 200
+
+#: Match the issue service's own client timeout; see the comment at the call
+#: site for why sharing one client made this easy to lose.
+GITHUB_TIMEOUT = _TIMEOUT
 
 #: Concurrent in-flight issue fetches. GitHub tolerates modest parallelism;
 #: this bounds both socket use and how fast the rate limit is consumed.
@@ -534,7 +539,11 @@ async def import_issues(
         async with semaphore:
             return await get_issue(pat, repo, number, client=client)
 
-    async with httpx.AsyncClient() as client:
+    # timeout=GITHUB_TIMEOUT, not httpx's 5s default: get_issue() built its own
+    # clients with the service's 15s value, and the shared client silently
+    # halved-and-then-some the budget — imports would start failing at 5s on
+    # slower GitHub responses (codex review on #940).
+    async with httpx.AsyncClient(timeout=GITHUB_TIMEOUT) as client:
         results = await asyncio.gather(
             *(_fetch(n, client) for n in body.issue_numbers),
             return_exceptions=True,
