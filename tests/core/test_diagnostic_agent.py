@@ -4,7 +4,6 @@ Tests the LLM-powered diagnostic analysis of run failures.
 """
 
 import pytest
-import uuid
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -28,15 +27,24 @@ def workspace(tmp_path: Path):
 
 
 @pytest.fixture
-def run_id():
-    """Create a unique run ID."""
-    return str(uuid.uuid4())
+def run_id(workspace, task_id):
+    """A REAL run row (#1061).
+
+    Was a bare uuid4(). The run_logs and diagnostic_reports rows these tests
+    insert reference it, so with foreign keys enforced they were orphans —
+    which is what they were in production too.
+    """
+    from codeframe.core import runtime
+
+    return runtime.start_task_run(workspace, task_id).id
 
 
 @pytest.fixture
-def task_id():
-    """Create a unique task ID."""
-    return str(uuid.uuid4())
+def task_id(workspace):
+    """A REAL task row (#1061)."""
+    from codeframe.core import tasks
+
+    return tasks.create(workspace, title="diagnostic fixture", description="").id
 
 
 @pytest.fixture

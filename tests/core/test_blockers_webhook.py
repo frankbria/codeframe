@@ -16,12 +16,37 @@ from codeframe.core.workspace import create_or_load_workspace
 pytestmark = pytest.mark.v2
 
 
+def _seed_tasks(ws, *task_ids: str) -> None:
+    """Create REAL task rows for the literal ids these tests use (#1061).
+
+    Foreign keys are enforced now, so a blocker attached to "t-1" needs a "t-1"
+    task — otherwise it is an orphan, which is what it was in production. The
+    ids are literals rather than fixtures because the dedupe tests assert on
+    them by name.
+    """
+    from codeframe.core.workspace import get_db_connection
+
+    now = "2026-01-01T00:00:00+00:00"
+    conn = get_db_connection(ws)
+    try:
+        for task_id in task_ids or ("t-1", "t-2"):
+            conn.execute(
+                "INSERT OR IGNORE INTO tasks (id, workspace_id, title, description,"
+                " status, priority, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                (task_id, ws.id, "webhook fixture", "", "BACKLOG", 0, now, now),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 @pytest.fixture
 def workspace():
     temp_dir = Path(tempfile.mkdtemp())
     ws_path = temp_dir / "ws"
     ws_path.mkdir(parents=True, exist_ok=True)
     ws = create_or_load_workspace(ws_path)
+    _seed_tasks(ws)
     try:
         yield ws
     finally:
@@ -150,6 +175,7 @@ def test_dedupe_does_not_cross_workspaces(tmp_path):
         ws_path = tmp_path / name
         ws_path.mkdir(parents=True, exist_ok=True)
         ws = create_or_load_workspace(ws_path)
+        _seed_tasks(ws)  # a real "t-1" in each workspace (#1061)
         ids.append(blockers.create(ws, question=questions, task_id="t-1").id)
         assert len(blockers.list_open(ws)) == 1
     assert ids[0] != ids[1]

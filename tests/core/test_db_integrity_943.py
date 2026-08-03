@@ -19,9 +19,10 @@ from codeframe.core.workspace import _open_db, create_or_load_workspace
 pytestmark = pytest.mark.v2
 
 
-# The foreign-key enforcement tests moved to #1061 with the pragma itself: they
-# only mean anything once PRAGMA foreign_keys is on, and turning it on requires
-# migrating 66 test fixtures that currently insert orphan rows.
+# The foreign-key enforcement tests live in test_foreign_keys_enforced_1061.py,
+# which is where the pragma was turned on. The child-row cleanup below is what
+# makes enforcement survivable — the FKs carry no ON DELETE CASCADE — so the two
+# files are the two halves of one guarantee.
 
 
 class TestDuplicateExternalUrlDoesNotBrickTheWorkspace:

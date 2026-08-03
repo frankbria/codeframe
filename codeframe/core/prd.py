@@ -391,6 +391,18 @@ def delete(
             conn.close()
             raise PrdHasDependentTasksError(prd_id, task_count)
 
+    # Detach dependent tasks BEFORE removing the PRD (#1061). `tasks.prd_id`
+    # references `prds(id)`, and with foreign keys enforced a force-delete would
+    # otherwise fail outright. Before enforcement it left every one of those
+    # tasks pointing at a PRD that no longer existed — silently, forever.
+    #
+    # The tasks themselves are kept: a task is real work, and losing it because
+    # its source document was deleted would be far worse than losing the link.
+    cursor.execute(
+        "UPDATE tasks SET prd_id = NULL WHERE workspace_id = ? AND prd_id = ?",
+        (workspace.id, prd_id),
+    )
+
     cursor.execute(
         """
         DELETE FROM prds

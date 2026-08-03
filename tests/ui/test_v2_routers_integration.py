@@ -153,18 +153,39 @@ class TestBlockersV2Create:
         assert "created_at" in data
 
     def test_create_blocker_with_task_id(self, test_client):
-        """Create blocker associated with a task."""
+        """Create blocker associated with a REAL task (#1061).
+
+        This posted `task_id: "task-123"` with no such task. Before foreign keys
+        were enforced that produced a blocker attached to nothing; after, a 500.
+        Neither is right — the handler now 404s a bad id, and this test uses a
+        task that exists.
+        """
+        from codeframe.core import tasks
+
+        task = tasks.create(
+            test_client.workspace, title="needs a decision", description=""
+        )
+
         response = test_client.post(
             "/api/v2/blockers",
             json={
                 "question": "What authentication should I use?",
-                "task_id": "task-123"
+                "task_id": task.id,
             }
         )
 
-        assert response.status_code == 201
+        assert response.status_code == 201, response.text
         data = response.json()
-        assert data["task_id"] == "task-123"
+        assert data["task_id"] == task.id
+
+    def test_create_blocker_with_unknown_task_id_is_404(self, test_client):
+        """The caller's mistake, not a server fault."""
+        response = test_client.post(
+            "/api/v2/blockers",
+            json={"question": "q?", "task_id": "no-such-task"},
+        )
+
+        assert response.status_code == 404, response.text
 
     def test_create_blocker_empty_question(self, test_client):
         """Create blocker with empty question returns 422."""

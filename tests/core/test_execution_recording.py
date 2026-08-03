@@ -34,12 +34,50 @@ pytestmark = pytest.mark.v2
 # ---------------------------------------------------------------------------
 
 
+#: Every run id these tests hand to ExecutionRecorder. They are literals rather
+#: than fixtures because each test names its own, and the recorder writes
+#: execution_steps / llm_interactions / file_operations rows against them.
+_RUN_IDS = (
+    "run-1",
+    "run-cmp-1",
+    "run-edit-1",
+    "run-fop-1",
+    "run-llm-1",
+    "run-noop-1",
+    "run-rec-1",
+)
+
+
 @pytest.fixture
 def workspace(tmp_path):
-    """Create a workspace with DB tables initialized."""
+    """A workspace whose run rows actually exist (#1061).
+
+    Foreign keys are enforced now, so a recorder writing against ``run-1`` needs
+    a real ``runs`` row parented by a real ``tasks`` row — otherwise every row it
+    records is an orphan, which is what they were in production. Seeding the
+    literal ids here keeps each test reading as it did, rather than threading a
+    fixture through 10 call sites.
+    """
+    from codeframe.core import tasks
+    from codeframe.core.workspace import get_db_connection
+
     repo_path = tmp_path / "test_repo"
     repo_path.mkdir()
-    return create_or_load_workspace(repo_path)
+    ws = create_or_load_workspace(repo_path)
+
+    task = tasks.create(ws, title="recording fixture", description="")
+    conn = get_db_connection(ws)
+    try:
+        for run_id in _RUN_IDS:
+            conn.execute(
+                "INSERT INTO runs (id, workspace_id, task_id, status, started_at)"
+                " VALUES (?,?,?,?,?)",
+                (run_id, ws.id, task.id, "RUNNING", "2026-01-01T00:00:00+00:00"),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return ws
 
 
 @pytest.fixture
@@ -105,8 +143,15 @@ class TestExecutionRecorder:
 
     def test_record_llm_call_saves_interaction(self, workspace):
         recorder = ExecutionRecorder(workspace=workspace, run_id="run-1")
+        # A real parent step, via the same call production makes (#1061).
+        # llm_interactions FKs to execution_steps(id), so a literal "step-1" is
+        # an orphan the schema now refuses.
+        step_id = recorder.record_iteration(
+            step_number=1, tool_names=["read_file"], llm_response_summary="read"
+        )
+        recorder.flush()
         recorder.record_llm_call(
-            step_id="step-1",
+            step_id=step_id,
             prompt_summary="System: CodeFRAME agent | User: implement task",
             response_summary="Tool calls: read_file(a.py)",
             model="claude-sonnet-4-20250514",
@@ -117,14 +162,19 @@ class TestExecutionRecorder:
 
         interactions = get_llm_interactions(workspace, "run-1")
         assert len(interactions) == 1
-        assert interactions[0].step_id == "step-1"
+        assert interactions[0].step_id == step_id
         assert interactions[0].tokens_used == 1500
         assert interactions[0].model == "claude-sonnet-4-20250514"
 
     def test_record_file_operation_saves_op(self, workspace):
         recorder = ExecutionRecorder(workspace=workspace, run_id="run-1")
+        # file_operations FKs to execution_steps(id) — a real parent (#1061).
+        step_id = recorder.record_iteration(
+            step_number=1, tool_names=["edit_file"], llm_response_summary="edit"
+        )
+        recorder.flush()
         recorder.record_file_operation(
-            step_id="step-1",
+            step_id=step_id,
             op_type="create",
             path="src/main.py",
             before=None,
@@ -141,10 +191,13 @@ class TestExecutionRecorder:
     def test_flush_writes_buffered_records(self, workspace):
         recorder = ExecutionRecorder(workspace=workspace, run_id="run-1")
         # Record multiple items without explicit flush
-        recorder.record_iteration(step_number=1, tool_names=["read_file"], llm_response_summary="read")
+        step_id = recorder.record_iteration(step_number=1, tool_names=["read_file"], llm_response_summary="read")
         recorder.record_iteration(step_number=2, tool_names=["edit_file"], llm_response_summary="edit")
-        recorder.record_llm_call("s1", "prompt", "response", "model", 100, "execution")
-        recorder.record_file_operation("s1", "create", "a.py", None, "content")
+        # The buffered step and its children flush together, so the FK is
+        # satisfied within the one transaction — which is the ordering
+        # production relies on too (#1061).
+        recorder.record_llm_call(step_id, "prompt", "response", "model", 100, "execution")
+        recorder.record_file_operation(step_id, "create", "a.py", None, "content")
 
         # Nothing written yet (buffered)
         assert len(get_execution_steps(workspace, "run-1")) == 0
