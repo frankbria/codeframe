@@ -391,16 +391,39 @@ def delete(
             conn.close()
             raise PrdHasDependentTasksError(prd_id, task_count)
 
-    # Detach dependent tasks BEFORE removing the PRD (#1061). `tasks.prd_id`
-    # references `prds(id)`, and with foreign keys enforced a force-delete would
-    # otherwise fail outright. Before enforcement it left every one of those
-    # tasks pointing at a PRD that no longer existed — silently, forever.
+    # Detach everything that references this PRD BEFORE removing it (#1061).
+    # With foreign keys enforced a delete would otherwise fail outright; before
+    # enforcement it left dangling references behind — silently, forever.
     #
-    # The tasks themselves are kept: a task is real work, and losing it because
+    # Tasks are KEPT, only unlinked: a task is real work, and losing it because
     # its source document was deleted would be far worse than losing the link.
     cursor.execute(
         "UPDATE tasks SET prd_id = NULL WHERE workspace_id = ? AND prd_id = ?",
         (workspace.id, prd_id),
+    )
+
+    # prds references ITSELF twice — parent_id and chain_id — so deleting any
+    # non-latest version of a versioned PRD hit the same wall (raised in
+    # review). A v1 whose v2 carries parent_id=v1 AND chain_id=v1 could not be
+    # deleted at all.
+    #
+    # Re-parent rather than null: the surviving versions keep their lineage by
+    # skipping the deleted one, which is what a version chain means. chain_id
+    # falls back to the row's own id, matching how store() seeds a new chain.
+    cursor.execute(
+        "SELECT parent_id FROM prds WHERE workspace_id = ? AND id = ?",
+        (workspace.id, prd_id),
+    )
+    row = cursor.fetchone()
+    grandparent = row[0] if row else None
+
+    cursor.execute(
+        "UPDATE prds SET parent_id = ? WHERE workspace_id = ? AND parent_id = ?",
+        (grandparent, workspace.id, prd_id),
+    )
+    cursor.execute(
+        "UPDATE prds SET chain_id = id WHERE workspace_id = ? AND chain_id = ? AND id != ?",
+        (workspace.id, prd_id, prd_id),
     )
 
     cursor.execute(

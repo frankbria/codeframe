@@ -246,3 +246,90 @@ class TestNoFixtureRelaxesTheEnforcement:
 
         assert 'PRAGMA foreign_keys = ON' in code
         assert "getenv" not in code
+
+
+class TestDeletingAVersionedPrd:
+    """Raised in review. `prds` references ITSELF twice — parent_id and
+    chain_id — so clearing `tasks.prd_id` was only part of the job: deleting any
+    non-latest version of a versioned PRD still hit the constraint.
+
+    A v1 whose v2 carries `parent_id=v1` AND `chain_id=v1` could not be deleted
+    at all. Before enforcement it left both references dangling.
+    """
+
+    @pytest.fixture
+    def chain(self, workspace):
+        """v1 <- v2 <- v3, a real refinement chain."""
+        from codeframe.core import prd
+
+        v1 = prd.store(workspace, "# One\n\nfirst\n")
+        v2 = prd.create_new_version(workspace, v1.id, "# One\n\nsecond\n", "refined")
+        v3 = prd.create_new_version(workspace, v2.id, "# One\n\nthird\n", "again")
+        return v1, v2, v3
+
+    def test_the_chain_is_actually_self_referential(self, workspace, chain):
+        """The premise. If store/create_new_version stop wiring these, the tests
+        below would pass without exercising anything."""
+        v1, v2, _ = chain
+
+        assert v2.parent_id == v1.id
+        assert v2.chain_id == v1.id
+
+    def test_deleting_the_root_version_succeeds(self, workspace, chain):
+        from codeframe.core import prd
+
+        v1, _, _ = chain
+
+        assert prd.delete(workspace, v1.id, check_dependencies=False) is True
+
+    def test_deleting_a_middle_version_succeeds(self, workspace, chain):
+        from codeframe.core import prd
+
+        _, v2, _ = chain
+
+        assert prd.delete(workspace, v2.id, check_dependencies=False) is True
+
+    def test_the_surviving_versions_are_kept(self, workspace, chain):
+        """Deleting one version must not cascade the rest away — they are the
+        user's document history."""
+        from codeframe.core import prd
+
+        v1, v2, v3 = chain
+        prd.delete(workspace, v2.id, check_dependencies=False)
+
+        assert prd.get_by_id(workspace, v1.id) is not None
+        assert prd.get_by_id(workspace, v3.id) is not None
+
+    def test_lineage_skips_the_deleted_version_rather_than_breaking(
+        self, workspace, chain
+    ):
+        """Re-parented, not nulled: a chain with a hole in the middle should
+        close up, which is what a version chain means."""
+        from codeframe.core import prd
+
+        v1, v2, v3 = chain
+        prd.delete(workspace, v2.id, check_dependencies=False)
+
+        assert prd.get_by_id(workspace, v3.id).parent_id == v1.id
+
+    def test_deleting_the_root_leaves_no_dangling_chain_id(self, workspace, chain):
+        """chain_id falls back to the row's own id — the same thing store()
+        does when it seeds a new chain."""
+        from codeframe.core import prd
+
+        v1, _, v3 = chain
+        prd.delete(workspace, v1.id, check_dependencies=False)
+
+        surviving = prd.get_by_id(workspace, v3.id)
+        assert surviving is not None
+        assert prd.get_by_id(workspace, surviving.chain_id) is not None, (
+            "chain_id points at a PRD that no longer exists"
+        )
+
+    def test_an_unversioned_prd_still_deletes(self, workspace):
+        """The simple case must not regress."""
+        from codeframe.core import prd
+
+        solo = prd.store(workspace, "# Solo\n\nonly\n")
+
+        assert prd.delete(workspace, solo.id, check_dependencies=False) is True
