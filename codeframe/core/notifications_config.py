@@ -226,14 +226,20 @@ def is_webhook_active(workspace: Workspace) -> Optional[str]:
     if not _is_safe_webhook_url(url):
         logger.warning(
             "Refusing to dispatch webhook to unsafe URL: %s",
-            _redact_url_for_log(url),
+            redact_webhook_url(url),
         )
         return None
     return url
 
 
-def _redact_url_for_log(url: str) -> str:
-    """Return a logging-safe representation of a webhook URL.
+def redact_webhook_url(url: str) -> str:
+    """Return a display-safe representation of a webhook URL.
+
+    Used for logs AND for the settings API response (#941): Slack/Discord/
+    GitHub webhook URLs are bearer credentials — anyone holding the full URL can
+    post to the channel — so the path and query must never reach a read-scope
+    caller. Sibling secret material in this codebase is admin-gated and never
+    echoed; this brings the webhook URL in line.
 
     Slack/Discord/GitHub-style webhook URLs commonly embed secrets in:
 

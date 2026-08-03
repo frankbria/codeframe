@@ -60,7 +60,11 @@ class TestGetNotificationSettings:
         r = client.get("/api/v2/settings/notifications")
         assert r.status_code == 200
         data = r.json()
-        assert data == {"webhook_url": None, "webhook_enabled": False}
+        # webhook_url_set added in #941; assert the fields, not an exact dict,
+        # so a new non-secret field does not fail this.
+        assert data["webhook_url"] is None
+        assert data["webhook_enabled"] is False
+        assert data["webhook_url_set"] is False
 
 
 class TestUpdateNotificationSettings:
@@ -84,7 +88,11 @@ class TestUpdateNotificationSettings:
         )
         r = client.get("/api/v2/settings/notifications")
         data = r.json()
-        assert data["webhook_url"] == "https://x.test/h"
+        # MASKED since #941 — the path/query of a webhook URL carries its token,
+        # so a read-scope caller gets scheme://host and a "set" flag, not the
+        # credential. Round-tripping the mask through PUT is a no-op by design.
+        assert data["webhook_url"] == "https://x.test"
+        assert data["webhook_url_set"] is True
         assert data["webhook_enabled"] is False
 
     def test_empty_url_clears_value(self, client):

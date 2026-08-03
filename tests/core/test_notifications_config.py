@@ -173,23 +173,23 @@ def test_unsafe_url_log_does_not_leak_basic_auth(workspace, caplog):
     assert "admin:" not in log_text
 
 
-def test_redact_url_for_log_preserves_port():
+def testredact_webhook_url_preserves_port():
     """Port is non-secret and useful in logs (which environment), so keep it."""
-    from codeframe.core.notifications_config import _redact_url_for_log
+    from codeframe.core.notifications_config import redact_webhook_url
 
-    assert _redact_url_for_log("https://hooks.example.com:8443/path/x?q=1") == (
+    assert redact_webhook_url("https://hooks.example.com:8443/path/x?q=1") == (
         "https://hooks.example.com:8443"
     )
 
 
-def test_redact_url_for_log_handles_malformed_port():
+def testredact_webhook_url_handles_malformed_port():
     """``parsed.port`` raises ValueError for invalid ports — the redaction
     helper must convert that into <unparseable> rather than letting it bubble
     out and turn ``is_webhook_active``'s fail-safe branch into an exception.
     """
-    from codeframe.core.notifications_config import _redact_url_for_log
+    from codeframe.core.notifications_config import redact_webhook_url
 
-    assert _redact_url_for_log("https://host:not-a-port/path") == "<unparseable>"
+    assert redact_webhook_url("https://host:not-a-port/path") == "<unparseable>"
 
 
 def test_is_webhook_active_returns_none_for_malformed_port(workspace):

@@ -72,6 +72,7 @@ from codeframe.ui.models import (
     VerifyKeyResponse,
 )
 from codeframe.ui.response_models import ErrorCodes, api_error
+from codeframe.core.notifications_config import redact_webhook_url
 
 logger = logging.getLogger(__name__)
 
@@ -440,7 +441,12 @@ async def verify_key(
 
 
 class NotificationSettingsResponse(BaseModel):
+    #: MASKED to scheme://host[:port] — never the full URL (#941). The path and
+    #: query of a Slack/Discord/GitHub webhook carry its token.
     webhook_url: Optional[str] = None
+    #: Whether a URL is stored, so the UI can distinguish "unset" from "set but
+    #: not shown" without the value itself.
+    webhook_url_set: bool = False
     webhook_enabled: bool = False
 
 
@@ -464,10 +470,20 @@ async def get_notification_settings(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> NotificationSettingsResponse:
-    """Load outbound webhook config for this workspace."""
+    """Load outbound webhook config for this workspace.
+
+    The URL is MASKED to scheme://host[:port] (#941). A Slack/Discord/GitHub
+    webhook URL is a bearer credential — its path and query carry the token, and
+    anyone holding the full URL can post to the channel. Returning it verbatim
+    to any read-scope caller was inconsistent with every other secret here,
+    which is admin-gated and never echoed. `webhook_url_set` tells the UI whether
+    one is configured without disclosing it.
+    """
     cfg = load_notifications_config(workspace)
+    stored = cfg["webhook_url"]
     return NotificationSettingsResponse(
-        webhook_url=cfg["webhook_url"],
+        webhook_url=redact_webhook_url(stored) if stored else None,
+        webhook_url_set=bool(stored),
         webhook_enabled=cfg["webhook_enabled"],
     )
 
@@ -548,6 +564,15 @@ async def update_notification_settings(
     the saved URL. The URL is validated for ``http(s)`` scheme to avoid
     ``file://`` / ``ftp://`` SSRF on local resources.
     """
+    # GET now returns the URL MASKED (#941), so a client that round-trips what
+    # it was shown would otherwise overwrite the real URL with "https://host".
+    # Treat a submitted value identical to the current mask as "unchanged" —
+    # server-side, so it protects any client, not just our own UI.
+    existing = load_notifications_config(workspace)["webhook_url"]
+    submitted = (body.webhook_url or "").strip()
+    if existing and submitted and submitted == redact_webhook_url(existing):
+        body = body.model_copy(update={"webhook_url": existing})
+
     # Off the event loop: _validate_webhook_url may do a blocking DNS lookup.
     url = await run_in_threadpool(_validate_webhook_url, body.webhook_url)
     try:
