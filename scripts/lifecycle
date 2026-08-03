@@ -5,7 +5,9 @@
 #   scripts/lifecycle [options]
 #
 # Options:
-#   --mode cli|api|web|all   Which test mode (default: cli)
+#   --mode cli|all           Which test mode (default: cli)
+#                            api and web are NOT implemented — they exit 3
+#                            rather than reporting a false pass (#948, #1068)
 #   --model haiku|sonnet     LLM model to use (default: haiku, cheaper)
 #   --verbose / -v           Pass -s to pytest (show live output)
 #   --no-cleanup             Keep temp directories after test (for inspection)
@@ -43,6 +45,21 @@ case "$MODE" in
   *) echo "Error: --mode must be cli, api, web, or all" >&2; exit 1 ;;
 esac
 
+# api and web are NOT implemented (#948). They used to resolve to files whose
+# only content was a @pytest.mark.skip class raising NotImplementedError, so
+# pytest collected nothing but skips and exited 0 — and CLAUDE.md advertises
+# this script as the pre-PR gate. Two of its four modes therefore reported
+# success for work that did not exist. Fail loudly instead; tracked in #1068.
+if [[ "$MODE" == "api" || "$MODE" == "web" ]]; then
+  echo "Error: --mode $MODE is not implemented." >&2
+  echo "" >&2
+  echo "  The $MODE lifecycle test does not exist yet. It used to 'pass' by" >&2
+  echo "  collecting only skipped stubs — see issue #1068 for the plan." >&2
+  echo "" >&2
+  echo "  Run the implemented mode instead:  scripts/lifecycle --mode cli" >&2
+  exit 3
+fi
+
 case "$MODEL" in
   haiku|sonnet) ;;
   *) echo "Error: --model must be haiku or sonnet" >&2; exit 1 ;;
@@ -63,8 +80,9 @@ fi
 # ── Resolve test path ────────────────────────────────────────────────────────
 case "$MODE" in
   cli) TEST_PATH="tests/lifecycle/test_cli_lifecycle.py" ;;
-  api) TEST_PATH="tests/lifecycle/test_api_lifecycle.py" ;;
-  web) TEST_PATH="tests/lifecycle/test_web_lifecycle.py" ;;
+  # 'all' is currently the same set as 'cli' — the api and web modes are
+  # rejected above. Kept as a distinct mode so it starts covering them the
+  # moment #1068 lands, rather than needing a caller to change.
   all) TEST_PATH="tests/lifecycle/" ;;
 esac
 

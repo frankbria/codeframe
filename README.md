@@ -7,7 +7,7 @@
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 [![CI](https://github.com/frankbria/codeframe/actions/workflows/test.yml/badge.svg)](https://github.com/frankbria/codeframe/actions/workflows/test.yml)
-![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
 > [!WARNING]
@@ -74,7 +74,7 @@ THE CLOSED LOOP
 ---
 
 > [!NOTE]
-> **CodeFRAME is in public beta (`0.9.0`).** The vision and the Golden Path CLI
+> **CodeFRAME is in public beta (`0.9.1`).** The vision and the Golden Path CLI
 > (`cf init/prd/tasks/work/proof/pr`) and v2 API are stable enough to build on;
 > the web UI and anything marked "in progress" in
 > [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) are still moving, and
@@ -315,7 +315,7 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - **Multi-provider LLM**: Anthropic (default) or any OpenAI-compatible endpoint (OpenAI, Ollama, vLLM, LM Studio, Qwen, Deepseek) via `--llm-provider` / `--llm-model` or env vars
 - **Server layer** (optional): FastAPI with 16+ v2 routers, API key auth, rate limiting, SSE streaming, WebSocket endpoints (agent chat, interactive terminal), OpenAPI docs
 - **Web UI**: Workspace view, PRD discovery, Task board, Blocker resolution, Review/commit, PROOF9 requirements list + per-gate evidence display + run history panel + waiver audit trail, agent chat panel with streaming tool-call display, interactive terminal for session workspaces, Sessions list with active-session badge
-- **Test suite**: 4200+ tests, 88% coverage
+- **Test suite**: 5100+ tests, 81.9% measured coverage (CI enforces an 80% floor)
 
 ---
 
@@ -340,12 +340,12 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - [x] PROOF9 -- 9-gate evidence-based quality system
 - [x] `cf proof capture` -- Glitch-to-requirement closed loop
 - [x] Quality compounding: every failure becomes a permanent proof obligation
-- [ ] Run gates from the web UI (backend ready, frontend pending)
-- [ ] Glitch capture web UI
+- [x] Run gates from the web UI -- live progress, per-gate evidence, run history
+- [x] Glitch capture web UI -- `CaptureGlitchModal` plus the REQ detail view at `/proof/[req_id]`
 - [x] Merge gating on PROOF9 pass -- enforced server-side at the merge API, with an explicit audited override (actor + reason)
 
 ### SHIP (delivery confidence)
-- [ ] PR status tracking + CI check display in web UI
+- [x] PR status tracking + CI check display in web UI (`PRStatusPanel` on `/review`)
 - [ ] Post-merge glitch capture loop
 
 ### Web UI
@@ -357,7 +357,7 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - [x] PROOF9 requirements list, detail, evidence history, sort/filter controls, waiver with audit trail
 - [x] Interactive Agent Sessions — chat panel (tool calls, thinking blocks), XTerm.js terminal, SplitPane layout
 - [x] Run gates button, live gate progress, per-gate evidence display, run history panel (PROOF9 page)
-- [ ] Glitch capture form and REQ detail view
+- [x] Glitch capture form and REQ detail view (markdown description, scope metadata, obligations table, sortable evidence history)
 - [x] PR status panel with PROOF9-gated merge button (gate also enforced server-side)
 
 ---
@@ -376,7 +376,7 @@ export OPENAI_BASE_URL=http://localhost:11434/v1  # for Ollama, vLLM, LM Studio,
 # Per-workspace: .codeframe/config.yaml supports an `llm:` block for the same options
 
 # Optional
-export DATABASE_PATH=./codeframe.db         # Default: in-memory SQLite
+export DATABASE_PATH=./codeframe.db         # Default: ./.codeframe/state.db
 export RATE_LIMIT_ENABLED=true              # API rate limiting
 export RATE_LIMIT_DEFAULT=100/minute        # Default limit
 ```
@@ -431,7 +431,7 @@ cd web-ui && npm run build             # Production build verification
 4. Run tests: `uv run pytest`
 5. Submit PR with tests and clear description
 
-Code standards: PEP 8, `ruff` for linting, type hints required, 85%+ test coverage.
+Code standards: PEP 8, `ruff` for linting, type hints required, 80%+ test coverage (enforced by CI via `.coveragerc`).
 
 During the beta, feature ideas go to [Discussions -> Ideas](https://github.com/frankbria/codeframe/discussions/categories/ideas) before code. See [CONTRIBUTING.md](CONTRIBUTING.md) for what's stable, what isn't, and how to propose changes.
 

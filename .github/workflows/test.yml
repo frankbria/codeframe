@@ -247,7 +247,10 @@ jobs:
             --cov-report=term \
             --cov-report=xml \
             --cov-report=html
-          echo "Coverage measured for reporting purposes."
+          # Coverage is a GATE, not a report (#948): .coveragerc sets
+          # fail_under = 80, which pytest-cov enforces on this run and which
+          # the README badge mirrors. The step above fails on its own if the
+          # floor is missed — nothing here needs to re-check it.
           echo "Note: gate runs every non-e2e test except 'lifecycle' (real-LLM,"
           echo "      run locally via scripts/lifecycle before opening a PR)."
 
@@ -349,71 +352,37 @@ jobs:
           uv pip install -e .
           echo "✅ Package installed in editable mode"
 
-      - name: Initialize database
-        run: |
-          mkdir -p .codeframe
-          source .venv/bin/activate
-          python -c "from codeframe.platform_store.database import Database; db = Database('.codeframe/state.db'); db.initialize(); db.close()"
-          echo "✅ Database initialized"
-
-      - name: Start FastAPI server in background
-        env:
-          DATABASE_PATH: ${{ github.workspace }}/.codeframe/state.db
-          WORKSPACE_ROOT: ${{ github.workspace }}
-          CODEFRAME_DEPLOYMENT_MODE: self_hosted
-          # Auth is ON by default and the server refuses to start on the default
-          # JWT secret (issue #643); supply a throwaway test secret so startup
-          # succeeds. Not a real credential — CI/E2E only.
-          AUTH_SECRET: ci-e2e-test-secret-not-a-real-credential
-        run: |
-          source .venv/bin/activate
-          python -m uvicorn codeframe.ui.server:app --port 8080 > /tmp/server.log 2>&1 &
-          echo "BACKEND_PID=$!" >> $GITHUB_ENV
-          echo "Server started with PID: $!"
-
-      - name: Verify server startup
-        run: |
-          sleep 5
-          if ! ps -p $BACKEND_PID > /dev/null; then
-            echo "❌ Server process died immediately"
-            cat /tmp/server.log
-            exit 1
-          fi
-          echo "✅ Server process is running (PID: $BACKEND_PID)"
-
-      - name: Wait for backend to be ready
-        run: |
-          echo "Waiting for server to start..."
-          for i in {1..120}; do
-            if curl -s http://localhost:8080/health > /dev/null; then
-              echo "✅ Server is ready!"
-              curl -s http://localhost:8080/health | jq .
-              exit 0
-            fi
-            echo "Attempt $i/120: Server not ready yet..."
-            sleep 1
-          done
-          echo "❌ Server failed to start within 120 seconds"
-          echo "=== Server Logs ==="
-          cat /tmp/server.log
-          exit 1
+      # No server is started here any more (#948). This job used to boot uvicorn,
+      # poll /health for up to 120s, and tear it down — while not one test under
+      # tests/e2e makes an HTTP request. They drive the CLI through Typer's
+      # CliRunner in-process. The boot verified nothing these tests need, and a
+      # server that failed to start would have failed the job for an unrelated
+      # reason. The real server IS exercised, by the E2E Browser job below, whose
+      # playwright.config.ts starts it itself.
 
       - name: Run E2E backend tests
         run: |
           # "and not e2e_llm" is load-bearing (#946): a -m on the command line
           # REPLACES the one in pytest.ini's addopts, so a bare -m "e2e" would
           # re-select the paid real-LLM Golden Path tests here.
+          set -o pipefail
           uv run pytest tests/e2e/ \
             -v \
             --tb=short \
-            -m "e2e and not e2e_llm"
+            -m "e2e and not e2e_llm" | tee /tmp/e2e-backend.log
 
-      - name: Stop FastAPI server
-        if: always()
+      - name: Fail if nothing actually ran
         run: |
-          if [ -n "$BACKEND_PID" ]; then
-            kill $BACKEND_PID || true
+          # A run where every test skipped used to exit 0 and read as a pass
+          # (#948). pytest exits 5 on "collected nothing" but has no equivalent
+          # for "collected only skips", so assert on the summary line.
+          if ! grep -qE "[0-9]+ passed" /tmp/e2e-backend.log; then
+            echo "❌ The E2E backend suite reported no passing tests."
+            echo "   Everything skipped, or the summary format changed."
+            tail -20 /tmp/e2e-backend.log
+            exit 1
           fi
+          echo "✅ $(grep -oE "[0-9]+ passed" /tmp/e2e-backend.log | tail -1)"
 
       - name: Upload E2E test reports
         if: always()
@@ -424,12 +393,12 @@ jobs:
             tests/e2e/fixtures/
             .pytest_cache/
 
-      - name: Upload server logs
+      - name: Upload the pytest log
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: e2e-backend-server-logs
-          path: /tmp/server.log
+          name: e2e-backend-pytest-log
+          path: /tmp/e2e-backend.log
           retention-days: 7
 
   # ============================================
