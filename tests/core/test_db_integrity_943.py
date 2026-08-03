@@ -11,7 +11,6 @@
   admin row into the domain database.
 """
 
-import sqlite3
 
 import pytest
 
@@ -20,26 +19,9 @@ from codeframe.core.workspace import _open_db, create_or_load_workspace
 pytestmark = pytest.mark.v2
 
 
-class TestForeignKeysAreEnforced:
-    def test_the_pragma_is_on_for_every_connection(self, tmp_path):
-        create_or_load_workspace(tmp_path)
-        conn = _open_db(tmp_path / ".codeframe" / "state.db")
-
-        assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-
-    def test_an_orphan_insert_is_refused(self, tmp_path):
-        """The point of the pragma: the FK now actually bites."""
-        create_or_load_workspace(tmp_path)
-        conn = _open_db(tmp_path / ".codeframe" / "state.db")
-
-        with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                "INSERT INTO blockers (id, workspace_id, task_id, question, status,"
-                " created_by, created_at)"
-                " VALUES ('b1','no-such-ws','no-such-task','q','PENDING','agent',"
-                "'2026-01-01')"
-            )
-            conn.commit()
+# The foreign-key enforcement tests moved to #1061 with the pragma itself: they
+# only mean anything once PRAGMA foreign_keys is on, and turning it on requires
+# migrating 66 test fixtures that currently insert orphan rows.
 
 
 class TestDuplicateExternalUrlDoesNotBrickTheWorkspace:

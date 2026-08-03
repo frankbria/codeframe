@@ -90,11 +90,13 @@ def _open_db(db_path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
-    # SQLite ignores FOREIGN KEY clauses unless this is enabled PER CONNECTION
-    # (#943). Every FK in this schema was decorative: tasks.delete left orphaned
-    # blockers, runs and logs behind forever, and nothing ever complained. The
-    # control-plane database already enabled it; this one did not.
-    conn.execute("PRAGMA foreign_keys = ON")
+    # NOTE (#943 / #1061): PRAGMA foreign_keys is deliberately NOT enabled here
+    # yet. Every FK in this schema is currently decorative, which is a real
+    # defect — but turning enforcement on fails 66 existing tests across 7 files
+    # whose fixtures insert run_logs and diagnostic_reports rows referencing
+    # task/run ids that do not exist. Those rows are being orphaned today; the
+    # tests assert against a state the schema forbids. Migrating them is its own
+    # focused change, tracked in #1061, not a rider on this one.
     return conn
 
 
