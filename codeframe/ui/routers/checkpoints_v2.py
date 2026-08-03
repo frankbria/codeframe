@@ -2,8 +2,6 @@
 
 This module provides v2-style API endpoints for checkpoint management that
 delegate to core/checkpoints.py. It uses the v2 Workspace model.
-
-The v1 router (checkpoints.py) remains for backwards compatibility.
 """
 
 import logging

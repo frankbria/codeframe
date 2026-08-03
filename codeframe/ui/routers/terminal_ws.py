@@ -1,7 +1,10 @@
 """WebSocket router for interactive terminal in a session workspace.
 
 Endpoint:
-    WS /ws/sessions/{session_id}/terminal?token=<JWT>
+    WS /ws/sessions/{session_id}/terminal?ticket=<ticket>
+
+Auth: a single-use, 60s ticket from ``POST /auth/stream-ticket`` (#745). A JWT
+in the query string is not accepted.
 
 Client → Server message types:
     Raw bytes / text: forwarded verbatim to subprocess stdin.

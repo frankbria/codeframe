@@ -1,7 +1,10 @@
 """WebSocket router for per-session streaming agent chat.
 
 Endpoint:
-    WS /ws/sessions/{session_id}/chat?token=<JWT>
+    WS /ws/sessions/{session_id}/chat?ticket=<ticket>
+
+Auth: a single-use, 60s ticket from ``POST /auth/stream-ticket`` (#745). A JWT
+in the query string is not accepted.
 
 Client → Server message types:
     {"type": "message", "content": "..."}

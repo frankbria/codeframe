@@ -2,8 +2,6 @@
 
 This module provides v2-style API endpoints for schedule management that
 delegate to core/schedule.py. It uses the v2 Workspace model.
-
-The v1 router (schedule.py) remains for backwards compatibility.
 """
 
 import logging

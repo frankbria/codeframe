@@ -1,17 +1,12 @@
 """V2 Discovery workflow router - delegates to core modules.
 
 This module provides v2-style API endpoints for PRD discovery that delegate
-to core/prd_discovery.py. It uses the v2 Workspace model and is designed
-to work alongside the v1 discovery router during migration.
+to core/prd_discovery.py.
 
-Key differences from v1:
 - Uses Workspace (path-based) instead of project_id
 - Delegates to core/prd_discovery functions
 - Stateless session management via session_id
 - No LeadAgent dependency
-
-The v1 router (discovery.py) remains for backwards compatibility with
-existing web UI until Phase 3 (Web UI Rebuild).
 """
 
 import logging

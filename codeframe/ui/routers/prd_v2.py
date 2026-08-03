@@ -420,8 +420,9 @@ async def stress_test_prd_stream_endpoint(
     the web equivalent of ``cf prd stress-test``.
 
     Declared as GET (not POST) so it is reachable from a browser
-    ``EventSource``, matching ``GET /api/v2/tasks/{task_id}/stream``. No custom
-    auth headers are required (cookie-based auth via ``withCredentials``).
+    ``EventSource``, matching ``GET /api/v2/tasks/{task_id}/stream``. Since
+    ``EventSource`` cannot send an ``Authorization`` header, this route accepts
+    a single-use ``?ticket=`` from ``POST /auth/stream-ticket`` (#745).
 
     Event payloads (JSON in the SSE ``data:`` field, ``type`` field):
         - ``goals_extracted``: high-level goals parsed from the PRD
