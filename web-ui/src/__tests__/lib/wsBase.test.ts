@@ -7,9 +7,31 @@
  * documented single-origin setup — therefore had a working terminal and a
  * silently dead chat socket, with no error to explain the difference.
  */
+import fs from 'fs';
+import path from 'path';
+
 import { wsBase } from '@/lib/wsBase';
 
 describe('wsBase (#944)', () => {
+  const ENV_KEYS = ['NEXT_PUBLIC_WS_URL', 'NEXT_PUBLIC_API_URL'] as const;
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    // The overrides are meant to be read INSTEAD of the ambient environment;
+    // a CI runner that exports either variable must not change any assertion.
+    ENV_KEYS.forEach((k) => {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    });
+  });
+
+  afterEach(() => {
+    ENV_KEYS.forEach((k) => {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    });
+  });
+
   it('derives the ws base from NEXT_PUBLIC_API_URL alone', () => {
     // The AC's exact scenario: one variable set, both sockets must agree.
     expect(wsBase({ NEXT_PUBLIC_API_URL: 'http://api.example.com' })).toBe(
@@ -42,5 +64,40 @@ describe('wsBase (#944)', () => {
     expect(wsBase({ NEXT_PUBLIC_API_URL: 'https://app.example.com' })).not.toBe(
       'ws://localhost:8000'
     );
+  });
+
+  describe('reads the environment the way Next can actually inline', () => {
+    // The first cut took `env: Record<string, string|undefined> = process.env`
+    // and read `env.NEXT_PUBLIC_API_URL`. That looks equivalent and is not:
+    // Next's build-time substitution is TEXTUAL on `process.env.NEXT_PUBLIC_X`,
+    // so an indirect read compiles to a lookup on the client's empty
+    // `process.env` stub — undefined, always the localhost fallback. Both
+    // callers are client components, so it would have shipped broken.
+    const source = fs.readFileSync(
+      path.join(process.cwd(), 'src/lib/wsBase.ts'),
+      'utf8'
+    );
+
+    it.each(ENV_KEYS)('reads %s as a literal process.env expression', (key) => {
+      expect(source).toContain(`process.env.${key}`);
+    });
+
+    it('does not read the env through an indirect reference', () => {
+      expect(source).not.toMatch(/=\s*process\.env\b(?!\.)/);
+    });
+
+    it('picks up the ambient variable with no override supplied', () => {
+      process.env.NEXT_PUBLIC_API_URL = 'https://ambient.example.com';
+
+      expect(wsBase()).toBe('wss://ambient.example.com');
+    });
+
+    it('lets an override win over the ambient variable', () => {
+      process.env.NEXT_PUBLIC_API_URL = 'https://ambient.example.com';
+
+      expect(wsBase({ NEXT_PUBLIC_API_URL: 'http://explicit.example.com' })).toBe(
+        'ws://explicit.example.com'
+      );
+    });
   });
 });
