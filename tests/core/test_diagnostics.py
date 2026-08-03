@@ -4,7 +4,6 @@ Tests the RunLogger, diagnostic reports, and related functions.
 """
 
 import pytest
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -38,15 +37,25 @@ def workspace(tmp_path: Path):
 
 
 @pytest.fixture
-def run_id():
-    """Create a unique run ID."""
-    return str(uuid.uuid4())
+def task_id(workspace):
+    """A REAL task id.
+
+    These were bare uuid4()s until #943 enabled PRAGMA foreign_keys. run_logs
+    and diagnostic_reports declare FKs to tasks/runs, so a fabricated id now
+    fails the insert — the rows used to be written and silently orphaned, which
+    is exactly what the pragma exists to stop.
+    """
+    from codeframe.core import tasks
+
+    return tasks.create(workspace, title="diag fixture", description="").id
 
 
 @pytest.fixture
-def task_id():
-    """Create a unique task ID."""
-    return str(uuid.uuid4())
+def run_id(workspace, task_id):
+    """A REAL run id for `task_id` — see the note on that fixture."""
+    from codeframe.core import runtime
+
+    return runtime.start_task_run(workspace, task_id).id
 
 
 class TestRunLogEntry:
@@ -393,7 +402,17 @@ class TestSaveAndGetDiagnosticReport:
 
     def test_get_latest_report_by_run(self, workspace, task_id, run_id):
         """Test getting the latest report filtered by run."""
-        run_id_2 = str(uuid.uuid4())
+        # A REAL second run: diagnostic_reports.run_id is a foreign key and
+        # FK enforcement is on since #943 — a bare uuid4() is rejected.
+        from codeframe.core import runtime as _runtime
+        from codeframe.core import tasks as _tasks
+
+        # A second REAL run. It hangs off its own task: only one run may be
+        # active per task, and finishing the first would push that task to DONE,
+        # which the state machine will not move back to IN_PROGRESS. The test
+        # only needs two distinct run ids.
+        other_task = _tasks.create(workspace, title="second", description="")
+        run_id_2 = _runtime.start_task_run(workspace, other_task.id).id
 
         report1 = DiagnosticReport(
             task_id=task_id,
