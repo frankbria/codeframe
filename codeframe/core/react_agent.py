@@ -22,6 +22,11 @@ from codeframe.core import blockers, events, gates
 from codeframe.core.agent import AgentStatus
 from codeframe.core.blocker_detection import classify_error_for_blocker
 from codeframe.core.context import TaskContext
+from codeframe.core.cost_tracker import (
+    CostTracker,
+    load_prior_task_cost,
+    resolve_cost_cap,
+)
 from codeframe.core.context_packager import TaskContextPackager
 from codeframe.core.events import EventType
 from codeframe.core.fix_tracker import (
@@ -182,7 +187,14 @@ class ReactAgent:
         self.blocker_id: Optional[str] = None
 
         # Token usage tracking: accumulate per-call records across the run.
-        self._token_records: list[dict] = []
+        # Storage lives on the shared CostTracker, so the cap logic here and in
+        # the plan engine are one implementation and cannot drift (#1004).
+        # `_token_records` stays a property over it rather than an alias: an
+        # alias breaks the moment anything REBINDS the attribute (several tests
+        # seed records that way), silently detaching the cap from the records
+        # it is meant to measure. Records carry an extra `iteration` key the
+        # tracker ignores.
+        self._cost = CostTracker()
 
         # Stall detection
         self._stall_triggered = threading.Event()
@@ -366,50 +378,32 @@ class ReactAgent:
     # Token persistence
     # ------------------------------------------------------------------
 
+    @property
+    def _token_records(self) -> list[dict]:
+        """Per-call token records — the shared tracker's list (#1004)."""
+        return self._cost.records
+
+    @_token_records.setter
+    def _token_records(self, records: list[dict]) -> None:
+        # Replace CONTENTS, never the list object: the tracker holds the same
+        # reference and would otherwise be left measuring a detached list.
+        self._cost.records[:] = list(records)
+
     def _estimate_total_cost(self) -> float:
         """Estimate total USD cost from accumulated token records.
 
-        Delegates per-model pricing to MetricsTracker.calculate_cost to keep
-        pricing logic in a single location.  Falls back to 0.0 on any error.
+        Delegates to the shared CostTracker (#1004) so the plan engine and this
+        one price a run identically.
         """
-        try:
-            from codeframe.lib.metrics_tracker import MetricsTracker
-
-            total = 0.0
-            for record in self._token_records:
-                cost = MetricsTracker.calculate_cost(
-                    record["model"],
-                    record["input_tokens"],
-                    record["output_tokens"],
-                )
-                # None = unpriced; skip it rather than adding 0.0. Callers that
-                # care whether anything was unpriced ask _has_unpriced_records().
-                if cost is not None:
-                    total += cost
-            return round(total, 6)
-        except Exception:
-            return 0.0
+        return self._cost.estimate_cost()
 
     def _has_unpriced_records(self) -> bool:
         """True when any recorded call used a model with no pricing.
 
-        Asked directly now that ``calculate_cost`` returns None for unpriced
-        models. The cost cap used to infer this from the *outcome* ($0 spent
-        despite tokens recorded) because the pricing table was missing the
-        shipped default and a membership test false-fired on it (#932).
+        Asked directly rather than inferred from a $0 outcome (#932); shared
+        with the plan engine (#1004).
         """
-        try:
-            from codeframe.lib.metrics_tracker import MetricsTracker
-
-            return any(
-                MetricsTracker.calculate_cost(
-                    r["model"], r["input_tokens"], r["output_tokens"]
-                )
-                is None
-                for r in self._token_records
-            )
-        except Exception:
-            return False
+        return self._cost.has_unpriced_records()
 
     def _persist_token_usage(self, task_id: str) -> None:
         """Persist accumulated token records to the workspace database.
@@ -687,7 +681,7 @@ class ReactAgent:
                         try:
                             _full_path = self.workspace.repo_path / _op_path
                             if _full_path.is_file():
-                                _op_after = _full_path.read_text(errors="replace")
+                                _op_after = _full_path.read_text(encoding="utf-8", errors="replace")
                         except OSError:
                             pass
                     self.execution_recorder.record_file_operation(
@@ -1105,103 +1099,38 @@ class ReactAgent:
         The single place any spending loop asks "may I make another call?" —
         the main ReAct loop and the verification self-correction loop both go
         through it, because a cap the correction loop ignores is not a cap
-        (#911 review).
+        (#911 review). The plan engine asks the same question of the same
+        object (#1004).
         """
-        cap = self._max_cost_usd
-        if cap is None:
-            return None
-
-        # A cap we cannot measure is not a cap: an unpriced model would keep the
-        # running total at $0.00 forever and the guard would never fire — the
-        # same silently-inert control #911 was about, one layer down. Refuse
-        # before spending rather than pretend.
-        spent = self._prior_task_cost_usd + self._estimate_total_cost()
-
-        # Asked directly (#932). This used to infer "unpriced" from the outcome
-        # — tokens recorded but $0 spent — because MODEL_PRICING was missing the
-        # shipped default (claude-haiku-4-5), so a membership test false-fired on
-        # a legitimately-priced run. calculate_cost now returns None for unpriced
-        # models, so the question has a real answer.
-        #
-        # The outcome heuristic is NOT kept as a fallback: a deployment can price
-        # a local model at 0/0 via CODEFRAME_MODEL_PRICING, which is a real $0 —
-        # "spent nothing" would then read as "cannot measure" and abort a run
-        # that is correctly measured as free.
-        if self._has_unpriced_records():
-            return (
-                f"A cost cap of ${cap:.2f} is configured, but spend cannot be "
-                f"measured for {', '.join(sorted(self._models_used())) or 'this model'} "
-                "— no pricing data. Remove the cap, or use a model with known pricing."
-            )
-
-        if spent >= cap:
-            return (
-                f"Estimated spend ${spent:.4f} reached the configured cap of "
-                f"${cap:.2f}. Raise 'Max cost per task (USD)' in Settings to continue."
-            )
-        return None
+        self._cost.cap_usd = self._max_cost_usd
+        # Measurements come from THIS object's accessors, not the tracker's, so
+        # the seam every #911 test patches (`_estimate_total_cost`) still sits on
+        # the path. Only the decision — which check runs first, and what the
+        # message says — is shared.
+        return self._cost.cap_message(
+            spent=self._prior_task_cost_usd + self._estimate_total_cost(),
+            unpriced=self._has_unpriced_records(),
+        )
 
     def _load_prior_task_cost(self, task_id: str) -> float:
         """Spend already recorded against this task by earlier runs.
 
-        The setting is "max cost per *task*", and ``_estimate_total_cost`` only
-        sums this agent instance's in-memory records. Without this, answering
-        the blocker and resuming would hand the task a fresh full budget every
-        time — a cap trivially bypassed by clicking resume (#911 review).
+        The setting is "max cost per *task*", and the in-memory records only
+        cover this agent instance. Without this, answering the blocker and
+        resuming would hand the task a fresh full budget every time — a cap
+        trivially bypassed by clicking resume (#911 review). Shared with the
+        plan engine (#1004).
         """
-        conn = None
-        try:
-            from codeframe.platform_store.repositories.token_repository import (
-                TokenRepository,
-            )
-
-            # Same per-workspace connection the write path uses
-            # (`_persist_token_usage`). `Database()` is control-plane and needs
-            # an explicit db_path — calling it bare raised TypeError straight
-            # into the except below, so this method silently returned 0.0 and
-            # the resume bypass it exists to close stayed wide open. The
-            # repository sets the Row factory it needs on this connection.
-            conn = sqlite3.connect(str(self.workspace.db_path))
-            summary = TokenRepository(sync_conn=conn).get_task_token_summary(task_id)
-            return float(summary.get("total_cost_usd") or 0.0)
-        except Exception as exc:  # pragma: no cover - best effort
-            logger.debug("Could not read prior spend for task %s: %s", task_id, exc)
-            return 0.0
-        finally:
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+        return load_prior_task_cost(self.workspace, task_id)
 
     def _resolve_cost_cap(self) -> Optional[float]:
         """The configured per-task spend cap, or None when unset.
 
-        Read from the same ``.codeframe/config.yaml`` the Settings page writes
-        (``max_cost_usd``). Before #911 nothing read it: a user could set a $5
-        cap and get no cost limiting at all, while the sibling ``max_turns``
-        control genuinely worked — so an inert cap was indistinguishable from a
-        working one.
+        Read from the same ``.codeframe/config.yaml`` the Settings page writes.
+        Shared with the plan engine (#1004) — the resolver was always
+        engine-agnostic, it just had only one caller.
         """
-        from codeframe.core.config import load_environment_config
-
-        try:
-            env_config = load_environment_config(self.workspace.repo_path)
-        except Exception as exc:  # pragma: no cover - config read is best effort
-            logger.warning("Could not read the cost cap: %s", exc)
-            return None
-
-        cap = getattr(env_config, "max_cost_usd", None) if env_config else None
-        if cap is None:
-            return None
-        try:
-            cap = float(cap)
-        except (TypeError, ValueError):
-            logger.warning("Ignoring non-numeric max_cost_usd: %r", cap)
-            return None
-        # 0 would stop before the first call; treat it as "no cap" rather than
-        # bricking every run, and let validation reject negatives upstream.
-        return cap if cap > 0 else None
+        return resolve_cost_cap(self.workspace.repo_path)
 
     def _calculate_adaptive_budget(self, context: TaskContext) -> int:
         """Calculate iteration budget based on task complexity.
