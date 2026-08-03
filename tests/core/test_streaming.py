@@ -165,44 +165,75 @@ class TestTailRunOutput:
     def test_tail_yields_new_lines_from_concurrent_writer(
         self, temp_workspace: Workspace, run_id: str
     ):
-        """Tail should yield new lines as they're written by another process."""
+        """Tail yields new lines as a concurrent writer appends them (#1038).
+
+        Synchronised on events, not sleeps. The previous version wrote three
+        lines with ``time.sleep(0.2)`` between them against a tailer given
+        ``max_wait=2.0``: under the CPU contention of a ~4900-test run the
+        writer's 0.6s of sleeps plus thread-start latency could drift past that
+        budget, the tailer would exit before "Final line" was written, and the
+        test failed for the box being busy rather than for anything being wrong.
+        ``tail_run_output`` itself is fine — it re-reads the file each poll and
+        tracks its position, so no line is ever missed.
+
+        Now the writer waits until the tailer has actually *observed* the
+        previous line before writing the next. That removes every fixed sleep,
+        and asserts something strictly stronger than the original: each line is
+        provably delivered to a live tailer before the next is written, so this
+        is incremental delivery rather than merely eventual.
+        """
         from codeframe.core.streaming import RunOutputLogger, tail_run_output
 
-        # Start with empty log
         logger = RunOutputLogger(temp_workspace, run_id)
 
-        collected_lines = []
-        stop_event = threading.Event()
+        collected_lines: list[str] = []
+        observed = threading.Event()
+        finished = threading.Event()
 
         def tail_collector():
-            for line in tail_run_output(
-                temp_workspace, run_id, poll_interval=0.1, max_wait=2.0
-            ):
-                collected_lines.append(line)
-                if "Final" in line:
-                    stop_event.set()
-                    break
+            try:
+                # A generous max_wait is not a timing assumption: the handshake
+                # below ends the loop as soon as "Final" arrives. It is only a
+                # backstop so a genuine hang fails rather than blocking forever.
+                for line in tail_run_output(
+                    temp_workspace, run_id, poll_interval=0.01, max_wait=30.0
+                ):
+                    collected_lines.append(line)
+                    observed.set()
+                    if "Final" in line:
+                        break
+            finally:
+                finished.set()
 
-        # Start tailing in background
-        tail_thread = threading.Thread(target=tail_collector)
+        tail_thread = threading.Thread(target=tail_collector, daemon=True)
         tail_thread.start()
 
-        # Write lines with small delays
-        time.sleep(0.2)
-        logger.write("First line\n")
-        time.sleep(0.2)
-        logger.write("Second line\n")
-        time.sleep(0.2)
-        logger.write("Final line\n")
+        def write_and_wait(text: str) -> None:
+            observed.clear()
+            logger.write(text)
+            assert observed.wait(timeout=30.0), (
+                f"the tailer never observed {text!r}; collected={collected_lines}"
+            )
+
+        write_and_wait("First line\n")
+        write_and_wait("Second line\n")
+        write_and_wait("Final line\n")
         logger.close()
 
-        # Wait for tail to finish
-        stop_event.wait(timeout=3.0)
-        tail_thread.join(timeout=1.0)
+        assert finished.wait(timeout=30.0), "the tail generator never terminated"
+        tail_thread.join(timeout=30.0)
+        assert not tail_thread.is_alive()
 
         assert len(collected_lines) >= 3
         assert any("First" in line for line in collected_lines)
         assert any("Final" in line for line in collected_lines)
+        # Order matters for a tail: a reader that re-yielded from the top would
+        # still satisfy the membership assertions above.
+        assert [line.strip() for line in collected_lines[:3]] == [
+            "First line",
+            "Second line",
+            "Final line",
+        ]
 
     def test_tail_handles_missing_file_gracefully(
         self, temp_workspace: Workspace

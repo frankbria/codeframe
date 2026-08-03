@@ -1523,36 +1523,81 @@ class TestParallelExecution:
         detection is avoided on purpose: per-task bookkeeping is serialized, so a
         short sleep makes overlap timing-dependent and flaky.
         """
+        import os
         import threading
 
         workspace, task_list = workspace_with_tasks
         task_ids = [t.id for t in task_list]  # 3 independent tasks
         n = len(task_ids)
 
-        barrier = threading.Barrier(n, timeout=15)
+        # The budget is spent on the MACHINE's ability to schedule n worker
+        # threads simultaneously, not on the code under test (#976). At 15s it
+        # tripped under the CPU contention of a 4-hour full-suite run and read
+        # as "parallel execution is broken", which is alarming enough to stop
+        # work. Raising it does not weaken the proof by any amount: a serial
+        # executor never gets n bodies here CONCURRENTLY, so it times out at
+        # any budget. Only a busy scheduler benefits.
+        timeout_s = float(os.getenv("CODEFRAME_TEST_BARRIER_TIMEOUT_S", "90"))
+
+        barrier = threading.Barrier(n, timeout=timeout_s)
         threads_seen: set[str] = set()
         seen_lock = threading.Lock()
+        broke = threading.Event()
 
         def mock_execute(ws, tid, batch_id=None, **kwargs):
             with seen_lock:
                 threads_seen.add(threading.current_thread().name)
-            # Blocks until all N task bodies reach here at the same time. Serial
-            # execution never reaches N concurrently → BrokenBarrierError on timeout.
-            barrier.wait()
+            # Blocks until all n task bodies reach here at the same time. Serial
+            # execution never reaches n concurrently → BrokenBarrierError on timeout.
+            try:
+                barrier.wait()
+            except threading.BrokenBarrierError:
+                broke.set()
+                raise
             return "COMPLETED"
 
+        batch = None
         with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
-            batch = start_batch(
-                workspace,
-                task_ids,
-                strategy="parallel",
-                max_parallel=n,
+            try:
+                batch = start_batch(
+                    workspace,
+                    task_ids,
+                    strategy="parallel",
+                    max_parallel=n,
+                )
+            except threading.BrokenBarrierError:
+                # A broken barrier propagates out of the worker and up through
+                # start_batch, so without this the diagnostic below is
+                # unreachable and the reader gets a bare BrokenBarrierError —
+                # exactly the uninformative red that cost a diagnosis cycle
+                # during #895. Swallowed only when `broke` is set, i.e. only
+                # when it came from our own mock.
+                if not broke.is_set():
+                    raise
+
+        # Report the two failures differently (#976). Both are "the barrier
+        # broke", but one means the executor serialised and the other means the
+        # box never scheduled n threads together, and a reader cannot tell
+        # those apart from the exception alone.
+        if broke.is_set():
+            distinct = len(threads_seen)
+            pytest.fail(
+                f"Only {distinct} of {n} task bodies were in-flight together "
+                f"within {timeout_s}s.\n"
+                + (
+                    "Distinct worker threads were seen, so the executor IS "
+                    "parallel — the machine simply never scheduled them "
+                    "simultaneously. Raise CODEFRAME_TEST_BARRIER_TIMEOUT_S."
+                    if distinct == n
+                    else "Task bodies ran on fewer threads than tasks: "
+                    "execution was SERIALISED. This is a real defect (#773)."
+                )
             )
 
         assert batch.status == BatchStatus.COMPLETED
         for tid in task_ids:
             assert batch.results[tid] == "COMPLETED"
-        # All N task bodies were in-flight simultaneously on distinct workers.
+        # All n task bodies were in-flight simultaneously on distinct workers.
         assert len(threads_seen) == n
 
     def test_parallel_respects_max_parallel(self, workspace_with_tasks):
