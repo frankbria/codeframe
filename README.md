@@ -7,7 +7,7 @@
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 [![CI](https://github.com/frankbria/codeframe/actions/workflows/test.yml/badge.svg)](https://github.com/frankbria/codeframe/actions/workflows/test.yml)
-![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
 > [!WARNING]
@@ -315,7 +315,7 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - **Multi-provider LLM**: Anthropic (default) or any OpenAI-compatible endpoint (OpenAI, Ollama, vLLM, LM Studio, Qwen, Deepseek) via `--llm-provider` / `--llm-model` or env vars
 - **Server layer** (optional): FastAPI with 16+ v2 routers, API key auth, rate limiting, SSE streaming, WebSocket endpoints (agent chat, interactive terminal), OpenAPI docs
 - **Web UI**: Workspace view, PRD discovery, Task board, Blocker resolution, Review/commit, PROOF9 requirements list + per-gate evidence display + run history panel + waiver audit trail, agent chat panel with streaming tool-call display, interactive terminal for session workspaces, Sessions list with active-session badge
-- **Test suite**: 4200+ tests, 88% coverage
+- **Test suite**: 5100+ tests, 81.9% measured coverage (CI enforces an 80% floor)
 
 ---
 
@@ -431,7 +431,7 @@ cd web-ui && npm run build             # Production build verification
 4. Run tests: `uv run pytest`
 5. Submit PR with tests and clear description
 
-Code standards: PEP 8, `ruff` for linting, type hints required, 85%+ test coverage.
+Code standards: PEP 8, `ruff` for linting, type hints required, 80%+ test coverage (enforced by CI via `.coveragerc`).
 
 During the beta, feature ideas go to [Discussions -> Ideas](https://github.com/frankbria/codeframe/discussions/categories/ideas) before code. See [CONTRIBUTING.md](CONTRIBUTING.md) for what's stable, what isn't, and how to propose changes.
 
