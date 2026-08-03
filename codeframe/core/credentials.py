@@ -383,10 +383,14 @@ def _get_machine_id() -> str:
     machine_id_path = Path("/etc/machine-id")
     if machine_id_path.exists():
         try:
-            machine_id = machine_id_path.read_text().strip()
+            machine_id = machine_id_path.read_text(encoding="utf-8").strip()
             if machine_id:
                 components.append(machine_id)
-        except (PermissionError, OSError):
+        # ValueError covers UnicodeDecodeError (#1029), which is NOT an OSError.
+        # A /etc/machine-id that is not valid UTF-8 would otherwise crash key
+        # derivation outright rather than falling through to the portable
+        # identifiers below.
+        except (OSError, ValueError):
             pass
 
     # Try Windows MachineGuid

@@ -105,7 +105,7 @@ def _detect_tech_stack(repo_path: Path) -> Optional[str]:
     # Python detection
     pyproject = repo_path / "pyproject.toml"
     if pyproject.exists():
-        content = pyproject.read_text()
+        content = pyproject.read_text(encoding="utf-8", errors="replace")
         if "uv" in content or "[tool.uv]" in content:
             tech_parts.append("Python with uv")
         elif "poetry" in content:
@@ -123,7 +123,7 @@ def _detect_tech_stack(repo_path: Path) -> Optional[str]:
     # Node.js detection
     package_json = repo_path / "package.json"
     if package_json.exists():
-        content = package_json.read_text()
+        content = package_json.read_text(encoding="utf-8", errors="replace")
         if "next" in content:
             tech_parts.append("Next.js")
         elif "react" in content:
@@ -450,7 +450,7 @@ async def get_workspace_config(
     path = _workspace_config_path(workspace)
     if path.exists():
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             # workspace_root is display-only — always source it from the live
             # workspace so a stored value can't drift from reality.
             data["workspace_root"] = str(workspace.repo_path)

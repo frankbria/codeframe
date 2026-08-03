@@ -254,12 +254,12 @@ def _detect_tech_stack(repo_path: Path) -> str:
 
     # Python detection
     if (repo_path / "pyproject.toml").exists():
-        pyproject = (repo_path / "pyproject.toml").read_text()
+        pyproject = (repo_path / "pyproject.toml").read_text(encoding="utf-8", errors="replace")
 
         # Detect Python version
         python_version = None
         if (repo_path / ".python-version").exists():
-            python_version = (repo_path / ".python-version").read_text().strip()
+            python_version = (repo_path / ".python-version").read_text(encoding="utf-8", errors="replace").strip()
 
         # Detect package manager
         if "[tool.poetry]" in pyproject:
@@ -289,13 +289,13 @@ def _detect_tech_stack(repo_path: Path) -> str:
     elif (repo_path / "requirements.txt").exists():
         python_version = None
         if (repo_path / ".python-version").exists():
-            python_version = (repo_path / ".python-version").read_text().strip()
+            python_version = (repo_path / ".python-version").read_text(encoding="utf-8", errors="replace").strip()
         detected_parts.append(f"Python{' ' + python_version if python_version else ''} with pip")
 
     # Node.js/TypeScript detection
     if (repo_path / "package.json").exists():
         try:
-            pkg_json_text = (repo_path / "package.json").read_text()
+            pkg_json_text = (repo_path / "package.json").read_text(encoding="utf-8", errors="replace")
             import json
             pkg_json = json.loads(pkg_json_text)
         except (json.JSONDecodeError, FileNotFoundError):
@@ -305,9 +305,9 @@ def _detect_tech_stack(repo_path: Path) -> str:
         # Detect Node version
         node_version = None
         if (repo_path / ".nvmrc").exists():
-            node_version = (repo_path / ".nvmrc").read_text().strip()
+            node_version = (repo_path / ".nvmrc").read_text(encoding="utf-8", errors="replace").strip()
         elif (repo_path / ".node-version").exists():
-            node_version = (repo_path / ".node-version").read_text().strip()
+            node_version = (repo_path / ".node-version").read_text(encoding="utf-8", errors="replace").strip()
 
         # Detect package manager
         if (repo_path / "pnpm-lock.yaml").exists():

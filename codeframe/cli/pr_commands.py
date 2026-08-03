@@ -65,6 +65,8 @@ def get_current_branch(repo_path: Optional[Path] = None) -> str:
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         return result.stdout.strip()
@@ -89,6 +91,8 @@ def get_git_diff_stats(repo_path: Path, base: str, head: str) -> str:
             cwd=repo_path,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         return result.stdout.strip()
@@ -113,6 +117,8 @@ def get_commit_messages(repo_path: Path, base: str, head: str) -> str:
             cwd=repo_path,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         return result.stdout.strip()

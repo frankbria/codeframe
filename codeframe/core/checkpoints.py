@@ -326,6 +326,8 @@ def _get_git_head(repo_path: Path) -> Optional[str]:
             cwd=repo_path,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,  # Prevent hanging on slow/unresponsive git
         )
         if result.returncode == 0:

@@ -687,7 +687,7 @@ class ReactAgent:
                         try:
                             _full_path = self.workspace.repo_path / _op_path
                             if _full_path.is_file():
-                                _op_after = _full_path.read_text(errors="replace")
+                                _op_after = _full_path.read_text(encoding="utf-8", errors="replace")
                         except OSError:
                             pass
                     self.execution_recorder.record_file_operation(

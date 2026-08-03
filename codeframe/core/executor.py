@@ -543,6 +543,8 @@ class Executor:
                     cwd=self.repo_path,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=self.command_timeout,
                     env=env,
                 )
@@ -556,6 +558,8 @@ class Executor:
                         cwd=self.repo_path,
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
+                        errors="replace",
                         timeout=self.command_timeout,
                         env=env,
                     )
@@ -567,6 +571,8 @@ class Executor:
                         cwd=self.repo_path,
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
+                        errors="replace",
                         timeout=self.command_timeout,
                         env=env,
                     )
@@ -634,7 +640,7 @@ class Executor:
             # Verify Python syntax
             try:
                 import ast
-                content = file_path.read_text()
+                content = file_path.read_text(encoding="utf-8", errors="replace")
                 ast.parse(content)
                 return StepResult(
                     step=step,

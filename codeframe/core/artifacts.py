@@ -95,6 +95,8 @@ def export_patch(
         cwd=repo_path,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != 0:
         raise ValueError(f"Not a git repository: {repo_path}")
@@ -113,6 +115,8 @@ def export_patch(
         cwd=repo_path,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     patch_content = result.stdout
@@ -135,6 +139,8 @@ def export_patch(
             cwd=repo_path,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         patch_content = result.stdout
         # We fell back to unstaged diff, so update the tracking flag
@@ -217,6 +223,8 @@ def create_commit(
             cwd=repo_path,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode != 0:
             raise ValueError(f"git add failed: {result.stderr}")
@@ -227,6 +235,8 @@ def create_commit(
         cwd=repo_path,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if not result.stdout.strip():
         raise ValueError("No staged changes to commit")
@@ -240,6 +250,8 @@ def create_commit(
         cwd=repo_path,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     if result.returncode != 0:
@@ -251,6 +263,8 @@ def create_commit(
         cwd=repo_path,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     full_hash = result.stdout.strip()
     short_hash = full_hash[:7]
@@ -294,6 +308,8 @@ def get_status(repo_path: Path) -> dict:
         cwd=repo_path,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     # NOTE: use splitlines() (not strip().split("\n")). The porcelain status
@@ -373,6 +389,8 @@ def _get_diff_stats(repo_path: Path, staged_only: bool = False) -> dict:
         cwd=repo_path,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     # Parse the last line which has summary
@@ -437,5 +455,5 @@ def _parse_patch_content_stats(content: str) -> dict:
 
 def _parse_patch_stats(patch_file: Path) -> dict:
     """Parse stats from a patch file."""
-    content = patch_file.read_text()
+    content = patch_file.read_text(encoding="utf-8", errors="replace")
     return _parse_patch_content_stats(content)

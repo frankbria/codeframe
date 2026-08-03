@@ -667,6 +667,8 @@ def _execute_run_tests(
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=300,
             cwd=str(workspace_path),
             # `npm test` runs whatever the repo's package.json says, so this is
@@ -820,6 +822,8 @@ def _execute_run_command(
             cwd=workspace_path,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             env=env,
         )

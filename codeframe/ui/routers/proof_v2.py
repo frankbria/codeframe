@@ -629,7 +629,7 @@ def _read_artifact_text(artifact_path: str, max_lines: int = _ARTIFACT_LINE_LIMI
         p = Path(artifact_path)
         if not p.exists():
             return None
-        lines = p.read_text(errors="replace").splitlines(keepends=True)
+        lines = p.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
         return "".join(lines[:max_lines])
     except Exception:
         return None
@@ -767,7 +767,7 @@ async def get_proof_config(
     path = _proof_config_path(workspace)
     if path.exists():
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
             return ProofConfigResponse(**data)
         except (OSError, json.JSONDecodeError, ValueError, ValidationError) as e:
             logger.warning("Invalid proof_config.json — falling back to defaults: %s", e)

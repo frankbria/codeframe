@@ -39,7 +39,7 @@ def _load_proof_config(workspace: Workspace) -> tuple[Optional[set[Gate]], str]:
     if not path.exists():
         return None, "strict"
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Invalid %s — using defaults: %s", PROOF_CONFIG_FILENAME, exc)
         return None, "strict"

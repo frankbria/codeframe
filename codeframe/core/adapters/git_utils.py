@@ -26,6 +26,8 @@ def detect_modified_files(workspace_path: Path) -> list[str]:
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
         )
         if result.returncode != 0:
@@ -45,6 +47,8 @@ def detect_modified_files(workspace_path: Path) -> list[str]:
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
         )
         if untracked.returncode == 0:

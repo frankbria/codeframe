@@ -137,6 +137,8 @@ def run_hook(
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             # A hook is a shell command from repo config, so it gets the same
             # credential-free environment as every other agent-steerable

@@ -895,6 +895,8 @@ class Agent:
                 cwd=self.workspace.repo_path,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=30,
                 env=build_agent_env(self.workspace.repo_path),
             )
@@ -962,7 +964,7 @@ class Agent:
             config_path = self.workspace.repo_path / config_name
             if config_path.exists():
                 try:
-                    content = config_path.read_text()[:2000]  # Limit size
+                    content = config_path.read_text(encoding="utf-8", errors="replace")[:2000]  # Limit size
                     sections.append(f"## {config_name}")
                     sections.append("```")
                     sections.append(content)
@@ -1254,7 +1256,7 @@ IMPORTANT:
                         elif not old_code:
                             self._debug_log(f"No old_code for {file_path}", level="WARN")
                         else:
-                            content = file_path.read_text()
+                            content = file_path.read_text(encoding="utf-8", errors="replace")
                             if old_code not in content:
                                 self._debug_log(
                                     f"old_code not found in {file_path}",
@@ -1321,6 +1323,8 @@ IMPORTANT:
                                     cwd=self.workspace.repo_path,
                                     capture_output=True,
                                     text=True,
+                                    encoding="utf-8",
+                                    errors="replace",
                                     timeout=120,
                                     # LLM-authored argv (#907).
                                     env=build_agent_env(self.workspace.repo_path),

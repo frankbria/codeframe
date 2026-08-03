@@ -159,7 +159,11 @@ def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     branch_name = f"cf/{task_id}"
     existing = subprocess.run(
         ["git", "branch", "--list", branch_name],
-        cwd=str(repo_path), capture_output=True, text=True,
+        cwd=str(repo_path),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     worktree_dir = repo_path / WORKTREE_DIR / task_id
     if branch_name in existing.stdout or worktree_dir.exists():
