@@ -420,3 +420,100 @@ class TestTheTwoEnginesShareOneImplementation:
         assert not any(
             m.startswith(("fastapi", "starlette", "codeframe.ui")) for m in imported
         ), sorted(imported)
+
+
+class TestTheCapStopsTheRunNotJustTheStep:
+    """Raised in review, and the worst possible shape for a spend cap: it was
+    *causing* spend.
+
+    `Executor` refuses a capped step by returning FAILED — but FAILED is exactly
+    what triggers `Agent._execute_plan`'s self-correction path, which makes up to
+    `MAX_SELF_CORRECTION_ATTEMPTS` further LLM calls on the stepped-UP CORRECTION
+    model, plus a blocker-question call, none of which the cap could see. The
+    loop then advanced to the next step and did it again.
+    """
+
+    def test_the_agent_loop_checks_before_the_step(self):
+        import inspect
+
+        from codeframe.core import agent as agent_mod
+
+        source = inspect.getsource(agent_mod.Agent._execute_plan)
+        # The check must precede the execute_step call, not follow it.
+        assert source.index("cap_message()") < source.index("executor.execute_step")
+
+    def test_hitting_the_cap_blocks_rather_than_failing_the_step(self):
+        """BLOCKED, matching ReactAgent: the work is not wrong, it needs a human
+        decision. FAILED would route straight back into self-correction."""
+        import inspect
+
+        from codeframe.core import agent as agent_mod
+
+        source = inspect.getsource(agent_mod.Agent._execute_plan)
+        after = source[source.index("cap_message()") :]
+        head = after[: after.index("executor.execute_step")]
+
+        assert "AgentStatus.BLOCKED" in head
+        assert "return" in head
+
+    def test_it_creates_a_real_blocker_row(self):
+        """Otherwise a run that stopped for a cap looks like a silent hang to
+        `cf blocker list` and the web UI."""
+        import inspect
+
+        from codeframe.core import agent as agent_mod
+
+        source = inspect.getsource(agent_mod.Agent._execute_plan)
+        head = source[: source.index("executor.execute_step")]
+
+        assert "blockers.create(" in head
+
+    def test_self_correction_refuses_once_the_cap_is_reached(self):
+        """The expensive loop: it steps UP to the CORRECTION model and runs up
+        to MAX_SELF_CORRECTION_ATTEMPTS times per failed step."""
+        import inspect
+
+        from codeframe.core import agent as agent_mod
+
+        source = inspect.getsource(agent_mod.Agent._attempt_self_correction)
+        head = source[: source.index("self.llm.complete")]
+
+        assert "cap_message()" in head, (
+            "the correction loop can still spend past the cap"
+        )
+
+    @pytest.mark.parametrize(
+        "method,call_type",
+        [
+            ("_attempt_self_correction", "self_correction"),
+            ("_generate_blocker_question", "blocker_question"),
+        ],
+    )
+    def test_the_agents_own_calls_are_recorded(self, method: str, call_type: str):
+        """They were invisible to the tracker, so spend accrued unmeasured even
+        before the cap fired — the running total was simply wrong."""
+        import inspect
+
+        from codeframe.core import agent as agent_mod
+
+        source = inspect.getsource(getattr(agent_mod.Agent, method))
+
+        assert f'record_response(response, call_type="{call_type}")' in source
+
+    def test_every_llm_call_in_the_agent_is_recorded(self):
+        """Enumerated rather than listed, so a new call site fails here instead
+        of quietly escaping the cap."""
+        import inspect
+        import re
+
+        from codeframe.core import agent as agent_mod
+
+        source = inspect.getsource(agent_mod)
+        calls = len(re.findall(r"response = self\.llm\.complete\(", source))
+        records = len(re.findall(r"self\.cost_tracker\.record_response\(", source))
+
+        assert calls > 0
+        assert records == calls, (
+            f"{calls} LLM calls but only {records} recorded — "
+            "one of them is invisible to the cost cap"
+        )

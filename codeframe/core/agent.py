@@ -473,6 +473,39 @@ class Agent:
         while self.state.current_step < len(self.state.plan.steps):
             step = self.state.plan.steps[self.state.current_step]
 
+            # Stop the RUN, not just the step (#1004 review). Executor refuses a
+            # capped step by returning FAILED — but FAILED is the trigger for
+            # self-correction, which makes up to MAX_SELF_CORRECTION_ATTEMPTS
+            # more LLM calls on the stepped-up CORRECTION model plus a blocker
+            # question, and then the loop advances and repeats. So the cap was
+            # actively CAUSING spend. Checked here, ahead of the step, it ends
+            # the run instead. BLOCKED rather than FAILED, matching ReactAgent:
+            # the work is not wrong, it needs a human decision.
+            cap_message = self.cost_tracker.cap_message()
+            if cap_message:
+                self._debug_log(cap_message, level="WARNING", always=True)
+                self._emit_event("cost_cap_exceeded", {
+                    "step": step.index,
+                    "message": cap_message,
+                })
+                # A real blocker row, not just in-memory state: a run that
+                # stops for a spend cap must be visible to `cf blocker list`
+                # and to the web UI, or it looks like a silent hang.
+                blocker = blockers.create(
+                    self.workspace,
+                    question=cap_message,
+                    task_id=self.state.task_id or None,
+                    created_by="agent",
+                )
+                self.state.status = AgentStatus.BLOCKED
+                self.state.blocker = BlockerInfo(
+                    reason="Cost cap reached",
+                    question=blocker.question,
+                    context=f"Step {step.index}: {step.description}",
+                    step_index=step.index,
+                )
+                return
+
             self._debug_log(
                 f"=== STEP {step.index} ({step.type.value}) ===",
                 level="INFO",
@@ -1214,6 +1247,9 @@ IMPORTANT:
                 max_tokens=4096,
                 temperature=0.0,
             )
+            # Counts toward the cap (#1004): these calls used to be
+            # invisible to it, so a capped run kept spending here.
+            self.cost_tracker.record_response(response, call_type="diagnostic_fix")
 
             # Parse the fix plan
             import json
@@ -1531,6 +1567,9 @@ Your decision:"""
                 max_tokens=256,
                 temperature=0.0,
             )
+            # Counts toward the cap (#1004): these calls used to be
+            # invisible to it, so a capped run kept spending here.
+            self.cost_tracker.record_response(response, call_type="tactical_resolution")
 
             resolution = response.strip()
             self._emit_event(
@@ -1616,6 +1655,12 @@ Your decision:"""
         Returns:
             New StepResult if correction was attempted, None if can't correct
         """
+        # A cap the correction loop ignores is not a cap (#911 review, #1004).
+        # This loop is the expensive one: it steps UP to the CORRECTION model
+        # and runs up to MAX_SELF_CORRECTION_ATTEMPTS times per failed step.
+        if self.cost_tracker.cap_message():
+            return None
+
         self._emit_event("self_correction_started", {
             "step": step.index,
             "attempt": attempt,
@@ -1676,6 +1721,9 @@ Respond with ONLY the corrected code/content, no explanation."""
                 max_tokens=4000,
                 temperature=0.0,
             )
+            # Counts toward the cap (#1004): these calls used to be
+            # invisible to it, so a capped run kept spending here.
+            self.cost_tracker.record_response(response, call_type="self_correction")
 
             corrected_details = response.content.strip()
 
@@ -1979,6 +2027,9 @@ Generate a single question OR a RESOLVE_AUTONOMOUSLY/TECHNICAL_FIX directive:"""
                 max_tokens=300,
                 temperature=0.0,
             )
+            # Counts toward the cap (#1004): these calls used to be
+            # invisible to it, so a capped run kept spending here.
+            self.cost_tracker.record_response(response, call_type="blocker_question")
             return response.content.strip()
         except Exception:
             # Fallback to generic question
