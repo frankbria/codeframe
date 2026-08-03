@@ -4,14 +4,13 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useTerminalSocket, type TerminalSocketStatus } from '@/hooks/useTerminalSocket';
 import { fetchStreamTicket } from '@/lib/api';
 
+import { wsBase } from '@/lib/wsBase';
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function wsBase(): string {
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  return process.env.NEXT_PUBLIC_WS_URL || apiBase.replace(/^http/, 'ws');
-}
+
 
 // ---------------------------------------------------------------------------
 // ReconnectingOverlay

@@ -6,6 +6,7 @@ import { reviewApi, gatesApi, gitApi, prApi, tasksApi } from '@/lib/api';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
 import { useWorkspaceSelection } from '@/hooks/useWorkspaceSelection';
 import { parseDiff, getFilePath } from '@/lib/diffParser';
+import { pickOpenPr } from '@/lib/pickOpenPr';
 import type {
   DiffStatsResponse,
   TaskListResponse,
@@ -52,6 +53,37 @@ export default function ReviewPage() {
   const [showPRModal, setShowPRModal] = useState(false);
   const [prUrl, setPrUrl] = useState('');
   const [prNumber, setPrNumber] = useState(0);
+
+  // Restore the open PR on load (#944). prNumber lived only in local state set
+  // by handleCreatePR, so reloading or navigating away while CI ran — the
+  // normal case — permanently hid PRStatusPanel, which is the ONLY web surface
+  // carrying the Merge button and the PROOF9 merge-gate display. Ship then had
+  // to be finished from the CLI.
+  //
+  // Match on head_branch, NOT pull_requests[0]. That is the newest open PR in
+  // the whole repo — with several feature branches, or a dependabot PR, or a
+  // stale one, the panel would restore someone else's PR and its Merge button
+  // would merge it.
+  useEffect(() => {
+    if (!workspacePath || prNumber > 0) return;
+    let cancelled = false;
+    Promise.all([gitApi.getStatus(workspacePath), prApi.list(workspacePath, 'open')])
+      .then(([status, res]) => {
+        if (cancelled) return;
+        const mine = pickOpenPr(res.pull_requests, status.current_branch);
+        if (mine?.number) {
+          setPrNumber(mine.number);
+          if (mine.url) setPrUrl(mine.url);
+        }
+      })
+      .catch(() => {
+        // No repo connection / no remote: leave the panel hidden rather than
+        // surfacing an error on a page whose main job is the diff.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspacePath, prNumber]);
 
   // Feedback
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);

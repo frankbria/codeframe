@@ -504,6 +504,12 @@ export interface PRHistoryItem {
   merge_override?: MergeOverride | null;
 }
 
+/** GET /api/v2/pr — open/closed PRs, unlike PRHistory which is merged-only. */
+export interface PRListResponse {
+  pull_requests: PRResponse[];
+  total: number;
+}
+
 export interface PRHistoryResponse {
   pull_requests: PRHistoryItem[];
   total: number;
