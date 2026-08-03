@@ -17,8 +17,32 @@ jobs:
       contents: read
       pull-requests: read
       issues: read
+      # Required (#1011). The action exchanges a GitHub OIDC token for the
+      # installation token it posts the review with; without this the job dies
+      # ~15s in with "Could not fetch an OIDC token", on every PR, regardless of
+      # content. It is not a required check, so it sat red indefinitely and the
+      # repo quietly lost one of its two bot reviewers.
+      id-token: write
 
     steps:
+      - name: Verify the review credential is present
+        # Distinguishes "no credential" from "the review ran and found nothing"
+        # (#1011 AC3). Without this, both look like a red X on the PR.
+        env:
+          OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$OAUTH_TOKEN" ]; then
+            echo "::error title=claude-review is not configured::CLAUDE_CODE_OAUTH_TOKEN is unset or empty. This is a repository configuration problem, not a finding about this PR."
+            {
+              echo "## claude-review could not run"
+              echo
+              echo "\`CLAUDE_CODE_OAUTH_TOKEN\` is unset or empty, so no review was attempted."
+              echo "**This says nothing about this PR.** Rotate the secret in repository settings."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "✅ Review credential present"
+
       - name: Calculate total changes
         id: calc
         run: |
@@ -86,4 +110,26 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.claude.com/en/docs/claude-code/cli-reference for available options
           claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+
+      - name: Explain a failed review
+        # A red X that everyone learns to ignore is worse than no check (#1011).
+        # Name the two causes so the next reader does not have to open the log.
+        if: failure() && steps.claude-review.outcome == 'failure'
+        run: |
+          {
+            echo "## claude-review failed"
+            echo
+            echo "This is a **job failure**, not a review finding — no feedback was posted."
+            echo
+            echo "Most likely causes, in order:"
+            echo "1. **OIDC unavailable.** The job needs \`id-token: write\`; if that"
+            echo "   permission was removed, the action dies ~15s in (#1011)."
+            echo "2. **Credential rejected.** \`CLAUDE_CODE_OAUTH_TOKEN\` is set but"
+            echo "   expired or revoked — the preflight step only checks it is non-empty."
+            echo
+            echo "Neither is a reason to hold this PR. It is not a required check;"
+            echo "fix the repository configuration instead of re-running."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=claude-review job failure::The review did not run. See the job summary — this is a configuration problem, not a finding about this PR."
+
 
