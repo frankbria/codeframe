@@ -138,3 +138,27 @@ class TestRoundTrippingTheMaskDoesNotDestroyTheUrl:
         assert new != redact_webhook_url(old), (
             "a real new URL must not be mistaken for the mask"
         )
+
+
+class TestPutResponseIsMaskedToo:
+    """Raised by the PR bot: masking only GET left the credential flowing out of
+    the SAME handler's sibling response — and the PUT response is what the UI
+    holds in state after a save, so the full URL sat in the browser until the
+    next reload."""
+
+    def test_the_put_handler_masks_its_response(self):
+        from codeframe.ui.routers import settings_v2
+
+        source = inspect.getsource(settings_v2.update_notification_settings)
+
+        assert "redact_webhook_url(url)" in source
+        assert "webhook_url=url," not in source, "the PUT response returns the raw URL"
+
+    def test_the_put_response_sets_the_flag(self):
+        from codeframe.ui.routers import settings_v2
+
+        source = inspect.getsource(settings_v2.update_notification_settings)
+
+        assert "webhook_url_set=bool(url)" in source, (
+            "webhook_url_set was left at its False default after a successful save"
+        )

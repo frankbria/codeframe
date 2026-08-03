@@ -78,7 +78,11 @@ class TestUpdateNotificationSettings:
         )
         assert r.status_code == 200
         data = r.json()
-        assert data["webhook_url"] == "https://hooks.example.com/abc"
+        # MASKED since #941 — the PUT response is what the UI holds in state
+        # after a save, so returning the full URL kept the credential in the
+        # browser until the next reload.
+        assert data["webhook_url"] == "https://hooks.example.com"
+        assert data["webhook_url_set"] is True
         assert data["webhook_enabled"] is True
 
     def test_roundtrip_get_after_put(self, client):

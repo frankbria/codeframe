@@ -590,8 +590,14 @@ async def update_notification_settings(
                 str(e),
             ),
         )
+    # Masked here too (#941). Masking only GET left the credential flowing out
+    # of the SAME handler's sibling response — and this one is what the UI holds
+    # in state after a save, so the full URL would sit in the browser until the
+    # next reload.
     return NotificationSettingsResponse(
-        webhook_url=url, webhook_enabled=body.webhook_enabled
+        webhook_url=redact_webhook_url(url) if url else None,
+        webhook_url_set=bool(url),
+        webhook_enabled=body.webhook_enabled,
     )
 
 
