@@ -110,21 +110,20 @@ def export_patch(
     else:
         diff_cmd = ["git", "diff", "HEAD"]
 
-    result = subprocess.run(
-        diff_cmd,
-        cwd=repo_path,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    # BYTES, not text (#1029 review). A patch is byte-faithful by definition:
+    # it is written back out and fed to `git apply`. The usual "a mangled
+    # character beats a crash" trade is inverted here — a U+FFFD substituted for
+    # an undecodable byte produces a patch that silently does not round-trip,
+    # while `PATCH_EXPORTED` still reports success. Capture raw and never decode
+    # what we are going to persist.
+    result = subprocess.run(diff_cmd, cwd=repo_path, capture_output=True)
 
-    patch_content = result.stdout
+    patch_bytes = result.stdout
 
     # Track if we fell back to plain unstaged diff (git diff without HEAD)
     fell_back_to_plain_unstaged = False
 
-    if not patch_content.strip():
+    if not patch_bytes.strip():
         if staged_only:
             # Do NOT fall back (#942). The caller asked for staged changes; the
             # fallback below runs plain `git diff`, so an empty index silently
@@ -134,20 +133,13 @@ def export_patch(
             raise ValueError("No staged changes to export")
 
         # Try just unstaged changes (git diff without HEAD)
-        result = subprocess.run(
-            ["git", "diff"],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        patch_content = result.stdout
+        result = subprocess.run(["git", "diff"], cwd=repo_path, capture_output=True)
+        patch_bytes = result.stdout
         # We fell back to unstaged diff, so update the tracking flag
         actual_staged_used = False
         fell_back_to_plain_unstaged = True
 
-    if not patch_content.strip():
+    if not patch_bytes.strip():
         raise ValueError("No changes to export")
 
     # Generate output path if not provided
@@ -158,13 +150,22 @@ def export_patch(
     # Ensure parent directory exists
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Write patch
-    out_path.write_text(patch_content)
+    # write_bytes, not write_text: write_text re-encodes with the LOCALE, so on
+    # LANG=C it raised UnicodeEncodeError on the very characters the lossy read
+    # had just introduced — moving the crash from the read to the write rather
+    # than fixing it. Writing the captured bytes verbatim is both crash-free and
+    # exact.
+    out_path.write_bytes(patch_bytes)
 
     # Get stats - when fell back to plain unstaged, parse from content directly
     # because _get_diff_stats runs "git diff HEAD --stat" which may return zeros
     if fell_back_to_plain_unstaged:
-        stats = _parse_patch_content_stats(patch_content)
+        # Stats are display-only, so a lossy decode is the right trade HERE —
+        # the opposite of the persisted patch above. Never reuse this string for
+        # anything that gets written back out.
+        stats = _parse_patch_content_stats(
+            patch_bytes.decode("utf-8", errors="replace")
+        )
     else:
         stats = _get_diff_stats(repo_path, actual_staged_used)
 

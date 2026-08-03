@@ -362,3 +362,104 @@ class TestHandlersAroundAStrictReadCatchValueError:
         key = credentials._get_machine_id()
 
         assert key, "machine-id derivation crashed on an undecodable file"
+
+
+class TestAnExportedPatchIsByteFaithful:
+    """Raised in review, and the one place where "a mangled character beats a
+    crash" is the WRONG trade.
+
+    `export_patch` captured `git diff` with `errors="replace"` and persisted the
+    result with `write_text` — no encoding, so it re-encoded with the locale.
+    A single undecodable byte in a tracked file therefore produced either a
+    patch that silently does not round-trip (U+FFFD written into the file, while
+    PATCH_EXPORTED reports success) or, under LANG=C, a UnicodeEncodeError on
+    the very character the lossy read had just introduced — moving the crash
+    from the read to the write.
+
+    A patch is byte-faithful by definition: it is written back out and fed to
+    `git apply`. So this path captures bytes and writes bytes.
+    """
+
+    @pytest.fixture
+    def repo_with_a_latin1_byte(self, tmp_path):
+        """A committed file, then an edit introducing a byte that is not valid
+        UTF-8 — a Latin-1 comment, or a stray byte from a bad merge."""
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t.test"], cwd=tmp_path)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path)
+        target = tmp_path / "notes.txt"
+        target.write_bytes(b"original\n")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=tmp_path, check=True)
+        target.write_bytes(b"caf\xe9 latin-1\n")
+        return tmp_path
+
+    def test_the_exported_patch_still_applies(self, repo_with_a_latin1_byte):
+        """The claim that matters. A patch with U+FFFD substituted for the
+        original byte does not restore the file."""
+        from codeframe.core import artifacts
+        from codeframe.core.workspace import create_or_load_workspace
+
+        workspace = create_or_load_workspace(repo_with_a_latin1_byte)
+        info = artifacts.export_patch(workspace)
+
+        # Reset the tree, then apply the exported patch back onto it.
+        subprocess.run(
+            ["git", "checkout", "--", "notes.txt"],
+            cwd=repo_with_a_latin1_byte,
+            check=True,
+        )
+        applied = subprocess.run(
+            ["git", "apply", str(info.path)],
+            cwd=repo_with_a_latin1_byte,
+            capture_output=True,
+        )
+
+        assert applied.returncode == 0, applied.stderr[-500:]
+        assert (repo_with_a_latin1_byte / "notes.txt").read_bytes() == (
+            b"caf\xe9 latin-1\n"
+        ), "the patch round-tripped to different bytes"
+
+    def test_the_undecodable_byte_survives_into_the_patch_file(
+        self, repo_with_a_latin1_byte
+    ):
+        """Directly: the raw byte is present and no replacement character is."""
+        from codeframe.core import artifacts
+        from codeframe.core.workspace import create_or_load_workspace
+
+        workspace = create_or_load_workspace(repo_with_a_latin1_byte)
+        info = artifacts.export_patch(workspace)
+
+        written = Path(info.path).read_bytes()
+        assert b"\xe9" in written, "the original byte was lost"
+        assert "�".encode() not in written, "a replacement character was written"
+
+    def test_a_plain_ascii_diff_is_unaffected(self, tmp_path):
+        """The control — the ordinary path must still work."""
+        from codeframe.core import artifacts
+        from codeframe.core.workspace import create_or_load_workspace
+
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t.test"], cwd=tmp_path)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path)
+        (tmp_path / "a.txt").write_text("one\n")
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=tmp_path, check=True)
+        (tmp_path / "a.txt").write_text("two\n")
+
+        info = artifacts.export_patch(create_or_load_workspace(tmp_path))
+
+        assert "two" in Path(info.path).read_text(encoding="utf-8")
+
+    def test_nothing_decodes_what_it_is_about_to_persist(self):
+        """The rule, not just this instance. `errors="replace"` is right for
+        display and parsing and wrong for anything written back out."""
+        import inspect
+
+        from codeframe.core import artifacts
+
+        source = inspect.getsource(artifacts.export_patch)
+        code = "\n".join(line.split("#")[0] for line in source.splitlines())
+
+        assert "write_bytes(" in code
+        assert "write_text(" not in code, "the patch is persisted through a decode"
