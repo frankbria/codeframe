@@ -30,6 +30,7 @@ from codeframe.core.dangerous_commands import (  # noqa: F401
 )
 
 if TYPE_CHECKING:
+    from codeframe.core.cost_tracker import CostTracker
     from codeframe.core.streaming import EventPublisher
 
 
@@ -185,6 +186,7 @@ class Executor:
         dry_run: bool = False,
         command_timeout: int = 60,
         event_publisher: Optional["EventPublisher"] = None,
+        cost_tracker: Optional["CostTracker"] = None,
     ):
         """Initialize the executor.
 
@@ -194,13 +196,21 @@ class Executor:
             dry_run: If True, don't actually make changes
             command_timeout: Timeout for shell commands in seconds
             event_publisher: Optional EventPublisher for streaming execution events
+            cost_tracker: Optional per-task spend accounting (#1004). Omitted,
+                the executor records usage into a tracker with no cap, so the
+                accounting is always there and only the *limit* is opt-in.
         """
+        from codeframe.core.cost_tracker import CostTracker as _CostTracker
+
         self.llm = llm_provider
         self.repo_path = Path(repo_path)
         self.dry_run = dry_run
         self.command_timeout = command_timeout
         self.changes: list[FileChange] = []
         self.event_publisher = event_publisher
+        # The plan engine had NO token accounting at all (#1004), so a cost cap
+        # had nothing to compare against and could never fire.
+        self.cost_tracker = cost_tracker or _CostTracker()
 
     def execute_plan(
         self,
@@ -263,6 +273,19 @@ class Executor:
             StepResult with execution outcome
         """
         start_time = datetime.now(timezone.utc)
+
+        # Ask permission BEFORE the step, not after (#1004): a step that has
+        # already spent cannot be un-spent. The check lives here rather than in
+        # execute_plan's loop because Agent._execute_plan drives execute_step
+        # directly — a cap only the other loop honoured would not be a cap.
+        cap_message = self.cost_tracker.cap_message()
+        if cap_message:
+            return StepResult(
+                step=step,
+                status=ExecutionStatus.FAILED,
+                error=cap_message,
+                duration_ms=0,
+            )
 
         try:
             if step.type == StepType.FILE_CREATE:
@@ -543,6 +566,8 @@ class Executor:
                     cwd=self.repo_path,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=self.command_timeout,
                     env=env,
                 )
@@ -556,6 +581,8 @@ class Executor:
                         cwd=self.repo_path,
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
+                        errors="replace",
                         timeout=self.command_timeout,
                         env=env,
                     )
@@ -567,6 +594,8 @@ class Executor:
                         cwd=self.repo_path,
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
+                        errors="replace",
                         timeout=self.command_timeout,
                         env=env,
                     )
@@ -634,7 +663,7 @@ class Executor:
             # Verify Python syntax
             try:
                 import ast
-                content = file_path.read_text()
+                content = file_path.read_text(encoding="utf-8", errors="replace")
                 ast.parse(content)
                 return StepResult(
                     step=step,
@@ -685,6 +714,7 @@ class Executor:
             max_tokens=4096,
             temperature=0.0,
         )
+        self.cost_tracker.record_response(response)
 
         # Clean up response - remove markdown code blocks if present
         content = response.content.strip()
@@ -715,6 +745,7 @@ class Executor:
             max_tokens=8192,
             temperature=0.0,
         )
+        self.cost_tracker.record_response(response)
 
         # Clean up response
         content = response.content.strip()
