@@ -2,6 +2,12 @@
 
 Each validator returns a (passed: bool, detail: str) tuple so results
 can be aggregated into a report.
+
+Every subprocess here passes ``timeout=``, so every one must also catch
+``subprocess.TimeoutExpired`` (#946). It is a ``SubprocessError``, NOT an
+``OSError``, so the "tool not available" handlers never covered it: a hanging
+command propagated out of the validator and killed the whole module fixture
+instead of being recorded as the failed check it is.
 """
 
 from __future__ import annotations
@@ -27,6 +33,8 @@ def validate_ruff_lint(project_path: Path) -> tuple[bool, str]:
             return True, "0 lint errors"
         error_count = proc.stdout.count("\n")
         return False, f"{error_count} lint errors:\n{proc.stdout[:500]}"
+    except subprocess.TimeoutExpired as exc:
+        return False, f"ruff timed out after {exc.timeout}s"
     except OSError as exc:
         return False, f"ruff not available: {exc}"
 
@@ -60,6 +68,8 @@ def validate_tests_pass(project_path: Path) -> tuple[bool, str]:
             return True, f"All tests passed\n{proc.stdout[-300:]}"
         combined = proc.stdout[-300:] + "\n--- stderr ---\n" + proc.stderr[-200:]
         return False, f"Tests failed (exit {proc.returncode}):\n{combined}"
+    except subprocess.TimeoutExpired as exc:
+        return False, f"the project's test suite timed out after {exc.timeout}s"
     except OSError as exc:
         return False, f"uv/pytest not available: {exc}"
 
@@ -77,6 +87,8 @@ def validate_cli_works(project_path: Path) -> tuple[bool, str]:
         if proc.returncode == 0:
             return True, "CLI --help works"
         return False, f"CLI --help failed (exit {proc.returncode}):\n{proc.stderr[:300]}"
+    except subprocess.TimeoutExpired as exc:
+        return False, f"CLI --help timed out after {exc.timeout}s"
     except OSError as exc:
         return False, f"uv not available: {exc}"
 
@@ -95,6 +107,8 @@ def validate_no_import_errors(project_path: Path) -> tuple[bool, str]:
         if proc.returncode == 0 and "OK" in proc.stdout:
             return True, "Package imports cleanly"
         return False, f"Import error:\n{proc.stderr[:300]}"
+    except subprocess.TimeoutExpired as exc:
+        return False, f"the import check timed out after {exc.timeout}s"
     except OSError as exc:
         return False, f"uv/python not available: {exc}"
 

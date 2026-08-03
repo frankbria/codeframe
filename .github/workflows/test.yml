@@ -400,10 +400,13 @@ jobs:
 
       - name: Run E2E backend tests
         run: |
+          # "and not e2e_llm" is load-bearing (#946): a -m on the command line
+          # REPLACES the one in pytest.ini's addopts, so a bare -m "e2e" would
+          # re-select the paid real-LLM Golden Path tests here.
           uv run pytest tests/e2e/ \
             -v \
             --tb=short \
-            -m "e2e"
+            -m "e2e and not e2e_llm"
 
       - name: Stop FastAPI server
         if: always()
