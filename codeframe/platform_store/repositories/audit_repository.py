@@ -43,8 +43,12 @@ class AuditRepository(BaseRepository):
             ID of the created audit log entry
         """
 
-        cursor = self.conn.cursor()
-        cursor.execute(
+        # _execute/_commit, not self.conn.cursor(): the base class serializes
+        # sync access to the shared sqlite3 connection behind a threading lock,
+        # and this repository was the one place bypassing it (#939). The 429
+        # handler writes here from the event loop during a burst, which is
+        # exactly when an unsynchronized write races another thread's.
+        cursor = self._execute(
             """
             INSERT INTO audit_logs (
                 event_type, user_id, resource_type, resource_id,
@@ -62,6 +66,6 @@ class AuditRepository(BaseRepository):
                 timestamp.isoformat(),
             ),
         )
-        self.conn.commit()
+        self._commit()
         return cursor.lastrowid
 

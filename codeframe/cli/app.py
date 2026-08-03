@@ -23,6 +23,7 @@ from typing import Optional
 import click
 import typer
 from rich.console import Console
+from rich.markup import escape
 
 # Import auth subapp for credential management
 from codeframe.cli.auth_commands import auth_app
@@ -217,7 +218,7 @@ def init(
                 if hook_result.success:
                     console.print(f"  Hook after_init: [green]OK[/green] ({hook_result.duration_ms}ms)")
                 else:
-                    console.print(f"  Hook after_init: [yellow]failed[/yellow] ({hook_result.stderr[:100]})")
+                    console.print(f"  Hook after_init: [yellow]failed[/yellow] ({escape(hook_result.stderr[:100])})")
 
         # Generate CODEFRAME.md if requested (never clobber an existing one, #778)
         if generate_config:
@@ -481,7 +482,7 @@ def status(
         console.print("\n[bold]PRD[/bold]")
         latest_prd = prd.get_latest(workspace)
         if latest_prd:
-            console.print(f"  Title: [green]{latest_prd.title}[/green]")
+            console.print(f"  Title: [green]{escape(latest_prd.title)}[/green]")
             console.print(f"  Added: {latest_prd.created_at.strftime('%Y-%m-%d %H:%M')}")
         else:
             console.print("  [dim]No PRD loaded. Run 'codeframe prd add <file>'[/dim]")
@@ -582,7 +583,7 @@ def summary(
         # PRD
         latest_prd = prd.get_latest(workspace)
         if latest_prd:
-            console.print(f"[bold]PRD:[/bold] {latest_prd.title}")
+            console.print(f"[bold]PRD:[/bold] {escape(latest_prd.title)}")
         else:
             console.print("[bold]PRD:[/bold] [dim]None[/dim]")
 
@@ -605,7 +606,7 @@ def summary(
             console.print(f"[bold]Blockers:[/bold] [yellow]{len(open_blockers)} open[/yellow]")
             for b in open_blockers[:3]:
                 q = b.question[:50] + "..." if len(b.question) > 50 else b.question
-                console.print(f"  - {q}")
+                console.print(f"  - {escape(q)}")
             if len(open_blockers) > 3:
                 console.print(f"  ... and {len(open_blockers) - 3} more")
         else:
@@ -681,24 +682,24 @@ def review(
                 status_str = "[yellow]ERROR[/yellow]"
 
             duration_str = f" ({check.duration_ms}ms)" if check.duration_ms else ""
-            console.print(f"  {check.name}: {status_str}{duration_str}")
+            console.print(f"  {escape(check.name)}: {status_str}{duration_str}")
 
             # Show output for failures or verbose mode
             if check.output and (check.status == GateStatus.FAILED or verbose):
-                console.print(f"    [dim]{check.output}[/dim]")
+                console.print(f"    [dim]{escape(check.output)}[/dim]")
 
         # Diagnostics that are not gate verdicts (#909) — e.g. a failed
         # dependency install. Always shown: the gates may all have passed, and
         # the operator still needs to know the environment was incomplete.
         for note in result.notes:
-            console.print(f"  [yellow]note:[/yellow] {note}")
+            console.print(f"  [yellow]note:[/yellow] {escape(note)}")
 
         # Summary
         console.print()
         if result.passed:
-            console.print(f"[bold green]All gates passed[/bold green] ({result.summary})")
+            console.print(f"[bold green]All gates passed[/bold green] ({escape(result.summary)})")
         else:
-            console.print(f"[bold red]Gates failed[/bold red] ({result.summary})")
+            console.print(f"[bold red]Gates failed[/bold red] ({escape(result.summary)})")
             raise typer.Exit(1)
 
     except FileNotFoundError:
@@ -707,10 +708,46 @@ def review(
         raise typer.Exit(1)
 
 
+#: Bind addresses that accept connections from outside this machine.
+_NON_LOOPBACK_BINDS = {"0.0.0.0", "::", "*", ""}
+
+
+def _warn_if_exposed(host: str) -> None:
+    """Warn when binding beyond loopback, loudly if auth is off (#935).
+
+    The server exposes SQLite state, workspace file access and
+    agent-execution endpoints. Exposing that on a LAN is a deliberate choice;
+    doing it with CODEFRAME_AUTH_REQUIRED=false — which the dev docs suggest —
+    is an unauthenticated remote shell, so that combination gets a stronger
+    warning rather than a quiet default.
+    """
+    if host.strip() not in _NON_LOOPBACK_BINDS:
+        return
+
+    auth_off = os.environ.get("CODEFRAME_AUTH_REQUIRED", "").strip().lower() in {
+        "0", "false", "no", "off",
+    }
+    console.print(
+        f"[yellow]WARNING:[/yellow] binding {escape(host)} accepts connections "
+        "from other machines on your network."
+    )
+    if auth_off:
+        console.print(
+            "[bold red]CODEFRAME_AUTH_REQUIRED is disabled.[/bold red] The API — "
+            "including workspace file access and agent execution — is reachable "
+            "with no credentials. Do not use this combination outside a trusted "
+            "network."
+        )
+
+
 @app.command()
 def serve(
     port: int = typer.Option(8080, "--port", "-p", help="Port to run server on"),
-    host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to"),
+    host: str = typer.Option(
+        "127.0.0.1",
+        "--host",
+        help="Host to bind to. Use 0.0.0.0 to expose on the network (see warning).",
+    ),
     reload: bool = typer.Option(False, "--reload", help="Enable auto-reload (development)"),
 ) -> None:
     """Start the optional FastAPI server (wraps core).
@@ -718,12 +755,18 @@ def serve(
     The server is NOT required for Golden Path commands.
     It provides the v2 REST API that wraps the same core functions.
 
+    Binds 127.0.0.1 by default (#935). This process exposes SQLite state,
+    workspace file access and agent-execution endpoints, so it is loopback-only
+    until you explicitly ask for otherwise.
+
     Examples:
         cf serve
         cf serve --port 3000
-        cf serve --reload
+        cf serve --host 0.0.0.0        # expose on the network — see the warning
     """
     import uvicorn
+
+    _warn_if_exposed(host)
 
     console.print(f"Starting CodeFRAME API server on {host}:{port}")
     console.print(f"  Swagger UI: http://localhost:{port}/docs")
@@ -775,8 +818,8 @@ def prd_templates_list() -> None:
     console.print("\n[bold]Available PRD Templates:[/bold]\n")
     for template in templates:
         section_count = len(template.sections)
-        console.print(f"  [green]{template.id}[/green] - {template.name}")
-        console.print(f"    {template.description}")
+        console.print(f"  [green]{template.id}[/green] - {escape(template.name)}")
+        console.print(f"    {escape(template.description)}")
         console.print(f"    Sections: {section_count} | Version: {template.version}")
         console.print()
 
@@ -806,14 +849,14 @@ def prd_templates_show(
             console.print(f"  {t.id}")
         raise typer.Exit(1)
 
-    console.print(f"\n[bold]{template.name}[/bold] ({template.id})\n")
-    console.print(f"{template.description}\n")
+    console.print(f"\n[bold]{escape(template.name)}[/bold] ({template.id})\n")
+    console.print(f"{escape(template.description)}\n")
     console.print(f"Version: {template.version}")
 
     console.print("\n[bold]Sections:[/bold]\n")
     for i, section in enumerate(template.sections, 1):
         required = "[green]required[/green]" if section.required else "[dim]optional[/dim]"
-        console.print(f"  {i}. {section.title} ({section.id})")
+        console.print(f"  {i}. {escape(section.title)} ({section.id})")
         console.print(f"     Source: {section.source} | {required}")
         console.print()
 
@@ -873,7 +916,7 @@ def prd_templates_import(
     try:
         # Import and persist to project directory
         template = manager.import_template(source_path, persist=True)
-        console.print(f"[green]✓[/green] Imported template '{template.id}' ({template.name})")
+        console.print(f"[green]✓[/green] Imported template '{template.id}' ({escape(template.name)})")
         console.print(f"[dim]Sections: {len(template.sections)}[/dim]")
         console.print(f"[dim]Saved to: .codeframe/templates/prd/{template.id}.yaml[/dim]")
     except Exception as e:
@@ -928,7 +971,7 @@ def prd_add(
         )
 
         console.print("[green]PRD added[/green]")
-        console.print(f"  Title: {record.title}")
+        console.print(f"  Title: {escape(record.title)}")
         console.print(f"  ID: {record.id}")
         console.print(f"  Source: {file_path}")
         console.print()
@@ -984,7 +1027,7 @@ def prd_show(
             console.print("Add one with: codeframe prd add <file.md>")
             return
 
-        console.print(f"\n[bold]PRD:[/bold] {record.title}")
+        console.print(f"\n[bold]PRD:[/bold] {escape(record.title)}")
         console.print(f"[dim]ID: {record.id}[/dim]")
         console.print(f"[dim]Added: {record.created_at}[/dim]")
 
@@ -1038,7 +1081,7 @@ def prd_list(
 
         console.print(f"\n[bold]PRDs ({len(records)}):[/bold]\n")
         for record in records:
-            console.print(f"  {record.id[:8]}...  [bold]{record.title}[/bold]")
+            console.print(f"  {record.id[:8]}...  [bold]{escape(record.title)}[/bold]")
             console.print(f"           [dim]Added: {record.created_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
             console.print()
 
@@ -1109,7 +1152,7 @@ def prd_delete(
             print_event=False,
         )
 
-        console.print(f"[green]PRD deleted:[/green] {record.title}")
+        console.print(f"[green]PRD deleted:[/green] {escape(record.title)}")
 
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
@@ -1461,10 +1504,10 @@ def prd_generate(
         console.print(f"[red]Error:[/red] Template '{template}' not found.")
         console.print("\nAvailable templates:")
         for t in template_manager.list_templates():
-            console.print(f"  {t.id} - {t.name}")
+            console.print(f"  {t.id} - {escape(t.name)}")
         raise typer.Exit(1)
 
-    console.print(f"[dim]Using template: {template_obj.name}[/dim]")
+    console.print(f"[dim]Using template: {escape(template_obj.name)}[/dim]")
 
     try:
         workspace = get_workspace(workspace_path)
@@ -1619,7 +1662,7 @@ def prd_generate(
         )
 
         # Show result
-        console.print(f"\n[green]✓[/green] PRD generated: [bold]{prd_record.title}[/bold]")
+        console.print(f"\n[green]✓[/green] PRD generated: [bold]{escape(prd_record.title)}[/bold]")
         console.print(f"[dim]ID: {prd_record.id}[/dim]")
 
         # Show preview
@@ -1738,7 +1781,7 @@ def prd_stress_test(
         console.print("[red]Error:[/red] No PRD found. Run 'codeframe prd generate' first.")
         raise typer.Exit(1)
 
-    console.print(f"[dim]Stress-testing PRD: {record.title} (v{record.version})[/dim]")
+    console.print(f"[dim]Stress-testing PRD: {escape(record.title)} (v{record.version})[/dim]")
 
     # Build provider: flag → env → config → anthropic, validating the
     # matching API key (#768)
@@ -1762,11 +1805,14 @@ def prd_stress_test(
     if result.ambiguities:
         console.print(f"\n[bold yellow]⚠ {len(result.ambiguities)} ambiguities found[/bold yellow]\n")
         for i, amb in enumerate(result.ambiguities, 1):
-            console.print(f"[bold yellow]{i}. {amb.label}[/bold yellow] (from \"{amb.source_node_title}\")")
+            console.print(f"[bold yellow]{i}. {escape(amb.label)}[/bold yellow] (from \"{escape(amb.source_node_title)}\")")
             console.print("   The PRD doesn't specify:")
             for q in amb.questions:
-                console.print(f"   [cyan]- {q}[/cyan]")
-            console.print(f"   → {amb.recommendation}")
+                # escape(): a bare loop variable carries no field name, so the
+                # scanner test cannot see it — these are LLM-written questions
+                # about code, so brackets are the norm (#935).
+                console.print(f"   [cyan]- {escape(q)}[/cyan]")
+            console.print(f"   → {escape(amb.recommendation)}")
             console.print()
     else:
         console.print("\n[green]✓ No ambiguities found — PRD is well-specified.[/green]\n")
@@ -1775,7 +1821,7 @@ def prd_stress_test(
     if interactive and result.ambiguities:
         console.print("[bold]Interactive mode — resolve ambiguities:[/bold]\n")
         for amb in result.ambiguities:
-            console.print(f"[yellow]{amb.label}[/yellow]: {', '.join(amb.questions)}")
+            console.print(f"[yellow]{escape(amb.label)}[/yellow]: {escape(', '.join(amb.questions))}")
             answer = typer.prompt("Your answer")
             amb.resolved_answer = answer
             console.print("[green]✓[/green] Recorded.\n")
@@ -1917,7 +1963,7 @@ def tasks_generate(
             {t.id for t in tasks.list_tasks(workspace)} if overwrite else set()
         )
 
-        console.print(f"Generating tasks from PRD: [bold]{prd_record.title}[/bold]")
+        console.print(f"Generating tasks from PRD: [bold]{escape(prd_record.title)}[/bold]")
 
         if recursive and no_llm:
             console.print(
@@ -1999,7 +2045,7 @@ def tasks_generate(
         console.print(f"\n[green]Generated {len(created)} tasks[/green]\n")
 
         for i, task in enumerate(created, 1):
-            console.print(f"  {i}. {task.title}")
+            console.print(f"  {i}. {escape(task.title)}")
             if task.description:
                 # Show first line of description
                 desc_preview = task.description.split("\n")[0][:60]
@@ -2117,7 +2163,7 @@ def tasks_list(
                 f"[{status_style}]{task.status.value}[/{status_style}]",
                 str(task.priority),
                 deps_str,
-                task.title[:55] + ("..." if len(task.title) > 55 else ""),
+                escape(task.title[:55]) + ("..." if len(task.title) > 55 else ""),
             )
 
         console.print(table)
@@ -2136,6 +2182,84 @@ def tasks_list(
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+
+
+@tasks_app.command("show")
+def tasks_show(
+    task_id: str = typer.Argument(..., help="Task ID (may be a unique prefix)"),
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Show a task's details and dependencies.
+
+    README.md and CLAUDE.md have advertised this command for some time while it
+    did not exist (#935).
+
+    Examples:
+        cf tasks show 3f2a1b
+        cf tasks show 3f2a1b8c-... --workspace ../other-repo
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {workspace_path}")
+        console.print("Run 'codeframe init' to initialize a workspace first.")
+        raise typer.Exit(1)
+
+    task = tasks.get(workspace, task_id)
+    if task is None:
+        matches = tasks.find_by_prefix(workspace, task_id)
+        if not matches:
+            console.print(f"[red]Error:[/red] No task matching '{escape(task_id)}'")
+            raise typer.Exit(1)
+        if len(matches) > 1:
+            console.print(
+                f"[red]Error:[/red] '{escape(task_id)}' matches {len(matches)} tasks:"
+            )
+            for match in matches[:10]:
+                console.print(f"  {match.id[:8]}  {escape(match.title[:60])}")
+            raise typer.Exit(1)
+        task = matches[0]
+
+    # escape(): a title or description may contain Rich markup like '[/b]',
+    # which would otherwise raise MarkupError instead of printing (#935).
+    console.print(f"\n[bold]{escape(task.title)}[/bold]")
+    console.print(f"[dim]{task.id}[/dim]\n")
+    console.print(f"  Status:     {task.status.value}")
+    console.print(f"  Priority:   {task.priority}")
+    if task.estimated_hours is not None:
+        console.print(f"  Estimated:  {task.estimated_hours}h")
+    if task.complexity_score is not None:
+        console.print(f"  Complexity: {task.complexity_score}")
+    console.print(f"  Created:    {task.created_at:%Y-%m-%d %H:%M}")
+    console.print(f"  Updated:    {task.updated_at:%Y-%m-%d %H:%M}")
+
+    if task.github_issue_number:
+        console.print(f"  GitHub:     #{task.github_issue_number} {escape(task.external_url or '')}")
+
+    deps = task.depends_on or []
+    console.print(f"\n[bold]Dependencies[/bold] ({len(deps)})")
+    if not deps:
+        console.print("  [dim]none[/dim]")
+    else:
+        titles = tasks.get_titles(workspace, deps)
+        for dep_id in deps:
+            title = titles.get(dep_id)
+            label = escape(title) if title else "[dim](missing)[/dim]"
+            console.print(f"  {dep_id[:8]}  {label}")
+
+    if task.description:
+        console.print("\n[bold]Description[/bold]")
+        console.print(escape(task.description))
+    console.print()
 
 
 @tasks_app.command("set")
@@ -2234,7 +2358,7 @@ def tasks_set(
             if len(matching) > 1:
                 console.print(f"[red]Error:[/red] Multiple tasks match '{actual_task_id}':")
                 for t in matching:
-                    console.print(f"  {t.id}: {t.title[:40]}")
+                    console.print(f"  {t.id}: {escape(t.title[:40])}")
                 console.print("Please provide a more specific ID.")
                 raise typer.Exit(1)
         else:
@@ -2277,7 +2401,7 @@ def tasks_set(
             task = matching[0]
             if updated_count:
                 console.print("[green]Task updated[/green]")
-                console.print(f"  {task.title[:50]}")
+                console.print(f"  {escape(task.title[:50])}")
                 console.print(f"  Status: {task.status.value} -> {new_status.value}")
             else:
                 console.print(f"[yellow]Task already {new_status.value}[/yellow]")
@@ -2372,14 +2496,14 @@ def tasks_delete(
             if len(matching) > 1:
                 console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
                 for t in matching:
-                    console.print(f"  {t.id}: {t.title[:40]}")
+                    console.print(f"  {t.id}: {escape(t.title[:40])}")
                 console.print("Please provide a more specific ID.")
                 raise typer.Exit(1)
 
             task = matching[0]
 
             if not force:
-                confirm = typer.confirm(f"Delete task '{task.title[:50]}'?")
+                confirm = typer.confirm(f"Delete task '{task.title[:50]}'?")  # typer.confirm is not Rich-rendered
                 if not confirm:
                     console.print("[dim]Cancelled[/dim]")
                     raise typer.Exit(0)
@@ -2391,13 +2515,13 @@ def tasks_delete(
                     f"[yellow]Warning:[/yellow] {len(dependents)} task(s) depend on this task"
                 )
                 for dep in dependents[:3]:
-                    console.print(f"  - {dep.id[:8]}: {dep.title[:40]}")
+                    console.print(f"  - {dep.id[:8]}: {escape(dep.title[:40])}")
                 if len(dependents) > 3:
                     console.print(f"  ... and {len(dependents) - 3} more")
 
             deleted = tasks.delete(workspace, task.id)
             if deleted:
-                console.print(f"[green]Deleted task:[/green] {task.title[:50]}")
+                console.print(f"[green]Deleted task:[/green] {escape(task.title[:50])}")
             else:
                 console.print("[red]Error:[/red] Failed to delete task")
                 raise typer.Exit(1)
@@ -2541,7 +2665,7 @@ def work_start(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -2580,7 +2704,7 @@ def work_start(
         run = runtime.start_task_run(workspace, task.id)
 
         console.print("\n[bold green]Run started[/bold green]")
-        console.print(f"  Task: {task.title}")
+        console.print(f"  Task: {escape(task.title)}")
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
         console.print("  Status: [yellow]RUNNING[/yellow]")
 
@@ -2608,14 +2732,14 @@ def work_start(
                 elif state.status == AgentStatus.BLOCKED:
                     console.print("[yellow]Task blocked - human input needed[/yellow]")
                     if state.blocker:
-                        console.print(f"  Question: {state.blocker.question}")
+                        console.print(f"  Question: {escape(state.blocker.question)}")
                     console.print("  Use 'codeframe blocker list' to see blockers")
                 elif state.status == AgentStatus.FAILED:
                     console.print("[red]Task execution failed[/red]")
                     if state.step_results:
                         last_result = state.step_results[-1]
                         if last_result.error:
-                            console.print(f"  Error: {last_result.error[:200]}")
+                            console.print(f"  Error: {escape(last_result.error[:200])}")
 
                 # Show debug log location if debugging was enabled
                 if debug:
@@ -2694,7 +2818,7 @@ def work_resume(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -2703,7 +2827,7 @@ def work_resume(
         run = runtime.resume_run(workspace, task.id)
 
         console.print("\n[bold green]Run resumed[/bold green]")
-        console.print(f"  Task: {task.title}")
+        console.print(f"  Task: {escape(task.title)}")
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
         console.print("  Status: [yellow]RUNNING[/yellow]")
 
@@ -2738,7 +2862,7 @@ def work_resume(
             elif state.status == AgentStatus.BLOCKED:
                 console.print("[yellow]Task blocked - human input needed[/yellow]")
                 if state.blocker:
-                    console.print(f"  Question: {state.blocker.question}")
+                    console.print(f"  Question: {escape(state.blocker.question)}")
                 console.print("  Use 'codeframe blocker list' to see blockers")
             elif state.status == AgentStatus.FAILED:
                 console.print("[red]Task execution failed[/red]")
@@ -2799,7 +2923,7 @@ def work_stop(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -2808,7 +2932,7 @@ def work_stop(
         run = runtime.stop_run(workspace, task.id)
 
         console.print("\n[bold yellow]Run stopped[/bold yellow]")
-        console.print(f"  Task: {task.title}")
+        console.print(f"  Task: {escape(task.title)}")
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
         console.print("  Task returned to: [blue]READY[/blue]")
 
@@ -3007,7 +3131,7 @@ def work_diagnose(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -3017,7 +3141,7 @@ def work_diagnose(
         failed_runs = [r for r in runs if r.status == runtime.RunStatus.FAILED]
 
         if not failed_runs:
-            console.print(f"[yellow]No failed run found for task '{task.title}'[/yellow]")
+            console.print(f"[yellow]No failed run found for task '{escape(task.title)}'[/yellow]")
             console.print("[dim]Diagnosis is only available for failed tasks.[/dim]")
             raise typer.Exit(1)
 
@@ -3083,7 +3207,7 @@ def _display_diagnostic_report(
         console.print("\n[bold]Recommendations:[/bold]\n")
         for i, rec in enumerate(report.recommendations, 1):
             console.print(f"  {i}. [cyan]{rec.action.value}[/cyan]")
-            console.print(f"     {rec.reason}")
+            console.print(f"     {escape(rec.reason)}")
             console.print(f"     [dim]Command:[/dim] [green]{rec.command}[/green]")
             console.print()
 
@@ -3099,7 +3223,7 @@ def _display_diagnostic_report(
         if logs:
             console.print(f"\n[bold]Recent Errors ({len(logs)}):[/bold]")
             for log in logs[:5]:
-                console.print(f"  [red]ERROR[/red] {log.category.value}: {log.message[:100]}")
+                console.print(f"  [red]ERROR[/red] {log.category.value}: {escape(log.message[:100])}")
 
     console.print("━" * 60)
     console.print(f"[dim]Report ID: {report.id}[/dim]")
@@ -3155,7 +3279,7 @@ def work_retry(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -3188,7 +3312,7 @@ def work_retry(
             raise typer.Exit(0)
 
         # Start new run
-        console.print(f"\n[bold]Retrying task:[/bold] {task.title}")
+        console.print(f"\n[bold]Retrying task:[/bold] {escape(task.title)}")
         run = runtime.start_task_run(workspace, task.id)
 
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
@@ -3208,7 +3332,7 @@ def work_retry(
         elif state.status == AgentStatus.BLOCKED:
             console.print("[yellow]Task blocked - human input needed[/yellow]")
             if state.blocker:
-                console.print(f"  Question: {state.blocker.question}")
+                console.print(f"  Question: {escape(state.blocker.question)}")
             console.print("  Use 'codeframe blocker list' to see blockers")
         elif state.status == AgentStatus.FAILED:
             console.print("[red]Task execution failed[/red]")
@@ -3265,7 +3389,7 @@ def work_update_description(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -3274,8 +3398,13 @@ def work_update_description(
         tasks_module.update(workspace, task.id, description=description)
 
         console.print("[green]Task description updated[/green]")
-        console.print(f"  Task: {task.title}")
-        console.print(f"  New description: {description[:100]}{'...' if len(description) > 100 else ''}")
+        console.print(f"  Task: {escape(task.title)}")
+        # escape(): the description is user input and Rich renders markup —
+        # "Array indexing a[0] and b[1]" would raise MarkupError (#935).
+        console.print(
+            f"  New description: {escape(description[:100])}"
+            f"{'...' if len(description) > 100 else ''}"
+        )
         console.print("\nNext steps:")
         console.print(f"  codeframe work retry {task.id[:8]}  # Retry with updated description")
 
@@ -3343,7 +3472,7 @@ def work_follow(
         if len(matching) > 1:
             console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
             for t in matching[:5]:
-                console.print(f"  {t.id[:8]} - {t.title}")
+                console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
 
         task = matching[0]
@@ -3367,7 +3496,7 @@ def work_follow(
 
                 console.print(
                     f"[{status_color}]Run {last_run.status.value}[/{status_color}] "
-                    f"for task: {task.title}"
+                    f"for task: {escape(task.title)}"
                 )
 
                 # Show final output if available
@@ -3385,13 +3514,13 @@ def work_follow(
 
                 raise typer.Exit(0)
             else:
-                console.print(f"[yellow]No active run found for task:[/yellow] {task.title}")
+                console.print(f"[yellow]No active run found for task:[/yellow] {escape(task.title)}")
                 console.print("[dim]Start a run with:[/dim]")
                 console.print(f"  cf work start {task.id[:8]} --execute")
                 raise typer.Exit(1)
 
         # We have an active run - stream it
-        console.print(f"[blue]Following task:[/blue] {task.title}")
+        console.print(f"[blue]Following task:[/blue] {escape(task.title)}")
         console.print(f"[dim]Run: {active_run.id[:8]} | Status: {active_run.status.value}[/dim]")
 
         # Show buffered output if requested
@@ -3553,7 +3682,7 @@ def work_replay(
         for s in steps_to_show:
             status_color = {"completed": "green", "failed": "red"}.get(s.status, "yellow")
             console.print(
-                f"\n[bold]Step {s.step_number}:[/bold] {s.description} "
+                f"\n[bold]Step {s.step_number}:[/bold] {escape(s.description)} "
                 f"[{status_color}][{s.status}][/{status_color}]"
             )
 
@@ -3971,7 +4100,7 @@ def batch_run(
                 if len(matching) > 1:
                     console.print(f"[red]Error:[/red] Multiple tasks match '{partial_id}':")
                     for t in matching[:3]:
-                        console.print(f"  {t.id[:8]} - {t.title}")
+                        console.print(f"  {t.id[:8]} - {escape(t.title)}")
                     raise typer.Exit(1)
                 ids_to_execute.append(matching[0].id)
         else:
@@ -4083,7 +4212,7 @@ def batch_run(
                 console.print("\n[bold]Code Review Results[/bold]")
                 for check in gate_result.checks:
                     status_color = "green" if check.status.value == "PASSED" else "red"
-                    console.print(f"  [{status_color}]{check.name}[/{status_color}]: {check.status.value}")
+                    console.print(f"  [{status_color}]{escape(check.name)}[/{status_color}]: {check.status.value}")
                     if check.output and check.status.value != "PASSED":
                         # Show truncated output for failures
                         output_lines = check.output.strip().split("\n")[:5]
@@ -4874,11 +5003,11 @@ def blocker_show(
         console.print(f"  Created: {blocker.created_at.strftime('%Y-%m-%d %H:%M')}")
 
         console.print("\n[bold]Question:[/bold]")
-        console.print(f"  {blocker.question}")
+        console.print(f"  {escape(blocker.question)}")
 
         if blocker.answer:
             console.print("\n[bold]Answer:[/bold]")
-            console.print(f"  {blocker.answer}")
+            console.print(f"  {escape(blocker.answer)}")
             if blocker.answered_at:
                 console.print(f"  [dim]Answered: {blocker.answered_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
 
@@ -5215,7 +5344,7 @@ def commit_create(
 
         console.print("\n[bold green]Commit created[/bold green]")
         console.print(f"  Hash: {commit_info.hash}")
-        console.print(f"  Message: {commit_info.message}")
+        console.print(f"  Message: {escape(commit_info.message)}")
         console.print(
             f"  Changes: {commit_info.files_changed} files, "
             f"+{commit_info.insertions}/-{commit_info.deletions}"
@@ -5267,7 +5396,7 @@ def checkpoint_create(
         summary = checkpoint.snapshot.get("summary", {})
 
         console.print("\n[bold green]Checkpoint created[/bold green]")
-        console.print(f"  Name: {checkpoint.name}")
+        console.print(f"  Name: {escape(checkpoint.name)}")
         console.print(f"  ID: [dim]{checkpoint.id[:8]}[/dim]")
         console.print(f"  Tasks: {summary.get('total_tasks', 0)}")
 
@@ -5365,7 +5494,7 @@ def checkpoint_show(
         summary = checkpoint.snapshot.get("summary", {})
         tasks_by_status = summary.get("tasks_by_status", {})
 
-        console.print(f"\n[bold]Checkpoint:[/bold] {checkpoint.name}")
+        console.print(f"\n[bold]Checkpoint:[/bold] {escape(checkpoint.name)}")
         console.print(f"  ID: {checkpoint.id}")
         console.print(f"  Created: {checkpoint.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -5418,7 +5547,7 @@ def checkpoint_restore(
         summary = checkpoint.snapshot.get("summary", {})
 
         console.print("\n[bold green]Checkpoint restored[/bold green]")
-        console.print(f"  Name: {checkpoint.name}")
+        console.print(f"  Name: {escape(checkpoint.name)}")
         console.print(f"  Tasks restored: {summary.get('total_tasks', 0)}")
 
     except FileNotFoundError:
@@ -5758,7 +5887,7 @@ def schedule_bottlenecks(
                 console.print(f"[yellow]Task {bn.task_id}:[/yellow] {title}")
                 console.print(f"  Type: {bn.bottleneck_type}")
                 console.print(f"  Impact: {bn.impact_hours:.1f} hours")
-                console.print(f"  Recommendation: {bn.recommendation}")
+                console.print(f"  Recommendation: {escape(bn.recommendation)}")
                 console.print()
 
     except FileNotFoundError as e:
@@ -5816,8 +5945,8 @@ def templates_list(
     console.print("\n[bold]Available Templates:[/bold]\n")
     for template in templates:
         hours = template.total_estimated_hours
-        console.print(f"  [green]{template.id}[/green] - {template.name}")
-        console.print(f"    {template.description}")
+        console.print(f"  [green]{template.id}[/green] - {escape(template.name)}")
+        console.print(f"    {escape(template.description)}")
         console.print(f"    Category: {template.category} | Tasks: {len(template.tasks)} | Est: {hours:.1f}h")
         console.print()
 
@@ -5842,8 +5971,8 @@ def templates_show(
             console.print(f"  {t.id}")
         raise typer.Exit(1)
 
-    console.print(f"\n[bold]{template.name}[/bold] ({template.id})\n")
-    console.print(f"{template.description}\n")
+    console.print(f"\n[bold]{escape(template.name)}[/bold] ({template.id})\n")
+    console.print(f"{escape(template.description)}\n")
     console.print(f"Category: {template.category}")
     console.print(f"Total Estimated Hours: {template.total_estimated_hours:.1f}h")
     if template.tags:
@@ -5854,8 +5983,8 @@ def templates_show(
         deps = ""
         if task.depends_on_indices:
             deps = f" (depends on: {', '.join(str(d+1) for d in task.depends_on_indices)})"
-        console.print(f"  {i}. {task.title}{deps}")
-        console.print(f"     {task.description}")
+        console.print(f"  {i}. {escape(task.title)}{deps}")
+        console.print(f"     {escape(task.description)}")
         console.print(f"     Est: {task.estimated_hours}h | Complexity: {task.complexity_score}/5 | Uncertainty: {task.uncertainty_level}")
         console.print()
 
@@ -5942,7 +6071,7 @@ def templates_apply(
 
         console.print(f"\n[green]Created {len(created_task_list)} tasks from template '{template_id}'[/green]\n")
         for i, task in enumerate(created_task_list, 1):
-            console.print(f"  {i}. {task.title}")
+            console.print(f"  {i}. {escape(task.title)}")
 
         console.print("\nNext steps:")
         console.print("  codeframe tasks list              View all tasks")
