@@ -24,12 +24,25 @@ REPO = "owner/repo"
 def _integration(handler) -> GitHubIntegration:
     """A real GitHubIntegration whose socket is a MockTransport.
 
-    Only ``_client._transport`` is replaced, so the Authorization / Accept /
-    API-version headers and the 30s timeout under test are the ones the real
-    constructor set.
+    The constructor runs for real, then its client is rebuilt from **its own**
+    headers and timeout with the mock transport passed at construction time. So
+    the Authorization / Accept / API-version headers and the 30s timeout under
+    test are still the ones ``__init__`` produced — that is the point of going
+    through the constructor rather than hand-rolling a client.
+
+    Passing ``transport=`` rather than assigning ``_client._transport`` after
+    the fact was raised in review: on this httpx (0.28) an empty ``_mounts``
+    makes ``_transport_for_url`` fall back to ``_transport``, so the swap did
+    work — but it depends on a private attribute and on that fallback, and
+    neither is a contract. Construction time needs no such assumption.
     """
     gh = GitHubIntegration(token=TOKEN, repo=REPO)
-    gh._client._transport = httpx.MockTransport(handler)
+    real = gh._client
+    gh._client = httpx.AsyncClient(
+        headers=real.headers,
+        timeout=real.timeout,
+        transport=httpx.MockTransport(handler),
+    )
     return gh
 
 
