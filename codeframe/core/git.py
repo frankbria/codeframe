@@ -54,6 +54,9 @@ class CommitResult:
     commit_hash: str
     commit_message: str
     files_changed: int
+    #: Requested paths that were not committed — outside the repo, or neither
+    #: present nor deleted. Returned so a 201 cannot silently drop a path (#942).
+    skipped: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -223,36 +226,63 @@ def create_commit(
 
     # Validate file paths exist and are within repo
     repo_root = Path(repo.working_tree_dir).resolve()
-    valid_files: list[str] = []
+    to_add: list[str] = []
+    to_remove: list[str] = []
+    skipped: list[str] = []
     for file_path in files:
         candidate = (repo_root / file_path).resolve()
         # Security: Ensure path stays within repo root
         try:
-            candidate.relative_to(repo_root)
+            rel = str(candidate.relative_to(repo_root))
         except ValueError:
             logger.warning(f"File outside repo, skipping: {file_path}")
+            skipped.append(str(file_path))
             continue
         if candidate.exists():
-            valid_files.append(str(candidate.relative_to(repo_root)))
+            to_add.append(rel)
+        elif _is_tracked(repo, rel):
+            # A DELETION. The old code skipped anything that did not exist, so a
+            # deletion that get_status offered as committable was silently
+            # dropped from a 201 response, and a deletions-only request failed
+            # with "None of the specified files exist" (#942).
+            to_remove.append(rel)
         else:
-            logger.warning(f"File not found, skipping: {file_path}")
+            logger.warning(f"File not found and not tracked, skipping: {file_path}")
+            skipped.append(str(file_path))
 
-    if not valid_files:
+    if not to_add and not to_remove:
         raise ValueError("None of the specified files exist")
 
-    # Stage files
-    repo.index.add(valid_files)
+    if to_add:
+        repo.index.add(to_add)
+    if to_remove:
+        repo.index.remove(to_remove, working_tree=False, r=True)
 
-    # Create commit
-    commit = repo.index.commit(message.strip())
+    # Commit ONLY the requested paths (#942). repo.index.commit() writes the
+    # WHOLE index, so any unrelated change already staged — an agent run's
+    # leftovers, say — was swept into the user's commit while files_changed
+    # reported only the count they asked for.
+    committed = sorted(set(to_add) | set(to_remove))
+    repo.git.commit("-m", message.strip(), "--", *committed)
+    commit = repo.head.commit
 
     logger.info(f"Created commit {commit.hexsha[:7]}: {message.strip()[:50]}")
 
     return CommitResult(
         commit_hash=commit.hexsha,
         commit_message=message.strip(),
-        files_changed=len(valid_files),
+        files_changed=len(committed),
+        skipped=skipped,
     )
+
+
+def _is_tracked(repo, rel_path: str) -> bool:
+    """Whether git knows about this path in HEAD (so it can be deleted)."""
+    try:
+        repo.git.ls_files("--error-unmatch", "--", rel_path)
+        return True
+    except Exception:
+        return False
 
 
 def get_diff(
@@ -346,31 +376,38 @@ def get_diff_stats(workspace: Workspace, staged: bool = False) -> DiffStats:
     total_insertions = 0
     total_deletions = 0
 
+    # Index the diff body ONCE, keyed by new path (#942). The old code ran a
+    # fresh re.search over the whole diff for every changed file — O(files x
+    # diff size) on exactly the large diffs where it hurts.
+    sections = _index_diff_sections(diff_text)
+
     for line in stat_output.strip().split("\n"):
         if not line.strip():
             continue
         parts = line.split("\t")
         if len(parts) >= 3:
-            ins_str, del_str, file_path = parts[0], parts[1], parts[2]
+            ins_str, del_str = parts[0], parts[1]
+            # numstat renders a rename as "old => new" in ONE field (and
+            # "dir/{a => b}/f" for a directory move). Take the NEW path:
+            # reporting the old one made a rename look like an edit to a file
+            # that no longer exists.
+            file_path = _numstat_new_path(parts[2])
             ins = int(ins_str) if ins_str != "-" else 0
             dels = int(del_str) if del_str != "-" else 0
             total_insertions += ins
             total_deletions += dels
 
-            # Extract per-file section from diff for accurate change type detection
-            file_section_match = re.search(
-                rf"diff --git a/.*? b/{re.escape(file_path)}\n(.*?)(?=diff --git|\Z)",
-                diff_text,
-                re.DOTALL,
-            )
-            file_section = file_section_match.group(0) if file_section_match else ""
+            file_section = sections.get(file_path, "")
 
             change_type = "modified"
             if "new file mode" in file_section:
                 change_type = "added"
             elif "deleted file mode" in file_section:
                 change_type = "deleted"
-            elif "rename from" in file_section:
+            elif "rename from" in file_section or "rename to" in file_section:
+                # Was always "modified": the rename marker lives in the diff
+                # header, and the old per-file regex keyed on the numstat path
+                # frequently missed the section entirely (#942).
                 change_type = "renamed"
 
             changed_files.append(FileChange(
@@ -387,6 +424,50 @@ def get_diff_stats(workspace: Workspace, staged: bool = False) -> DiffStats:
         deletions=total_deletions,
         changed_files=changed_files,
     )
+
+
+def _numstat_new_path(raw: str) -> str:
+    """The post-rename path from a numstat path field.
+
+    git renders a rename as ``old => new``, or ``dir/{old => new}/file`` when
+    only a path component changed. Both used to be reported verbatim, so the
+    "path" of a renamed file was a arrow-joined pair that matched nothing (#942).
+    """
+    raw = raw.strip()
+    brace = re.match(r"^(.*)\{(.*) => (.*)\}(.*)$", raw)
+    if brace:
+        prefix, _old, new, suffix = brace.groups()
+        return f"{prefix}{new}{suffix}".replace("//", "/")
+    if " => " in raw:
+        return raw.split(" => ", 1)[1].strip()
+    return raw
+
+
+def _index_diff_sections(diff_text: str) -> dict[str, str]:
+    """Split a unified diff into per-file sections keyed by the NEW path.
+
+    Built once per call instead of re-scanning the whole diff for each changed
+    file (#942). Renames are indexed under both paths so a lookup by either
+    finds the section.
+    """
+    sections: dict[str, str] = {}
+    if not diff_text:
+        return sections
+
+    for chunk in re.split(r"(?=^diff --git )", diff_text, flags=re.MULTILINE):
+        if not chunk.startswith("diff --git "):
+            continue
+        header = re.match(r"diff --git a/(.*?) b/(\S+)", chunk)
+        if not header:
+            continue
+        old_path, new_path = header.group(1), header.group(2)
+        sections[new_path] = chunk
+        # A rename's numstat path may be reported either way round.
+        sections.setdefault(old_path, chunk)
+        rename_to = re.search(r"^rename to (.+)$", chunk, re.MULTILINE)
+        if rename_to:
+            sections[rename_to.group(1).strip()] = chunk
+    return sections
 
 
 def get_patch(workspace: Workspace, staged: bool = False) -> str:
