@@ -292,12 +292,16 @@ class TestHandlersAroundAStrictReadCatchValueError:
                         else [handler.type]
                     )
                     caught |= {ast.unparse(p) for p in parts}
+                # `json.JSONDecodeError` is deliberately NOT in this set. It
+                # is a SIBLING of UnicodeDecodeError under ValueError, not a
+                # parent, so catching it does nothing for a decode error.
+                # Treating it as sufficient is what let proof/runner.py through
+                # the first audit — found in review, not by this test.
                 if not caught & {
                     "Exception",
                     "BaseException",
                     "ValueError",
                     "UnicodeDecodeError",
-                    "json.JSONDecodeError",
                 }:
                     yield f"{path.relative_to(REPO_ROOT)}:{node.lineno}"
 
@@ -307,6 +311,37 @@ class TestHandlersAroundAStrictReadCatchValueError:
         assert not narrow, (
             "a UnicodeDecodeError would escape these:\n  " + "\n  ".join(narrow)
         )
+
+    def test_json_decode_error_does_not_cover_a_decode_error(self):
+        """The relationship that made the first audit miss a site.
+
+        `json.JSONDecodeError` and `UnicodeDecodeError` are SIBLINGS under
+        `ValueError`, not parent and child. An `except (OSError,
+        json.JSONDecodeError)` around a strict read therefore catches nothing
+        that matters, while reading as though it were defensive.
+        """
+        import json
+
+        assert issubclass(json.JSONDecodeError, ValueError)
+        assert not issubclass(UnicodeDecodeError, json.JSONDecodeError)
+
+    def test_a_corrupt_proof_config_falls_back_to_defaults(self, tmp_path):
+        """The site both reviewers found and the first audit let through: one
+        non-UTF-8 byte in proof_config.json crashed `cf proof run` outright
+        instead of using defaults."""
+        from codeframe.core.proof.models import PROOF_CONFIG_FILENAME
+        from codeframe.core.proof.runner import _load_proof_config
+        from codeframe.core.workspace import create_or_load_workspace
+
+        workspace = create_or_load_workspace(tmp_path)
+        config = tmp_path / ".codeframe" / PROOF_CONFIG_FILENAME
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_bytes(b'{"enabled_gates": ["\x80\xff"]}')
+
+        enabled, strictness = _load_proof_config(workspace)
+
+        assert enabled is None
+        assert strictness == "strict"
 
     def test_the_machine_id_read_falls_through_instead_of_crashing(self, monkeypatch):
         """The one this audit actually found. A non-UTF-8 /etc/machine-id used
