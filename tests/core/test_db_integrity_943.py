@@ -112,3 +112,53 @@ class TestStatsDoesNotContaminateTheWorkspaceDb:
         assert "db.initialize()" not in code, (
             "still running the control-plane SchemaManager on a workspace DB"
         )
+
+
+class TestTaskDeleteCleansUpChildren:
+    """Raised by the PR review as a major: enabling FK enforcement with no
+    ON DELETE CASCADE and no child cleanup turns every deletion of an EXECUTED
+    task into a hard constraint failure. Before enforcement those rows were
+    silently orphaned — which is what the pragma exists to stop."""
+
+    def test_deleting_a_task_with_runs_and_logs_succeeds(self, tmp_path):
+        from codeframe.core import runtime, tasks
+
+        ws = create_or_load_workspace(tmp_path)
+        task = tasks.create(ws, title="executed", description="")
+        run = runtime.start_task_run(ws, task.id)
+
+        conn = _open_db(tmp_path / ".codeframe" / "state.db")
+        conn.execute(
+            "INSERT INTO run_logs (run_id, task_id, timestamp, log_level, category,"
+            " message) VALUES (?,?,?,?,?,?)",
+            (run.id, task.id, "2026-01-01", "INFO", "AGENT_ACTION", "x"),
+        )
+        conn.commit()
+        conn.close()
+
+        assert tasks.delete(ws, task.id) is True
+
+    def test_the_child_rows_are_gone_not_orphaned(self, tmp_path):
+        from codeframe.core import runtime, tasks
+
+        ws = create_or_load_workspace(tmp_path)
+        task = tasks.create(ws, title="executed", description="")
+        runtime.start_task_run(ws, task.id)
+
+        tasks.delete(ws, task.id)
+
+        conn = _open_db(tmp_path / ".codeframe" / "state.db")
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM runs WHERE task_id = ?", (task.id,)
+        ).fetchone()[0]
+        conn.close()
+
+        assert remaining == 0, "runs were left orphaned"
+
+    def test_deleting_a_task_with_no_children_still_works(self, tmp_path):
+        from codeframe.core import tasks
+
+        ws = create_or_load_workspace(tmp_path)
+        task = tasks.create(ws, title="plain", description="")
+
+        assert tasks.delete(ws, task.id) is True

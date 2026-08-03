@@ -861,6 +861,25 @@ def delete(workspace: Workspace, task_id: str) -> bool:
     try:
         cursor = conn.cursor()
 
+        # Delete child rows FIRST (#943). The FK declarations carry no
+        # ON DELETE CASCADE, and foreign keys are now actually enforced — so
+        # without this every deletion of an executed task fails outright on its
+        # runs/run_logs/blockers. Before enforcement these rows were simply
+        # orphaned and left behind forever, which is what the pragma exists to
+        # stop. Same transaction as the task delete: a half-deleted task with
+        # surviving children would be worse than either outcome.
+        cursor.execute(
+            "DELETE FROM run_logs WHERE run_id IN "
+            "(SELECT id FROM runs WHERE task_id = ?)",
+            (task_id,),
+        )
+        for table in ("diagnostic_reports", "runs", "blockers"):
+            try:
+                cursor.execute(f"DELETE FROM {table} WHERE task_id = ?", (task_id,))
+            except sqlite3.OperationalError:
+                # Table absent in an older workspace; nothing to clean up.
+                pass
+
         cursor.execute(
             """
             DELETE FROM tasks

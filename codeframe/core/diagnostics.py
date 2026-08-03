@@ -301,11 +301,14 @@ class RunLogger:
             # actually ON (#943) — before, this insert silently created orphan
             # rows. A log line must never break the run it is describing, so
             # drop the buffer and say so rather than propagating.
+            # Count BEFORE clearing — reading len() afterwards always reported
+            # "Dropped 1", hiding how much was actually lost.
+            dropped = len(self._buffer)
             conn.rollback()
             self._buffer.clear()
             logger.warning(
                 "Dropped %d buffered log line(s): %s. The run is unaffected.",
-                len(self._buffer) or 1,
+                dropped,
                 exc,
             )
         finally:
