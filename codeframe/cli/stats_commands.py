@@ -68,8 +68,14 @@ def _get_db():
         if db_path is None:
             console.print("[red]Error:[/red] No workspace found. Run 'cf init' first.")
             raise typer.Exit(1)
+    # NOT db.initialize() (#943). That runs the CONTROL-PLANE SchemaManager,
+    # which injected users, api_keys and audit_logs tables — plus a seeded
+    # admin@localhost row — into the per-workspace domain database, purely as a
+    # side effect of running `cf stats`. Connect read-only instead: the
+    # workspace's own schema is created by create_or_load_workspace, and stats
+    # only reads token_usage.
     db = Database(db_path)
-    db.initialize()
+    db.connect_readonly()
     return db
 
 
