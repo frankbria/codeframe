@@ -1,411 +1,123 @@
-# CodeFRAME Testing Guide
-
-> Sprint 1 manual testing checklist (historical). For current test organization and
-> commands see [`README.md`](README.md) and [`CLAUDE.md`](CLAUDE.md); for sprint
-> history see [`legacydocs/SPRINTS.md`](legacydocs/SPRINTS.md).
-
-## Sprint 1 Manual Test Checklist
-
-### Setup Requirements
-
-#### Environment Setup
-- [ ] Clone repository: `git clone https://github.com/frankbria/codeframe.git`
-- [ ] Navigate to project: `cd codeframe`
-- [ ] Create virtual environment: `python -m venv venv`
-- [ ] Activate virtual environment: `source venv/bin/activate`
-- [ ] Install Python dependencies: `pip install -e .`
-- [ ] Install Node dependencies: `cd web-ui && npm install && cd ..`
-
-#### Configuration
-- [ ] Create `.env` file in project root
-- [ ] Add ANTHROPIC_API_KEY: `ANTHROPIC_API_KEY=your-key-here`
-- [ ] Verify `.env` is in `.gitignore`
-
-#### Service Startup
-- [ ] Start Status Server: `python -m codeframe.ui.server`
-  - Expected: Server starts on port 8000
-  - Expected: "Status Server running on http://localhost:8000" message
-- [ ] Start Web UI (new terminal): `cd web-ui && npm run dev`
-  - Expected: UI starts on port 3000
-  - Expected: "Local: http://localhost:3000" message
-
----
-
-### Test 1: Project Creation (cf-8, cf-11)
-
-#### 1.1 Basic Project Initialization
-- [ ] Run: `codeframe init test-project`
-- [ ] Verify: Project directory created at `./test-project`
-- [ ] Verify: `.codeframe/` directory exists in `test-project/`
-- [ ] Verify: Database file created: `.codeframe/state.db`
-- [ ] Verify: Success message displayed
-
-#### 1.2 Database Verification
-- [ ] Open database: `sqlite3 test-project/.codeframe/state.db`
-- [ ] Run: `.tables`
-- [ ] Verify: All tables exist: projects, tasks, agents, blockers, memory, context_items, checkpoints, changelog
-- [ ] Run: `SELECT * FROM projects;`
-- [ ] Verify: Project entry exists with name='test-project', status='init'
-- [ ] Exit sqlite: `.exit`
-
-#### 1.3 Dashboard Integration
-- [ ] Open browser: http://localhost:3000
-- [ ] Verify: "test-project" appears in projects list
-- [ ] Verify: Status shows "init"
-- [ ] Verify: Created timestamp is recent
-
----
-
-### Test 2: Database CRUD Operations (cf-8)
-
-#### 2.1 Project Operations
-- [ ] Create second project: `codeframe init project2`
-- [ ] Verify: Both projects appear in dashboard
-- [ ] Verify: Both have separate `.codeframe/state.db` files
-- [ ] Update project status (via API or direct DB): `UPDATE projects SET status='planning' WHERE name='test-project'`
-- [ ] Refresh dashboard
-- [ ] Verify: Status updated to "planning"
-
-#### 2.2 Agent Creation
-- [ ] Use Python REPL or script:
-  ```python
-  from codeframe.platform_store.database import Database
-  db = Database("test-project/.codeframe/state.db")
-  db.initialize()
-  agent_id = db.create_agent("lead-1", "lead", "claude", "directive")
-  agent = db.get_agent("lead-1")
-  print(agent)
-  ```
-- [ ] Verify: Agent created successfully
-- [ ] Verify: Agent details correct (type=lead, provider=claude, maturity=directive)
-
-#### 2.3 Memory Storage
-- [ ] Continue in Python REPL:
-  ```python
-  project = db.get_project(1)
-  memory_id = db.create_memory(
-      project_id=project['id'],
-      category='pattern',
-      key='auth_pattern',
-      value='JWT with refresh tokens'
-  )
-  memories = db.get_project_memories(project['id'])
-  print(memories)
-  ```
-- [ ] Verify: Memory entry created
-- [ ] Verify: Can retrieve memory by project_id
-
----
-
-### Test 3: Anthropic Provider Integration (cf-9)
-
-#### 3.1 Provider Initialization
-- [ ] Test provider creation:
-  ```python
-  from codeframe.agents.providers.anthropic_provider import AnthropicProvider
-  provider = AnthropicProvider(api_key="test-key")
-  ```
-- [ ] Verify: Provider initializes without error
-- [ ] Verify: Model defaults to "claude-3-5-sonnet-20241022"
-
-#### 3.2 Message Sending (Mock/Test)
-- [ ] Run unit tests: `ANTHROPIC_API_KEY="test-key" pytest tests/test_anthropic_provider.py -v`
-- [ ] Verify: All 17 tests pass
-- [ ] Verify: Message formatting tests pass
-- [ ] Verify: Error handling tests pass
-
----
-
-### Test 4: Lead Agent Lifecycle (cf-9, cf-10)
-
-#### 4.1 Lead Agent Creation
-- [ ] Test Lead Agent initialization:
-  ```python
-  from codeframe.agents.lead_agent import LeadAgent
-  from codeframe.platform_store.database import Database
-
-  db = Database("test-project/.codeframe/state.db")
-  db.initialize()
-
-  lead = LeadAgent(
-      agent_id="lead-test-1",
-      provider_name="anthropic",
-      api_key="test-key",
-      database=db
-  )
-  ```
-- [ ] Verify: Lead Agent creates successfully
-- [ ] Verify: Agent entry created in database
-- [ ] Verify: Default maturity level is "directive"
-
-#### 4.2 Agent Status Management
-- [ ] Update agent status:
-  ```python
-  lead.update_status("working")
-  agent = db.get_agent("lead-test-1")
-  print(agent['status'])
-  ```
-- [ ] Verify: Status updates to "working"
-- [ ] Verify: Database reflects change
-
----
-
-### Test 5: Project Creation API (cf-11)
-
-#### 5.1 API Endpoint Testing
-- [ ] Send POST request to create project:
-  ```bash
-  curl -X POST http://localhost:8000/api/projects \
-    -H "Content-Type: application/json" \
-    -d '{"name": "api-test-project", "description": "Test via API"}'
-  ```
-- [ ] Verify: 200 OK response
-- [ ] Verify: Response includes project_id and status
-- [ ] Verify: Project directory created
-- [ ] Verify: Database initialized
-
-#### 5.2 Project Listing API
-- [ ] Send GET request:
-  ```bash
-  curl http://localhost:8000/api/projects
-  ```
-- [ ] Verify: Returns JSON array
-- [ ] Verify: Contains all created projects
-- [ ] Verify: Each project has id, name, status, created_at
-
-#### 5.3 WebSocket Real-Time Updates
-- [ ] Open browser developer console on dashboard
-- [ ] Create new project via CLI: `codeframe init websocket-test`
-- [ ] Verify: Dashboard updates automatically (no refresh needed)
-- [ ] Verify: Console shows WebSocket message received
-- [ ] Check WebSocket connection: Network tab → WS → Messages
-- [ ] Verify: `project_created` event appears
-
----
-
-### Test 6: Agent Lifecycle Management (cf-10)
-
-#### 6.1 Agent State Transitions
-- [ ] Test agent lifecycle:
-  ```python
-  from codeframe.agents.lead_agent import LeadAgent
-  from codeframe.platform_store.database import Database
-  from codeframe.core.models import AgentMaturity
-
-  db = Database("test-project/.codeframe/state.db")
-  db.initialize()
-
-  lead = LeadAgent("lead-lifecycle", "anthropic", "test-key", db)
-
-  # Test state transitions
-  lead.update_status("idle")
-  lead.update_status("working")
-  lead.update_status("blocked")
-  lead.update_status("completed")
-
-  # Test maturity progression
-  lead.update_maturity(AgentMaturity.D2)
-  lead.update_maturity(AgentMaturity.D3)
-  ```
-- [ ] Verify: All status transitions succeed
-- [ ] Verify: Maturity level updates correctly
-- [ ] Verify: Database reflects all changes
-
-#### 6.2 Agent Error Handling
-- [ ] Test invalid transitions:
-  ```python
-  lead.update_status("invalid_status")  # Should handle gracefully
-  ```
-- [ ] Verify: Error handled without crash
-- [ ] Verify: Agent remains in valid state
-
----
-
-### Test 7: End-to-End Integration
-
-#### 7.1 Complete Project Workflow
-- [ ] Initialize new project: `codeframe init e2e-test`
-- [ ] Verify: Project appears in dashboard immediately
-- [ ] Verify: Database created with all tables
-- [ ] Create Lead Agent programmatically
-- [ ] Store memory entry
-- [ ] Update project status to "planning"
-- [ ] Verify: All changes visible in dashboard
-- [ ] Verify: WebSocket events fire for all updates
-
-#### 7.2 Multi-Project Handling
-- [ ] Create 3 projects simultaneously:
-  ```bash
-  codeframe init project-a &
-  codeframe init project-b &
-  codeframe init project-c &
-  wait
-  ```
-- [ ] Verify: All 3 projects created successfully
-- [ ] Verify: Each has independent database
-- [ ] Verify: Dashboard shows all 3 projects
-- [ ] Verify: No database conflicts
-
----
-
-### Test 8: Error Conditions & Edge Cases
-
-#### 8.1 Database Errors
-- [ ] Test duplicate project: `codeframe init test-project` (already exists)
-- [ ] Verify: Error message displayed
-- [ ] Verify: No corruption of existing project
-
-#### 8.2 API Errors
-- [ ] Send invalid JSON to API:
-  ```bash
-  curl -X POST http://localhost:8000/api/projects \
-    -H "Content-Type: application/json" \
-    -d 'invalid json'
-  ```
-- [ ] Verify: 400 Bad Request response
-- [ ] Verify: Helpful error message
-
-#### 8.3 Missing Configuration
-- [ ] Remove ANTHROPIC_API_KEY from `.env`
-- [ ] Try to create Lead Agent
-- [ ] Verify: Clear error about missing API key
-- [ ] Restore API key
-
----
-
-### Test 9: Performance Verification
-
-#### 9.1 Response Times
-- [ ] Measure API response time:
-  ```bash
-  time curl http://localhost:8000/api/projects
-  ```
-- [ ] Verify: Response time < 500ms (p95 requirement)
-
-#### 9.2 Database Performance
-- [ ] Create 100 memory entries:
-  ```python
-  for i in range(100):
-      db.create_memory(1, 'test', f'key_{i}', f'value_{i}')
-  ```
-- [ ] Query all memories: `db.get_project_memories(1)`
-- [ ] Verify: Query completes in < 1 second
-
----
-
-### Test 10: Automated Test Suite Verification
-
-#### 10.1 Run All Tests
-- [ ] Run complete test suite:
-  ```bash
-  ANTHROPIC_API_KEY="test-key" pytest -v
-  ```
-- [ ] Verify: 111 tests pass (100% pass rate)
-- [ ] Verify: No warnings or errors
-
-#### 10.2 Test Coverage
-- [ ] Run with coverage:
-  ```bash
-  ANTHROPIC_API_KEY="test-key" pytest --cov=codeframe --cov-report=html
-  ```
-- [ ] Verify: Overall coverage > 90%
-- [ ] Verify: Database module > 92%
-- [ ] Open `htmlcov/index.html` to review
-
----
-
-## Definition of Done Verification
-
-### Sprint 1 Completion Criteria
-- [ ] ✅ All 9 tasks complete (cf-8 through cf-13)
-- [ ] ✅ 111 automated tests passing at 100%
-- [ ] ✅ Zero mock data in production code
-- [ ] ✅ Database operations tested at >80% coverage (actual: 92%)
-- [ ] ✅ API response time <500ms (p95)
-- [ ] ✅ WebSocket reconnect works automatically
-- [ ] ✅ Can run `codeframe init` and see project in dashboard
-- [ ] ✅ Lead Agent can be created with valid API key
-- [ ] ✅ No critical bugs blocking sprint review
-
-### Code Quality Checks
-- [ ] ✅ All code follows Python PEP 8 style guide
-- [ ] ✅ No hardcoded API keys or secrets in code
-- [ ] ✅ All database operations use parameterized queries
-- [ ] ✅ Error handling implemented for all external calls
-- [ ] ✅ TDD followed for all features (RED-GREEN-REFACTOR)
-
-### Documentation Complete
-- [ ] ✅ TESTING.md created with manual test checklist
-- [ ] ✅ README.md updated with setup instructions
-- [ ] ✅ AGILE_SPRINTS.md reflects actual progress
-- [ ] ✅ All API endpoints documented
-
----
-
-## Test Results Template
-
-```markdown
-## Sprint 1 Manual Test Execution Results
-**Date**: YYYY-MM-DD
-**Tester**: [Name]
-**Environment**: [OS, Python version, Node version]
-
-### Setup
-- [ ] All setup steps completed successfully
-- Issues found: [None | List issues]
-
-### Test 1: Project Creation
-- [ ] Passed | [ ] Failed
-- Issues found: [None | List issues]
-- Notes:
-
-### Test 2: Database CRUD
-- [ ] Passed | [ ] Failed
-- Issues found: [None | List issues]
-- Notes:
-
-[Continue for all tests...]
-
-### Overall Assessment
-- Total Tests Run: X
-- Tests Passed: Y
-- Tests Failed: Z
-- Critical Issues: [List]
-- Sprint 1 Ready for Demo: [ ] Yes | [ ] No
+# Testing CodeFRAME
+
+> This file used to be a ~400-line Sprint-1 manual checklist that imported modules
+> which no longer exist (`codeframe.agents.providers.anthropic_provider`,
+> `codeframe.providers.base`) and told you to start the server with a command that
+> was renamed several releases ago. It has been replaced with what the suite
+> actually is today (#950). Sprint history lives in [`legacydocs/SPRINTS.md`](legacydocs/SPRINTS.md).
+
+## The one command
+
+```bash
+uv run pytest && uv run ruff check . && uv run mypy codeframe/
+cd web-ui && npm test && npm run build
 ```
 
----
+That is the same gate [CI](.github/workflows/test.yml) runs. If it passes locally it should pass on a PR.
 
-## Troubleshooting Guide
+## What a bare `uv run pytest` runs
 
-### Common Issues
+Everything under `tests/` **except** the two markers that cost real money:
 
-**Issue**: Database file not found
-- **Solution**: Ensure you're in the correct project directory, run `codeframe init` first
+```ini
+# pytest.ini
+addopts = ... -m "not e2e_llm and not lifecycle"
+```
 
-**Issue**: WebSocket connection fails
-- **Solution**: Check Status Server is running on port 8000, check browser console for errors
+A `-m` on the command line **replaces** that one rather than combining with it — so
+`uv run pytest -m integration` also re-enables the paid tests. Add
+`and not e2e_llm and not lifecycle` when you narrow by marker.
 
-**Issue**: API key error
-- **Solution**: Verify `.env` file exists with valid ANTHROPIC_API_KEY
+## Layout
 
-**Issue**: Import errors
-- **Solution**: Activate virtual environment, reinstall with `pip install -e .`
+| Directory | What lives there |
+|---|---|
+| `tests/core/` | Headless domain + orchestration (`tasks`, `conductor`, `prd`, `proof`, `git`, …) |
+| `tests/ui/` | FastAPI router tests, via `TestClient` over a fresh app |
+| `tests/cli/` | Typer commands, via `CliRunner` — in-process, no server |
+| `tests/adapters/` | LLM providers and the E2B sandbox |
+| `tests/unit/` | Narrow units that fit none of the above (e.g. the GitHub client) |
+| `tests/integration/` | Cross-module flows |
+| `tests/agents/` | Dependency resolution |
+| `tests/e2e/` | CLI end-to-end (`tests/e2e/cli`) and Playwright browser (`tests/e2e/*.spec.ts`) |
+| `tests/lifecycle/` | Full Think → Build → Prove loop against a real LLM |
 
-**Issue**: Dashboard doesn't update
-- **Solution**: Check WebSocket connection in browser DevTools, restart Status Server
+## Markers
 
----
+Registered in `pytest.ini`. The ones that change what runs:
 
-## Next Steps (Sprint 2)
+| Marker | Effect |
+|---|---|
+| `e2e_llm` | **Deselected by default.** Real Anthropic calls, and the fixtures `rmtree` `.codeframe/` inside an external project. Opt in with `-m e2e_llm`. |
+| `lifecycle` | **Deselected by default.** Real Anthropic calls, 10–30 minutes. Run via `scripts/lifecycle`, never directly. |
+| `slow`, `integration`, `edge_case` | Selection conveniences; all run by default. |
+| `v2` | Registered for back-compat and ad-hoc selection. **Not** a CI gate — anything non-e2e and non-lifecycle runs by default (#669). |
 
-After completing Sprint 1 manual testing:
-1. Document any critical bugs and fix before demo
-2. Prepare sprint demo showing working features
-3. Review Sprint 2 tasks: Socratic Discovery phase
-4. Plan Sprint 2 implementation starting with CLI foundation
+## Coverage
 
-**Sprint 1 Status**: COMPLETE ✅
-**Total Test Cases**: 111 automated + 10 manual test scenarios
-**Pass Rate**: 100%
-**Ready for Production**: Foundation components ready for Sprint 2 integration
+Gated, not decorative. [`.coveragerc`](.coveragerc) sets `fail_under = 80`, which `pytest --cov`
+enforces on the CI gate and which the README badge mirrors.
+
+```bash
+uv run pytest --cov=codeframe --cov-report=term
+```
+
+Note that `fail_under` applies to **any** run that asks for coverage, so measuring a
+subset (`pytest tests/core --cov=codeframe`) exits 1 on the threshold. That is stock
+`pytest-cov` behaviour, not a misconfiguration.
+
+## Real-LLM lifecycle tests
+
+These cost money and are not part of any automated gate. Run the CLI mode locally
+before opening a PR that touches the execution path:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+scripts/lifecycle --mode cli            # ~$0.50–1.00 with the default haiku model
+scripts/lifecycle --mode cli --dry-run  # show what would run, spend nothing
+```
+
+`--mode api` and `--mode web` **exit 3**: they are not implemented (#1068). They used
+to collect only skipped stubs and exit 0, which read as a pass.
+
+## Browser E2E
+
+[`tests/e2e/playwright.config.ts`](tests/e2e/playwright.config.ts) starts both servers itself (`uv uvicorn` for the
+backend, `next build && next start` for the frontend) and `global-setup.ts` seeds a
+workspace and a login user. You do not start anything by hand.
+
+```bash
+cd tests/e2e && npx playwright test
+```
+
+## Web UI
+
+```bash
+cd web-ui
+npm test              # Jest
+npm run lint          # eslint --max-warnings 0
+npm run build         # must succeed; the frontend-tests CI job enforces it
+```
+
+## Writing tests
+
+- **No mocking at integration boundaries.** Use a real SQLite workspace, a real git
+  repository, the real core modules. Substitute only what would spend money, spawn an
+  agent, or reach the network — and say so in a comment.
+- **Assert outcomes, not status codes.** A `201` from the commit endpoint means little;
+  reading the commit back out of `git log` means something.
+- **Give a destructive path a negative case too.** "Returns 400" and "did not corrupt
+  anything" are different claims.
+- **A new `/api/v2` router is protected by how it is mounted**, and by nothing else.
+  [`tests/ui/test_v2_auth_enforcement.py`](tests/ui/test_v2_auth_enforcement.py) asserts
+  the 401 responses, and a companion suite enumerates `app.routes` so a router mounted
+  without the auth dependency fails rather than shipping.
+- Tests run with `CODEFRAME_AUTH_REQUIRED=false` (set in [`tests/conftest.py`](tests/conftest.py)); opt back
+  in explicitly when auth is what you are testing.
+
+## Demoing against a sample project
+
+When verifying agent behaviour end to end against something like `cf-test/`, you are
+**observing the agent's work, not doing it**. Do not fix its errors or write code on its
+behalf — that is the data. Report what worked, what failed, and the final state against
+the acceptance criteria.

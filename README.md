@@ -74,7 +74,7 @@ THE CLOSED LOOP
 ---
 
 > [!NOTE]
-> **CodeFRAME is in public beta (`0.9.0`).** The vision and the Golden Path CLI
+> **CodeFRAME is in public beta (`0.9.1`).** The vision and the Golden Path CLI
 > (`cf init/prd/tasks/work/proof/pr`) and v2 API are stable enough to build on;
 > the web UI and anything marked "in progress" in
 > [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) are still moving, and
@@ -340,12 +340,12 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - [x] PROOF9 -- 9-gate evidence-based quality system
 - [x] `cf proof capture` -- Glitch-to-requirement closed loop
 - [x] Quality compounding: every failure becomes a permanent proof obligation
-- [ ] Run gates from the web UI (backend ready, frontend pending)
-- [ ] Glitch capture web UI
+- [x] Run gates from the web UI -- live progress, per-gate evidence, run history
+- [x] Glitch capture web UI -- `CaptureGlitchModal` plus the REQ detail view at `/proof/[req_id]`
 - [x] Merge gating on PROOF9 pass -- enforced server-side at the merge API, with an explicit audited override (actor + reason)
 
 ### SHIP (delivery confidence)
-- [ ] PR status tracking + CI check display in web UI
+- [x] PR status tracking + CI check display in web UI (`PRStatusPanel` on `/review`)
 - [ ] Post-merge glitch capture loop
 
 ### Web UI
@@ -357,7 +357,7 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - [x] PROOF9 requirements list, detail, evidence history, sort/filter controls, waiver with audit trail
 - [x] Interactive Agent Sessions — chat panel (tool calls, thinking blocks), XTerm.js terminal, SplitPane layout
 - [x] Run gates button, live gate progress, per-gate evidence display, run history panel (PROOF9 page)
-- [ ] Glitch capture form and REQ detail view
+- [x] Glitch capture form and REQ detail view (markdown description, scope metadata, obligations table, sortable evidence history)
 - [x] PR status panel with PROOF9-gated merge button (gate also enforced server-side)
 
 ---
@@ -376,7 +376,7 @@ export OPENAI_BASE_URL=http://localhost:11434/v1  # for Ollama, vLLM, LM Studio,
 # Per-workspace: .codeframe/config.yaml supports an `llm:` block for the same options
 
 # Optional
-export DATABASE_PATH=./codeframe.db         # Default: in-memory SQLite
+export DATABASE_PATH=./codeframe.db         # Default: ./.codeframe/state.db
 export RATE_LIMIT_ENABLED=true              # API rate limiting
 export RATE_LIMIT_DEFAULT=100/minute        # Default limit
 ```
