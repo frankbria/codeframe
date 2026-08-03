@@ -90,6 +90,13 @@ def _open_db(db_path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
+    # NOTE (#943 / #1061): PRAGMA foreign_keys is deliberately NOT enabled here
+    # yet. Every FK in this schema is currently decorative, which is a real
+    # defect — but turning enforcement on fails 66 existing tests across 7 files
+    # whose fixtures insert run_logs and diagnostic_reports rows referencing
+    # task/run ids that do not exist. Those rows are being orphaned today; the
+    # tests assert against a state the schema forbids. Migrating them is its own
+    # focused change, tracked in #1061, not a rider on this one.
     return conn
 
 
@@ -477,6 +484,47 @@ def _init_database(db_path: Path) -> None:
     conn.close()
 
 
+
+def _dedupe_external_urls(conn: sqlite3.Connection, cursor: sqlite3.Cursor) -> None:
+    """Clear duplicate (workspace_id, external_url) rows before indexing (#943).
+
+    Keeps the OLDEST row per pair — the first import is the one whose id other
+    tables may already reference — and blanks the later ones' external_url
+    rather than deleting the tasks. Deleting a user's task to add an index would
+    be a cure worse than the disease; an unlinked duplicate is visible and
+    fixable, a vanished task is not.
+    """
+    try:
+        cursor.execute(
+            """
+            SELECT id FROM tasks
+            WHERE external_url IS NOT NULL AND external_url != ''
+              AND rowid NOT IN (
+                  SELECT MIN(rowid) FROM tasks
+                  WHERE external_url IS NOT NULL AND external_url != ''
+                  GROUP BY workspace_id, external_url
+              )
+            """
+        )
+        dupes = [row[0] for row in cursor.fetchall()]
+    except sqlite3.Error as exc:
+        logger.warning("Could not scan for duplicate external_url rows: %s", exc)
+        return
+
+    if not dupes:
+        return
+
+    logger.warning(
+        "Unlinking %d duplicate GitHub-import task(s) so the unique index can "
+        "be created; the tasks themselves are kept.",
+        len(dupes),
+    )
+    cursor.executemany(
+        "UPDATE tasks SET external_url = NULL WHERE id = ?", [(d,) for d in dupes]
+    )
+    conn.commit()
+
+
 def _ensure_schema_upgrades(db_path: Path) -> None:
     """Ensure schema upgrades for existing databases.
 
@@ -655,11 +703,27 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             )
             conn.commit()
         # Atomic duplicate-import protection (#565) for existing workspaces.
-        cursor.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url "
-            "ON tasks(workspace_id, external_url)"
-        )
-        conn.commit()
+        #
+        # This ran unconditionally, so a workspace that already held duplicate
+        # external_url rows raised on EVERY get_workspace — bricking both the
+        # CLI and the server with no recovery path (#943). Dedupe first, and if
+        # that cannot be done, warn and carry on without the index: a missing
+        # optimisation is recoverable, an unopenable workspace is not.
+        _dedupe_external_urls(conn, cursor)
+        try:
+            cursor.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url "
+                "ON tasks(workspace_id, external_url)"
+            )
+            conn.commit()
+        except sqlite3.IntegrityError as exc:
+            conn.rollback()
+            logger.warning(
+                "Could not create the unique external_url index (%s). Duplicate "
+                "GitHub-import protection is OFF for this workspace; the "
+                "workspace still opens normally.",
+                exc,
+            )
 
     # Ensure runs table exists before creating dependent tables (run_logs, diagnostic_reports)
     cursor.execute(

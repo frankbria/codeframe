@@ -68,6 +68,24 @@ class Database:
         self.interactive_sessions: Optional[InteractiveSessionRepository] = None
         self.workspace_registry: Optional[WorkspaceRegistryRepository] = None
 
+    def connect_readonly(self) -> None:
+        """Open the DB and wire repositories WITHOUT creating control-plane schema.
+
+        `initialize()` runs SchemaManager, which is correct for the control-plane
+        store but wrong for a per-workspace `state.db`: it injected users,
+        api_keys and audit_logs tables plus a seeded admin row into the domain
+        database as a side effect of `cf stats` (#943). Callers that only read
+        an existing workspace DB use this instead.
+        """
+        if self.db_path != ":memory:":
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        self.conn.execute("PRAGMA busy_timeout = 5000")
+        self._initialize_repositories()
+
     def initialize(self) -> None:
         """Initialize database schema and repositories."""
         # Create parent directories if needed

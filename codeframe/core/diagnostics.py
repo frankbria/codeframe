@@ -8,7 +8,9 @@ This module provides:
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import logging
 import json
+import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -16,6 +18,8 @@ from enum import Enum
 from typing import Any, Optional
 
 from codeframe.core.workspace import Workspace, get_db_connection
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -292,6 +296,21 @@ class RunLogger:
 
             conn.commit()
             self._buffer.clear()
+        except sqlite3.IntegrityError as exc:
+            # run_logs.run_id is a foreign key, and FK enforcement is now
+            # actually ON (#943) — before, this insert silently created orphan
+            # rows. A log line must never break the run it is describing, so
+            # drop the buffer and say so rather than propagating.
+            # Count BEFORE clearing — reading len() afterwards always reported
+            # "Dropped 1", hiding how much was actually lost.
+            dropped = len(self._buffer)
+            conn.rollback()
+            self._buffer.clear()
+            logger.warning(
+                "Dropped %d buffered log line(s): %s. The run is unaffected.",
+                dropped,
+                exc,
+            )
         finally:
             conn.close()
 
