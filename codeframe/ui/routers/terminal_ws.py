@@ -1,7 +1,10 @@
 """WebSocket router for interactive terminal in a session workspace.
 
 Endpoint:
-    WS /ws/sessions/{session_id}/terminal?token=<JWT>
+    WS /ws/sessions/{session_id}/terminal?ticket=<ticket>
+
+Auth: a single-use, 60s ticket from ``POST /auth/stream-ticket`` (#745). A JWT
+in the query string is not accepted.
 
 Client → Server message types:
     Raw bytes / text: forwarded verbatim to subprocess stdin.
@@ -29,7 +32,9 @@ from codeframe.ui.dependencies import revalidate_workspace_path
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["websocket"])
+# No tags: add_api_websocket_route ignores the router-level ``tags`` kwarg,
+# because WebSockets are not part of the OpenAPI schema at all (#951).
+router = APIRouter()
 
 # Per-user concurrent terminal connection counter (in-process; resets on restart).
 # Key is the user_id, or None in no-auth mode (all local terminals share a bucket).

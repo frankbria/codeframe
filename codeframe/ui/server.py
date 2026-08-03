@@ -497,137 +497,174 @@ async def lifespan(app: FastAPI):
 # OpenAPI Tags and Metadata
 # ============================================================================
 
+# Tags must stay in sync with the tags of the routers actually mounted below —
+# tests/ui/test_openapi_docs_accuracy.py asserts the two sets are equal (#951).
+# The two WebSocket routes carry no OpenAPI tag (WebSockets are not part of the
+# OpenAPI schema); they are documented in OPENAPI_DESCRIPTION instead.
 OPENAPI_TAGS = [
     {
         "name": "health",
         "description": "Health check endpoints - verify API availability and get deployment information.",
     },
     {
-        "name": "projects",
-        "description": "Project lifecycle and management - create, read, update, delete projects and access project status, tasks, activity, PRD, and session state.",
-    },
-    {
-        "name": "tasks",
-        "description": "Task creation, management, and approval workflow - create tasks, approve generated tasks to start development, and manually trigger task assignment.",
-    },
-    {
-        "name": "agents",
-        "description": "Agent lifecycle and assignment - start/pause/resume agents, assign agents to projects with roles, and manage multi-agent workflows.",
-    },
-    {
-        "name": "blockers",
-        "description": "Human-in-the-loop blocker management - list, view, and resolve blockers that require human guidance for agents to continue.",
-    },
-    {
-        "name": "checkpoints",
-        "description": "Project checkpoint and restore functionality - create snapshots of project state and restore to previous checkpoints.",
-    },
-    {
-        "name": "chat",
-        "description": "Chat and communication endpoints for real-time interaction with agents.",
-    },
-    {
-        "name": "context",
-        "description": "Context management for agent execution - manage codebase context, file references, and relevant information.",
-    },
-    {
-        "name": "discovery",
-        "description": "Discovery phase operations - codebase analysis, structure detection, and initial project understanding.",
-    },
-    {
-        "name": "git",
-        "description": "Git operations - commit, branch, diff, and repository management.",
-    },
-    {
-        "name": "lint",
-        "description": "Code linting operations - run and manage linting checks.",
-    },
-    {
-        "name": "metrics",
-        "description": "Metrics and analytics - project progress, agent performance, and quality metrics.",
-    },
-    {
-        "name": "quality_gates",
-        "description": "Quality gates and checks - run tests, type checking, coverage, and code review gates.",
-    },
-    {
-        "name": "review",
-        "description": "Code review functionality - trigger and manage AI-powered code reviews.",
-    },
-    {
-        "name": "schedule",
-        "description": "Task scheduling - view schedule predictions, bottlenecks, and critical path analysis.",
-    },
-    {
-        "name": "session",
-        "description": "Session management - track session state, progress, and continuity across work sessions.",
-    },
-    {
-        "name": "templates",
-        "description": "Project and task templates - list, view, and apply reusable templates.",
-    },
-    {
-        "name": "websocket",
-        "description": "WebSocket connections for real-time updates and event streaming.",
-    },
-    {
         "name": "auth",
-        "description": "Authentication and authorization - login, logout, API keys, and session management.",
+        "description": "Authentication - bootstrap registration, login, and short-lived stream tickets for SSE/WebSocket connections.",
+    },
+    {
+        "name": "users",
+        "description": "The authenticated user's own account - read and update the current user record.",
+    },
+    {
+        "name": "api-keys",
+        "description": "API key management - create, list, and revoke long-lived `X-API-Key` credentials.",
+    },
+    {
+        "name": "workspaces-v2",
+        "description": "Workspace lifecycle - initialize a workspace on a repository path, read its status, and manage its configuration.",
+    },
+    {
+        "name": "prd-v2",
+        "description": "PRD management - read and version the product requirements document, and run the streaming stress-test that surfaces and resolves ambiguities.",
+    },
+    {
+        "name": "discovery-v2",
+        "description": "Discovery phase - interactive PRD discovery sessions that turn a codebase and a conversation into a PRD.",
+    },
+    {
+        "name": "tasks-v2",
+        "description": "Task management and execution - list, create, and update tasks, start work on one, and stream its execution events (SSE).",
+    },
+    {
+        "name": "batches-v2",
+        "description": "Batch orchestration - run many tasks serially or in parallel, and monitor, cancel, or resume a batch.",
+    },
+    {
+        "name": "diagnose-v2",
+        "description": "Task diagnostics - explain why a task stalled, failed, or is blocked.",
+    },
+    {
+        "name": "blockers-v2",
+        "description": "Human-in-the-loop blockers - list, view, and answer the questions an agent raised before it can continue.",
+    },
+    {
+        "name": "sessions-v2",
+        "description": "Interactive agent sessions - create a session, replay its message history, and manage its lifecycle. Live chat and terminal I/O run over the WebSocket routes described above.",
+    },
+    {
+        "name": "events",
+        "description": "Append-only event log - query the durable record of what the orchestrator and its agents did.",
     },
     {
         "name": "proof-v2",
-        "description": "PROOF9 quality system — capture requirements from glitches, run proof obligations, manage waivers, and query evidence.",
+        "description": "PROOF9 quality system - capture requirements from glitches, run proof obligations, manage waivers, and query evidence.",
+    },
+    {
+        "name": "gates-v2",
+        "description": "Verification gates - run the test, lint, type-check and coverage gates and read their results.",
+    },
+    {
+        "name": "review-v2",
+        "description": "Code review - inspect the working diff, export it as a patch, run an AI review over changed files or a task, and draft a commit message.",
+    },
+    {
+        "name": "git-v2",
+        "description": "Git operations - status, diff, branch, and commit against the workspace repository.",
+    },
+    {
+        "name": "pr-v2",
+        "description": "GitHub pull requests - create a PR, read its status and checks, and merge it through the PROOF9 merge gate.",
+    },
+    {
+        "name": "checkpoints-v2",
+        "description": "Workspace checkpoints - snapshot workspace state and restore a previous snapshot.",
+    },
+    {
+        "name": "schedule-v2",
+        "description": "Task scheduling - schedule predictions, bottlenecks, and critical-path analysis over the task graph.",
+    },
+    {
+        "name": "templates-v2",
+        "description": "Project and task templates - list, view, and apply reusable templates.",
+    },
+    {
+        "name": "environment-v2",
+        "description": "Environment management - check the toolchain a workspace needs, install what is missing, and run diagnostics.",
+    },
+    {
+        "name": "metrics",
+        "description": "Cost and token metrics - spend summaries and per-task / per-agent token breakdowns.",
+    },
+    {
+        "name": "settings",
+        "description": "Server and workspace settings - agent defaults, provider API keys, PROOF9 defaults, and outbound notification webhooks.",
     },
     {
         "name": "integrations",
-        "description": "External service integrations — connect a GitHub repository via Personal Access Token for issue import.",
+        "description": "External service integrations - connect a GitHub repository via Personal Access Token, then browse and import its issues as tasks.",
     },
 ]
 
 OPENAPI_DESCRIPTION = """
 # CodeFRAME API
 
-**CodeFRAME** is an AI-powered software development framework that orchestrates multiple agents
-to complete programming tasks. This API provides real-time monitoring and control for CodeFRAME projects.
+**CodeFRAME** is a project delivery system for AI-assisted software work: Think → Build →
+Prove → Ship. It owns the edges of the pipeline — requirements, task decomposition,
+verification gates, and shipping — and delegates the code writing to frontier coding
+agents. This API is the HTTP surface over that system; the `cf` CLI drives the same core
+without a server.
 
 ## Overview
 
 The CodeFRAME API enables you to:
 
-- **Create and manage projects** - Initialize projects from git repos, local paths, or start empty
-- **Generate and approve tasks** - AI generates implementation tasks from PRDs; approve to start development
-- **Monitor agent execution** - Track agents as they work through tasks with real-time WebSocket updates
-- **Handle blockers** - Provide human guidance when agents encounter decisions requiring input
-- **Review and ship** - Run quality gates, review code changes, and manage the deployment process
+- **Set up a workspace** - Initialize CodeFRAME on a repository path and manage its configuration
+- **Think** - Author and version a PRD, stress-test it for ambiguities, and generate tasks from it
+- **Build** - Start work on a task or a batch of tasks, follow execution events in real time, and answer blockers
+- **Prove** - Run verification gates and the PROOF9 evidence system over the result
+- **Ship** - Review the diff, open a pull request, and merge it through the PROOF9 merge gate
 
 ## Authentication
 
 All `/api/v2/*` endpoints require authentication by default (disable for local
-development with `CODEFRAME_AUTH_REQUIRED=false`). Public: `/`, `/health`, docs,
-and the `/auth/*` login/register endpoints. Two authentication methods:
+development with `CODEFRAME_AUTH_REQUIRED=false`). Public: `/`, `/health`, the docs, and
+the `/auth/*` login and bootstrap-registration endpoints. Two authentication methods:
 
-1. **API Key** - Include `X-API-Key` header with your API key
-2. **Session Token** - Use JWT token from login endpoint in `Authorization: Bearer <token>` header
+1. **API Key** - Include an `X-API-Key` header with your API key
+2. **Session Token** - Use the JWT from the login endpoint in an `Authorization: Bearer <token>` header
 
-SSE streaming endpoints additionally accept the JWT as a `?token=` query
-parameter (browser EventSource cannot send headers); this applies to the
-streaming routes only.
+Scopes are derived from the account: every principal has `read` and `write`; `admin` is
+granted only to a superuser. Safe methods require `read`, mutating methods require
+`write`, and a few routes (credential storage, PR merge) require `admin`.
+
+### Streaming connections
+
+Browser `EventSource` and `WebSocket` clients cannot send an `Authorization` header, so
+streams authenticate with a **single-use ticket** instead — never with a JWT in the URL.
+Call `POST /auth/stream-ticket` (write scope) to mint a ticket, then append it as
+`?ticket=<value>` when opening the connection. A ticket is valid for 60 seconds and is
+consumed on first use, so fetch a fresh one for every connection and every reconnect.
+
+Tickets are accepted **only** on these routes:
+
+| Route | Kind |
+|---|---|
+| `GET /api/v2/tasks/{task_id}/stream` | SSE |
+| `GET /api/v2/tasks/{task_id}/output` | SSE |
+| `GET /api/v2/prd/stress-test` | SSE |
+| `WS /ws/sessions/{session_id}/chat` | WebSocket |
+| `WS /ws/sessions/{session_id}/terminal` | WebSocket |
+
+The two WebSocket routes do not appear in this schema — OpenAPI does not describe
+WebSockets. `chat` streams agent output as `text_delta`, `tool_use_start`, `tool_result`,
+`thinking`, `cost_update`, `done` and `error` messages; `terminal` forwards raw bytes to
+and from a shell in the session workspace.
 
 ## Rate Limiting
 
-The API implements rate limiting to ensure fair usage:
-- **Standard endpoints**: Higher request limits for read operations
-- **AI endpoints** (agent start, LLM calls): Lower limits due to computational cost
-
-Rate limit headers are included in responses: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
-
-## WebSocket Events
-
-For real-time updates, connect to the WebSocket endpoint. Events include:
-- `task_assigned`, `task_completed`, `task_failed`
-- `agent_created`, `agent_status`
-- `blocker_created`, `blocker_resolved`
-- `discovery_starting`, `discovery_completed`
+The API rate-limits by client, with a lower limit on AI endpoints (agent start, LLM
+calls) than on ordinary reads. Exceeding a limit returns `429` with a `Retry-After`
+header (seconds) and an `X-RateLimit-Limit` header describing the limit that was hit.
+Successful responses do not carry rate-limit headers.
 
 ## Error Responses
 
@@ -860,7 +897,7 @@ app.include_router(auth_router.router)
 # methods need ``write``. Admin-only routes (credential storage, PR merge) add
 # their own ``Depends(require_scope("admin"))``. The two WebSocket routers
 # (session_chat_ws, terminal_ws) are intentionally excluded — they perform
-# their own ?token= JWT auth. The auth_router (login/register) stays public.
+# their own single-use ?ticket= auth (#745). The auth_router stays public.
 _AUTH = [Depends(require_method_scope)]
 app.include_router(batches_v2.router, dependencies=_AUTH)       # /api/v2/batches
 app.include_router(blockers_v2.router, dependencies=_AUTH)      # /api/v2/blockers

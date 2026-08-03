@@ -1,7 +1,10 @@
 """WebSocket router for per-session streaming agent chat.
 
 Endpoint:
-    WS /ws/sessions/{session_id}/chat?token=<JWT>
+    WS /ws/sessions/{session_id}/chat?ticket=<ticket>
+
+Auth: a single-use, 60s ticket from ``POST /auth/stream-ticket`` (#745). A JWT
+in the query string is not accepted.
 
 Client → Server message types:
     {"type": "message", "content": "..."}
@@ -25,8 +28,8 @@ core.session_chat_service) would make this a thin transport adapter. See
 GitHub issue #502 for context.
 
 Workspace scoping: This endpoint is intentionally exempt from workspace_path
-query param validation. Auth is already scoped to a user via JWT and the
-session_id identifies the resource — workspace scoping on a per-session WS
+query param validation. The redeemed ticket already scopes auth to a user and
+the session_id identifies the resource — workspace scoping on a per-session WS
 would be redundant. Revisit if multi-tenant workspace isolation is required.
 """
 
@@ -46,7 +49,9 @@ from codeframe.ui.shared import session_chat_manager
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["websocket"])
+# No tags: add_api_websocket_route ignores the router-level ``tags`` kwarg,
+# because WebSockets are not part of the OpenAPI schema at all (#951).
+router = APIRouter()
 
 # Maps a session ``agent_type`` (agent vocabulary: "claude", "codex", ...) to an
 # LLM ``provider_type`` understood by ``get_provider`` ("anthropic", ...). Only

@@ -1,18 +1,13 @@
 """V2 Task execution router - delegates to core modules.
 
 This module provides v2-style API endpoints for task management that delegate
-to core/runtime.py and core/conductor.py. It uses the v2 Workspace model and
-is designed to work alongside the v1 tasks router during migration.
+to core/runtime.py and core/conductor.py. It:
 
-Key differences from v1:
 - Uses Workspace (path-based) instead of project_id
 - Delegates to core/runtime and core/conductor functions
 - No LeadAgent dependency for execution
 - Uses conductor.create_batch() + a worker thread, so batch execution never
   blocks the event loop (#901)
-
-The v1 router (tasks.py) remains for backwards compatibility with
-existing web UI until Phase 3 (Web UI Rebuild).
 """
 
 import functools

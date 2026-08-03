@@ -2,8 +2,6 @@
 
 This module provides v2-style API endpoints for code review operations
 that delegate to core modules. It uses the v2 Workspace model.
-
-The v1 router (review.py) remains for backwards compatibility.
 """
 
 import logging

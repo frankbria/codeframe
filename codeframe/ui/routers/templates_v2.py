@@ -2,8 +2,6 @@
 
 This module provides v2-style API endpoints for template management that
 delegate to core/templates.py. It uses the v2 Workspace model.
-
-The v1 router (templates.py) remains for backwards compatibility.
 """
 
 import logging
