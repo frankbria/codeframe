@@ -142,6 +142,61 @@ class TestHandlerResponse:
         assert response.status_code == 429
 
 
+class TestAuditQueueIsBounded:
+    """Raised by the PR bot: fire-and-forget run_in_executor uses the default
+    executor's UNBOUNDED queue, so a distributed 429 flood — this handler's
+    whole reason to exist — grows pending writes and process memory without
+    limit, because writes serialize behind the store's single connection."""
+
+    def setup_method(self):
+        from codeframe.lib import rate_limiter
+
+        rate_limiter._audit_pending = 0
+        rate_limiter._audit_dropped = 0
+
+    def test_writes_past_the_cap_are_dropped_not_queued(self, caplog):
+        import logging
+
+        from codeframe.lib import rate_limiter
+
+        calls = []
+        rate_limiter._audit_pending = rate_limiter._AUDIT_MAX_PENDING
+
+        with caplog.at_level(logging.WARNING):
+            rate_limiter._submit_audit(lambda: calls.append(1))
+
+        assert calls == [], "the write ran despite a full queue"
+        assert rate_limiter._audit_dropped == 1
+        assert "Audit queue full" in caplog.text
+
+    def test_the_cap_does_not_block_normal_operation(self):
+        from codeframe.lib import rate_limiter
+
+        calls = []
+        rate_limiter._submit_audit(lambda: calls.append(1))
+
+        assert calls == [1], "an ordinary write was dropped"
+
+    def test_pending_returns_to_zero_after_a_write(self):
+        from codeframe.lib import rate_limiter
+
+        rate_limiter._submit_audit(lambda: None)
+
+        assert rate_limiter._audit_pending == 0, "the counter leaked"
+
+    def test_pending_returns_to_zero_when_the_write_raises(self):
+        """A leaked counter would silently shrink the cap to zero over time."""
+        from codeframe.lib import rate_limiter
+
+        def boom():
+            raise RuntimeError("nope")
+
+        with pytest.raises(RuntimeError):
+            rate_limiter._submit_audit(boom)
+
+        assert rate_limiter._audit_pending == 0
+
+
 class TestAuditWriteUsesTheLockedPath:
     def test_create_audit_log_goes_through_execute(self):
         """AC3 — audit_repository was the one place bypassing the base class's
@@ -173,9 +228,11 @@ class TestAuditWriteUsesTheLockedPath:
 
         from codeframe.lib import rate_limiter
 
-        source = inspect.getsource(rate_limiter.rate_limit_exceeded_handler)
-
-        assert "run_in_executor" in source
+        # The offload moved into _submit_audit, which bounds the queue.
+        assert "_submit_audit(" in inspect.getsource(
+            rate_limiter.rate_limit_exceeded_handler
+        )
+        assert "run_in_executor" in inspect.getsource(rate_limiter._submit_audit)
 
     @pytest.mark.asyncio
     async def test_the_audit_row_is_still_written(self):

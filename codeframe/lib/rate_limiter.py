@@ -21,6 +21,7 @@ Security:
 
 import asyncio
 import logging
+import threading
 from typing import Any, Callable, Optional
 
 from fastapi import Request
@@ -183,6 +184,52 @@ def get_rate_limiter() -> Optional[Limiter]:
     return _limiter
 
 
+#: Cap on audit writes queued but not yet committed. Writes serialize behind the
+#: store's single sqlite3 connection, so under a distributed 429 flood — the very
+#: scenario this handler exists for — an unbounded executor queue grows faster
+#: than it drains and takes process memory with it (PR review on #939). Past the
+#: cap the event is dropped and counted: losing some audit rows during a flood is
+#: strictly better than losing the process.
+_AUDIT_MAX_PENDING = 256
+_audit_pending = 0
+_audit_dropped = 0
+_audit_lock = threading.Lock()
+
+
+def _submit_audit(fn) -> None:
+    """Run ``fn`` off the event loop, bounded. Never raises."""
+    global _audit_pending, _audit_dropped
+
+    with _audit_lock:
+        if _audit_pending >= _AUDIT_MAX_PENDING:
+            _audit_dropped += 1
+            dropped = _audit_dropped
+            if dropped == 1 or dropped % 100 == 0:
+                logger.warning(
+                    "Audit queue full (%d pending): dropped %d rate-limit "
+                    "event(s). The 429s were still served.",
+                    _AUDIT_MAX_PENDING,
+                    dropped,
+                )
+            return
+        _audit_pending += 1
+
+    def _run() -> None:
+        global _audit_pending
+        try:
+            fn()
+        finally:
+            with _audit_lock:
+                _audit_pending -= 1
+
+    try:
+        asyncio.get_running_loop().run_in_executor(None, _run)
+    except RuntimeError:
+        # No loop (sync test client / direct call): write inline rather than
+        # drop the event.
+        _run()
+
+
 def _limit_object(exc):
     """The underlying ``limits`` object behind slowapi's Limit wrapper."""
     return getattr(getattr(exc, "limit", None), "limit", None)
@@ -277,12 +324,7 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) 
                 metadata={"limit": limit_str, "retry_after": retry_after},
             )
 
-        try:
-            asyncio.get_running_loop().run_in_executor(None, _write_audit)
-        except RuntimeError:
-            # No loop (sync test client / direct call): write inline rather than
-            # drop the event.
-            _write_audit()
+        _submit_audit(_write_audit)
 
     # RFC 9110 delta-seconds: an integer number of seconds, nothing else.
     headers = {"Retry-After": str(retry_after)}
