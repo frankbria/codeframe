@@ -606,7 +606,7 @@ def summary(
             console.print(f"[bold]Blockers:[/bold] [yellow]{len(open_blockers)} open[/yellow]")
             for b in open_blockers[:3]:
                 q = b.question[:50] + "..." if len(b.question) > 50 else b.question
-                console.print(f"  - {q}")
+                console.print(f"  - {escape(q)}")
             if len(open_blockers) > 3:
                 console.print(f"  ... and {len(open_blockers) - 3} more")
         else:
@@ -692,7 +692,7 @@ def review(
         # dependency install. Always shown: the gates may all have passed, and
         # the operator still needs to know the environment was incomplete.
         for note in result.notes:
-            console.print(f"  [yellow]note:[/yellow] {note}")
+            console.print(f"  [yellow]note:[/yellow] {escape(note)}")
 
         # Summary
         console.print()
@@ -1808,7 +1808,10 @@ def prd_stress_test(
             console.print(f"[bold yellow]{i}. {escape(amb.label)}[/bold yellow] (from \"{escape(amb.source_node_title)}\")")
             console.print("   The PRD doesn't specify:")
             for q in amb.questions:
-                console.print(f"   [cyan]- {q}[/cyan]")
+                # escape(): a bare loop variable carries no field name, so the
+                # scanner test cannot see it — these are LLM-written questions
+                # about code, so brackets are the norm (#935).
+                console.print(f"   [cyan]- {escape(q)}[/cyan]")
             console.print(f"   → {escape(amb.recommendation)}")
             console.print()
     else:

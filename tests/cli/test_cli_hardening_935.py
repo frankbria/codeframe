@@ -212,10 +212,33 @@ class TestRichMarkupIsEscaped:
             )
         renders = ("console.print", "log.write", "add_row")
 
+        # A bare loop variable (`for q in amb.questions: ... {q}`) carries no
+        # field name, so the field regex above cannot see it. Collect the names
+        # bound by a `for` over a free-text collection and treat a bare
+        # interpolation of one as unescaped too. (The PR bot found exactly this
+        # shape after five earlier rounds.)
+        loop_bound = set()
+        for st in statements:
+            m = re.match(
+                # (?:...) — ungrouped, the `\.` prefix would bind only to the
+                # first alternative and the pattern would never match.
+                r"for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+[A-Za-z_][A-Za-z0-9_]*\.(?:"
+                + FREE_TEXT.replace("|", "s?|") + r"s?)\b",
+                st,
+            )
+            if m:
+                loop_bound.add(m.group(1))
+
+        def _bare_loop_var(statement: str) -> bool:
+            return any(
+                span.strip("{}").strip() in loop_bound and "escape(" not in span
+                for span in interpolation.findall(statement)
+            )
+
         offenders = [
             st for st in statements
             if any(r in st for r in renders)
-            and _has_unescaped_field(st)
+            and (_has_unescaped_field(st) or _bare_loop_var(st))
         ]
 
         assert not offenders, (
