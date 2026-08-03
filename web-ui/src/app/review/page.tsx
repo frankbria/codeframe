@@ -6,6 +6,7 @@ import { reviewApi, gatesApi, gitApi, prApi, tasksApi } from '@/lib/api';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
 import { useWorkspaceSelection } from '@/hooks/useWorkspaceSelection';
 import { parseDiff, getFilePath } from '@/lib/diffParser';
+import { pickOpenPr } from '@/lib/pickOpenPr';
 import type {
   DiffStatsResponse,
   TaskListResponse,
@@ -58,17 +59,21 @@ export default function ReviewPage() {
   // normal case — permanently hid PRStatusPanel, which is the ONLY web surface
   // carrying the Merge button and the PROOF9 merge-gate display. Ship then had
   // to be finished from the CLI.
+  //
+  // Match on head_branch, NOT pull_requests[0]. That is the newest open PR in
+  // the whole repo — with several feature branches, or a dependabot PR, or a
+  // stale one, the panel would restore someone else's PR and its Merge button
+  // would merge it.
   useEffect(() => {
     if (!workspacePath || prNumber > 0) return;
     let cancelled = false;
-    prApi
-      .list(workspacePath, 'open')
-      .then((res) => {
+    Promise.all([gitApi.getStatus(workspacePath), prApi.list(workspacePath, 'open')])
+      .then(([status, res]) => {
         if (cancelled) return;
-        const open = res.pull_requests?.[0];
-        if (open?.number) {
-          setPrNumber(open.number);
-          if (open.url) setPrUrl(open.url);
+        const mine = pickOpenPr(res.pull_requests, status.current_branch);
+        if (mine?.number) {
+          setPrNumber(mine.number);
+          if (mine.url) setPrUrl(mine.url);
         }
       })
       .catch(() => {
