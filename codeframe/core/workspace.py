@@ -904,6 +904,36 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
     conn.close()
 
 
+
+def _ensure_state_dir_ignored(state_dir: Path) -> None:
+    """Keep .codeframe/ out of the user's git history (#942).
+
+    The sandbox code assumed this was ignored, but nothing ever wrote the rule —
+    so `cf commit --all` (and any `git add -A`) could stage state.db, WAL files
+    and worktree gitlinks into the user's repository.
+
+    The rule goes in `.codeframe/.gitignore` rather than the repo's root
+    `.gitignore`: that file belongs to the user, may be committed, and is not
+    ours to edit. A self-ignoring directory needs no cooperation from it, works
+    in a repo that has no .gitignore at all, and disappears with the directory.
+    """
+    marker = state_dir / ".gitignore"
+    if marker.exists():
+        return
+    try:
+        marker.write_text(
+            "# Managed by CodeFRAME (#942). This directory holds local state —\n"
+            "# SQLite databases, WAL files, worktree gitlinks — that must never\n"
+            "# enter the repository's history.\n"
+            "*\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        # Not fatal: a read-only checkout still gets a working workspace, it
+        # just does not get the guard.
+        logger.warning("Could not write %s: %s", marker, exc)
+
+
 def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) -> Workspace:
     """Create a new workspace or load an existing one.
 
@@ -938,6 +968,7 @@ def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) 
 
     # Create .codeframe/ directory
     state_dir.mkdir(exist_ok=True)
+    _ensure_state_dir_ignored(state_dir)
 
     # Initialize database
     _init_database(db_path)

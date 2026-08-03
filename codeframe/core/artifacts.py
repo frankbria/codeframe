@@ -121,6 +121,14 @@ def export_patch(
     fell_back_to_plain_unstaged = False
 
     if not patch_content.strip():
+        if staged_only:
+            # Do NOT fall back (#942). The caller asked for staged changes; the
+            # fallback below runs plain `git diff`, so an empty index silently
+            # exported UNSTAGED work under a filename and a PatchInfo that both
+            # claim "staged". Exporting the wrong changes is worse than
+            # exporting none.
+            raise ValueError("No staged changes to export")
+
         # Try just unstaged changes (git diff without HEAD)
         result = subprocess.run(
             ["git", "diff"],
