@@ -1,7 +1,7 @@
 """V2 Discovery workflow router - delegates to core modules.
 
 This module provides v2-style API endpoints for PRD discovery that delegate
-to core/prd_discovery.py.
+to core/prd_discovery.py. It:
 
 - Uses Workspace (path-based) instead of project_id
 - Delegates to core/prd_discovery functions

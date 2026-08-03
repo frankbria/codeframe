@@ -32,7 +32,9 @@ from codeframe.ui.dependencies import revalidate_workspace_path
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["websocket"])
+# No tags: add_api_websocket_route ignores the router-level ``tags`` kwarg,
+# because WebSockets are not part of the OpenAPI schema at all (#951).
+router = APIRouter()
 
 # Per-user concurrent terminal connection counter (in-process; resets on restart).
 # Key is the user_id, or None in no-auth mode (all local terminals share a bucket).

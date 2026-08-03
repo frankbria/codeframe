@@ -1,7 +1,7 @@
 """V2 Task execution router - delegates to core modules.
 
 This module provides v2-style API endpoints for task management that delegate
-to core/runtime.py and core/conductor.py.
+to core/runtime.py and core/conductor.py. It:
 
 - Uses Workspace (path-based) instead of project_id
 - Delegates to core/runtime and core/conductor functions
