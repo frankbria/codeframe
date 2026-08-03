@@ -123,7 +123,7 @@ def detect_package_manager(repo_path: Path) -> str:
     # Check pyproject.toml for tool-specific markers
     pyproject = repo_path / "pyproject.toml"
     if pyproject.exists():
-        content = pyproject.read_text()
+        content = pyproject.read_text(encoding="utf-8", errors="replace")
         # Check for uv-specific configuration
         if "[tool.uv]" in content:
             return "uv pip install"
@@ -487,7 +487,7 @@ def find_quick_fix(
     file_content = None
     if file_path and file_path.exists():
         try:
-            file_content = file_path.read_text()
+            file_content = file_path.read_text(encoding="utf-8", errors="replace")
         except Exception:
             pass
 
@@ -581,6 +581,8 @@ def apply_quick_fix(
                 cwd=repo_path,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=120,
                 # A package install runs the package's own postinstall scripts
                 # (#907). Same allowlisted, credential-free env as every other
@@ -601,7 +603,7 @@ def apply_quick_fix(
             if not file_path.exists():
                 return False, f"File not found: {fix.file_path}"
 
-            content = file_path.read_text()
+            content = file_path.read_text(encoding="utf-8", errors="replace")
 
             if fix.old_content and fix.new_content:
                 # Replace content

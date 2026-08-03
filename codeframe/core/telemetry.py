@@ -67,7 +67,7 @@ def load_config(storage_dir: Optional[Path] = None) -> TelemetryConfig:
     """Load config; a missing or corrupted file yields safe defaults (off)."""
     path = config_path(storage_dir)
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         return TelemetryConfig(
             enabled=bool(data.get("enabled", False)),
             prompted=bool(data.get("prompted", False)),

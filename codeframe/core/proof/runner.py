@@ -39,8 +39,12 @@ def _load_proof_config(workspace: Workspace) -> tuple[Optional[set[Gate]], str]:
     if not path.exists():
         return None, "strict"
     try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    # ValueError, not just json.JSONDecodeError (#1029). The two are SIBLINGS
+    # under ValueError, not parent and child — so catching JSONDecodeError does
+    # nothing for a UnicodeDecodeError, and a proof_config.json with one
+    # non-UTF-8 byte crashed `cf proof run` instead of falling back to defaults.
+    except (OSError, ValueError) as exc:
         logger.warning("Invalid %s — using defaults: %s", PROOF_CONFIG_FILENAME, exc)
         return None, "strict"
 

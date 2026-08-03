@@ -100,6 +100,8 @@ class TaskWorktree:
             cwd=str(workspace_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
 
@@ -136,6 +138,8 @@ class TaskWorktree:
             cwd=str(worktree_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if add.returncode != 0:
             raise RuntimeError(
@@ -156,6 +160,8 @@ class TaskWorktree:
             cwd=str(worktree_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if commit.returncode != 0:
             # Staged changes exist but couldn't be committed (hook rejection,
@@ -195,6 +201,8 @@ class TaskWorktree:
                 cwd=str(workspace_path),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=True,
             )
 
@@ -204,6 +212,8 @@ class TaskWorktree:
                 cwd=str(workspace_path),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
 
             if result.returncode == 0:
@@ -213,6 +223,8 @@ class TaskWorktree:
                     cwd=str(workspace_path),
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                 )
                 merge_commit = head.stdout.strip() if head.returncode == 0 else None
 
@@ -259,6 +271,8 @@ class TaskWorktree:
                 cwd=str(workspace_path),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
         except Exception as exc:
             logger.warning("Failed to remove worktree for %s: %s", task_id, exc)
@@ -270,6 +284,8 @@ class TaskWorktree:
                 cwd=str(workspace_path),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
         except Exception as exc:
             logger.warning("Failed to delete branch %s: %s", branch_name, exc)
@@ -286,6 +302,8 @@ def get_base_branch(workspace_path: Path) -> str:
         cwd=str(workspace_path),
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     branch = result.stdout.strip()
     if result.returncode != 0 or not branch or branch == "HEAD":
@@ -299,7 +317,7 @@ def list_worktrees(workspace_path: Path) -> list[dict]:
     if not registry_file.exists():
         return []
     try:
-        data = json.loads(registry_file.read_text())
+        data = json.loads(registry_file.read_text(encoding="utf-8"))
         return data if isinstance(data, list) else []
     except Exception:
         return []

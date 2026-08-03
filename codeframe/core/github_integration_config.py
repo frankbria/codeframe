@@ -59,7 +59,7 @@ def load_github_integration_config(
     if not path.exists():
         return None
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or not data.get("repo"):
             raise ValueError("missing required 'repo' field")
         return {

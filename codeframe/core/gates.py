@@ -219,7 +219,14 @@ def _install_python_requirements(
 
     def _run(cmd: list[str], timeout: int = 300) -> subprocess.CompletedProcess:
         return subprocess.run(
-            cmd, cwd=repo_path, env=env, capture_output=True, text=True, timeout=timeout
+            cmd,
+            cwd=repo_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
         )
 
     use_uv = shutil.which("uv") is not None
@@ -368,6 +375,8 @@ def _ensure_dependencies_installed(
                         env=build_agent_env(repo_path),
                         capture_output=True,
                         text=True,
+                        encoding="utf-8",
+                        errors="replace",
                         timeout=300,  # 5 minutes
                     )
                     if result.returncode == 0:
@@ -552,7 +561,7 @@ def _detect_available_gates(repo_path: Path) -> list[str]:
     if package_json.exists():
         try:
             import json
-            pkg = json.loads(package_json.read_text())
+            pkg = json.loads(package_json.read_text(encoding="utf-8"))
             scripts = pkg.get("scripts", {})
             if "test" in scripts:
                 gates.append("npm-test")
@@ -575,7 +584,7 @@ def _detect_available_gates(repo_path: Path) -> list[str]:
     if package_json.exists():
         try:
             import json
-            pkg = json.loads(package_json.read_text())
+            pkg = json.loads(package_json.read_text(encoding="utf-8"))
             scripts = pkg.get("scripts", {})
             if "build" in scripts:
                 gates.append("npm-build")
@@ -616,6 +625,8 @@ def _run_pytest(
             env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=300,  # 5 minute timeout
         )
 
@@ -723,6 +734,8 @@ def _run_bandit(repo_path: Path, verbose: bool = False) -> GateCheck:
             env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=300,
         )
     except FileNotFoundError:
@@ -787,6 +800,8 @@ def _run_ruff(repo_path: Path, verbose: bool = False) -> GateCheck:
             env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
         )
 
@@ -844,6 +859,8 @@ def _run_mypy(repo_path: Path, verbose: bool = False) -> GateCheck:
             env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=120,
         )
 
@@ -895,6 +912,8 @@ def _run_npm_test(repo_path: Path, verbose: bool = False) -> GateCheck:
             env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=300,
         )
 
@@ -946,6 +965,8 @@ def _run_npm_lint(repo_path: Path, verbose: bool = False) -> GateCheck:
             env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=120,
         )
 
@@ -1024,6 +1045,8 @@ def _run_python_build(repo_path: Path, verbose: bool = False) -> GateCheck:
             env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=60,  # 1 minute for import check
         )
 
@@ -1073,7 +1096,7 @@ def _run_npm_build(repo_path: Path, verbose: bool = False) -> GateCheck:
 
     # Check if build script exists
     try:
-        pkg = json.loads(package_json.read_text())
+        pkg = json.loads(package_json.read_text(encoding="utf-8"))
         scripts = pkg.get("scripts", {})
         if "build" not in scripts:
             return GateCheck(
@@ -1103,6 +1126,8 @@ def _run_npm_build(repo_path: Path, verbose: bool = False) -> GateCheck:
             env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=300,  # 5 minutes for builds
         )
 
@@ -1171,7 +1196,7 @@ def _run_tsc(repo_path: Path, verbose: bool = False) -> GateCheck:
 
     if package_json_path.exists():
         try:
-            package_data = json.loads(package_json_path.read_text())
+            package_data = json.loads(package_json_path.read_text(encoding="utf-8"))
             scripts = package_data.get("scripts", {})
             if "type-check" in scripts:
                 cmd = ["npm", "run", "type-check"]
@@ -1185,6 +1210,8 @@ def _run_tsc(repo_path: Path, verbose: bool = False) -> GateCheck:
             env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=120,  # 2 minutes, same as mypy
         )
 
@@ -1332,6 +1359,8 @@ def run_lint_on_file(
             env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
 
@@ -1432,6 +1461,8 @@ def run_autofix_on_file(
             env=build_agent_env(repo_path),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
 

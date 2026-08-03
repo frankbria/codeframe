@@ -164,6 +164,8 @@ class PipInstaller:
                 cmd_parts,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=300,  # 5 minute timeout
             )
 
@@ -281,6 +283,8 @@ class NpmInstaller:
                 cmd_parts,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=300,
             )
 
@@ -401,6 +405,8 @@ class CargoInstaller:
                 cmd_parts,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=600,  # Cargo builds can take a while
             )
 

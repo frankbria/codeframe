@@ -169,7 +169,7 @@ def load_notifications_config(workspace: Workspace) -> NotificationsConfig:
     if not path.exists():
         return dict(_DEFAULT)  # type: ignore[return-value]
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError(
                 f"Expected JSON object, got {type(data).__name__}"
