@@ -421,9 +421,29 @@ def delete(
         "UPDATE prds SET parent_id = ? WHERE workspace_id = ? AND parent_id = ?",
         (grandparent, workspace.id, prd_id),
     )
+    # Keep the survivors in ONE chain by repointing them at the oldest
+    # surviving version — the new root. Giving each survivor its OWN chain_id
+    # (the first cut) shattered the chain on a root delete: get_versions and
+    # list_chains key entirely off chain_id, so one evolving document became two
+    # separate PRDs, and v3 kept parent_id=v2 while landing in a different chain
+    # than v2 — a state no version query can reconstruct.
+    #
+    # The new root is computed BEFORE the UPDATE so SQLite's row-by-row
+    # evaluation cannot pick a different root for different rows. No-op for a
+    # non-root delete: no row carries a non-root's id as its chain_id.
     cursor.execute(
-        "UPDATE prds SET chain_id = id WHERE workspace_id = ? AND chain_id = ? AND id != ?",
+        """
+        SELECT id FROM prds
+        WHERE workspace_id = ? AND chain_id = ? AND id != ?
+        ORDER BY version ASC, created_at ASC
+        LIMIT 1
+        """,
         (workspace.id, prd_id, prd_id),
+    )
+    new_root = cursor.fetchone()
+    cursor.execute(
+        "UPDATE prds SET chain_id = ? WHERE workspace_id = ? AND chain_id = ? AND id != ?",
+        (new_root[0] if new_root else None, workspace.id, prd_id, prd_id),
     )
 
     cursor.execute(

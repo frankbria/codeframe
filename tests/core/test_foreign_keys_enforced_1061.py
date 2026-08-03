@@ -313,8 +313,11 @@ class TestDeletingAVersionedPrd:
         assert prd.get_by_id(workspace, v3.id).parent_id == v1.id
 
     def test_deleting_the_root_leaves_no_dangling_chain_id(self, workspace, chain):
-        """chain_id falls back to the row's own id — the same thing store()
-        does when it seeds a new chain."""
+        """Necessary but NOT sufficient — see the tests below.
+
+        This assertion alone passed while the chain was being shattered: giving
+        each survivor its own chain_id also 'resolves'. Raised in review.
+        """
         from codeframe.core import prd
 
         v1, _, v3 = chain
@@ -325,6 +328,76 @@ class TestDeletingAVersionedPrd:
         assert prd.get_by_id(workspace, surviving.chain_id) is not None, (
             "chain_id points at a PRD that no longer exists"
         )
+
+    def test_the_survivors_stay_in_ONE_chain_after_a_root_delete(
+        self, workspace, chain
+    ):
+        """The assertion the test above should have been.
+
+        get_versions and list_chains key entirely off chain_id, so giving each
+        survivor its own turned one evolving document into two separate PRDs.
+        """
+        from codeframe.core import prd
+
+        v1, v2, v3 = chain
+        prd.delete(workspace, v1.id, check_dependencies=False)
+
+        assert {p.id for p in prd.get_versions(workspace, v3.id)} == {v2.id, v3.id}
+        assert {p.id for p in prd.get_versions(workspace, v2.id)} == {v2.id, v3.id}
+
+    def test_no_survivor_has_a_parent_in_another_chain(self, workspace, chain):
+        """The invariant that was violated: v3 kept parent_id=v2 while landing
+        in a different chain than v2 — a state no version query can
+        reconstruct."""
+        from codeframe.core import prd
+
+        v1, v2, v3 = chain
+        prd.delete(workspace, v1.id, check_dependencies=False)
+
+        for survivor in (prd.get_by_id(workspace, v2.id), prd.get_by_id(workspace, v3.id)):
+            if survivor.parent_id is None:
+                continue
+            parent = prd.get_by_id(workspace, survivor.parent_id)
+            assert parent is not None
+            assert parent.chain_id == survivor.chain_id, (
+                f"{survivor.id[:8]} has a parent in chain "
+                f"{(parent.chain_id or '')[:8]}, not its own {(survivor.chain_id or '')[:8]}"
+            )
+
+    def test_the_new_root_is_the_oldest_survivor(self, workspace, chain):
+        """Not an arbitrary one: with the id computed per-row, SQLite could pick
+        a different root for different rows."""
+        from codeframe.core import prd
+
+        v1, v2, v3 = chain
+        prd.delete(workspace, v1.id, check_dependencies=False)
+
+        assert prd.get_by_id(workspace, v3.id).chain_id == v2.id
+        assert prd.get_by_id(workspace, v2.id).chain_id == v2.id
+
+    def test_a_middle_delete_leaves_the_chain_id_alone(self, workspace, chain):
+        """The chain_id rewrite must be a no-op here — the chain root is
+        untouched, so nothing should be repointed."""
+        from codeframe.core import prd
+
+        v1, v2, v3 = chain
+        prd.delete(workspace, v2.id, check_dependencies=False)
+
+        assert prd.get_by_id(workspace, v3.id).chain_id == v1.id
+        assert {p.id for p in prd.get_versions(workspace, v3.id)} == {v1.id, v3.id}
+
+    def test_deleting_every_version_but_one_leaves_it_self_rooted(self, workspace):
+        """The degenerate case: one survivor must be its own chain root, the
+        same shape store() creates."""
+        from codeframe.core import prd
+
+        v1 = prd.store(workspace, "# One\n\nfirst\n")
+        v2 = prd.create_new_version(workspace, v1.id, "# One\n\nsecond\n", "a")
+        prd.delete(workspace, v1.id, check_dependencies=False)
+
+        survivor = prd.get_by_id(workspace, v2.id)
+        assert survivor.chain_id == survivor.id
+        assert survivor.parent_id is None
 
     def test_an_unversioned_prd_still_deletes(self, workspace):
         """The simple case must not regress."""
