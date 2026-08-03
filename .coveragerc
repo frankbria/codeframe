@@ -11,10 +11,18 @@ omit =
     setup.py
 
 [report]
-# Coverage threshold: not enforced here — CI runs only -m v2 tests which cover
-# v2 code paths (~88%). Legacy v1 modules drag total below threshold.
-# Restore fail_under = 85 after removing legacy v1 code paths.
-# fail_under = 60
+# Enforced floor (#948). This was commented out for a reason that pytest.ini
+# has declared obsolete since #669 (that only v2-marked tests run in CI): the gate runs
+# every non-e2e, non-lifecycle test, and v1 is gone. Meanwhile the README shipped
+# an 88% badge and asked contributors for 85%+, neither of which anything checked
+# — and neither of which was true. The last green main run measured 81.91%.
+#
+# 80 is a FLOOR with ~2 points of headroom, not a target: it exists so coverage
+# cannot quietly slide, and it should be raised as the real number climbs. Keep
+# it in step with the README badge — tests/test_lifecycle_gates_948.py asserts
+# the two agree, and that the README never asks contributors for more than the
+# gate enforces.
+fail_under = 80
 precision = 2
 show_missing = true
 skip_covered = false

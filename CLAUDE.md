@@ -159,7 +159,8 @@ tests/
 uv run pytest                            # All tests
 uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle"  # The CI gate (every non-e2e, non-real-LLM test)
 uv run pytest tests/core/                # Core module tests
-scripts/lifecycle --mode cli|api|web|all # Real-LLM lifecycle tests (run locally before a PR)
+scripts/lifecycle --mode cli|all         # Real-LLM lifecycle tests (run locally before a PR)
+                                         # api/web exit 3 — not implemented (#948, #1068)
 uv run ruff check .
 
 # Web UI
