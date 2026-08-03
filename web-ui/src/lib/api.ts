@@ -57,6 +57,7 @@ import type {
   ProofRunSummary,
   ProofRunDetail,
   PRHistoryResponse,
+  PRListResponse,
   PRFilesResponse,
   Session,
   SessionState,
@@ -928,6 +929,18 @@ export const prApi = {
       },
       { params: { workspace_path: workspacePath } }
     );
+    return response.data;
+  },
+
+  /**
+   * Open (or closed/all) PRs. Used by /review to restore the merge panel after
+   * a reload — getHistory only returns MERGED PRs, so it cannot answer
+   * "is there a PR open right now?" (#944).
+   */
+  list: async (workspacePath: string, state = 'open'): Promise<PRListResponse> => {
+    const response = await api.get<PRListResponse>('/api/v2/pr', {
+      params: { workspace_path: workspacePath, state },
+    });
     return response.data;
   },
 

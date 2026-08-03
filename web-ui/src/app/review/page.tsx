@@ -53,6 +53,33 @@ export default function ReviewPage() {
   const [prUrl, setPrUrl] = useState('');
   const [prNumber, setPrNumber] = useState(0);
 
+  // Restore the open PR on load (#944). prNumber lived only in local state set
+  // by handleCreatePR, so reloading or navigating away while CI ran — the
+  // normal case — permanently hid PRStatusPanel, which is the ONLY web surface
+  // carrying the Merge button and the PROOF9 merge-gate display. Ship then had
+  // to be finished from the CLI.
+  useEffect(() => {
+    if (!workspacePath || prNumber > 0) return;
+    let cancelled = false;
+    prApi
+      .list(workspacePath, 'open')
+      .then((res) => {
+        if (cancelled) return;
+        const open = res.pull_requests?.[0];
+        if (open?.number) {
+          setPrNumber(open.number);
+          if (open.url) setPrUrl(open.url);
+        }
+      })
+      .catch(() => {
+        // No repo connection / no remote: leave the panel hidden rather than
+        // surfacing an error on a page whose main job is the diff.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspacePath, prNumber]);
+
   // Feedback
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 

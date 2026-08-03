@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { fetchStreamTicket, verifyAuthAfterStreamFailure } from '@/lib/api';
 import type { AgentChatState, ChatMessage, MessageRole } from '@/types';
+import { wsBase } from '@/lib/wsBase';
 
 export type { AgentChatState, ChatMessage, MessageRole };
 
 // ── Constants ─────────────────────────────────────────────────────────
 
-const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
+// One shared resolver (#944) — this used to hardcode ws://localhost:8000,
+// so a deployment setting only NEXT_PUBLIC_API_URL had a dead chat socket.
+const WS_BASE_URL = wsBase();
 
 const MAX_RETRIES = 5;
 const BASE_RETRY_DELAY_MS = 1000;
