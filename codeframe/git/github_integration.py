@@ -310,11 +310,9 @@ class GitHubIntegration:
         Raises:
             GitHubAPIError: If API error occurs
         """
-        endpoint = f"/repos/{self.owner}/{self.repo_name}/pulls"
-
-        data = await self._make_request(
-            method="GET",
-            endpoint=f"{endpoint}?state={state}",
+        data = await self._paginate(
+            f"/repos/{self.owner}/{self.repo_name}/pulls",
+            params=f"state={state}",
         )
 
         return [self._parse_pr_response(pr) for pr in data]
@@ -378,6 +376,50 @@ class GitHubIntegration:
         logger.info(f"Closed PR #{pr_number}")
         return data.get("state") == "closed"
 
+    async def _paginate(
+        self,
+        endpoint: str,
+        *,
+        params: str = "",
+        key: Optional[str] = None,
+        per_page: int = 100,
+    ) -> List[dict]:
+        """Follow GitHub's pagination to the end and return every item (#940).
+
+        GitHub defaults to 30 items per page, so an unpaginated call silently
+        truncates: `cf pr status` listed 30 PRs, and a failing CI check beyond
+        the first 30 reported all-green — a wrong answer, not a partial one.
+
+        Args:
+            endpoint: Path without query string.
+            params: Extra query parameters, without a leading '&' or '?'.
+            key: For envelope responses (check-runs), the list's key. When None
+                the response is expected to be a bare list.
+            per_page: Page size; 100 is GitHub's maximum.
+
+        Returns:
+            Every item across all pages.
+        """
+        items: List[dict] = []
+        page = 1
+        while True:
+            query = f"per_page={per_page}&page={page}"
+            if params:
+                query = f"{query}&{params}"
+            data = await self._make_request(method="GET", endpoint=f"{endpoint}?{query}")
+
+            batch = data.get(key, []) if key and isinstance(data, dict) else data
+            if not isinstance(batch, list) or not batch:
+                break
+            items.extend(b for b in batch if isinstance(b, dict))
+
+            # A short page is the last page. Cheaper and more robust than parsing
+            # the Link header, and it matches get_pr_files' existing loop.
+            if len(batch) < per_page:
+                break
+            page += 1
+        return items
+
     async def get_pr_files(self, pr_number: int) -> List[str]:
         """Get the list of files changed in a pull request.
 
@@ -429,11 +471,12 @@ class GitHubIntegration:
             )
             head_sha = pr_data["head"]["sha"]
 
-        data = await self._make_request(
-            "GET",
+        # Paginated (#940): a failing check beyond the first 30 used to be
+        # invisible, so the PR reported all-green while CI was red.
+        check_runs = await self._paginate(
             f"/repos/{self.owner}/{self.repo_name}/commits/{head_sha}/check-runs",
+            key="check_runs",
         )
-        check_runs = data.get("check_runs", []) if isinstance(data, dict) else []
         normalized: list[CICheck] = []
         for run in check_runs:
             if not isinstance(run, dict):
@@ -461,14 +504,11 @@ class GitHubIntegration:
         Returns:
             "approved" | "changes_requested" | "pending"
         """
-        reviews = await self._make_request(
-            "GET",
-            f"/repos/{self.owner}/{self.repo_name}/pulls/{pr_number}/reviews",
+        # Paginated (#940): on a heavily-reviewed PR a CHANGES_REQUESTED beyond
+        # the first 30 reviews was dropped, reporting "approved".
+        reviews = await self._paginate(
+            f"/repos/{self.owner}/{self.repo_name}/pulls/{pr_number}/reviews"
         )
-
-        # Guard against unexpected response shapes.
-        if not isinstance(reviews, list):
-            reviews = []
 
         # Only count actionable states — exclude DISMISSED, COMMENTED, and non-dicts.
         ACTIONABLE = {"APPROVED", "CHANGES_REQUESTED"}
