@@ -14,10 +14,13 @@ The PAT is stored via ``CredentialManager`` scoped to the authenticated user
 response.
 """
 
+import asyncio
 import logging
 import sqlite3
 import time
 from typing import Any, Optional
+
+import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
@@ -34,6 +37,7 @@ from codeframe.core.github_connect_service import (
     validate_connection,
 )
 from codeframe.core.github_issues_service import (
+    _TIMEOUT,
     IssueNotFoundError,
     NotAnIssueError,
     get_issue,
@@ -109,9 +113,30 @@ class GitHubIssuesResponse(BaseModel):
     per_page: int
 
 
+#: Cap on one import request (#940). Each number is a GitHub API call against
+#: the PAT's hourly budget, so an unbounded select-all could exhaust it in a
+#: single click. 200 is well above any realistic manual selection.
+MAX_IMPORT_ISSUES = 200
+
+#: Match the issue service's own client timeout; see the comment at the call
+#: site for why sharing one client made this easy to lose.
+GITHUB_TIMEOUT = _TIMEOUT
+
+#: Concurrent in-flight issue fetches. GitHub tolerates modest parallelism;
+#: this bounds both socket use and how fast the rate limit is consumed.
+IMPORT_CONCURRENCY = 6
+
+
 class ImportRequest(BaseModel):
     issue_numbers: list[int] = Field(
-        ..., min_length=1, description="GitHub issue numbers to import as tasks"
+        ...,
+        min_length=1,
+        max_length=MAX_IMPORT_ISSUES,
+        description=(
+            "GitHub issue numbers to import as tasks. At most "
+            f"{MAX_IMPORT_ISSUES} per request — each is an API call against the "
+            "PAT's hourly budget (#940). Overflow returns 422."
+        ),
     )
 
 
@@ -503,9 +528,31 @@ async def import_issues(
 
     # Phase 1 — fetch + de-dupe everything first. Any fetch error aborts here,
     # before a single task has been created.
-    for number in body.issue_numbers:
+    #
+    # ONE client for the whole import, with bounded concurrency (#940). Each
+    # issue previously got its own httpx.AsyncClient, so a select-all import was
+    # that many serial TLS handshakes — slow, and it burned the PAT's hourly
+    # budget one round trip at a time.
+    semaphore = asyncio.Semaphore(IMPORT_CONCURRENCY)
+
+    async def _fetch(number: int, client: httpx.AsyncClient):
+        async with semaphore:
+            return await get_issue(pat, repo, number, client=client)
+
+    # timeout=GITHUB_TIMEOUT, not httpx's 5s default: get_issue() built its own
+    # clients with the service's 15s value, and the shared client silently
+    # halved-and-then-some the budget — imports would start failing at 5s on
+    # slower GitHub responses (codex review on #940).
+    async with httpx.AsyncClient(timeout=GITHUB_TIMEOUT) as client:
+        results = await asyncio.gather(
+            *(_fetch(n, client) for n in body.issue_numbers),
+            return_exceptions=True,
+        )
+
+    for number, issue in zip(body.issue_numbers, results):
         try:
-            issue = await get_issue(pat, repo, number)
+            if isinstance(issue, BaseException):
+                raise issue
         except ValueError as e:
             # Malformed saved repo slug (parse_repo) — surface as a recoverable
             # conflict like the browse endpoint, not a 500.
