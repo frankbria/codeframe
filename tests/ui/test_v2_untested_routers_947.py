@@ -149,16 +149,47 @@ class TestBatchStopResumeCancelErrorMapping:
         assert missing["code"] != wrong_state["code"]
 
     def test_resume_of_a_resumable_batch_succeeds(self, client, workspace):
-        """Happy path. A CANCELLED batch whose tasks all already resolved has
-        nothing to re-run, so resume returns it without touching an LLM."""
+        """Happy path, and the only route here whose core call can spawn an
+        agent — so the batch is set up so it provably cannot.
+
+        `resume_batch` re-runs a task when its result is FAILED/BLOCKED/RUNNING
+        **or when it is absent from `results` entirely**. Neither create_batch
+        nor cancel_batch populates `results`, so a freshly-cancelled batch
+        re-runs everything through the real `cf work start --execute`. Recording
+        a COMPLETED result first is what makes `tasks_to_run` empty and the
+        early return the path taken.
+        """
         task = tasks.create(workspace, title="t", description="")
         b = conductor.create_batch(workspace, [task.id])
         conductor.cancel_batch(workspace, b.id)
+        resolved = conductor.get_batch(workspace, b.id)
+        resolved.results = {task.id: "COMPLETED"}
+        conductor._save_batch(workspace, resolved, preserve_terminal_cancel=False)
 
         res = client.post(f"/api/v2/batches/{b.id}/resume")
 
         assert res.status_code == 200, res.text
-        assert res.json()["id"] == b.id
+        body = res.json()
+        assert body["id"] == b.id
+        # Still CANCELLED: the early return skips the CANCELLED->RUNNING
+        # transition. If a future change makes resume execute here, this flips
+        # — which is the point, since "200 with the right id" alone holds even
+        # when the resumed task failed.
+        assert body["status"] == "CANCELLED", body
+
+    def test_a_resume_with_work_to_do_is_not_what_the_test_above_exercises(
+        self, client, workspace
+    ):
+        """Guards the setup above rather than the route: if `results` stops
+        being what decides re-running, the happy-path test would silently start
+        spawning an agent inside the suite."""
+        task = tasks.create(workspace, title="t", description="")
+        b = conductor.create_batch(workspace, [task.id])
+        conductor.cancel_batch(workspace, b.id)
+
+        assert conductor.get_batch(workspace, b.id).results == {}, (
+            "cancel_batch now records results; the happy-path setup needs review"
+        )
 
 
 # ===========================================================================
