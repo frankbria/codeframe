@@ -290,6 +290,62 @@ class TestForcedResumeCanActuallyRerunADoneTask:
         )
 
 
+class TestTheFirstTaskIsCheckedBeforeItStarts:
+    """The reconciliation thread waits a full interval before its first pass.
+
+    So "the issue was already closed when the batch started" — the likeliest
+    case of all — was missed for every task the serial loop reached inside the
+    first 30 seconds, which in practice means the first one.
+    """
+
+    def test_a_pass_runs_before_the_loop_launches_anything(
+        self, workspace, three_tasks, monkeypatch
+    ):
+        executed = []
+        monkeypatch.setattr(
+            conductor, "_execute_task_subprocess",
+            lambda ws, tid, bid, **kw: executed.append(tid) or "COMPLETED",
+        )
+
+        # A reconciler that would find the first task's issue closed. Real
+        # thread start is left intact except for the interval, so this pins the
+        # *synchronous* pass, not a lucky race with the daemon.
+        from codeframe.core.reconciliation import ExternalStateChange
+
+        target = three_tasks[0]
+
+        class StubEngine:
+            def __init__(self, workspace):
+                pass
+
+            def check_all_active(self, ids):
+                from codeframe.core.reconciliation import ReconciliationResult
+
+                r = ReconciliationResult()
+                if target in ids:
+                    r.changes_detected.append(
+                        ExternalStateChange(target, "completed", "github", {})
+                    )
+                return r
+
+            def apply_changes(self, result, batch, procs):
+                for c in result.changes_detected:
+                    batch.results[c.task_id] = "COMPLETED"
+                    result.tasks_skipped.append(c.task_id)
+
+        monkeypatch.setattr(
+            "codeframe.core.reconciliation.ReconciliationEngine", StubEngine
+        )
+
+        batch = _make_batch(workspace, three_tasks)
+        conductor._execute_serial(workspace, batch)
+
+        assert target not in executed, (
+            "the first task ran before reconciliation ever looked at it"
+        )
+        assert batch.results[target] == "COMPLETED"
+
+
 class TestEveryWriteSiteUsesTheGuard:
     def test_no_executor_writes_batch_results_directly(self):
         """A guard that four of five call sites bypass guards nothing.

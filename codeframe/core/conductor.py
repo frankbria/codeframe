@@ -2205,46 +2205,59 @@ def _start_reconciliation_thread(
     stop_event = threading.Event()
     engine = ReconciliationEngine(workspace)
 
+    def _pass() -> None:
+        """One reconciliation sweep. Raises nothing the caller must handle."""
+        try:
+            # Get currently active task IDs from the batch
+            active_ids = [
+                tid for tid in batch.task_ids
+                if batch.results.get(tid) is None
+                or batch.results.get(tid) == "RUNNING"
+            ]
+            if not active_ids:
+                return
+
+            result = engine.check_all_active(active_ids)
+            if result.changes_detected:
+                with _active_processes_lock:
+                    procs = _active_processes.get(batch.id, {})
+                    engine.apply_changes(result, batch, procs)
+
+                # Emit events for changes
+                for tid in result.tasks_skipped:
+                    events.emit_for_workspace(
+                        workspace,
+                        events.EventType.RECONCILIATION_TASK_SKIPPED,
+                        {"batch_id": batch.id, "task_id": tid},
+                    )
+                for tid in result.tasks_requeued:
+                    events.emit_for_workspace(
+                        workspace,
+                        events.EventType.RECONCILIATION_TASK_REQUEUED,
+                        {"batch_id": batch.id, "task_id": tid},
+                    )
+            if result.errors:
+                for err in result.errors:
+                    events.emit_for_workspace(
+                        workspace,
+                        events.EventType.RECONCILIATION_ERROR,
+                        {"batch_id": batch.id, "error": err},
+                    )
+        except Exception as exc:
+            logger.warning("Reconciliation loop error: %s", exc)
+
     def _loop() -> None:
         while not stop_event.wait(timeout=interval_seconds):
-            try:
-                # Get currently active task IDs from the batch
-                active_ids = [
-                    tid for tid in batch.task_ids
-                    if batch.results.get(tid) is None
-                    or batch.results.get(tid) == "RUNNING"
-                ]
-                if not active_ids:
-                    continue
+            _pass()
 
-                result = engine.check_all_active(active_ids)
-                if result.changes_detected:
-                    with _active_processes_lock:
-                        procs = _active_processes.get(batch.id, {})
-                        engine.apply_changes(result, batch, procs)
-
-                    # Emit events for changes
-                    for tid in result.tasks_skipped:
-                        events.emit_for_workspace(
-                            workspace,
-                            events.EventType.RECONCILIATION_TASK_SKIPPED,
-                            {"batch_id": batch.id, "task_id": tid},
-                        )
-                    for tid in result.tasks_requeued:
-                        events.emit_for_workspace(
-                            workspace,
-                            events.EventType.RECONCILIATION_TASK_REQUEUED,
-                            {"batch_id": batch.id, "task_id": tid},
-                        )
-                if result.errors:
-                    for err in result.errors:
-                        events.emit_for_workspace(
-                            workspace,
-                            events.EventType.RECONCILIATION_ERROR,
-                            {"batch_id": batch.id, "error": err},
-                        )
-            except Exception as exc:
-                logger.warning("Reconciliation loop error: %s", exc)
+    # One sweep before the executor launches anything (#1032). The loop waits a
+    # full interval before its first pass, so without this the likeliest case
+    # of all — the linked issue was ALREADY closed when the batch started —
+    # was missed for every task reached inside the first 30 seconds, which in a
+    # serial batch means the first one. Synchronous rather than an early tick
+    # on the thread, so the executor's skip check cannot race it. Costs one
+    # call per linked task, and nothing at all when no task carries an issue.
+    _pass()
 
     thread = threading.Thread(target=_loop, daemon=True, name=f"reconcile-{batch.id[:8]}")
     thread.start()

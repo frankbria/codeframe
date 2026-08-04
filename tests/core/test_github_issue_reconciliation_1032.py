@@ -167,6 +167,43 @@ class TestClosedIssueDetected:
         assert batch.results["t1"] == "COMPLETED"
         assert result.tasks_skipped == ["t1"]
 
+    def test_a_blocked_task_with_open_blockers_still_checks_github(self, monkeypatch):
+        """The blocker branch used to swallow this case: a BLOCKED task whose
+        blockers are unanswered never reached the GitHub check, so closing the
+        issue left the task stuck and re-runnable forever."""
+        task = make_task(status=TaskStatus.BLOCKED)
+        unanswered = type("B", (), {"status": type("S", (), {"value": "OPEN"})()})()
+        monkeypatch.setattr("codeframe.core.tasks.get", lambda ws, tid: task)
+        monkeypatch.setattr(
+            "codeframe.core.blockers.list_for_task", lambda ws, tid: [unanswered]
+        )
+        engine = ReconciliationEngine(
+            workspace=object(),
+            issue_state=GitHubIssueState(fetch=FakeGitHub(state="closed"), pat="tok"),
+        )
+
+        changes = engine.check_task("t1")
+
+        assert [(c.change_type, c.source) for c in changes] == [("completed", "github")]
+
+    def test_a_resolved_blocker_still_wins_over_the_github_check(self, monkeypatch):
+        """Don't let the new check displace the existing signal."""
+        task = make_task(status=TaskStatus.BLOCKED)
+        answered = type("B", (), {"status": type("S", (), {"value": "ANSWERED"})()})()
+        monkeypatch.setattr("codeframe.core.tasks.get", lambda ws, tid: task)
+        monkeypatch.setattr(
+            "codeframe.core.blockers.list_for_task", lambda ws, tid: [answered]
+        )
+        gh = FakeGitHub(state="closed")
+        engine = ReconciliationEngine(
+            workspace=object(), issue_state=GitHubIssueState(fetch=gh, pat="tok")
+        )
+
+        changes = engine.check_task("t1")
+
+        assert [c.change_type for c in changes] == ["blocker_resolved"]
+        assert gh.calls == [], "spent a call on a task that already had a change"
+
     def test_already_done_task_is_not_charged_a_github_call(self, monkeypatch):
         """The local DONE check already fires; asking GitHub would be a wasted
         call on every tick for every finished task."""

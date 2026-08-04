@@ -256,12 +256,19 @@ class ReconciliationEngine:
 
         # The task's linked GitHub issue was closed by someone outside this
         # batch — an external completion, exactly like a task marked DONE in
-        # the UI (#1032). Only asked for tasks that are not already finished
-        # locally: the DONE branch above has already fired for those, so a
-        # lookup would be a wasted call on every tick for the rest of the run.
-        # GitHubIssueState never raises and answers False when it does not
-        # know, so a GitHub outage leaves the batch exactly as it was.
-        elif self._issue_state.is_closed(task):
+        # the UI (#1032).
+        #
+        # Deliberately NOT an `elif` off the blocker branch: a BLOCKED task
+        # whose blockers are still unanswered falls through both branches
+        # above, and that task is exactly the one worth asking about — the
+        # human may have resolved the work on GitHub instead of answering.
+        #
+        # Guarded on `not changes` so it costs nothing when a local signal
+        # already fired, and on `not DONE` because the first branch has already
+        # handled those — otherwise it would be a wasted call every tick for
+        # the rest of the run. GitHubIssueState never raises and answers False
+        # when it does not know, so an outage leaves the batch as it was.
+        if not changes and task.status != TaskStatus.DONE and self._issue_state.is_closed(task):
             changes.append(ExternalStateChange(
                 task_id=task_id,
                 change_type="completed",
