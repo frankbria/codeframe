@@ -610,3 +610,54 @@ class TestUnreadableArtifactsAreTamper:
         artifact.mkdir()
 
         assert [x.id for x in list_blocking_requirements(workspace)] == [r.id]
+
+
+class TestEscapingIsPerContextNotStacked:
+    """Each template context needs its own escaping, applied once.
+
+    Backslash-doubling is correct for a Python docstring — the parser collapses
+    it back on read. Feeding that already-doubled text to `json.dumps` for the
+    E2E literal escapes it a second time, so a title of `\\d+` reaches the .ts
+    source as four backslashes and reads back as `\\\\d+` (CI review).
+    """
+
+    RAW_TITLE = "Regex check: \\d+ matches"
+    RAW_DESC = "Path C:\\temp\\out must exist"
+
+    def _stubs(self, gates):
+        from codeframe.core.proof.stubs import generate_stubs
+
+        return generate_stubs(
+            _requirement("REQ-952-12", self.RAW_TITLE, self.RAW_DESC, gates)
+        )
+
+    def test_the_e2e_title_round_trips_to_exactly_the_original(self):
+        import json
+
+        content = self._stubs([Gate.E2E])[Gate.E2E]
+        line = next(ln for ln in content.splitlines() if ln.startswith("test("))
+        literal = line[len("test("):line.rindex(", async")]
+
+        assert json.loads(literal) == self.RAW_TITLE, (
+            "the E2E title was escaped twice"
+        )
+
+    def test_the_python_docstring_reads_back_as_the_original(self):
+        """Doubling is right here — but only once."""
+        import ast
+
+        content = self._stubs([Gate.UNIT])[Gate.UNIT]
+        tree = ast.parse(content)
+        func = next(n for n in tree.body if isinstance(n, ast.FunctionDef))
+
+        assert ast.get_docstring(func) == f"Proves: {self.RAW_DESC}"
+        assert self.RAW_TITLE in ast.get_docstring(tree)
+
+    @pytest.mark.parametrize("gate", [Gate.DEMO, Gate.MANUAL])
+    def test_markdown_stubs_show_the_original_text(self, gate):
+        """Markdown is not Python — a doubled backslash is just wrong there."""
+        content = self._stubs([gate])[gate]
+
+        assert self.RAW_TITLE in content
+        if gate is Gate.MANUAL:
+            assert self.RAW_DESC in content

@@ -177,6 +177,22 @@ def _slugify(text: str) -> str:
     return slugify(text)
 
 
+#: Gates whose template is markdown, where none of the Python/JS escaping
+#: applies — the text is rendered as prose.
+_MARKDOWN_GATES = frozenset({Gate.DEMO, Gate.MANUAL})
+
+
+def _collapse(text: str) -> str:
+    """One line, with no sequence that can close a Python docstring.
+
+    The context-neutral half of the escaping: safe to render anywhere, and the
+    input every context-specific escaper starts from. Keeping it separate is
+    the point — escaping is per context and must be applied exactly once, never
+    stacked (CI review on #952).
+    """
+    return " ".join(str(text).split()).replace('"""', "'''")
+
+
 def _inline(text: str) -> str:
     """Collapse user text to a single harmless line (#952).
 
@@ -201,7 +217,7 @@ def _inline(text: str) -> str:
     ``\"\"\"`` run, so the replacement above does not see it. One space separates
     them and reads the same.
     """
-    collapsed = " ".join(str(text).split()).replace("\\", "\\\\").replace('"""', "'''")
+    collapsed = _collapse(text).replace("\\", "\\\\")
     return collapsed + " " if collapsed.endswith('"') else collapsed
 
 
@@ -212,8 +228,14 @@ def _js_string(text: str) -> str:
     the literal and append statements. JSON string syntax is a subset of
     JavaScript's, so ``json.dumps`` produces a correct literal — quotes
     included, which is why the template no longer supplies its own.
+
+    Takes the *collapsed* text, never ``_inline``'s output: that is already
+    backslash-doubled for a Python docstring, and ``json.dumps`` would escape
+    those doubles again — so a title of ``\\d+`` reached the .ts source as four
+    backslashes and read back as ``\\\\d+`` (CI review on #952). Escaping is per
+    context, applied once, never stacked.
     """
-    return json.dumps(str(text))
+    return json.dumps(_collapse(text))
 
 
 def generate_stubs(req: Requirement) -> dict[Gate, str]:
@@ -226,20 +248,24 @@ def generate_stubs(req: Requirement) -> dict[Gate, str]:
     """
     result: dict[Gate, str] = {}
     slug = _slugify(req.title)
-    title = _inline(req.title)
-    description = _inline(req.description)
 
     for obligation in req.obligations:
-        template = _TEMPLATES.get(obligation.gate, _TEMPLATES[Gate.UNIT])
+        gate = obligation.gate
+        template = _TEMPLATES.get(gate, _TEMPLATES[Gate.UNIT])
+        # Escaping is chosen by the template's language and applied exactly
+        # once. Markdown renders the text as prose, so it wants neither the
+        # Python backslash-doubling nor JSON escaping; ``title_js`` always
+        # starts from the raw title for the same reason.
+        escape = _collapse if gate in _MARKDOWN_GATES else _inline
         content = template.format(
             req_id=req.id,
-            title=title,
-            title_js=_js_string(title),
-            description=description,
+            title=escape(req.title),
+            title_js=_js_string(req.title),
+            description=escape(req.description),
             slug=slug,
-            filename=f"test_{slug}_{obligation.gate.value}",
+            filename=f"test_{slug}_{gate.value}",
         )
-        result[obligation.gate] = content
+        result[gate] = content
 
     return result
 
