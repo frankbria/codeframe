@@ -432,8 +432,6 @@ def _check_merge_gate(
     override is pending so the caller can persist the audit record after the
     merge actually succeeds, or None when nothing was bypassed.
     """
-    from codeframe.core.proof import ledger as proof_ledger
-    from codeframe.core.proof.models import ReqStatus
     from codeframe.core.workspace import find_workspace_root, get_workspace
 
     reason = (override_reason or "").strip()
@@ -455,27 +453,35 @@ def _check_merge_gate(
         return None
 
     try:
-        open_reqs = proof_ledger.list_requirements(workspace, status=ReqStatus.OPEN)
+        # Blocking, not merely open: a requirement recorded SATISFIED whose
+        # evidence no longer verifies must stop the merge too (#952).
+        from codeframe.core.proof.evidence import list_blocking_requirements
+
+        blocking_reqs = list_blocking_requirements(workspace)
     except Exception as e:
         # Fail closed, like the API path: a broken ledger blocks the merge.
         console.print(f"[red]PROOF9 gate check failed:[/red] {e} — merge blocked")
         raise typer.Exit(1)
-    if not open_reqs:
+    if not blocking_reqs:
         return None
 
     if not override:
         console.print(
-            f"[red]PROOF9 merge gate:[/red] {len(open_reqs)} open requirement(s) block this merge:"
+            f"[red]PROOF9 merge gate:[/red] {len(blocking_reqs)} requirement(s) block this merge:"
         )
-        for r in open_reqs[:10]:
+        for r in blocking_reqs[:10]:
             console.print(f"  - {r.id}: {r.title}")
-        console.print('Satisfy or waive them, or pass --override --reason "...".')
+        console.print(
+            "Each is either unproven, or recorded satisfied with evidence that "
+            "no longer matches its checksum."
+        )
+        console.print('Satisfy, waive or re-prove them, or pass --override --reason "...".')
         raise typer.Exit(1)
 
     console.print(
-        f"[yellow]PROOF9 merge gate overridden[/yellow] ({len(open_reqs)} open requirement(s) bypassed — audited)"
+        f"[yellow]PROOF9 merge gate overridden[/yellow] ({len(blocking_reqs)} requirement(s) bypassed — audited)"
     )
-    return workspace, [{"id": r.id, "title": r.title} for r in open_reqs]
+    return workspace, [{"id": r.id, "title": r.title} for r in blocking_reqs]
 
 
 @pr_app.command("merge")

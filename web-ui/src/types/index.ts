@@ -397,6 +397,12 @@ export interface ProofEvidence {
   artifact_checksum: string;
   timestamp: string;
   run_id: string;
+  // False when the stored artifact no longer matches its recorded checksum, or
+  // has been deleted (#952). The backend also downgrades such a record to
+  // satisfied=false / status='unverifiable', so a client that ignores these two
+  // fields still never renders it green.
+  verified?: boolean;
+  tamper_detail?: string | null;
 }
 
 export interface ProofStatusResponse {

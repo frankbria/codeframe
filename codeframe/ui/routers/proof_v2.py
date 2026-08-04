@@ -16,7 +16,6 @@ Routes:
 import json
 import logging
 import time
-import uuid
 from datetime import date
 from typing import Any, Literal, Optional
 
@@ -45,7 +44,7 @@ from codeframe.core.proof.models import (
     Source,
     Waiver,
 )
-from codeframe.core.proof.runner import run_proof
+from codeframe.core.proof.runner import _new_run_id, run_proof
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.auth.dependencies import require_auth
@@ -244,6 +243,12 @@ class EvidenceResponse(BaseModel):
     timestamp: str
     run_id: str
     status: Optional[str] = None
+    #: False when the stored artifact no longer matches its recorded checksum,
+    #: or has been deleted (#952). A consumer must not treat a `satisfied`
+    #: record as proof while this is False — the artifact backing it is not the
+    #: one the gate saw.
+    verified: bool = True
+    tamper_detail: Optional[str] = None
 
 
 class EvidenceWithContentResponse(EvidenceResponse):
@@ -434,7 +439,7 @@ async def run_proof_endpoint(
     """
     try:
         # Generate run_id before calling run_proof so the response ID matches evidence records
-        run_id = str(uuid.uuid4())[:8]
+        run_id = _new_run_id()
         # Offload: runs pytest/ruff etc. — blocks for minutes (#732).
         results = await run_in_threadpool(
             run_proof,
@@ -622,6 +627,44 @@ async def list_runs_endpoint(
 _ARTIFACT_LINE_LIMIT = 200
 
 
+def _verification(evidence) -> tuple[bool, Optional[str]]:
+    """Re-derive an evidence artifact's checksum for the read paths (#952).
+
+    AC3 is about *reads*: serving `satisfied: true` next to the contents of a
+    file that no longer matches its checksum presents forged text as proof.
+    Reported as a field rather than raised, so one bad artifact does not 404 a
+    whole run's evidence list — the caller sees exactly which record is
+    untrustworthy.
+    """
+    from codeframe.core.proof.evidence import EvidenceTamperError, verify_evidence
+
+    try:
+        verify_evidence(evidence)
+    except EvidenceTamperError as exc:
+        return False, str(exc)
+    return True, None
+
+
+def _serialized_outcome(evidence, verified: bool) -> tuple[bool, Optional[str]]:
+    """The (satisfied, status) an unverified record must be served with.
+
+    Adding ``verified: false`` beside an unchanged ``satisfied: true`` is not
+    enough: every existing client — the web UI's GateEvidencePanel and the
+    requirement detail table included — renders green from ``satisfied`` and
+    ``status`` and knows nothing about the new fields, so a tampered artifact
+    still displayed as passing proof (codex review on #1080).
+
+    A record whose artifact no longer matches its checksum is not a pass. It is
+    serialized as UNVERIFIABLE — the existing vocabulary for 'this obligation
+    could not be checked', which every client already renders as not-green —
+    while ``verified``/``tamper_detail`` carry the precise reason for clients
+    that do look.
+    """
+    if verified:
+        return evidence.satisfied, evidence.status
+    return False, GateOutcome.UNVERIFIABLE.value
+
+
 def _read_artifact_text(artifact_path: str, max_lines: int = _ARTIFACT_LINE_LIMIT) -> Optional[str]:
     """Read artifact file content up to max_lines, returning None if the file is missing."""
     from pathlib import Path
@@ -688,20 +731,28 @@ async def get_run_evidence_endpoint(
         )
 
     evidence_records = get_run_evidence(workspace, run_id)
-    evidence_out = [
-        EvidenceWithContentResponse(
-            req_id=e.req_id,
-            gate=e.gate.value,
-            satisfied=e.satisfied,
-            status=e.status,
-            artifact_path=e.artifact_path,
-            artifact_checksum=e.artifact_checksum,
-            timestamp=e.timestamp.isoformat(),
-            run_id=e.run_id,
-            artifact_text=_read_artifact_text(e.artifact_path),
+    evidence_out = []
+    for e in evidence_records:
+        verified, detail = _verification(e)
+        satisfied, status = _serialized_outcome(e, verified)
+        evidence_out.append(
+            EvidenceWithContentResponse(
+                req_id=e.req_id,
+                gate=e.gate.value,
+                satisfied=satisfied,
+                status=status,
+                artifact_path=e.artifact_path,
+                artifact_checksum=e.artifact_checksum,
+                timestamp=e.timestamp.isoformat(),
+                run_id=e.run_id,
+                verified=verified,
+                tamper_detail=detail,
+                # Withheld when the checksum does not match: the bytes on disk
+                # are not the ones this record attests to, so rendering them
+                # would show forged output as evidence.
+                artifact_text=_read_artifact_text(e.artifact_path) if verified else None,
+            )
         )
-        for e in evidence_records
-    ]
     return ProofRunDetailResponse(
         run_id=run.run_id,
         started_at=run.started_at.isoformat(),
@@ -807,16 +858,22 @@ async def list_evidence_endpoint(
         )
 
     evidence = list_evidence(workspace, req_id)
-    return [
-        EvidenceResponse(
-            req_id=e.req_id,
-            gate=e.gate.value,
-            satisfied=e.satisfied,
-            status=e.status,
-            artifact_path=e.artifact_path,
-            artifact_checksum=e.artifact_checksum,
-            timestamp=e.timestamp.isoformat(),
-            run_id=e.run_id,
+    out = []
+    for e in evidence:
+        verified, detail = _verification(e)
+        satisfied, status = _serialized_outcome(e, verified)
+        out.append(
+            EvidenceResponse(
+                req_id=e.req_id,
+                gate=e.gate.value,
+                satisfied=satisfied,
+                status=status,
+                artifact_path=e.artifact_path,
+                artifact_checksum=e.artifact_checksum,
+                timestamp=e.timestamp.isoformat(),
+                run_id=e.run_id,
+                verified=verified,
+                tamper_detail=detail,
+            )
         )
-        for e in evidence
-    ]
+    return out
