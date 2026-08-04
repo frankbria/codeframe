@@ -661,3 +661,13 @@ class TestEscapingIsPerContextNotStacked:
         assert self.RAW_TITLE in content
         if gate is Gate.MANUAL:
             assert self.RAW_DESC in content
+
+    def test_the_e2e_comments_show_the_original_text(self):
+        """E2E's title/description live in `//` comments, not Python
+        docstrings, so they want no backslash-doubling either — only the
+        `title_js` string literal needs JSON escaping."""
+        content = self._stubs([Gate.E2E])[Gate.E2E]
+        comments = [ln for ln in content.splitlines() if ln.lstrip().startswith("//")]
+
+        assert any(self.RAW_TITLE in ln for ln in comments), comments
+        assert any(self.RAW_DESC in ln for ln in comments), comments

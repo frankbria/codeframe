@@ -177,9 +177,12 @@ def _slugify(text: str) -> str:
     return slugify(text)
 
 
-#: Gates whose template is markdown, where none of the Python/JS escaping
-#: applies — the text is rendered as prose.
-_MARKDOWN_GATES = frozenset({Gate.DEMO, Gate.MANUAL})
+#: Gates whose template is not Python, so ``{title}``/``{description}`` need
+#: only line-collapsing: DEMO/MANUAL render the text as markdown prose, and
+#: E2E puts it in ``//`` comments. Backslash-doubling would show up verbatim in
+#: all three. (E2E's ``{title_js}`` is separate — that one is a real string
+#: literal and gets ``_js_string``.)
+_NON_PYTHON_GATES = frozenset({Gate.DEMO, Gate.MANUAL, Gate.E2E})
 
 
 def _collapse(text: str) -> str:
@@ -253,10 +256,10 @@ def generate_stubs(req: Requirement) -> dict[Gate, str]:
         gate = obligation.gate
         template = _TEMPLATES.get(gate, _TEMPLATES[Gate.UNIT])
         # Escaping is chosen by the template's language and applied exactly
-        # once. Markdown renders the text as prose, so it wants neither the
-        # Python backslash-doubling nor JSON escaping; ``title_js`` always
+        # once. Only the Python templates need backslash-doubling; markdown
+        # prose and JS comments would show it verbatim. ``title_js`` always
         # starts from the raw title for the same reason.
-        escape = _collapse if gate in _MARKDOWN_GATES else _inline
+        escape = _collapse if gate in _NON_PYTHON_GATES else _inline
         content = template.format(
             req_id=req.id,
             title=escape(req.title),
