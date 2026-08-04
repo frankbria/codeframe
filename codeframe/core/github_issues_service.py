@@ -224,6 +224,9 @@ class GitHubIssueDetail(TypedDict):
     body: str
     labels: list[str]
     html_url: str
+    #: ``"open"`` or ``"closed"``. The import path (#565) ignores it — batch
+    #: reconciliation (#1032) uses it to spot an issue closed mid-run.
+    state: str
 
 
 async def get_issue(
@@ -331,6 +334,9 @@ async def get_issue(
             "body": str(raw.get("body") or ""),
             "labels": labels,
             "html_url": str(raw.get("html_url") or ""),
+            # Default to "open": treating an unreadable state as closed would
+            # let reconciliation (#1032) skip a task that is still in flight.
+            "state": str(raw.get("state") or "open"),
         }
     finally:
         if own_client:

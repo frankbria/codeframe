@@ -1214,6 +1214,33 @@ def resume_batch(
     if on_event:
         on_event("batch_resumed", {"batch_id": batch_id, "task_count": len(tasks_to_run)})
 
+    # Void the prior result of every task about to be re-run. Deciding to
+    # re-run a task is deciding its last verdict no longer stands, and
+    # ``_record_task_result`` refuses to overwrite a recorded COMPLETED — so
+    # without this, ``resume --force`` would re-run a completed task, see it
+    # fail, and keep the stale COMPLETED (#1032). Clearing here rather than
+    # weakening the guard keeps a *new* external completion during the rerun
+    # protected, which is what the guard is for.
+    for tid in tasks_to_run:
+        batch.results.pop(tid, None)
+
+    # ...and put a DONE task row back in a runnable state. The subprocess starts
+    # with runtime.start_task_run, which needs IN_PROGRESS, and the state machine
+    # allows only {READY, MERGED} out of DONE — so `resume --force` on a completed
+    # task raised InvalidTransitionError before the agent ever started. Predates
+    # this change; found reviewing the result-clearing above (#1032). Best-effort:
+    # a task that cannot be reset is left to fail on its own terms rather than
+    # taking the whole resume down.
+    from codeframe.core.state_machine import TaskStatus
+
+    for tid in tasks_to_run:
+        try:
+            task = tasks.get(workspace, tid)
+            if task is not None and task.status == TaskStatus.DONE:
+                tasks.update_status(workspace, tid, TaskStatus.READY)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not reset task %s for rerun: %s", tid, exc)
+
     # Update status to running. This is the one intentional CANCELLED->RUNNING
     # transition, so bypass the terminal-cancel guard (#726).
     batch.status = BatchStatus.RUNNING
@@ -1330,7 +1357,7 @@ def _run_serial_resume(
             exec_ctx.cleanup()
 
         # Record result (overwrites previous result)
-        batch.results[task_id] = result_status
+        result_status = _record_task_result(batch, task_id, result_status)
         _save_batch(workspace, batch)
 
         # Emit appropriate event based on result
@@ -1528,7 +1555,7 @@ def _run_retries(
                 exec_ctx.cleanup()
 
             # Update result
-            batch.results[task_id] = result_status
+            result_status = _record_task_result(batch, task_id, result_status)
             _save_batch(workspace, batch)
 
             if result_status == RunStatus.COMPLETED.value:
@@ -1715,6 +1742,17 @@ def _execute_serial(
             if current_batch and current_batch.status == BatchStatus.CANCELLED:
                 break
 
+            # Completed outside the batch (manually, or its linked GitHub issue
+            # was closed — #1032). Running it would spend an agent run redoing
+            # finished work, and its FAILED verdict would then be discarded by
+            # _record_task_result anyway.
+            if _completed_outside_the_batch(batch, task_id):
+                completed_count += 1
+                logger.info(
+                    "Task %s already completed outside the batch — skipping", task_id
+                )
+                continue
+
             # Check for config reloads between tasks
             if reload_state is not None:
                 _last_seen_reload = _apply_pending_config_reload(
@@ -1773,7 +1811,7 @@ def _execute_serial(
                 exec_ctx.cleanup()
 
             # Record result
-            batch.results[task_id] = result_status
+            result_status = _record_task_result(batch, task_id, result_status)
             _save_batch(workspace, batch)
 
             # Emit appropriate event based on result
@@ -2112,12 +2150,31 @@ def _execute_parallel(
 _TERMINAL_BATCH_RESULTS = frozenset({"COMPLETED"})
 
 
-def _record_task_result(batch: "BatchRun", task_id: str, status: str) -> None:
+def _completed_outside_the_batch(batch: "BatchRun", task_id: str) -> bool:
+    """Whether the reconciler already recorded this task as done elsewhere.
+
+    Executors call this before launching work. Without it the guard below is
+    only half a fix: it stops a worker's verdict from *overwriting* an external
+    completion, but the worker still burns an agent run on a task that is
+    already finished — e.g. one whose linked GitHub issue was closed before the
+    batch reached it (#1032).
+    """
+    return batch.results.get(task_id) in _TERMINAL_BATCH_RESULTS
+
+
+def _record_task_result(batch: "BatchRun", task_id: str, status: str) -> str:
     """Record a worker's result unless a terminal one is already recorded.
 
     Only COMPLETED is protected. A recorded FAILED or BLOCKED is the worker's
     own earlier verdict and may legitimately be replaced, and RUNNING is a
     placeholder that must still resolve.
+
+    Returns the **effective** result — which is not the worker's when an
+    external completion won. Callers must tally and emit events off the return
+    value, not off what they passed in: otherwise the reconciler's COMPLETED
+    sits in ``batch.results`` while ``failed_count`` counts the discarded
+    FAILED, and a batch whose every task recorded COMPLETED finalizes as
+    PARTIAL (#1032).
     """
     if batch.results.get(task_id) in _TERMINAL_BATCH_RESULTS:
         logger.info(
@@ -2125,8 +2182,9 @@ def _record_task_result(batch: "BatchRun", task_id: str, status: str) -> None:
             "not overwriting with %s",
             task_id, batch.results[task_id], status,
         )
-        return
+        return batch.results[task_id]
     batch.results[task_id] = status
+    return status
 
 
 def _start_reconciliation_thread(
@@ -2147,46 +2205,65 @@ def _start_reconciliation_thread(
     stop_event = threading.Event()
     engine = ReconciliationEngine(workspace)
 
+    def _pass() -> None:
+        """One reconciliation sweep. Raises nothing the caller must handle."""
+        try:
+            # Get currently active task IDs from the batch
+            # BLOCKED belongs here, not just None/RUNNING (#1032). A blocked
+            # task is precisely the one whose state can change from outside —
+            # a human answering the blocker, or closing the linked GitHub
+            # issue. Excluding it meant both the blocker-resolved requeue and
+            # the GitHub check were unreachable the moment a task's first
+            # attempt reported BLOCKED, since nothing clears that entry
+            # mid-batch. COMPLETED and FAILED stay excluded: finished work.
+            active_ids = [
+                tid for tid in batch.task_ids
+                if batch.results.get(tid) in (None, "RUNNING", "BLOCKED")
+            ]
+            if not active_ids:
+                return
+
+            result = engine.check_all_active(active_ids)
+            if result.changes_detected:
+                with _active_processes_lock:
+                    procs = _active_processes.get(batch.id, {})
+                    engine.apply_changes(result, batch, procs)
+
+                # Emit events for changes
+                for tid in result.tasks_skipped:
+                    events.emit_for_workspace(
+                        workspace,
+                        events.EventType.RECONCILIATION_TASK_SKIPPED,
+                        {"batch_id": batch.id, "task_id": tid},
+                    )
+                for tid in result.tasks_requeued:
+                    events.emit_for_workspace(
+                        workspace,
+                        events.EventType.RECONCILIATION_TASK_REQUEUED,
+                        {"batch_id": batch.id, "task_id": tid},
+                    )
+            if result.errors:
+                for err in result.errors:
+                    events.emit_for_workspace(
+                        workspace,
+                        events.EventType.RECONCILIATION_ERROR,
+                        {"batch_id": batch.id, "error": err},
+                    )
+        except Exception as exc:
+            logger.warning("Reconciliation loop error: %s", exc)
+
     def _loop() -> None:
         while not stop_event.wait(timeout=interval_seconds):
-            try:
-                # Get currently active task IDs from the batch
-                active_ids = [
-                    tid for tid in batch.task_ids
-                    if batch.results.get(tid) is None
-                    or batch.results.get(tid) == "RUNNING"
-                ]
-                if not active_ids:
-                    continue
+            _pass()
 
-                result = engine.check_all_active(active_ids)
-                if result.changes_detected:
-                    with _active_processes_lock:
-                        procs = _active_processes.get(batch.id, {})
-                        engine.apply_changes(result, batch, procs)
-
-                    # Emit events for changes
-                    for tid in result.tasks_skipped:
-                        events.emit_for_workspace(
-                            workspace,
-                            events.EventType.RECONCILIATION_TASK_SKIPPED,
-                            {"batch_id": batch.id, "task_id": tid},
-                        )
-                    for tid in result.tasks_requeued:
-                        events.emit_for_workspace(
-                            workspace,
-                            events.EventType.RECONCILIATION_TASK_REQUEUED,
-                            {"batch_id": batch.id, "task_id": tid},
-                        )
-                if result.errors:
-                    for err in result.errors:
-                        events.emit_for_workspace(
-                            workspace,
-                            events.EventType.RECONCILIATION_ERROR,
-                            {"batch_id": batch.id, "error": err},
-                        )
-            except Exception as exc:
-                logger.warning("Reconciliation loop error: %s", exc)
+    # One sweep before the executor launches anything (#1032). The loop waits a
+    # full interval before its first pass, so without this the likeliest case
+    # of all — the linked issue was ALREADY closed when the batch started —
+    # was missed for every task reached inside the first 30 seconds, which in a
+    # serial batch means the first one. Synchronous rather than an early tick
+    # on the thread, so the executor's skip check cannot race it. Costs one
+    # call per linked task, and nothing at all when no task carries an issue.
+    _pass()
 
     thread = threading.Thread(target=_loop, daemon=True, name=f"reconcile-{batch.id[:8]}")
     thread.start()
@@ -2208,6 +2285,15 @@ def _execute_single_task(
     Returns:
         RunStatus value string
     """
+    # _execute_parallel routes dependency groups of size 1 here rather than
+    # through the pool worker, so this needs the same skip (#1032) — otherwise
+    # a single-task group whose issue closed earlier still runs.
+    if _completed_outside_the_batch(batch, task_id):
+        logger.info(
+            "Task %s already completed outside the batch — skipping", task_id
+        )
+        return batch.results[task_id]
+
     # Emit task queued event
     events.emit_for_workspace(
         workspace,
@@ -2268,7 +2354,7 @@ def _execute_single_task(
         exec_ctx.cleanup()
 
     # Record result
-    batch.results[task_id] = result_status
+    result_status = _record_task_result(batch, task_id, result_status)
     _save_batch(workspace, batch)
 
     # Emit appropriate event based on result
@@ -2344,6 +2430,14 @@ def _execute_group_parallel(
 
     def execute_task(task_id: str) -> tuple[str, str]:
         """Execute a single task and return (task_id, status)."""
+        # Same skip as the serial path: don't spend an agent run on a task the
+        # reconciler already completed from outside the batch (#1032).
+        if _completed_outside_the_batch(batch, task_id):
+            logger.info(
+                "Task %s already completed outside the batch — skipping", task_id
+            )
+            return task_id, batch.results[task_id]
+
         # Emit task started event
         events.emit_for_workspace(
             workspace,
@@ -2375,7 +2469,7 @@ def _execute_group_parallel(
             exec_ctx.cleanup()
 
         # Record result (thread-safe due to GIL for simple dict operations)
-        _record_task_result(batch, task_id, result_status)
+        result_status = _record_task_result(batch, task_id, result_status)
         _save_batch(workspace, batch)
 
         return task_id, batch.results[task_id]
