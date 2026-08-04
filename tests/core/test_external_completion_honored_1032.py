@@ -346,6 +346,74 @@ class TestTheFirstTaskIsCheckedBeforeItStarts:
         assert batch.results[target] == "COMPLETED"
 
 
+class TestBlockedTasksStayUnderReconciliation:
+    """A task recorded BLOCKED must keep being re-checked.
+
+    ``_pass`` selected tasks whose result is None or RUNNING. Once a task's
+    first attempt returned BLOCKED, that entry is neither — so the task was
+    excluded from every later sweep for the rest of the batch. That silently
+    disabled both the pre-existing blocker-resolved requeue and this branch's
+    GitHub check for blocked tasks: the code ran, but nothing ever reached it.
+    """
+
+    def test_a_blocked_task_is_still_swept(self, workspace, three_tasks, monkeypatch):
+        swept = []
+
+        class StubEngine:
+            def __init__(self, workspace):
+                pass
+
+            def check_all_active(self, ids):
+                from codeframe.core.reconciliation import ReconciliationResult
+
+                swept.append(list(ids))
+                return ReconciliationResult()
+
+            def apply_changes(self, result, batch, procs):
+                pass
+
+        monkeypatch.setattr(
+            "codeframe.core.reconciliation.ReconciliationEngine", StubEngine
+        )
+
+        blocked = three_tasks[0]
+        batch = _make_batch(workspace, three_tasks, {blocked: "BLOCKED"})
+        conductor._start_reconciliation_thread(workspace, batch, interval_seconds=3600)
+
+        assert swept, "no sweep ran"
+        assert blocked in swept[0], (
+            "a BLOCKED task is excluded from reconciliation for the rest of "
+            "the batch, so it can never be unblocked or completed externally"
+        )
+
+    def test_a_completed_task_is_not_swept(self, workspace, three_tasks, monkeypatch):
+        """The exclusion is still right for genuinely finished work."""
+        swept = []
+
+        class StubEngine:
+            def __init__(self, workspace):
+                pass
+
+            def check_all_active(self, ids):
+                from codeframe.core.reconciliation import ReconciliationResult
+
+                swept.append(list(ids))
+                return ReconciliationResult()
+
+            def apply_changes(self, result, batch, procs):
+                pass
+
+        monkeypatch.setattr(
+            "codeframe.core.reconciliation.ReconciliationEngine", StubEngine
+        )
+
+        done = three_tasks[0]
+        batch = _make_batch(workspace, three_tasks, {done: "COMPLETED"})
+        conductor._start_reconciliation_thread(workspace, batch, interval_seconds=3600)
+
+        assert done not in swept[0]
+
+
 class TestEveryWriteSiteUsesTheGuard:
     def test_no_executor_writes_batch_results_directly(self):
         """A guard that four of five call sites bypass guards nothing.

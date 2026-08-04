@@ -176,8 +176,14 @@ class GitHubIssueState:
             self._disable(f"GitHub issue lookup failed ({exc})")
             return False
 
+        # Runaway guard. Drop the open half first — it is the cheap one to
+        # rebuild — and only clear the closed set if that alone is at the cap,
+        # otherwise the guard would keep firing as a no-op once _closed filled
+        # it (CI review).
         if len(self._closed) + len(self._open_until) >= _ISSUE_STATE_CACHE_MAX:
-            self._open_until.clear()  # the cheap half to rebuild
+            self._open_until.clear()
+            if len(self._closed) >= _ISSUE_STATE_CACHE_MAX:
+                self._closed.clear()
 
         if str(state).lower() == "closed":
             self._closed.add(key)

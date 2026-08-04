@@ -2209,10 +2209,16 @@ def _start_reconciliation_thread(
         """One reconciliation sweep. Raises nothing the caller must handle."""
         try:
             # Get currently active task IDs from the batch
+            # BLOCKED belongs here, not just None/RUNNING (#1032). A blocked
+            # task is precisely the one whose state can change from outside —
+            # a human answering the blocker, or closing the linked GitHub
+            # issue. Excluding it meant both the blocker-resolved requeue and
+            # the GitHub check were unreachable the moment a task's first
+            # attempt reported BLOCKED, since nothing clears that entry
+            # mid-batch. COMPLETED and FAILED stay excluded: finished work.
             active_ids = [
                 tid for tid in batch.task_ids
-                if batch.results.get(tid) is None
-                or batch.results.get(tid) == "RUNNING"
+                if batch.results.get(tid) in (None, "RUNNING", "BLOCKED")
             ]
             if not active_ids:
                 return
