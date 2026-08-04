@@ -146,3 +146,40 @@ def check_obligation_satisfied(
             continue
         return True
     return False
+
+
+def list_blocking_requirements(workspace: Workspace) -> list[Requirement]:
+    """Requirements that must stop a merge (#731 gate, #952 verification).
+
+    Two reasons a requirement blocks:
+
+    * It is still OPEN — never proven.
+    * It is recorded SATISFIED but its evidence no longer verifies. Checksum
+      verification is worthless if the only path that runs it is a fresh proof
+      run: a requirement marked satisfied yesterday keeps that status forever,
+      so editing its artifact afterwards left the merge gate waving the change
+      through (codex review on #952).
+
+    A SATISFIED requirement with *no* evidence rows does not block. That is a
+    pre-existing state in older ledgers, not a tamper signal, and treating it
+    as one would wedge every workspace that has it. Only evidence that is
+    present and fails to verify counts.
+    """
+    from codeframe.core.proof.models import ReqStatus
+
+    blocking = list(ledger.list_requirements(workspace, status=ReqStatus.OPEN))
+
+    for req in ledger.list_requirements(workspace, status=ReqStatus.SATISFIED):
+        for ev in ledger.list_evidence(workspace, req.id):
+            if not ev.satisfied:
+                continue
+            try:
+                verify_evidence(ev)
+            except EvidenceTamperError as exc:
+                logger.warning(
+                    "Requirement %s blocks the merge gate: %s", req.id, exc
+                )
+                blocking.append(req)
+                break
+
+    return blocking

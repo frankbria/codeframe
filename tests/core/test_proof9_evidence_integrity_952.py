@@ -340,3 +340,77 @@ class TestStubsSurviveHostileText:
 
         assert "Login rejects a bad password" in content
         assert "A wrong password returns 401." in content
+
+
+class TestTamperedEvidenceBlocksTheMergeGate:
+    """Verification must reach the path that actually gates a merge.
+
+    A first cut wired `verify_evidence` into `check_obligation_satisfied` —
+    which has no production callers. The #731 merge gate asks for OPEN
+    requirements only, so a requirement already marked SATISFIED kept its
+    status after its artifact was edited, and the merge sailed through until
+    someone happened to re-run the full proof.
+    """
+
+    def _satisfied_req_with_evidence(self, workspace, tmp_path):
+        from codeframe.core.proof.evidence import attach_evidence
+        from codeframe.core.proof.ledger import save_requirement
+
+        artifact = tmp_path / "proof.txt"
+        artifact.write_text("the gate passed")
+
+        req = _requirement("REQ-952-04", "already proven", "it held", [Gate.UNIT])
+        req.status = ReqStatus.SATISFIED
+        save_requirement(workspace, req)
+        attach_evidence(
+            workspace, req.id, Gate.UNIT, str(artifact), GateOutcome.PASSED, "run-x"
+        )
+        return req, artifact
+
+    def test_an_intact_satisfied_requirement_does_not_block(self, workspace, tmp_path):
+        from codeframe.core.proof.evidence import list_blocking_requirements
+
+        self._satisfied_req_with_evidence(workspace, tmp_path)
+
+        assert list_blocking_requirements(workspace) == []
+
+    def test_a_tampered_satisfied_requirement_blocks(self, workspace, tmp_path):
+        from codeframe.core.proof.evidence import list_blocking_requirements
+
+        req, artifact = self._satisfied_req_with_evidence(workspace, tmp_path)
+        artifact.write_text("the gate passed (edited)")
+
+        blocking = list_blocking_requirements(workspace)
+
+        assert [r.id for r in blocking] == [req.id], (
+            "tampered evidence left the requirement satisfied, so the merge "
+            "gate would not have stopped the merge"
+        )
+
+    def test_open_requirements_still_block(self, workspace, req):
+        from codeframe.core.proof.evidence import list_blocking_requirements
+
+        assert [r.id for r in list_blocking_requirements(workspace)] == [req.id]
+
+    def test_a_satisfied_requirement_with_no_evidence_does_not_block(self, workspace):
+        """Absent evidence is a pre-existing state (e.g. an older ledger); only
+        evidence that is present and no longer verifies is a tamper signal."""
+        from codeframe.core.proof.evidence import list_blocking_requirements
+        from codeframe.core.proof.ledger import save_requirement
+
+        r = _requirement("REQ-952-05", "legacy", "no artifacts", [Gate.UNIT])
+        r.status = ReqStatus.SATISFIED
+        save_requirement(workspace, r)
+
+        assert list_blocking_requirements(workspace) == []
+
+    def test_both_merge_gates_use_the_verifying_query(self):
+        """API and CLI must agree, and neither may go back to the raw query."""
+        from pathlib import Path as _P
+
+        for mod in ("codeframe/ui/routers/pr_v2.py", "codeframe/cli/pr_commands.py"):
+            source = _P(mod).read_text(encoding="utf-8")
+            assert "list_blocking_requirements(" in source, f"{mod} skips verification"
+            assert "list_requirements(workspace, status=ReqStatus.OPEN)" not in source, (
+                f"{mod} still trusts stored status without verifying evidence"
+            )

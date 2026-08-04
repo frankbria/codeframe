@@ -24,7 +24,6 @@ from pydantic import BaseModel, Field
 
 from codeframe.auth.api_keys import SCOPE_ADMIN
 from codeframe.auth.dependencies import require_auth, require_scope
-from codeframe.core.proof.models import ReqStatus
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.git.github_integration import GitHubIntegration, GitHubAPIError, PRDetails
@@ -752,10 +751,13 @@ async def merge_pull_request(
 
     # PROOF9 merge gate: a ledger failure blocks the merge (explicit 500)
     # rather than silently allowing an ungated merge.
+    # Blocking, not merely open: a requirement recorded SATISFIED whose
+    # evidence no longer verifies must stop the merge too (#952).
     from codeframe.core.proof import ledger as proof_ledger
+    from codeframe.core.proof.evidence import list_blocking_requirements
 
     try:
-        open_reqs = proof_ledger.list_requirements(workspace, status=ReqStatus.OPEN)
+        open_reqs = list_blocking_requirements(workspace)
     except Exception as e:
         logger.error(f"PROOF9 gate check failed for PR #{pr_number}: {e}", exc_info=True)
         raise HTTPException(

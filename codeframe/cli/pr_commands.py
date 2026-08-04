@@ -432,8 +432,6 @@ def _check_merge_gate(
     override is pending so the caller can persist the audit record after the
     merge actually succeeds, or None when nothing was bypassed.
     """
-    from codeframe.core.proof import ledger as proof_ledger
-    from codeframe.core.proof.models import ReqStatus
     from codeframe.core.workspace import find_workspace_root, get_workspace
 
     reason = (override_reason or "").strip()
@@ -455,7 +453,11 @@ def _check_merge_gate(
         return None
 
     try:
-        open_reqs = proof_ledger.list_requirements(workspace, status=ReqStatus.OPEN)
+        # Blocking, not merely open: a requirement recorded SATISFIED whose
+        # evidence no longer verifies must stop the merge too (#952).
+        from codeframe.core.proof.evidence import list_blocking_requirements
+
+        open_reqs = list_blocking_requirements(workspace)
     except Exception as e:
         # Fail closed, like the API path: a broken ledger blocks the merge.
         console.print(f"[red]PROOF9 gate check failed:[/red] {e} — merge blocked")
