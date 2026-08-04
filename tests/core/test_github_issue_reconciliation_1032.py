@@ -345,6 +345,97 @@ class TestWiredByDefault:
         assert "state" in GitHubIssueDetail.__annotations__
 
 
+class TestLocalTaskRowFollowsTheClosedIssue:
+    """Recording the batch result alone leaves the system inconsistent.
+
+    The ``source="manual"`` path is consistent for free: the task row is
+    *already* DONE, which is how the change was detected. Nothing sets the row
+    for a GitHub closure, so without this the batch finishes COMPLETED while
+    the board still shows the task READY — and the next batch runs it again.
+
+    ``READY -> DONE`` is not a permitted transition, so a task the batch had not
+    started yet must pass through IN_PROGRESS, the same path a real run takes.
+    """
+
+    @pytest.fixture
+    def workspace(self, tmp_path):
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws_dir = tmp_path / "ws"
+        ws_dir.mkdir(parents=True, exist_ok=True)
+        return create_or_load_workspace(ws_dir)
+
+    def _task_with_closed_issue(self, workspace, status):
+        from codeframe.core import tasks as tasks_mod
+
+        task = tasks_mod.create(
+            workspace,
+            title="imported",
+            description="",
+            status=TaskStatus.READY,
+            github_issue_number=42,
+            external_url=ISSUE_URL,
+        )
+        if status != TaskStatus.READY:
+            tasks_mod.update_status(workspace, task.id, status)
+        return task
+
+    def _reconcile(self, workspace, task_id):
+        engine = ReconciliationEngine(
+            workspace=workspace,
+            issue_state=GitHubIssueState(fetch=FakeGitHub(state="closed"), pat="tok"),
+        )
+        result = engine.check_all_active([task_id])
+
+        class Batch:
+            id = "b1"
+            results = {}
+
+        batch = Batch()
+        engine.apply_changes(result, batch, {})
+        return result, batch
+
+    def test_a_not_yet_started_task_is_marked_DONE(self, workspace):
+        from codeframe.core import tasks as tasks_mod
+
+        task = self._task_with_closed_issue(workspace, TaskStatus.READY)
+
+        _, batch = self._reconcile(workspace, task.id)
+
+        assert batch.results[task.id] == "COMPLETED"
+        assert tasks_mod.get(workspace, task.id).status == TaskStatus.DONE, (
+            "batch says COMPLETED but the board still shows the task undone, "
+            "so the next batch will run it again"
+        )
+
+    def test_an_in_progress_task_is_marked_DONE(self, workspace):
+        from codeframe.core import tasks as tasks_mod
+
+        task = self._task_with_closed_issue(workspace, TaskStatus.IN_PROGRESS)
+
+        self._reconcile(workspace, task.id)
+
+        assert tasks_mod.get(workspace, task.id).status == TaskStatus.DONE
+
+    def test_a_refused_transition_does_not_break_reconciliation(
+        self, workspace, monkeypatch
+    ):
+        """The batch-level record still stands if the row cannot be moved."""
+        from codeframe.core import tasks as tasks_mod
+
+        task = self._task_with_closed_issue(workspace, TaskStatus.READY)
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("state machine said no")
+
+        monkeypatch.setattr(tasks_mod, "update_status", boom)
+
+        result, batch = self._reconcile(workspace, task.id)
+
+        assert batch.results[task.id] == "COMPLETED"
+        assert result.errors == []
+
+
 class TestWholePathWithStubbedIssuesService:
     """AC4 end-to-end: engine → default fetch → issues service, several ticks.
 

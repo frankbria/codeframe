@@ -256,6 +256,39 @@ class ReconciliationEngine:
 
         return changes
 
+    def _mark_task_done(self, task_id: str) -> None:
+        """Bring the local task row in line with the closed issue (#1032).
+
+        The ``source="manual"`` path needs nothing here: the row is *already*
+        DONE, which is how the change was detected. A GitHub closure sets
+        nothing, so without this the batch records COMPLETED while the board
+        still shows the task READY — and the next batch picks it up again.
+
+        ``READY -> DONE`` is not a permitted transition, so a task the batch
+        had not started yet passes through IN_PROGRESS, the same path a real
+        run takes. Best-effort throughout: the batch-level record stands on its
+        own, so a refused or failing transition is logged, not raised.
+
+        ponytail: only handles states from which IN_PROGRESS is reachable
+        (READY, BLOCKED, FAILED). BACKLOG would need BACKLOG -> READY first —
+        add that step if a batch ever runs BACKLOG tasks.
+        """
+        try:
+            task = tasks.get(self._workspace, task_id)
+            if task is None or task.status == TaskStatus.DONE:
+                return
+            if task.status != TaskStatus.IN_PROGRESS:
+                tasks.update_status(self._workspace, task_id, TaskStatus.IN_PROGRESS)
+            # Fires the auto-close dispatch (#565) when the task opted in. The
+            # issue is already closed, so that PATCH is a no-op — not worth a
+            # special path to avoid.
+            tasks.update_status(self._workspace, task_id, TaskStatus.DONE)
+        except Exception as exc:  # noqa: BLE001 - accounting must not break
+            logger.warning(
+                "Could not mark task %s DONE after its GitHub issue closed: %s",
+                task_id, exc,
+            )
+
     def check_all_active(
         self, active_task_ids: list[str]
     ) -> ReconciliationResult:
@@ -292,6 +325,9 @@ class ReconciliationEngine:
         """
         for change in result.changes_detected:
             try:
+                if change.source == "github" and change.change_type == "completed":
+                    self._mark_task_done(change.task_id)
+
                 if change.change_type in ("completed", "closed"):
                     # Terminate subprocess if running
                     proc = active_processes.get(change.task_id)
