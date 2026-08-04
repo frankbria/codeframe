@@ -149,3 +149,50 @@ class TestRunEvidenceRead:
         assert r.status_code == 200
         by_gate = {e["gate"]: e["verified"] for e in r.json()["evidence"]}
         assert by_gate == {"unit": False, "sec": True}
+
+
+class TestUnverifiedEvidenceIsNotServedAsAPass:
+    """`verified: false` beside an unchanged `satisfied: true` is not enough.
+
+    Every existing client renders green from `satisfied`/`status` and knows
+    nothing about the new fields, so a tampered artifact still showed as
+    passing proof — just without its text (codex review on #1080).
+    """
+
+    def test_a_tampered_record_is_not_satisfied(self, client, workspace, seeded):
+        req, artifact, _ = seeded
+        artifact.write_text("forged: everything passed")
+
+        item = client.get(
+            f"/api/v2/proof/requirements/{req.id}/evidence", params=_params(workspace)
+        ).json()[0]
+
+        assert item["satisfied"] is False, (
+            "a client rendering green from `satisfied` still shows tampered "
+            "evidence as proof"
+        )
+        assert item["status"] == "unverifiable"
+        assert item["verified"] is False
+
+    def test_a_tampered_run_record_is_not_satisfied(self, client, workspace, seeded):
+        _, artifact, run_id = seeded
+        artifact.write_text("forged")
+
+        ev = client.get(
+            f"/api/v2/proof/runs/{run_id}/evidence", params=_params(workspace)
+        ).json()["evidence"][0]
+
+        assert ev["satisfied"] is False
+        assert ev["status"] == "unverifiable"
+
+    def test_an_intact_record_keeps_its_real_outcome(self, client, workspace, seeded):
+        """The downgrade must apply only to records that fail verification."""
+        req, _, _ = seeded
+
+        item = client.get(
+            f"/api/v2/proof/requirements/{req.id}/evidence", params=_params(workspace)
+        ).json()[0]
+
+        assert item["satisfied"] is True
+        assert item["status"] == "passed"
+        assert item["verified"] is True

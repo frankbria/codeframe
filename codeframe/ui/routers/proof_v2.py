@@ -645,6 +645,26 @@ def _verification(evidence) -> tuple[bool, Optional[str]]:
     return True, None
 
 
+def _serialized_outcome(evidence, verified: bool) -> tuple[bool, Optional[str]]:
+    """The (satisfied, status) an unverified record must be served with.
+
+    Adding ``verified: false`` beside an unchanged ``satisfied: true`` is not
+    enough: every existing client — the web UI's GateEvidencePanel and the
+    requirement detail table included — renders green from ``satisfied`` and
+    ``status`` and knows nothing about the new fields, so a tampered artifact
+    still displayed as passing proof (codex review on #1080).
+
+    A record whose artifact no longer matches its checksum is not a pass. It is
+    serialized as UNVERIFIABLE — the existing vocabulary for 'this obligation
+    could not be checked', which every client already renders as not-green —
+    while ``verified``/``tamper_detail`` carry the precise reason for clients
+    that do look.
+    """
+    if verified:
+        return evidence.satisfied, evidence.status
+    return False, GateOutcome.UNVERIFIABLE.value
+
+
 def _read_artifact_text(artifact_path: str, max_lines: int = _ARTIFACT_LINE_LIMIT) -> Optional[str]:
     """Read artifact file content up to max_lines, returning None if the file is missing."""
     from pathlib import Path
@@ -714,12 +734,13 @@ async def get_run_evidence_endpoint(
     evidence_out = []
     for e in evidence_records:
         verified, detail = _verification(e)
+        satisfied, status = _serialized_outcome(e, verified)
         evidence_out.append(
             EvidenceWithContentResponse(
                 req_id=e.req_id,
                 gate=e.gate.value,
-                satisfied=e.satisfied,
-                status=e.status,
+                satisfied=satisfied,
+                status=status,
                 artifact_path=e.artifact_path,
                 artifact_checksum=e.artifact_checksum,
                 timestamp=e.timestamp.isoformat(),
@@ -840,12 +861,13 @@ async def list_evidence_endpoint(
     out = []
     for e in evidence:
         verified, detail = _verification(e)
+        satisfied, status = _serialized_outcome(e, verified)
         out.append(
             EvidenceResponse(
                 req_id=e.req_id,
                 gate=e.gate.value,
-                satisfied=e.satisfied,
-                status=e.status,
+                satisfied=satisfied,
+                status=status,
                 artifact_path=e.artifact_path,
                 artifact_checksum=e.artifact_checksum,
                 timestamp=e.timestamp.isoformat(),

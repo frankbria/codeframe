@@ -91,3 +91,46 @@ describe('GateEvidencePanel', () => {
     expect(screen.queryByText('Show full output')).not.toBeInTheDocument();
   });
 });
+
+describe('tampered evidence (#952)', () => {
+  const tampered = {
+    req_id: 'REQ-1',
+    gate: 'unit',
+    // The backend downgrades an unverified record, so a client that ignores
+    // `verified` still never renders it green.
+    satisfied: false,
+    status: 'unverifiable' as const,
+    artifact_path: '/w/a.txt',
+    artifact_checksum: 'abc',
+    timestamp: '2026-01-01T00:00:00Z',
+    run_id: 'run-1',
+    verified: false,
+    tamper_detail: 'does not match its recorded checksum',
+    artifact_text: null,
+  };
+
+  it('shows a tampered badge rather than pass or cannot-verify', () => {
+    render(<GateEvidencePanel evidence={[tampered]} />);
+    expect(screen.getByText('tampered')).toBeInTheDocument();
+    expect(screen.queryByText('pass')).not.toBeInTheDocument();
+    expect(screen.queryByText('cannot verify')).not.toBeInTheDocument();
+  });
+
+  it('explains why the artifact contents are withheld', async () => {
+    render(<GateEvidencePanel evidence={[tampered]} />);
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
+    expect(
+      screen.getByText(/does not match the checksum recorded with this evidence/i)
+    ).toBeInTheDocument();
+  });
+
+  it('leaves verified evidence rendering as a pass', () => {
+    render(
+      <GateEvidencePanel
+        evidence={[{ ...tampered, satisfied: true, status: 'passed', verified: true, tamper_detail: null }]}
+      />
+    );
+    expect(screen.getByText('pass')).toBeInTheDocument();
+    expect(screen.queryByText('tampered')).not.toBeInTheDocument();
+  });
+});

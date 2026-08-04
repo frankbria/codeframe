@@ -39,7 +39,11 @@ function GateEvidenceRow({ ev }: GateEvidenceRowProps) {
         className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
         <span className="font-mono text-xs text-muted-foreground w-16 shrink-0 capitalize">{ev.gate}</span>
-        {ev.status === 'unverifiable' ? (
+        {ev.verified === false ? (
+          <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+            tampered
+          </span>
+        ) : ev.status === 'unverifiable' ? (
           <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
             cannot verify
           </span>
@@ -59,7 +63,13 @@ function GateEvidenceRow({ ev }: GateEvidenceRowProps) {
 
       {expanded && (
         <div className="px-4 pb-3">
-          {!hasText ? (
+          {ev.verified === false ? (
+            <p className="text-xs text-red-700 dark:text-red-400">
+              Artifact does not match the checksum recorded with this evidence, so
+              its contents are not shown.
+              {ev.tamper_detail ? ` (${ev.tamper_detail})` : ''}
+            </p>
+          ) : !hasText ? (
             <p className="text-xs text-muted-foreground italic">No output captured</p>
           ) : (
             <>
