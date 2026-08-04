@@ -24,10 +24,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: How long a fetched issue state is trusted. An order of magnitude above the
-#: 30s reconciliation interval, so a long batch costs a handful of calls per
-#: linked issue rather than one per tick.
-_ISSUE_STATE_TTL_SECONDS = 300.0
+#: How long an **open** answer is trusted. Two reconciliation ticks: long
+#: enough to halve the call rate, short enough that a closure is noticed before
+#: a serial batch works through much of its queue. A longer window (300s was
+#: the first cut) makes the feature mostly decorative — the issue closes, the
+#: cached "open" hides it, and the executor launches the agent anyway.
+#:
+#: Cost, worst case: one call per linked task per 60s. A batch with 20 imported
+#: tasks running an hour is ~1200 calls against GitHub's 5000/hour authenticated
+#: limit, and the first failure disables the checker entirely.
+_ISSUE_STATE_OPEN_TTL_SECONDS = 60.0
 
 #: Bound on distinct issues cached per batch. Reconciliation only ever asks
 #: about the batch's own tasks, so this is a runaway guard, not a tuning knob.
@@ -95,7 +101,12 @@ class GitHubIssueState:
 
     * A task with no ``github_issue_number`` (or no source URL to name a repo)
       never reaches the network. Most tasks are not imported from GitHub.
-    * Answers are cached per ``(repo, number)`` for ``ttl_seconds``.
+    * Answers are cached per ``(repo, number)``. **Closed** is cached for the
+      life of the checker — it is terminal for a batch's purposes. **Open** is
+      cached only briefly (``open_ttl_seconds``), because an open answer is
+      exactly the one that goes stale in a way that matters: cache it for
+      minutes and the issue closes, the batch reaches the task, and the agent
+      runs anyway.
     * The first missing PAT or GitHub failure **disables the checker for the
       rest of the batch** and logs once. A GitHub outage must never fail a
       batch, and retrying every 30s through one is how you get rate-limited —
@@ -111,15 +122,18 @@ class GitHubIssueState:
         *,
         fetch: Optional[Callable[[str, str, int], str]] = None,
         pat: Optional[str] = None,
-        ttl_seconds: float = _ISSUE_STATE_TTL_SECONDS,
+        open_ttl_seconds: float = _ISSUE_STATE_OPEN_TTL_SECONDS,
         now: Callable[[], float] = time.monotonic,
     ) -> None:
         self._fetch = fetch if fetch is not None else _default_fetch_issue_state
         self._pat = pat
         self._pat_resolved = pat is not None
-        self._ttl = ttl_seconds
+        self._open_ttl = open_ttl_seconds
         self._now = now
-        self._cache: dict[tuple[str, int], tuple[bool, float]] = {}
+        #: Issues known closed. Never re-fetched — closed is terminal here.
+        self._closed: set[tuple[str, int]] = set()
+        #: Issues seen open, with the time the answer stops being trusted.
+        self._open_until: dict[tuple[str, int], float] = {}
         self._disabled = False
 
     def is_closed(self, task) -> bool:
@@ -146,9 +160,10 @@ class GitHubIssueState:
             return False
 
         key = (repo, number)
-        cached = self._cache.get(key)
-        if cached is not None and cached[1] > self._now():
-            return cached[0]
+        if key in self._closed:
+            return True
+        if self._open_until.get(key, 0.0) > self._now():
+            return False
 
         pat = self._resolve_pat()
         if pat is None:
@@ -161,11 +176,14 @@ class GitHubIssueState:
             self._disable(f"GitHub issue lookup failed ({exc})")
             return False
 
-        closed = str(state).lower() == "closed"
-        if len(self._cache) >= _ISSUE_STATE_CACHE_MAX:
-            self._cache.clear()
-        self._cache[key] = (closed, self._now() + self._ttl)
-        return closed
+        if len(self._closed) + len(self._open_until) >= _ISSUE_STATE_CACHE_MAX:
+            self._open_until.clear()  # the cheap half to rebuild
+
+        if str(state).lower() == "closed":
+            self._closed.add(key)
+            return True
+        self._open_until[key] = self._now() + self._open_ttl
+        return False
 
     def _resolve_pat(self) -> Optional[str]:
         if not self._pat_resolved:
@@ -264,25 +282,35 @@ class ReconciliationEngine:
         nothing, so without this the batch records COMPLETED while the board
         still shows the task READY — and the next batch picks it up again.
 
-        ``READY -> DONE`` is not a permitted transition, so a task the batch
-        had not started yet passes through IN_PROGRESS, the same path a real
-        run takes. Best-effort throughout: the batch-level record stands on its
-        own, so a refused or failing transition is logged, not raised.
+        Nothing goes straight to DONE: the state machine only allows it from
+        IN_PROGRESS, and only READY from BACKLOG. So this walks the same path a
+        real run takes — and it must start from BACKLOG, because that is what
+        ``tasks.create`` defaults to and therefore what the GitHub importer
+        (#565) produces. Imported tasks sitting in BACKLOG are the *primary*
+        case for this feature, not an edge one.
 
-        ponytail: only handles states from which IN_PROGRESS is reachable
-        (READY, BLOCKED, FAILED). BACKLOG would need BACKLOG -> READY first —
-        add that step if a batch ever runs BACKLOG tasks.
+        Best-effort throughout: the batch-level record stands on its own, so a
+        refused or failing transition is logged, not raised.
         """
+        walk = {
+            TaskStatus.BACKLOG: (TaskStatus.READY, TaskStatus.IN_PROGRESS, TaskStatus.DONE),
+            TaskStatus.READY: (TaskStatus.IN_PROGRESS, TaskStatus.DONE),
+            TaskStatus.BLOCKED: (TaskStatus.IN_PROGRESS, TaskStatus.DONE),
+            TaskStatus.FAILED: (TaskStatus.IN_PROGRESS, TaskStatus.DONE),
+            TaskStatus.IN_PROGRESS: (TaskStatus.DONE,),
+        }
         try:
             task = tasks.get(self._workspace, task_id)
-            if task is None or task.status == TaskStatus.DONE:
+            if task is None:
                 return
-            if task.status != TaskStatus.IN_PROGRESS:
-                tasks.update_status(self._workspace, task_id, TaskStatus.IN_PROGRESS)
-            # Fires the auto-close dispatch (#565) when the task opted in. The
-            # issue is already closed, so that PATCH is a no-op — not worth a
-            # special path to avoid.
-            tasks.update_status(self._workspace, task_id, TaskStatus.DONE)
+            steps = walk.get(task.status)
+            if steps is None:  # already DONE, or MERGED (terminal)
+                return
+            for step in steps:
+                # The final DONE fires the auto-close dispatch (#565) when the
+                # task opted in. The issue is already closed, so that PATCH is
+                # a no-op — not worth a special path to avoid.
+                tasks.update_status(self._workspace, task_id, step)
         except Exception as exc:  # noqa: BLE001 - accounting must not break
             logger.warning(
                 "Could not mark task %s DONE after its GitHub issue closed: %s",

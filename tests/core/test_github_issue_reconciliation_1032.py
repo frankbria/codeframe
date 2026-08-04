@@ -189,29 +189,50 @@ class TestClosedIssueDetected:
 
 
 class TestCallCountsStayBounded:
-    def test_repeated_ticks_within_the_ttl_make_one_call(self):
+    def test_repeated_ticks_within_the_open_ttl_make_one_call(self):
         gh = FakeGitHub(state="open")
         clock = FakeClock()
-        checker = GitHubIssueState(fetch=gh, pat="tok", ttl_seconds=300, now=clock)
+        checker = GitHubIssueState(fetch=gh, pat="tok", open_ttl_seconds=60, now=clock)
         task = make_task()
 
-        for _ in range(10):  # 10 ticks x 30s = 300s of batch time
-            checker.is_closed(task)
-            clock.advance(30)
+        checker.is_closed(task)
+        clock.advance(30)  # one tick later, still inside the TTL
+        checker.is_closed(task)
 
         assert len(gh.calls) == 1
 
-    def test_the_cache_expires_after_its_ttl(self):
+    def test_an_open_issue_is_rechecked_soon_enough_to_catch_a_closure(self):
+        """An "open" answer must go stale fast. Caching it for minutes on a 30s
+        loop means a closure lands, the task is reached, and the agent runs
+        anyway — the very case this feature exists to prevent."""
         gh = FakeGitHub(state="open")
         clock = FakeClock()
-        checker = GitHubIssueState(fetch=gh, pat="tok", ttl_seconds=300, now=clock)
+        checker = GitHubIssueState(fetch=gh, pat="tok", now=clock)
         task = make_task()
 
         checker.is_closed(task)
-        clock.advance(301)
-        checker.is_closed(task)
+        clock.advance(90)  # three ticks
+        gh.state = "closed"
 
-        assert len(gh.calls) == 2
+        assert checker.is_closed(task) is True, (
+            "a closure was invisible for longer than a batch takes to reach "
+            "the next task"
+        )
+
+    def test_ten_ticks_over_an_open_issue_stay_bounded(self):
+        """Rechecking sooner must not mean rechecking every tick."""
+        gh = FakeGitHub(state="open")
+        clock = FakeClock()
+        checker = GitHubIssueState(fetch=gh, pat="tok", now=clock)
+        task = make_task()
+
+        for _ in range(10):  # 300s of batch time at the 30s interval
+            checker.is_closed(task)
+            clock.advance(30)
+
+        assert len(gh.calls) <= 5, (
+            f"{len(gh.calls)} calls for one issue over 10 ticks is not bounded"
+        )
 
     def test_distinct_issues_are_cached_separately(self):
         gh = FakeGitHub(state="open")
@@ -225,13 +246,18 @@ class TestCallCountsStayBounded:
 
         assert len(gh.calls) == 2
 
-    def test_a_closed_answer_is_cached_too(self):
+    def test_a_closed_answer_is_never_refetched(self):
+        """Closed is effectively terminal for a batch's lifetime — unlike
+        "open", it cannot go stale in a way that matters here."""
         gh = FakeGitHub(state="closed")
-        checker = GitHubIssueState(fetch=gh, pat="tok", now=FakeClock())
+        clock = FakeClock()
+        checker = GitHubIssueState(fetch=gh, pat="tok", now=clock)
         task = make_task()
 
-        assert checker.is_closed(task) is True
-        assert checker.is_closed(task) is True
+        for _ in range(10):
+            assert checker.is_closed(task) is True
+            clock.advance(600)
+
         assert len(gh.calls) == 1
 
 
@@ -368,16 +394,22 @@ class TestLocalTaskRowFollowsTheClosedIssue:
     def _task_with_closed_issue(self, workspace, status):
         from codeframe.core import tasks as tasks_mod
 
+        # BACKLOG is what tasks.create defaults to, and what the GitHub
+        # importer uses; walk forward from there to whatever the test wants.
         task = tasks_mod.create(
             workspace,
             title="imported",
             description="",
-            status=TaskStatus.READY,
             github_issue_number=42,
             external_url=ISSUE_URL,
         )
-        if status != TaskStatus.READY:
-            tasks_mod.update_status(workspace, task.id, status)
+        path = {
+            TaskStatus.BACKLOG: [],
+            TaskStatus.READY: [TaskStatus.READY],
+            TaskStatus.IN_PROGRESS: [TaskStatus.READY, TaskStatus.IN_PROGRESS],
+        }[status]
+        for step in path:
+            tasks_mod.update_status(workspace, task.id, step)
         return task
 
     def _reconcile(self, workspace, task_id):
@@ -407,6 +439,19 @@ class TestLocalTaskRowFollowsTheClosedIssue:
             "batch says COMPLETED but the board still shows the task undone, "
             "so the next batch will run it again"
         )
+
+    def test_a_backlog_task_is_marked_DONE(self, workspace):
+        """BACKLOG is what the GitHub importer creates, so this is the primary
+        case, not an edge one — and BACKLOG only permits READY."""
+        from codeframe.core import tasks as tasks_mod
+
+        task = self._task_with_closed_issue(workspace, TaskStatus.BACKLOG)
+        assert tasks_mod.get(workspace, task.id).status == TaskStatus.BACKLOG
+
+        _, batch = self._reconcile(workspace, task.id)
+
+        assert batch.results[task.id] == "COMPLETED"
+        assert tasks_mod.get(workspace, task.id).status == TaskStatus.DONE
 
     def test_an_in_progress_task_is_marked_DONE(self, workspace):
         from codeframe.core import tasks as tasks_mod
@@ -445,7 +490,7 @@ class TestWholePathWithStubbedIssuesService:
     added to ``GitHubIssueDetail`` are all exercised for real.
     """
 
-    def test_ten_ticks_over_three_tasks_make_three_service_calls(self, monkeypatch):
+    def test_ten_ticks_over_three_tasks_stay_bounded(self, monkeypatch):
         calls = []
 
         async def fake_get_issue(pat, repo, number, *, client=None):
@@ -486,9 +531,14 @@ class TestWholePathWithStubbedIssuesService:
             detected.extend(engine.check_all_active(list(by_id)).changes_detected)
             clock.advance(30)
 
-        # Two linked issues, each fetched once and then served from cache for
-        # the remaining ticks; the unlinked task never reaches the service.
-        assert sorted(calls) == [("acme/app", 42), ("acme/app", 43)]
+        # The unlinked task never reaches the service at all.
+        assert [c for c in calls if c[1] not in (42, 43)] == []
+        # The closed issue is fetched once and never again.
+        assert [c for c in calls if c[1] == 42] == [("acme/app", 42)]
+        # The open one is re-checked so a later closure is not missed, but at
+        # the open-TTL, not once per tick: 10 ticks x 30s / 60s TTL = 5, not 10.
+        assert 1 < len([c for c in calls if c[1] == 43]) <= 5
+
         assert {c.task_id for c in detected} == {"linked-closed"}
         assert detected[0].change_type == "completed"
         assert detected[0].source == "github"
