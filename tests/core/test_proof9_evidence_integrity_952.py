@@ -488,3 +488,41 @@ class TestOnlyTheLatestEvidencePerGateIsChecked:
         sec.write_text("sec ok (edited)")
 
         assert [r.id for r in list_blocking_requirements(workspace)] == [req.id]
+
+
+class TestTextEndingAtTheDocstringBoundary:
+    """A lone trailing quote is not a `\"\"\"` run, so collapsing runs missed it.
+
+    Six templates butt `{description}` straight against their own closing
+    delimiter — `\"\"\"Proves: {description}\"\"\"`. A description ending in one
+    quote makes four in a row; Python closes the docstring on the first three
+    and the fourth starts an unterminated literal. That is a SyntaxError in the
+    generated stub, the exact failure AC4 exists to prevent (CI review).
+    """
+
+    _PY_GATES = [Gate.UNIT, Gate.CONTRACT, Gate.VISUAL, Gate.A11Y, Gate.PERF, Gate.SEC]
+
+    @pytest.mark.parametrize("tail", ['"', '""', "\\", '\\"'])
+    @pytest.mark.parametrize("gate", _PY_GATES)
+    def test_a_description_ending_at_the_delimiter_still_parses(self, gate, tail):
+        import ast
+
+        from codeframe.core.proof.stubs import generate_stubs
+
+        req = _requirement("REQ-952-08", "t", f"ends with {tail}", [gate])
+        ast.parse(generate_stubs(req)[gate])
+
+    @pytest.mark.parametrize("tail", ['"', '""', "\\"])
+    def test_a_title_ending_at_a_delimiter_still_parses(self, tail):
+        import ast
+
+        from codeframe.core.proof.stubs import generate_stubs
+
+        req = _requirement("REQ-952-09", f"ends with {tail}", "d", [Gate.UNIT])
+        ast.parse(generate_stubs(req)[Gate.UNIT])
+
+    def test_the_description_is_still_present_and_readable(self):
+        from codeframe.core.proof.stubs import generate_stubs
+
+        req = _requirement("REQ-952-10", "t", 'he said "hi"', [Gate.UNIT])
+        assert 'he said "hi"' in generate_stubs(req)[Gate.UNIT]

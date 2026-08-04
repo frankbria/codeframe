@@ -184,10 +184,20 @@ def _inline(text: str) -> str:
     captured glitch or an imported issue — and every place a template puts them
     is line-scoped: a Python docstring, a ``//`` comment, a markdown heading. A
     raw newline escapes that context, so the second line lands as code. Collapse
-    whitespace runs to single spaces and neutralize the only sequence that can
-    close a docstring from inside one.
+    whitespace runs to single spaces and neutralize the sequence that can close
+    a docstring from inside one.
+
+    The trailing character matters separately. Six templates butt the text
+    straight against their own closing delimiter — ``\"\"\"Proves: {description}\"\"\"``
+    — so text ending in a single quote yields four in a row: Python closes the
+    docstring on the first three and the fourth opens an unterminated literal.
+    A trailing backslash escapes the delimiter's first quote for the same
+    result. Neither is a ``\"\"\"`` run, so the replacement above does not see
+    them (CI review on #952). One space is enough to separate them, and reads
+    identically.
     """
-    return " ".join(str(text).split()).replace('"""', "'''")
+    collapsed = " ".join(str(text).split()).replace('"""', "'''")
+    return collapsed + " " if collapsed.endswith(('"', "\\")) else collapsed
 
 
 def _js_string(text: str) -> str:
