@@ -119,6 +119,65 @@ class TestSerialDoesNotOverwriteAnExternalCompletion:
         )
 
 
+class TestAccountingFollowsTheGuardedResult:
+    """Preserving the result is only half of it — the tally must agree.
+
+    Otherwise the reconciler's COMPLETED sits in ``batch.results`` while
+    ``failed_count`` counts the worker's discarded FAILED, and the batch
+    finalizes as FAILED/PARTIAL with a full set of COMPLETED results.
+    """
+
+    def test_serial_batch_does_not_finish_FAILED_with_a_completed_result(
+        self, workspace, three_tasks, monkeypatch
+    ):
+        target = three_tasks[0]
+
+        def fake_subprocess(ws, task_id, batch_id, **kwargs):
+            if task_id == target:
+                batch.results[task_id] = "COMPLETED"  # reconciler, mid-run
+                return "FAILED"
+            return "COMPLETED"
+
+        monkeypatch.setattr(conductor, "_execute_task_subprocess", fake_subprocess)
+        monkeypatch.setattr(conductor, "_start_reconciliation_thread",
+                            lambda *a, **k: __import__("threading").Event())
+
+        batch = _make_batch(workspace, three_tasks)
+        conductor._execute_serial(workspace, batch)
+
+        assert set(batch.results.values()) == {"COMPLETED"}
+        final = conductor.get_batch(workspace, batch.id)
+        assert final.status.value == "COMPLETED", (
+            f"every task recorded COMPLETED but the batch finalized as "
+            f"{final.status.value}"
+        )
+
+
+class TestSingleTaskGroupsAreSkippedToo:
+    def test_execute_single_task_skips_an_external_completion(
+        self, workspace, three_tasks, monkeypatch
+    ):
+        """_execute_parallel routes dependency groups of size 1 through
+        _execute_single_task, which bypassed the parallel worker's guard."""
+        executed = []
+
+        def fake_subprocess(ws, task_id, batch_id, **kwargs):
+            executed.append(task_id)
+            return "COMPLETED"
+
+        monkeypatch.setattr(conductor, "_execute_task_subprocess", fake_subprocess)
+
+        target = three_tasks[0]
+        batch = _make_batch(workspace, three_tasks, {target: "COMPLETED"})
+
+        result = conductor._execute_single_task(
+            workspace, batch, target, 1, len(three_tasks)
+        )
+
+        assert executed == [], "launched an agent run for finished work"
+        assert result == "COMPLETED"
+
+
 class TestEveryWriteSiteUsesTheGuard:
     def test_no_executor_writes_batch_results_directly(self):
         """A guard that four of five call sites bypass guards nothing.

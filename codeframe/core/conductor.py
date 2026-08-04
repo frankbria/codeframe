@@ -1330,7 +1330,7 @@ def _run_serial_resume(
             exec_ctx.cleanup()
 
         # Record result (overwrites previous result)
-        _record_task_result(batch, task_id, result_status)
+        result_status = _record_task_result(batch, task_id, result_status)
         _save_batch(workspace, batch)
 
         # Emit appropriate event based on result
@@ -1528,7 +1528,7 @@ def _run_retries(
                 exec_ctx.cleanup()
 
             # Update result
-            _record_task_result(batch, task_id, result_status)
+            result_status = _record_task_result(batch, task_id, result_status)
             _save_batch(workspace, batch)
 
             if result_status == RunStatus.COMPLETED.value:
@@ -1784,7 +1784,7 @@ def _execute_serial(
                 exec_ctx.cleanup()
 
             # Record result
-            _record_task_result(batch, task_id, result_status)
+            result_status = _record_task_result(batch, task_id, result_status)
             _save_batch(workspace, batch)
 
             # Emit appropriate event based on result
@@ -2135,12 +2135,19 @@ def _completed_outside_the_batch(batch: "BatchRun", task_id: str) -> bool:
     return batch.results.get(task_id) in _TERMINAL_BATCH_RESULTS
 
 
-def _record_task_result(batch: "BatchRun", task_id: str, status: str) -> None:
+def _record_task_result(batch: "BatchRun", task_id: str, status: str) -> str:
     """Record a worker's result unless a terminal one is already recorded.
 
     Only COMPLETED is protected. A recorded FAILED or BLOCKED is the worker's
     own earlier verdict and may legitimately be replaced, and RUNNING is a
     placeholder that must still resolve.
+
+    Returns the **effective** result — which is not the worker's when an
+    external completion won. Callers must tally and emit events off the return
+    value, not off what they passed in: otherwise the reconciler's COMPLETED
+    sits in ``batch.results`` while ``failed_count`` counts the discarded
+    FAILED, and a batch whose every task recorded COMPLETED finalizes as
+    PARTIAL (#1032).
     """
     if batch.results.get(task_id) in _TERMINAL_BATCH_RESULTS:
         logger.info(
@@ -2148,8 +2155,9 @@ def _record_task_result(batch: "BatchRun", task_id: str, status: str) -> None:
             "not overwriting with %s",
             task_id, batch.results[task_id], status,
         )
-        return
+        return batch.results[task_id]
     batch.results[task_id] = status
+    return status
 
 
 def _start_reconciliation_thread(
@@ -2231,6 +2239,15 @@ def _execute_single_task(
     Returns:
         RunStatus value string
     """
+    # _execute_parallel routes dependency groups of size 1 here rather than
+    # through the pool worker, so this needs the same skip (#1032) — otherwise
+    # a single-task group whose issue closed earlier still runs.
+    if _completed_outside_the_batch(batch, task_id):
+        logger.info(
+            "Task %s already completed outside the batch — skipping", task_id
+        )
+        return batch.results[task_id]
+
     # Emit task queued event
     events.emit_for_workspace(
         workspace,
@@ -2291,7 +2308,7 @@ def _execute_single_task(
         exec_ctx.cleanup()
 
     # Record result
-    _record_task_result(batch, task_id, result_status)
+    result_status = _record_task_result(batch, task_id, result_status)
     _save_batch(workspace, batch)
 
     # Emit appropriate event based on result
@@ -2406,7 +2423,7 @@ def _execute_group_parallel(
             exec_ctx.cleanup()
 
         # Record result (thread-safe due to GIL for simple dict operations)
-        _record_task_result(batch, task_id, result_status)
+        result_status = _record_task_result(batch, task_id, result_status)
         _save_batch(workspace, batch)
 
         return task_id, batch.results[task_id]
