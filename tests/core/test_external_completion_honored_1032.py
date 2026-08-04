@@ -178,6 +178,73 @@ class TestSingleTaskGroupsAreSkippedToo:
         assert result == "COMPLETED"
 
 
+class TestForcedResumeStillOverwritesCompletedResults:
+    """The guard must not swallow `cf work batch resume --force`.
+
+    Force re-runs every task, including completed ones. Their stale COMPLETED
+    is the batch's own earlier verdict, not an external completion — if the
+    rerun fails, the batch must say so rather than keep the old success.
+    """
+
+    def test_a_forced_rerun_that_fails_replaces_the_old_COMPLETED(
+        self, workspace, three_tasks, monkeypatch
+    ):
+        from codeframe.core.conductor import BatchStatus
+
+        monkeypatch.setattr(
+            conductor, "_execute_task_subprocess",
+            lambda ws, tid, bid, **kw: "FAILED",
+        )
+        monkeypatch.setattr(conductor, "_start_reconciliation_thread",
+                            lambda *a, **k: __import__("threading").Event())
+
+        batch = _make_batch(workspace, three_tasks, {t: "COMPLETED" for t in three_tasks})
+        batch.status = BatchStatus.PARTIAL
+        conductor._save_batch(workspace, batch)
+
+        resumed = conductor.resume_batch(workspace, batch.id, force=True)
+
+        assert set(resumed.results.values()) == {"FAILED"}, (
+            "a forced rerun kept its stale COMPLETED results"
+        )
+
+    def test_an_external_completion_during_a_forced_rerun_is_still_protected(
+        self, workspace, three_tasks, monkeypatch
+    ):
+        """Clearing stale results must not reopen the hole the guard closed."""
+        from codeframe.core.conductor import BatchStatus
+
+        target = three_tasks[0]
+
+        # resume_batch reloads the batch, so the reconciler stand-in has to
+        # mutate *that* object, not the fixture's. Capture it on the way in.
+        live = []
+        real_resume_exec = conductor._execute_serial_resume
+
+        def capture(ws, b, task_ids, on_event=None):
+            live.append(b)
+            return real_resume_exec(ws, b, task_ids, on_event)
+
+        def fake_subprocess(ws, task_id, batch_id, **kwargs):
+            if task_id == target:
+                live[0].results[task_id] = "COMPLETED"  # reconciler, mid-rerun
+                return "FAILED"
+            return "FAILED"
+
+        monkeypatch.setattr(conductor, "_execute_serial_resume", capture)
+        monkeypatch.setattr(conductor, "_execute_task_subprocess", fake_subprocess)
+        monkeypatch.setattr(conductor, "_start_reconciliation_thread",
+                            lambda *a, **k: __import__("threading").Event())
+
+        batch = _make_batch(workspace, three_tasks, {t: "COMPLETED" for t in three_tasks})
+        batch.status = BatchStatus.PARTIAL
+        conductor._save_batch(workspace, batch)
+
+        resumed = conductor.resume_batch(workspace, batch.id, force=True)
+
+        assert resumed.results[target] == "COMPLETED"
+
+
 class TestEveryWriteSiteUsesTheGuard:
     def test_no_executor_writes_batch_results_directly(self):
         """A guard that four of five call sites bypass guards nothing.

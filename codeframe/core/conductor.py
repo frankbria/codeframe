@@ -1214,6 +1214,16 @@ def resume_batch(
     if on_event:
         on_event("batch_resumed", {"batch_id": batch_id, "task_count": len(tasks_to_run)})
 
+    # Void the prior result of every task about to be re-run. Deciding to
+    # re-run a task is deciding its last verdict no longer stands, and
+    # ``_record_task_result`` refuses to overwrite a recorded COMPLETED — so
+    # without this, ``resume --force`` would re-run a completed task, see it
+    # fail, and keep the stale COMPLETED (#1032). Clearing here rather than
+    # weakening the guard keeps a *new* external completion during the rerun
+    # protected, which is what the guard is for.
+    for tid in tasks_to_run:
+        batch.results.pop(tid, None)
+
     # Update status to running. This is the one intentional CANCELLED->RUNNING
     # transition, so bypass the terminal-cancel guard (#726).
     batch.status = BatchStatus.RUNNING
