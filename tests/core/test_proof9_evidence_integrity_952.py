@@ -526,3 +526,75 @@ class TestTextEndingAtTheDocstringBoundary:
 
         req = _requirement("REQ-952-10", "t", 'he said "hi"', [Gate.UNIT])
         assert 'he said "hi"' in generate_stubs(req)[Gate.UNIT]
+
+
+class TestUnreadableArtifactsAreTamper:
+    """An artifact we cannot read is one we cannot verify.
+
+    `FileNotFoundError` is only one kind of `OSError`. An artifact replaced by
+    a directory, or made unreadable, still exists — `read_bytes` then raises
+    `IsADirectoryError`/`PermissionError`, which escaped `verify_evidence`,
+    500ing the read endpoints and taking down the merge gate before it could
+    block the specific requirement or honor an override (CI review).
+    """
+
+    def _evidence(self, workspace, req, artifact):
+        from codeframe.core.proof.evidence import attach_evidence
+
+        return attach_evidence(
+            workspace, req.id, Gate.UNIT, str(artifact), GateOutcome.PASSED, "run-1"
+        )
+
+    def test_an_artifact_replaced_by_a_directory_is_tamper(
+        self, workspace, req, tmp_path
+    ):
+        from codeframe.core.proof.evidence import EvidenceTamperError, verify_evidence
+
+        artifact = tmp_path / "a.txt"
+        artifact.write_text("output")
+        ev = self._evidence(workspace, req, artifact)
+
+        artifact.unlink()
+        artifact.mkdir()
+
+        with pytest.raises(EvidenceTamperError):
+            verify_evidence(ev)
+
+    def test_an_unreadable_artifact_is_tamper(self, workspace, req, tmp_path):
+        import os
+
+        from codeframe.core.proof.evidence import EvidenceTamperError, verify_evidence
+
+        artifact = tmp_path / "a.txt"
+        artifact.write_text("output")
+        ev = self._evidence(workspace, req, artifact)
+
+        artifact.chmod(0o000)
+        if os.access(artifact, os.R_OK):  # root, or a filesystem ignoring mode
+            pytest.skip("cannot make a file unreadable in this environment")
+        try:
+            with pytest.raises(EvidenceTamperError):
+                verify_evidence(ev)
+        finally:
+            artifact.chmod(0o644)
+
+    def test_the_merge_gate_blocks_rather_than_raising(
+        self, workspace, tmp_path
+    ):
+        """The gate must still name the requirement, not die on the read."""
+        from codeframe.core.proof.evidence import attach_evidence, list_blocking_requirements
+        from codeframe.core.proof.ledger import save_requirement
+
+        r = _requirement("REQ-952-11", "proven", "d", [Gate.UNIT])
+        r.status = ReqStatus.SATISFIED
+        save_requirement(workspace, r)
+        artifact = tmp_path / "b.txt"
+        artifact.write_text("output")
+        attach_evidence(
+            workspace, r.id, Gate.UNIT, str(artifact), GateOutcome.PASSED, "run-1"
+        )
+
+        artifact.unlink()
+        artifact.mkdir()
+
+        assert [x.id for x in list_blocking_requirements(workspace)] == [r.id]

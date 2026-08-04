@@ -84,10 +84,16 @@ def verify_evidence(evidence: Evidence) -> None:
                 evidence.req_id, evidence.gate.value,
             )
             return
-    except FileNotFoundError as exc:
+    # OSError, not just FileNotFoundError: an artifact replaced by a directory
+    # or made unreadable still exists, so read_bytes raises IsADirectoryError /
+    # PermissionError instead. Those escaped, 500ing the evidence endpoints and
+    # taking down the merge gate before it could block the specific requirement
+    # or honor an override (codex review on #1080). An artifact we cannot read
+    # is an artifact we cannot verify, which is the tamper state.
+    except OSError as exc:
         raise EvidenceTamperError(
             f"Evidence artifact for {evidence.req_id}/{evidence.gate.value} "
-            f"is missing: {evidence.artifact_path}"
+            f"cannot be read: {evidence.artifact_path} ({exc.__class__.__name__})"
         ) from exc
 
     raise EvidenceTamperError(
