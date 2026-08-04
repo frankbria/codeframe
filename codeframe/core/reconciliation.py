@@ -12,8 +12,9 @@ conductor.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Optional
 
 from codeframe.core import blockers, tasks
 from codeframe.core.state_machine import TaskStatus
@@ -22,6 +23,15 @@ if TYPE_CHECKING:
     from codeframe.core.workspace import Workspace
 
 logger = logging.getLogger(__name__)
+
+#: How long a fetched issue state is trusted. An order of magnitude above the
+#: 30s reconciliation interval, so a long batch costs a handful of calls per
+#: linked issue rather than one per tick.
+_ISSUE_STATE_TTL_SECONDS = 300.0
+
+#: Bound on distinct issues cached per batch. Reconciliation only ever asks
+#: about the batch's own tasks, so this is a runaway guard, not a tuning knob.
+_ISSUE_STATE_CACHE_MAX = 512
 
 
 @dataclass
@@ -44,6 +54,133 @@ class ReconciliationResult:
     errors: list[str] = field(default_factory=list)
 
 
+def _default_fetch_issue_state(pat: str, repo: str, number: int) -> str:
+    """Fetch one issue's ``"open"``/``"closed"`` state from GitHub.
+
+    Runs the async service call to completion on this thread — reconciliation
+    is a plain daemon thread with no event loop of its own.
+    """
+    import asyncio
+
+    from codeframe.core.github_issues_service import get_issue
+
+    issue = asyncio.run(get_issue(pat, repo, number))
+    return issue["state"]
+
+
+def _default_pat() -> Optional[str]:
+    """Resolve the machine-wide GitHub PAT, or ``None`` if there is none.
+
+    Same source and same limitation as the auto-close path (``tasks.
+    _dispatch_github_autoclose``): reconciliation runs on a background thread
+    with no request-scoped user, so per-user stored PATs are not reachable here.
+    """
+    try:
+        from codeframe.core.credentials import CredentialManager, CredentialProvider
+
+        return CredentialManager().get_credential(CredentialProvider.GIT_GITHUB)
+    except Exception:  # noqa: BLE001 - never break a batch over credential lookup
+        logger.debug("GitHub PAT lookup failed for reconciliation", exc_info=True)
+        return None
+
+
+class GitHubIssueState:
+    """Answers "has this task's linked GitHub issue been closed?" (#1032).
+
+    #921 removed an injectable issue-check parameter because it was wired at no
+    call site. The hard part it skipped is cost: reconciliation ticks every 30s
+    over every active task, so the naive version is one API call per task per
+    tick against a single machine-wide PAT. Three things bound that, and each
+    one is a test in ``test_github_issue_reconciliation_1032.py``:
+
+    * A task with no ``github_issue_number`` (or no source URL to name a repo)
+      never reaches the network. Most tasks are not imported from GitHub.
+    * Answers are cached per ``(repo, number)`` for ``ttl_seconds``.
+    * The first missing PAT or GitHub failure **disables the checker for the
+      rest of the batch** and logs once. A GitHub outage must never fail a
+      batch, and retrying every 30s through one is how you get rate-limited —
+      so this doubles as the back-off.
+
+    The repo comes from the task's own ``external_url``, not the workspace's
+    current connection, matching auto-close (#565): a workspace may have been
+    reconnected to a different repository since the task was imported.
+    """
+
+    def __init__(
+        self,
+        *,
+        fetch: Optional[Callable[[str, str, int], str]] = None,
+        pat: Optional[str] = None,
+        ttl_seconds: float = _ISSUE_STATE_TTL_SECONDS,
+        now: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._fetch = fetch if fetch is not None else _default_fetch_issue_state
+        self._pat = pat
+        self._pat_resolved = pat is not None
+        self._ttl = ttl_seconds
+        self._now = now
+        self._cache: dict[tuple[str, int], tuple[bool, float]] = {}
+        self._disabled = False
+
+    def is_closed(self, task) -> bool:
+        """Whether the task's linked issue is closed on GitHub.
+
+        Returns ``False`` — never raises — for every "don't know" case: no
+        linked issue, no PAT, GitHub unreachable, checker already disabled.
+        Reconciliation acts on a ``True`` only, so an unknown state leaves the
+        task running, which is the safe direction.
+        """
+        if self._disabled:
+            return False
+
+        # Type-check rather than trust: this runs on a background thread, and
+        # anything raising here would surface as a reconciliation *error* on an
+        # otherwise healthy tick. ``_repo_from_issue_url`` only guards against
+        # ValueError/AttributeError, so a non-str URL would escape it.
+        number = getattr(task, "github_issue_number", None)
+        url = getattr(task, "external_url", None)
+        if not isinstance(number, int) or not isinstance(url, str):
+            return False
+        repo = tasks._repo_from_issue_url(url)
+        if repo is None:
+            return False
+
+        key = (repo, number)
+        cached = self._cache.get(key)
+        if cached is not None and cached[1] > self._now():
+            return cached[0]
+
+        pat = self._resolve_pat()
+        if pat is None:
+            self._disable("no GitHub PAT is configured")
+            return False
+
+        try:
+            state = self._fetch(pat, repo, int(number))
+        except Exception as exc:  # noqa: BLE001 - an outage must not fail a batch
+            self._disable(f"GitHub issue lookup failed ({exc})")
+            return False
+
+        closed = str(state).lower() == "closed"
+        if len(self._cache) >= _ISSUE_STATE_CACHE_MAX:
+            self._cache.clear()
+        self._cache[key] = (closed, self._now() + self._ttl)
+        return closed
+
+    def _resolve_pat(self) -> Optional[str]:
+        if not self._pat_resolved:
+            self._pat = _default_pat()
+            self._pat_resolved = True
+        return self._pat
+
+    def _disable(self, reason: str) -> None:
+        """Stop checking for the rest of this batch, saying why exactly once."""
+        self._disabled = True
+        logger.warning(
+            "GitHub issue reconciliation disabled for this batch: %s", reason
+        )
+
+
 class ReconciliationEngine:
     """Checks tasks for external state changes and applies adjustments.
 
@@ -52,10 +189,19 @@ class ReconciliationEngine:
 
     Args:
         workspace: The workspace to check tasks in.
+        issue_state: GitHub issue-state checker. Constructed by default, so
+            both conductor call sites get it without passing anything — unlike
+            the parameter #921 removed, which was passed at neither. Injected
+            by tests.
     """
 
-    def __init__(self, workspace: Workspace) -> None:
+    def __init__(
+        self,
+        workspace: Workspace,
+        issue_state: Optional[GitHubIssueState] = None,
+    ) -> None:
         self._workspace = workspace
+        self._issue_state = issue_state if issue_state is not None else GitHubIssueState()
 
     def check_task(self, task_id: str) -> list[ExternalStateChange]:
         """Check a single task for external state changes.
@@ -90,12 +236,23 @@ class ReconciliationEngine:
                     details={"blockers_resolved": len(task_blockers)},
                 ))
 
-        # An injectable GitHub issue-state check used to hang off this point.
-        # It was passed at neither conductor call site, so it advertised a
-        # capability that did not exist. Removed rather than half-built: a real
-        # check means a network call per task per tick, against a PAT, with its
-        # own rate-limit and caching design — that is a feature with its own
-        # issue, not a parameter. (#921)
+        # The task's linked GitHub issue was closed by someone outside this
+        # batch — an external completion, exactly like a task marked DONE in
+        # the UI (#1032). Only asked for tasks that are not already finished
+        # locally: the DONE branch above has already fired for those, so a
+        # lookup would be a wasted call on every tick for the rest of the run.
+        # GitHubIssueState never raises and answers False when it does not
+        # know, so a GitHub outage leaves the batch exactly as it was.
+        elif self._issue_state.is_closed(task):
+            changes.append(ExternalStateChange(
+                task_id=task_id,
+                change_type="completed",
+                source="github",
+                details={
+                    "issue_number": task.github_issue_number,
+                    "issue_url": task.external_url,
+                },
+            ))
 
         return changes
 
