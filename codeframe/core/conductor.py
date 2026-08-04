@@ -1224,6 +1224,23 @@ def resume_batch(
     for tid in tasks_to_run:
         batch.results.pop(tid, None)
 
+    # ...and put a DONE task row back in a runnable state. The subprocess starts
+    # with runtime.start_task_run, which needs IN_PROGRESS, and the state machine
+    # allows only {READY, MERGED} out of DONE — so `resume --force` on a completed
+    # task raised InvalidTransitionError before the agent ever started. Predates
+    # this change; found reviewing the result-clearing above (#1032). Best-effort:
+    # a task that cannot be reset is left to fail on its own terms rather than
+    # taking the whole resume down.
+    from codeframe.core.state_machine import TaskStatus
+
+    for tid in tasks_to_run:
+        try:
+            task = tasks.get(workspace, tid)
+            if task is not None and task.status == TaskStatus.DONE:
+                tasks.update_status(workspace, tid, TaskStatus.READY)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not reset task %s for rerun: %s", tid, exc)
+
     # Update status to running. This is the one intentional CANCELLED->RUNNING
     # transition, so bypass the terminal-cancel guard (#726).
     batch.status = BatchStatus.RUNNING

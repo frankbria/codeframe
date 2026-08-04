@@ -245,6 +245,51 @@ class TestForcedResumeStillOverwritesCompletedResults:
         assert resumed.results[target] == "COMPLETED"
 
 
+class TestForcedResumeCanActuallyRerunADoneTask:
+    """`resume --force` never really re-ran a completed task.
+
+    Pre-existing, not caused by this branch: the row is DONE, and
+    ``runtime.start_task_run`` needs DONE -> IN_PROGRESS, which the state
+    machine forbids (DONE allows only READY, MERGED). So a forced rerun failed
+    before the agent started. Found while reviewing the results-clearing above,
+    which sits on the same path.
+    """
+
+    def test_a_done_task_is_runnable_again_after_a_forced_resume(
+        self, workspace, three_tasks, monkeypatch
+    ):
+        from codeframe.core import runtime, tasks as tasks_mod
+        from codeframe.core.conductor import BatchStatus
+        from codeframe.core.state_machine import TaskStatus
+
+        for tid in three_tasks:
+            tasks_mod.update_status(workspace, tid, TaskStatus.IN_PROGRESS)
+            tasks_mod.update_status(workspace, tid, TaskStatus.DONE)
+
+        started = []
+
+        def fake_subprocess(ws, task_id, batch_id, **kwargs):
+            # What the real subprocess does first: claim the task.
+            runtime.start_task_run(ws, task_id)
+            started.append(task_id)
+            return "COMPLETED"
+
+        monkeypatch.setattr(conductor, "_execute_task_subprocess", fake_subprocess)
+        monkeypatch.setattr(conductor, "_start_reconciliation_thread",
+                            lambda *a, **k: __import__("threading").Event())
+
+        batch = _make_batch(workspace, three_tasks, {t: "COMPLETED" for t in three_tasks})
+        batch.status = BatchStatus.PARTIAL
+        conductor._save_batch(workspace, batch)
+
+        conductor.resume_batch(workspace, batch.id, force=True)
+
+        assert started == three_tasks, (
+            "forced resume could not re-run completed tasks — DONE -> IN_PROGRESS "
+            "is refused by the state machine"
+        )
+
+
 class TestEveryWriteSiteUsesTheGuard:
     def test_no_executor_writes_batch_results_directly(self):
         """A guard that four of five call sites bypass guards nothing.
