@@ -414,3 +414,77 @@ class TestTamperedEvidenceBlocksTheMergeGate:
             assert "list_requirements(workspace, status=ReqStatus.OPEN)" not in source, (
                 f"{mod} still trusts stored status without verifying evidence"
             )
+
+
+class TestOnlyTheLatestEvidencePerGateIsChecked:
+    """Blocking on *any* historical row would be worse than the hole it closes.
+
+    Proof runs accumulate evidence rows. Deleting last month's artifacts is
+    routine housekeeping, not tampering — if every row ever recorded had to
+    verify, that cleanup would wedge the merge gate permanently.
+    """
+
+    def _satisfied_with_two_runs(self, workspace, tmp_path):
+        from codeframe.core.proof.evidence import attach_evidence
+        from codeframe.core.proof.ledger import save_requirement
+
+        req = _requirement("REQ-952-06", "proven twice", "held", [Gate.UNIT])
+        req.status = ReqStatus.SATISFIED
+        save_requirement(workspace, req)
+
+        old = tmp_path / "old.txt"
+        old.write_text("first run")
+        attach_evidence(workspace, req.id, Gate.UNIT, str(old),
+                        GateOutcome.PASSED, "run-old")
+
+        new = tmp_path / "new.txt"
+        new.write_text("second run")
+        attach_evidence(workspace, req.id, Gate.UNIT, str(new),
+                        GateOutcome.PASSED, "run-new")
+        return req, old, new
+
+    def test_a_deleted_old_artifact_does_not_block_when_the_latest_verifies(
+        self, workspace, tmp_path
+    ):
+        from codeframe.core.proof.evidence import list_blocking_requirements
+
+        req, old, new = self._satisfied_with_two_runs(workspace, tmp_path)
+        old.unlink()  # routine cleanup of a superseded artifact
+
+        assert list_blocking_requirements(workspace) == [], (
+            "cleaning up a superseded artifact permanently blocked the merge gate"
+        )
+
+    def test_tampering_with_the_latest_artifact_still_blocks(
+        self, workspace, tmp_path
+    ):
+        from codeframe.core.proof.evidence import list_blocking_requirements
+
+        req, old, new = self._satisfied_with_two_runs(workspace, tmp_path)
+        new.write_text("second run (edited)")
+
+        assert [r.id for r in list_blocking_requirements(workspace)] == [req.id]
+
+    def test_each_gate_is_judged_on_its_own_latest_evidence(
+        self, workspace, tmp_path
+    ):
+        """A stale UNIT artifact must not mask a tampered SEC one."""
+        from codeframe.core.proof.evidence import attach_evidence, list_blocking_requirements
+        from codeframe.core.proof.ledger import save_requirement
+
+        req = _requirement("REQ-952-07", "two gates", "held", [Gate.UNIT, Gate.SEC])
+        req.status = ReqStatus.SATISFIED
+        save_requirement(workspace, req)
+
+        unit = tmp_path / "unit.txt"
+        unit.write_text("unit ok")
+        attach_evidence(workspace, req.id, Gate.UNIT, str(unit),
+                        GateOutcome.PASSED, "run-1")
+        sec = tmp_path / "sec.txt"
+        sec.write_text("sec ok")
+        attach_evidence(workspace, req.id, Gate.SEC, str(sec),
+                        GateOutcome.PASSED, "run-1")
+
+        sec.write_text("sec ok (edited)")
+
+        assert [r.id for r in list_blocking_requirements(workspace)] == [req.id]

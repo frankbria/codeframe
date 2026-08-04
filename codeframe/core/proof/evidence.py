@@ -160,6 +160,13 @@ def list_blocking_requirements(workspace: Workspace) -> list[Requirement]:
       so editing its artifact afterwards left the merge gate waving the change
       through (codex review on #952).
 
+    Only the **latest** passing evidence per gate is checked, not every row
+    ever recorded. Runs accumulate evidence, and deleting last month's
+    artifacts is routine housekeeping — blocking on any historical row would
+    make that cleanup wedge the gate permanently, which is a worse failure than
+    the hole this closes (codex review). Each gate is judged separately, so a
+    stale-but-intact UNIT artifact cannot mask a tampered SEC one.
+
     A SATISFIED requirement with *no* evidence rows does not block. That is a
     pre-existing state in older ledgers, not a tamper signal, and treating it
     as one would wedge every workspace that has it. Only evidence that is
@@ -170,9 +177,14 @@ def list_blocking_requirements(workspace: Workspace) -> list[Requirement]:
     blocking = list(ledger.list_requirements(workspace, status=ReqStatus.OPEN))
 
     for req in ledger.list_requirements(workspace, status=ReqStatus.SATISFIED):
+        # list_evidence returns newest first, so the first passing row for a
+        # gate is that gate's current proof.
+        latest: dict[Gate, Evidence] = {}
         for ev in ledger.list_evidence(workspace, req.id):
-            if not ev.satisfied:
-                continue
+            if ev.satisfied:
+                latest.setdefault(ev.gate, ev)
+
+        for ev in latest.values():
             try:
                 verify_evidence(ev)
             except EvidenceTamperError as exc:
