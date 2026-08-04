@@ -187,17 +187,22 @@ def _inline(text: str) -> str:
     whitespace runs to single spaces and neutralize the sequence that can close
     a docstring from inside one.
 
-    The trailing character matters separately. Six templates butt the text
-    straight against their own closing delimiter — ``\"\"\"Proves: {description}\"\"\"``
-    — so text ending in a single quote yields four in a row: Python closes the
-    docstring on the first three and the fourth opens an unterminated literal.
-    A trailing backslash escapes the delimiter's first quote for the same
-    result. Neither is a ``\"\"\"`` run, so the replacement above does not see
-    them (CI review on #952). One space is enough to separate them, and reads
-    identically.
+    Backslashes are escaped rather than left alone. Inside a non-raw docstring
+    every ``\\x`` is an escape sequence, so a Windows path or a regex in the
+    text emits ``SyntaxWarning: invalid escape sequence`` — an error under this
+    repo's pytest config — and a *trailing* backslash escapes the template's
+    own closing delimiter outright. Doubling renders identically when the
+    docstring is read.
+
+    The trailing quote matters separately. Six templates butt the text straight
+    against their closing delimiter — ``\"\"\"Proves: {description}\"\"\"`` — so text
+    ending in one quote yields four in a row: Python closes the docstring on
+    the first three and the fourth opens an unterminated literal. That is not a
+    ``\"\"\"`` run, so the replacement above does not see it. One space separates
+    them and reads the same.
     """
-    collapsed = " ".join(str(text).split()).replace('"""', "'''")
-    return collapsed + " " if collapsed.endswith(('"', "\\")) else collapsed
+    collapsed = " ".join(str(text).split()).replace("\\", "\\\\").replace('"""', "'''")
+    return collapsed + " " if collapsed.endswith('"') else collapsed
 
 
 def _js_string(text: str) -> str:

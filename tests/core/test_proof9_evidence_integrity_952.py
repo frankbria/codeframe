@@ -502,24 +502,36 @@ class TestTextEndingAtTheDocstringBoundary:
 
     _PY_GATES = [Gate.UNIT, Gate.CONTRACT, Gate.VISUAL, Gate.A11Y, Gate.PERF, Gate.SEC]
 
-    @pytest.mark.parametrize("tail", ['"', '""', "\\", '\\"'])
+    @pytest.mark.parametrize(
+        "tail", ['"', '""', "\\", '\\"', "C:\\path", "re: \\d+", "\\n"]
+    )
     @pytest.mark.parametrize("gate", _PY_GATES)
     def test_a_description_ending_at_the_delimiter_still_parses(self, gate, tail):
+        """Also asserts no SyntaxWarning: a stray backslash makes an invalid
+        escape sequence inside a non-raw docstring, which this repo's pytest
+        config escalates to an error — so a stub that merely *parses* is not
+        enough."""
         import ast
+        import warnings
 
         from codeframe.core.proof.stubs import generate_stubs
 
         req = _requirement("REQ-952-08", "t", f"ends with {tail}", [gate])
-        ast.parse(generate_stubs(req)[gate])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            ast.parse(generate_stubs(req)[gate])
 
-    @pytest.mark.parametrize("tail", ['"', '""', "\\"])
+    @pytest.mark.parametrize("tail", ['"', '""', "\\", "C:\\path"])
     def test_a_title_ending_at_a_delimiter_still_parses(self, tail):
         import ast
+        import warnings
 
         from codeframe.core.proof.stubs import generate_stubs
 
         req = _requirement("REQ-952-09", f"ends with {tail}", "d", [Gate.UNIT])
-        ast.parse(generate_stubs(req)[Gate.UNIT])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            ast.parse(generate_stubs(req)[Gate.UNIT])
 
     def test_the_description_is_still_present_and_readable(self):
         from codeframe.core.proof.stubs import generate_stubs
