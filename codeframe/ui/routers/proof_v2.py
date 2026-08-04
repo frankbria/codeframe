@@ -16,7 +16,6 @@ Routes:
 import json
 import logging
 import time
-import uuid
 from datetime import date
 from typing import Any, Literal, Optional
 
@@ -45,7 +44,7 @@ from codeframe.core.proof.models import (
     Source,
     Waiver,
 )
-from codeframe.core.proof.runner import run_proof
+from codeframe.core.proof.runner import _new_run_id, run_proof
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.auth.dependencies import require_auth
@@ -434,7 +433,7 @@ async def run_proof_endpoint(
     """
     try:
         # Generate run_id before calling run_proof so the response ID matches evidence records
-        run_id = str(uuid.uuid4())[:8]
+        run_id = _new_run_id()
         # Offload: runs pytest/ruff etc. — blocks for minutes (#732).
         results = await run_in_threadpool(
             run_proof,

@@ -27,6 +27,19 @@ from codeframe.core.workspace import Workspace
 logger = logging.getLogger(__name__)
 
 
+def _new_run_id() -> str:
+    """A fresh proof-run identifier.
+
+    A full UUID, never a truncated one. ``str(uuid4())[:8]`` gives 32 bits, so
+    two runs in a workspace collide around 600 runs by the birthday bound — and
+    a collision merges evidence across runs, letting a passing run absorb a
+    failing run's artifacts (#952). Callers that need the id before the run
+    starts (the v2 router, so its response matches the evidence rows) use this
+    too, so there is one definition.
+    """
+    return str(uuid.uuid4())
+
+
 def _load_proof_config(workspace: Workspace) -> tuple[Optional[set[Gate]], str]:
     """Load (enabled_gates, strictness) from .codeframe/proof_config.json.
 
@@ -270,7 +283,7 @@ def run_proof(
         Dict mapping req_id → list of (Gate, GateOutcome) tuples
     """
     if not run_id:
-        run_id = str(uuid.uuid4())[:8]
+        run_id = _new_run_id()
 
     started_at = datetime.now(timezone.utc)
 

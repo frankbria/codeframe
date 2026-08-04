@@ -703,7 +703,9 @@ def get_run_evidence(workspace: Workspace, run_id: str) -> list[Evidence]:
 def check_expired_waivers(workspace: Workspace) -> list[Requirement]:
     """Find and revert expired waivers to open status."""
     _ensure_tables(workspace)
-    today = date.today().isoformat()
+    # UTC, not the machine's local date: the ledger's timestamps are UTC, so a
+    # local date makes expiry depend on the operator's timezone (#952).
+    today = datetime.now(timezone.utc).date()
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
 
@@ -720,7 +722,12 @@ def check_expired_waivers(workspace: Workspace) -> list[Requirement]:
 
     for row in rows:
         req = _row_to_requirement(row)
-        if req.waiver and req.waiver.expires and req.waiver.expires.isoformat() <= today:
+        # `<` not `<=`: the expiry date is the waiver's LAST VALID day, so a
+        # waiver expiring today must survive today. `<=` expired it a day early
+        # and spuriously blocked the #731 merge gate (#952). Compared as dates,
+        # not isoformat strings, so the comparison cannot silently go
+        # lexicographic on a malformed value.
+        if req.waiver and req.waiver.expires and req.waiver.expires < today:
             cursor.execute(
                 "UPDATE proof_requirements SET status = 'open', waiver = NULL WHERE id = ?",
                 (req.id,),

@@ -4,6 +4,7 @@ Generates skeleton test files for each proof gate obligation.
 Uses inline templates (no Jinja2 dependency for simplicity).
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import Optional
@@ -66,7 +67,7 @@ def test_contract_{slug}():
 // collects it, then run: npx playwright test tests/proof/{req_id}/{filename}.spec.ts
 import {{ test, expect }} from '@playwright/test';
 
-test('{title}', async ({{ page }}) => {{
+test({title_js}, async ({{ page }}) => {{
   // {description}
   // TODO: Navigate to the relevant page
   // TODO: Interact with the UI
@@ -176,20 +177,50 @@ def _slugify(text: str) -> str:
     return slugify(text)
 
 
+def _inline(text: str) -> str:
+    """Collapse user text to a single harmless line (#952).
+
+    Requirement titles and descriptions are free text — they reach here from a
+    captured glitch or an imported issue — and every place a template puts them
+    is line-scoped: a Python docstring, a ``//`` comment, a markdown heading. A
+    raw newline escapes that context, so the second line lands as code. Collapse
+    whitespace runs to single spaces and neutralize the only sequence that can
+    close a docstring from inside one.
+    """
+    return " ".join(str(text).split()).replace('"""', "'''")
+
+
+def _js_string(text: str) -> str:
+    """Render text as a complete, escaped JavaScript string literal.
+
+    ``test('{title}')`` broke on any apostrophe and let a crafted title close
+    the literal and append statements. JSON string syntax is a subset of
+    JavaScript's, so ``json.dumps`` produces a correct literal — quotes
+    included, which is why the template no longer supplies its own.
+    """
+    return json.dumps(str(text))
+
+
 def generate_stubs(req: Requirement) -> dict[Gate, str]:
     """Generate test stub content for each obligation in a requirement.
 
     Returns a mapping of Gate → file content string.
+
+    Title and description are untrusted free text and are escaped per the
+    context each template drops them into (#952).
     """
     result: dict[Gate, str] = {}
     slug = _slugify(req.title)
+    title = _inline(req.title)
+    description = _inline(req.description)
 
     for obligation in req.obligations:
         template = _TEMPLATES.get(obligation.gate, _TEMPLATES[Gate.UNIT])
         content = template.format(
             req_id=req.id,
-            title=req.title,
-            description=req.description,
+            title=title,
+            title_js=_js_string(title),
+            description=description,
             slug=slug,
             filename=f"test_{slug}_{obligation.gate.value}",
         )
