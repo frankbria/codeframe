@@ -1330,7 +1330,7 @@ def _run_serial_resume(
             exec_ctx.cleanup()
 
         # Record result (overwrites previous result)
-        batch.results[task_id] = result_status
+        _record_task_result(batch, task_id, result_status)
         _save_batch(workspace, batch)
 
         # Emit appropriate event based on result
@@ -1528,7 +1528,7 @@ def _run_retries(
                 exec_ctx.cleanup()
 
             # Update result
-            batch.results[task_id] = result_status
+            _record_task_result(batch, task_id, result_status)
             _save_batch(workspace, batch)
 
             if result_status == RunStatus.COMPLETED.value:
@@ -1715,6 +1715,17 @@ def _execute_serial(
             if current_batch and current_batch.status == BatchStatus.CANCELLED:
                 break
 
+            # Completed outside the batch (manually, or its linked GitHub issue
+            # was closed — #1032). Running it would spend an agent run redoing
+            # finished work, and its FAILED verdict would then be discarded by
+            # _record_task_result anyway.
+            if _completed_outside_the_batch(batch, task_id):
+                completed_count += 1
+                logger.info(
+                    "Task %s already completed outside the batch — skipping", task_id
+                )
+                continue
+
             # Check for config reloads between tasks
             if reload_state is not None:
                 _last_seen_reload = _apply_pending_config_reload(
@@ -1773,7 +1784,7 @@ def _execute_serial(
                 exec_ctx.cleanup()
 
             # Record result
-            batch.results[task_id] = result_status
+            _record_task_result(batch, task_id, result_status)
             _save_batch(workspace, batch)
 
             # Emit appropriate event based on result
@@ -2112,6 +2123,18 @@ def _execute_parallel(
 _TERMINAL_BATCH_RESULTS = frozenset({"COMPLETED"})
 
 
+def _completed_outside_the_batch(batch: "BatchRun", task_id: str) -> bool:
+    """Whether the reconciler already recorded this task as done elsewhere.
+
+    Executors call this before launching work. Without it the guard below is
+    only half a fix: it stops a worker's verdict from *overwriting* an external
+    completion, but the worker still burns an agent run on a task that is
+    already finished — e.g. one whose linked GitHub issue was closed before the
+    batch reached it (#1032).
+    """
+    return batch.results.get(task_id) in _TERMINAL_BATCH_RESULTS
+
+
 def _record_task_result(batch: "BatchRun", task_id: str, status: str) -> None:
     """Record a worker's result unless a terminal one is already recorded.
 
@@ -2268,7 +2291,7 @@ def _execute_single_task(
         exec_ctx.cleanup()
 
     # Record result
-    batch.results[task_id] = result_status
+    _record_task_result(batch, task_id, result_status)
     _save_batch(workspace, batch)
 
     # Emit appropriate event based on result
@@ -2344,6 +2367,14 @@ def _execute_group_parallel(
 
     def execute_task(task_id: str) -> tuple[str, str]:
         """Execute a single task and return (task_id, status)."""
+        # Same skip as the serial path: don't spend an agent run on a task the
+        # reconciler already completed from outside the batch (#1032).
+        if _completed_outside_the_batch(batch, task_id):
+            logger.info(
+                "Task %s already completed outside the batch — skipping", task_id
+            )
+            return task_id, batch.results[task_id]
+
         # Emit task started event
         events.emit_for_workspace(
             workspace,
