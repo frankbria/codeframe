@@ -226,6 +226,9 @@ class ReconciliationEngine:
     ) -> None:
         self._workspace = workspace
         self._issue_state = issue_state if issue_state is not None else GitHubIssueState()
+        #: Tasks already reported as blocker-resolved. The engine lives for the
+        #: batch, so this makes that report one-shot per run — see check_task.
+        self._requeued: set[str] = set()
 
     def check_task(self, task_id: str) -> list[ExternalStateChange]:
         """Check a single task for external state changes.
@@ -250,9 +253,21 @@ class ReconciliationEngine:
         # Task is blocked but all blockers have been answered
         elif task.status == TaskStatus.BLOCKED:
             task_blockers = blockers.list_for_task(self._workspace, task_id)
-            if task_blockers and all(
-                b.status.value in ("ANSWERED", "RESOLVED") for b in task_blockers
+            if (
+                task_id not in self._requeued
+                and task_blockers
+                and all(
+                    b.status.value in ("ANSWERED", "RESOLVED")
+                    for b in task_blockers
+                )
             ):
+                # One-shot per run. This branch reads only the current row,
+                # which stays BLOCKED with answered blockers until the batch
+                # ends — so once BLOCKED tasks became sweepable (#1032) it
+                # matched on every tick and re-emitted the requeue every ~30s.
+                # apply_changes' pop is idempotent, so the repeat corrupted
+                # nothing; it just made a one-shot signal into a heartbeat.
+                self._requeued.add(task_id)
                 changes.append(ExternalStateChange(
                     task_id=task_id,
                     change_type="blocker_resolved",

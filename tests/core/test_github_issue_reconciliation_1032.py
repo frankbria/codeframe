@@ -204,6 +204,56 @@ class TestClosedIssueDetected:
         assert [c.change_type for c in changes] == ["blocker_resolved"]
         assert gh.calls == [], "spent a call on a task that already had a change"
 
+    def test_a_resolved_blocker_is_reported_once_not_on_every_sweep(
+        self, monkeypatch
+    ):
+        """Once BLOCKED tasks were swept again, this branch started firing on
+        every tick: it reads only the current row, which stays BLOCKED with its
+        blockers answered until the batch ends. The pop in apply_changes is
+        idempotent so nothing corrupts, but 're-queued' is a one-shot signal,
+        not a heartbeat every 30 seconds for the rest of the run.
+        """
+        task = make_task(status=TaskStatus.BLOCKED)
+        answered = type("B", (), {"status": type("S", (), {"value": "ANSWERED"})()})()
+        monkeypatch.setattr("codeframe.core.tasks.get", lambda ws, tid: task)
+        monkeypatch.setattr(
+            "codeframe.core.blockers.list_for_task", lambda ws, tid: [answered]
+        )
+        engine = ReconciliationEngine(
+            workspace=object(),
+            issue_state=GitHubIssueState(fetch=FakeGitHub(state="open"), pat="tok"),
+        )
+
+        emitted = [
+            c.change_type for _ in range(3) for c in engine.check_task("t1")
+        ]
+
+        assert emitted == ["blocker_resolved"], (
+            f"requeue reported {len(emitted)} times across three sweeps"
+        )
+
+    def test_the_one_shot_requeue_is_per_task(self, monkeypatch):
+        """Suppressing a repeat must not suppress a different task's first."""
+        answered = type("B", (), {"status": type("S", (), {"value": "ANSWERED"})()})()
+        rows = {
+            "a": make_task(task_id="a", status=TaskStatus.BLOCKED),
+            "b": make_task(task_id="b", status=TaskStatus.BLOCKED),
+        }
+        monkeypatch.setattr("codeframe.core.tasks.get", lambda ws, tid: rows[tid])
+        monkeypatch.setattr(
+            "codeframe.core.blockers.list_for_task", lambda ws, tid: [answered]
+        )
+        engine = ReconciliationEngine(
+            workspace=object(),
+            issue_state=GitHubIssueState(fetch=FakeGitHub(state="open"), pat="tok"),
+        )
+
+        first = engine.check_all_active(["a", "b"])
+        second = engine.check_all_active(["a", "b"])
+
+        assert len(first.changes_detected) == 2
+        assert second.changes_detected == []
+
     def test_already_done_task_is_not_charged_a_github_call(self, monkeypatch):
         """The local DONE check already fires; asking GitHub would be a wasted
         call on every tick for every finished task."""
