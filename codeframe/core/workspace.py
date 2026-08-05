@@ -9,12 +9,16 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import logging
+import os
 import sqlite3
+import tempfile
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+from codeframe.core.atomic_io import fsync_directory
 
 logger = logging.getLogger(__name__)
 
@@ -968,21 +972,56 @@ def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) 
     state_dir.mkdir(exist_ok=True)
     _ensure_state_dir_ignored(state_dir)
 
-    # Initialize database
-    _init_database(db_path)
-
-    # Create workspace record
+    # Build the whole database at a temp path and only move it into place once
+    # the workspace row is committed (#954). Writing straight to state.db meant a
+    # crash between _init_database and the INSERT left a schema-complete but
+    # rowless DB; every later call then took the `db_path.exists()` branch above
+    # and get_workspace raised "contains no workspace record" forever, with no
+    # way out but deleting .codeframe by hand. Now a mid-init failure leaves no
+    # state.db at all, so `cf init` simply works on the next run.
     workspace_id = str(uuid.uuid4())
     now = _utc_now().isoformat()
 
-    conn = _open_db(db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO workspace (id, repo_path, tech_stack, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-        (workspace_id, str(repo_path), tech_stack, now, now),
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{STATE_DB_NAME}.", suffix=".tmp", dir=state_dir
     )
-    conn.commit()
-    conn.close()
+    os.close(fd)
+    tmp_db = Path(tmp_name)
+    try:
+        # mkstemp already created an empty file; sqlite is happy to build into it.
+        _init_database(tmp_db)
+
+        conn = _open_db(tmp_db)
+        try:
+            conn.execute(
+                "INSERT INTO workspace (id, repo_path, tech_stack, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (workspace_id, str(repo_path), tech_stack, now, now),
+            )
+            conn.commit()
+            # _open_db enables WAL, so committed rows can still live in the
+            # sidecar -wal file. Fold them into the main database before the
+            # rename — otherwise os.replace moves a file whose newest pages were
+            # left behind in a temp-named WAL.
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()
+
+        os.replace(tmp_db, db_path)
+        # os.replace is atomic but not durable on its own: a power loss right
+        # after it can lose the directory entry, so `cf init` would report
+        # success and come back to an uninitialized workspace (raised by
+        # `codex review`).
+        fsync_directory(state_dir)
+    except BaseException:
+        # Remove the partial DB and its WAL/SHM siblings so nothing is left to
+        # confuse the next run.
+        for leftover in (tmp_db, Path(f"{tmp_db}-wal"), Path(f"{tmp_db}-shm")):
+            try:
+                leftover.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
 
     return Workspace(
         id=workspace_id,
