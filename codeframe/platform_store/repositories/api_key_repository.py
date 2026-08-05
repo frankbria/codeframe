@@ -50,7 +50,7 @@ class APIKeyRepository(BaseRepository):
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
             expires_at_utc = expires_at.astimezone(timezone.utc).isoformat()
 
-        self._execute(
+        self._execute_write(
             """
             INSERT INTO api_keys (
                 id, user_id, name, key_hash, prefix, scopes,
@@ -69,7 +69,6 @@ class APIKeyRepository(BaseRepository):
                 expires_at_utc,
             ),
         )
-        self._commit()
 
         logger.debug(f"Created API key {key_id} for user {user_id}")
         return key_id
@@ -173,7 +172,7 @@ class APIKeyRepository(BaseRepository):
         """
         now = datetime.now(timezone.utc).isoformat()
 
-        self._execute(
+        self._execute_write(
             """
             UPDATE api_keys
             SET last_used_at = ?
@@ -181,7 +180,6 @@ class APIKeyRepository(BaseRepository):
             """,
             (now, key_id),
         )
-        self._commit()
 
     def revoke(self, key_id: str, user_id: int) -> bool:
         """Revoke an API key (soft delete).
@@ -193,7 +191,7 @@ class APIKeyRepository(BaseRepository):
         Returns:
             True if revoked, False if not found or not owned
         """
-        cursor = self._execute(
+        cursor = self._execute_write(
             """
             UPDATE api_keys
             SET is_active = 0
@@ -201,7 +199,6 @@ class APIKeyRepository(BaseRepository):
             """,
             (key_id, user_id),
         )
-        self._commit()
 
         return cursor.rowcount > 0
 
@@ -215,14 +212,13 @@ class APIKeyRepository(BaseRepository):
         Returns:
             True if deleted, False if not found or not owned
         """
-        cursor = self._execute(
+        cursor = self._execute_write(
             """
             DELETE FROM api_keys
             WHERE id = ? AND user_id = ?
             """,
             (key_id, user_id),
         )
-        self._commit()
 
         return cursor.rowcount > 0
 
