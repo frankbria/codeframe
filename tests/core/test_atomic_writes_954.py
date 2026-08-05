@@ -669,3 +669,28 @@ def test_an_explicit_mode_still_overrides_an_existing_file(tmp_path):
     atomic_io.atomic_write_bytes(target, b"new", mode=0o600)
 
     assert target.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize(
+    "junk",
+    ['["a", "b"]', '"just a string"', "42", "null", '{"installations": "x"}', "{ broken"],
+)
+def test_get_installation_history_survives_the_same_shapes_as_the_writer(installer, junk):
+    """The read side needs record_installation's shape guard too.
+
+    Raised by the claude reviewer: `data.get(...)` raises AttributeError on any
+    valid-JSON-but-not-an-object file, and `except (JSONDecodeError, IOError)`
+    does not catch that — so it propagated raw. My PR description claimed this
+    method already degraded to `{}`; that was only true for a parse failure.
+    """
+    installer.history_file.write_text(junk)
+
+    assert installer.get_installation_history() == {}
+
+
+def test_get_installation_history_still_reads_a_good_file(installer):
+    installer.history_file.write_text(
+        json.dumps({"installations": {"black": {"status": "success"}}})
+    )
+
+    assert installer.get_installation_history() == {"black": {"status": "success"}}

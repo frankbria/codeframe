@@ -651,11 +651,18 @@ class ToolInstaller:
             return {}
 
         try:
-            with open(self.history_file) as f:
+            with open(self.history_file, encoding="utf-8") as f:
                 data = json.load(f)
-            return data.get("installations", {})
-        except (json.JSONDecodeError, IOError):
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             return {}
+
+        # Same shape guard as record_installation: `["a"]`, `"str"`, `42` and
+        # `null` are all valid JSON, so json.load succeeds and `data.get(...)`
+        # then raises AttributeError — which the old `except (JSONDecodeError,
+        # IOError)` did not catch, so it propagated raw (#954 review).
+        if not isinstance(data, dict) or not isinstance(data.get("installations"), dict):
+            return {}
+        return data["installations"]
 
     def clear_installation_history(self) -> None:
         """Clear the installation history."""
