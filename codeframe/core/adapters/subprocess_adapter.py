@@ -6,6 +6,7 @@ import logging
 import shutil
 import subprocess
 import threading
+from collections import deque
 from pathlib import Path
 from typing import Callable
 
@@ -15,6 +16,23 @@ from codeframe.core.adapters.git_utils import detect_modified_files
 from codeframe.core.blocker_detection import classify_error_for_blocker
 
 logger = logging.getLogger(__name__)
+
+# Caps on how much child output the driver *retains* (#955). A delegated CLI can
+# stream for the entire timeout window, so an unbounded buffer hands the driver's
+# memory to the child. Live streaming via ``on_event`` is unaffected — these only
+# bound what is kept for the final AgentResult, and the most recent lines are
+# kept because that is where an agent's conclusion is.
+MAX_RETAINED_STDOUT_LINES = 20_000
+MAX_RETAINED_STDERR_CHARS = 1_000_000
+
+
+def _joined(lines: "deque[str]", total: int) -> str:
+    """Join retained stdout, saying so when earlier lines were dropped."""
+    text = "\n".join(lines)
+    dropped = total - len(lines)
+    if dropped > 0:
+        return f"...[{dropped} earlier line(s) truncated]...\n{text}"
+    return text
 
 
 class SubprocessAdapter:
@@ -151,7 +169,13 @@ class SubprocessAdapter:
             self._git_head(workspace_path) if self._require_file_changes else None
         )
 
-        stdout_lines: list[str] = []
+        # Bounded, not a plain list: a chatty or looping agent streams output for
+        # the whole timeout window, and retaining every line put the driver's
+        # memory under the child's control (#955). The deque keeps the most
+        # recent lines — where an agent's conclusion lives — and `on_event`
+        # still receives every line as it arrives, so live streaming is lossless.
+        stdout_lines: deque[str] = deque(maxlen=MAX_RETAINED_STDOUT_LINES)
+        stdout_line_count = 0
         stderr_chunks: list[str] = []
 
         # Deny-by-default rather than the operator's whole environment, and a
@@ -167,7 +191,12 @@ class SubprocessAdapter:
         try:
             process = subprocess.Popen(
                 cmd,
-                stdin=subprocess.PIPE if stdin_content else None,
+                # DEVNULL, never None. None *inherits* the parent's stdin, so a
+                # CLI that probes for a TTY decides it is interactive and waits
+                # for input that never comes — the run then burns the whole
+                # timeout having done nothing. DEVNULL makes every such probe
+                # answer "not a terminal" immediately (#955).
+                stdin=subprocess.PIPE if stdin_content else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=str(workspace_path),
@@ -181,8 +210,19 @@ class SubprocessAdapter:
             # Without this, if the child fills the stderr pipe buffer (~64KB)
             # before finishing stdout, both processes block indefinitely.
             def _drain_stderr() -> None:
-                if process.stderr:
-                    stderr_chunks.append(process.stderr.read())
+                if not process.stderr:
+                    return
+                # Keep draining after the cap so the child never blocks on a
+                # full pipe (the deadlock this thread exists to prevent) — just
+                # stop *retaining* past the limit.
+                retained = 0
+                while True:
+                    chunk = process.stderr.read(65536)
+                    if not chunk:
+                        break
+                    if retained < MAX_RETAINED_STDERR_CHARS:
+                        stderr_chunks.append(chunk[: MAX_RETAINED_STDERR_CHARS - retained])
+                        retained += len(chunk)
 
             stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
             stderr_thread.start()
@@ -192,10 +232,12 @@ class SubprocessAdapter:
             # forever on a hung child that keeps stdout open, never reaching
             # process.wait(timeout=...). (#736)
             def _stream_stdout() -> None:
+                nonlocal stdout_line_count
                 if process.stdout:
                     for line in process.stdout:
                         stripped = line.rstrip("\n")
                         stdout_lines.append(stripped)
+                        stdout_line_count += 1
                         if on_event:
                             on_event(AgentEvent(type="output", data={"line": stripped}))
 
@@ -234,7 +276,7 @@ class SubprocessAdapter:
                 stderr_thread.join(timeout=5)
                 return AgentResult(
                     status="failed",
-                    output="\n".join(stdout_lines),
+                    output=_joined(stdout_lines, stdout_line_count),
                     error=f"Process timed out after {self._timeout_s}s",
                 )
 
@@ -266,7 +308,7 @@ class SubprocessAdapter:
 
         result = self._map_result(
             exit_code=process.returncode,
-            stdout="\n".join(stdout_lines),
+            stdout=_joined(stdout_lines, stdout_line_count),
             stderr=stderr_output,
             workspace_path=workspace_path,
         )
