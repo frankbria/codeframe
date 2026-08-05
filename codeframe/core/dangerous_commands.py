@@ -19,10 +19,24 @@ from __future__ import annotations
 import re
 import shlex
 
+#: How the home directory can be spelled. ``~`` is the obvious one, but nothing
+#: here expands variables — ``shlex.split`` leaves ``$HOME`` as the literal token
+#: ``$HOME``, and the *shell* expands it later — so a denylist that only knows
+#: ``~`` never sees ``rm -rf $HOME`` coming (#955). ``\b`` after ``HOME`` is what
+#: keeps ``$HOMEDIR`` and ``$HOMEBREW_PREFIX`` out.
+_HOME = r"(?:~|\$\{?HOME\b\}?)"
+
+#: Interpreters that will happily execute whatever a download hands them. The
+#: pattern used to be ``(ba)?sh``, which reads as "shells" but matches exactly
+#: two of them — ``curl … | zsh`` and ``curl … | python`` walked straight past
+#: it (#955). ``\b`` at the end is load-bearing: without it ``| shasum`` matches
+#: as ``sh``.
+_INTERPRETERS = r"(?:(?:ba|z|k|da|a)?sh|fish|python[0-9.]*|perl|ruby|node|php)"
+
 # Module-level dangerous command patterns (importable by other modules like tools.py)
 DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     # Recursive delete of root or home
-    (r"\brm\s+(-[rf]+\s+)*[/~]", "recursive deletion of root or home"),
+    (rf"\brm\s+(-[rf]+\s+)*(?:/|{_HOME})", "recursive deletion of root or home"),
     (r"\brm\s+--no-preserve-root", "rm with --no-preserve-root"),
     # Writing to /dev/ devices
     (r">\s*/dev/", "redirect to /dev device"),
@@ -37,8 +51,11 @@ DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\bdd\s+if=/dev/", "dd reading from device"),
     # Dangerous chmod
     (r"\bchmod\s+(-[Rr]\s+)?777\s+/", "chmod 777 on root"),
-    # Wget/curl piped to shell (potential malware download)
-    (r"\b(wget|curl)\s+.*\|\s*(ba)?sh", "download piped to shell"),
+    # Wget/curl piped to an interpreter (potential malware download)
+    (
+        rf"\b(wget|curl)\s+.*\|\s*(?:sudo\s+)?{_INTERPRETERS}\b",
+        "download piped to interpreter",
+    ),
     # Overwriting important system files
     (r">\s*/(etc|bin|usr|lib|sbin)/", "overwriting system directory"),
     # Reaching the operator's credential store (#905). run_command already gets a
