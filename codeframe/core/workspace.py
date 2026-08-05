@@ -988,6 +988,14 @@ def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) 
     os.close(fd)
     tmp_db = Path(tmp_name)
     try:
+        # mkstemp forces 0600 and os.replace preserves it, which would silently
+        # tighten state.db from the umask-derived mode sqlite used to create it.
+        # Reproduce a normal file creation instead — permissions are not this
+        # change's business.
+        umask = os.umask(0)
+        os.umask(umask)
+        os.chmod(tmp_db, 0o666 & ~umask)
+
         # mkstemp already created an empty file; sqlite is happy to build into it.
         _init_database(tmp_db)
 

@@ -363,6 +363,25 @@ def test_workspace_init_fsyncs_the_state_dir_after_the_rename(tmp_path, monkeypa
     assert str(repo / ".codeframe") in synced
 
 
+def test_state_db_keeps_normal_create_permissions(tmp_path):
+    """Building via mkstemp must not silently tighten state.db to 0600.
+
+    mkstemp forces 0600 and os.replace preserves it; sqlite used to create the
+    file with the process umask. Permissions are not this change's business.
+    """
+    from codeframe.core import workspace as ws
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    ws.create_or_load_workspace(repo)
+
+    umask = os.umask(0)
+    os.umask(umask)
+    expected = 0o666 & ~umask
+    actual = (repo / ".codeframe" / ws.STATE_DB_NAME).stat().st_mode & 0o777
+    assert actual == expected, f"expected {oct(expected)}, got {oct(actual)}"
+
+
 def test_an_existing_workspace_is_still_loaded_not_rebuilt(tmp_path):
     from codeframe.core import workspace as ws
 
