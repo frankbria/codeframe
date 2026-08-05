@@ -46,7 +46,9 @@ def engines_list() -> None:
             engine_type = "alias → react"
 
         try:
-            reqs = check_requirements(engine)
+            # cwd, so a builtin engine's requirement reflects the provider in
+            # this workspace's .codeframe/config.yaml, not the default (#955).
+            reqs = check_requirements(engine, Path.cwd())
         except ValueError:
             reqs = {}
 
@@ -72,7 +74,7 @@ def engines_check(
     from codeframe.core.engine_registry import check_requirements
 
     try:
-        reqs = check_requirements(name)
+        reqs = check_requirements(name, Path.cwd())
     except ValueError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
