@@ -27,6 +27,8 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from codeframe.core.atomic_io import atomic_write_json, atomic_write_text
+
 logger = logging.getLogger(__name__)
 
 
@@ -579,14 +581,16 @@ def save_environment_config(workspace_path: Path, config: EnvironmentConfig) -> 
     # Must match the reader's encoding (#931). allow_unicode=True emits non-ASCII
     # verbatim, so with the locale default here a value like "café" would be
     # written as cp1252 on stock Windows and then rejected by our own UTF-8 read.
-    with open(config_file, "w", encoding="utf-8") as f:
-        yaml.dump(
-            config.to_dict(),
-            f,
-            default_flow_style=False,
-            sort_keys=False,
-            allow_unicode=True,
-        )
+    rendered = yaml.dump(
+        config.to_dict(),
+        default_flow_style=False,
+        sort_keys=False,
+        allow_unicode=True,
+    )
+    # Atomic: `open(..., "w")` truncated config.yaml before writing a byte, so a
+    # crash or a full disk mid-save left the workspace with an empty or
+    # half-written config and no way back (#954).
+    atomic_write_text(config_file, rendered)
 
 
 def get_default_environment_config() -> EnvironmentConfig:
@@ -854,8 +858,8 @@ class Config:
     def save(self, config: ProjectConfig) -> None:
         """Save project configuration."""
         self.config_dir.mkdir(parents=True, exist_ok=True)
-        with open(self.config_file, "w") as f:
-            json.dump(config.model_dump(), f, indent=2)
+        # Atomic (#954) — see save_environment_config.
+        atomic_write_json(self.config_file, config.model_dump())
         self._project_config = config
 
     def get_global(self) -> GlobalConfig:

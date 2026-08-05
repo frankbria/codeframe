@@ -39,7 +39,6 @@ import logging
 import os
 import time
 import platform
-import tempfile
 import threading
 from functools import lru_cache
 import uuid
@@ -72,6 +71,8 @@ except ImportError:  # pragma: no cover (filelock is a declared dependency)
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+from codeframe.core.atomic_io import atomic_write_bytes
 
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,17 @@ def _get_migration_locks(storage_dir: Path) -> tuple[threading.Lock, Any | None]
     if FileLock is not None:
         file_lock = FileLock(str(lock_path))
     return thread_lock, file_lock
+
+
+class CredentialStoreUnreadableError(RuntimeError):
+    """The encrypted credential file exists but cannot be read or decrypted.
+
+    Raised instead of quietly returning an empty store, because the write paths
+    do read-modify-write: treating "unreadable" as "empty" made the next save
+    overwrite every stored key with a single new entry (#954). The ciphertext is
+    still on disk when this is raised — recoverable if the original key material
+    (machine ID / ``CODEFRAME_CREDENTIAL_SECRET``) comes back.
+    """
 
 
 class CredentialSource(str, Enum):
@@ -547,14 +559,24 @@ class CredentialStore:
         return self.storage_dir / ENCRYPTED_FILE_NAME
 
     def _load_encrypted_store(self) -> dict[str, dict]:
-        """Load all credentials from encrypted file.
+        """Load all credentials from the encrypted file.
 
         Returns:
-            Dictionary of stored credentials, or empty dict if file doesn't exist.
+            Dictionary of stored credentials, or empty dict if the file does not
+            exist yet.
 
-        Note:
-            Returns empty dict on decryption failure (e.g., machine ID changed).
-            This is intentional - credentials become inaccessible on new machines.
+        Raises:
+            CredentialStoreUnreadableError: The file exists but cannot be read
+                or decrypted (machine ID changed, ``CODEFRAME_CREDENTIAL_SECRET``
+                added, VM clone, corruption, bad permissions).
+
+        This used to return ``{}`` on failure, which read as "no credentials
+        stored". The write paths do load → mutate → save, so the very next
+        ``store()`` re-encrypted that empty dict plus one new entry over the top
+        of the real file — permanently destroying every other provider key, in
+        exactly the key-rotation scenario CLAUDE.md documents (#954). Failing
+        loudly is the only safe answer: the ciphertext might still be
+        recoverable, and only if nothing overwrites it.
         """
         file_path = self._get_encrypted_file_path()
         if not file_path.exists():
@@ -566,24 +588,44 @@ class CredentialStore:
 
             fernet = self._get_fernet()
             decrypted = fernet.decrypt(encrypted_data)
-            return json.loads(decrypted.decode())
-        except InvalidToken:
-            # Decryption failed - likely machine ID changed or file corrupted
-            logger.error(
-                "Failed to decrypt credentials file. This can happen if the machine ID "
-                "changed (e.g., new machine, VM clone). Stored credentials are inaccessible. "
-                "Re-run 'cf auth setup' to reconfigure credentials."
+        except InvalidToken as e:
+            raise CredentialStoreUnreadableError(
+                "Failed to decrypt the credentials file. This happens when the "
+                "machine ID changed (new machine, VM clone) or when "
+                "CODEFRAME_CREDENTIAL_SECRET was added or changed. The stored "
+                "credentials are unreadable but have NOT been deleted. Restore the "
+                "original secret to recover them, or delete "
+                f"{file_path} and re-run 'cf auth setup' to start fresh."
+            ) from e
+        except (PermissionError, OSError) as e:
+            raise CredentialStoreUnreadableError(
+                f"Failed to read the credentials file {file_path}: {e}"
+            ) from e
+
+        try:
+            loaded = json.loads(decrypted.decode())
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            raise CredentialStoreUnreadableError(
+                f"Credentials file {file_path} decrypted but is not valid JSON: {e}"
+            ) from e
+
+        if not isinstance(loaded, dict):
+            raise CredentialStoreUnreadableError(
+                f"Credentials file {file_path} decrypted to "
+                f"{type(loaded).__name__}, expected an object."
             )
-            return {}
-        except json.JSONDecodeError as e:
-            # Decryption succeeded but JSON is invalid - file corruption
-            logger.error(f"Credentials file corrupted (invalid JSON): {e}")
-            return {}
-        except PermissionError as e:
-            logger.error(f"Permission denied reading credentials file: {e}")
-            return {}
-        except OSError as e:
-            logger.error(f"Failed to read credentials file: {e}")
+        return loaded
+
+    def _load_encrypted_store_for_read(self) -> dict[str, dict]:
+        """``_load_encrypted_store``, degraded to ``{}`` for read-only callers.
+
+        A lookup may reasonably answer "nothing usable here" — it writes
+        nothing, so it cannot destroy anything. Write paths must NOT use this.
+        """
+        try:
+            return self._load_encrypted_store()
+        except CredentialStoreUnreadableError as e:
+            logger.error("%s", e)
             return {}
 
     def _save_encrypted_store(self, store: dict[str, dict]) -> None:
@@ -605,25 +647,13 @@ class CredentialStore:
         data = json.dumps(store).encode()
         encrypted = fernet.encrypt(data)
 
-        # Write atomically, through a name unique to this writer. A fixed
-        # ``.tmp`` let two concurrent writers share one path, so the loser's
-        # cleanup in the ``finally`` could delete the winner's in-flight file
-        # (#920).
-        fd, temp_name = tempfile.mkstemp(
-            dir=str(file_path.parent), prefix=f".{file_path.name}.", suffix=".tmp"
-        )
-        temp_path = Path(temp_name)
-        try:
-            with os.fdopen(fd, "wb") as f:
-                f.write(encrypted)
-            temp_path.chmod(0o600)
-            temp_path.replace(file_path)
-            file_path.chmod(0o600)
-        finally:
-            try:
-                temp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        # The shared helper (#954) instead of a private temp/replace copy: it
+        # keeps the per-writer unique temp name that #920 added, and adds the
+        # fsync of both the file and its directory that this path was missing —
+        # so a crash right after `cf auth setup` cannot lose the new key.
+        # ``mode`` applies 0600 *before* the rename, so the ciphertext is never
+        # briefly world-readable at its final name.
+        atomic_write_bytes(file_path, encrypted, mode=0o600)
 
     def store(self, credential: Credential) -> None:
         """Store a credential securely.
@@ -684,7 +714,7 @@ class CredentialStore:
                 logger.debug(f"Keyring retrieval failed: {e}")
 
         # Fall back to encrypted file
-        store = self._load_encrypted_store()
+        store = self._load_encrypted_store_for_read()
         if key in store:
             try:
                 return Credential.from_dict(store[key])
@@ -741,7 +771,7 @@ class CredentialStore:
         providers = []
 
         # Check encrypted file only - keyring doesn't support enumeration
-        store = self._load_encrypted_store()
+        store = self._load_encrypted_store_for_read()
         for key in store:
             try:
                 providers.append(CredentialProvider[key])
