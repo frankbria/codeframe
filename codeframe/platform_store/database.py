@@ -11,7 +11,6 @@ operations.
 """
 
 import contextlib
-import os
 import sqlite3
 import threading
 from pathlib import Path
@@ -31,12 +30,6 @@ from codeframe.platform_store.repositories import (
 from codeframe.platform_store.repositories.interactive_sessions import InteractiveSessionRepository
 
 logger = logging.getLogger(__name__)
-
-# Audit verbosity configuration
-AUDIT_VERBOSITY = os.getenv("AUDIT_VERBOSITY", "low").lower()
-if AUDIT_VERBOSITY not in ("low", "high"):
-    logger.warning(f"Invalid AUDIT_VERBOSITY='{AUDIT_VERBOSITY}', defaulting to 'low'")
-    AUDIT_VERBOSITY = "low"
 
 
 class Database:

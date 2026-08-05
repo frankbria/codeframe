@@ -24,12 +24,52 @@ DISABLED_PASSWORD = "!DISABLED!"
 _DISABLED_PASSWORD = DISABLED_PASSWORD
 
 
+def _migration_001_interactive_sessions_user_id(cursor: sqlite3.Cursor) -> None:
+    """Add ``interactive_sessions.user_id`` to databases created before #655."""
+    existing = {row[1] for row in cursor.execute("PRAGMA table_info(interactive_sessions)")}
+    if not existing:
+        # Table absent entirely — PRAGMA table_info returns no rows for an
+        # unknown table, and ALTERing it would raise "no such table".
+        return
+    if "user_id" not in existing:
+        cursor.execute(
+            "ALTER TABLE interactive_sessions ADD COLUMN user_id INTEGER "
+            "REFERENCES users(id) ON DELETE SET NULL"
+        )
+
+
 class SchemaManager:
     """Manages database schema creation and migrations.
 
     Responsible for creating all database tables, indexes, and ensuring
     schema consistency across the application.
+
+    Schema versioning (#953)
+    ------------------------
+    ``CREATE TABLE IF NOT EXISTS`` is a no-op against an existing table, so a
+    column added to a DDL block never reached an already-deployed database —
+    the upgrade looked clean and then failed on the first query naming the new
+    column. Every schema change after the initial create must therefore ship as
+    a ``MIGRATIONS`` entry.
+
+    The applied version lives in SQLite's native ``PRAGMA user_version``, so no
+    bookkeeping table is needed. ``_apply_migrations`` runs every entry whose
+    target version exceeds the stored one, in order, stamping as it goes; a
+    fresh database still runs them (they are written to be idempotent) and then
+    lands on the same version as an upgraded one.
+
+    To add a migration: append ``(SCHEMA_VERSION + 1, fn)`` to ``MIGRATIONS``
+    and bump ``SCHEMA_VERSION`` to match.
     """
+
+    #: Version a fully-migrated database reports via ``PRAGMA user_version``.
+    SCHEMA_VERSION = 1
+
+    #: Ordered ``(target_version, callable(cursor))`` pairs. Each callable must
+    #: be idempotent — it also runs once against a freshly created database.
+    MIGRATIONS = [
+        (1, _migration_001_interactive_sessions_user_id),
+    ]
 
     def __init__(self, conn: sqlite3.Connection):
         """Initialize schema manager with database connection.
@@ -62,6 +102,10 @@ class SchemaManager:
 
         # Create indexes
         self._create_indexes(cursor)
+
+        # Apply any pending schema migrations (must run after the CREATE TABLE
+        # block so a migration can ALTER a table this call just created).
+        self._apply_migrations(cursor)
 
         self.conn.commit()
 
@@ -204,15 +248,8 @@ class SchemaManager:
             )
             """
         )
-        # Migrate pre-#655 databases that created the table without user_id.
-        existing_cols = {
-            row[1] for row in cursor.execute("PRAGMA table_info(interactive_sessions)")
-        }
-        if "user_id" not in existing_cols:
-            cursor.execute(
-                "ALTER TABLE interactive_sessions ADD COLUMN user_id INTEGER "
-                "REFERENCES users(id) ON DELETE SET NULL"
-            )
+        # The pre-#655 shape (no user_id) is upgraded by migration 1, not by an
+        # ad-hoc ALTER here — see SchemaManager's class docstring.
 
         cursor.execute(
             """
@@ -314,6 +351,27 @@ class SchemaManager:
             "CREATE INDEX IF NOT EXISTS idx_workspaces_registry_last_opened "
             "ON workspaces_registry(last_opened_at DESC)"
         )
+
+    def _apply_migrations(self, cursor: sqlite3.Cursor) -> None:
+        """Run every migration newer than the database's stored version."""
+        current = cursor.execute("PRAGMA user_version").fetchone()[0]
+
+        for version, migrate in sorted(self.MIGRATIONS, key=lambda m: m[0]):
+            if version <= current:
+                continue
+            migrate(cursor)
+            # PRAGMA does not accept a bound parameter; `version` comes from our
+            # own literal table and is asserted to be an int, so no injection.
+            if not isinstance(version, int):
+                raise TypeError(f"migration version must be an int, got {version!r}")
+            cursor.execute(f"PRAGMA user_version = {version}")
+            current = version
+            logger.info("Applied platform_store schema migration to version %d", version)
+
+        if current < self.SCHEMA_VERSION:
+            # A fresh DB with no migration covering the latest version still has
+            # to be stamped, or every later start replays from 0.
+            cursor.execute(f"PRAGMA user_version = {int(self.SCHEMA_VERSION)}")
 
     def _ensure_default_admin_user(self) -> None:
         """Ensure default admin user exists in database for initial setup.

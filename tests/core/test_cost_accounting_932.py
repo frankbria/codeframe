@@ -235,7 +235,7 @@ class TestAggregatorsToleratNullCosts:
         from codeframe.core.models import CallType
 
         db = MagicMock()
-        db.get_token_usage = MagicMock(return_value=[
+        db.get_token_usage_iter = MagicMock(return_value=[
             {"estimated_cost_usd": 0.01, "input_tokens": 100, "output_tokens": 50,
              "agent_id": "a1", "model_name": "claude-sonnet-4-5", "project_id": 1,
              "call_type": CallType.OTHER.value, "timestamp": "2026-08-01T00:00:00+00:00"},
@@ -297,7 +297,7 @@ class TestUnpricedCallsIsAlwaysReported:
         from codeframe.core.models import CallType
 
         db = MagicMock()
-        db.get_token_usage = MagicMock(return_value=[
+        db.get_token_usage_iter = MagicMock(return_value=[
             {"estimated_cost_usd": 0.02, "input_tokens": 10, "output_tokens": 5,
              "agent_id": "a1", "model_name": "claude-sonnet-4-5", "project_id": 1,
              "call_type": CallType.OTHER.value,
@@ -311,7 +311,7 @@ class TestUnpricedCallsIsAlwaysReported:
     @pytest.mark.asyncio
     async def test_project_costs_reports_zero_with_no_records_at_all(self):
         db = MagicMock()
-        db.get_token_usage = MagicMock(return_value=[])
+        db.get_token_usage_iter = MagicMock(return_value=[])
 
         result = await MetricsTracker(db).get_project_costs(project_id=1)
 

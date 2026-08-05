@@ -48,7 +48,7 @@ class AuditRepository(BaseRepository):
         # and this repository was the one place bypassing it (#939). The 429
         # handler writes here from the event loop during a burst, which is
         # exactly when an unsynchronized write races another thread's.
-        cursor = self._execute(
+        cursor = self._execute_write(
             """
             INSERT INTO audit_logs (
                 event_type, user_id, resource_type, resource_id,
@@ -66,6 +66,5 @@ class AuditRepository(BaseRepository):
                 timestamp.isoformat(),
             ),
         )
-        self._commit()
         return cursor.lastrowid
 

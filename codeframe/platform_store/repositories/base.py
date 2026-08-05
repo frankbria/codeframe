@@ -1,5 +1,6 @@
 """Base repository class for database operations."""
 
+import contextlib
 import sqlite3
 import threading
 from datetime import datetime
@@ -85,6 +86,39 @@ class BaseRepository:
                 return self.conn.execute(query, params)
         else:
             return self.conn.execute(query, params)
+
+    def _execute_write(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
+        """Execute a statement and commit it as ONE locked critical section.
+
+        ``_execute(...)`` followed by ``_commit()`` takes the lock twice, which
+        is not the same thing: sqlite3 opens an implicit transaction on the
+        shared connection, so between the two acquisitions another thread can
+        slip a write in — and whichever commit lands first flushes the other
+        thread's half-written transaction. That is exactly the interleaving
+        #953 is about, and holding the lock across both closes it.
+
+        Every single-statement write in this package goes through here. A write
+        that needs several statements to land together needs a real transaction
+        (``Database.transaction()``), not this helper.
+
+        Args:
+            query: SQL statement
+            params: Statement parameters
+
+        Returns:
+            Cursor for the executed statement (``lastrowid`` / ``rowcount``).
+
+        Raises:
+            RuntimeError: If sync connection is not available
+        """
+        if self.conn is None:
+            raise RuntimeError("Sync connection not available, use async methods")
+
+        lock = self._sync_lock if self._sync_lock is not None else contextlib.nullcontext()
+        with lock:
+            cursor = self.conn.execute(query, params)
+            self.conn.commit()
+            return cursor
 
     def _fetchone(self, query: str, params: tuple = ()) -> Optional[sqlite3.Row]:
         """Fetch a single row synchronously.

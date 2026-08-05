@@ -27,7 +27,7 @@ class InteractiveSessionRepository(BaseRepository):
     ) -> dict:
         now = datetime.now(UTC).isoformat()
         session_id = str(uuid.uuid4())
-        self._execute(
+        self._execute_write(
             """
             INSERT INTO interactive_sessions
                 (id, workspace_path, task_id, state, agent_type, model,
@@ -37,7 +37,6 @@ class InteractiveSessionRepository(BaseRepository):
             """,
             (session_id, workspace_path, task_id, agent_type, model, now, now, user_id),
         )
-        self._commit()
         return self.get(session_id)
 
     def get(self, session_id: str) -> Optional[dict]:
@@ -77,11 +76,10 @@ class InteractiveSessionRepository(BaseRepository):
         Callers are responsible for validating state against VALID_STATES before calling.
         """
         now = datetime.now(UTC).isoformat()
-        self._execute(
+        self._execute_write(
             "UPDATE interactive_sessions SET state = ?, updated_at = ? WHERE id = ?",
             (state, now, session_id),
         )
-        self._commit()
 
     def update_cost(
         self, session_id: str, cost_usd: float, input_tokens: int, output_tokens: int
@@ -91,7 +89,7 @@ class InteractiveSessionRepository(BaseRepository):
         The increment is applied atomically at the DB level to prevent lost-update races.
         """
         now = datetime.now(UTC).isoformat()
-        self._execute(
+        self._execute_write(
             """
             UPDATE interactive_sessions
             SET cost_usd = cost_usd + ?, input_tokens = input_tokens + ?,
@@ -100,12 +98,11 @@ class InteractiveSessionRepository(BaseRepository):
             """,
             (cost_usd, input_tokens, output_tokens, now, session_id),
         )
-        self._commit()
 
     def end(self, session_id: str) -> Optional[dict]:
         """End a session. Returns the updated row, or None if session_id not found."""
         now = datetime.now(UTC).isoformat()
-        cursor = self._execute(
+        cursor = self._execute_write(
             """
             UPDATE interactive_sessions
             SET state = 'ended', ended_at = ?, updated_at = ?
@@ -113,7 +110,6 @@ class InteractiveSessionRepository(BaseRepository):
             """,
             (now, now, session_id),
         )
-        self._commit()
         if cursor.rowcount == 0:
             return None
         return self.get(session_id)
@@ -132,14 +128,13 @@ class InteractiveSessionRepository(BaseRepository):
         now = datetime.now(UTC).isoformat()
         message_id = str(uuid.uuid4())
         metadata_json = json.dumps(metadata) if metadata is not None else None
-        self._execute(
+        self._execute_write(
             """
             INSERT INTO session_messages (id, session_id, role, content, metadata, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
             (message_id, session_id, role, content, metadata_json, now),
         )
-        self._commit()
         return {
             "id": message_id,
             "session_id": session_id,

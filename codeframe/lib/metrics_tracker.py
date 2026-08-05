@@ -570,8 +570,9 @@ class MetricsTracker:
             >>> for agent in costs['by_agent']:
             ...     print(f"  {agent['agent_id']}: ${agent['cost_usd']:.2f}")
         """
-        # Get usage records for project (optionally filtered by date)
-        usage_records = self.db.get_token_usage(
+        # Stream the rows rather than materialising the whole table (#953) —
+        # this rollup only walks each record once.
+        usage_records = self.db.get_token_usage_iter(
             project_id=project_id, start_date=start_date, end_date=end_date
         )
 
@@ -580,7 +581,7 @@ class MetricsTracker:
             "project_id": project_id,
             "total_cost_usd": 0.0,
             "total_tokens": 0,
-            "total_calls": len(usage_records),
+            "total_calls": 0,
             # Calls whose model has no pricing: excluded from total_cost_usd
             # rather than counted as free, and surfaced so the UI can say so
             # instead of under-reporting silently (#932).
@@ -589,15 +590,13 @@ class MetricsTracker:
             "by_model": [],
         }
 
-        if not usage_records:
-            return result
-
         # Aggregate by agent
         agent_stats: Dict[str, Dict[str, Any]] = {}
         model_stats: Dict[str, Dict[str, Any]] = {}
 
         unpriced_calls = 0
         for record in usage_records:
+            result["total_calls"] += 1
             raw_cost = record["estimated_cost_usd"]
             if raw_cost is None:
                 unpriced_calls += 1
@@ -675,21 +674,19 @@ class MetricsTracker:
             >>> costs = await tracker.get_agent_costs(agent_id="backend-001")
             >>> print(f"Agent total: ${costs['total_cost_usd']:.2f}")
         """
-        # Get all usage records for agent
-        usage_records = self.db.get_token_usage(agent_id=agent_id)
+        # Stream rather than materialise the whole table (#953).
+        usage_records = self.db.get_token_usage_iter(agent_id=agent_id)
 
         # Initialize result
         result: Dict[str, Any] = {
             "agent_id": agent_id,
             "total_cost_usd": 0.0,
             "total_tokens": 0,
-            "total_calls": len(usage_records),
+            "total_calls": 0,
+            "unpriced_calls": 0,
             "by_call_type": [],
             "by_project": [],
         }
-
-        if not usage_records:
-            return result
 
         # Aggregate by call type and project
         call_type_stats: Dict[str, Dict[str, Any]] = {}
@@ -697,6 +694,7 @@ class MetricsTracker:
 
         unpriced_calls = 0
         for record in usage_records:
+            result["total_calls"] += 1
             raw_cost = record["estimated_cost_usd"]
             if raw_cost is None:
                 unpriced_calls += 1
@@ -773,8 +771,8 @@ class MetricsTracker:
             ... )
             >>> print(f"Last 7 days: ${stats['total_cost_usd']:.2f}")
         """
-        # Get usage records with date filtering
-        usage_records = self.db.get_token_usage(
+        # Stream rather than materialise the whole table (#953).
+        usage_records = self.db.get_token_usage_iter(
             project_id=project_id, start_date=start_date, end_date=end_date
         )
 
@@ -783,19 +781,18 @@ class MetricsTracker:
             "project_id": project_id,
             "total_cost_usd": 0.0,
             "total_tokens": 0,
-            "total_calls": len(usage_records),
+            "total_calls": 0,
+            "unpriced_calls": 0,
             "date_range": {
                 "start": start_date.isoformat() if start_date else None,
                 "end": end_date.isoformat() if end_date else None,
             },
         }
 
-        if not usage_records:
-            return result
-
         # Aggregate totals
         unpriced_calls = 0
         for record in usage_records:
+            result["total_calls"] += 1
             if record["estimated_cost_usd"] is None:
                 unpriced_calls += 1
             result["total_cost_usd"] += _priced(record["estimated_cost_usd"])
@@ -858,13 +855,10 @@ class MetricsTracker:
                 f"Invalid interval '{interval}'. Must be one of: {', '.join(valid_intervals)}"
             )
 
-        # Get usage records with date filtering
-        usage_records = self.db.get_token_usage(
+        # Stream rather than materialise the whole table (#953).
+        usage_records = self.db.get_token_usage_iter(
             project_id=project_id, start_date=start_date, end_date=end_date
         )
-
-        if not usage_records:
-            return []
 
         # Group records by time bucket
         buckets: dict[str, dict[str, Any]] = {}

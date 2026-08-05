@@ -214,11 +214,16 @@ class TestAuditWriteUsesTheLockedPath:
             for line in inspect.getsource(AuditRepository.create_audit_log).splitlines()
         )
 
-        assert "self._execute(" in source
+        # #953 tightened this: the statement and its commit must be ONE locked
+        # critical section (_execute_write), not _execute followed by _commit —
+        # two acquisitions leave a gap another thread's write can land in.
+        assert "self._execute_write(" in source
         assert "self.conn.cursor()" not in source, (
             "still bypassing the base repository's threading lock"
         )
-        assert "self._commit()" in source
+        assert "self._commit()" not in source, (
+            "execute and commit must share one lock acquisition"
+        )
         assert "self.conn.commit()" not in source
 
     def test_the_handler_offloads_the_write(self):
