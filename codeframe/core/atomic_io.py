@@ -34,7 +34,21 @@ __all__ = [
     "atomic_write_text",
     "atomic_write_json",
     "fsync_directory",
+    "DEFAULT_FILE_MODE",
 ]
+
+# ``tempfile.mkstemp`` forces 0600 and ``os.replace`` carries that onto the
+# target, so writing through this module would silently tighten config.yaml /
+# environment.json from the umask-derived mode ``open(path, "w")`` gave them.
+# Default to what a plain create would produce instead; callers that want
+# something stricter (the credential store) pass ``mode`` explicitly.
+#
+# Read once at import, not per call: ``os.umask`` is a read-modify-write of a
+# process-global, so doing it on every write opens a window where another
+# thread creates a world-writable file (raised by the GLM reviewer).
+_UMASK = os.umask(0)
+os.umask(_UMASK)
+DEFAULT_FILE_MODE = 0o666 & ~_UMASK
 
 
 def fsync_directory(path: Union[str, Path]) -> None:
@@ -60,15 +74,19 @@ def fsync_directory(path: Union[str, Path]) -> None:
         os.close(dir_fd)
 
 
-def atomic_write_bytes(path: Union[str, Path], data: bytes, mode: int | None = None) -> None:
+def atomic_write_bytes(
+    path: Union[str, Path], data: bytes, mode: int | None = None
+) -> None:
     """Durably replace ``path`` with ``data``.
 
     Args:
         path: Target file. Parent directories are created if missing.
         data: Bytes to write.
-        mode: Optional permission bits applied to the file before it is moved
-            into place, so it is never briefly world-readable at the target
-            name (used for the credential store's 0600).
+        mode: Permission bits applied to the file before it is moved into
+            place, so it never briefly carries the wrong mode at the target
+            name (the credential store passes 0600). Defaults to
+            ``DEFAULT_FILE_MODE`` — what ``open(path, "w")`` would have
+            produced — rather than mkstemp's 0600.
 
     Raises:
         OSError: If the write, fsync or rename fails. The existing file at
@@ -85,8 +103,7 @@ def atomic_write_bytes(path: Union[str, Path], data: bytes, mode: int | None = N
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        if mode is not None:
-            os.chmod(tmp_name, mode)
+        os.chmod(tmp_name, DEFAULT_FILE_MODE if mode is None else mode)
         os.replace(tmp_name, path)
     except BaseException:
         # Never leak the temp file — a failed save must not litter the

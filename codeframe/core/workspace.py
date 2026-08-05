@@ -11,7 +11,6 @@ This module is headless - no FastAPI or HTTP dependencies.
 import logging
 import os
 import sqlite3
-import tempfile
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -982,21 +981,17 @@ def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) 
     workspace_id = str(uuid.uuid4())
     now = _utc_now().isoformat()
 
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{STATE_DB_NAME}.", suffix=".tmp", dir=state_dir
-    )
-    os.close(fd)
-    tmp_db = Path(tmp_name)
+    # Deliberately NOT tempfile.mkstemp: that forces 0600, and os.replace
+    # preserves it, so state.db would be silently tightened from the mode sqlite
+    # gives it. Reproducing that mode by hand is also wrong — sqlite creates with
+    # a 0644 base, not open()'s 0666, so `0o666 & ~umask` turns state.db
+    # group-WRITABLE under a 002/007 umask (raised by the GLM reviewer, and my
+    # first test for it was tautological: the same formula on both sides).
+    # Letting sqlite create the file is the only version with no permission math
+    # to get wrong. uuid4 makes the name unique per writer, which is all mkstemp
+    # was buying here.
+    tmp_db = state_dir / f".{STATE_DB_NAME}.{uuid.uuid4().hex}.tmp"
     try:
-        # mkstemp forces 0600 and os.replace preserves it, which would silently
-        # tighten state.db from the umask-derived mode sqlite used to create it.
-        # Reproduce a normal file creation instead — permissions are not this
-        # change's business.
-        umask = os.umask(0)
-        os.umask(umask)
-        os.chmod(tmp_db, 0o666 & ~umask)
-
-        # mkstemp already created an empty file; sqlite is happy to build into it.
         _init_database(tmp_db)
 
         conn = _open_db(tmp_db)

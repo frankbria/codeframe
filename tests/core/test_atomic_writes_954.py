@@ -363,23 +363,112 @@ def test_workspace_init_fsyncs_the_state_dir_after_the_rename(tmp_path, monkeypa
     assert str(repo / ".codeframe") in synced
 
 
-def test_state_db_keeps_normal_create_permissions(tmp_path):
-    """Building via mkstemp must not silently tighten state.db to 0600.
+@pytest.mark.parametrize("umask_value", [0o022, 0o002, 0o007])
+def test_state_db_permissions_match_a_plain_sqlite_create(tmp_path, umask_value):
+    """state.db must land with exactly the mode sqlite would have given it.
 
-    mkstemp forces 0600 and os.replace preserves it; sqlite used to create the
-    file with the process umask. Permissions are not this change's business.
+    Compared against a *reference database sqlite creates itself*, not against a
+    formula. The first version of this test recomputed the same `0o666 & ~umask`
+    the implementation used and so passed while being wrong: sqlite creates with
+    an 0644 base, not open()'s 0666, so under a 002/007 umask that formula made
+    state.db group-WRITABLE where sqlite made it group-read-only. Caught by the
+    GLM reviewer.
     """
+    from codeframe.core import workspace as ws
+
+    old = os.umask(umask_value)
+    try:
+        reference = tmp_path / "reference.db"
+        sqlite3.connect(reference).close()
+        expected = reference.stat().st_mode & 0o777
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        ws.create_or_load_workspace(repo)
+        actual = (repo / ".codeframe" / ws.STATE_DB_NAME).stat().st_mode & 0o777
+    finally:
+        os.umask(old)
+
+    assert actual == expected, (
+        f"umask {umask_value:04o}: sqlite creates {oct(expected)}, we produced {oct(actual)}"
+    )
+
+
+def test_workspace_init_leaves_no_temp_database_behind(tmp_path):
     from codeframe.core import workspace as ws
 
     repo = tmp_path / "repo"
     repo.mkdir()
     ws.create_or_load_workspace(repo)
 
-    umask = os.umask(0)
-    os.umask(umask)
-    expected = 0o666 & ~umask
-    actual = (repo / ".codeframe" / ws.STATE_DB_NAME).stat().st_mode & 0o777
-    assert actual == expected, f"expected {oct(expected)}, got {oct(actual)}"
+    leftovers = sorted(
+        p.name for p in (repo / ".codeframe").iterdir() if ".tmp" in p.name
+    )
+    assert leftovers == []
+
+
+@pytest.mark.parametrize("umask_value", [0o022, 0o002, 0o007])
+def test_atomic_writes_keep_plain_create_permissions(tmp_path, umask_value):
+    """config.yaml / environment.json must not silently become 0600.
+
+    mkstemp forces 0600 and os.replace carries it onto the target, so every
+    caller that does not pass an explicit mode would have had its file tightened
+    the first time it was saved. Raised by the claude reviewer.
+    """
+    import importlib
+
+    from codeframe.core import atomic_io
+
+    old = os.umask(umask_value)
+    try:
+        # DEFAULT_FILE_MODE is computed at import, so reload under this umask.
+        importlib.reload(atomic_io)
+
+        reference = tmp_path / "reference.txt"
+        reference.write_text("x")
+        expected = reference.stat().st_mode & 0o777
+
+        target = tmp_path / "config.yaml"
+        atomic_io.atomic_write_text(target, "engine: react\n")
+        actual = target.stat().st_mode & 0o777
+
+        explicit = tmp_path / "secret.bin"
+        atomic_io.atomic_write_bytes(explicit, b"x", mode=0o600)
+    finally:
+        os.umask(old)
+        importlib.reload(atomic_io)
+
+    assert actual == expected, (
+        f"umask {umask_value:04o}: open() gives {oct(expected)}, we produced {oct(actual)}"
+    )
+    assert explicit.stat().st_mode & 0o777 == 0o600, "explicit mode must still win"
+
+
+def test_real_config_and_installer_files_keep_their_permissions(tmp_path, monkeypatch):
+    """End-to-end version of the above, through the actual call sites."""
+    from codeframe.core.atomic_io import DEFAULT_FILE_MODE
+    from codeframe.core.config import EnvironmentConfig, save_environment_config
+    from codeframe.core.installer import InstallResult, InstallStatus, ToolInstaller
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    save_environment_config(repo, EnvironmentConfig(engine="react"))
+    assert (repo / ".codeframe" / "config.yaml").stat().st_mode & 0o777 == DEFAULT_FILE_MODE
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    inst = ToolInstaller()
+    inst.history_dir = tmp_path / "hist"
+    inst.history_file = inst.history_dir / "environment.json"
+    inst.history_dir.mkdir(parents=True, exist_ok=True)
+    inst.record_installation(
+        InstallResult(
+            tool_name="ruff",
+            status=InstallStatus.SUCCESS,
+            message="ok",
+            command_used="uv tool install ruff",
+        )
+    )
+    assert inst.history_file.stat().st_mode & 0o777 == DEFAULT_FILE_MODE
 
 
 def test_an_existing_workspace_is_still_loaded_not_rebuilt(tmp_path):
@@ -471,3 +560,58 @@ def test_atomic_write_fsyncs_before_replace(tmp_path, monkeypatch):
 
     assert "fsync" in order, "no fsync — a crash after rename can still lose the data"
     assert order.index("fsync") < order.index("replace")
+
+
+# --- CLI: the new exception must surface as guidance, not a traceback --------
+
+
+# `setup` takes the value on stdin; `rotate` takes -v and needs --force to skip
+# the live API check. Both funnel into CredentialStore.store().
+@pytest.mark.parametrize(
+    "argv, stdin",
+    [
+        (["auth", "setup", "-p", "anthropic", "--value-stdin"], "sk-ant-api03-abcdefghijklmnop\n"),
+        (
+            ["auth", "rotate", "anthropic", "-v", "sk-ant-api03-abcdefghijklmnop", "--force"],
+            None,
+        ),
+    ],
+    ids=["setup", "rotate"],
+)
+def test_auth_commands_report_an_unreadable_store_instead_of_crashing(
+    tmp_path, monkeypatch, argv, stdin
+):
+    """`cf auth setup` after a key-material change is THE scenario here.
+
+    Raised by the claude reviewer: `remove` already caught and formatted this,
+    but `setup`/`rotate` let it escape, and `cli/app.py` has no top-level
+    handler — so the user got a raw traceback instead of the recovery text the
+    exception was written to carry.
+    """
+    from typer.testing import CliRunner
+
+    from codeframe.cli.app import app
+    from codeframe.core.credentials import CredentialStore
+
+    # Leave an undecryptable store where the manager will look.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(
+        "codeframe.core.credentials.DEFAULT_STORAGE_DIR", tmp_path / ".codeframe"
+    )
+    store = CredentialStore(storage_dir=tmp_path / ".codeframe")
+    path = store._get_encrypted_file_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"gAAAAABnot-a-valid-fernet-token")
+    original = path.read_bytes()
+
+    monkeypatch.setattr("codeframe.core.credentials.CredentialStore._check_keyring", lambda self: False)
+
+    result = CliRunner().invoke(app, argv, input=stdin)
+
+    assert result.exit_code == 1
+    assert result.exception is None or isinstance(result.exception, SystemExit), (
+        f"raw traceback escaped: {result.exception!r}"
+    )
+    assert "Error:" in result.output
+    assert "NOT been deleted" in result.output, "recovery guidance was not shown"
+    assert path.read_bytes() == original

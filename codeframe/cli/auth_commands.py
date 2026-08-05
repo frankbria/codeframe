@@ -55,6 +55,7 @@ from codeframe.core.credentials import (
     CredentialManager,
     CredentialProvider,
     CredentialSource,
+    CredentialStoreUnreadableError,
 )
 from codeframe.core.api_key_service import ApiKeyService
 from codeframe.platform_store.database import Database
@@ -668,8 +669,16 @@ def setup_credential(
         console.print("Please check the value and try again.")
         raise typer.Exit(1)
 
-    # Store credential
-    manager.set_credential(provider_enum, value)
+    # Store credential. An unreadable store now raises rather than silently
+    # overwriting itself (#954), and that lands on precisely the users this
+    # command exists for — someone re-running `cf auth setup` after adding
+    # CODEFRAME_CREDENTIAL_SECRET or moving machines. Show the exception's
+    # recovery text instead of a raw traceback (raised by the claude reviewer).
+    try:
+        manager.set_credential(provider_enum, value)
+    except CredentialStoreUnreadableError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
     console.print(f"[green]Successfully stored credential for {provider_enum.display_name}[/green]")
 
 
@@ -845,8 +854,12 @@ def rotate_credential(
             console.print("Use --force to skip validation.")
             raise typer.Exit(1)
 
-    # Rotate credential
-    manager.rotate_credential(provider_enum, value)
+    # Rotate credential (same unreadable-store handling as `setup` above).
+    try:
+        manager.rotate_credential(provider_enum, value)
+    except CredentialStoreUnreadableError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
     console.print(f"[green]Successfully rotated credential for {provider_enum.display_name}[/green]")
 
 
