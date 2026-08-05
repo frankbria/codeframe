@@ -240,6 +240,23 @@ def test_token_usage_model_has_no_session_id():
     assert "session_id" not in TokenUsage.model_fields
 
 
+def test_session_id_is_gone_from_the_whole_token_usage_api():
+    """The recording API must not offer a field that is never persisted.
+
+    Pydantic ignores unknown kwargs by default, so ``MetricsTracker`` kept
+    passing ``session_id=`` into ``TokenUsage`` after the field was removed and
+    every test still passed — only mypy caught it. This asserts the parameter
+    is gone from the callable surface, not just the model.
+    """
+    import inspect
+
+    from codeframe.lib.metrics_tracker import MetricsTracker
+
+    for name in ("record_token_usage", "record_token_usage_sync"):
+        params = inspect.signature(getattr(MetricsTracker, name)).parameters
+        assert "session_id" not in params, f"{name} still accepts a field nothing stores"
+
+
 # --- AC3: dead aggregate deleted, whole-table reads bounded or streamed ------
 
 

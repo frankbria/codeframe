@@ -240,7 +240,6 @@ class MetricsTracker:
         input_tokens: int,
         output_tokens: int,
         call_type: CallType = CallType.OTHER,
-        session_id: Optional[str] = None,  # NEW: SDK session tracking
     ) -> int:
         """Record token usage for an LLM call.
 
@@ -255,7 +254,6 @@ class MetricsTracker:
             input_tokens: Number of input tokens
             output_tokens: Number of output tokens
             call_type: Type of call (TASK_EXECUTION, CODE_REVIEW, COORDINATION, OTHER)
-            session_id: Optional SDK session ID for conversation tracking
 
         Returns:
             Database ID of the created token usage record
@@ -297,7 +295,6 @@ class MetricsTracker:
             output_tokens=output_tokens,
             estimated_cost_usd=estimated_cost,
             call_type=call_type,
-            session_id=session_id,
             timestamp=datetime.now(timezone.utc),
         )
 
@@ -321,7 +318,6 @@ class MetricsTracker:
         input_tokens: int,
         output_tokens: int,
         call_type: CallType = CallType.OTHER,
-        session_id: Optional[str] = None,
     ) -> int:
         """Record token usage for an LLM call (synchronous version).
 
@@ -336,7 +332,6 @@ class MetricsTracker:
             input_tokens: Number of input tokens
             output_tokens: Number of output tokens
             call_type: Type of call (TASK_EXECUTION, CODE_REVIEW, COORDINATION, OTHER)
-            session_id: Optional SDK session ID for conversation tracking
 
         Returns:
             Database ID of the created token usage record
@@ -359,7 +354,6 @@ class MetricsTracker:
             output_tokens=output_tokens,
             estimated_cost_usd=estimated_cost,
             call_type=call_type,
-            session_id=session_id,
             timestamp=datetime.now(timezone.utc),
         )
 
@@ -479,7 +473,7 @@ class MetricsTracker:
         fieldnames = [
             "id", "task_id", "agent_id", "project_id", "model_name",
             "input_tokens", "output_tokens", "estimated_cost_usd",
-            "actual_cost_usd", "call_type", "session_id", "timestamp",
+            "actual_cost_usd", "call_type", "timestamp",
         ]
 
         def _write(f: TextIO) -> int:
