@@ -122,7 +122,8 @@ def test_modern_uses_run_and_dir(adapter, monkeypatch, tmp_path):
 
     cmd = adapter.build_command("do a thing", tmp_path)
 
-    assert cmd == ["/usr/local/bin/kilo", "run", "--dir", str(tmp_path), "do a thing"]
+    # The prompt is no longer a positional — it goes over stdin (#955).
+    assert cmd == ["/usr/local/bin/kilo", "run", "--dir", str(tmp_path)]
 
 
 def test_modern_does_not_pass_auto(adapter, monkeypatch, tmp_path):
@@ -189,10 +190,11 @@ def test_modern_moves_an_oversized_prompt_to_stdin(adapter, monkeypatch, tmp_pat
     assert adapter.get_stdin(big) == big
 
 
-def test_a_normal_prompt_stays_positional(adapter, monkeypatch, tmp_path):
+def test_a_normal_prompt_also_goes_to_stdin(adapter, monkeypatch, tmp_path):
+    """Since #955 stdin is the only modern path — see test_kilocode_prompt_955."""
     _with_help(monkeypatch, _MODERN_HELP)
 
-    assert adapter.get_stdin("small") is None
+    assert adapter.get_stdin("small") == "small"
 
 
 def test_legacy_never_uses_stdin(adapter, monkeypatch, tmp_path):

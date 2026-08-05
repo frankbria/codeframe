@@ -29,16 +29,8 @@ _LEGACY = "legacy"  # 0.22.0: `kilo <prompt> --auto --workspace <path>`
 #: #1012). Help text is what the binary actually offers.
 _RUN_SUBCOMMAND_MARKER = "kilo run"
 
-#: Linux caps a *single* argv entry at MAX_ARG_STRLEN — 128 KiB — independently
-#: of the much larger total ARG_MAX. Same constraint opencode hit in #913.
-_MAX_ARG_BYTES = 128 * 1024
-
 #: Detection runs a subprocess, so it is cached per binary path for the process.
 _SURFACE_CACHE: dict[str, str] = {}
-
-
-def _prompt_exceeds_argv(prompt: str) -> bool:
-    return len(prompt.encode("utf-8")) >= _MAX_ARG_BYTES
 
 
 def _detect_surface(binary_path: str) -> str:
@@ -109,12 +101,15 @@ class KilocodeAdapter(SubprocessAdapter):
       got it swallowed as the prompt, opening the TUI to hang until the timeout
       having written nothing (#1012).
 
-    Prompt length: the prompt is a single argv entry, and Linux caps one entry
-    at 128 KiB (macOS at 256 KB) — well under CodeFrame's ~100K-token budget. On
-    7.x an oversized prompt goes to stdin instead, which ``kilo run`` accepts
-    when given no positional (verified: ``echo "say ok" | kilo run --dir /tmp``
-    reaches the model call). 0.22.0 has no stdin path, so there it still goes
-    positionally and fails loudly.
+    Prompt delivery: on 7.x the prompt always goes over **stdin**, never argv
+    (#955). argv is world-readable — the whole prompt, including whatever task
+    context it carries, shows up in ``ps`` for every user on the box — and Linux
+    caps a single argv entry at 128 KiB (macOS 256 KB), under CodeFrame's ~100K
+    token budget, so a large task raised ``OSError(E2BIG)`` before kilo started.
+    ``kilo run`` with no positional reads the message from stdin (verified
+    against 7.4.17: ``echo "say ok" | kilo run --dir /tmp`` reaches the model
+    call). 0.22.0 has no stdin path at all, so there the prompt stays positional
+    and an oversized one fails loudly rather than silently doing nothing.
 
     Exit codes:
         0   — success
@@ -197,9 +192,9 @@ class KilocodeAdapter(SubprocessAdapter):
             # all permissions", the 0.22 `--yolo` that #916 established must
             # stay off. Renaming --workspace to --dir while keeping --auto
             # would have silently upgraded the adapter into a permission bypass.
+            # No positional: the prompt goes over stdin (see get_stdin), keeping
+            # it out of `ps` and off the 128 KiB argv-entry ceiling (#955).
             cmd = [self._binary_path, "run", "--dir", str(workspace_path)]
-            if not _prompt_exceeds_argv(prompt):
-                cmd.append(prompt)
         else:
             # 0.22.0: bare positional prompt, --auto is merely non-interactive
             # and --yolo (never passed) is the bypass. Verified in #1012/#916.
@@ -222,21 +217,23 @@ class KilocodeAdapter(SubprocessAdapter):
         return cmd
 
     def get_stdin(self, prompt: str) -> str | None:
-        """The prompt, only when it is too large to survive as an argv entry.
-
-        Normally None — both eras take the prompt positionally. But Linux caps a
-        *single* argv entry at 128 KiB while CodeFrame budgets ~100K tokens of
-        prompt, so a large task would raise OSError(E2BIG) before kilo starts.
+        """The prompt on modern kilo; None on legacy, which has no stdin path.
 
         ``kilo run`` with no positional reads the message from stdin: verified
         against 7.4.17, where `echo "say ok" | kilo run --dir /tmp` gets past
-        message validation to the model call. The legacy CLI has no such path,
-        so an oversized prompt still goes positionally there and fails loudly
-        rather than silently doing nothing.
+        message validation to the model call.
+
+        This used to apply only to prompts over 128 KiB, the Linux cap on a
+        single argv entry. Size was never the whole problem: argv is readable by
+        every user on the machine via ``ps``, so a normal-sized prompt — task
+        description, file excerpts, whatever context was assembled — was on
+        display for the duration of the run (#955). Sending it over stdin fixes
+        both, and it is the same code path the oversized case already used.
+
+        0.22.0 takes the prompt positionally and has no stdin path, so there an
+        oversized prompt still fails loudly rather than silently doing nothing.
         """
-        if self._surface() == _MODERN and _prompt_exceeds_argv(prompt):
-            return prompt
-        return None
+        return prompt if self._surface() == _MODERN else None
 
     def _map_result(
         self,
