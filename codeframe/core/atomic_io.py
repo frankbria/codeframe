@@ -84,9 +84,10 @@ def atomic_write_bytes(
         data: Bytes to write.
         mode: Permission bits applied to the file before it is moved into
             place, so it never briefly carries the wrong mode at the target
-            name (the credential store passes 0600). Defaults to
-            ``DEFAULT_FILE_MODE`` — what ``open(path, "w")`` would have
-            produced — rather than mkstemp's 0600.
+            name (the credential store passes 0600). When omitted, the target's
+            existing permissions are preserved, and a file that does not exist
+            yet gets ``DEFAULT_FILE_MODE`` — matching ``open(path, "w")`` in
+            both cases, rather than mkstemp's 0600.
 
     Raises:
         OSError: If the write, fsync or rename fails. The existing file at
@@ -103,7 +104,20 @@ def atomic_write_bytes(
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.chmod(tmp_name, DEFAULT_FILE_MODE if mode is None else mode)
+        if mode is not None:
+            file_mode = mode
+        else:
+            # os.replace points the target name at the temp *inode*, carrying
+            # its mode along, whereas `open(path, "w")` truncated the existing
+            # inode and left its mode alone. So a fixed default would silently
+            # undo an operator's `chmod 600 .codeframe/config.yaml` on the next
+            # save. Preserve what is already there; only a file that does not
+            # exist yet gets the umask default.
+            try:
+                file_mode = path.stat().st_mode & 0o777
+            except OSError:
+                file_mode = DEFAULT_FILE_MODE
+        os.chmod(tmp_name, file_mode)
         os.replace(tmp_name, path)
     except BaseException:
         # Never leak the temp file — a failed save must not litter the

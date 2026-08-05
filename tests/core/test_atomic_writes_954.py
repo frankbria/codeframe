@@ -615,3 +615,57 @@ def test_auth_commands_report_an_unreadable_store_instead_of_crashing(
     assert "Error:" in result.output
     assert "NOT been deleted" in result.output, "recovery guidance was not shown"
     assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("hardened", [0o600, 0o640, 0o604])
+def test_an_existing_files_permissions_are_preserved(tmp_path, hardened):
+    """`open(path, "w")` truncates the inode and leaves its mode alone.
+
+    os.replace instead points the name at the temp *inode*, carrying its mode
+    with it — so a fixed default silently undid an operator's
+    `chmod 600 .codeframe/config.yaml` on the next save. Raised by the GLM
+    reviewer; third instance of this same bug class on this branch.
+    """
+    from codeframe.core import atomic_io
+
+    target = tmp_path / "config.yaml"
+    atomic_io.atomic_write_text(target, "engine: react\n")
+    os.chmod(target, hardened)
+
+    atomic_io.atomic_write_text(target, "engine: plan\n")
+
+    assert target.stat().st_mode & 0o777 == hardened, "operator hardening was undone"
+    assert target.read_text() == "engine: plan\n"
+
+
+def test_hardened_config_survives_a_real_save(tmp_path):
+    """End-to-end through save_environment_config, not just the helper."""
+    from codeframe.core.config import (
+        EnvironmentConfig,
+        load_environment_config,
+        save_environment_config,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    save_environment_config(repo, EnvironmentConfig(engine="react"))
+    cfg = repo / ".codeframe" / "config.yaml"
+    os.chmod(cfg, 0o600)
+
+    save_environment_config(repo, EnvironmentConfig(engine="plan"))
+
+    assert cfg.stat().st_mode & 0o777 == 0o600
+    assert load_environment_config(repo).engine == "plan"
+
+
+def test_an_explicit_mode_still_overrides_an_existing_file(tmp_path):
+    """Preserving must not stop the credential store from re-asserting 0600."""
+    from codeframe.core import atomic_io
+
+    target = tmp_path / "credentials.encrypted"
+    target.write_bytes(b"old")
+    os.chmod(target, 0o644)
+
+    atomic_io.atomic_write_bytes(target, b"new", mode=0o600)
+
+    assert target.stat().st_mode & 0o777 == 0o600
