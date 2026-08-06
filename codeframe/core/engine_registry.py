@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 from codeframe.core.adapters.agent_adapter import AgentAdapter
@@ -99,7 +100,9 @@ def get_external_adapter(engine: str, **kwargs: Any) -> AgentAdapter:
     elif engine == "opencode":
         from codeframe.core.adapters.opencode import OpenCodeAdapter
 
-        return OpenCodeAdapter()
+        # **kwargs, like every sibling: dropping them silently ignored the
+        # caller's timeout_s/auto_approve for this one engine (#955).
+        return OpenCodeAdapter(**kwargs)
     elif engine == "kilocode":
         from codeframe.core.adapters.kilocode import KilocodeAdapter
 
@@ -153,11 +156,16 @@ def get_builtin_adapter(
         )
 
 
-def check_requirements(engine: str) -> dict[str, bool]:
+def check_requirements(
+    engine: str, repo_path: Path | None = None
+) -> dict[str, bool]:
     """Check if an engine's requirements are met.
 
     Args:
         engine: Engine name to check.
+        repo_path: Workspace root, so a builtin engine's requirement reflects the
+            provider configured in ``.codeframe/config.yaml`` rather than the
+            default (#955). None checks the env tier only.
 
     Returns:
         Dict of requirement-name → bool (True if satisfied).
@@ -183,7 +191,9 @@ def check_requirements(engine: str) -> dict[str, bool]:
     if req_method is None or not callable(req_method):
         return {}
 
-    reqs = req_method()
+    # Builtin engines call the LLM themselves, so which key they need depends on
+    # the configured provider — the external adapters' requirements are fixed.
+    reqs = req_method(repo_path) if engine in BUILTIN_ENGINES else req_method()
     result: dict[str, bool] = {}
     for key in reqs:
         # Check environment variables for builtin engines

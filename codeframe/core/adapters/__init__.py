@@ -10,7 +10,6 @@ from codeframe.core.adapters.agent_adapter import (
     AgentContext,
     AgentEvent,
     AgentResult,
-    AgentResultStatus,
 )
 from codeframe.core.adapters.builtin import (
     BuiltinPlanAdapter,
@@ -32,7 +31,6 @@ __all__ = [
     "AgentContext",
     "AgentEvent",
     "AgentResult",
-    "AgentResultStatus",
     "BuiltinPlanAdapter",
     "BuiltinReactAdapter",
     "ClaudeCodeAdapter",

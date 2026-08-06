@@ -208,7 +208,7 @@ class TestKilocodeAdapter:
         mock_process = MagicMock()
         mock_process.stdout = iter([])
         mock_process.stderr = MagicMock()
-        mock_process.stderr.read.return_value = "kilo: fatal error"
+        mock_process.stderr.read.side_effect = ["kilo: fatal error", ""]
         mock_process.stdin = None
         mock_process.returncode = 1
         mock_process.wait.return_value = None

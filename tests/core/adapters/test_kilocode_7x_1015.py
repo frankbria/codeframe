@@ -122,7 +122,8 @@ def test_modern_uses_run_and_dir(adapter, monkeypatch, tmp_path):
 
     cmd = adapter.build_command("do a thing", tmp_path)
 
-    assert cmd == ["/usr/local/bin/kilo", "run", "--dir", str(tmp_path), "do a thing"]
+    # The prompt is no longer a positional — it goes over stdin (#955).
+    assert cmd == ["/usr/local/bin/kilo", "run", "--dir", str(tmp_path)]
 
 
 def test_modern_does_not_pass_auto(adapter, monkeypatch, tmp_path):
@@ -189,10 +190,11 @@ def test_modern_moves_an_oversized_prompt_to_stdin(adapter, monkeypatch, tmp_pat
     assert adapter.get_stdin(big) == big
 
 
-def test_a_normal_prompt_stays_positional(adapter, monkeypatch, tmp_path):
+def test_a_normal_prompt_also_goes_to_stdin(adapter, monkeypatch, tmp_path):
+    """Since #955 stdin is the only modern path — see test_kilocode_prompt_955."""
     _with_help(monkeypatch, _MODERN_HELP)
 
-    assert adapter.get_stdin("small") is None
+    assert adapter.get_stdin("small") == "small"
 
 
 def test_legacy_never_uses_stdin(adapter, monkeypatch, tmp_path):
@@ -207,13 +209,33 @@ def test_legacy_never_uses_stdin(adapter, monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(shutil.which("kilo") is None, reason="kilo not installed")
-def test_the_installed_cli_matches_one_of_the_two_known_surfaces():
-    """Pins the next rewrite: a third surface must fail here, not in production."""
+def _installed_help() -> str:
+    """`kilo --help`, or skip when the binary cannot produce help at all.
+
+    A kilo whose log directory is unwritable prints a Bun EROFS stack trace and
+    exits 1 — sandboxes and hardened CI images hit this. Since #955 that is a
+    *supported* state: detection falls back to modern, which these tests assert
+    directly. So a smoke test that reads the installed CLI has nothing to
+    measure here and must skip, not fail; asserting on a crash log would make
+    the suite red for a case the adapter handles by design.
+    """
     proc = subprocess.run(
         ["kilo", "--help"], capture_output=True, text=True, timeout=90
     )
     help_text = proc.stdout + proc.stderr
+    if proc.returncode != 0 and kilo_mod._RUN_SUBCOMMAND_MARKER not in help_text:
+        pytest.skip(
+            "`kilo --help` failed on this machine, so the installed surface is "
+            f"unknowable. Detection falls back to modern by design (#955). "
+            f"Output begins:\n{help_text[:300]}"
+        )
+    return help_text
+
+
+@pytest.mark.skipif(shutil.which("kilo") is None, reason="kilo not installed")
+def test_the_installed_cli_matches_one_of_the_two_known_surfaces():
+    """Pins the next rewrite: a third surface must fail here, not in production."""
+    help_text = _installed_help()
 
     modern = kilo_mod._RUN_SUBCOMMAND_MARKER in help_text
     legacy = "--workspace" in help_text and "--yolo" in help_text
@@ -227,6 +249,10 @@ def test_the_installed_cli_matches_one_of_the_two_known_surfaces():
 @pytest.mark.skipif(shutil.which("kilo") is None, reason="kilo not installed")
 def test_the_detected_surface_documents_the_flags_the_adapter_uses(tmp_path):
     """Whatever is installed, every flag the adapter emits must exist on it."""
+    # Skips when the binary cannot produce help, for the reason in _installed_help:
+    # the surface is unknowable, so "the flags match the CLI" is unmeasurable.
+    _installed_help()
+
     adapter = KilocodeAdapter()
     cmd = adapter.build_command("x", tmp_path)
 

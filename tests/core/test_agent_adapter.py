@@ -1,11 +1,12 @@
 """Tests for AgentAdapter protocol and supporting types.
 
-Tests the types added by #409 (AgentContext, AdapterTokenUsage, AgentResultStatus)
-merged into the canonical protocol at codeframe.core.adapters.agent_adapter.
+Tests the types added by #409 (AgentContext, AdapterTokenUsage) merged into the
+canonical protocol at codeframe.core.adapters.agent_adapter. AgentResultStatus
+was removed in #955: it had no caller and its TIMEOUT value was not assignable
+to AgentResult.status.
 
 Validates:
 - Dataclass construction with defaults and full params
-- AgentResultStatus enum values
 - AgentContext field completeness
 - AdapterTokenUsage arithmetic
 - AgentResult and AgentEvent field extensions
@@ -15,30 +16,6 @@ import pytest
 from datetime import datetime, timezone
 
 pytestmark = pytest.mark.v2
-
-
-class TestAgentResultStatus:
-    """AgentResultStatus enum covers all terminal states."""
-
-    def test_has_completed(self):
-        from codeframe.core.adapters.agent_adapter import AgentResultStatus
-        assert AgentResultStatus.COMPLETED.value == "completed"
-
-    def test_has_failed(self):
-        from codeframe.core.adapters.agent_adapter import AgentResultStatus
-        assert AgentResultStatus.FAILED.value == "failed"
-
-    def test_has_blocked(self):
-        from codeframe.core.adapters.agent_adapter import AgentResultStatus
-        assert AgentResultStatus.BLOCKED.value == "blocked"
-
-    def test_has_timeout(self):
-        from codeframe.core.adapters.agent_adapter import AgentResultStatus
-        assert AgentResultStatus.TIMEOUT.value == "timeout"
-
-    def test_is_str_enum(self):
-        from codeframe.core.adapters.agent_adapter import AgentResultStatus
-        assert isinstance(AgentResultStatus.COMPLETED, str)
 
 
 class TestAdapterTokenUsage:

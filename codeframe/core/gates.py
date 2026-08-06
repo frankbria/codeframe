@@ -594,6 +594,32 @@ def _detect_available_gates(repo_path: Path) -> list[str]:
     return gates
 
 
+def _tool_is_missing(returncode: int, stderr: Optional[str], tool_names: set[str]) -> bool:
+    """Did this command fail because the tool isn't installed, not because it failed?
+
+    ``uv``/the shell report "Failed to spawn", "command not found", or "No such
+    file or directory" when the binary isn't in the target project. The last one
+    is only accepted when the tool's own name also appears, so a missing *target
+    file* is not mistaken for a missing tool.
+
+    The distinction matters: "not installed" is SKIPPED (unverifiable), while
+    "ran and failed" is FAILED. Getting it wrong tells the user CodeFRAME thinks
+    their project is broken when it simply has no pytest (#955).
+    """
+    if returncode == 0 or not stderr:
+        return False
+    stderr_lower = stderr.lower()
+    names = {n.lower() for n in tool_names}
+    return (
+        "failed to spawn" in stderr_lower
+        or "command not found" in stderr_lower
+        or (
+            "no such file or directory" in stderr_lower
+            and any(name in stderr_lower for name in names)
+        )
+    )
+
+
 def _run_pytest(
     repo_path: Path, verbose: bool = False, test_selector: Optional[str] = None
 ) -> GateCheck:
@@ -631,6 +657,18 @@ def _run_pytest(
         )
 
         duration_ms = int((time.time() - start) * 1000)
+
+        # `shutil.which("uv")` only proves uv exists, not that the *project* has
+        # pytest — `uv run pytest` then exits non-zero with "Failed to spawn".
+        # That used to read as FAILED, i.e. "CodeFRAME says my project is
+        # broken", when the honest answer is "unverifiable" (#955).
+        if _tool_is_missing(result.returncode, result.stderr, {"pytest"}):
+            return GateCheck(
+                name="pytest",
+                status=GateStatus.SKIPPED,
+                output="pytest not found in project dependencies",
+                duration_ms=duration_ms,
+            )
 
         output = result.stdout
         if result.stderr:
@@ -1370,29 +1408,13 @@ def run_lint_on_file(
             output += "\n" + result.stderr
         output = output.strip()
 
-        # Detect tool-not-found: uv/shell report "Failed to spawn",
-        # "command not found", or "No such file or directory" when the
-        # linter binary isn't installed in the target project.
-        # Note: "no such file or directory" is only matched when the tool
-        # name also appears in stderr, to avoid false positives from
-        # missing *target* files.
-        if result.returncode != 0 and result.stderr:
-            stderr_lower = result.stderr.lower()
-            tool_names = {cfg.cmd[0].lower(), cfg.name.lower()}
-            if (
-                "failed to spawn" in stderr_lower
-                or "command not found" in stderr_lower
-                or (
-                    "no such file or directory" in stderr_lower
-                    and any(name in stderr_lower for name in tool_names)
-                )
-            ):
-                return GateCheck(
-                    name=cfg.name,
-                    status=GateStatus.SKIPPED,
-                    output=f"{cfg.name} not found in project dependencies",
-                    duration_ms=duration_ms,
-                )
+        if _tool_is_missing(result.returncode, result.stderr, {cfg.cmd[0], cfg.name}):
+            return GateCheck(
+                name=cfg.name,
+                status=GateStatus.SKIPPED,
+                output=f"{cfg.name} not found in project dependencies",
+                duration_ms=duration_ms,
+            )
 
         passed = result.returncode == 0
         check = GateCheck(

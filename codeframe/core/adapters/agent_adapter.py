@@ -9,18 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
 from pathlib import Path
 from typing import Callable, Literal, Protocol, runtime_checkable
-
-
-class AgentResultStatus(str, Enum):
-    """Terminal status from an agent execution."""
-
-    COMPLETED = "completed"
-    FAILED = "failed"
-    BLOCKED = "blocked"
-    TIMEOUT = "timeout"
 
 
 @dataclass
