@@ -209,13 +209,33 @@ def test_legacy_never_uses_stdin(adapter, monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(shutil.which("kilo") is None, reason="kilo not installed")
-def test_the_installed_cli_matches_one_of_the_two_known_surfaces():
-    """Pins the next rewrite: a third surface must fail here, not in production."""
+def _installed_help() -> str:
+    """`kilo --help`, or skip when the binary cannot produce help at all.
+
+    A kilo whose log directory is unwritable prints a Bun EROFS stack trace and
+    exits 1 — sandboxes and hardened CI images hit this. Since #955 that is a
+    *supported* state: detection falls back to modern, which these tests assert
+    directly. So a smoke test that reads the installed CLI has nothing to
+    measure here and must skip, not fail; asserting on a crash log would make
+    the suite red for a case the adapter handles by design.
+    """
     proc = subprocess.run(
         ["kilo", "--help"], capture_output=True, text=True, timeout=90
     )
     help_text = proc.stdout + proc.stderr
+    if proc.returncode != 0 and kilo_mod._RUN_SUBCOMMAND_MARKER not in help_text:
+        pytest.skip(
+            "`kilo --help` failed on this machine, so the installed surface is "
+            f"unknowable. Detection falls back to modern by design (#955). "
+            f"Output begins:\n{help_text[:300]}"
+        )
+    return help_text
+
+
+@pytest.mark.skipif(shutil.which("kilo") is None, reason="kilo not installed")
+def test_the_installed_cli_matches_one_of_the_two_known_surfaces():
+    """Pins the next rewrite: a third surface must fail here, not in production."""
+    help_text = _installed_help()
 
     modern = kilo_mod._RUN_SUBCOMMAND_MARKER in help_text
     legacy = "--workspace" in help_text and "--yolo" in help_text
@@ -229,6 +249,10 @@ def test_the_installed_cli_matches_one_of_the_two_known_surfaces():
 @pytest.mark.skipif(shutil.which("kilo") is None, reason="kilo not installed")
 def test_the_detected_surface_documents_the_flags_the_adapter_uses(tmp_path):
     """Whatever is installed, every flag the adapter emits must exist on it."""
+    # Skips when the binary cannot produce help, for the reason in _installed_help:
+    # the surface is unknowable, so "the flags match the CLI" is unmeasurable.
+    _installed_help()
+
     adapter = KilocodeAdapter()
     cmd = adapter.build_command("x", tmp_path)
 
