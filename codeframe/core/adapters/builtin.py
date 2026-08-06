@@ -7,6 +7,7 @@ supervisor retry for Plan) so the runtime can treat all engines uniformly.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -48,8 +49,6 @@ def llm_key_requirement(repo_path: Optional[Path] = None) -> dict[str, str]:
     except Exception:  # noqa: BLE001 - see below
         # A requirements *check* must not be the thing that fails on a broken or
         # untrusted workspace config; the run itself reports that properly.
-        import os
-
         provider = os.getenv("CODEFRAME_LLM_PROVIDER") or "anthropic"
 
     key = REQUIRED_KEY_ENV.get(provider)
