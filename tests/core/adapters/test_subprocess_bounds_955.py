@@ -173,3 +173,28 @@ class TestTruncationIsAlwaysDisclosed:
 
         assert "truncated" not in (result.error or "")
         assert "short failure" in (result.error or "")
+
+    def test_the_marker_survives_a_cap_crossed_on_the_final_chunk(
+        self, tmp_path, monkeypatch
+    ):
+        """The disclosure must not depend on more output arriving after the cap.
+
+        `retained` counts the *whole* chunk while only the part that fits is
+        appended, so the chunk that crosses the cap takes the retaining branch
+        and never sets the flag — only a *later* read does. When the crossing
+        chunk is the last one (total stderr between the cap and one 64 KiB read
+        above it), the loop exits with the flag still false and the dropped tail
+        reads as a complete error. Exactly the case the marker exists for.
+        (#955 review)
+        """
+        monkeypatch.setattr(sa, "MAX_RETAINED_STDERR_CHARS", 1000)
+        # 1500 chars arrive in a single read, so nothing follows the crossing.
+        script = (
+            "import sys\n"
+            "sys.stderr.write('E' * 1500); sys.stderr.flush()\n"
+            "sys.exit(1)\n"
+        )
+
+        result = _py_adapter(script, timeout_s=30).run("t", "go", tmp_path)
+
+        assert "[stderr truncated]" in (result.error or "")

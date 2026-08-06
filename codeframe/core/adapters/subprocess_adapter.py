@@ -222,13 +222,19 @@ class SubprocessAdapter:
                     chunk = process.stderr.read(65536)
                     if not chunk:
                         break
+                    # Say so, like stdout does. Silently capped stderr reads as a
+                    # complete error message, so whoever is debugging a failed
+                    # run trusts a truncated one. The flag has to be set by the
+                    # chunk that *crosses* the cap, not only by a later one:
+                    # when the crossing chunk is the last before EOF the loop
+                    # ends and there is no later one. (#955 review)
                     if retained < MAX_RETAINED_STDERR_CHARS:
-                        stderr_chunks.append(chunk[: MAX_RETAINED_STDERR_CHARS - retained])
+                        room = MAX_RETAINED_STDERR_CHARS - retained
+                        stderr_chunks.append(chunk[:room])
                         retained += len(chunk)
+                        if len(chunk) > room:
+                            stderr_truncated = True
                     else:
-                        # Say so, like stdout does. Silently capped stderr reads
-                        # as a complete error message, so whoever is debugging a
-                        # failed run trusts a truncated one. (#955 review)
                         stderr_truncated = True
 
             stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
