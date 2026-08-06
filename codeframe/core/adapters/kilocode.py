@@ -29,6 +29,12 @@ _LEGACY = "legacy"  # 0.22.0: `kilo <prompt> --auto --workspace <path>`
 #: #1012). Help text is what the binary actually offers.
 _RUN_SUBCOMMAND_MARKER = "kilo run"
 
+#: The legacy workspace flag, which 7.x renamed to ``--dir``. Legacy is chosen on
+#: this *positive* marker rather than by elimination, because "not modern" is not
+#: the same claim as "legacy" — see ``_detect_surface``. Verified against both
+#: captured help fixtures: each marker appears in exactly one of them.
+_LEGACY_WORKSPACE_MARKER = "--workspace"
+
 #: Detection runs a subprocess, so it is cached per binary path for the process.
 _SURFACE_CACHE: dict[str, str] = {}
 
@@ -53,6 +59,15 @@ def _detect_surface(binary_path: str) -> str:
     An unreadable or failing ``--help`` falls back to modern — the version any
     new install gets, and the one whose ``run`` subcommand fails loudly rather
     than opening a TUI that hangs until the timeout (#1012).
+
+    That fallback used to be a promise the code did not keep. Legacy was chosen
+    by *elimination* — anything without the modern marker — so a ``--help`` that
+    ran and printed an error still counted as evidence for legacy. A sandboxed
+    kilo whose log directory is read-only prints a Bun stack trace and exits 1;
+    the adapter concluded "legacy" and emitted ``--auto --workspace`` at a CLI
+    that has neither. Both surfaces are now chosen on a marker they actually
+    contain, so output that is not help text matches neither and falls back as
+    documented. (#955)
     """
     if binary_path in _SURFACE_CACHE:
         return _SURFACE_CACHE[binary_path]
@@ -75,7 +90,11 @@ def _detect_surface(binary_path: str) -> str:
         )
         help_text = ""
 
-    surface = _MODERN if (not help_text or _RUN_SUBCOMMAND_MARKER in help_text) else _LEGACY
+    is_legacy = (
+        _LEGACY_WORKSPACE_MARKER in help_text
+        and _RUN_SUBCOMMAND_MARKER not in help_text
+    )
+    surface = _LEGACY if is_legacy else _MODERN
     _SURFACE_CACHE[binary_path] = surface
     return surface
 

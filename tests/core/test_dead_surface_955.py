@@ -226,3 +226,49 @@ class TestTruncateHistoryNeverEmpties:
 
     def test_an_empty_history_is_unchanged(self):
         assert self._adapter()._truncate_history([]) == []
+
+
+class TestEngineCheckFindsTheWorkspaceRoot:
+    """`cf engines check` from a subdirectory must still read the workspace config.
+
+    Provider resolution reads ``.codeframe/config.yaml`` in exactly the directory
+    it is handed, so passing the raw cwd reported ANTHROPIC_API_KEY from
+    ``repo/src/`` for a workspace configured for OpenAI. Same class of bug as
+    #926. (codex review of #955)
+    """
+
+    @staticmethod
+    def _workspace(tmp_path, provider: str) -> Path:
+        cf = tmp_path / ".codeframe"
+        cf.mkdir()
+        # find_workspace_root keys on the state DB, not the directory name.
+        (cf / "state.db").write_text("")
+        (cf / "config.yaml").write_text(f"llm:\n  provider: {provider}\n")
+        return tmp_path
+
+    def test_a_subdirectory_resolves_to_the_workspace_provider(
+        self, monkeypatch, tmp_path
+    ):
+        from codeframe.cli.engines_commands import _config_root
+        from codeframe.core.engine_registry import check_requirements
+
+        monkeypatch.delenv("CODEFRAME_LLM_PROVIDER", raising=False)
+        root = self._workspace(tmp_path, "openai")
+        nested = root / "src" / "deep"
+        nested.mkdir(parents=True)
+        monkeypatch.chdir(nested)
+
+        assert _config_root() == root.resolve()
+        assert list(check_requirements("react", _config_root())) == ["OPENAI_API_KEY"]
+
+    def test_outside_any_workspace_falls_back_to_the_env_tier(
+        self, monkeypatch, tmp_path
+    ):
+        from codeframe.cli.engines_commands import _config_root
+        from codeframe.core.engine_registry import check_requirements
+
+        monkeypatch.delenv("CODEFRAME_LLM_PROVIDER", raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        assert _config_root() is None
+        assert list(check_requirements("react", _config_root())) == ["ANTHROPIC_API_KEY"]

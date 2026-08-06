@@ -123,3 +123,56 @@ class TestTheRunnerPipesIt:
                 adapter.run("t", _PROMPT, tmp_path)
 
         assert popen.call_args.kwargs["stdin"] is subprocess.PIPE
+
+
+class TestUnreadableHelpFallsBackToModern:
+    """"Not modern" is not the same claim as "legacy" (#955).
+
+    The surface used to be picked by elimination, so any ``--help`` output
+    lacking the modern marker counted as evidence *for* legacy — including
+    output that was not help text at all. A sandboxed kilo whose log directory
+    is read-only prints a Bun stack trace and exits 1; the adapter then emitted
+    ``--auto --workspace`` at a 7.x CLI, where ``--auto`` is the permission
+    bypass #916 established must stay off.
+    """
+
+    _EROFS_CRASH = (
+        "Error: Unexpected error\n\n"
+        'Unknown: FileSystem.open (/home/u/.local/share/kilo/log/opencode.log",\n'
+        ' syscall: "open",\n   errno: -30,\n    code: "EROFS"\n\n'
+        "Bun v1.3.14 (Linux x64 baseline)\n"
+    )
+
+    @pytest.mark.parametrize(
+        "help_text",
+        [
+            _EROFS_CRASH,
+            "",  # nothing at all on either stream
+            "kilo: command failed",
+        ],
+    )
+    def test_output_that_is_not_help_selects_modern(self, monkeypatch, help_text):
+        _with_help(monkeypatch, help_text)
+
+        assert kilo_mod._detect_surface("/usr/local/bin/kilo") == kilo_mod._MODERN
+
+    def test_a_crashing_help_does_not_emit_the_permission_bypass(
+        self, adapter, monkeypatch, tmp_path
+    ):
+        """The consequence that made this worth fixing."""
+        _with_help(monkeypatch, self._EROFS_CRASH)
+
+        cmd = adapter.build_command(_PROMPT, tmp_path)
+
+        assert "--auto" not in cmd
+        assert "--workspace" not in cmd
+        assert cmd == ["/usr/local/bin/kilo", "run", "--dir", str(tmp_path)]
+
+    def test_real_help_from_both_clis_still_detects_correctly(self, monkeypatch):
+        """The captured fixtures are the guard against over-correcting."""
+        _with_help(monkeypatch, _MODERN_HELP)
+        assert kilo_mod._detect_surface("/usr/local/bin/kilo") == kilo_mod._MODERN
+
+        kilo_mod._SURFACE_CACHE.clear()
+        _with_help(monkeypatch, _LEGACY_HELP)
+        assert kilo_mod._detect_surface("/usr/local/bin/kilo") == kilo_mod._LEGACY
