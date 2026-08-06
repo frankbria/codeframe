@@ -177,6 +177,7 @@ class SubprocessAdapter:
         stdout_lines: deque[str] = deque(maxlen=MAX_RETAINED_STDOUT_LINES)
         stdout_line_count = 0
         stderr_chunks: list[str] = []
+        stderr_truncated = False
 
         # Deny-by-default rather than the operator's whole environment, and a
         # per-adapter HOME rather than the one holding the credential store (#996).
@@ -215,6 +216,7 @@ class SubprocessAdapter:
                 # Keep draining after the cap so the child never blocks on a
                 # full pipe (the deadlock this thread exists to prevent) — just
                 # stop *retaining* past the limit.
+                nonlocal stderr_truncated
                 retained = 0
                 while True:
                     chunk = process.stderr.read(65536)
@@ -223,6 +225,11 @@ class SubprocessAdapter:
                     if retained < MAX_RETAINED_STDERR_CHARS:
                         stderr_chunks.append(chunk[: MAX_RETAINED_STDERR_CHARS - retained])
                         retained += len(chunk)
+                    else:
+                        # Say so, like stdout does. Silently capped stderr reads
+                        # as a complete error message, so whoever is debugging a
+                        # failed run trusts a truncated one. (#955 review)
+                        stderr_truncated = True
 
             stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
             stderr_thread.start()
@@ -303,6 +310,8 @@ class SubprocessAdapter:
             )
 
         stderr_output = "".join(stderr_chunks)
+        if stderr_truncated:
+            stderr_output += "\n...[stderr truncated]..."
 
         modified_files = self._detect_modified_files(workspace_path)
 

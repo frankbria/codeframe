@@ -138,4 +138,38 @@ class TestStderrIsBounded:
 
         assert elapsed < 30  # the child exited; it was not killed at the timeout
         assert result.error is not None
-        assert len(result.error) <= 1000
+        # Measure the retained child output, not the truncation notice appended
+        # after it — the cap bounds what the child can make us keep.
+        retained = result.error.split("\n...[stderr truncated]...")[0]
+        assert len(retained) <= 1000
+        assert set(retained) == {"E"}  # the cap kept real output, not a stub
+
+
+class TestTruncationIsAlwaysDisclosed:
+    """Silently capped output reads as complete output (#955 review).
+
+    stdout already said when it dropped lines; stderr did not, so whoever is
+    debugging a failed run would trust a truncated error message as the whole
+    story.
+    """
+
+    def test_capped_stderr_says_it_was_capped(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sa, "MAX_RETAINED_STDERR_CHARS", 1000)
+        script = (
+            "import sys\n"
+            "sys.stderr.write('E' * (200 * 1024)); sys.stderr.flush()\n"
+            "sys.exit(1)\n"
+        )
+
+        result = _py_adapter(script, timeout_s=30).run("t", "go", tmp_path)
+
+        assert "[stderr truncated]" in (result.error or "")
+
+    def test_uncapped_stderr_carries_no_marker(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sa, "MAX_RETAINED_STDERR_CHARS", 1000)
+        script = "import sys; sys.stderr.write('short failure'); sys.exit(1)"
+
+        result = _py_adapter(script, timeout_s=30).run("t", "go", tmp_path)
+
+        assert "truncated" not in (result.error or "")
+        assert "short failure" in (result.error or "")

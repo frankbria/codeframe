@@ -51,9 +51,15 @@ DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\bdd\s+if=/dev/", "dd reading from device"),
     # Dangerous chmod
     (r"\bchmod\s+(-[Rr]\s+)?777\s+/", "chmod 777 on root"),
-    # Wget/curl piped to an interpreter (potential malware download)
+    # Wget/curl piped to an interpreter (potential malware download).
+    #
+    # ``sudo`` may carry its own flags and arguments before the interpreter.
+    # Matching only a bare ``sudo bash`` looked like sudo coverage while missing
+    # every spelling people actually use — ``sudo -E bash``, ``sudo -i bash``,
+    # ``sudo -u root bash`` — so the download-to-rooted-shell case, the worst one,
+    # was the one that got through. (#955 review)
     (
-        rf"\b(wget|curl)\s+.*\|\s*(?:sudo\s+)?{_INTERPRETERS}\b",
+        rf"\b(wget|curl)\s+.*\|\s*(?:sudo(?:\s+\S+)*\s+)?{_INTERPRETERS}\b",
         "download piped to interpreter",
     ),
     # Overwriting important system files
