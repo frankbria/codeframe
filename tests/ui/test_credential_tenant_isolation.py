@@ -366,13 +366,16 @@ class TestIssueCacheInvalidationScoping:
         from codeframe.ui.routers import github_integrations_v2 as gi
 
         gi._ISSUE_CACHE.clear()
-        gi._issue_cache_set("acme/app|1|25|||1", "A-payload")
-        gi._issue_cache_set("acme/app|1|25|||2", "B-payload")
+        # Keys are tuples, user_id last (#956).
+        key_a = ("acme/app", 1, 25, "", "", 1)
+        key_b = ("acme/app", 1, 25, "", "", 2)
+        gi._issue_cache_set(key_a, "A-payload")
+        gi._issue_cache_set(key_b, "B-payload")
 
         gi._issue_cache_invalidate("acme/app", 1)
 
-        assert gi._issue_cache_get("acme/app|1|25|||1") is None
-        assert gi._issue_cache_get("acme/app|1|25|||2") == "B-payload"
+        assert gi._issue_cache_get(key_a) is None
+        assert gi._issue_cache_get(key_b) == "B-payload"
 
     def test_import_invalidates_own_cache_not_other_tenants(
         self, tenants, monkeypatch, tmp_path
@@ -402,8 +405,8 @@ class TestIssueCacheInvalidationScoping:
         gi._ISSUE_CACHE.clear()
         tenants.as_user(1).get("/api/v2/integrations/github/issues")
         tenants.as_user(2).get("/api/v2/integrations/github/issues")
-        assert any(k.endswith("|1") for k in gi._ISSUE_CACHE)
-        assert any(k.endswith("|2") for k in gi._ISSUE_CACHE)
+        assert any(k[-1] == 1 for k in gi._ISSUE_CACHE)
+        assert any(k[-1] == 2 for k in gi._ISSUE_CACHE)
 
         async def fake_get_issue(pat, repo, number, **kwargs):
             return {
@@ -420,5 +423,5 @@ class TestIssueCacheInvalidationScoping:
         )
         assert r.json()["total_created"] == 1
 
-        assert not any(k.endswith("|1") for k in gi._ISSUE_CACHE)
-        assert any(k.endswith("|2") for k in gi._ISSUE_CACHE)
+        assert not any(k[-1] == 1 for k in gi._ISSUE_CACHE)
+        assert any(k[-1] == 2 for k in gi._ISSUE_CACHE)
