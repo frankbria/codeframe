@@ -554,10 +554,26 @@ def create_new_version(
 
         prd_id = str(uuid.uuid4())
         now = _utc_now().isoformat()
-        new_version = parent_version + 1
 
         # Copy chain_id from parent (maintains version grouping)
         chain_id = parent_chain_id or parent_prd_id
+
+        # Number from MAX(version) across the CHAIN, inside this transaction —
+        # not from the parent row (#960). Deriving it from the parent meant two
+        # refines against the same parent both produced parent_version + 1, and
+        # get_version then returned an arbitrary one of the duplicates. The
+        # BEGIN IMMEDIATE above takes a RESERVED lock, so a concurrent writer
+        # blocks here until we commit and then reads the number we just used.
+        cursor.execute(
+            """
+            SELECT MAX(version) FROM prds
+            WHERE workspace_id = ? AND (chain_id = ? OR id = ?)
+            """,
+            (workspace.id, chain_id, chain_id),
+        )
+        max_row = cursor.fetchone()
+        highest = max_row[0] if max_row and max_row[0] is not None else parent_version
+        new_version = max(highest, parent_version) + 1
 
         cursor.execute(
             """
