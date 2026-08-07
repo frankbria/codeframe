@@ -150,6 +150,7 @@ def apply_template(
     template_id: str,
     issue_number: str = "1",
     context: Optional[dict[str, Any]] = None,
+    prd_id: Optional[str] = None,
 ) -> ApplyTemplateResult:
     """Apply a template to create tasks in a workspace.
 
@@ -161,12 +162,15 @@ def apply_template(
         template_id: Template ID to apply
         issue_number: Parent issue number for task numbering
         context: Optional context dict for template variables
+        prd_id: PRD to attribute the created tasks to (#962). ``cf templates
+            apply`` refuses to run without a PRD, but the tasks it created were
+            never linked to one — so they showed no provenance.
 
     Returns:
         ApplyTemplateResult with created task IDs
 
     Raises:
-        ValueError: If template not found
+        ValueError: If template not found, or a dependency index is out of range
     """
     manager = TaskTemplateManager()
     template = manager.get_template(template_id)
@@ -208,6 +212,7 @@ def apply_template(
             estimated_hours=task_dict.get("estimated_hours"),
             complexity_score=task_dict.get("complexity_score"),
             uncertainty_level=task_dict.get("uncertainty_level"),
+            prd_id=prd_id,
         )
         created_tasks.append((task, task_dict.get("depends_on_indices", [])))
 
