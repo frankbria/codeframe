@@ -1,21 +1,25 @@
 """PRD Template System for CodeFRAME.
 
-This module provides a template system for customizable PRD output formats:
-- PrdTemplateSection: Represents a single section with rendering template
+This module provides a template system describing which sections a PRD covers:
+- PrdTemplateSection: A section's title, source category and required flag
 - PrdTemplate: Contains template metadata and list of sections
-- PrdTemplateManager: Manage and render templates
+- PrdTemplateManager: Load, validate, import and export templates
 - BUILTIN_TEMPLATES: Predefined templates (standard, lean, enterprise, etc.)
+
+Templates describe *structure*, not formatting. The PRD generator reads each
+section's title/source/required to build its prompt; there is no rendering
+step. A Jinja renderer used to exist here and was deleted in #962 — it had zero
+production callers and executed template bodies loaded from repo-controlled
+YAML through a non-sandboxed environment.
 """
 
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import yaml
-from jinja2 import Environment, BaseLoader, TemplateSyntaxError
 
-from codeframe.planning.prd_template_functions import TEMPLATE_FUNCTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +32,11 @@ class PrdTemplateSection:
         id: Unique identifier for the section
         title: Human-readable section title
         source: Discovery data category to draw from (problem, users, features, etc.)
-        format_template: Jinja2 template string for rendering
+        format_template: **Inert.** Nothing renders this (#962). It was fed to a
+            non-sandboxed jinja2 Environment whose only caller was dead code —
+            a latent SSTI path, since templates load from repo-controlled
+            ``.codeframe/templates/prd/*.yaml``. The field is kept so existing
+            template YAML still loads; the PRD path uses title/source/required.
         required: Whether this section must be included (default: True)
     """
 
@@ -769,12 +777,6 @@ class PrdTemplateManager:
         if workspace_path:
             self._load_from_directory(get_project_template_dir(workspace_path))
 
-        # Set up Jinja2 environment with autoescape for defense-in-depth
-        # PRDs are markdown but could be rendered to HTML downstream
-        self._env = Environment(loader=BaseLoader(), autoescape=True)
-        for name, func in TEMPLATE_FUNCTIONS.items():
-            self._env.filters[name] = func
-
         logger.info(f"PrdTemplateManager initialized with {len(self.templates)} templates")
 
     def _load_from_directory(self, directory: Path) -> None:
@@ -842,46 +844,18 @@ class PrdTemplateManager:
         if not template.sections:
             errors.append("Template must have at least one section")
 
-        # Validate each section's Jinja2 syntax
+        # No format_template syntax check (#962): nothing renders that field
+        # any more, so "invalid Jinja2 syntax" is not a failure condition — and
+        # validating it would mean re-importing the template engine whose
+        # removal is the point. Sections are validated on the fields the PRD
+        # path actually reads.
         for section in template.sections:
-            try:
-                self._env.from_string(section.format_template)
-            except TemplateSyntaxError as e:
-                errors.append(f"Section '{section.id}' has invalid Jinja2 syntax: {e}")
+            if not section.title:
+                errors.append(f"Section '{section.id}' is missing a title")
+            if not section.source:
+                errors.append(f"Section '{section.id}' is missing a source")
 
         return errors
-
-    def render_template(
-        self, template: PrdTemplate, discovery_data: dict[str, Any]
-    ) -> str:
-        """Render a template with discovery data.
-
-        Args:
-            template: Template to render
-            discovery_data: Discovery data dictionary with keys like
-                           problem, users, features, constraints, tech_stack
-
-        Returns:
-            Rendered PRD content as markdown string
-        """
-        sections = []
-
-        for section in template.sections:
-            try:
-                jinja_template = self._env.from_string(section.format_template)
-                rendered = jinja_template.render(**discovery_data)
-                sections.append(rendered.strip())
-            except TemplateSyntaxError as e:
-                logger.error(f"Template syntax error in section {section.id}: {e}")
-                sections.append(f"## {section.title}\n\n*Template syntax error: {e}*")
-            except (KeyboardInterrupt, SystemExit):
-                raise  # Don't catch these
-            except Exception as e:
-                logger.error(f"Failed to render section {section.id}: {e}", exc_info=True)
-                sections.append(f"## {section.title}\n\n*Error rendering section. Check logs for details.*")
-
-        # Join with double newlines for proper markdown separation
-        return "\n\n".join(sections)
 
     def import_template(self, source_path: Path, persist: bool = False) -> PrdTemplate:
         """Import a template from a file.

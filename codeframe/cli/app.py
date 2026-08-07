@@ -794,7 +794,7 @@ prd_app = typer.Typer(
 # PRD templates subcommand group
 prd_templates_app = typer.Typer(
     name="templates",
-    help="PRD template management for customizable output formats",
+    help="PRD template management (section structure for AI-generated PRDs)",
     no_args_is_help=True,
 )
 
@@ -1467,7 +1467,7 @@ def prd_generate(
       /quit   - Exit without saving
       /help   - Show available commands
 
-    Use --template to select the output format:
+    Use --template to select which sections the PRD covers:
     - standard: Full PRD with all sections (default)
     - lean: Minimal PRD with problem, users, MVP features
     - enterprise: Formal PRD with compliance and traceability
@@ -6065,9 +6065,7 @@ def templates_apply(
     Requires a PRD to be added first.
     """
     from codeframe.core.workspace import get_workspace
-    from codeframe.planning.task_templates import TaskTemplateManager
-    from codeframe.core import prd, tasks
-    from codeframe.core.state_machine import TaskStatus
+    from codeframe.core import prd, tasks, templates as templates_core
 
     workspace_path = repo_path or Path.cwd()
 
@@ -6081,53 +6079,24 @@ def templates_apply(
             console.print("  codeframe prd add <file.md>")
             raise typer.Exit(1)
 
-        # Get template
-        manager = TaskTemplateManager()
-        template = manager.get_template(template_id)
-
-        if not template:
-            console.print(f"[red]Error:[/red] Template '{template_id}' not found.")
-            raise typer.Exit(1)
-
-        # Apply template
-        task_dicts = manager.apply_template(
+        # Delegate to core (#962). This command used to reimplement
+        # core.templates.apply_template and had drifted from it — notably it
+        # gated on a PRD existing and then never linked one. Delegating also
+        # picks up the out-of-range dependency-index check from #961.
+        result = templates_core.apply_template(
+            workspace,
             template_id=template_id,
-            context={},
             issue_number=issue_number,
+            prd_id=prd_record.id,
         )
 
-        # Create tasks using v2 API
-        created_tasks = []
-        for task_dict in task_dicts:
-            task = tasks.create(
-                workspace,
-                title=task_dict["title"],
-                description=task_dict["description"],
-                status=TaskStatus.BACKLOG,
-                estimated_hours=task_dict.get("estimated_hours"),
-                complexity_score=task_dict.get("complexity_score"),
-                uncertainty_level=task_dict.get("uncertainty_level"),
-            )
-            created_tasks.append((task, task_dict.get("depends_on_indices", [])))
-
-        # Wire up dependencies using indices -> actual task IDs
-        for i, (task, dep_indices) in enumerate(created_tasks):
-            if dep_indices:
-                # Map 0-based indices to actual task IDs
-                depends_on_ids = [
-                    created_tasks[idx][0].id
-                    for idx in dep_indices
-                    if 0 <= idx < len(created_tasks)
-                ]
-                if depends_on_ids:
-                    tasks.update_depends_on(workspace, task.id, depends_on_ids)
-
-        # Extract just the tasks for display
-        created_task_list = [t for t, _ in created_tasks]
-
-        console.print(f"\n[green]Created {len(created_task_list)} tasks from template '{template_id}'[/green]\n")
-        for i, task in enumerate(created_task_list, 1):
-            console.print(f"  {i}. {escape(task.title)}")
+        console.print(
+            f"\n[green]Created {result.tasks_created} tasks from template "
+            f"'{template_id}'[/green]\n"
+        )
+        for i, task_id in enumerate(result.task_ids, 1):
+            created = tasks.get(workspace, task_id)
+            console.print(f"  {i}. {escape(created.title)}")
 
         console.print("\nNext steps:")
         console.print("  codeframe tasks list              View all tasks")
