@@ -348,6 +348,63 @@ class TestCompleteRunOrdering:
         assert runtime.get_run(ws, run.id).status == RunStatus.COMPLETED
         assert tasks.get(ws, task.id).status == TaskStatus.DONE
 
+    def test_task_flipping_to_done_mid_call_still_completes_the_run(self, tmp_path):
+        """The race, not just the static case (#957 review round 2).
+
+        A read-then-call guard is check-then-act: `update_status` does its own
+        fresh read + compare-and-set, so a reconciliation DONE landing between
+        our read and that CAS still raises. Simulated here by flipping the row
+        to DONE *inside* the call, exactly as the losing CAS would see it.
+        """
+        from codeframe.core import runtime, tasks
+        from codeframe.core.state_machine import InvalidTransitionError
+        from codeframe.core.runtime import RunStatus
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        task = tasks.create(ws, title="T", description="d")
+        run = runtime.start_task_run(ws, task.id)
+
+        real_update = tasks.update_status
+
+        def racing_update(workspace, task_id, new_status, **kwargs):
+            # Someone else wins the race: the row is DONE before our CAS runs.
+            real_update(workspace, task_id, TaskStatus.DONE)
+            raise InvalidTransitionError(TaskStatus.DONE, TaskStatus.DONE)
+
+        with patch.object(tasks, "update_status", side_effect=racing_update):
+            result = runtime.complete_run(ws, run.id)
+
+        assert result.status == RunStatus.COMPLETED
+        assert runtime.get_run(ws, run.id).status == RunStatus.COMPLETED
+        assert tasks.get(ws, task.id).status == TaskStatus.DONE
+
+    def test_genuinely_illegal_transition_still_raises(self, tmp_path):
+        """Only DONE is forgiven — a task stuck elsewhere must not pass."""
+        from codeframe.core import runtime, tasks
+        from codeframe.core.state_machine import InvalidTransitionError
+        from codeframe.core.runtime import RunStatus
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        task = tasks.create(ws, title="T", description="d")
+        run = runtime.start_task_run(ws, task.id)
+
+        real_update = tasks.update_status
+
+        def racing_backwards(workspace, task_id, new_status, **kwargs):
+            # The row moved somewhere that is NOT the goal state.
+            real_update(workspace, task_id, TaskStatus.BLOCKED)
+            raise InvalidTransitionError(TaskStatus.BLOCKED, TaskStatus.DONE)
+
+        with patch.object(tasks, "update_status", side_effect=racing_backwards):
+            with pytest.raises(InvalidTransitionError):
+                runtime.complete_run(ws, run.id)
+
+        assert runtime.get_run(ws, run.id).status == RunStatus.RUNNING
+
     def test_happy_path_still_completes_both(self, tmp_path):
         from codeframe.core import runtime, tasks
         from codeframe.core.runtime import RunStatus

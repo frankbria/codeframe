@@ -13,7 +13,11 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
 from codeframe.core import engine_stats, events, tasks
-from codeframe.core.state_machine import TaskStatus, can_transition
+from codeframe.core.state_machine import (
+    InvalidTransitionError,
+    TaskStatus,
+    can_transition,
+)
 from codeframe.core.workspace import Workspace, get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -362,17 +366,25 @@ def complete_run(
     # transition raise here leaves the run RUNNING, which is recoverable.
     #
     # A task already DONE is the goal state, not a failure: reconciliation
-    # (#1032) and manual completion both move a task to DONE while its run is
-    # still active, and DONE -> DONE is a rejected transition. Raising there
-    # would send execute_agent's handler into fail_run and persist a
-    # successful run as FAILED.
-    task = tasks.get(workspace, run.task_id)
-    if task is None:
-        raise ValueError(f"Task not found: {run.task_id}")
-    if task.status != TaskStatus.DONE:
+    # (#1032, a daemon thread) and manual completion both move a task to DONE
+    # while its run is still active, and DONE -> DONE is a rejected transition.
+    # Raising there would send execute_agent's handler into fail_run and
+    # persist a successful run as FAILED.
+    #
+    # Handled by catching rather than pre-checking: a read-then-call guard is
+    # check-then-act, and update_status does its own fresh read + compare-and-
+    # set, so a DONE landing in between would still raise. Re-reading in the
+    # handler is the only way to tell "someone else already finished it"
+    # (success) from a genuinely illegal transition (still BACKLOG — raise, and
+    # the run stays RUNNING).
+    try:
         tasks.update_status(
             workspace, run.task_id, TaskStatus.DONE, github_autoclose=github_autoclose
         )
+    except InvalidTransitionError:
+        task = tasks.get(workspace, run.task_id)
+        if task is None or task.status != TaskStatus.DONE:
+            raise
 
     now = _utc_now().isoformat()
 
