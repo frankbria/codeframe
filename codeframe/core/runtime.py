@@ -360,9 +360,19 @@ def complete_run(
     # this, so a rejected transition left the run COMPLETED and the task
     # IN_PROGRESS — permanently divergent, with no path back. Letting the
     # transition raise here leaves the run RUNNING, which is recoverable.
-    tasks.update_status(
-        workspace, run.task_id, TaskStatus.DONE, github_autoclose=github_autoclose
-    )
+    #
+    # A task already DONE is the goal state, not a failure: reconciliation
+    # (#1032) and manual completion both move a task to DONE while its run is
+    # still active, and DONE -> DONE is a rejected transition. Raising there
+    # would send execute_agent's handler into fail_run and persist a
+    # successful run as FAILED.
+    task = tasks.get(workspace, run.task_id)
+    if task is None:
+        raise ValueError(f"Task not found: {run.task_id}")
+    if task.status != TaskStatus.DONE:
+        tasks.update_status(
+            workspace, run.task_id, TaskStatus.DONE, github_autoclose=github_autoclose
+        )
 
     now = _utc_now().isoformat()
 

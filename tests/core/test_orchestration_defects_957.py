@@ -323,6 +323,31 @@ class TestCompleteRunOrdering:
         assert reloaded.status == RunStatus.RUNNING
         assert reloaded.completed_at is None
 
+    def test_already_done_task_completes_the_run(self, tmp_path):
+        """DONE is the goal state, not a failure (#957 review follow-up).
+
+        Reconciliation (#1032) and manual completion both move a task to DONE
+        while its run is still active. DONE -> DONE is a rejected transition, so
+        raising here would send execute_agent's handler into fail_run and
+        persist a successful run as FAILED.
+        """
+        from codeframe.core import runtime, tasks
+        from codeframe.core.runtime import RunStatus
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        task = tasks.create(ws, title="T", description="d")
+        run = runtime.start_task_run(ws, task.id)
+        # Something else finishes the task mid-run.
+        tasks.update_status(ws, task.id, TaskStatus.DONE)
+
+        result = runtime.complete_run(ws, run.id)
+
+        assert result.status == RunStatus.COMPLETED
+        assert runtime.get_run(ws, run.id).status == RunStatus.COMPLETED
+        assert tasks.get(ws, task.id).status == TaskStatus.DONE
+
     def test_happy_path_still_completes_both(self, tmp_path):
         from codeframe.core import runtime, tasks
         from codeframe.core.runtime import RunStatus
