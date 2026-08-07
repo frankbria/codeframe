@@ -1015,11 +1015,19 @@ def delete_all(workspace: Workspace) -> int:
     return deleted_count
 
 
-def count_by_status(workspace: Workspace) -> dict[str, int]:
+def count_by_status(
+    workspace: Workspace, *, leaves_only: bool = False
+) -> dict[str, int]:
     """Count tasks by status.
 
     Args:
         workspace: Workspace to query
+        leaves_only: Count only executable (``is_leaf``) tasks, excluding the
+            composite parents built by ``cf tasks generate --recursive``
+            (#958). Schedulers want this — a composite's status is rolled up
+            from its children, so counting it as "executing" double-counts work
+            that is already represented by the child actually running. Display
+            callers (``cf status``) want the default, which counts everything.
 
     Returns:
         Dict mapping status string to count
@@ -1029,10 +1037,10 @@ def count_by_status(workspace: Workspace) -> dict[str, int]:
         cursor = conn.cursor()
 
         cursor.execute(
-            """
+            f"""
             SELECT status, COUNT(*) as count
             FROM tasks
-            WHERE workspace_id = ?
+            WHERE workspace_id = ?{" AND is_leaf = 1" if leaves_only else ""}
             GROUP BY status
             """,
             (workspace.id,),

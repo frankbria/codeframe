@@ -238,6 +238,47 @@ class TestParentStatusPropagation:
         assert set(ready) == {c1.id, c2.id}
         assert parent.id not in ready
 
+    def test_an_idle_composite_does_not_block_new_assignments(self, tmp_path):
+        """A rolled-up IN_PROGRESS parent is not work in flight (#958 review).
+
+        check_assignment_status refuses to start a batch while anything is
+        IN_PROGRESS. A composite goes IN_PROGRESS the moment its first child
+        finishes — with nothing actually running — which would deadlock the
+        remaining READY leaf behind "Execution already in progress."
+        """
+        from codeframe.core import runtime, tasks
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        parent, c1, c2 = self._tree(ws)
+
+        self._drive(
+            ws, c1.id, TaskStatus.READY, TaskStatus.IN_PROGRESS, TaskStatus.DONE
+        )
+        tasks.update_status(ws, c2.id, TaskStatus.READY)
+
+        # The parent aggregates as underway...
+        assert tasks.get(ws, parent.id).status == TaskStatus.IN_PROGRESS
+        # ...but nothing is executing, so the remaining leaf can be assigned.
+        result = runtime.check_assignment_status(ws)
+        assert result.executing_count == 0
+        assert result.can_assign, result.reason
+
+    def test_count_by_status_still_counts_composites_for_display(self, tmp_path):
+        """Only schedulers opt out; `cf status` must still show everything."""
+        from codeframe.core import tasks
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        self._tree(ws)  # 1 composite + 2 leaves, all BACKLOG
+
+        assert tasks.count_by_status(ws)[TaskStatus.BACKLOG.value] == 3
+        assert (
+            tasks.count_by_status(ws, leaves_only=True)[TaskStatus.BACKLOG.value] == 2
+        )
+
     def test_children_are_read_past_the_list_tasks_cap(self, tmp_path):
         """Children must be queried directly, not filtered out of a capped list."""
         from codeframe.core import task_tree, tasks

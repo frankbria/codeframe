@@ -1265,8 +1265,11 @@ def check_assignment_status(workspace: Workspace) -> AssignmentResult:
         else:
             print(status.reason)
     """
-    # Count tasks by status
-    status_counts = tasks.count_by_status(workspace)
+    # Count executable tasks only (#958). A composite parent rolls up to
+    # IN_PROGRESS as soon as one child finishes, even with nothing running —
+    # counting it here made this refuse to start the remaining READY leaf with
+    # "Execution already in progress."
+    status_counts = tasks.count_by_status(workspace, leaves_only=True)
     ready_count = status_counts.get(TaskStatus.READY.value, 0)
     in_progress_count = status_counts.get(TaskStatus.IN_PROGRESS.value, 0)
 
