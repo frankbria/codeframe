@@ -231,7 +231,8 @@ class TestApplyInferredDependencies:
 
         dependencies = {
             task_ids[0]: [],  # Empty - should not overwrite existing
-            task_ids[1]: [task_ids[0]],  # This creates a cycle but we're just testing apply logic
+            # task1 -> task0 closes a cycle against the manual edge above.
+            task_ids[1]: [task_ids[0]],
         }
 
         apply_inferred_dependencies(workspace, dependencies)
@@ -240,9 +241,14 @@ class TestApplyInferredDependencies:
         updated_task0 = tasks.get(workspace, task_ids[0])
         assert updated_task0.depends_on == [task_ids[1]]  # Original dependency preserved
 
-        # Task 1 was updated since it had non-empty dependency list
+        # Task 1's inferred edge is DROPPED because it would close a cycle
+        # (#959). This assertion used to expect [task_ids[0]] — i.e. it pinned
+        # the old behaviour of persisting a known-cyclic graph, which
+        # create_execution_plan then refuses to schedule. The test's own comment
+        # acknowledged it ("this creates a cycle but we're just testing apply
+        # logic"), so the cycle was incidental to what it meant to check.
         updated_task1 = tasks.get(workspace, task_ids[1])
-        assert updated_task1.depends_on == [task_ids[0]]
+        assert updated_task1.depends_on == []
 
 
 class TestAutoStrategyIntegration:

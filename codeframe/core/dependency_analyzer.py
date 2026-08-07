@@ -11,6 +11,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import json
+import logging
 import re
 from typing import Optional
 
@@ -18,6 +19,8 @@ from codeframe.core import tasks as task_module
 from codeframe.core.workspace import Workspace
 from codeframe.core.tasks import Task
 from codeframe.adapters.llm.base import Purpose
+
+logger = logging.getLogger(__name__)
 
 
 DEPENDENCY_ANALYSIS_SYSTEM_PROMPT = """You are a software project task analyzer. Your job is to analyze a list of development tasks and identify dependencies between them.
@@ -198,19 +201,86 @@ def apply_inferred_dependencies(
     workspace: Workspace,
     dependencies: dict[str, list[str]],
 ) -> None:
-    """Apply inferred dependencies to tasks in the workspace.
+    """Merge inferred dependencies into each task's existing ``depends_on``.
 
-    Updates each task's depends_on field with the inferred dependencies.
-    Only updates tasks that have non-empty dependency lists to preserve
-    any existing manual/explicit dependencies.
+    Inferred edges are **added to** the task's current dependencies, never
+    substituted for them. ``update_depends_on`` replaces the list wholesale, so
+    passing the inferred list straight through silently discarded a
+    hand-curated dependency — and persisted the loss for every future run
+    (#959). Existing edges keep their order and come first.
+
+    An inferred edge that would close a cycle is dropped with a warning: the
+    merge can create one that neither set had alone (manual ``A -> B`` plus
+    inferred ``B -> A``). The manual edge is explicit user intent, so the
+    inferred one loses.
 
     Args:
         workspace: Workspace containing the tasks
         dependencies: Dict mapping task_id -> list of dependency task_ids
     """
-    for task_id, deps in dependencies.items():
-        # Only update when there are inferred dependencies to apply
-        # Empty list means no dependencies found - don't clear existing ones
-        if deps:
-            task_module.update_depends_on(workspace, task_id, deps)
+    # Working copy of the whole workspace graph, so a cycle check sees edges
+    # added earlier in this same call.
+    graph: dict[str, list[str]] = {
+        t.id: list(t.depends_on or []) for t in task_module.list_tasks(workspace, limit=None)
+    }
+
+    for task_id, inferred in dependencies.items():
+        if not inferred:
+            # No inference for this task — leave whatever is already there.
+            continue
+        existing = graph.get(task_id)
+        if existing is None:
+            continue  # Task vanished between analysis and apply.
+
+        merged = list(existing)
+        for dep in inferred:
+            if dep == task_id or dep in merged or dep not in graph:
+                continue
+            path = _path_to(graph, dep, task_id)
+            if path is not None:
+                logger.warning(
+                    "Dropping inferred dependency %s -> %s: it would create a "
+                    "cycle (%s). Existing dependencies are kept.",
+                    task_id,
+                    dep,
+                    " -> ".join([task_id, *path]),
+                )
+                continue
+            merged.append(dep)
+            graph[task_id] = merged
+
+        if merged != existing:
+            task_module.update_depends_on(workspace, task_id, merged)
+
+
+def _path_to(
+    graph: dict[str, list[str]], start: str, target: str
+) -> Optional[list[str]]:
+    """Return a dependency path from ``start`` to ``target``, or ``None``.
+
+    Adding the edge ``target -> start`` closes a cycle exactly when ``target``
+    is already reachable from ``start``. Asking that directly — rather than
+    adding the edge and running a whole-graph cycle detector — keeps the check
+    honest when the graph *already* contains an unrelated cycle: a global
+    detector would return that pre-existing cycle, so every inferred edge would
+    be dropped and the warning would blame the wrong pair. ``update_depends_on``
+    performs no cycle validation, so a pre-existing cycle is reachable.
+
+    The visited set also means a pre-existing cycle anywhere in the graph
+    terminates this walk instead of hanging it.
+    """
+    if start == target:
+        return [start]
+    stack: list[tuple[str, list[str]]] = [(start, [start])]
+    seen = {start}
+    while stack:
+        node, path = stack.pop()
+        for nxt in graph.get(node, []):
+            if nxt == target:
+                return path + [nxt]
+            if nxt in seen:
+                continue
+            seen.add(nxt)
+            stack.append((nxt, path + [nxt]))
+    return None
 
