@@ -36,7 +36,8 @@ STATE_DB_NAME = "state.db"
 # migration path exactly once. Gates #733: steady-state loads skip all DDL.
 # 3: batch_runs.config_reloads (#957).
 # 4: batch_runs.cloud_timeout_minutes (#959).
-SCHEMA_VERSION = 4
+# 5: prds.chain_id backfill for legacy child rows (#961).
+SCHEMA_VERSION = 5
 
 # Per-workspace config file written by the Settings page (issue #556).
 # Owned by the UI layer today; kept here so a future core consumer can
@@ -647,12 +648,31 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             conn.commit()
         if "chain_id" not in prd_columns:
             cursor.execute("ALTER TABLE prds ADD COLUMN chain_id TEXT")
-            # Backfill chain_id for existing PRDs (set to their own id if no parent)
-            cursor.execute("""
-                UPDATE prds SET chain_id = id
-                WHERE chain_id IS NULL AND parent_id IS NULL
-            """)
             conn.commit()
+
+        # Backfill any PRD still missing a chain_id (#961). This runs on every
+        # upgrade, not only when the column is first added: the original
+        # backfill above set chain_id only WHERE parent_id IS NULL, so every
+        # legacy *child* row kept a NULL chain_id — and because SQL's
+        # `NULL = NULL` never matches, list_chains' join dropped those PRDs
+        # from the workspace entirely. The recursive CTE walks each row up to
+        # its root so children join their parent's chain rather than forming
+        # spurious one-row chains. Rows whose parent is missing keep their own
+        # id (COALESCE), which is the best available answer.
+        cursor.execute("""
+            WITH RECURSIVE root_of(id, root) AS (
+                SELECT id, id FROM prds WHERE parent_id IS NULL
+                UNION ALL
+                SELECT p.id, r.root
+                FROM prds p JOIN root_of r ON p.parent_id = r.id
+            )
+            UPDATE prds
+            SET chain_id = COALESCE(
+                (SELECT root FROM root_of WHERE root_of.id = prds.id), id
+            )
+            WHERE chain_id IS NULL
+        """)
+        conn.commit()
 
         # Add depends_on column to prds table if it doesn't exist
         # Re-check prd_columns as it may have changed

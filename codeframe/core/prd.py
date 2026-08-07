@@ -7,6 +7,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import json
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import Optional
 
 from codeframe.core.workspace import Workspace, get_db_connection
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -322,18 +325,28 @@ def list_chains(workspace: Workspace) -> list[PrdRecord]:
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
 
-    # Get the latest version for each unique chain_id
+    # Get the latest version for each unique chain.
+    #
+    # Grouping and joining on COALESCE(chain_id, parent_id, id) rather than
+    # chain_id alone (#961): a legacy row can still carry a NULL chain_id, and
+    # SQL's `NULL = NULL` is never true — so the INNER JOIN silently dropped
+    # those PRDs from the list entirely, with no error. The upgrade path
+    # backfills them, but this keeps the read correct for anything it misses
+    # (e.g. a child whose parent row is gone).
     cursor.execute(
         """
         SELECT p.id, p.workspace_id, p.title, p.content, p.metadata, p.created_at,
                p.version, p.parent_id, p.change_summary, p.chain_id
         FROM prds p
         INNER JOIN (
-            SELECT chain_id, MAX(version) as max_version
+            SELECT COALESCE(chain_id, parent_id, id) AS grp,
+                   MAX(version) as max_version
             FROM prds
             WHERE workspace_id = ?
-            GROUP BY chain_id
-        ) latest ON p.chain_id = latest.chain_id AND p.version = latest.max_version
+            GROUP BY COALESCE(chain_id, parent_id, id)
+        ) latest
+          ON COALESCE(p.chain_id, p.parent_id, p.id) = latest.grp
+         AND p.version = latest.max_version
         WHERE p.workspace_id = ?
         ORDER BY p.created_at DESC
         """,
@@ -610,7 +623,19 @@ def create_new_version(
             chain_id=chain_id,
         )
     except Exception:
-        cursor.execute("ROLLBACK")
+        # The rollback is best-effort cleanup, never the story (#961). A bare
+        # cursor.execute("ROLLBACK") raises "cannot rollback - no transaction
+        # is active" whenever the failure happened before BEGIN took effect or
+        # after the transaction already ended — and that replacement exception
+        # propagated instead of the real one, hiding the actual fault.
+        try:
+            cursor.execute("ROLLBACK")
+        except Exception:
+            logger.warning(
+                "Rollback failed while unwinding create_new_version; the "
+                "original error is re-raised.",
+                exc_info=True,
+            )
         raise
     finally:
         conn.close()
