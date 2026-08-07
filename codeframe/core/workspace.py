@@ -314,6 +314,7 @@ def _init_database(db_path: Path) -> None:
             concurrency_by_status TEXT,
             llm_provider TEXT,
             llm_model TEXT,
+            config_reloads TEXT,
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
             CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'))
         )
@@ -577,6 +578,7 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
                 concurrency_by_status TEXT,
                 llm_provider TEXT,
                 llm_model TEXT,
+                config_reloads TEXT,
                 FOREIGN KEY (workspace_id) REFERENCES workspace(id),
                 CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'))
             )
@@ -600,6 +602,8 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             ("concurrency_by_status", "ALTER TABLE batch_runs ADD COLUMN concurrency_by_status TEXT"),
             ("llm_provider", "ALTER TABLE batch_runs ADD COLUMN llm_provider TEXT"),
             ("llm_model", "ALTER TABLE batch_runs ADD COLUMN llm_model TEXT"),
+            # #957: config-reload bookkeeping moved off the results JSON blob.
+            ("config_reloads", "ALTER TABLE batch_runs ADD COLUMN config_reloads TEXT"),
         )
         for column, ddl in batch_migrations:
             if column not in batch_columns:

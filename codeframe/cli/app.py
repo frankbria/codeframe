@@ -2759,7 +2759,9 @@ def work_start(
         elif stub:
             console.print("\n[dim]Executing stub agent...[/dim]")
             runtime.execute_stub(workspace, run)
-            runtime.complete_run(workspace, run.id)
+            # The stub does no real work, so its fabricated DONE must not close
+            # a linked GitHub issue (#957).
+            runtime.complete_run(workspace, run.id, github_autoclose=False)
             console.print("[green]Run completed (stub)[/green]")
 
     except FileNotFoundError:
@@ -4321,7 +4323,7 @@ def batch_status(
                 console.print(f"    {icon} {tid[:8]} - {title}")
 
             # Show config reloads if any occurred during batch
-            config_reloads = batch.results.get("__config_reloads__")
+            config_reloads = batch.config_reloads
             if config_reloads:
                 from datetime import datetime as _dt
 
