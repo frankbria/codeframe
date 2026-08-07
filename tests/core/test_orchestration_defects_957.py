@@ -202,6 +202,37 @@ class TestConfigReloadsOffResults:
         assert loaded.results == {"t-1": "COMPLETED"}
         assert loaded.config_reloads == ["2026-01-01T00:00:00"]
 
+    def test_existing_workspace_gets_the_column_on_upgrade(self, tmp_path):
+        """An already-stamped DB must still receive the new column (#957).
+
+        `_ensure_schema_upgrades` returns early once `PRAGMA user_version`
+        reaches SCHEMA_VERSION, so adding a migration entry WITHOUT bumping the
+        version leaves existing workspaces without the column — and every batch
+        SELECT then dies with "no such column: config_reloads".
+        """
+        from codeframe.core.conductor import _save_batch, get_batch
+        from codeframe.core.workspace import create_or_load_workspace, get_db_connection
+
+        ws = create_or_load_workspace(tmp_path)
+        batch = self._batch(ws)
+        _save_batch(ws, batch)
+
+        # Roll the DB back to the pre-#957 shape: column absent, stamped at the
+        # version an already-upgraded install would carry.
+        conn = get_db_connection(ws)
+        try:
+            conn.execute("ALTER TABLE batch_runs DROP COLUMN config_reloads")
+            conn.execute("PRAGMA user_version = 2")
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Re-opening the workspace must run the migration.
+        ws2 = create_or_load_workspace(tmp_path)
+        loaded = get_batch(ws2, "b-1")
+        assert loaded is not None
+        assert loaded.config_reloads == []
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. blockers.py must not leak SQLite connections

@@ -34,7 +34,8 @@ STATE_DB_NAME = "state.db"
 # ``_ensure_schema_upgrades``. Bump by 1 whenever either function gains a new
 # table/column/index so existing workspaces re-enter the (idempotent)
 # migration path exactly once. Gates #733: steady-state loads skip all DDL.
-SCHEMA_VERSION = 2
+# 3: batch_runs.config_reloads (#957).
+SCHEMA_VERSION = 3
 
 # Per-workspace config file written by the Settings page (issue #556).
 # Owned by the UI layer today; kept here so a future core consumer can
