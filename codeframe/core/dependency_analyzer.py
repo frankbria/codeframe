@@ -218,8 +218,6 @@ def apply_inferred_dependencies(
         workspace: Workspace containing the tasks
         dependencies: Dict mapping task_id -> list of dependency task_ids
     """
-    from codeframe.core.dependency_graph import detect_cycle
-
     # Working copy of the whole workspace graph, so a cycle check sees edges
     # added earlier in this same call.
     graph: dict[str, list[str]] = {
@@ -238,20 +236,51 @@ def apply_inferred_dependencies(
         for dep in inferred:
             if dep == task_id or dep in merged or dep not in graph:
                 continue
-            merged.append(dep)
-            graph[task_id] = merged
-            cycle = detect_cycle(graph)
-            if cycle:
-                merged.pop()
-                graph[task_id] = merged
+            path = _path_to(graph, dep, task_id)
+            if path is not None:
                 logger.warning(
                     "Dropping inferred dependency %s -> %s: it would create a "
                     "cycle (%s). Existing dependencies are kept.",
                     task_id,
                     dep,
-                    " -> ".join(cycle),
+                    " -> ".join([task_id, *path]),
                 )
+                continue
+            merged.append(dep)
+            graph[task_id] = merged
 
         if merged != existing:
             task_module.update_depends_on(workspace, task_id, merged)
+
+
+def _path_to(
+    graph: dict[str, list[str]], start: str, target: str
+) -> Optional[list[str]]:
+    """Return a dependency path from ``start`` to ``target``, or ``None``.
+
+    Adding the edge ``target -> start`` closes a cycle exactly when ``target``
+    is already reachable from ``start``. Asking that directly — rather than
+    adding the edge and running a whole-graph cycle detector — keeps the check
+    honest when the graph *already* contains an unrelated cycle: a global
+    detector would return that pre-existing cycle, so every inferred edge would
+    be dropped and the warning would blame the wrong pair. ``update_depends_on``
+    performs no cycle validation, so a pre-existing cycle is reachable.
+
+    The visited set also means a pre-existing cycle anywhere in the graph
+    terminates this walk instead of hanging it.
+    """
+    if start == target:
+        return [start]
+    stack: list[tuple[str, list[str]]] = [(start, [start])]
+    seen = {start}
+    while stack:
+        node, path = stack.pop()
+        for nxt in graph.get(node, []):
+            if nxt == target:
+                return path + [nxt]
+            if nxt in seen:
+                continue
+            seen.add(nxt)
+            stack.append((nxt, path + [nxt]))
+    return None
 

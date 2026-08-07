@@ -250,6 +250,50 @@ class TestManualDependenciesSurvive:
         assert tasks.get(ws, b.id).depends_on == [], "cyclic inferred edge must drop"
         assert "cycle" in caplog.text.lower()
 
+    def test_a_preexisting_unrelated_cycle_does_not_block_valid_edges(self, tmp_path):
+        """The guard must blame the edge being added, not any cycle anywhere.
+
+        `update_depends_on` performs no cycle validation, so a workspace can
+        already hold one. A whole-graph cycle detector would return that
+        pre-existing cycle for every inferred edge — dropping valid, unrelated
+        edges and misattributing the cause in the warning.
+        """
+        from codeframe.core import tasks
+        from codeframe.core.dependency_analyzer import apply_inferred_dependencies
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        a, b, c = self._three_tasks(ws)
+        d = tasks.create(ws, title="D", description="")
+
+        # Pre-existing A <-> B cycle, persisted directly (no validation stops it).
+        tasks.update_depends_on(ws, a.id, [b.id])
+        tasks.update_depends_on(ws, b.id, [a.id])
+
+        # An unrelated inferred edge C -> D must still be applied.
+        apply_inferred_dependencies(ws, {c.id: [d.id]})
+
+        assert tasks.get(ws, c.id).depends_on == [d.id]
+        # The pre-existing cycle is left exactly as it was.
+        assert tasks.get(ws, a.id).depends_on == [b.id]
+        assert tasks.get(ws, b.id).depends_on == [a.id]
+
+    def test_a_longer_cycle_is_still_caught(self, tmp_path):
+        """A -> B -> C plus inferred C -> A closes a three-node cycle."""
+        from codeframe.core import tasks
+        from codeframe.core.dependency_analyzer import apply_inferred_dependencies
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        a, b, c = self._three_tasks(ws)
+
+        tasks.update_depends_on(ws, a.id, [b.id])
+        tasks.update_depends_on(ws, b.id, [c.id])
+
+        apply_inferred_dependencies(ws, {c.id: [a.id]})
+
+        assert tasks.get(ws, c.id).depends_on == [], "cyclic edge should be dropped"
+
     def test_docstring_matches_behaviour(self):
         from codeframe.core.dependency_analyzer import apply_inferred_dependencies
 
