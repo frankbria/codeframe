@@ -286,10 +286,10 @@ class TestIssueCacheEviction:
 
         _clear_issue_cache()
         # An expired entry under a key never re-requested lingers until any set.
-        gi._ISSUE_CACHE["stale|1"] = (gi.time.monotonic() - 1.0, "old")
-        gi._issue_cache_set("fresh|1", "new")
-        assert "stale|1" not in gi._ISSUE_CACHE
-        assert gi._issue_cache_get("fresh|1") == "new"
+        gi._ISSUE_CACHE[("stale", 1)] = (gi.time.monotonic() - 1.0, "old")
+        gi._issue_cache_set(("fresh", 1), "new")
+        assert ("stale", 1) not in gi._ISSUE_CACHE
+        assert gi._issue_cache_get(("fresh", 1)) == "new"
 
     def test_size_capped_evicting_oldest(self, monkeypatch):
         from codeframe.ui.routers import github_integrations_v2 as gi
@@ -301,12 +301,12 @@ class TestIssueCacheEviction:
         # mirror that with ascending expiries all below the real set below.
         base = gi.time.monotonic()
         for i in range(6):
-            gi._ISSUE_CACHE[f"repo|{i}"] = (base + 1.0 + i, i)
-        gi._issue_cache_set("repo|new", "n")  # real expiry ~base+60 → newest
+            gi._ISSUE_CACHE[("repo", i)] = (base + 1.0 + i, i)
+        gi._issue_cache_set(("repo", "new"), "n")  # real expiry ~base+60 → newest
         # Cap holds; the newest survives; the oldest is gone.
         assert len(gi._ISSUE_CACHE) == 3
-        assert "repo|new" in gi._ISSUE_CACHE
-        assert "repo|0" not in gi._ISSUE_CACHE
+        assert ("repo", "new") in gi._ISSUE_CACHE
+        assert ("repo", 0) not in gi._ISSUE_CACHE
 
     def test_invalidation_scoped_to_calling_user(self, monkeypatch):
         """User A's import drops A's cache entries but leaves user B's alone (#790)."""
@@ -314,13 +314,75 @@ class TestIssueCacheEviction:
 
         _clear_issue_cache()
         base = gi.time.monotonic()
-        gi._ISSUE_CACHE["acme/app|1|25|||1"] = (base + 60.0, "a-payload")
-        gi._ISSUE_CACHE["acme/app|1|25|||2"] = (base + 60.0, "b-payload")
+        key_a = ("acme/app", 1, 25, "", "", 1)
+        key_b = ("acme/app", 1, 25, "", "", 2)
+        gi._ISSUE_CACHE[key_a] = (base + 60.0, "a-payload")
+        gi._ISSUE_CACHE[key_b] = (base + 60.0, "b-payload")
 
         gi._issue_cache_invalidate("acme/app", 1)
 
-        assert "acme/app|1|25|||1" not in gi._ISSUE_CACHE
-        assert "acme/app|1|25|||2" in gi._ISSUE_CACHE
+        assert key_a not in gi._ISSUE_CACHE
+        assert key_b in gi._ISSUE_CACHE
+
+    def test_invalidation_ignores_repo_named_like_a_search_term(self, monkeypatch):
+        """Component-wise matching, not string prefix/suffix (#956)."""
+        from codeframe.ui.routers import github_integrations_v2 as gi
+
+        _clear_issue_cache()
+        base = gi.time.monotonic()
+        # Same user, a DIFFERENT repo whose entry merely mentions "acme/app"
+        # in the search field. A prefix/suffix string match could sweep it.
+        other = ("other/repo", 1, 25, "acme/app", "", 1)
+        mine = ("acme/app", 1, 25, "", "", 1)
+        gi._ISSUE_CACHE[other] = (base + 60.0, "other-payload")
+        gi._ISSUE_CACHE[mine] = (base + 60.0, "my-payload")
+
+        gi._issue_cache_invalidate("acme/app", 1)
+
+        assert mine not in gi._ISSUE_CACHE
+        assert other in gi._ISSUE_CACHE
+
+
+class TestIssueCacheKeyAmbiguity:
+    """Two different (search, label) pairs must never share a cache entry (#956).
+
+    The key used to be a '|'-joined string, so a '|' inside the search text
+    collided with the label field and served one filter's results for another —
+    wrong data, no error.
+    """
+
+    def test_pipe_in_search_does_not_collide_with_label(self, client, monkeypatch):
+        _clear_issue_cache()
+        _connect(client, monkeypatch)
+        calls: list = []
+
+        from codeframe.ui.routers import github_integrations_v2
+
+        async def fake(pat, repo, **kwargs):
+            calls.append(kwargs)
+            return (
+                [
+                    {
+                        "number": len(calls),
+                        "title": f"{kwargs['search']}/{kwargs['label']}",
+                        "labels": [],
+                        "assignee": None,
+                        "created_at": "2026-05-01T12:00:00Z",
+                        "html_url": "https://github.com/acme/app/issues/1",
+                    }
+                ],
+                1,
+            )
+
+        monkeypatch.setattr(github_integrations_v2, "list_issues", fake)
+
+        # Both flatten to "acme/app|1|25|a|b|c|<uid>" under the old '|'-joined key.
+        first = client.get("/api/v2/integrations/github/issues?search=a%7Cb&label=c")
+        second = client.get("/api/v2/integrations/github/issues?search=a&label=b%7Cc")
+
+        assert len(calls) == 2, "second query was wrongly served from cache"
+        assert first.json()["issues"][0]["title"] == "a|b/c"
+        assert second.json()["issues"][0]["title"] == "a/b|c"
 
 
 class TestListIssues:
@@ -408,6 +470,21 @@ class TestListIssues:
         _mock_list_issues(monkeypatch, exc=InsufficientScopeError("nope"))
         r = client.get("/api/v2/integrations/github/issues")
         assert r.status_code == 403
+
+    def test_rate_limit_maps_to_429_not_403(self, client, monkeypatch):
+        """A throttled request must not read as 'regenerate your PAT' (#956)."""
+        _clear_issue_cache()
+        _connect(client, monkeypatch)
+        from codeframe.core.github_issues_service import RateLimitedError
+
+        _mock_list_issues(
+            monkeypatch,
+            exc=RateLimitedError("GitHub rate limit exceeded. Retry after 60s."),
+        )
+        r = client.get("/api/v2/integrations/github/issues")
+        assert r.status_code == 429
+        assert r.json()["detail"]["code"] == "RATE_LIMITED"
+        assert "scope" not in r.text.lower()
 
     def test_pat_never_echoed(self, client, monkeypatch):
         _clear_issue_cache()

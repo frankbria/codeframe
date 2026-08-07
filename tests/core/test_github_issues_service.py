@@ -189,6 +189,123 @@ class TestSearchEndpoint:
         assert 'label:"ui"' in seen["q"]
 
 
+class TestSearchQualifierInjection:
+    """Free text must never introduce search qualifiers (#956).
+
+    The user's search string used to be joined verbatim alongside ``repo:``/
+    ``is:`` qualifiers, so typing ``repo:other/thing`` reached repositories
+    outside the connected one — in a hosted deployment that makes the
+    operator's PAT enumerable through a text field.
+    """
+
+    @staticmethod
+    def _capture_q(search: str, **kwargs):
+        seen = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["path"] = request.url.path
+            seen["q"] = request.url.params.get("q")
+            return httpx.Response(200, json={"total_count": 0, "items": []})
+
+        return seen, handler
+
+    @pytest.mark.asyncio
+    async def test_repo_qualifier_in_search_stays_scoped(self):
+        seen, handler = self._capture_q("repo:other/x")
+
+        async with _client(handler) as client:
+            await list_issues(
+                VALID_PAT,
+                "acme/app",
+                page=1,
+                per_page=25,
+                search="repo:other/x",
+                client=client,
+            )
+
+        q = seen["q"]
+        # The connected repo is still the only repo qualifier in effect; the
+        # user's text survives only as a quoted literal phrase.
+        assert "repo:acme/app" in q
+        assert '"repo:other/x"' in q
+        # No bare (unquoted) foreign repo qualifier anywhere.
+        assert q.replace('"repo:other/x"', "").count("repo:") == 1
+
+    @pytest.mark.asyncio
+    async def test_is_qualifier_in_search_is_neutralised(self):
+        seen, handler = self._capture_q("is:closed")
+
+        async with _client(handler) as client:
+            await list_issues(
+                VALID_PAT,
+                "acme/app",
+                page=1,
+                per_page=25,
+                search="is:closed",
+                client=client,
+            )
+
+        q = seen["q"]
+        assert '"is:closed"' in q
+        assert "is:open" in q
+
+    @pytest.mark.asyncio
+    async def test_embedded_quotes_cannot_break_out(self):
+        seen, handler = self._capture_q('" repo:other/x "')
+
+        async with _client(handler) as client:
+            await list_issues(
+                VALID_PAT,
+                "acme/app",
+                page=1,
+                per_page=25,
+                search='" repo:other/x "',
+                client=client,
+            )
+
+        q = seen["q"]
+        # Exactly one quoted phrase: the user's quotes were removed, not escaped
+        # into a second phrase they could close.
+        assert q.count('"') == 2
+        assert "repo:acme/app" in q
+
+    @pytest.mark.asyncio
+    async def test_multiword_search_stays_and_of_terms(self):
+        """Quoting must not silently become an exact-phrase search (#956)."""
+        seen, handler = self._capture_q("login bug")
+
+        async with _client(handler) as client:
+            await list_issues(
+                VALID_PAT,
+                "acme/app",
+                page=1,
+                per_page=25,
+                search="login bug",
+                client=client,
+            )
+
+        q = seen["q"]
+        assert '"login" "bug"' in q
+        assert '"login bug"' not in q
+
+    @pytest.mark.asyncio
+    async def test_search_of_only_punctuation_falls_back_to_list_endpoint(self):
+        seen = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["path"] = request.url.path
+            return httpx.Response(200, json=[])
+
+        async with _client(handler) as client:
+            await list_issues(
+                VALID_PAT, "acme/app", page=1, per_page=25, search='""', client=client
+            )
+
+        # Nothing searchable is left after sanitising — don't send an empty
+        # phrase to the search API, just list.
+        assert seen["path"] == "/repos/acme/app/issues"
+
+
 class TestErrorMapping:
     @pytest.mark.asyncio
     async def test_401_invalid_token(self):
@@ -223,6 +340,104 @@ class TestErrorMapping:
             )
         assert issues == []
         assert total == 0
+
+
+class TestRateLimitVsScope:
+    """A 403 from rate limiting is not a missing scope (#956).
+
+    Every 403 used to be reported as 'missing issues:read scope', sending users
+    off to regenerate a PAT that was never the problem.
+    """
+
+    @staticmethod
+    def _handler(status: int, *, headers=None, message="Forbidden"):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                status, json={"message": message}, headers=headers or {}
+            )
+
+        return handler
+
+    @pytest.mark.asyncio
+    async def test_secondary_rate_limit_403_is_not_a_scope_error(self):
+        from codeframe.core.github_issues_service import RateLimitedError
+
+        handler = self._handler(
+            403,
+            headers={"retry-after": "60"},
+            message=(
+                "You have exceeded a secondary rate limit. "
+                "Please wait a few minutes before you try again."
+            ),
+        )
+        async with _client(handler) as client:
+            with pytest.raises(RateLimitedError) as excinfo:
+                await list_issues(
+                    VALID_PAT, "acme/app", page=1, per_page=25, client=client
+                )
+
+        assert not isinstance(excinfo.value, InsufficientScopeError)
+        text = str(excinfo.value).lower()
+        assert "rate limit" in text
+        assert "scope" not in text
+        assert "60" in str(excinfo.value)
+
+    @pytest.mark.asyncio
+    async def test_primary_rate_limit_403_detected_via_remaining_header(self):
+        from codeframe.core.github_issues_service import RateLimitedError
+
+        handler = self._handler(
+            403,
+            headers={"x-ratelimit-remaining": "0"},
+            message="API rate limit exceeded for user ID 1.",
+        )
+        async with _client(handler) as client:
+            with pytest.raises(RateLimitedError):
+                await list_issues(
+                    VALID_PAT, "acme/app", page=1, per_page=25, client=client
+                )
+
+    @pytest.mark.asyncio
+    async def test_429_is_a_rate_limit(self):
+        from codeframe.core.github_issues_service import RateLimitedError
+
+        handler = self._handler(429, message="Too many requests")
+        async with _client(handler) as client:
+            with pytest.raises(RateLimitedError):
+                await list_issues(
+                    VALID_PAT, "acme/app", page=1, per_page=25, client=client
+                )
+
+    @pytest.mark.asyncio
+    async def test_plain_403_still_reports_missing_scope(self):
+        handler = self._handler(403, message="Forbidden")
+        async with _client(handler) as client:
+            with pytest.raises(InsufficientScopeError) as excinfo:
+                await list_issues(
+                    VALID_PAT, "acme/app", page=1, per_page=25, client=client
+                )
+
+        assert "scope" in str(excinfo.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_search_403_rate_limit_also_distinguished(self):
+        from codeframe.core.github_issues_service import RateLimitedError
+
+        handler = self._handler(
+            403,
+            headers={"retry-after": "30"},
+            message="You have exceeded a secondary rate limit.",
+        )
+        async with _client(handler) as client:
+            with pytest.raises(RateLimitedError):
+                await list_issues(
+                    VALID_PAT,
+                    "acme/app",
+                    page=1,
+                    per_page=25,
+                    search="login",
+                    client=client,
+                )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
