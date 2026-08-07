@@ -76,13 +76,25 @@ def start_task_run(workspace: Workspace, task_id: str) -> Run:
         Created Run
 
     Raises:
-        ValueError: If task not found
+        ValueError: If task not found, or if it is a composite (#958)
         InvalidTransitionError: If task can't transition to IN_PROGRESS
     """
     # Get the task
     task = tasks.get(workspace, task_id)
     if not task:
         raise ValueError(f"Task not found: {task_id}")
+
+    # Composites are containers, not work (#958). The bulk selectors filter
+    # is_leaf, but this is the *explicit* path — `cf work start <id>` and the
+    # v2 execute route with an explicit task_ids list both land here, so
+    # without this guard a composite's ID still reaches an engine. Rejecting at
+    # this chokepoint covers every explicit caller at once.
+    if not task.is_leaf:
+        raise ValueError(
+            f"Task {task_id} is a composite (a container for subtasks), not "
+            "executable work. Run its child tasks instead — its status is "
+            "rolled up from theirs."
+        )
 
     # Check if there's already an active run
     active = get_active_run(workspace, task_id)
@@ -1022,8 +1034,16 @@ def execute_agent(
                 status=agent_status.value.upper(),
                 duration_ms=_perf_duration_ms,
                 tokens_used=_perf_tokens,
-                gates_passed=None,
-                self_corrections=0,
+                # Real values off the adapter result (#958). These were
+                # hardcoded None/0, so `cf engines stats` and `compare`
+                # rendered 0% Gate Pass and 0 self-corrections forever.
+                # engine_stats stores gates_passed as 1/0/NULL.
+                gates_passed=(
+                    None
+                    if getattr(result, "gates_passed", None) is None
+                    else int(bool(result.gates_passed))
+                ),
+                self_corrections=getattr(result, "self_corrections", 0) or 0,
             )
         except Exception:
             logger.warning("Engine stats recording failed", exc_info=True)
@@ -1257,8 +1277,11 @@ def check_assignment_status(workspace: Workspace) -> AssignmentResult:
         else:
             print(status.reason)
     """
-    # Count tasks by status
-    status_counts = tasks.count_by_status(workspace)
+    # Count executable tasks only (#958). A composite parent rolls up to
+    # IN_PROGRESS as soon as one child finishes, even with nothing running —
+    # counting it here made this refuse to start the remaining READY leaf with
+    # "Execution already in progress."
+    status_counts = tasks.count_by_status(workspace, leaves_only=True)
     ready_count = status_counts.get(TaskStatus.READY.value, 0)
     in_progress_count = status_counts.get(TaskStatus.IN_PROGRESS.value, 0)
 
@@ -1287,15 +1310,25 @@ def check_assignment_status(workspace: Workspace) -> AssignmentResult:
 
 
 def get_ready_task_ids(workspace: Workspace) -> list[str]:
-    """Get IDs of all READY tasks in the workspace.
+    """Get IDs of all READY **executable** tasks in the workspace.
 
     Convenience function for starting batch execution.
+
+    Composite tasks (``is_leaf=False``) are excluded (#958). They are
+    aggregates built by ``cf tasks generate --recursive`` — their status is
+    rolled up from their children, so a composite reaching READY means "my
+    children are ready", not "run me". Handing one to an engine would execute
+    a container alongside the real work it contains.
 
     Args:
         workspace: Target workspace
 
     Returns:
-        List of task IDs in READY status
+        List of task IDs in READY status, leaf tasks only
     """
-    ready_tasks = tasks.list_tasks(workspace, status=TaskStatus.READY)
-    return [t.id for t in ready_tasks]
+    # limit=None: the default 100-row cap silently truncated this, so the v2
+    # API's "run all ready" route started a subset of a >100-task workspace and
+    # reported nothing wrong. `cf work batch run --all-ready` already passed
+    # limit=None (#743); this path had been missed.
+    ready_tasks = tasks.list_tasks(workspace, status=TaskStatus.READY, limit=None)
+    return [t.id for t in ready_tasks if t.is_leaf]

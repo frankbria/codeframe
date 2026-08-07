@@ -13,7 +13,6 @@ from codeframe.core.sandbox.context import (
 from codeframe.core.sandbox.worktree import (
     MergeResult,
     TaskWorktree,
-    WorktreeRegistry,
     get_base_branch,
 )
 
@@ -24,6 +23,5 @@ __all__ = [
     "validate_isolation",
     "MergeResult",
     "TaskWorktree",
-    "WorktreeRegistry",
     "get_base_branch",
 ]

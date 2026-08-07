@@ -4074,6 +4074,10 @@ def batch_run(
         if all_ready:
             # limit=None so batches include READY tasks beyond the cap (#743)
             ready_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.READY, limit=None)
+            # Composites are aggregates, not work (#958): their status is rolled
+            # up from their children, so a READY parent means "my children are
+            # ready" — running it would execute the container beside its contents.
+            ready_tasks = [t for t in ready_tasks if t.is_leaf]
             if not ready_tasks:
                 console.print("[yellow]No READY tasks found[/yellow]")
                 return
@@ -4082,6 +4086,9 @@ def batch_run(
         elif all_blocked:
             from codeframe.core import runtime
             blocked_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.BLOCKED, limit=None)
+            # Composites are aggregates, not work (#958) — same reason as
+            # --all-ready above: a parent goes BLOCKED when its children do.
+            blocked_tasks = [t for t in blocked_tasks if t.is_leaf]
             if not blocked_tasks:
                 console.print("[yellow]No BLOCKED tasks found[/yellow]")
                 return

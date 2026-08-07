@@ -444,6 +444,7 @@ def update_status(
     new_status: TaskStatus,
     *,
     github_autoclose: bool = True,
+    propagate: bool = True,
 ) -> Task:
     """Update a task's status.
 
@@ -457,6 +458,9 @@ def update_status(
             issue. ``False`` only for fabricated completions (``--stub``), which
             must not act on a real issue (#957). The status change itself is
             unaffected.
+        propagate: Whether to roll the new status up to composite parents
+            (#958). ``False`` when the caller *is* the propagation walk, which
+            climbs the chain itself — re-entering here would walk it twice.
 
     Returns:
         Updated Task
@@ -514,6 +518,19 @@ def update_status(
     # behavior is consistent regardless of how the task was completed.
     if new_status == TaskStatus.DONE and github_autoclose:
         _dispatch_github_autoclose(workspace, task)
+
+    # Roll the change up to composite parents (#958). Imported here because
+    # task_tree imports this module at load time. Best-effort by design: a
+    # roll-up failure must never undo the transition the caller asked for.
+    if propagate and task.parent_id:
+        try:
+            from codeframe.core import task_tree
+
+            task_tree.propagate_status(workspace, task_id)
+        except Exception:
+            logger.warning(
+                "Parent status propagation failed for task %s", task_id, exc_info=True
+            )
 
     return task
 
@@ -998,11 +1015,19 @@ def delete_all(workspace: Workspace) -> int:
     return deleted_count
 
 
-def count_by_status(workspace: Workspace) -> dict[str, int]:
+def count_by_status(
+    workspace: Workspace, *, leaves_only: bool = False
+) -> dict[str, int]:
     """Count tasks by status.
 
     Args:
         workspace: Workspace to query
+        leaves_only: Count only executable (``is_leaf``) tasks, excluding the
+            composite parents built by ``cf tasks generate --recursive``
+            (#958). Schedulers want this — a composite's status is rolled up
+            from its children, so counting it as "executing" double-counts work
+            that is already represented by the child actually running. Display
+            callers (``cf status``) want the default, which counts everything.
 
     Returns:
         Dict mapping status string to count
@@ -1012,10 +1037,10 @@ def count_by_status(workspace: Workspace) -> dict[str, int]:
         cursor = conn.cursor()
 
         cursor.execute(
-            """
+            f"""
             SELECT status, COUNT(*) as count
             FROM tasks
-            WHERE workspace_id = ?
+            WHERE workspace_id = ?{" AND is_leaf = 1" if leaves_only else ""}
             GROUP BY status
             """,
             (workspace.id,),
