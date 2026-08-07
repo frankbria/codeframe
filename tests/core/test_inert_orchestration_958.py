@@ -159,6 +159,48 @@ class TestParentStatusPropagation:
         tasks.update_status(ws, c1.id, TaskStatus.READY)
         assert tasks.get(ws, parent.id).status != TaskStatus.DONE
 
+    def test_rolled_up_status_table(self):
+        """The full mapping, including the partial-completion cases (#958 review).
+
+        A parent with one DONE child and one still BACKLOG is *underway*, not
+        un-started — falling through to BACKLOG reported finished work as never
+        begun.
+        """
+        from codeframe.core.task_tree import _rolled_up_status
+        from codeframe.core.tasks import TaskStatus as S
+
+        cases = [
+            ([], None),
+            ([S.DONE, S.DONE], S.DONE),
+            ([S.DONE, S.MERGED], S.DONE),
+            ([S.DONE, S.FAILED], S.FAILED),
+            ([S.DONE, S.IN_PROGRESS], S.IN_PROGRESS),
+            ([S.DONE, S.BLOCKED], S.BLOCKED),
+            ([S.DONE, S.BACKLOG], S.IN_PROGRESS),   # partial completion
+            ([S.MERGED, S.BACKLOG], S.IN_PROGRESS),  # partial completion
+            ([S.DONE, S.READY], S.IN_PROGRESS),     # partial completion
+            ([S.READY, S.BACKLOG], S.READY),
+            ([S.BACKLOG, S.BACKLOG], S.BACKLOG),
+        ]
+        for statuses, expected in cases:
+            assert _rolled_up_status(list(statuses)) == expected, (
+                f"{[s.value for s in statuses]} -> expected {expected}"
+            )
+
+    def test_partial_completion_does_not_demote_to_backlog(self, tmp_path):
+        from codeframe.core import tasks
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        parent, c1, _c2 = self._tree(ws)
+
+        # First child finishes; the second has not been touched.
+        self._drive(
+            ws, c1.id, TaskStatus.READY, TaskStatus.IN_PROGRESS, TaskStatus.DONE
+        )
+        assert tasks.get(ws, parent.id).status == TaskStatus.IN_PROGRESS
+
     def test_all_children_blocked_blocks_the_parent(self, tmp_path):
         from codeframe.core import tasks
         from codeframe.core.tasks import TaskStatus

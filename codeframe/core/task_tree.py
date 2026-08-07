@@ -395,7 +395,8 @@ def _rolled_up_status(child_statuses: list) -> Optional[TaskStatus]:
     """
     if not child_statuses:
         return None
-    if all(s == TaskStatus.DONE for s in child_statuses):
+    finished = {TaskStatus.DONE, TaskStatus.MERGED}
+    if all(s in finished for s in child_statuses):
         return TaskStatus.DONE
     if any(s == TaskStatus.FAILED for s in child_statuses):
         return TaskStatus.FAILED
@@ -403,10 +404,15 @@ def _rolled_up_status(child_statuses: list) -> Optional[TaskStatus]:
         return TaskStatus.IN_PROGRESS
     if any(s == TaskStatus.BLOCKED for s in child_statuses):
         return TaskStatus.BLOCKED
+    # Some children are finished but not all: the composite is underway even
+    # though no child is executing right now. Without this, one DONE child
+    # beside one BACKLOG child fell through to BACKLOG and reported started
+    # work as never begun.
+    if any(s in finished for s in child_statuses):
+        return TaskStatus.IN_PROGRESS
     if any(s == TaskStatus.READY for s in child_statuses):
         return TaskStatus.READY
-    # Everything left is BACKLOG (or MERGED, which only follows a DONE that the
-    # all-DONE branch above already claimed).
+    # Every child is still BACKLOG — nothing has started.
     return TaskStatus.BACKLOG
 
 
