@@ -577,6 +577,9 @@ class BatchRun:
             ``__config_reloads__`` key, which leaked into the batch API and the
             CLI as a bogus "task" (#957).
         config_reloads: ISO timestamps of config reloads observed during the run
+        cloud_timeout_minutes: Sandbox timeout for the cloud engine (1-60).
+            Persisted so `resume` restores the user's value instead of silently
+            falling back to the callee default of 30 (#959).
     """
 
     id: str
@@ -597,6 +600,7 @@ class BatchRun:
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     config_reloads: list[str] = field(default_factory=list)
+    cloud_timeout_minutes: int = 30
 
 
 def create_batch(
@@ -677,6 +681,9 @@ def create_batch(
         isolation=isolation,
         llm_provider=llm_provider,
         llm_model=llm_model,
+        # Persisted (#959): this used to be accepted and dropped, so the
+        # callee default of 30 always won and --cloud-timeout was a no-op.
+        cloud_timeout_minutes=cloud_timeout_minutes,
     )
 
     # Save to database
@@ -896,7 +903,7 @@ def get_batch(workspace: Workspace, batch_id: str) -> Optional[BatchRun]:
             SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
                    on_failure, started_at, completed_at, results, engine,
                    isolation, stall_timeout_s, stall_action, concurrency_by_status,
-                   llm_provider, llm_model, config_reloads
+                   llm_provider, llm_model, config_reloads, cloud_timeout_minutes
             FROM batch_runs
             WHERE workspace_id = ? AND id = ?
             """,
@@ -937,7 +944,7 @@ def list_batches(
                 SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
                        on_failure, started_at, completed_at, results, engine,
                        isolation, stall_timeout_s, stall_action, concurrency_by_status,
-                       llm_provider, llm_model, config_reloads
+                       llm_provider, llm_model, config_reloads, cloud_timeout_minutes
                 FROM batch_runs
                 WHERE workspace_id = ? AND status = ?
                 ORDER BY started_at DESC
@@ -951,7 +958,7 @@ def list_batches(
                 SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
                        on_failure, started_at, completed_at, results, engine,
                        isolation, stall_timeout_s, stall_action, concurrency_by_status,
-                       llm_provider, llm_model, config_reloads
+                       llm_provider, llm_model, config_reloads, cloud_timeout_minutes
                 FROM batch_runs
                 WHERE workspace_id = ?
                 ORDER BY started_at DESC
@@ -1029,7 +1036,7 @@ def find_batch_by_prefix(workspace: Workspace, prefix: str) -> list[BatchRun]:
             SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
                    on_failure, started_at, completed_at, results, engine,
                    isolation, stall_timeout_s, stall_action, concurrency_by_status,
-                   llm_provider, llm_model, config_reloads
+                   llm_provider, llm_model, config_reloads, cloud_timeout_minutes
             FROM batch_runs
             WHERE workspace_id = ? AND id LIKE ? ESCAPE '\\'
             ORDER BY started_at DESC
@@ -1357,6 +1364,7 @@ def _run_serial_resume(
                 stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                 worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                 llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                cloud_timeout_minutes=batch.cloud_timeout_minutes,
             )
         finally:
             exec_ctx.cleanup()
@@ -1555,6 +1563,7 @@ def _run_retries(
                     stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                     worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                     llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                    cloud_timeout_minutes=batch.cloud_timeout_minutes,
                 )
             finally:
                 exec_ctx.cleanup()
@@ -1801,6 +1810,7 @@ def _execute_serial(
                     stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                     worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                     llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                    cloud_timeout_minutes=batch.cloud_timeout_minutes,
                 )
 
                 # If task is BLOCKED, try supervisor resolution
@@ -1814,6 +1824,7 @@ def _execute_serial(
                             stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                             worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                             llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                            cloud_timeout_minutes=batch.cloud_timeout_minutes,
                         )
             finally:
                 exec_ctx.cleanup()
@@ -2341,6 +2352,7 @@ def _execute_single_task(
             stall_action=batch.stall_action,
             worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
             llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+            cloud_timeout_minutes=batch.cloud_timeout_minutes,
         )
 
         # If task is BLOCKED, try supervisor resolution
@@ -2356,6 +2368,7 @@ def _execute_single_task(
                     stall_action=batch.stall_action,
                     worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                     llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                    cloud_timeout_minutes=batch.cloud_timeout_minutes,
                 )
     finally:
         exec_ctx.cleanup()
@@ -2471,6 +2484,7 @@ def _execute_group_parallel(
                 stall_action=batch.stall_action,
                 worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                 llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                cloud_timeout_minutes=batch.cloud_timeout_minutes,
             )
         finally:
             exec_ctx.cleanup()
@@ -2705,8 +2719,8 @@ def _save_batch(
                 (id, workspace_id, task_ids, status, strategy, max_parallel, on_failure,
                  started_at, completed_at, results, engine, isolation,
                  stall_timeout_s, stall_action, concurrency_by_status,
-                 llm_provider, llm_model, config_reloads)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 llm_provider, llm_model, config_reloads, cloud_timeout_minutes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     batch.id,
@@ -2727,6 +2741,7 @@ def _save_batch(
                     batch.llm_provider,
                     batch.llm_model,
                     config_reloads_json,
+                    batch.cloud_timeout_minutes,
                 ),
             )
             conn.commit()
@@ -2774,4 +2789,7 @@ def _row_to_batch(row: tuple) -> BatchRun:
         llm_provider=row[15] if len(row) > 15 else None,
         llm_model=row[16] if len(row) > 16 else None,
         config_reloads=config_reloads,
+        cloud_timeout_minutes=(
+            row[18] if len(row) > 18 and row[18] is not None else 30
+        ),
     )

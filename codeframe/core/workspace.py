@@ -35,7 +35,8 @@ STATE_DB_NAME = "state.db"
 # table/column/index so existing workspaces re-enter the (idempotent)
 # migration path exactly once. Gates #733: steady-state loads skip all DDL.
 # 3: batch_runs.config_reloads (#957).
-SCHEMA_VERSION = 3
+# 4: batch_runs.cloud_timeout_minutes (#959).
+SCHEMA_VERSION = 4
 
 # Per-workspace config file written by the Settings page (issue #556).
 # Owned by the UI layer today; kept here so a future core consumer can
@@ -316,6 +317,7 @@ def _init_database(db_path: Path) -> None:
             llm_provider TEXT,
             llm_model TEXT,
             config_reloads TEXT,
+            cloud_timeout_minutes INTEGER NOT NULL DEFAULT 30,
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
             CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'))
         )
@@ -580,6 +582,7 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
                 llm_provider TEXT,
                 llm_model TEXT,
                 config_reloads TEXT,
+                cloud_timeout_minutes INTEGER NOT NULL DEFAULT 30,
                 FOREIGN KEY (workspace_id) REFERENCES workspace(id),
                 CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'))
             )
@@ -605,6 +608,8 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             ("llm_model", "ALTER TABLE batch_runs ADD COLUMN llm_model TEXT"),
             # #957: config-reload bookkeeping moved off the results JSON blob.
             ("config_reloads", "ALTER TABLE batch_runs ADD COLUMN config_reloads TEXT"),
+            # #959: the user's --cloud-timeout must survive a resume.
+            ("cloud_timeout_minutes", "ALTER TABLE batch_runs ADD COLUMN cloud_timeout_minutes INTEGER NOT NULL DEFAULT 30"),
         )
         for column, ddl in batch_migrations:
             if column not in batch_columns:
