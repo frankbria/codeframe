@@ -181,6 +181,22 @@ def apply_template(
         issue_number=issue_number,
     )
 
+    # Validate dependency indices BEFORE creating anything (#961). These used
+    # to be filtered with `if 0 <= idx < len(created_tasks)`, so a template
+    # naming a task that does not exist produced a graph that looked fine and
+    # then executed in the wrong order — silently. Checking up front also means
+    # a bad template leaves no half-built set of tasks behind.
+    for position, task_dict in enumerate(task_dicts):
+        for idx in task_dict.get("depends_on_indices", []) or []:
+            if not isinstance(idx, int) or not (0 <= idx < len(task_dicts)):
+                raise ValueError(
+                    f"Template '{template_id}' task #{position} "
+                    f"('{task_dict.get('title', '?')}') declares dependency "
+                    f"index {idx!r}, which is out of range for a template with "
+                    f"{len(task_dicts)} tasks (valid: 0..{len(task_dicts) - 1}). "
+                    "Fix the template's depends_on_indices."
+                )
+
     # Create tasks using v2 API
     created_tasks: list[tuple[tasks.Task, list[int]]] = []
     for task_dict in task_dicts:
@@ -195,17 +211,13 @@ def apply_template(
         )
         created_tasks.append((task, task_dict.get("depends_on_indices", [])))
 
-    # Wire up dependencies using indices -> actual task IDs
+    # Wire up dependencies using indices -> actual task IDs. Every index was
+    # range-checked above, so no filtering is needed (and none should happen —
+    # silently dropping one is the defect this replaced).
     for task, dep_indices in created_tasks:
         if dep_indices:
-            # Map 0-based indices to actual task IDs
-            depends_on_ids = [
-                created_tasks[idx][0].id
-                for idx in dep_indices
-                if 0 <= idx < len(created_tasks)
-            ]
-            if depends_on_ids:
-                tasks.update_depends_on(workspace, task.id, depends_on_ids)
+            depends_on_ids = [created_tasks[idx][0].id for idx in dep_indices]
+            tasks.update_depends_on(workspace, task.id, depends_on_ids)
 
     created_task_ids = [task.id for task, _ in created_tasks]
 

@@ -1485,6 +1485,7 @@ def prd_generate(
     from codeframe.core import prd as prd_module
     from codeframe.core.prd_discovery import (
         PrdDiscoverySession,
+        DiscoveryError,
         NoApiKeyError,
         ValidationError,
         IncompleteSessionError,
@@ -1631,6 +1632,13 @@ def prd_generate(
 
                 except ValidationError as e:
                     console.print(f"[yellow]{e}[/yellow]")
+                except DiscoveryError as e:
+                    # The session is complete or has no question outstanding
+                    # (#961). Re-prompting cannot help, so leave the loop
+                    # rather than spinning — and never show a traceback. Must
+                    # follow ValidationError, which subclasses this.
+                    console.print(f"[red]Error:[/red] {e}")
+                    raise typer.Exit(1)
                 except KeyboardInterrupt:
                     console.print("\n")
                     if typer.confirm("Save progress before exiting?"):
@@ -1800,6 +1808,19 @@ def prd_stress_test(
         # the CLI shows a traceback where every other failure here is a red line.
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+    except Exception as e:
+        # A provider failure (auth, network, rate limit) is not a StressTestError
+        # and used to escape as a raw traceback (#961). This is a multi-call LLM
+        # run, so it is one of the likelier ways the command ends.
+        console.print(
+            f"[red]Error:[/red] PRD stress test failed while calling the LLM "
+            f"provider: {e}"
+        )
+        console.print(
+            "[dim]Check your API key and network connection, then retry. "
+            "Use --llm-provider/--llm-model to try a different model.[/dim]"
+        )
+        raise typer.Exit(1)
 
     # Show ambiguity report
     if result.ambiguities:
@@ -1828,9 +1849,22 @@ def prd_stress_test(
 
         # Update PRD with resolved answers
         console.print("[dim]Updating PRD with resolved ambiguities...[/dim]")
-        updated_content = resolve_ambiguities_into_prd(
-            record.content, result.ambiguities, provider,
-        )
+        try:
+            updated_content = resolve_ambiguities_into_prd(
+                record.content, result.ambiguities, provider,
+            )
+        except Exception as e:
+            # Second LLM call of the command, and it had no handler at all
+            # (#961). Failing here must not lose the answers silently, nor
+            # print a traceback.
+            console.print(
+                f"[red]Error:[/red] Could not apply your answers to the PRD: {e}"
+            )
+            console.print(
+                "[dim]Your answers were not saved and no new version was "
+                "created. Re-run the command to try again.[/dim]"
+            )
+            raise typer.Exit(1)
         # resolve_ambiguities_into_prd returns the ORIGINAL content when the
         # LLM rewrite looks truncated. Creating a version from that would
         # discard the answers the user just typed while printing "✓ PRD updated
