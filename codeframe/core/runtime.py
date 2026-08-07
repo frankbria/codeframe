@@ -76,13 +76,25 @@ def start_task_run(workspace: Workspace, task_id: str) -> Run:
         Created Run
 
     Raises:
-        ValueError: If task not found
+        ValueError: If task not found, or if it is a composite (#958)
         InvalidTransitionError: If task can't transition to IN_PROGRESS
     """
     # Get the task
     task = tasks.get(workspace, task_id)
     if not task:
         raise ValueError(f"Task not found: {task_id}")
+
+    # Composites are containers, not work (#958). The bulk selectors filter
+    # is_leaf, but this is the *explicit* path — `cf work start <id>` and the
+    # v2 execute route with an explicit task_ids list both land here, so
+    # without this guard a composite's ID still reaches an engine. Rejecting at
+    # this chokepoint covers every explicit caller at once.
+    if not task.is_leaf:
+        raise ValueError(
+            f"Task {task_id} is a composite (a container for subtasks), not "
+            "executable work. Run its child tasks instead — its status is "
+            "rolled up from theirs."
+        )
 
     # Check if there's already an active run
     active = get_active_run(workspace, task_id)

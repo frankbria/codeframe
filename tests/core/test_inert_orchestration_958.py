@@ -265,6 +265,30 @@ class TestParentStatusPropagation:
         assert result.executing_count == 0
         assert result.can_assign, result.reason
 
+    def test_starting_a_composite_explicitly_is_rejected(self, tmp_path):
+        """Bulk selectors filter is_leaf; the explicit path needs its own guard.
+
+        `cf work start <composite-id>` and the v2 execute route with an
+        explicit task_ids list both reach start_task_run directly, bypassing
+        every status-based filter.
+        """
+        from codeframe.core import runtime, tasks
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        parent, child, _ = self._tree(ws)
+
+        with pytest.raises(ValueError, match="composite"):
+            runtime.start_task_run(ws, parent.id)
+
+        # No run was created, and the task was not dragged toward IN_PROGRESS.
+        assert runtime.get_active_run(ws, parent.id) is None
+        assert tasks.get(ws, parent.id).status == TaskStatus.BACKLOG
+
+        # A leaf still starts normally.
+        assert runtime.start_task_run(ws, child.id) is not None
+
     def test_get_ready_task_ids_is_not_capped_at_100(self, tmp_path):
         """The v2 API's run-all-ready route must not silently run a subset."""
         from codeframe.core import runtime, tasks
