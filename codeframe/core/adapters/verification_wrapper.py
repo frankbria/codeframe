@@ -84,7 +84,20 @@ class VerificationWrapper:
 
         # Only verify if the adapter reported success
         if result.status != "completed":
+            # Gates never ran, so leave gates_passed as None (#958) — "unknown"
+            # is not the same as "failed" for the engine-stats pass rate.
             return result
+
+        def _stamp(res: AgentResult, passed: bool, corrections: int) -> AgentResult:
+            """Record the gate outcome for engine stats (#958).
+
+            This wrapper is where gates and correction rounds actually run for
+            external engines, so without this `cf engines stats` reported a 0%
+            gate-pass rate for every one of them.
+            """
+            res.gates_passed = passed
+            res.self_corrections = corrections
+            return res
 
         # Run verification gates with self-correction loop
         for round_num in range(self._max_correction_rounds):
@@ -106,7 +119,7 @@ class VerificationWrapper:
             if gate_result.passed:
                 if on_event:
                     on_event(AgentEvent(type="verification_passed", data={}))
-                return result
+                return _stamp(result, True, round_num)
 
             # Gates failed — get structured error summary
             error_summary = (
@@ -132,9 +145,13 @@ class VerificationWrapper:
                 self.fix_tracker.record_outcome(
                     error_summary, "verification_gate", FixOutcome.FAILED,
                 )
-                return self._create_escalation_blocker(
-                    task_id, error_summary, escalation,
-                    last_output=result.output,
+                return _stamp(
+                    self._create_escalation_blocker(
+                        task_id, error_summary, escalation,
+                        last_output=result.output,
+                    ),
+                    False,
+                    round_num,
                 )
 
             # 3. Try quick fix first (no adapter re-invocation needed)
@@ -164,7 +181,7 @@ class VerificationWrapper:
             )
 
             if result.status != "completed":
-                return result
+                return _stamp(result, False, round_num + 1)
 
         # Final gate check after all correction rounds
         gate_result = run_gates(
@@ -174,12 +191,16 @@ class VerificationWrapper:
         )
 
         if gate_result.passed:
-            return result
+            return _stamp(result, True, self._max_correction_rounds)
 
         # All rounds exhausted — create blocker
         error_summary = self._format_gate_errors(gate_result)
-        return self._create_exhaustion_blocker(
-            task_id, error_summary, last_output=result.output,
+        return _stamp(
+            self._create_exhaustion_blocker(
+                task_id, error_summary, last_output=result.output,
+            ),
+            False,
+            self._max_correction_rounds,
         )
 
     def _try_quick_fix(self, error_summary: str) -> bool:

@@ -288,6 +288,57 @@ class TestEngineStatsAreReal:
         assert result.gates_passed is None
         assert result.self_corrections == 0
 
+    def _wrapper(self, ws, inner, gate_outcomes):
+        """VerificationWrapper over ``inner`` with a scripted gate sequence."""
+        from codeframe.core.adapters.verification_wrapper import VerificationWrapper
+        from codeframe.core.gates import GateResult
+
+        wrapper = VerificationWrapper(inner, ws, max_correction_rounds=2)
+        outcomes = list(gate_outcomes)
+
+        def fake_gates(*a, **kw):
+            return GateResult(passed=outcomes.pop(0), checks=[])
+
+        return wrapper, fake_gates
+
+    def test_wrapper_stamps_a_passing_external_run(self, tmp_path):
+        """External engines run gates in the wrapper, not the agent (#958 review)."""
+        from codeframe.core.adapters import verification_wrapper as vw
+        from codeframe.core.adapters.agent_adapter import AgentResult
+        from codeframe.core.workspace import create_or_load_workspace
+
+        class Inner:
+            name = "fake"
+
+            def run(self, *a, **kw):
+                return AgentResult(status="completed", output="ok")
+
+        ws = create_or_load_workspace(tmp_path)
+        wrapper, fake_gates = self._wrapper(ws, Inner(), [True])
+        with patch.object(vw, "run_gates", fake_gates):
+            result = wrapper.run("t1", "prompt", tmp_path)
+
+        assert result.gates_passed is True
+        assert result.self_corrections == 0
+
+    def test_wrapper_leaves_gates_unknown_when_they_never_ran(self, tmp_path):
+        """A failed adapter run is not a failed gate run."""
+        from codeframe.core.adapters.agent_adapter import AgentResult
+        from codeframe.core.adapters.verification_wrapper import VerificationWrapper
+        from codeframe.core.workspace import create_or_load_workspace
+
+        class Inner:
+            name = "fake"
+
+            def run(self, *a, **kw):
+                return AgentResult(status="failed", error="boom")
+
+        ws = create_or_load_workspace(tmp_path)
+        result = VerificationWrapper(Inner(), ws).run("t1", "prompt", tmp_path)
+
+        assert result.gates_passed is None
+        assert result.self_corrections == 0
+
     def test_runtime_forwards_them_to_record_run(self):
         """runtime must stop hardcoding None/0."""
         import inspect
