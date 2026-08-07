@@ -1831,6 +1831,19 @@ def prd_stress_test(
         updated_content = resolve_ambiguities_into_prd(
             record.content, result.ambiguities, provider,
         )
+        # resolve_ambiguities_into_prd returns the ORIGINAL content when the
+        # LLM rewrite looks truncated. Creating a version from that would
+        # discard the answers the user just typed while printing "✓ PRD updated
+        # to version N" — reporting success for a no-op (#960). prd_v2 already
+        # surfaces this as a 502; this is the CLI's half of that parity.
+        if updated_content == record.content:
+            console.print(
+                "[red]Error:[/red] PRD refinement produced no changes. The model "
+                "returned no usable output (it may have been truncated), so your "
+                "answers were not applied and no new version was created. "
+                "Please try again."
+            )
+            raise typer.Exit(1)
         new_record = prd_module.create_new_version(
             workspace, record.id, updated_content,
             f"Stress-test: resolved {len([a for a in result.ambiguities if a.resolved_answer])} ambiguities",
