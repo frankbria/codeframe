@@ -20,6 +20,7 @@ from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import prd_discovery, prd, tasks
 from codeframe.core.prd_discovery import (
+    DiscoveryError,
     NoApiKeyError,
     ValidationError,
     IncompleteSessionError,
@@ -240,6 +241,12 @@ async def submit_answer(
         raise HTTPException(status_code=400, detail=str(e))
     except NoApiKeyError as e:
         raise HTTPException(status_code=500, detail=str(e))
+    except DiscoveryError as e:
+        # The session is complete, or has no question outstanding (#961). That
+        # is a client-state conflict, not a server fault — without this it fell
+        # into the generic handler below and returned 500 with a stack trace.
+        # Must come after ValidationError/NoApiKeyError, which subclass it.
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to process answer: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

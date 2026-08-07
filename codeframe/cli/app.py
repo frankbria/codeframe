@@ -1485,6 +1485,7 @@ def prd_generate(
     from codeframe.core import prd as prd_module
     from codeframe.core.prd_discovery import (
         PrdDiscoverySession,
+        DiscoveryError,
         NoApiKeyError,
         ValidationError,
         IncompleteSessionError,
@@ -1631,6 +1632,13 @@ def prd_generate(
 
                 except ValidationError as e:
                     console.print(f"[yellow]{e}[/yellow]")
+                except DiscoveryError as e:
+                    # The session is complete or has no question outstanding
+                    # (#961). Re-prompting cannot help, so leave the loop
+                    # rather than spinning — and never show a traceback. Must
+                    # follow ValidationError, which subclasses this.
+                    console.print(f"[red]Error:[/red] {e}")
+                    raise typer.Exit(1)
                 except KeyboardInterrupt:
                     console.print("\n")
                     if typer.confirm("Save progress before exiting?"):

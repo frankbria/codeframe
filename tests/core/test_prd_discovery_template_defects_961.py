@@ -251,6 +251,41 @@ class TestSubmitAnswerOnFinishedSession:
 
         assert called == [], "validated against a None question"
 
+    def test_the_api_maps_it_to_409_not_500(self):
+        """A new exception type makes every handler a caller to re-check.
+
+        DiscoveryError is not ValidationError, so it fell through to the
+        router's generic `except Exception` and returned 500 with a stack
+        trace for what is a client-state conflict.
+        """
+        import inspect
+
+        from codeframe.ui.routers import discovery_v2
+
+        source = inspect.getsource(discovery_v2.submit_answer)
+        assert "except DiscoveryError" in source
+        # Ordering matters: ValidationError and NoApiKeyError subclass it, so
+        # a DiscoveryError arm placed first would swallow both.
+        assert source.index("except ValidationError") < source.index(
+            "except DiscoveryError"
+        )
+        assert source.index("except NoApiKeyError") < source.index(
+            "except DiscoveryError"
+        )
+        arm = source[source.index("except DiscoveryError"):]
+        assert "409" in arm.split("except Exception")[0]
+
+    def test_the_cli_handles_it_without_a_traceback(self):
+        import inspect
+
+        from codeframe.cli import app as cli_app
+
+        source = inspect.getsource(cli_app.prd_generate)
+        assert "except DiscoveryError" in source
+        assert source.index("except ValidationError") < source.index(
+            "except DiscoveryError"
+        )
+
     def test_empty_answer_still_raises_validation_error(self, tmp_path):
         from codeframe.core.prd_discovery import PrdDiscoverySession, ValidationError
         from codeframe.core.workspace import create_or_load_workspace
