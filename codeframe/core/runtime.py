@@ -1314,5 +1314,9 @@ def get_ready_task_ids(workspace: Workspace) -> list[str]:
     Returns:
         List of task IDs in READY status, leaf tasks only
     """
-    ready_tasks = tasks.list_tasks(workspace, status=TaskStatus.READY)
+    # limit=None: the default 100-row cap silently truncated this, so the v2
+    # API's "run all ready" route started a subset of a >100-task workspace and
+    # reported nothing wrong. `cf work batch run --all-ready` already passed
+    # limit=None (#743); this path had been missed.
+    ready_tasks = tasks.list_tasks(workspace, status=TaskStatus.READY, limit=None)
     return [t.id for t in ready_tasks if t.is_leaf]

@@ -265,6 +265,19 @@ class TestParentStatusPropagation:
         assert result.executing_count == 0
         assert result.can_assign, result.reason
 
+    def test_get_ready_task_ids_is_not_capped_at_100(self, tmp_path):
+        """The v2 API's run-all-ready route must not silently run a subset."""
+        from codeframe.core import runtime, tasks
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        for i in range(120):
+            t = tasks.create(ws, title=f"T{i}", description="")
+            tasks.update_status(ws, t.id, TaskStatus.READY)
+
+        assert len(runtime.get_ready_task_ids(ws)) == 120
+
     def test_count_by_status_still_counts_composites_for_display(self, tmp_path):
         """Only schedulers opt out; `cf status` must still show everything."""
         from codeframe.core import tasks
