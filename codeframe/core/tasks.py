@@ -442,6 +442,8 @@ def update_status(
     workspace: Workspace,
     task_id: str,
     new_status: TaskStatus,
+    *,
+    github_autoclose: bool = True,
 ) -> Task:
     """Update a task's status.
 
@@ -451,6 +453,10 @@ def update_status(
         workspace: Target workspace
         task_id: Task to update
         new_status: New status
+        github_autoclose: Whether a DONE transition may close the linked GitHub
+            issue. ``False`` only for fabricated completions (``--stub``), which
+            must not act on a real issue (#957). The status change itself is
+            unaffected.
 
     Returns:
         Updated Task
@@ -506,7 +512,7 @@ def update_status(
     # (issue #565). Placed here — the single chokepoint every DONE transition
     # flows through (HTTP, CLI, agent/batch via runtime.complete_run) — so the
     # behavior is consistent regardless of how the task was completed.
-    if new_status == TaskStatus.DONE:
+    if new_status == TaskStatus.DONE and github_autoclose:
         _dispatch_github_autoclose(workspace, task)
 
     return task

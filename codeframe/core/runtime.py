@@ -13,7 +13,11 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
 from codeframe.core import engine_stats, events, tasks
-from codeframe.core.state_machine import TaskStatus, can_transition
+from codeframe.core.state_machine import (
+    InvalidTransitionError,
+    TaskStatus,
+    can_transition,
+)
 from codeframe.core.workspace import Workspace, get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -324,7 +328,12 @@ def list_runs(
     return [_row_to_run(row) for row in rows]
 
 
-def complete_run(workspace: Workspace, run_id: str) -> Run:
+def complete_run(
+    workspace: Workspace,
+    run_id: str,
+    *,
+    github_autoclose: bool = True,
+) -> Run:
     """Mark a run as completed.
 
     Also transitions the task to DONE.
@@ -332,12 +341,17 @@ def complete_run(workspace: Workspace, run_id: str) -> Run:
     Args:
         workspace: Target workspace
         run_id: Run to complete
+        github_autoclose: Fire the linked-issue auto-close on the DONE
+            transition. ``False`` for fabricated completions (``--stub``) that
+            must not act on a real GitHub issue (#957).
 
     Returns:
         Updated Run
 
     Raises:
         ValueError: If run not found or not in RUNNING status
+        InvalidTransitionError: If the task cannot transition to DONE — raised
+            *before* the run is committed, so run and task never diverge.
     """
     run = get_run(workspace, run_id)
     if not run:
@@ -345,6 +359,32 @@ def complete_run(workspace: Workspace, run_id: str) -> Run:
 
     if run.status != RunStatus.RUNNING:
         raise ValueError(f"Run is not running: {run.status}")
+
+    # Transition the task FIRST (#957). The run UPDATE used to commit before
+    # this, so a rejected transition left the run COMPLETED and the task
+    # IN_PROGRESS — permanently divergent, with no path back. Letting the
+    # transition raise here leaves the run RUNNING, which is recoverable.
+    #
+    # A task already DONE is the goal state, not a failure: reconciliation
+    # (#1032, a daemon thread) and manual completion both move a task to DONE
+    # while its run is still active, and DONE -> DONE is a rejected transition.
+    # Raising there would send execute_agent's handler into fail_run and
+    # persist a successful run as FAILED.
+    #
+    # Handled by catching rather than pre-checking: a read-then-call guard is
+    # check-then-act, and update_status does its own fresh read + compare-and-
+    # set, so a DONE landing in between would still raise. Re-reading in the
+    # handler is the only way to tell "someone else already finished it"
+    # (success) from a genuinely illegal transition (still BACKLOG — raise, and
+    # the run stays RUNNING).
+    try:
+        tasks.update_status(
+            workspace, run.task_id, TaskStatus.DONE, github_autoclose=github_autoclose
+        )
+    except InvalidTransitionError:
+        task = tasks.get(workspace, run.task_id)
+        if task is None or task.status != TaskStatus.DONE:
+            raise
 
     now = _utc_now().isoformat()
 
@@ -363,9 +403,6 @@ def complete_run(workspace: Workspace, run_id: str) -> Run:
         conn.commit()
     finally:
         conn.close()
-
-    # Transition task to DONE
-    tasks.update_status(workspace, run.task_id, TaskStatus.DONE)
 
     # Emit run completed event
     events.emit_for_workspace(
@@ -592,6 +629,44 @@ def stop_run(workspace: Workspace, task_id: str) -> Run:
     return run
 
 
+#: Defaults for the stall-detection settings. Used to tell "the user asked for
+#: this" apart from "nobody set it" when deciding whether to warn (#957).
+_DEFAULT_STALL_TIMEOUT_S = 300
+_DEFAULT_STALL_ACTION = "blocker"
+
+#: Engines that actually implement stall detection.
+_STALL_AWARE_ENGINES = ("react", "built-in")
+
+
+def _warn_if_stall_settings_ignored(
+    engine: str, stall_timeout_s: int, stall_action: str
+) -> None:
+    """Warn when stall settings were supplied but the engine ignores them (#957).
+
+    Only the react/built-in engines wire ``stall_timeout_s``/``stall_action``
+    into their adapter; every other engine silently dropped them, so a user who
+    passed ``--stall-timeout 60 --stall-action retry`` got the defaults with no
+    indication. Stays quiet when the values are the defaults — nothing was
+    asked for, so nothing is being ignored.
+    """
+    if engine in _STALL_AWARE_ENGINES:
+        return
+    if (
+        stall_timeout_s == _DEFAULT_STALL_TIMEOUT_S
+        and stall_action == _DEFAULT_STALL_ACTION
+    ):
+        return
+    logger.warning(
+        "Engine '%s' does not support stall detection; ignoring "
+        "--stall-timeout=%s and --stall-action=%s "
+        "(supported by: %s).",
+        engine,
+        stall_timeout_s,
+        stall_action,
+        ", ".join(_STALL_AWARE_ENGINES),
+    )
+
+
 def execute_stub(workspace: Workspace, run: Run) -> None:
     """Stub agent execution loop (deprecated).
 
@@ -780,6 +855,9 @@ def execute_agent(
             on_agent_event(event.type, event.data)
 
         # Get adapter via registry and run
+        # Tell the user when their stall flags will be dropped (#957).
+        _warn_if_stall_settings_ignored(engine, stall_timeout_s, stall_action)
+
         if is_external_engine(engine):
             from codeframe.core.context_packager import TaskContextPackager
             from codeframe.core.adapters.verification_wrapper import VerificationWrapper
@@ -818,7 +896,7 @@ def execute_agent(
                 "fix_coordinator": fix_coordinator,
             }
             # Stall detection is only relevant for the react engine
-            if engine in ("react", "built-in"):
+            if engine in _STALL_AWARE_ENGINES:
                 builtin_kwargs["stall_timeout_s"] = stall_timeout_s
                 builtin_kwargs["stall_action"] = resolved_action
 
