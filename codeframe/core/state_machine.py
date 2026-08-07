@@ -73,6 +73,34 @@ def can_transition(current: TaskStatus, target: TaskStatus) -> bool:
     return target in allowed
 
 
+def transition_path(current: TaskStatus, target: TaskStatus) -> list[TaskStatus]:
+    """Shortest legal sequence of statuses taking ``current`` to ``target``.
+
+    Excludes ``current`` and ends with ``target``; empty when they are equal or
+    when no legal route exists (e.g. out of the terminal MERGED).
+
+    Parent roll-up (#958) needs this: a composite parent sits in BACKLOG until
+    its children move, and BACKLOG only reaches READY — so setting it straight
+    to IN_PROGRESS or DONE is illegal even though the roll-up is correct. The
+    graph is 7 nodes; BFS keeps this from going stale if ALLOWED_TRANSITIONS
+    changes.
+    """
+    if current == target:
+        return []
+    queue: list[tuple[TaskStatus, list[TaskStatus]]] = [(current, [])]
+    seen = {current}
+    while queue:
+        node, path = queue.pop(0)
+        for nxt in ALLOWED_TRANSITIONS.get(node, set()):
+            if nxt in seen:
+                continue
+            if nxt == target:
+                return path + [nxt]
+            seen.add(nxt)
+            queue.append((nxt, path + [nxt]))
+    return []
+
+
 def validate_transition(current: TaskStatus, target: TaskStatus) -> None:
     """Validate a status transition, raising if invalid.
 

@@ -215,28 +215,41 @@ def doctor(
         for rec in result.recommendations:
             console.print(f"  • {rec}")
 
-    # Stale worktree check
+    # Leftover worktree check (#958). Reads the filesystem directly: this used
+    # to list WorktreeRegistry entries whose PID had died, but nothing ever
+    # registered — sandbox/context.py skips registration on purpose so that a
+    # preserved branch is not force-deleted once the process exits. So the
+    # panel was permanently empty. Directories under .codeframe/worktrees/ are
+    # the actual observable, and any that survive a run block the next one.
     try:
-        from codeframe.core.worktrees import WorktreeRegistry
-        stale = WorktreeRegistry().list_stale(project_path)
-        if stale:
+        from codeframe.core.worktrees import WORKTREE_DIR
+
+        worktree_root = project_path / WORKTREE_DIR
+        leftovers = (
+            sorted(p.name for p in worktree_root.iterdir() if p.is_dir())
+            if worktree_root.is_dir()
+            else []
+        )
+        if leftovers:
             console.print()
-            console.print("[bold yellow]Stale Worktrees:[/bold yellow]")
-            for entry in stale:
+            console.print("[bold yellow]Leftover Worktrees:[/bold yellow]")
+            for task_id in leftovers:
                 console.print(
-                    f"  [yellow]⚠[/yellow] task [cyan]{entry['task_id']}[/cyan] "
-                    f"(pid {entry.get('pid', '?')} no longer running)"
+                    f"  [yellow]⚠[/yellow] task [cyan]{task_id}[/cyan] "
+                    f"({WORKTREE_DIR}/{task_id})"
                 )
             console.print()
             console.print(
-                "[dim]To clean up, run:[/dim] codeframe work batch run --all-ready "
-                "[dim](auto-cleans on next run)[/dim]"
+                "[dim]These may hold unmerged work from a failed or conflicted "
+                "run — inspect before removing.[/dim]"
             )
             console.print(
-                "[dim]Or remove manually:[/dim] rm -rf .codeframe/worktrees/"
+                "[dim]To discard one:[/dim] git worktree remove "
+                f"{WORKTREE_DIR}/<task_id> --force "
+                "[dim]&&[/dim] git branch -D cf/<task_id>"
             )
     except Exception:
-        pass  # Worktree registry is optional; never fail doctor over it
+        pass  # Never fail doctor over the worktree panel
 
     console.print()
 

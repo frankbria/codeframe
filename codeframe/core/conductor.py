@@ -1956,14 +1956,13 @@ def _execute_parallel(
     Raises:
         CycleDetectedError: If circular dependencies are detected
     """
-    # Clean up orphaned worktrees from crashed workers on previous runs.
-    # Batch worktree isolation stays rejected at the CLI (#787 enables it only
-    # for the single-run path), so this fires just for legacy batches persisted
-    # with worktree isolation — harmless best-effort cleanup of pre-existing debris.
-    from codeframe.core.sandbox.context import IsolationLevel as _IL
-    if batch.isolation == _IL.WORKTREE.value:
-        from codeframe.core.worktrees import WorktreeRegistry
-        WorktreeRegistry().cleanup_stale(workspace.repo_path)
+    # No orphan-worktree sweep here (#958). It called WorktreeRegistry, which
+    # nothing ever registered into — sandbox/context.py deliberately skips
+    # registration because liveness-keyed cleanup would force-delete a branch
+    # that was *preserved* on failure or conflict. The sweep was therefore a
+    # no-op over an always-empty registry, and the registry is now gone. A
+    # leftover cf/<task_id> worktree is surfaced as an actionable error by
+    # _create_worktree_context on the next run instead.
 
     # Create execution plan based on dependencies
     plan = create_execution_plan(workspace, batch.task_ids)

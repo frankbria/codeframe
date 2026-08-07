@@ -7,6 +7,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import json
+import logging
 import re
 from typing import Optional
 
@@ -14,6 +15,8 @@ from codeframe.adapters.llm.base import Purpose
 from codeframe.core import tasks as task_module
 from codeframe.core.state_machine import TaskStatus
 from codeframe.core.workspace import Workspace
+
+logger = logging.getLogger(__name__)
 
 
 CLASSIFY_SYSTEM_PROMPT = (
@@ -354,6 +357,46 @@ def _render_node(
         )
 
 
+def _children_of(workspace: Workspace, parent_id: str) -> list:
+    """Return every child of ``parent_id``.
+
+    Queries by ``parent_id`` directly rather than filtering ``list_tasks``,
+    whose default 100-row cap silently truncated the children of a wide parent
+    and made the roll-up below compute "all DONE" from a partial set (#958).
+    """
+    from contextlib import closing
+
+    from codeframe.core.workspace import get_db_connection
+
+    with closing(get_db_connection(workspace)) as conn:
+        rows = conn.execute(
+            """
+            SELECT id, workspace_id, prd_id, title, description, status, priority,
+                   depends_on, estimated_hours, complexity_score, uncertainty_level,
+                   created_at, updated_at, github_issue_number, parent_id, lineage,
+                   is_leaf, hierarchical_id, requirement_ids, external_url,
+                   auto_close_github_issue
+            FROM tasks
+            WHERE workspace_id = ? AND parent_id = ?
+            """,
+            (workspace.id, parent_id),
+        ).fetchall()
+    return [task_module._row_to_task(row) for row in rows]
+
+
+def _rolled_up_status(child_statuses: list) -> Optional[TaskStatus]:
+    """The status a parent should take given its children's, or ``None``."""
+    if not child_statuses:
+        return None
+    if all(s == TaskStatus.DONE for s in child_statuses):
+        return TaskStatus.DONE
+    if any(s == TaskStatus.FAILED for s in child_statuses):
+        return TaskStatus.FAILED
+    if any(s == TaskStatus.IN_PROGRESS for s in child_statuses):
+        return TaskStatus.IN_PROGRESS
+    return None
+
+
 def propagate_status(workspace: Workspace, task_id: str) -> None:
     """Propagate status changes from a child task up to its parent(s).
 
@@ -363,38 +406,54 @@ def propagate_status(workspace: Workspace, task_id: str) -> None:
     - Any child IN_PROGRESS -> parent IN_PROGRESS
     - Otherwise -> no change
 
+    Called from ``tasks.update_status`` — the chokepoint every transition flows
+    through — so composite parents built by ``cf tasks generate --recursive``
+    actually roll up. It had zero production callers before #958.
+
+    **Never raises.** A roll-up is bookkeeping on top of the child's own
+    transition: if the parent cannot legally reach the computed status (a
+    parent still in BACKLOG cannot go to DONE), the roll-up is skipped rather
+    than failing the child's transition, which is the operation the caller
+    actually asked for.
+
     Args:
         workspace: Workspace containing the tasks
         task_id: ID of the task whose status just changed
     """
-    task = task_module.get(workspace, task_id)
-    if not task or not task.parent_id:
-        return
+    from codeframe.core.state_machine import transition_path
 
-    parent = task_module.get(workspace, task.parent_id)
-    if not parent or parent.is_leaf:
-        return
+    # Walk iteratively with a seen-set: a corrupt parent_id cycle would
+    # otherwise recurse until the stack blows.
+    seen: set[str] = {task_id}
+    current_id = task_id
 
-    # Load all children of the parent
-    all_tasks = task_module.list_tasks(workspace)
-    children = [t for t in all_tasks if t.parent_id == parent.id]
+    while True:
+        task = task_module.get(workspace, current_id)
+        if not task or not task.parent_id:
+            return
 
-    if not children:
-        return
+        parent = task_module.get(workspace, task.parent_id)
+        if not parent or parent.is_leaf:
+            return
+        if parent.id in seen:
+            logger.warning(
+                "Parent cycle detected at task %s; stopping propagation.", parent.id
+            )
+            return
+        seen.add(parent.id)
 
-    child_statuses = [c.status for c in children]
+        new_status = _rolled_up_status(
+            [c.status for c in _children_of(workspace, parent.id)]
+        )
+        if new_status and new_status != parent.status:
+            # A parent in BACKLOG cannot jump straight to DONE, so walk the
+            # shortest legal route. An empty path means no route exists (the
+            # parent is MERGED) — skip rather than fail the child's transition.
+            for step in transition_path(parent.status, new_status):
+                task_module.update_status(
+                    workspace, parent.id, step, propagate=False
+                )
 
-    # Determine new parent status
-    new_status = None
-    if all(s == TaskStatus.DONE for s in child_statuses):
-        new_status = TaskStatus.DONE
-    elif any(s == TaskStatus.FAILED for s in child_statuses):
-        new_status = TaskStatus.FAILED
-    elif any(s == TaskStatus.IN_PROGRESS for s in child_statuses):
-        new_status = TaskStatus.IN_PROGRESS
-
-    if new_status and new_status != parent.status:
-        task_module.update_status(workspace, parent.id, new_status)
-
-    # Recursively propagate upward
-    propagate_status(workspace, parent.id)
+        # Keep walking up even when this parent did not change — a grandparent
+        # may still aggregate differently.
+        current_id = parent.id

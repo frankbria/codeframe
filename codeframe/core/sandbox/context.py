@@ -147,10 +147,12 @@ def create_execution_context(
 def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     """Create a git worktree and wire its merge-back / cleanup / preserve hooks.
 
-    The worktree is intentionally NOT registered in WorktreeRegistry: orphan
-    cleanup (keyed on process liveness) would force-delete a preserved branch
-    once this process exits, defeating the failure/conflict preservation the
-    acceptance criteria require.
+    Worktrees are deliberately not tracked in any liveness-keyed registry:
+    orphan cleanup keyed on process liveness would force-delete a *preserved*
+    branch once this process exits, defeating the failure/conflict preservation
+    the acceptance criteria require. The old ``WorktreeRegistry`` was therefore
+    never written to, and was deleted in #958; a leftover worktree surfaces as
+    the actionable error raised below on the next run instead.
     """
     import subprocess
 

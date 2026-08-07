@@ -207,10 +207,6 @@ class TestSandboxWorktreeReexports:
         from codeframe.core.sandbox import MergeResult
         assert MergeResult is not None
 
-    def test_worktree_registry_importable_from_sandbox(self):
-        from codeframe.core.sandbox import WorktreeRegistry
-        assert WorktreeRegistry is not None
-
     def test_get_base_branch_importable_from_sandbox(self):
         from codeframe.core.sandbox import get_base_branch
         assert callable(get_base_branch)
@@ -218,4 +214,6 @@ class TestSandboxWorktreeReexports:
     def test_sandbox_worktree_module_importable(self):
         from codeframe.core.sandbox import worktree as wt_mod
         assert hasattr(wt_mod, "TaskWorktree")
-        assert hasattr(wt_mod, "WorktreeRegistry")
+        # WorktreeRegistry was deleted in #958 (nothing ever registered into
+        # it); the re-export must be gone too, not left dangling.
+        assert not hasattr(wt_mod, "WorktreeRegistry")

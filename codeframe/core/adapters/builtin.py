@@ -203,6 +203,12 @@ class BuiltinReactAdapter:
             status=result_status,
             output=f"ReactAgent finished with status: {status.value}",  # type: ignore[union-attr]
             token_usage=_adapter_token_usage(agent),
+            # Same pattern as the token counts above (#932): ReactAgent already
+            # tracks these, and runtime used to hardcode None/0 into the engine
+            # log, so Gate Pass showed 0% forever (#958). getattr-guarded — the
+            # plan engine and test doubles do not carry them.
+            gates_passed=getattr(agent, "gates_passed", None),
+            self_corrections=getattr(agent, "self_correction_count", 0) or 0,
         )
 
 

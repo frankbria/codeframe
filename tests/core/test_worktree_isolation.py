@@ -210,9 +210,10 @@ class TestExecuteAgentWorktreeMergeBack:
         assert not _branch_exists(repo, f"cf/{task.id}")
         assert not (repo / ".codeframe" / "worktrees" / task.id).exists()
         # Single-run worktrees are intentionally never registered (so orphan
-        # cleanup keyed on process liveness can't force-delete a preserved branch).
-        from codeframe.core.worktrees import list_worktrees
-        assert list_worktrees(repo) == []
+        # cleanup keyed on process liveness can't force-delete a preserved
+        # branch). The registry itself was deleted in #958 as permanently
+        # empty; assert no stray state file is written.
+        assert not (repo / ".codeframe" / "worktrees.json").exists()
 
     def test_conflict_creates_blocker_and_preserves_branch(self, git_workspace: Workspace):
         task, state = _run_with_adapter(git_workspace, _ConflictingAdapter())

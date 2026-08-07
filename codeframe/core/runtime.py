@@ -1022,8 +1022,16 @@ def execute_agent(
                 status=agent_status.value.upper(),
                 duration_ms=_perf_duration_ms,
                 tokens_used=_perf_tokens,
-                gates_passed=None,
-                self_corrections=0,
+                # Real values off the adapter result (#958). These were
+                # hardcoded None/0, so `cf engines stats` and `compare`
+                # rendered 0% Gate Pass and 0 self-corrections forever.
+                # engine_stats stores gates_passed as 1/0/NULL.
+                gates_passed=(
+                    None
+                    if getattr(result, "gates_passed", None) is None
+                    else int(bool(result.gates_passed))
+                ),
+                self_corrections=getattr(result, "self_corrections", 0) or 0,
             )
         except Exception:
             logger.warning("Engine stats recording failed", exc_info=True)
