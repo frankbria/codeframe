@@ -136,6 +136,42 @@ class TestParentStatusPropagation:
         )
         assert tasks.get(ws, child.id).status == TaskStatus.DONE
 
+    def test_reopening_a_child_demotes_the_parent(self, tmp_path):
+        """The roll-up must demote, not just promote (#958 review).
+
+        DONE -> READY is a legal child transition. A roll-up that only knows
+        how to promote leaves the parent stranded at DONE while a child is back
+        in the queue.
+        """
+        from codeframe.core import tasks
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        parent, c1, c2 = self._tree(ws)
+        for c in (c1, c2):
+            self._drive(
+                ws, c.id, TaskStatus.READY, TaskStatus.IN_PROGRESS, TaskStatus.DONE
+            )
+        assert tasks.get(ws, parent.id).status == TaskStatus.DONE
+
+        # Reopen one child.
+        tasks.update_status(ws, c1.id, TaskStatus.READY)
+        assert tasks.get(ws, parent.id).status != TaskStatus.DONE
+
+    def test_all_children_blocked_blocks_the_parent(self, tmp_path):
+        from codeframe.core import tasks
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        parent, c1, c2 = self._tree(ws)
+        for c in (c1, c2):
+            self._drive(
+                ws, c.id, TaskStatus.READY, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED
+            )
+        assert tasks.get(ws, parent.id).status == TaskStatus.BLOCKED
+
     def test_children_are_read_past_the_list_tasks_cap(self, tmp_path):
         """Children must be queried directly, not filtered out of a capped list."""
         from codeframe.core import task_tree, tasks

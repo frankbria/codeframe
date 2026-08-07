@@ -385,7 +385,14 @@ def _children_of(workspace: Workspace, parent_id: str) -> list:
 
 
 def _rolled_up_status(child_statuses: list) -> Optional[TaskStatus]:
-    """The status a parent should take given its children's, or ``None``."""
+    """The status a parent should take given its children's.
+
+    ``None`` only when there are no children — a childless task has nothing to
+    aggregate. Every other combination maps to a status, in descending
+    precedence, so the parent can **demote** as well as promote: a child may
+    legally go DONE -> READY, and returning ``None`` there would strand the
+    parent at DONE while a child is back in the queue.
+    """
     if not child_statuses:
         return None
     if all(s == TaskStatus.DONE for s in child_statuses):
@@ -394,7 +401,13 @@ def _rolled_up_status(child_statuses: list) -> Optional[TaskStatus]:
         return TaskStatus.FAILED
     if any(s == TaskStatus.IN_PROGRESS for s in child_statuses):
         return TaskStatus.IN_PROGRESS
-    return None
+    if any(s == TaskStatus.BLOCKED for s in child_statuses):
+        return TaskStatus.BLOCKED
+    if any(s == TaskStatus.READY for s in child_statuses):
+        return TaskStatus.READY
+    # Everything left is BACKLOG (or MERGED, which only follows a DONE that the
+    # all-DONE branch above already claimed).
+    return TaskStatus.BACKLOG
 
 
 def propagate_status(workspace: Workspace, task_id: str) -> None:
