@@ -1295,15 +1295,21 @@ def check_assignment_status(workspace: Workspace) -> AssignmentResult:
 
 
 def get_ready_task_ids(workspace: Workspace) -> list[str]:
-    """Get IDs of all READY tasks in the workspace.
+    """Get IDs of all READY **executable** tasks in the workspace.
 
     Convenience function for starting batch execution.
+
+    Composite tasks (``is_leaf=False``) are excluded (#958). They are
+    aggregates built by ``cf tasks generate --recursive`` — their status is
+    rolled up from their children, so a composite reaching READY means "my
+    children are ready", not "run me". Handing one to an engine would execute
+    a container alongside the real work it contains.
 
     Args:
         workspace: Target workspace
 
     Returns:
-        List of task IDs in READY status
+        List of task IDs in READY status, leaf tasks only
     """
     ready_tasks = tasks.list_tasks(workspace, status=TaskStatus.READY)
-    return [t.id for t in ready_tasks]
+    return [t.id for t in ready_tasks if t.is_leaf]

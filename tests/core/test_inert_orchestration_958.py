@@ -214,6 +214,30 @@ class TestParentStatusPropagation:
             )
         assert tasks.get(ws, parent.id).status == TaskStatus.BLOCKED
 
+    def test_composites_never_enter_the_ready_execution_queue(self, tmp_path):
+        """The is_leaf claim must be real now that parents can reach READY.
+
+        Rolling a parent up to READY put it in `get_ready_task_ids` /
+        `--all-ready`, which never filtered is_leaf — so a recursive tree would
+        schedule the container alongside the child that holds the actual work.
+        """
+        from codeframe.core import runtime, tasks
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        ws = create_or_load_workspace(tmp_path)
+        parent, c1, c2 = self._tree(ws)
+
+        tasks.update_status(ws, c1.id, TaskStatus.READY)
+        tasks.update_status(ws, c2.id, TaskStatus.READY)
+
+        # The roll-up is still correct...
+        assert tasks.get(ws, parent.id).status == TaskStatus.READY
+        # ...but the parent is not schedulable work.
+        ready = runtime.get_ready_task_ids(ws)
+        assert set(ready) == {c1.id, c2.id}
+        assert parent.id not in ready
+
     def test_children_are_read_past_the_list_tasks_cap(self, tmp_path):
         """Children must be queried directly, not filtered out of a capped list."""
         from codeframe.core import task_tree, tasks
