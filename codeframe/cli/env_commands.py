@@ -243,10 +243,14 @@ def doctor(
                 "[dim]These may hold unmerged work from a failed or conflicted "
                 "run — inspect before removing.[/dim]"
             )
+            # `git -C <project_path>` so a copy-pasted hint targets the repo
+            # that was actually inspected. `env doctor --project /elsewhere`
+            # run from another checkout would otherwise print a relative path
+            # and delete a worktree in the caller's current repo.
             console.print(
-                "[dim]To discard one:[/dim] git worktree remove "
+                f"[dim]To discard one:[/dim] git -C {project_path} worktree remove "
                 f"{WORKTREE_DIR}/<task_id> --force "
-                "[dim]&&[/dim] git branch -D cf/<task_id>"
+                f"[dim]&&[/dim] git -C {project_path} branch -D cf/<task_id>"
             )
     except Exception:
         pass  # Never fail doctor over the worktree panel

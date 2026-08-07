@@ -364,6 +364,27 @@ class TestWorktreeRegistryRemoved:
                     hits.append(f"{path.relative_to(root)}:{node.lineno}: {found}")
         assert hits == [], f"live registry references: {hits}"
 
+    def test_doctor_lists_leftover_dirs_and_scopes_the_hint_to_the_project(
+        self, tmp_path, capsys
+    ):
+        """`env doctor --project X` must not print a hint that hits the cwd repo."""
+        from codeframe.cli import env_commands
+        from codeframe.core.worktrees import WORKTREE_DIR
+
+        project = tmp_path / "elsewhere"
+        (project / WORKTREE_DIR / "task-abc").mkdir(parents=True)
+
+        try:
+            env_commands.doctor(project=str(project))
+        except Exception:
+            pass  # Only the worktree panel is under test.
+
+        # Rich hard-wraps the console, so collapse whitespace before matching.
+        out = " ".join(capsys.readouterr().out.split())
+        assert "task-abc" in out
+        # The remediation must name the inspected repo, not a bare relative path.
+        assert f"git -C {project}" in out
+
     def test_sandbox_reexports_do_not_break(self):
         """The package must still import cleanly after the removal."""
         from codeframe.core.sandbox import TaskWorktree  # noqa: F401
