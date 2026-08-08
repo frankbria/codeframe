@@ -1,11 +1,19 @@
 /**
  * Review page feature coverage (issue #684, nightly suite).
  * Seeded: workspace is a git repo with an uncommitted change to app.py.
+ *
+ * SERIAL, and it has to be (#964). The commit test consumes that seeded
+ * working-tree change, so every test asserting on the diff must run before it.
+ * The config sets `fullyParallel: true` and `retries: 2`, so relying on
+ * declaration order alone was not enough: a retry of the commit test would
+ * re-run against an already-committed repo and could never pass. `.serial`
+ * makes the dependency enforced rather than commented, and skips the rest of
+ * the file on a failure instead of reporting cascading phantom failures.
  */
 import { test, expect } from '@playwright/test';
 import { gotoPage, trackConsoleErrors } from './helpers';
 
-test.describe('Review page', () => {
+test.describe.serial('Review page', () => {
   test('renders the working-tree diff for the seeded change', async ({ page }) => {
     const errors = trackConsoleErrors(page);
     await gotoPage(page, '/review');
@@ -25,9 +33,8 @@ test.describe('Review page', () => {
   // Previously this file only asserted that one action button was visible, so
   // nothing exercised the Ship step end to end against a real API.
   //
-  // ORDER MATTERS: the commit test consumes the seeded working-tree change, so
-  // it runs last. Playwright executes a file's tests in declaration order, and
-  // anything asserting on the diff must see it before it is committed away.
+  // ORDER MATTERS — see the .serial note in the file header: the commit test
+  // consumes the seeded working-tree change, so it runs last.
 
   test('exports the working-tree patch', async ({ page }) => {
     await gotoPage(page, '/review');

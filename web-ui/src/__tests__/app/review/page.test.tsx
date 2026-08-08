@@ -38,7 +38,7 @@ jest.mock('@/components/review/CommitPanel', () => ({
     onCreatePR,
     commitMessage,
     isCommitting,
-  }: Record<string, never> & {
+  }: {
     onCommit: () => void;
     onGenerateMessage: () => void;
     onCreatePR: (t: string, b: string) => void;
