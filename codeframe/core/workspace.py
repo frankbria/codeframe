@@ -462,8 +462,6 @@ def _create_core_tables(cursor: sqlite3.Cursor) -> None:
     # so every save_token_usage() raised "no such table" and cost data dropped).
     _create_token_usage_schema(cursor)
 
-    # Create indexes for common queries
-
 
 def _create_core_indexes(cursor: sqlite3.Cursor) -> None:
     """Create every workspace index, idempotently (#1060).
