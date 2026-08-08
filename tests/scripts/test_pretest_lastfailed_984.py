@@ -120,6 +120,46 @@ class TestEmptyAndMissingCache:
         assert _selection(project) == []
 
 
+class TestAFileThatStoppedCollectingIsBreakage:
+    """A syntax/import error is not staleness — it must block the commit.
+
+    The two look alike from the outside: a cached node ID that no longer
+    resolves. But a renamed test means "nothing to run", while a file that
+    fails to import means "you just broke this", and pruning it would let the
+    hook pass on exactly the change it exists to catch.
+    """
+
+    def test_a_broken_file_is_selected_not_pruned(self, project):
+        _write_lastfailed(project, ["test_gt.py::test_beta_fails"])
+        (project / "test_gt.py").write_text("def bad(: pass\n")
+        assert _selection(project) == ["test_gt.py"]
+
+    def test_a_broken_file_fails_the_hook(self, project):
+        _write_lastfailed(project, ["test_gt.py::test_beta_fails"])
+        (project / "test_gt.py").write_text("def bad(: pass\n")
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT)], cwd=project, capture_output=True, text=True
+        )
+        assert result.returncode != 0, "a file that no longer imports let the commit through"
+
+    def test_an_import_error_counts_too_not_just_syntax(self, project):
+        _write_lastfailed(project, ["test_gt.py::test_beta_fails"])
+        (project / "test_gt.py").write_text("import a_module_that_does_not_exist\n")
+        assert _selection(project) == ["test_gt.py"]
+
+    def test_a_healthy_file_is_unaffected_by_a_broken_neighbour(self, project):
+        """Only the broken file is selected; the renamed one stays pruned."""
+        (project / "test_other.py").write_text("def bad(: pass\n")
+        _write_lastfailed(
+            project,
+            ["test_gt.py::test_beta_fails", "test_other.py::test_whatever"],
+        )
+        (project / "test_gt.py").write_text(
+            SUITE.replace("test_beta_fails", "test_beta_renamed")
+        )
+        assert _selection(project) == ["test_other.py"]
+
+
 class TestWholeFileKeys:
     """A collection error records the file itself, with no `::`."""
 

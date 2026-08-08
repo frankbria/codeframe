@@ -24,11 +24,15 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 CACHE_RELATIVE = Path(".pytest_cache") / "v" / "cache" / "lastfailed"
+
+#: pytest banners a collection failure as "ERROR collecting <path>".
+_COLLECT_ERROR = re.compile(r"ERROR collecting (\S+)")
 
 
 def read_lastfailed(root: Path) -> list[str]:
@@ -52,14 +56,21 @@ def _file_of(node_id: str) -> str:
     return node_id.split("::", 1)[0]
 
 
-def collectible(root: Path, files: list[str]) -> set[str]:
-    """Node IDs that still resolve, collected from *files* only.
+def collectible(root: Path, files: list[str]) -> tuple[set[str], set[str]]:
+    """Inspect *files*, returning (node IDs that resolve, files that error).
 
     Deliberately scoped to the files named in the cache — a handful — so this
     can never become the full-suite collection it exists to prevent.
+
+    The two return values are different things and must not be conflated. A
+    node ID that simply stopped resolving is *stale*: the test was renamed, and
+    there is nothing to run. A file that raises during collection is *broken*:
+    you just made it un-importable, which is exactly what a pre-commit hook
+    should catch. Pruning the second along with the first would let the hook
+    pass on the change it exists to stop.
     """
     if not files:
-        return set()
+        return set(), set()
 
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q",
@@ -68,13 +79,14 @@ def collectible(root: Path, files: list[str]) -> set[str]:
         capture_output=True,
         text=True,
     )
-    # Collection errors are fine: whatever did collect is still trustworthy,
-    # and anything that did not is exactly what we mean to drop.
-    return {
+
+    resolved = {
         line.strip()
         for line in result.stdout.splitlines()
-        if "::" in line and not line.startswith(("ERROR", "E "))
+        if "::" in line and not line.lstrip().startswith(("ERROR", "E "))
     }
+    errored = set(_COLLECT_ERROR.findall(result.stdout))
+    return resolved, errored
 
 
 def select(root: Path) -> list[str]:
@@ -89,11 +101,18 @@ def select(root: Path) -> list[str]:
     if not live_files:
         return []
 
-    resolvable = collectible(root, live_files)
+    resolvable, errored = collectible(root, live_files)
 
-    surviving = []
+    surviving: list[str] = []
     for node_id in recorded:
-        if "::" in node_id:
+        file_part = _file_of(node_id)
+        if file_part in errored:
+            # Broken, not stale — run the file so pytest re-raises the error
+            # and the commit is blocked. Once, however many of its node IDs
+            # are in the cache.
+            if file_part not in surviving:
+                surviving.append(file_part)
+        elif "::" in node_id:
             if node_id in resolvable:
                 surviving.append(node_id)
         elif (root / node_id).exists():
