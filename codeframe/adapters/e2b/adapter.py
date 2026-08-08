@@ -34,11 +34,10 @@ _SANDBOX_WORKSPACE = "/workspace"
 _INSTALL_CMD = "pip install codeframe --quiet"
 
 
-
-
 #: The XY status characters `git status --porcelain` can emit. Used to tell a
 #: real status record from a bare path that merely has a space at index 2.
 _PORCELAIN_STATUS_CHARS = frozenset(" MADRCUT?!")
+
 
 def _safe_local_path(workspace_root: Path, rel_path: str) -> Path | None:
     """Resolve *rel_path* inside *workspace_root*, or return None to reject.
@@ -60,8 +59,16 @@ def _safe_local_path(workspace_root: Path, rel_path: str) -> Path | None:
     if not rel_path or PurePosixPath(rel_path).is_absolute() or Path(rel_path).is_absolute():
         return None
 
-    root = workspace_root.resolve()
-    candidate = (root / rel_path).resolve()
+    try:
+        root = workspace_root.resolve()
+        candidate = (root / rel_path).resolve()
+    except (OSError, RuntimeError, ValueError) as exc:
+        # resolve() is not total: a symlink loop raises RuntimeError on Python
+        # 3.11/3.12 (3.13 resolves it quietly), and a bad path can raise
+        # OSError. Reject this one entry rather than aborting the whole
+        # download — an unresolvable path is exactly one we must not write to.
+        logger.warning("Could not resolve sandbox path %r: %s", rel_path, exc)
+        return None
 
     if candidate == root or root not in candidate.parents:
         return None

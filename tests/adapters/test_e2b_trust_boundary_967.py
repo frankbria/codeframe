@@ -105,6 +105,30 @@ class TestNothingEscapesTheWorkspace:
         _download(_sbx(" M link/escaped.txt"), workspace)
         assert not (outside_dir / "escaped.txt").exists()
 
+    def test_a_failing_resolve_rejects_one_entry_not_the_whole_download(
+        self, workspace, monkeypatch
+    ):
+        """`Path.resolve()` can raise, and one bad entry must not abort the run.
+
+        Version-dependent in the wild: a symlink loop raises RuntimeError on
+        Python 3.11/3.12 (both supported here) but resolves quietly on 3.13, so
+        a real-symlink test would silently pass on a 3.13 dev box while the
+        crash stays live for most users. Forcing the raise pins the handling on
+        every version.
+        """
+        real_resolve = Path.resolve
+
+        def exploding_resolve(self, *args, **kwargs):
+            if self.name == "boom":
+                raise RuntimeError(f"Symlink loop from {self}")
+            return real_resolve(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "resolve", exploding_resolve)
+
+        files, count = _download(_sbx(" M boom", " M good.py", content="x"), workspace)
+        assert files == ["good.py"], files
+        assert count == 1
+
     def test_no_directories_are_created_outside_either(self, workspace, tmp_path):
         """mkdir(parents=True) runs before the write — it must not run at all."""
         _download(_sbx(" M ../made/up/dirs/file.txt"), workspace)
