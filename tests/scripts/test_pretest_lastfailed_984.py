@@ -248,6 +248,56 @@ class TestWholeFileKeys:
         assert _selection(project) == []
 
 
+class TestAMixedSelectionReportsBoth:
+    """A broken neighbour must not swallow the failure you came to see.
+
+    `pytest -x broken.py live.py::test_x` aborts the whole session on the
+    collection error before running anything, so the live failure never
+    executes or reports. The commit is still blocked — the safety invariant
+    holds — but the developer sees "1 error during collection" instead of
+    their assertion, which is the wrong thing to debug.
+    """
+
+    def test_the_live_failure_is_actually_reported(self, project):
+        (project / "test_broken.py").write_text("def bad(: pass\n")
+        _write_lastfailed(
+            project,
+            ["test_gt.py::test_beta_fails", "test_broken.py::test_x"],
+        )
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT)], cwd=project, capture_output=True, text=True
+        )
+        assert result.returncode != 0
+        assert "test_beta_fails" in result.stdout, (
+            "the live failure was swallowed by the broken neighbour's "
+            f"collection abort:\n{result.stdout[-800:]}"
+        )
+
+    def test_a_broken_file_alone_still_fails(self, project):
+        (project / "test_broken.py").write_text("def bad(: pass\n")
+        _write_lastfailed(project, ["test_broken.py::test_x"])
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT)], cwd=project, capture_output=True, text=True
+        )
+        assert result.returncode != 0
+
+    def test_a_broken_file_is_reported_when_the_live_ones_pass(self, project):
+        """Fail-fast must not hide the collection error behind a green run."""
+        (project / "test_broken.py").write_text("def bad(: pass\n")
+        (project / "test_gt.py").write_text(
+            SUITE.replace("def test_beta_fails(): assert False",
+                          "def test_beta_fails(): assert True")
+        )
+        _write_lastfailed(
+            project,
+            ["test_gt.py::test_beta_fails", "test_broken.py::test_x"],
+        )
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT)], cwd=project, capture_output=True, text=True
+        )
+        assert result.returncode != 0, "the collection error was not reported"
+
+
 class TestItActuallyRuns:
     """The script is a hook entry point, not just a selector."""
 

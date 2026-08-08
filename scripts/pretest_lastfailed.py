@@ -179,10 +179,26 @@ def main(argv: list[str]) -> int:
     if not selection:
         return 0
 
-    return subprocess.run(
-        [sys.executable, "-m", "pytest", "-x", "--no-header", *selection],
-        cwd=root,
-    ).returncode
+    # Two invocations, node IDs first. A single `pytest -x broken.py
+    # live.py::test_x` aborts the whole session on the collection error before
+    # running anything, so the failure you came to see never reports — you get
+    # "1 error during collection" and debug the wrong thing. Running the
+    # resolvable node IDs first means the expected failure is what you see;
+    # a broken file is still reported after, and either one blocks the commit.
+    node_ids = [item for item in selection if "::" in item]
+    whole_files = [item for item in selection if "::" not in item]
+
+    for group in (node_ids, whole_files):
+        if not group:
+            continue
+        code = subprocess.run(
+            [sys.executable, "-m", "pytest", "-x", "--no-header", *group],
+            cwd=root,
+        ).returncode
+        # 5 == "no tests collected", the deselect-all no-op; not a failure.
+        if code not in (0, 5):
+            return code
+    return 0
 
 
 if __name__ == "__main__":
