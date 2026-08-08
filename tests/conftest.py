@@ -304,6 +304,89 @@ def openai_api_key(mock_env) -> str:
     return key
 
 
+# ---------------------------------------------------------------------------
+# Workspace schema template (#979)
+# ---------------------------------------------------------------------------
+#
+# Building the workspace schema costs ~1273ms per call on a real filesystem and
+# ~2.7ms on tmpfs. That 470× difference is fsync: ~18 CREATE TABLEs plus
+# indexes plus a WAL-mode switch, committed and flushed, once per test. It was
+# most of the wall clock of a full local run (measured: ~910s on disk vs 428s
+# with a tmpfs basetemp, identical results).
+#
+# `_init_database` is deterministic — two builds are byte-identical, with no
+# -wal/-shm sidecars — so building it ONCE per session and copying the file
+# (0.1ms) is exactly equivalent, not merely similar.
+#
+# Drift is structurally impossible: the template is produced by calling the
+# real `_init_database`, so a schema change or SCHEMA_VERSION bump is picked up
+# automatically. `tests/core/test_workspace_db_template_979.py` asserts the
+# copy stays byte-identical to a real build.
+#
+# Test-only. No production code is touched, and durability semantics outside
+# the test session are unchanged.
+
+_REAL_INIT_DATABASE = _workspace_module._init_database
+
+
+@pytest.fixture(scope="session")
+def real_init_database():
+    """The unpatched schema builder, for tests that must compare against it."""
+    return _REAL_INIT_DATABASE
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _workspace_db_template(tmp_path_factory):
+    """Build the workspace schema at most once per session; copy it per test.
+
+    Built lazily on first use, not at session start: a run that never creates a
+    workspace (``pytest -k one_unrelated_test``) should not pay the ~1.3s build
+    it will never benefit from.
+    """
+    import shutil
+    import threading
+
+    template_lock = threading.Lock()
+    template_holder: list[Path] = []
+
+    def _template() -> Path:
+        with template_lock:
+            if not template_holder:
+                path = tmp_path_factory.mktemp("cf-db-template") / "state.db"
+                _REAL_INIT_DATABASE(path)
+                template_holder.append(path)
+            return template_holder[0]
+
+    def _copy_template(db_path):
+        # An EXISTING database is a migration, not a build: `_init_database`
+        # is `CREATE TABLE IF NOT EXISTS` plus ALTER TABLE steps, so copying
+        # over it would discard the caller's data and skip every migration —
+        # making migration tests pass for the wrong reason, because the
+        # template already contains the column the migration was meant to add.
+        # Only a new file may be templated. The hot path is unaffected:
+        # create_or_load_workspace builds at a fresh temp path.
+        if Path(db_path).exists():
+            return _REAL_INIT_DATABASE(db_path)
+
+        # Let sqlite create the file so the mode is whatever sqlite would have
+        # given it (0644 base, not open()'s 0666 — see
+        # test_state_db_permissions_match_a_plain_sqlite_create), then
+        # overwrite the contents. Opening 'wb' on an existing file leaves its
+        # mode alone, so permissions stay faithful by construction rather than
+        # by recomputing a umask formula.
+        import sqlite3
+
+        sqlite3.connect(db_path).close()
+        with open(_template(), "rb") as src, open(db_path, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+
+    _workspace_module._init_database = _copy_template
+    try:
+        yield _template
+    finally:
+        _workspace_module._init_database = _REAL_INIT_DATABASE
+
+
 # Markers for test organization
 def pytest_configure(config):
     """Configure pytest with custom markers."""
