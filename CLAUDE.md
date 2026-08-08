@@ -431,6 +431,20 @@ JWT_LIFETIME_SECONDS=86400            # JWT validity window; default 24h (was 7d
                                       # expiry. The web UI also ships a CSP
                                       # (web-ui/security-headers.js) to contain
                                       # XSS-based token exfiltration.
+                                      # Read when the JWT strategy is BUILT, not
+                                      # at import (#963) — it used to be a
+                                      # module-level int(os.getenv(...)) that
+                                      # ran before .env loaded, so setting this
+                                      # the documented way silently kept the
+                                      # default. KNOWN LIMITATION: logout does
+                                      # not revoke. POST /auth/jwt/logout only
+                                      # tells the client to drop its copy;
+                                      # verification is stateless signature
+                                      # checking with no server-side denylist
+                                      # (the `sessions` table is unused), so a
+                                      # leaked token stays valid for up to this
+                                      # lifetime. This value IS the mitigation —
+                                      # lower it if tokens may leak.
 
 # Outbound webhook SSRF guard (#656, #746) — default OFF (block)
 CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1    # Allow webhook URLs whose host resolves to

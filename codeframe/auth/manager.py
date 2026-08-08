@@ -83,7 +83,36 @@ def refresh_secret() -> str:
 # These must match the JWTStrategy defaults from FastAPI Users
 JWT_ALGORITHM = "HS256"
 JWT_AUDIENCE = ["fastapi-users:auth"]
-JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "86400"))  # 24h (#657)
+#: Fallback when JWT_LIFETIME_SECONDS is unset or unparseable. 24h (#657).
+JWT_LIFETIME_DEFAULT_SECONDS = 86400
+
+
+def jwt_lifetime_seconds() -> int:
+    """Resolve the JWT lifetime **now**, not at import (#963).
+
+    This used to be a module-level ``int(os.getenv(...))``. Import happens
+    before ``.env`` is loaded, so an operator who set JWT_LIFETIME_SECONDS the
+    documented way silently got the 24h default — a security control that did
+    not apply and never said so.
+    """
+    raw = os.getenv("JWT_LIFETIME_SECONDS")
+    if raw is None:
+        return JWT_LIFETIME_DEFAULT_SECONDS
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "JWT_LIFETIME_SECONDS=%r is not an integer; using the %ss default.",
+            raw, JWT_LIFETIME_DEFAULT_SECONDS,
+        )
+        return JWT_LIFETIME_DEFAULT_SECONDS
+    if value <= 0:
+        logger.warning(
+            "JWT_LIFETIME_SECONDS=%s is not positive; using the %ss default.",
+            value, JWT_LIFETIME_DEFAULT_SECONDS,
+        )
+        return JWT_LIFETIME_DEFAULT_SECONDS
+    return value
 
 # NOTE: The default-secret warning is intentionally NOT emitted at import time.
 # Importing this module must stay silent so it never leaks onto the CLI (the
@@ -159,11 +188,20 @@ def get_engine():
 
 
 def get_async_session_maker():
-    """Get or create the async session maker."""
+    """Get or create the async session maker.
+
+    Resolves the engine FIRST (#963). This used to short-circuit on its own
+    cache, so ``get_engine``'s path-change check never ran and the maker kept
+    handing out sessions bound to the previous DATABASE_PATH. Calling
+    ``get_engine()`` first lets that check fire — it clears
+    ``_async_session_maker`` on a change — so the maker is rebuilt against the
+    database actually in effect.
+    """
     global _async_session_maker
+    engine = get_engine()
     if _async_session_maker is None:
         _async_session_maker = async_sessionmaker(
-            get_engine(),
+            engine,
             class_=AsyncSession,
             expire_on_commit=False,
         )
@@ -316,8 +354,21 @@ bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 
 
 def get_jwt_strategy() -> JWTStrategy:
-    """JWT strategy for authentication."""
-    return JWTStrategy(secret=SECRET, lifetime_seconds=JWT_LIFETIME_SECONDS)
+    """JWT strategy for authentication.
+
+    The lifetime is resolved per call so a value loaded from ``.env`` after
+    import is honoured (#963).
+
+    **Known limitation — logout does not revoke.** ``POST /auth/jwt/logout``
+    only tells the client to drop its copy; the token itself stays valid until
+    it expires, because verification is stateless signature-checking with no
+    server-side denylist (the ``sessions`` table is unused). A leaked token is
+    therefore usable for up to JWT_LIFETIME_SECONDS. The mitigating control is
+    that lifetime — default 24h (#657), and now actually configurable — plus
+    the web UI's CSP against XSS exfiltration. Real revocation needs a
+    denylist checked on every request; tracked separately.
+    """
+    return JWTStrategy(secret=SECRET, lifetime_seconds=jwt_lifetime_seconds())
 
 
 # Authentication backend

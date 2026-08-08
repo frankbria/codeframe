@@ -106,6 +106,24 @@ async def get_current_user(
         if ticket:
             return await _authenticate_stream_ticket(ticket)
 
+    # Auth disabled (local opt-out): act as the local operator rather than
+    # rejecting (#963). require_auth already degrades this way; this path did
+    # not, so POST /api/auth/api-keys returned 401 with auth switched off.
+    #
+    # Deliberately NOT applied to the ticket-gated SSE routes. Those demand a
+    # single-use ticket regardless of auth mode today, and relaxing that here
+    # would widen the change from "the api-keys router works" to "SSE streams
+    # open without a ticket" — a different decision than this issue asks for.
+    on_ticket_path = request is not None and _query_ticket_allowed(request.url.path)
+    if not auth_required() and not on_ticket_path:
+        operator = await _local_operator_user()
+        if operator is not None:
+            return operator
+        logger.error(
+            "Auth is disabled but the database holds no user row to act as; "
+            "rejecting the request."
+        )
+
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Not authenticated",
@@ -167,6 +185,33 @@ async def _authenticate_bearer_token(token: str) -> User:
             detail="Authentication failed",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+async def _local_operator_user() -> Optional[User]:
+    """The account the auth-disabled synthetic principal acts as (#963).
+
+    With ``CODEFRAME_AUTH_REQUIRED=false`` the principal used to carry
+    ``user_id=None``. ``api_keys.user_id`` is ``NOT NULL REFERENCES users(id)``,
+    so every key operation broke in a different way: list returned nothing,
+    revoke 404'd, and create 401'd because it required a JWT. The first thing a
+    self-hosted evaluator tries, broken three ways.
+
+    Resolves to the lowest-id account, which is the ``admin@localhost`` row
+    every database seeds. Deliberately **not** cached: caching a row keyed to a
+    database path is the exact staleness bug this same issue fixes in
+    ``get_async_session_maker``, and this is a single indexed primary-key read.
+
+    Returns ``None`` when no user row exists at all, which callers surface as
+    401 rather than inventing an identity.
+    """
+    from sqlalchemy import select
+
+    from codeframe.auth.manager import get_async_session_maker
+
+    async_session_maker = get_async_session_maker()
+    async with async_session_maker() as session:
+        result = await session.execute(select(User).order_by(User.id).limit(1))
+        return result.scalar_one_or_none()
 
 
 async def _load_active_user(user_id: int) -> User:
@@ -249,11 +294,27 @@ async def get_current_user_optional(
     """Get currently authenticated user, or None if not authenticated.
 
     Non-raising version for endpoints that optionally use authentication.
+
+    Deliberately does **not** fall back to the local-operator identity when
+    auth is disabled (#963). "Optional auth" means "tell me who authenticated,
+    if anyone" — with auth off nobody did, and inventing an identity here would
+    silently change what every optional-auth endpoint sees.
     """
-    try:
-        return await get_current_user(request, credentials)
-    except HTTPException:
-        return None
+    if credentials and getattr(credentials, "credentials", None):
+        try:
+            return await _authenticate_bearer_token(credentials.credentials)
+        except HTTPException:
+            return None
+
+    if request is not None and _query_ticket_allowed(request.url.path):
+        ticket = request.query_params.get("ticket")
+        if ticket:
+            try:
+                return await _authenticate_stream_ticket(ticket)
+            except HTTPException:
+                return None
+
+    return None
 
 
 # =============================================================================
@@ -384,28 +445,81 @@ async def get_api_key_auth(
     return await run_in_threadpool(_resolve_api_key, api_key, request)
 
 
+# Process-wide fallback database for API-key auth, keyed on the resolved
+# DATABASE_PATH (#963). Two things were wrong before: it was constructed AND
+# schema-initialised *per request*, and its default was
+# ``os.path.join(os.getcwd(), ".codeframe", "state.db")`` — so a server started
+# outside a workspace scattered SQLite files wherever it happened to run, then
+# authenticated against the empty database it had just created. There is no
+# cwd default any more; without DATABASE_PATH the key is simply refused.
+_fallback_db_lock = threading.Lock()
+_fallback_db: Any = None
+_fallback_db_path: Optional[str] = None
+
+
+def _shared_fallback_db() -> Any:
+    """Return a cached Database for DATABASE_PATH, or ``None`` if unset.
+
+    Keyed on the resolved path so a changed DATABASE_PATH rebuilds rather than
+    serving a handle to the previous database — the same staleness trap #963
+    fixes in ``get_async_session_maker``.
+    """
+    global _fallback_db, _fallback_db_path
+
+    db_path = os.getenv("DATABASE_PATH")
+    if not db_path:
+        return None
+
+    with _fallback_db_lock:
+        if _fallback_db is not None and _fallback_db_path == db_path:
+            return _fallback_db
+        if _fallback_db is not None:
+            try:
+                _fallback_db.close()
+            except Exception:
+                pass
+            _fallback_db = None
+        from codeframe.platform_store.database import Database
+
+        logger.warning(
+            "No db on app.state; using the DATABASE_PATH fallback for API-key "
+            "auth. The server should attach its control-plane store instead."
+        )
+        db = Database(db_path)
+        db.initialize()
+        _fallback_db = db
+        _fallback_db_path = db_path
+        return _fallback_db
+
+
+def reset_fallback_db() -> None:
+    """Drop the cached fallback database (tests, and DATABASE_PATH changes)."""
+    global _fallback_db, _fallback_db_path
+    with _fallback_db_lock:
+        if _fallback_db is not None:
+            try:
+                _fallback_db.close()
+            except Exception:
+                pass
+        _fallback_db = None
+        _fallback_db_path = None
+
+
 def _resolve_api_key(api_key: str, request: Optional[Request]) -> Optional[Dict[str, Any]]:
     """Blocking half of :func:`get_api_key_auth`. Runs on a worker thread."""
-    fallback_db = None
     try:
         # Get database from app state (singleton) or request state
         db = getattr(request.app.state, "db", None)
         if db is None:
             db = getattr(request.state, "db", None)
         if db is None:
-            # Fallback: create a short-lived connection. There is no request
-            # cleanup middleware, so it is closed in the finally below (#760).
-            logger.warning("No db in app.state, creating fallback connection for API key auth")
-            import os
-            from codeframe.platform_store.database import Database
-
-            db_path = os.getenv(
-                "DATABASE_PATH",
-                os.path.join(os.getcwd(), ".codeframe", "state.db")
+            db = _shared_fallback_db()
+        if db is None:
+            logger.error(
+                "API key auth attempted with no database on app.state and no "
+                "DATABASE_PATH set; rejecting the key."
             )
-            fallback_db = Database(db_path)
-            fallback_db.initialize()
-            db = fallback_db
+            return None
 
         # Extract prefix and look up key
         try:
@@ -466,9 +580,6 @@ def _resolve_api_key(api_key: str, request: Optional[Request]) -> Optional[Dict[
         # to no-auth (returns None) per this module's degrade-to-401 policy.
         logger.error(f"API key authentication error: {e}", exc_info=True)
         return None
-    finally:
-        if fallback_db is not None:
-            fallback_db.close()
 
 
 async def require_auth(
@@ -528,10 +639,14 @@ async def require_auth(
     # Auth disabled (local opt-out): return a synthetic local-admin principal
     # instead of raising. Real credentials above always take precedence.
     if not auth_required():
+        # A stable, real user_id (#963): api_keys.user_id is a NOT NULL foreign
+        # key, so None made list/create/revoke fail in three different ways.
+        operator = await _local_operator_user()
         return _resolve({
             "type": "disabled",
-            "user_id": None,
+            "user_id": getattr(operator, "id", None),
             "scopes": [SCOPE_READ, SCOPE_WRITE, SCOPE_ADMIN],
+            "user": operator,
         })
 
     # No authentication provided
