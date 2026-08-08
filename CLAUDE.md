@@ -107,7 +107,7 @@ Shipped pages: `/`, `/prd`, `/tasks`, `/execution`, `/execution/[taskId]`, `/blo
 Testing: `cd web-ui && npm test` must pass; `npm run build` must succeed. The `frontend-tests` CI job enforces this on every PR.
 
 ### What's implemented
-Full feature list in `docs/PRODUCT_ROADMAP.md`. Key capabilities: ReAct agent execution, batch execution (serial/parallel/auto), task dependencies, stall detection, self-correction, GitHub PR workflow, SSE streaming, API auth, rate limiting, OpenAPI docs, multi-provider LLM (Anthropic/OpenAI-compatible), agent adapters (ClaudeCode/Codex/OpenCode/Kilocode), worktree isolation, E2B cloud execution, interactive agent sessions (WebSocket chat + XTerm.js terminal), PROOF9 quality system (gate runs, per-gate evidence, run history).
+Full feature list in `docs/PRODUCT_ROADMAP.md`. Key capabilities: ReAct agent execution, batch execution (serial/parallel/auto), task dependencies, stall detection, self-correction, GitHub PR workflow, SSE streaming, API auth, rate limiting, OpenAPI docs, multi-provider LLM (Anthropic/OpenAI-compatible), agent adapters (ClaudeCode/Codex/OpenCode/Kilocode), worktree isolation, interactive agent sessions (WebSocket chat + XTerm.js terminal), PROOF9 quality system (gate runs, per-gate evidence, run history). E2B cloud execution exists but is EXPERIMENTAL and gated — see `CODEFRAME_ENABLE_CLOUD_ENGINE` below.
 
 ---
 
