@@ -303,6 +303,37 @@ class TestPorcelainParsing:
             E2BAgentAdapter._parse_porcelain("R  fake.py\0 M real_change.py\0")
         assert "rename" in caplog.text.lower(), caplog.text
 
+    def test_an_old_path_that_looks_shaped_like_a_record_is_still_consumed(self):
+        """Renaming `v1 notes.txt` must not confuse the rename heuristic.
+
+        Its third character is a space, so a pure shape check would decline to
+        consume it and then re-parse it as a bogus record with status `v1`.
+        Real status characters come from a small alphabet, which disambiguates.
+        """
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+
+        paths, rejected = E2BAgentAdapter._parse_porcelain(
+            "R  final.py\0v1 notes.txt\0 M other.py\0"
+        )
+        assert paths == ["final.py", "other.py"], paths
+        assert rejected == 0
+
+    @pytest.mark.parametrize("entry", ["v1 notes.txt", "hello world", "ab cd"])
+    def test_a_non_status_prefix_is_not_a_record(self, entry):
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+
+        paths, rejected = E2BAgentAdapter._parse_porcelain(entry + "\0")
+        assert paths == []
+        assert rejected == 1
+
+    @pytest.mark.parametrize("status", [" M", "M ", "??", "A ", " D", "R ", "!!", "UU"])
+    def test_real_status_pairs_are_recognised(self, status):
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+
+        paths, rejected = E2BAgentAdapter._parse_porcelain(f"{status} f.py\0")
+        assert rejected == 0
+        assert paths == ["f.py"]
+
     def test_porcelain_is_requested_nul_separated(self, workspace):
         """-z is what removes the separator ambiguity above."""
         sbx = _sbx(" M ok.py", content="x")

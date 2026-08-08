@@ -36,6 +36,10 @@ _INSTALL_CMD = "pip install codeframe --quiet"
 
 
 
+#: The XY status characters `git status --porcelain` can emit. Used to tell a
+#: real status record from a bare path that merely has a space at index 2.
+_PORCELAIN_STATUS_CHARS = frozenset(" MADRCUT?!")
+
 def _safe_local_path(workspace_root: Path, rel_path: str) -> Path | None:
     """Resolve *rel_path* inside *workspace_root*, or return None to reject.
 
@@ -387,8 +391,17 @@ class E2BAgentAdapter:
             Tuple of (paths, count rejected as unparseable).
         """
         def _looks_like_record(entry: str) -> bool:
-            # "XY PATH" — exactly two status characters and a space.
-            return len(entry) >= 4 and entry[2] == " "
+            # "XY PATH" — two status characters then a space. The status
+            # alphabet matters, not just the shape: a rename whose OLD name is
+            # something like "v1 notes.txt" also has a space at index 2, and a
+            # pure shape check would refuse to consume it as the old path and
+            # then re-parse it as a record with status "v1".
+            return (
+                len(entry) >= 4
+                and entry[2] == " "
+                and entry[0] in _PORCELAIN_STATUS_CHARS
+                and entry[1] in _PORCELAIN_STATUS_CHARS
+            )
 
         entries = [e for e in stdout.split("\0") if e]
         paths: list[str] = []
