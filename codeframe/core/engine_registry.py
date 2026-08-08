@@ -37,6 +37,45 @@ BUILTIN_ENGINES = frozenset({
     "built-in",
 })
 
+# Engines offered to users. "cloud" is valid but NOT advertised (#966): E2B
+# execution is out of launch scope and does not currently work end to end, so
+# it stays reachable only behind an explicit opt-in. Keeping it in
+# VALID_ENGINES lets the gate below answer with a specific message instead of
+# "unknown engine".
+ADVERTISED_ENGINES = frozenset(VALID_ENGINES - {"cloud"})
+
+#: Opt-in for the experimental cloud engine (#966).
+CLOUD_ENGINE_OPT_IN_ENV = "CODEFRAME_ENABLE_CLOUD_ENGINE"
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def cloud_engine_enabled() -> bool:
+    """Whether the experimental cloud engine has been opted into.
+
+    Read at call time, not import, so tests and a per-invocation environment
+    both take effect.
+    """
+    return os.environ.get(CLOUD_ENGINE_OPT_IN_ENV, "").strip().lower() in _TRUTHY
+
+
+def _reject_cloud_unless_enabled(engine: str) -> None:
+    """Raise unless the caller has opted into the experimental cloud engine.
+
+    Called from every entry point that can reach the E2B adapter — the CLI/env
+    resolution path AND the direct adapter lookups, because runtime calls those
+    without going through resolve_engine.
+    """
+    if engine != "cloud" or cloud_engine_enabled():
+        return
+    raise ValueError(
+        "The 'cloud' engine (E2B) is EXPERIMENTAL and unsupported. It is not "
+        "part of the supported surface and has known defects that can leave "
+        "your working tree inconsistent with what the gates then validate. "
+        f"To try it anyway, set {CLOUD_ENGINE_OPT_IN_ENV}=1. "
+        f"Supported engines: {', '.join(sorted(ADVERTISED_ENGINES))}."
+    )
+
 
 def resolve_engine(cli_engine: str | None = None) -> str:
     """Resolve which engine to use.
@@ -64,8 +103,10 @@ def resolve_engine(cli_engine: str | None = None) -> str:
     if engine not in VALID_ENGINES:
         raise ValueError(
             f"Invalid engine '{engine}'. "
-            f"Must be one of: {', '.join(sorted(VALID_ENGINES))}"
+            f"Must be one of: {', '.join(sorted(ADVERTISED_ENGINES))}"
         )
+
+    _reject_cloud_unless_enabled(engine)
 
     return engine
 
@@ -89,6 +130,8 @@ def get_external_adapter(engine: str, **kwargs: Any) -> AgentAdapter:
         ValueError: If engine is not an external engine.
         EnvironmentError: If the required binary is not installed.
     """
+    _reject_cloud_unless_enabled(engine)
+
     if engine == "claude-code":
         from codeframe.core.adapters.claude_code import ClaudeCodeAdapter
 

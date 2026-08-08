@@ -341,6 +341,47 @@ CODEFRAME_ENABLE_TEST_ENDPOINTS=1     # Registers the integration-test-only
                                       # production — leave unset except in CI /
                                       # WebSocket integration test runs.
 
+# Experimental cloud engine (#966) — default OFF (refuse)
+CODEFRAME_ENABLE_CLOUD_ENGINE=1       # Unlock `--engine cloud` (the E2B adapter).
+                                      # Off by default and off the advertised
+                                      # surface: it is out of launch scope and
+                                      # does not currently work end-to-end, but
+                                      # it was reachable and listed next to the
+                                      # engines that do. `resolve_engine` and
+                                      # `get_external_adapter` now both refuse it
+                                      # (so CODEFRAME_ENGINE=cloud is not a way
+                                      # around the flag) with a message naming
+                                      # this variable. IsolationLevel.CLOUD is a
+                                      # separate thing and stays unimplemented.
+                                      #
+                                      # KNOWN DEFECTS — the price of lifting the
+                                      # gate. Deliberately NOT fixed in #966;
+                                      # this is the checklist for whoever makes
+                                      # the engine real:
+                                      #   1. Wrong package. `_INSTALL_CMD` runs
+                                      #      `pip install codeframe`, but the
+                                      #      project publishes as `codeframe-ai`
+                                      #      — every sandbox installs someone
+                                      #      else's package or nothing.
+                                      #   2. `CommandExitException` from the E2B
+                                      #      SDK is not handled, so a non-zero
+                                      #      command in the sandbox surfaces as
+                                      #      an unhandled traceback instead of a
+                                      #      failed run.
+                                      #   3. No working sync-back: results
+                                      #      produced in the sandbox do not
+                                      #      reliably land in the workspace, so a
+                                      #      "successful" run can leave nothing
+                                      #      behind.
+                                      #   4. File upload is unbatched (one
+                                      #      round-trip per file) — unusable on a
+                                      #      real repo.
+                                      #   5. The adapter's tests mock with
+                                      #      non-autospec mocks, so they pass
+                                      #      against signatures the SDK does not
+                                      #      have — they are not evidence the
+                                      #      engine works.
+
 # Delegated-agent HOME sandbox (#996) — default ON (sandboxed)
 CODEFRAME_AGENT_INHERIT_HOME=1        # Run delegated coding CLIs (claude-code,
                                       # codex, opencode, kilocode) with the
