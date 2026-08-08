@@ -295,3 +295,39 @@ class TestLegacyShapesTheTableDropTestCannotReach:
         """Two attempts means one of them is unguarded — that was the bug."""
         source = Path("codeframe/core/workspace.py").read_text()
         assert source.count("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url") == 1
+
+    def test_a_tasks_table_missing_columns_is_migrated_not_left_alone(self, tmp_path):
+        """A legacy tasks table must come out fully migrated, whoever does it.
+
+        Deliberately does not assert *which* code path adds the columns:
+        `_create_core_tables` carries ALTER statements of its own, so the
+        block in `_ensure_schema_upgrades` may well be redundant now (see the
+        follow-up issue). What must not regress is the outcome — an old tasks
+        table ends up with every current column.
+        """
+        from codeframe.core.workspace import _ensure_schema_upgrades, _init_database
+
+        db = tmp_path / "legacy_tasks.db"
+        _init_database(db)
+        conn = sqlite3.connect(db)
+        conn.execute("DROP TABLE tasks")
+        conn.execute(
+            "CREATE TABLE tasks (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, "
+            "title TEXT NOT NULL, description TEXT, status TEXT NOT NULL, "
+            "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        conn.execute("PRAGMA user_version = 0")
+        conn.commit()
+        conn.close()
+
+        _ensure_schema_upgrades(db)
+
+        conn = sqlite3.connect(db)
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(tasks)")}
+        finally:
+            conn.close()
+        assert {
+            "depends_on", "parent_id", "requirement_ids",
+            "github_issue_number", "external_url", "auto_close_github_issue",
+        } <= cols, f"legacy tasks table was not migrated: {sorted(cols)}"

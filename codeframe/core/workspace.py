@@ -134,7 +134,10 @@ def _create_token_usage_schema(cursor: sqlite3.Cursor) -> None:
 
 
 def _create_core_tables(cursor: sqlite3.Cursor) -> None:
-    """Create every workspace table and index, idempotently (#1060).
+    """Create every workspace table, idempotently (#1060).
+
+    Tables only — indexes live in ``_create_core_indexes`` because their
+    ordering is constrained on the upgrade path; see that docstring.
 
     The single definition of the workspace schema, called by BOTH
     ``_init_database`` (fresh workspace) and ``_ensure_schema_upgrades``
