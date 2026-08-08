@@ -304,7 +304,6 @@ def openai_api_key(mock_env) -> str:
     return key
 
 
-
 # ---------------------------------------------------------------------------
 # Workspace schema template (#979)
 # ---------------------------------------------------------------------------
@@ -338,11 +337,25 @@ def real_init_database():
 
 @pytest.fixture(scope="session", autouse=True)
 def _workspace_db_template(tmp_path_factory):
-    """Build the workspace schema once per session; copy it per test."""
-    import shutil
+    """Build the workspace schema at most once per session; copy it per test.
 
-    template = tmp_path_factory.mktemp("cf-db-template") / "state.db"
-    _REAL_INIT_DATABASE(template)
+    Built lazily on first use, not at session start: a run that never creates a
+    workspace (``pytest -k one_unrelated_test``) should not pay the ~1.3s build
+    it will never benefit from.
+    """
+    import shutil
+    import threading
+
+    template_lock = threading.Lock()
+    template_holder: list[Path] = []
+
+    def _template() -> Path:
+        with template_lock:
+            if not template_holder:
+                path = tmp_path_factory.mktemp("cf-db-template") / "state.db"
+                _REAL_INIT_DATABASE(path)
+                template_holder.append(path)
+            return template_holder[0]
 
     def _copy_template(db_path):
         # An EXISTING database is a migration, not a build: `_init_database`
@@ -364,14 +377,15 @@ def _workspace_db_template(tmp_path_factory):
         import sqlite3
 
         sqlite3.connect(db_path).close()
-        with open(template, "rb") as src, open(db_path, "wb") as dst:
+        with open(_template(), "rb") as src, open(db_path, "wb") as dst:
             shutil.copyfileobj(src, dst)
 
     _workspace_module._init_database = _copy_template
     try:
-        yield template
+        yield _template
     finally:
         _workspace_module._init_database = _REAL_INIT_DATABASE
+
 
 # Markers for test organization
 def pytest_configure(config):
