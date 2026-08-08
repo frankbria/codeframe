@@ -133,7 +133,7 @@ def _create_token_usage_schema(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_agent_id ON token_usage(agent_id)")
 
 
-def _create_core_schema(cursor: sqlite3.Cursor) -> None:
+def _create_core_tables(cursor: sqlite3.Cursor) -> None:
     """Create every workspace table and index, idempotently (#1060).
 
     The single definition of the workspace schema, called by BOTH
@@ -460,6 +460,25 @@ def _create_core_schema(cursor: sqlite3.Cursor) -> None:
     _create_token_usage_schema(cursor)
 
     # Create indexes for common queries
+
+
+def _create_core_indexes(cursor: sqlite3.Cursor) -> None:
+    """Create every workspace index, idempotently (#1060).
+
+    Split from ``_create_core_tables`` because ORDER MATTERS on the upgrade
+    path, in two ways a whole-table-drop test cannot reveal:
+
+    * ``idx_prds_chain``/``idx_prds_depends_on`` index columns that older
+      workspaces do not have yet. Creating them before the guarded ALTER TABLE
+      migrations raises ``no such column: chain_id`` and the workspace fails to
+      open instead of upgrading.
+    * ``idx_tasks_external_url`` is UNIQUE. A workspace that imported the same
+      GitHub issue twice must be deduped first, or the index raises
+      IntegrityError and there is no way back in.
+
+    So the upgrade path creates tables early (safe — pure IF NOT EXISTS) and
+    calls this only at the end, after every column migration and data fixup.
+    """
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
     # Atomic duplicate-import protection (#565): one task per (workspace, issue
@@ -491,6 +510,15 @@ def _create_core_schema(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_step ON file_operations(step_id)")
 
 
+def _create_core_schema(cursor: sqlite3.Cursor) -> None:
+    """Tables then indexes — the fresh-workspace path, where order is trivial.
+
+    A new database has no legacy columns to migrate and no duplicate rows, so
+    both halves can run back to back. ``_ensure_schema_upgrades`` deliberately
+    does NOT use this; see ``_create_core_indexes`` for why.
+    """
+    _create_core_tables(cursor)
+    _create_core_indexes(cursor)
 
 def _init_database(db_path: Path) -> None:
     """Initialize the workspace SQLite database with v2 schema.
@@ -572,11 +600,13 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
 
     cursor = conn.cursor()
 
-    # Every table and index, from the SAME definition the fresh path uses, so
-    # the two cannot drift (#1060). All IF NOT EXISTS, so this adds whatever is
-    # absent and touches nothing else. What remains below is column-level
-    # migration (ALTER TABLE) and data backfill, which DDL alone cannot express.
-    _create_core_schema(cursor)
+    # Every table, from the SAME definition the fresh path uses, so the two
+    # cannot drift (#1060). Pure IF NOT EXISTS, so this adds whatever is absent
+    # and touches nothing else. Indexes are deliberately NOT created here —
+    # they run at the very end, once the ALTER TABLE migrations below have
+    # added the columns they index and the data fixups have made the UNIQUE
+    # ones satisfiable.
+    _create_core_tables(cursor)
 
     # token_usage was added after the initial schema (issue #712); create it for
     # existing workspaces. CREATE TABLE IF NOT EXISTS keeps this idempotent.
@@ -759,12 +789,12 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
     )
     conn.commit()
 
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_execution_steps_run ON execution_steps(run_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_execution_steps_run_step ON execution_steps(run_id, step_number)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_interactions_run ON llm_interactions(run_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_interactions_step ON llm_interactions(step_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_run ON file_operations(run_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_step ON file_operations(step_id)")
+    # LAST, and from the same definition the fresh path uses. Everything above
+    # has run: the ALTER TABLE migrations have added the columns these index,
+    # and _dedupe_external_urls has made the UNIQUE one satisfiable. Creating
+    # them any earlier fails a real legacy workspace outright (#1060).
+    _create_core_indexes(cursor)
+
     # PRAGMA doesn't accept ? placeholders; SCHEMA_VERSION is a module int constant.
     cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()

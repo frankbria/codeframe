@@ -159,3 +159,80 @@ class TestNoBehaviourChange:
 
         upgraded = get_workspace(repo)
         assert tasks.get(upgraded, task.id).title == "survivor"
+
+
+class TestLegacyShapesTheTableDropTestCannotReach:
+    """Dropping a whole table is too clean a simulation of "legacy".
+
+    A dropped table comes back complete. Real legacy databases have tables that
+    *exist* but are missing columns, or that hold data a newer index would
+    reject. Sharing the DDL made ordering load-bearing: indexes must be created
+    after the ALTER TABLE migrations that add their columns, and after the data
+    fixups that make a UNIQUE index satisfiable.
+    """
+
+    def test_a_prds_table_without_chain_id_still_upgrades(self, tmp_path):
+        """idx_prds_chain cannot be created before the column it indexes."""
+        from codeframe.core.workspace import _ensure_schema_upgrades, _init_database
+
+        db = tmp_path / "legacy.db"
+        _init_database(db)
+        conn = sqlite3.connect(db)
+        conn.execute("DROP TABLE prds")
+        conn.execute(
+            "CREATE TABLE prds (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, "
+            "title TEXT, content TEXT NOT NULL, metadata TEXT, "
+            "created_at TEXT NOT NULL, version INTEGER DEFAULT 1, "
+            "parent_id TEXT, change_summary TEXT)"
+        )
+        conn.execute("PRAGMA user_version = 0")
+        conn.commit()
+        conn.close()
+
+        _ensure_schema_upgrades(db)  # must not raise "no such column: chain_id"
+
+        conn = sqlite3.connect(db)
+        try:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(prds)")}
+            idx = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'")}
+        finally:
+            conn.close()
+        assert {"chain_id", "depends_on"} <= cols
+        assert "idx_prds_chain" in idx
+
+    def test_duplicate_external_urls_are_deduped_before_the_unique_index(
+        self, tmp_path
+    ):
+        """A UNIQUE index over dirty data must not brick the workspace."""
+        from codeframe.core.workspace import _ensure_schema_upgrades, _init_database
+
+        db = tmp_path / "dupes.db"
+        _init_database(db)
+        conn = sqlite3.connect(db)
+        conn.execute("DROP INDEX IF EXISTS idx_tasks_external_url")
+        for task_id in ("t1", "t2"):
+            conn.execute(
+                "INSERT INTO tasks (id, workspace_id, title, description, status, "
+                "created_at, updated_at, external_url) "
+                "VALUES (?, 'w1', 'T', 'd', 'BACKLOG', '2026-01-01', '2026-01-01', "
+                "'https://github.com/o/r/issues/1')",
+                (task_id,),
+            )
+        conn.execute("PRAGMA user_version = 0")
+        conn.commit()
+        conn.close()
+
+        _ensure_schema_upgrades(db)  # must not raise IntegrityError
+
+        conn = sqlite3.connect(db)
+        try:
+            urls = [r[0] for r in conn.execute(
+                "SELECT external_url FROM tasks WHERE id IN ('t1','t2') ORDER BY id")]
+            idx = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'")}
+        finally:
+            conn.close()
+        assert urls[0] == "https://github.com/o/r/issues/1", "kept the oldest row"
+        assert not urls[1], "the later duplicate should have been blanked"
+        assert "idx_tasks_external_url" in idx
