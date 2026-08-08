@@ -463,16 +463,20 @@ class TestEngineRegistry:
         from codeframe.core.engine_registry import BUILTIN_ENGINES
         assert "cloud" not in BUILTIN_ENGINES
 
-    def test_get_external_adapter_cloud_returns_e2b_adapter(self):
+    def test_get_external_adapter_cloud_returns_e2b_adapter(self, monkeypatch):
         from codeframe.core.engine_registry import get_external_adapter
         from codeframe.adapters.e2b.adapter import E2BAgentAdapter
 
+        # The engine is gated as experimental (#966); opt in to reach the adapter.
+        monkeypatch.setenv("CODEFRAME_ENABLE_CLOUD_ENGINE", "1")
         adapter = get_external_adapter("cloud", timeout_minutes=10)
         assert isinstance(adapter, E2BAgentAdapter)
         assert adapter._timeout_minutes == 10
 
-    def test_resolve_cloud_engine(self):
+    def test_resolve_cloud_engine(self, monkeypatch):
         from codeframe.core.engine_registry import resolve_engine
+
+        monkeypatch.setenv("CODEFRAME_ENABLE_CLOUD_ENGINE", "1")
         assert resolve_engine("cloud") == "cloud"
 
     def test_is_external_engine_cloud(self):

@@ -2634,7 +2634,7 @@ def work_start(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, cloud, or built-in",
+        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
@@ -2656,7 +2656,7 @@ def work_start(
     cloud_timeout: int = typer.Option(
         30,
         "--cloud-timeout",
-        help="Sandbox timeout in minutes for --engine cloud (1-60, default: 30)",
+        help="Sandbox timeout in minutes for the experimental cloud engine (1-60, default: 30)",
     ),
     llm_provider: Optional[str] = typer.Option(
         None,
@@ -2681,7 +2681,6 @@ def work_start(
         codeframe work start abc123 --execute --dry-run
         codeframe work start abc123 --execute --verbose
         codeframe work start abc123 --execute --isolation worktree
-        codeframe work start abc123 --execute --engine cloud --cloud-timeout 45
         codeframe work start abc123 --execute --llm-provider openai --llm-model gpt-4o
     """
     from codeframe.core.workspace import get_workspace
@@ -2728,7 +2727,19 @@ def work_start(
 
         # Validate API key before creating run record (avoids dangling IN_PROGRESS state)
         if execute:
-            from codeframe.core.engine_registry import is_external_engine
+            from codeframe.core.engine_registry import (
+                is_external_engine,
+                resolve_engine,
+            )
+
+            # Same reason: execute_agent resolves the engine, and the gated
+            # cloud engine (#966) raises there — after the run record exists.
+            try:
+                resolve_engine(engine)
+            except ValueError as exc:
+                console.print(f"[red]Error:[/red] {exc}")
+                raise typer.Exit(1)
+
             if engine == "codex":
                 # Not the OpenAI key check: `codex login` is the common way in
                 # and sets no env var at all (#1010).
@@ -4049,7 +4060,7 @@ def batch_run(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, cloud, or built-in",
+        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
@@ -4071,7 +4082,7 @@ def batch_run(
     cloud_timeout: int = typer.Option(
         30,
         "--cloud-timeout",
-        help="Sandbox timeout in minutes for --engine cloud (1-60, default: 30)",
+        help="Sandbox timeout in minutes for the experimental cloud engine (1-60, default: 30)",
     ),
     llm_provider: Optional[str] = typer.Option(
         None,
@@ -4189,6 +4200,17 @@ def batch_run(
         console.print(f"  Tasks: {len(ids_to_execute)}")
         console.print(f"  On failure: {on_failure}")
 
+        # Ahead of the dry-run return: a preview of an engine that would be
+        # refused is misleading, and this is also the pre-run guard that keeps
+        # the gate from raising after conductor.start_batch (#966).
+        from codeframe.core.engine_registry import resolve_engine
+
+        try:
+            resolve_engine(engine)
+        except ValueError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(1)
+
         if dry_run:
             console.print("\n[dim]Dry run - showing tasks without executing:[/dim]")
             for i, tid in enumerate(ids_to_execute):
@@ -4199,6 +4221,7 @@ def batch_run(
 
         # Validate API key before batch execution
         from codeframe.core.engine_registry import is_external_engine
+
         if engine == "codex":
             # Not the OpenAI key check: `codex login` is the common way in
             # and sets no env var at all (#1010).

@@ -6,9 +6,9 @@ conductor.py and agent adapters to run tasks in isolated environments.
 Isolation levels:
   NONE     — shared filesystem, preserves current behavior (default)
   WORKTREE — git worktree per task with merge-back (single-run path only; #787)
-  CLOUD    — not implemented, raises NotImplementedError. Cloud execution ships
-             as `--engine cloud` (the E2B adapter), which provisions its own
-             sandbox rather than going through an isolation level.
+  CLOUD    — not implemented, raises NotImplementedError. Cloud execution
+             exists only as an EXPERIMENTAL, unsupported engine gated behind
+             CODEFRAME_ENABLE_CLOUD_ENGINE (#966), not as an isolation level.
 
 Worktree scope (#787): worktree isolation is enabled for the in-process
 single-run path (``cf work start --isolation worktree`` → runtime.execute_agent),
@@ -101,10 +101,11 @@ def validate_isolation(isolation: IsolationLevel) -> None:
     """
     if isolation == IsolationLevel.CLOUD:
         raise NotImplementedError(
-            "IsolationLevel.CLOUD is not implemented. Cloud execution ships as an "
-            "engine, not an isolation level: use `--engine cloud` (the E2B adapter, "
-            "`pip install codeframe[cloud]` + E2B_API_KEY), which provisions its own "
-            "sandbox. For local isolation use `--isolation worktree`."
+            "IsolationLevel.CLOUD is not implemented. For local isolation use "
+            "`--isolation worktree`. Cloud execution exists only as an "
+            "EXPERIMENTAL, unsupported E2B engine (`--engine cloud`, gated behind "
+            "CODEFRAME_ENABLE_CLOUD_ENGINE=1) — see the known limitations in "
+            "CLAUDE.md before relying on it (#966)."
         )
 
 

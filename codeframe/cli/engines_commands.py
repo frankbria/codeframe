@@ -50,17 +50,28 @@ def _config_root() -> Optional[Path]:
 @engines_app.command("list")
 def engines_list() -> None:
     """List all available execution engines and their requirement status."""
-    from codeframe.core.engine_registry import VALID_ENGINES, EXTERNAL_ENGINES, check_requirements
+    from codeframe.core.engine_registry import (
+        ADVERTISED_ENGINES,
+        EXTERNAL_ENGINES,
+        check_requirements,
+        suggestable_engines,
+    )
+
+    # Gated engines are absent unless opted in, and labelled when present —
+    # this list is how a user picks an engine (#966).
+    listed = suggestable_engines()
 
     table = Table(title="Available Engines")
     table.add_column("Engine", style="cyan")
     table.add_column("Type", style="dim")
     table.add_column("Requirements", style="green")
 
-    for engine in sorted(VALID_ENGINES):
+    for engine in listed:
         engine_type = "external" if engine in EXTERNAL_ENGINES else "builtin"
         if engine == "built-in":
             engine_type = "alias → react"
+        elif engine not in ADVERTISED_ENGINES:
+            engine_type = f"{engine_type}, EXPERIMENTAL"
 
         try:
             # The workspace root, so a builtin engine's requirement reflects the

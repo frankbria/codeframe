@@ -42,7 +42,10 @@ class TestResolveEngine:
         with pytest.raises(ValueError, match="Invalid engine"):
             resolve_engine("nonexistent")
 
-    def test_all_valid_engines_resolve(self):
+    def test_all_valid_engines_resolve(self, monkeypatch):
+        # cloud is gated as experimental (#966); opt in so this still covers
+        # every valid engine rather than quietly dropping one.
+        monkeypatch.setenv("CODEFRAME_ENABLE_CLOUD_ENGINE", "1")
         for engine in VALID_ENGINES:
             result = resolve_engine(engine)
             assert result in VALID_ENGINES

@@ -260,11 +260,13 @@ class EnvironmentConfig:
                 )
 
         # Validate engine
-        from codeframe.core.engine_registry import VALID_ENGINES
+        from codeframe.core.engine_registry import VALID_ENGINES, suggestable_engines
         if self.engine not in VALID_ENGINES:
+            # Membership is the full set; the suggestion is not — a gated
+            # engine is not a fix for a typo (#966).
             errors.append(
                 f"Invalid engine '{self.engine}'. "
-                f"Must be one of: {', '.join(sorted(VALID_ENGINES))}"
+                f"Must be one of: {', '.join(suggestable_engines())}"
             )
 
         # Validate agent budget
