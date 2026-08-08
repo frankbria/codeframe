@@ -4200,6 +4200,17 @@ def batch_run(
         console.print(f"  Tasks: {len(ids_to_execute)}")
         console.print(f"  On failure: {on_failure}")
 
+        # Ahead of the dry-run return: a preview of an engine that would be
+        # refused is misleading, and this is also the pre-run guard that keeps
+        # the gate from raising after conductor.start_batch (#966).
+        from codeframe.core.engine_registry import resolve_engine
+
+        try:
+            resolve_engine(engine)
+        except ValueError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(1)
+
         if dry_run:
             console.print("\n[dim]Dry run - showing tasks without executing:[/dim]")
             for i, tid in enumerate(ids_to_execute):
@@ -4209,16 +4220,7 @@ def batch_run(
             return
 
         # Validate API key before batch execution
-        from codeframe.core.engine_registry import (
-            is_external_engine,
-            resolve_engine,
-        )
-
-        try:
-            resolve_engine(engine)
-        except ValueError as exc:
-            console.print(f"[red]Error:[/red] {exc}")
-            raise typer.Exit(1)
+        from codeframe.core.engine_registry import is_external_engine
 
         if engine == "codex":
             # Not the OpenAI key check: `codex login` is the common way in

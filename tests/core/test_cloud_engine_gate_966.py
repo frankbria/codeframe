@@ -298,3 +298,29 @@ class TestCliRefusesBeforeCreatingARun:
         assert runtime.get_latest_run(ws, task.id) is None, (
             "a run record was created for a refused engine"
         )
+
+    def test_batch_dry_run_refuses_too(self, tmp_path, monkeypatch):
+        """A dry-run preview of an engine that will be refused is a lie."""
+        from typer.testing import CliRunner
+
+        from codeframe.cli.app import app
+        from codeframe.core import tasks
+        from codeframe.core.tasks import TaskStatus
+        from codeframe.core.workspace import create_or_load_workspace
+
+        monkeypatch.setenv("E2B_API_KEY", "not-the-thing-being-tested")
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        ws = create_or_load_workspace(repo)
+        task = tasks.create(ws, title="anything", description="d")
+        tasks.update_status(ws, task.id, TaskStatus.READY)
+
+        result = CliRunner().invoke(
+            app,
+            ["work", "batch", "run", task.id[:8], "--dry-run", "--engine", "cloud",
+             "-w", str(repo)],
+        )
+
+        assert result.exit_code == 1, result.output
+        assert "experimental" in result.output.lower()
