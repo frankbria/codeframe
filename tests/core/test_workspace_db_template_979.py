@@ -126,6 +126,70 @@ class TestTheTemplateMatchesARealBuild:
         assert tasks.get(workspace, task.id).status == TaskStatus.READY
 
 
+class TestAnExistingDatabaseIsAMigration:
+    """`_init_database` on an existing file migrates it — it does not rebuild.
+
+    The template must only ever serve a *new* database. Copying over an
+    existing one discards its contents and skips every ALTER TABLE, which
+    makes migration tests pass for the wrong reason: the template already has
+    the column the migration was supposed to add.
+    """
+
+    def test_an_existing_database_keeps_its_data(self, tmp_path):
+        from codeframe.core import workspace as ws
+
+        db = tmp_path / "state.db"
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE legacy (id TEXT PRIMARY KEY)")
+        conn.execute("INSERT INTO legacy VALUES ('keep-me')")
+        conn.commit()
+        conn.close()
+
+        ws._init_database(db)
+
+        conn = sqlite3.connect(db)
+        try:
+            assert conn.execute("SELECT id FROM legacy").fetchall() == [("keep-me",)]
+        finally:
+            conn.close()
+
+    def test_the_alter_table_migration_actually_runs(self, tmp_path):
+        """The concrete case: a pre-created_by blockers table gets the column."""
+        from codeframe.core import workspace as ws
+
+        db = tmp_path / "state.db"
+        conn = sqlite3.connect(db)
+        conn.execute("""
+            CREATE TABLE blockers (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                task_id TEXT,
+                question TEXT NOT NULL,
+                answer TEXT,
+                status TEXT NOT NULL DEFAULT 'OPEN',
+                created_at TEXT NOT NULL,
+                answered_at TEXT
+            )
+        """)
+        conn.execute(
+            "INSERT INTO blockers (id, workspace_id, question, status, created_at) "
+            "VALUES ('b1', 'w1', 'q?', 'OPEN', '2026-01-01')"
+        )
+        conn.commit()
+        conn.close()
+
+        ws._init_database(db)
+
+        conn = sqlite3.connect(db)
+        try:
+            columns = {r[1] for r in conn.execute("PRAGMA table_info(blockers)")}
+            assert "created_by" in columns
+            # Migrated, not replaced — a rebuild would have dropped the row.
+            assert conn.execute("SELECT id FROM blockers").fetchall() == [("b1",)]
+        finally:
+            conn.close()
+
+
 class TestPerTestPatchingStillWins:
     """A test that swaps _init_database itself must not be broken by this."""
 

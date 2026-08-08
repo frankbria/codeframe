@@ -345,6 +345,16 @@ def _workspace_db_template(tmp_path_factory):
     _REAL_INIT_DATABASE(template)
 
     def _copy_template(db_path):
+        # An EXISTING database is a migration, not a build: `_init_database`
+        # is `CREATE TABLE IF NOT EXISTS` plus ALTER TABLE steps, so copying
+        # over it would discard the caller's data and skip every migration —
+        # making migration tests pass for the wrong reason, because the
+        # template already contains the column the migration was meant to add.
+        # Only a new file may be templated. The hot path is unaffected:
+        # create_or_load_workspace builds at a fresh temp path.
+        if Path(db_path).exists():
+            return _REAL_INIT_DATABASE(db_path)
+
         # Let sqlite create the file so the mode is whatever sqlite would have
         # given it (0644 base, not open()'s 0666 — see
         # test_state_db_permissions_match_a_plain_sqlite_create), then
