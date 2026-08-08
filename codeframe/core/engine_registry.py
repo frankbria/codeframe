@@ -59,6 +59,18 @@ def cloud_engine_enabled() -> bool:
     return os.environ.get(CLOUD_ENGINE_OPT_IN_ENV, "").strip().lower() in _TRUTHY
 
 
+def suggestable_engines() -> list[str]:
+    """The engine names to offer a user who named one that does not exist.
+
+    Every "must be one of" list goes through here so they cannot drift apart:
+    a gated engine is absent by default and present once opted into, in the
+    CLI's engine list, the config validator and the requirement check alike
+    (#966).
+    """
+    engines = VALID_ENGINES if cloud_engine_enabled() else ADVERTISED_ENGINES
+    return sorted(engines)
+
+
 def _reject_cloud_unless_enabled(engine: str) -> None:
     """Raise unless the caller has opted into the experimental cloud engine.
 
@@ -103,7 +115,7 @@ def resolve_engine(cli_engine: str | None = None) -> str:
     if engine not in VALID_ENGINES:
         raise ValueError(
             f"Invalid engine '{engine}'. "
-            f"Must be one of: {', '.join(sorted(ADVERTISED_ENGINES))}"
+            f"Must be one of: {', '.join(suggestable_engines())}"
         )
 
     _reject_cloud_unless_enabled(engine)
@@ -219,7 +231,7 @@ def check_requirements(
     if engine not in VALID_ENGINES:
         raise ValueError(
             f"Invalid engine '{engine}'. "
-            f"Must be one of: {', '.join(sorted(VALID_ENGINES))}"
+            f"Must be one of: {', '.join(suggestable_engines())}"
         )
 
     # Resolve alias

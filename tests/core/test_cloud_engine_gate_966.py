@@ -219,6 +219,26 @@ class TestNotAdvertised:
         assert engine_errors, errors
         assert "cloud" not in engine_errors[0]
 
+    def test_check_requirements_does_not_suggest_it(self):
+        """`cf engines check <typo>` is a fourth list a user reads."""
+        from codeframe.core.engine_registry import check_requirements
+
+        with pytest.raises(ValueError) as excinfo:
+            check_requirements("nope")
+        assert "cloud" not in str(excinfo.value)
+
+    def test_every_suggestion_list_agrees(self, monkeypatch):
+        """Opted in, the suggestion lists include it — all of them or none."""
+        from codeframe.core.engine_registry import check_requirements, resolve_engine
+
+        monkeypatch.setenv(OPT_IN, "1")
+        messages = []
+        for call in (lambda: resolve_engine("nope"), lambda: check_requirements("nope")):
+            with pytest.raises(ValueError) as excinfo:
+                call()
+            messages.append(str(excinfo.value))
+        assert all("cloud" in m for m in messages), messages
+
     def test_the_known_limitations_are_recorded_for_lifting_the_gate(self):
         """AC3: the parked defects must be written down somewhere findable."""
         text = Path("CLAUDE.md").read_text()
