@@ -622,10 +622,6 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
     # added the columns they index and the data fixups have made the UNIQUE
     # ones satisfiable.
     _create_core_tables(cursor)
-
-    # token_usage was added after the initial schema (issue #712); create it for
-    # existing workspaces. CREATE TABLE IF NOT EXISTS keeps this idempotent.
-    _create_token_usage_schema(cursor)
     conn.commit()
 
     # Add columns that were introduced after the initial batch_runs schema
@@ -718,7 +714,6 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             cursor.execute("ALTER TABLE prds ADD COLUMN depends_on TEXT")
             conn.commit()
 
-        # Add indexes for PRD version chain queries
         conn.commit()
 
     # Add new columns to tasks table if they don't exist
@@ -779,8 +774,6 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         # the exact IntegrityError brick this guard exists to survive.
         _dedupe_external_urls(conn, cursor)
         conn.commit()
-
-    conn.commit()
 
     conn.commit()
 
