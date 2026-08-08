@@ -133,20 +133,29 @@ def _create_token_usage_schema(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_agent_id ON token_usage(agent_id)")
 
 
-def _init_database(db_path: Path) -> None:
-    """Initialize the workspace SQLite database with v2 schema.
+def _create_core_tables(cursor: sqlite3.Cursor) -> None:
+    """Create every workspace table, idempotently (#1060).
 
-    Creates tables for:
-    - workspaces: Workspace metadata
-    - prds: Product requirements documents
-    - tasks: Task state machine
-    - events: Append-only event log
-    - blockers: Human-in-the-loop blockers
-    - checkpoints: State snapshots
+    Tables only — indexes live in ``_create_core_indexes`` because their
+    ordering is constrained on the upgrade path; see that docstring.
+
+    The single definition of the workspace schema, called by BOTH
+    ``_init_database`` (fresh workspace) and ``_ensure_schema_upgrades``
+    (existing workspace) — the pattern ``_create_token_usage_schema`` already
+    demonstrated, applied to the rest.
+
+    Before this existed the DDL was copy-pasted between those two paths and had
+    already drifted: ``blockers``, ``checkpoints``, ``events``, ``prds``,
+    ``tasks`` and ``workspace`` plus five indexes were created only on the
+    fresh path, so a workspace that reached the upgrade path missing one never
+    got it back. Drift like that surfaces as a runtime error on whichever path
+    is less exercised, which is exactly the one nobody tests.
+
+    Every statement is ``IF NOT EXISTS``, so calling this on an existing
+    database adds what is absent and touches nothing else. Column-level
+    migrations (ALTER TABLE) stay in ``_ensure_schema_upgrades``: this function
+    only guarantees that every object exists.
     """
-    conn = _open_db(db_path)
-    cursor = conn.cursor()
-
     # Workspace metadata
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS workspace (
@@ -453,16 +462,47 @@ def _init_database(db_path: Path) -> None:
     # so every save_token_usage() raised "no such table" and cost data dropped).
     _create_token_usage_schema(cursor)
 
-    # Create indexes for common queries
+
+def _create_core_indexes(cursor: sqlite3.Cursor) -> None:
+    """Create every workspace index, idempotently (#1060).
+
+    Split from ``_create_core_tables`` because ORDER MATTERS on the upgrade
+    path, in two ways a whole-table-drop test cannot reveal:
+
+    * ``idx_prds_chain``/``idx_prds_depends_on`` index columns that older
+      workspaces do not have yet. Creating them before the guarded ALTER TABLE
+      migrations raises ``no such column: chain_id`` and the workspace fails to
+      open instead of upgrading.
+    * ``idx_tasks_external_url`` is UNIQUE. A workspace that imported the same
+      GitHub issue twice must be deduped first, or the index raises
+      IntegrityError and there is no way back in.
+
+    So the upgrade path creates tables early (safe — pure IF NOT EXISTS) and
+    calls this only at the end, after every column migration and data fixup.
+    """
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
     # Atomic duplicate-import protection (#565): one task per (workspace, issue
     # URL). SQLite treats NULLs as distinct, so non-imported tasks (NULL
     # external_url) are unaffected.
-    cursor.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url "
-        "ON tasks(workspace_id, external_url)"
-    )
+    #
+    # The only statement here that can fail on real data, so the #943 guard
+    # lives WITH it rather than at one call site: if duplicates survived the
+    # dedupe, warn and carry on without the index. A missing optimisation is
+    # recoverable; a workspace that will not open is not. Unreachable on a
+    # fresh database, which has no rows yet.
+    try:
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url "
+            "ON tasks(workspace_id, external_url)"
+        )
+    except sqlite3.IntegrityError as exc:
+        logger.warning(
+            "Could not create the unique external_url index (%s). Duplicate "
+            "GitHub-import protection is OFF for this workspace; the "
+            "workspace still opens normally.",
+            exc,
+        )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blockers_workspace ON blockers(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blockers_status ON blockers(status)")
@@ -483,6 +523,29 @@ def _init_database(db_path: Path) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_interactions_step ON llm_interactions(step_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_run ON file_operations(run_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_step ON file_operations(step_id)")
+
+
+def _create_core_schema(cursor: sqlite3.Cursor) -> None:
+    """Tables then indexes — the fresh-workspace path, where order is trivial.
+
+    A new database has no legacy columns to migrate and no duplicate rows, so
+    both halves can run back to back. ``_ensure_schema_upgrades`` deliberately
+    does NOT use this; see ``_create_core_indexes`` for why.
+    """
+    _create_core_tables(cursor)
+    _create_core_indexes(cursor)
+
+
+def _init_database(db_path: Path) -> None:
+    """Initialize the workspace SQLite database with v2 schema.
+
+    The schema itself lives in ``_create_core_schema``, shared with the upgrade
+    path so the two cannot drift (#1060).
+    """
+    conn = _open_db(db_path)
+    cursor = conn.cursor()
+
+    _create_core_schema(cursor)
 
     # PRAGMA doesn't accept ? placeholders; SCHEMA_VERSION is a module int constant.
     cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -553,69 +616,39 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
 
     cursor = conn.cursor()
 
-    # token_usage was added after the initial schema (issue #712); create it for
-    # existing workspaces. CREATE TABLE IF NOT EXISTS keeps this idempotent.
-    _create_token_usage_schema(cursor)
+    # Every table, from the SAME definition the fresh path uses, so the two
+    # cannot drift (#1060). Pure IF NOT EXISTS, so this adds whatever is absent
+    # and touches nothing else. Indexes are deliberately NOT created here —
+    # they run at the very end, once the ALTER TABLE migrations below have
+    # added the columns they index and the data fixups have made the UNIQUE
+    # ones satisfiable.
+    _create_core_tables(cursor)
     conn.commit()
 
-    # Check if batch_runs table exists, if not create it
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='batch_runs'"
+    # Add columns that were introduced after the initial batch_runs schema
+    # (migration for existing databases). Each ALTER is guarded by a column
+    # existence check so this is idempotent. isolation + stall/provider/
+    # concurrency columns were added for #741 so `batch resume` restores the
+    # original run settings instead of silently falling back to defaults.
+    cursor.execute("PRAGMA table_info(batch_runs)")
+    batch_columns = {row[1] for row in cursor.fetchall()}
+    batch_migrations = (
+        ("engine", "ALTER TABLE batch_runs ADD COLUMN engine TEXT NOT NULL DEFAULT 'plan'"),
+        ("isolation", "ALTER TABLE batch_runs ADD COLUMN isolation TEXT NOT NULL DEFAULT 'none'"),
+        ("stall_timeout_s", "ALTER TABLE batch_runs ADD COLUMN stall_timeout_s INTEGER NOT NULL DEFAULT 300"),
+        ("stall_action", "ALTER TABLE batch_runs ADD COLUMN stall_action TEXT NOT NULL DEFAULT 'blocker'"),
+        ("concurrency_by_status", "ALTER TABLE batch_runs ADD COLUMN concurrency_by_status TEXT"),
+        ("llm_provider", "ALTER TABLE batch_runs ADD COLUMN llm_provider TEXT"),
+        ("llm_model", "ALTER TABLE batch_runs ADD COLUMN llm_model TEXT"),
+        # #957: config-reload bookkeeping moved off the results JSON blob.
+        ("config_reloads", "ALTER TABLE batch_runs ADD COLUMN config_reloads TEXT"),
+        # #959: the user's --cloud-timeout must survive a resume.
+        ("cloud_timeout_minutes", "ALTER TABLE batch_runs ADD COLUMN cloud_timeout_minutes INTEGER NOT NULL DEFAULT 30"),
     )
-    if not cursor.fetchone():
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS batch_runs (
-                id TEXT PRIMARY KEY,
-                workspace_id TEXT NOT NULL,
-                task_ids TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'PENDING',
-                strategy TEXT NOT NULL DEFAULT 'serial',
-                max_parallel INTEGER NOT NULL DEFAULT 4,
-                on_failure TEXT NOT NULL DEFAULT 'continue',
-                started_at TEXT NOT NULL,
-                completed_at TEXT,
-                results TEXT,
-                engine TEXT NOT NULL DEFAULT 'plan',
-                isolation TEXT NOT NULL DEFAULT 'none',
-                stall_timeout_s INTEGER NOT NULL DEFAULT 300,
-                stall_action TEXT NOT NULL DEFAULT 'blocker',
-                concurrency_by_status TEXT,
-                llm_provider TEXT,
-                llm_model TEXT,
-                config_reloads TEXT,
-                cloud_timeout_minutes INTEGER NOT NULL DEFAULT 30,
-                FOREIGN KEY (workspace_id) REFERENCES workspace(id),
-                CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'))
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_workspace ON batch_runs(workspace_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_status ON batch_runs(status)")
-        conn.commit()
-    else:
-        # Add columns that were introduced after the initial batch_runs schema
-        # (migration for existing databases). Each ALTER is guarded by a column
-        # existence check so this is idempotent. isolation + stall/provider/
-        # concurrency columns were added for #741 so `batch resume` restores the
-        # original run settings instead of silently falling back to defaults.
-        cursor.execute("PRAGMA table_info(batch_runs)")
-        batch_columns = {row[1] for row in cursor.fetchall()}
-        batch_migrations = (
-            ("engine", "ALTER TABLE batch_runs ADD COLUMN engine TEXT NOT NULL DEFAULT 'plan'"),
-            ("isolation", "ALTER TABLE batch_runs ADD COLUMN isolation TEXT NOT NULL DEFAULT 'none'"),
-            ("stall_timeout_s", "ALTER TABLE batch_runs ADD COLUMN stall_timeout_s INTEGER NOT NULL DEFAULT 300"),
-            ("stall_action", "ALTER TABLE batch_runs ADD COLUMN stall_action TEXT NOT NULL DEFAULT 'blocker'"),
-            ("concurrency_by_status", "ALTER TABLE batch_runs ADD COLUMN concurrency_by_status TEXT"),
-            ("llm_provider", "ALTER TABLE batch_runs ADD COLUMN llm_provider TEXT"),
-            ("llm_model", "ALTER TABLE batch_runs ADD COLUMN llm_model TEXT"),
-            # #957: config-reload bookkeeping moved off the results JSON blob.
-            ("config_reloads", "ALTER TABLE batch_runs ADD COLUMN config_reloads TEXT"),
-            # #959: the user's --cloud-timeout must survive a resume.
-            ("cloud_timeout_minutes", "ALTER TABLE batch_runs ADD COLUMN cloud_timeout_minutes INTEGER NOT NULL DEFAULT 30"),
-        )
-        for column, ddl in batch_migrations:
-            if column not in batch_columns:
-                cursor.execute(ddl)
-        conn.commit()
+    for column, ddl in batch_migrations:
+        if column not in batch_columns:
+            cursor.execute(ddl)
+    conn.commit()
 
     # Add tech_stack column to workspace table if it doesn't exist
     # First check if workspace table exists
@@ -682,10 +715,6 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             cursor.execute("ALTER TABLE prds ADD COLUMN depends_on TEXT")
             conn.commit()
 
-        # Add indexes for PRD version chain queries
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_parent ON prds(parent_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_depends_on ON prds(depends_on)")
         conn.commit()
 
     # Add new columns to tasks table if they don't exist
@@ -740,194 +769,21 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         # CLI and the server with no recovery path (#943). Dedupe first, and if
         # that cannot be done, warn and carry on without the index: a missing
         # optimisation is recoverable, an unopenable workspace is not.
+        # Dedupe only. The index itself is created — once, and guarded — by
+        # _create_core_indexes at the end of this function. Creating it here as
+        # well left an UNGUARDED second attempt downstream, which reintroduced
+        # the exact IntegrityError brick this guard exists to survive.
         _dedupe_external_urls(conn, cursor)
-        try:
-            cursor.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url "
-                "ON tasks(workspace_id, external_url)"
-            )
-            conn.commit()
-        except sqlite3.IntegrityError as exc:
-            conn.rollback()
-            logger.warning(
-                "Could not create the unique external_url index (%s). Duplicate "
-                "GitHub-import protection is OFF for this workspace; the "
-                "workspace still opens normally.",
-                exc,
-            )
-
-    # Ensure runs table exists before creating dependent tables (run_logs, diagnostic_reports)
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='runs'"
-    )
-    if not cursor.fetchone():
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS runs (
-                id TEXT PRIMARY KEY,
-                workspace_id TEXT NOT NULL,
-                task_id TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'RUNNING',
-                started_at TEXT NOT NULL,
-                completed_at TEXT,
-                FOREIGN KEY (workspace_id) REFERENCES workspace(id),
-                FOREIGN KEY (task_id) REFERENCES tasks(id),
-                CHECK (status IN ('RUNNING', 'COMPLETED', 'FAILED', 'BLOCKED'))
-            )
-        """)
         conn.commit()
 
-    # Add run_logs table if it doesn't exist
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='run_logs'"
-    )
-    if not cursor.fetchone():
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS run_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id TEXT NOT NULL,
-                task_id TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                log_level TEXT NOT NULL DEFAULT 'INFO',
-                category TEXT NOT NULL,
-                message TEXT NOT NULL,
-                metadata TEXT,
-                FOREIGN KEY (run_id) REFERENCES runs(id),
-                FOREIGN KEY (task_id) REFERENCES tasks(id),
-                CHECK (log_level IN ('DEBUG', 'INFO', 'WARNING', 'ERROR'))
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_logs_run ON run_logs(run_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_logs_task ON run_logs(task_id)")
-        conn.commit()
-
-    # Add diagnostic_reports table if it doesn't exist
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='diagnostic_reports'"
-    )
-    if not cursor.fetchone():
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS diagnostic_reports (
-                id TEXT PRIMARY KEY,
-                task_id TEXT NOT NULL,
-                run_id TEXT NOT NULL,
-                root_cause TEXT NOT NULL,
-                failure_category TEXT NOT NULL,
-                severity TEXT NOT NULL,
-                recommendations TEXT NOT NULL,
-                log_summary TEXT,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (task_id) REFERENCES tasks(id),
-                FOREIGN KEY (run_id) REFERENCES runs(id),
-                CHECK (severity IN ('critical', 'high', 'medium', 'low'))
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostic_reports_task ON diagnostic_reports(task_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostic_reports_run ON diagnostic_reports(run_id)")
-        conn.commit()
-
-    # Add run_engine_log table for engine performance tracking
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS run_engine_log (
-            run_id TEXT PRIMARY KEY,
-            engine TEXT NOT NULL,
-            task_id TEXT NOT NULL,
-            workspace_id TEXT NOT NULL,
-            status TEXT NOT NULL,
-            duration_ms INTEGER,
-            tokens_used INTEGER DEFAULT 0,
-            gates_passed INTEGER,
-            self_corrections INTEGER DEFAULT 0,
-            created_at TEXT NOT NULL
-        )
-    """)
-    cursor.execute(
-        "CREATE INDEX IF NOT EXISTS idx_run_engine_log_ws_engine "
-        "ON run_engine_log(workspace_id, engine)"
-    )
     conn.commit()
 
-    # Add engine_stats table for aggregate engine metrics
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS engine_stats (
-            workspace_id TEXT NOT NULL,
-            engine TEXT NOT NULL,
-            metric TEXT NOT NULL,
-            value REAL NOT NULL DEFAULT 0.0,
-            updated_at TEXT NOT NULL,
-            PRIMARY KEY (workspace_id, engine, metric)
-        )
-    """)
-    cursor.execute(
-        "CREATE INDEX IF NOT EXISTS idx_engine_stats_ws "
-        "ON engine_stats(workspace_id, engine)"
-    )
-    conn.commit()
+    # LAST, and from the same definition the fresh path uses. Everything above
+    # has run: the ALTER TABLE migrations have added the columns these index,
+    # and _dedupe_external_urls has made the UNIQUE one satisfiable. Creating
+    # them any earlier fails a real legacy workspace outright (#1060).
+    _create_core_indexes(cursor)
 
-    # Add execution trace tables for debug/replay mode
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS execution_steps (
-            id TEXT PRIMARY KEY,
-            run_id TEXT NOT NULL,
-            step_number INTEGER NOT NULL,
-            step_type TEXT NOT NULL,
-            description TEXT NOT NULL,
-            started_at TEXT NOT NULL,
-            completed_at TEXT,
-            status TEXT NOT NULL DEFAULT 'started',
-            input_context TEXT,
-            output_result TEXT,
-            metadata TEXT,
-            FOREIGN KEY (run_id) REFERENCES runs(id)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS llm_interactions (
-            id TEXT PRIMARY KEY,
-            run_id TEXT NOT NULL,
-            step_id TEXT NOT NULL,
-            prompt TEXT NOT NULL,
-            response TEXT NOT NULL,
-            model TEXT NOT NULL,
-            tokens_used INTEGER NOT NULL DEFAULT 0,
-            timestamp TEXT NOT NULL,
-            purpose TEXT NOT NULL DEFAULT 'execution',
-            FOREIGN KEY (run_id) REFERENCES runs(id),
-            FOREIGN KEY (step_id) REFERENCES execution_steps(id)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS file_operations (
-            id TEXT PRIMARY KEY,
-            run_id TEXT NOT NULL,
-            step_id TEXT NOT NULL,
-            operation_type TEXT NOT NULL,
-            file_path TEXT NOT NULL,
-            content_before TEXT,
-            content_after TEXT,
-            timestamp TEXT NOT NULL,
-            FOREIGN KEY (run_id) REFERENCES runs(id),
-            FOREIGN KEY (step_id) REFERENCES execution_steps(id),
-            CHECK (operation_type IN ('create', 'edit', 'delete'))
-        )
-    """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_execution_steps_run ON execution_steps(run_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_execution_steps_run_step ON execution_steps(run_id, step_number)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_interactions_run ON llm_interactions(run_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_llm_interactions_step ON llm_interactions(step_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_run ON file_operations(run_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_operations_step ON file_operations(step_id)")
-    # Add cloud_run_metadata table for E2B cloud execution tracking
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cloud_run_metadata (
-            run_id TEXT PRIMARY KEY,
-            sandbox_minutes REAL NOT NULL,
-            cost_usd_estimate REAL NOT NULL,
-            files_uploaded INTEGER NOT NULL,
-            files_downloaded INTEGER NOT NULL,
-            credential_scan_blocked INTEGER NOT NULL,
-            created_at TEXT NOT NULL
-        )
-    """)
     # PRAGMA doesn't accept ? placeholders; SCHEMA_VERSION is a module int constant.
     cursor.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
