@@ -13,8 +13,17 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Directories that are always excluded from scanning and upload counts
-_EXCLUDED_DIRS = frozenset({
+# Directories skipped by BOTH the scanner and the uploader (#967).
+#
+# One constant, deliberately: these two used to disagree, and the uploader's
+# smaller set was the wider one — the scanner skipped ``dist``/``build``/
+# ``.tox``/``.eggs`` while the uploader happily shipped them, so a ``.env`` or
+# key baked into a build artifact reached the third-party sandbox unscanned.
+# Anything listed here is never scanned, which means it must also never be
+# uploaded. Only add entries that can hold no secret worth protecting.
+#
+# Build output is NOT excluded, precisely because it can contain one.
+EXCLUDED_DIRS = frozenset({
     "__pycache__",
     ".git",
     ".mypy_cache",
@@ -23,10 +32,6 @@ _EXCLUDED_DIRS = frozenset({
     "node_modules",
     ".venv",
     "venv",
-    ".tox",
-    "dist",
-    "build",
-    ".eggs",
 })
 
 # High-risk filename/extension patterns (case-insensitive glob-style matching)
@@ -83,7 +88,7 @@ def scan_path(root: Path) -> ScanResult:
 
     for path in sorted(root.rglob("*")):
         # Skip excluded directories
-        if any(part in _EXCLUDED_DIRS for part in path.parts):
+        if any(part in EXCLUDED_DIRS for part in path.parts):
             continue
 
         if not path.is_file():
