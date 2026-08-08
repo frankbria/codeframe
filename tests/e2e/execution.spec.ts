@@ -53,13 +53,19 @@ test.describe('@smoke Execution page — batch monitor', () => {
     await gotoPage(page, `/execution?batch=${BATCH_ID}`);
     await expect(page.getByText(/batch execution/i)).toBeVisible({ timeout: 20000 });
 
-    // Rows are collapsed for a terminal batch (nothing is IN_PROGRESS).
-    const rows = page.locator('button[aria-expanded]');
-    await rows.first().click();
+    // Scope to a TASK row: the app shell also renders aria-expanded buttons
+    // (collapsible nav), and a bare selector picked one of those in CI while
+    // passing locally. Task rows are the ones carrying a status label.
+    const row = page
+      .locator('button[aria-expanded]')
+      .filter({ hasText: /Completed|Failed/ })
+      .first();
+    await expect(row).toBeVisible();
+    await row.click();
 
     await expect(
       page.getByText(/task completed successfully|check diagnostics for details/i)
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 10000 });
   });
 
   test('navigates back to the task board', async ({ page }) => {
