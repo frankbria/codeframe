@@ -534,6 +534,7 @@ def _create_core_schema(cursor: sqlite3.Cursor) -> None:
     _create_core_tables(cursor)
     _create_core_indexes(cursor)
 
+
 def _init_database(db_path: Path) -> None:
     """Initialize the workspace SQLite database with v2 schema.
 
@@ -718,9 +719,6 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
             conn.commit()
 
         # Add indexes for PRD version chain queries
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_parent ON prds(parent_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_depends_on ON prds(depends_on)")
         conn.commit()
 
     # Add new columns to tasks table if they don't exist
@@ -782,16 +780,8 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         _dedupe_external_urls(conn, cursor)
         conn.commit()
 
-    cursor.execute(
-        "CREATE INDEX IF NOT EXISTS idx_run_engine_log_ws_engine "
-        "ON run_engine_log(workspace_id, engine)"
-    )
     conn.commit()
 
-    cursor.execute(
-        "CREATE INDEX IF NOT EXISTS idx_engine_stats_ws "
-        "ON engine_stats(workspace_id, engine)"
-    )
     conn.commit()
 
     # LAST, and from the same definition the fresh path uses. Everything above

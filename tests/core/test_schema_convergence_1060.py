@@ -122,6 +122,21 @@ class TestNoDdlIsDuplicated:
             f"DDL duplicated between the create and upgrade paths: {duplicated}"
         )
 
+    def test_no_create_index_statement_appears_twice(self):
+        """Indexes are DDL too — the first version of this guard missed them.
+
+        Harmless at runtime (IF NOT EXISTS, and the one UNIQUE index is
+        guarded), but "each table's DDL exists in exactly one place" is the
+        acceptance criterion, and a duplicate index is the same drift hazard
+        one level down.
+        """
+        import re
+
+        source = Path("codeframe/core/workspace.py").read_text()
+        names = re.findall(r"CREATE (?:UNIQUE )?INDEX IF NOT EXISTS (\w+)", source)
+        duplicated = sorted({n for n in names if names.count(n) > 1})
+        assert duplicated == [], f"index DDL duplicated: {duplicated}"
+
 
 class TestNoBehaviourChange:
     """AC3 — existing workspaces still open, new ones still initialise."""
