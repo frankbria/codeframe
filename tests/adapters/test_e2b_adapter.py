@@ -269,8 +269,8 @@ class TestE2BAgentAdapter:
         # Adapter runs: git-combined (1 call), pip install, cf work start, git status
         diff_result = MagicMock()
         diff_result.exit_code = 0
-        # git status --porcelain format: "XY filename"
-        diff_result.stdout = " M main.py\n"
+        # `git status --porcelain -z`: "XY filename" records, NUL-terminated (#967)
+        diff_result.stdout = " M main.py\x00"
         sbx.commands.run.side_effect = [
             MagicMock(exit_code=0, stdout="", stderr=""),        # git init+add+commit
             MagicMock(exit_code=0, stdout="installed", stderr=""),  # pip install
@@ -375,7 +375,7 @@ class TestE2BAgentAdapter:
         # porcelain: modified file + untracked new file
         status_result = MagicMock()
         status_result.exit_code = 0
-        status_result.stdout = " M existing.py\n?? new_module.py\n"
+        status_result.stdout = " M existing.py\x00?? new_module.py\x00"
         sbx.commands.run.side_effect = [
             MagicMock(exit_code=0, stdout="", stderr=""),      # git combined
             MagicMock(exit_code=0, stdout="", stderr=""),      # pip install
