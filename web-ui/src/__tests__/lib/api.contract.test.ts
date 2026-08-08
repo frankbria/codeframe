@@ -209,7 +209,6 @@ describe('api.ts request contract', () => {
     });
   });
 
-
   describe('blockersApi', () => {
     it('getAll → GET /api/v2/blockers with workspace_path only', async () => {
       await blockersApi.getAll('/ws');
@@ -312,7 +311,10 @@ describe('api.ts request contract', () => {
 
     it('getVersions → GET /api/v2/prd/:id/versions', async () => {
       await prdApi.getVersions('p-1', '/ws');
+      expect(captured.method).toBe('get');
       expect(captured.url).toBe('/api/v2/prd/p-1/versions');
+      expect(captured.params).toEqual({ workspace_path: '/ws' });
+      expect(captured.body).toBeUndefined();
     });
 
     it('createVersion → POST with snake_case change_summary', async () => {
@@ -456,12 +458,16 @@ describe('api.ts request contract', () => {
 
     it('getRequirement → GET /api/v2/proof/requirements/:id', async () => {
       await proofApi.getRequirement('/ws', 'REQ-1');
+      expect(captured.method).toBe('get');
       expect(captured.url).toBe('/api/v2/proof/requirements/REQ-1');
+      expect(captured.params).toEqual({ workspace_path: '/ws' });
     });
 
     it('getEvidence → GET /api/v2/proof/requirements/:id/evidence', async () => {
       await proofApi.getEvidence('/ws', 'REQ-1');
+      expect(captured.method).toBe('get');
       expect(captured.url).toBe('/api/v2/proof/requirements/REQ-1/evidence');
+      expect(captured.params).toEqual({ workspace_path: '/ws' });
     });
 
     it('capture → POST /api/v2/proof/requirements with the body verbatim', async () => {
@@ -478,14 +484,19 @@ describe('api.ts request contract', () => {
       expect(captured.body).toEqual({ reason: 'r' });
     });
 
-    it('startRun → POST /api/v2/proof/run', async () => {
-      await proofApi.startRun('/ws', { gates: [] } as never);
+    it('startRun → POST /api/v2/proof/run with the body verbatim', async () => {
+      await proofApi.startRun('/ws', { gates: ['unit'], strictness: 'strict' } as never);
+      expect(captured.method).toBe('post');
       expect(captured.url).toBe('/api/v2/proof/run');
+      expect(captured.body).toEqual({ gates: ['unit'], strictness: 'strict' });
+      expect(captured.params).toEqual({ workspace_path: '/ws' });
     });
 
     it('getRun → GET /api/v2/proof/runs/:id', async () => {
       await proofApi.getRun('/ws', 'r-1');
+      expect(captured.method).toBe('get');
       expect(captured.url).toBe('/api/v2/proof/runs/r-1');
+      expect(captured.params).toEqual({ workspace_path: '/ws' });
     });
 
     it('listRuns → GET /api/v2/proof/runs with a default limit of 5', async () => {
@@ -495,7 +506,9 @@ describe('api.ts request contract', () => {
 
     it('getRunDetail → GET /api/v2/proof/runs/:id/evidence', async () => {
       await proofApi.getRunDetail('/ws', 'r-1');
+      expect(captured.method).toBe('get');
       expect(captured.url).toBe('/api/v2/proof/runs/r-1/evidence');
+      expect(captured.params).toEqual({ workspace_path: '/ws' });
     });
   });
 
@@ -628,8 +641,14 @@ describe('api.ts request contract', () => {
 
     it('verifyKey sends value:null when omitted', async () => {
       await settingsApi.verifyKey('anthropic' as never);
+      expect(captured.method).toBe('post');
       expect(captured.url).toBe('/api/v2/settings/verify-key');
       expect(captured.body).toEqual({ provider: 'anthropic', value: null });
+    });
+
+    it('verifyKey forwards a supplied value', async () => {
+      await settingsApi.verifyKey('anthropic' as never, 'sk-live');
+      expect(captured.body).toEqual({ provider: 'anthropic', value: 'sk-live' });
     });
   });
 
