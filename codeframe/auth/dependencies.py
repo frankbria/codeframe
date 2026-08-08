@@ -253,24 +253,32 @@ async def _local_operator_user(request: Optional[Request] = None) -> Optional[Us
         user.hashed_password = ""
         return user
 
-    # No request-scoped database: fall back to the auth engine.
-    from sqlalchemy import select
+    # No request-scoped database: fall back to the auth engine. Best-effort —
+    # an unreachable or unmigrated database means "no operator to act as", not
+    # a failed request. Letting OperationalError escape here turned "auth is
+    # disabled, let them through" into a 500 wherever DATABASE_PATH pointed at
+    # nothing usable.
+    try:
+        from sqlalchemy import select
 
-    from codeframe.auth.manager import get_async_session_maker
+        from codeframe.auth.manager import get_async_session_maker
 
-    async_session_maker = get_async_session_maker()
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(User)
-            .where(User.hashed_password != DISABLED_PASSWORD)
-            .order_by(User.id)
-            .limit(1)
-        )
-        user = result.scalar_one_or_none()
-        if user is not None:
-            return user
-        result = await session.execute(select(User).order_by(User.id).limit(1))
-        return result.scalar_one_or_none()
+        async_session_maker = get_async_session_maker()
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User)
+                .where(User.hashed_password != DISABLED_PASSWORD)
+                .order_by(User.id)
+                .limit(1)
+            )
+            user = result.scalar_one_or_none()
+            if user is not None:
+                return user
+            result = await session.execute(select(User).order_by(User.id).limit(1))
+            return result.scalar_one_or_none()
+    except Exception as e:
+        logger.debug("No local operator account resolvable: %s", e)
+        return None
 
 
 async def _load_active_user(user_id: int) -> User:
