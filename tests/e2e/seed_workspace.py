@@ -152,6 +152,42 @@ def init_git_repo(ws_path: Path) -> None:
     print("✓ Git repo with a working-tree diff")
 
 
+def seed_batch(ws, created_tasks) -> str:
+    """Seed a finished batch so /execution?batch=<id> has something to render.
+
+    Terminal, with one COMPLETED and one FAILED task, so the execution e2e can
+    assert both the progress line and the terminal-state controls without
+    invoking an LLM (#964). A live batch would need a real agent run, which an
+    e2e suite cannot do deterministically.
+    """
+    from datetime import timedelta
+
+    from codeframe.core.conductor import (
+        BatchRun,
+        BatchStatus,
+        OnFailure,
+        _save_batch,
+    )
+
+    task_ids = [created_tasks[0].id, created_tasks[1].id]
+    started = _now() - timedelta(minutes=5)
+    batch = BatchRun(
+        id="e2e-batch-0001",
+        workspace_id=ws.id,
+        task_ids=task_ids,
+        status=BatchStatus.COMPLETED,
+        strategy="serial",
+        max_parallel=1,
+        on_failure=OnFailure.CONTINUE,
+        started_at=started,
+        completed_at=_now(),
+        results={task_ids[0]: "COMPLETED", task_ids[1]: "FAILED"},
+        engine="react",
+    )
+    _save_batch(ws, batch)
+    return batch.id
+
+
 def seed_workspace(ws_dir: str, central_db_path: str) -> dict:
     ws_path = Path(ws_dir).resolve()
     ws_path.mkdir(parents=True, exist_ok=True)
@@ -226,12 +262,20 @@ def seed_workspace(ws_dir: str, central_db_path: str) -> dict:
     ledger.save_requirement(ws, req)
     print(f"✓ PROOF9 requirement {req.id}")
 
+    batch_id = seed_batch(ws, created)
+    print(f"✓ Batch {batch_id}")
+
     workspace_db = str(ws_path / ".codeframe" / "state.db")
     seed_token_usage(workspace_db, [t.id for t in created])
 
     seed_central_user(central_db_path)
 
-    return {"workspace": str(ws_path), "prd": prd_record.id, "tasks": len(created)}
+    return {
+        "workspace": str(ws_path),
+        "prd": prd_record.id,
+        "tasks": len(created),
+        "batch": batch_id,
+    }
 
 
 if __name__ == "__main__":
