@@ -484,10 +484,24 @@ def _create_core_indexes(cursor: sqlite3.Cursor) -> None:
     # Atomic duplicate-import protection (#565): one task per (workspace, issue
     # URL). SQLite treats NULLs as distinct, so non-imported tasks (NULL
     # external_url) are unaffected.
-    cursor.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url "
-        "ON tasks(workspace_id, external_url)"
-    )
+    #
+    # The only statement here that can fail on real data, so the #943 guard
+    # lives WITH it rather than at one call site: if duplicates survived the
+    # dedupe, warn and carry on without the index. A missing optimisation is
+    # recoverable; a workspace that will not open is not. Unreachable on a
+    # fresh database, which has no rows yet.
+    try:
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url "
+            "ON tasks(workspace_id, external_url)"
+        )
+    except sqlite3.IntegrityError as exc:
+        logger.warning(
+            "Could not create the unique external_url index (%s). Duplicate "
+            "GitHub-import protection is OFF for this workspace; the "
+            "workspace still opens normally.",
+            exc,
+        )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blockers_workspace ON blockers(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blockers_status ON blockers(status)")
@@ -761,21 +775,12 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         # CLI and the server with no recovery path (#943). Dedupe first, and if
         # that cannot be done, warn and carry on without the index: a missing
         # optimisation is recoverable, an unopenable workspace is not.
+        # Dedupe only. The index itself is created — once, and guarded — by
+        # _create_core_indexes at the end of this function. Creating it here as
+        # well left an UNGUARDED second attempt downstream, which reintroduced
+        # the exact IntegrityError brick this guard exists to survive.
         _dedupe_external_urls(conn, cursor)
-        try:
-            cursor.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url "
-                "ON tasks(workspace_id, external_url)"
-            )
-            conn.commit()
-        except sqlite3.IntegrityError as exc:
-            conn.rollback()
-            logger.warning(
-                "Could not create the unique external_url index (%s). Duplicate "
-                "GitHub-import protection is OFF for this workspace; the "
-                "workspace still opens normally.",
-                exc,
-            )
+        conn.commit()
 
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_run_engine_log_ws_engine "

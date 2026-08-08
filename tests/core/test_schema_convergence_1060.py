@@ -236,3 +236,47 @@ class TestLegacyShapesTheTableDropTestCannotReach:
         assert urls[0] == "https://github.com/o/r/issues/1", "kept the oldest row"
         assert not urls[1], "the later duplicate should have been blanked"
         assert "idx_tasks_external_url" in idx
+
+    def test_undedupable_duplicates_warn_instead_of_bricking(self, tmp_path, monkeypatch):
+        """The #943 guard must survive being moved into the shared definition.
+
+        Sharing the index DDL created a SECOND, unguarded attempt after the
+        guarded one. If duplicates outlive the dedupe for any reason, that
+        second attempt raises IntegrityError and the workspace never opens —
+        reintroducing exactly what the guard exists to prevent.
+        """
+        from codeframe.core import workspace as ws
+
+        db = tmp_path / "stuck.db"
+        ws._init_database(db)
+        conn = sqlite3.connect(db)
+        conn.execute("DROP INDEX IF EXISTS idx_tasks_external_url")
+        for task_id in ("t1", "t2"):
+            conn.execute(
+                "INSERT INTO tasks (id, workspace_id, title, description, status, "
+                "created_at, updated_at, external_url) "
+                "VALUES (?, 'w1', 'T', 'd', 'BACKLOG', '2026-01-01', '2026-01-01', "
+                "'https://github.com/o/r/issues/1')",
+                (task_id,),
+            )
+        conn.execute("PRAGMA user_version = 0")
+        conn.commit()
+        conn.close()
+
+        # Dedupe cannot help — simulate it failing to clear the duplicates.
+        monkeypatch.setattr(ws, "_dedupe_external_urls", lambda conn, cursor: None)
+
+        ws._ensure_schema_upgrades(db)  # must not raise IntegrityError
+
+        conn = sqlite3.connect(db)
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] == 2
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+        finally:
+            conn.close()
+        assert version == ws.SCHEMA_VERSION, "the upgrade did not complete"
+
+    def test_the_index_is_created_exactly_once_in_the_source(self):
+        """Two attempts means one of them is unguarded — that was the bug."""
+        source = Path("codeframe/core/workspace.py").read_text()
+        assert source.count("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_external_url") == 1
