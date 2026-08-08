@@ -158,7 +158,7 @@ tests/
 ```bash
 uv run pytest                            # All tests
 uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle"  # The CI gate (every non-e2e, non-real-LLM test)
-                                         # ~7.5 min locally. If it is much slower on your
+                                         # ~6.5 min locally. If it is much slower on your
                                          # machine, see "Suite speed" below.
 uv run pytest tests/core/                # Core module tests
 scripts/lifecycle --mode cli|all         # Real-LLM lifecycle tests (run locally before a PR)
@@ -181,7 +181,7 @@ wall clock — measured at ~910 s, and reportedly ~4 h on a slower WSL2 disk.
 file (0.1 ms) into place per test. `_init_database` output is byte-identical
 across builds, so the copy is exactly equivalent; the template is produced by
 calling the real function, so a schema change or `SCHEMA_VERSION` bump cannot
-leave it stale. Full suite: **~910 s → ~448 s**, same results, and CI benefits
+leave it stale. Full suite: **~910 s → ~378 s**, same results, and CI benefits
 too. `tests/core/test_workspace_db_template_979.py` pins the equivalence.
 
 If your machine is still I/O-bound, put pytest's temp dirs on tmpfs:
@@ -194,8 +194,9 @@ uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle" --basetemp=/dev/shm/p
 Opt-in on purpose — a real filesystem is what CI runs, and is the more faithful
 environment. `/dev/shm` is RAM-backed (the run must fit) and Linux-only. It
 composes with the ambient-workspace guard: `pytest_configure` registers
-`--basetemp` as an isolated root. With the template fix this now buys little
-here (448 s vs 428 s); it is the lever for disks where the gap is still large.
+`--basetemp` as an isolated root. With the template fix this now buys nothing
+here (378 s on disk vs 428 s on tmpfs before the fix); it is the lever only
+for disks where the gap is still large.
 
 ### Golden Path CLI
 ```bash
