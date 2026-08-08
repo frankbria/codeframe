@@ -187,6 +187,38 @@ class TestNotAdvertised:
                 "saying it is experimental"
             )
 
+    def test_cf_engines_list_does_not_show_it(self):
+        """`cf engines list` is the list a user reads to pick an engine."""
+        from typer.testing import CliRunner
+
+        from codeframe.cli.app import app
+
+        result = CliRunner().invoke(app, ["engines", "list"])
+        assert result.exit_code == 0, result.output
+        assert "cloud" not in result.output.lower(), result.output
+
+    def test_cf_engines_list_shows_it_once_opted_in(self, monkeypatch):
+        """Opted in, it must appear — and be labelled, not blend in."""
+        from typer.testing import CliRunner
+
+        from codeframe.cli.app import app
+
+        monkeypatch.setenv(OPT_IN, "1")
+        result = CliRunner().invoke(app, ["engines", "list"])
+        assert result.exit_code == 0, result.output
+        assert "cloud" in result.output.lower()
+        assert "experimental" in result.output.lower()
+
+    def test_config_validation_does_not_suggest_it(self):
+        """A bad `engine:` in config.yaml must not advertise cloud as a fix."""
+        from codeframe.core.config import EnvironmentConfig
+
+        config = EnvironmentConfig(engine="nope")
+        errors = config.validate()
+        engine_errors = [e for e in errors if "Invalid engine" in e]
+        assert engine_errors, errors
+        assert "cloud" not in engine_errors[0]
+
     def test_the_known_limitations_are_recorded_for_lifting_the_gate(self):
         """AC3: the parked defects must be written down somewhere findable."""
         text = Path("CLAUDE.md").read_text()
