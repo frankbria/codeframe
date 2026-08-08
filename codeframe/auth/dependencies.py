@@ -229,29 +229,9 @@ async def _local_operator_user(request: Optional[Request] = None) -> Optional[Us
 
     db = _app_db(request)
     if db is not None:
-        try:
-            row = db.conn.execute(
-                "SELECT id, email, is_active, is_superuser FROM users "
-                "WHERE hashed_password != ? ORDER BY id LIMIT 1",
-                (DISABLED_PASSWORD,),
-            ).fetchone()
-            if row is None:
-                row = db.conn.execute(
-                    "SELECT id, email, is_active, is_superuser FROM users "
-                    "ORDER BY id LIMIT 1"
-                ).fetchone()
-        except Exception as e:
-            logger.error("Could not resolve the local operator account: %s", e)
-            return None
-        if row is None:
-            return None
-        user = User()
-        user.id = row[0]
-        user.email = row[1]
-        user.is_active = bool(row[2])
-        user.is_superuser = bool(row[3])
-        user.hashed_password = ""
-        return user
+        # Offloaded like _resolve_api_key: db.conn.execute is blocking sqlite,
+        # and this runs on every request while auth is disabled.
+        return await run_in_threadpool(_local_operator_row, db, DISABLED_PASSWORD)
 
     # No request-scoped database: fall back to the auth engine. Best-effort —
     # an unreachable or unmigrated database means "no operator to act as", not
@@ -265,20 +245,53 @@ async def _local_operator_user(request: Optional[Request] = None) -> Optional[Us
 
         async_session_maker = get_async_session_maker()
         async with async_session_maker() as session:
+            base = select(User).where(User.is_active.is_(True))
             result = await session.execute(
-                select(User)
-                .where(User.hashed_password != DISABLED_PASSWORD)
+                base.where(User.hashed_password != DISABLED_PASSWORD)
                 .order_by(User.id)
                 .limit(1)
             )
             user = result.scalar_one_or_none()
             if user is not None:
                 return user
-            result = await session.execute(select(User).order_by(User.id).limit(1))
+            result = await session.execute(base.order_by(User.id).limit(1))
             return result.scalar_one_or_none()
     except Exception as e:
         logger.debug("No local operator account resolvable: %s", e)
         return None
+
+
+def _local_operator_row(db: Any, disabled_password: str) -> Optional[User]:
+    """Blocking half of :func:`_local_operator_user`. Runs on a worker thread.
+
+    Only ``is_active`` accounts are eligible. Every other identity path in this
+    module enforces that — ``_load_active_user`` for JWTs, ``_owner_is_active``
+    for API keys — and nothing downstream re-checks the resolved operator, so
+    without it a deactivated account would still be handed read+write+admin.
+    """
+    try:
+        row = db.conn.execute(
+            "SELECT id, email, is_active, is_superuser FROM users "
+            "WHERE is_active = 1 AND hashed_password != ? ORDER BY id LIMIT 1",
+            (disabled_password,),
+        ).fetchone()
+        if row is None:
+            row = db.conn.execute(
+                "SELECT id, email, is_active, is_superuser FROM users "
+                "WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+    except Exception as e:
+        logger.error("Could not resolve the local operator account: %s", e)
+        return None
+    if row is None:
+        return None
+    user = User()
+    user.id = row[0]
+    user.email = row[1]
+    user.is_active = bool(row[2])
+    user.is_superuser = bool(row[3])
+    user.hashed_password = ""
+    return user
 
 
 async def _load_active_user(user_id: int) -> User:
@@ -806,8 +819,16 @@ async def authenticate_websocket(
     session-chat sockets cannot drift from the REST behavior of ``require_auth()``:
 
     - When auth is disabled (``CODEFRAME_AUTH_REQUIRED`` falsy), returns
-      ``(True, None)`` without requiring a ticket — the same synthetic local
-      principal (``user_id=None``) REST admits in no-auth mode.
+      ``(True, None)`` without requiring a ticket.
+
+      **This no longer matches REST.** Since #963 the REST no-auth principal
+      resolves to a real account (``_local_operator_user``) so that API-key
+      operations, which need a NOT NULL ``users.id``, work at all. WebSocket
+      auth still admits an anonymous ``user_id=None``. The divergence is
+      deliberate for now: nothing on these sockets writes a row keyed to the
+      principal, so there is no foreign key to satisfy and no durable artifact
+      to attribute — the reason REST needed a real id does not apply here.
+      Align them if a WS path ever persists per-user state.
     - Otherwise redeems the ``?ticket=<value>`` query parameter — a short-lived,
       single-use value minted by ``POST /auth/stream-ticket`` (issue #745), not
       a JWT — then loads the active DB user it names. On success returns

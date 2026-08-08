@@ -322,6 +322,38 @@ class TestAuthOffKeysDoNotSurviveIntoAnExposedDeployment:
         db.close()
 
     @pytest.mark.asyncio
+    async def test_a_deactivated_account_is_never_the_local_operator(
+        self, tmp_path, monkeypatch
+    ):
+        """is_active must gate this like every other identity path (review).
+
+        Nothing downstream re-checks the resolved operator — it is handed
+        [read, write, admin] directly — so a deactivated lowest-id account
+        would otherwise become the local admin. `_load_active_user` (JWT) and
+        `_owner_is_active` (API keys) both enforce this; this path was the odd
+        one out.
+        """
+        from unittest.mock import MagicMock
+
+        from codeframe.auth import dependencies
+
+        db, _ = self._db_with(tmp_path, real_account=True)
+        # Deactivate the real account; only the placeholder and it exist.
+        db.conn.execute("UPDATE users SET is_active = 0 WHERE id = 2")
+        db.conn.commit()
+
+        request = MagicMock()
+        request.app.state.db = db
+        request.state.db = db
+
+        operator = await dependencies._local_operator_user(request)
+        assert operator is None or operator.id != 2, (
+            "a deactivated account was handed read+write+admin"
+        )
+
+        db.close()
+
+    @pytest.mark.asyncio
     async def test_the_local_operator_prefers_a_login_capable_account(
         self, tmp_path, monkeypatch
     ):
