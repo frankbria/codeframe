@@ -158,6 +158,8 @@ tests/
 ```bash
 uv run pytest                            # All tests
 uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle"  # The CI gate (every non-e2e, non-real-LLM test)
+                                         # ~7.5 min locally. If it is much slower on your
+                                         # machine, see "Suite speed" below.
 uv run pytest tests/core/                # Core module tests
 scripts/lifecycle --mode cli|all         # Real-LLM lifecycle tests (run locally before a PR)
                                          # api/web exit 3 — not implemented (#948, #1068)
@@ -167,6 +169,33 @@ uv run ruff check .
 cd web-ui && npm test
 cd web-ui && npm run build
 ```
+
+#### Suite speed (#979)
+
+The suite used to be fsync-bound: `_init_database` builds ~18 tables plus
+indexes and switches to WAL, and that cost **~1273 ms per test** on a real
+filesystem versus 2.7 ms on tmpfs. It ran once per test, which was most of the
+wall clock — measured at ~910 s, and reportedly ~4 h on a slower WSL2 disk.
+
+`tests/conftest.py` now builds that schema **once per session** and copies the
+file (0.1 ms) into place per test. `_init_database` output is byte-identical
+across builds, so the copy is exactly equivalent; the template is produced by
+calling the real function, so a schema change or `SCHEMA_VERSION` bump cannot
+leave it stale. Full suite: **~910 s → ~448 s**, same results, and CI benefits
+too. `tests/core/test_workspace_db_template_979.py` pins the equivalence.
+
+If your machine is still I/O-bound, put pytest's temp dirs on tmpfs:
+
+```bash
+mkdir -p /dev/shm/pytest-cf
+uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle" --basetemp=/dev/shm/pytest-cf
+```
+
+Opt-in on purpose — a real filesystem is what CI runs, and is the more faithful
+environment. `/dev/shm` is RAM-backed (the run must fit) and Linux-only. It
+composes with the ambient-workspace guard: `pytest_configure` registers
+`--basetemp` as an isolated root. With the template fix this now buys little
+here (448 s vs 428 s); it is the lever for disks where the gap is still large.
 
 ### Golden Path CLI
 ```bash

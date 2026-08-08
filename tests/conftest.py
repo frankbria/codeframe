@@ -304,6 +304,65 @@ def openai_api_key(mock_env) -> str:
     return key
 
 
+
+# ---------------------------------------------------------------------------
+# Workspace schema template (#979)
+# ---------------------------------------------------------------------------
+#
+# Building the workspace schema costs ~1273ms per call on a real filesystem and
+# ~2.7ms on tmpfs. That 470× difference is fsync: ~18 CREATE TABLEs plus
+# indexes plus a WAL-mode switch, committed and flushed, once per test. It was
+# most of the wall clock of a full local run (measured: ~910s on disk vs 428s
+# with a tmpfs basetemp, identical results).
+#
+# `_init_database` is deterministic — two builds are byte-identical, with no
+# -wal/-shm sidecars — so building it ONCE per session and copying the file
+# (0.1ms) is exactly equivalent, not merely similar.
+#
+# Drift is structurally impossible: the template is produced by calling the
+# real `_init_database`, so a schema change or SCHEMA_VERSION bump is picked up
+# automatically. `tests/core/test_workspace_db_template_979.py` asserts the
+# copy stays byte-identical to a real build.
+#
+# Test-only. No production code is touched, and durability semantics outside
+# the test session are unchanged.
+
+_REAL_INIT_DATABASE = _workspace_module._init_database
+
+
+@pytest.fixture(scope="session")
+def real_init_database():
+    """The unpatched schema builder, for tests that must compare against it."""
+    return _REAL_INIT_DATABASE
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _workspace_db_template(tmp_path_factory):
+    """Build the workspace schema once per session; copy it per test."""
+    import shutil
+
+    template = tmp_path_factory.mktemp("cf-db-template") / "state.db"
+    _REAL_INIT_DATABASE(template)
+
+    def _copy_template(db_path):
+        # Let sqlite create the file so the mode is whatever sqlite would have
+        # given it (0644 base, not open()'s 0666 — see
+        # test_state_db_permissions_match_a_plain_sqlite_create), then
+        # overwrite the contents. Opening 'wb' on an existing file leaves its
+        # mode alone, so permissions stay faithful by construction rather than
+        # by recomputing a umask formula.
+        import sqlite3
+
+        sqlite3.connect(db_path).close()
+        with open(template, "rb") as src, open(db_path, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+
+    _workspace_module._init_database = _copy_template
+    try:
+        yield template
+    finally:
+        _workspace_module._init_database = _REAL_INIT_DATABASE
+
 # Markers for test organization
 def pytest_configure(config):
     """Configure pytest with custom markers."""
