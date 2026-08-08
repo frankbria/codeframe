@@ -396,6 +396,10 @@ class E2BAgentAdapter:
             index += 1
             # "XY PATH" — exactly two status characters and a space.
             if len(entry) < 4 or entry[2] != " ":
+                # Counted and warned, not dropped: real git cannot emit this,
+                # so a malformed record means the sandbox's git is not git.
+                rejected += 1
+                logger.warning("Rejected malformed porcelain record: %r", entry)
                 continue
             status, raw = entry[:2], entry[3:]
 

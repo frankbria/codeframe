@@ -245,6 +245,37 @@ class TestPorcelainParsing:
         files, _ = adapter._download_changed_files(sbx, workspace, lambda *a, **k: None)
         assert files == ["a -> b.py"]
 
+    def test_a_malformed_record_is_counted_and_warned_not_dropped(self, workspace, caplog):
+        """AC2 applies to parse rejections too, not just containment ones."""
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            files, count = _download(_sbx("xx", " M ok.py", content="x"), workspace)
+
+        assert files == ["ok.py"]
+        assert count == 1
+        assert any("xx" in r.getMessage() for r in caplog.records), caplog.text
+
+    def test_the_parse_reject_count_reaches_the_user(self, workspace):
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+
+        emitted: list[str] = []
+        E2BAgentAdapter(timeout_minutes=5)._download_changed_files(
+            _sbx("xx", "y", " M ../outside", content="x"),
+            workspace,
+            lambda kind, msg, *a: emitted.append(msg),
+        )
+        # 2 unparseable + 1 escaping the workspace
+        assert any("3" in m and "reject" in m.lower() for m in emitted), emitted
+
+    def test_parse_rejects_are_reported_separately_from_containment(self):
+        """_parse_porcelain's own return value must mean something."""
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+
+        paths, rejected = E2BAgentAdapter._parse_porcelain("xx\0 M ok.py\0y\0")
+        assert paths == ["ok.py"]
+        assert rejected == 2
+
     def test_porcelain_is_requested_nul_separated(self, workspace):
         """-z is what removes the separator ambiguity above."""
         sbx = _sbx(" M ok.py", content="x")
