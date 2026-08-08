@@ -281,6 +281,28 @@ class TestAMixedSelectionReportsBoth:
         )
         assert result.returncode != 0
 
+    def test_a_live_failure_stops_before_the_broken_file_by_design(self, project):
+        """Fail-fast is the hook's contract, and it applies ACROSS groups too.
+
+        The hook carries -x. If a live failure fails, stopping there is the
+        intended behaviour, not an oversight — the broken neighbour surfaces on
+        the next attempt, once the thing you were shown is fixed. Pinned so the
+        early return reads as deliberate rather than as a missing loop.
+        """
+        (project / "test_broken.py").write_text("def bad(: pass\n")
+        _write_lastfailed(
+            project,
+            ["test_gt.py::test_beta_fails", "test_broken.py::test_x"],
+        )
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT)], cwd=project, capture_output=True, text=True
+        )
+        assert result.returncode != 0
+        assert "test_beta_fails" in result.stdout
+        assert "ERROR collecting" not in result.stdout, (
+            "the broken file ran anyway, defeating -x"
+        )
+
     def test_a_broken_file_is_reported_when_the_live_ones_pass(self, project):
         """Fail-fast must not hide the collection error behind a green run."""
         (project / "test_broken.py").write_text("def bad(: pass\n")

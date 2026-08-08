@@ -183,8 +183,13 @@ def main(argv: list[str]) -> int:
     # live.py::test_x` aborts the whole session on the collection error before
     # running anything, so the failure you came to see never reports — you get
     # "1 error during collection" and debug the wrong thing. Running the
-    # resolvable node IDs first means the expected failure is what you see;
-    # a broken file is still reported after, and either one blocks the commit.
+    # resolvable node IDs first means the expected failure is what you see.
+    #
+    # -x applies ACROSS the groups, not just within them: if a live test fails
+    # we stop and never reach the broken file. That is the fail-fast contract,
+    # not an oversight — the broken neighbour surfaces on the next attempt,
+    # once the thing you were just shown is fixed. Either group blocks the
+    # commit on its own.
     node_ids = [item for item in selection if "::" in item]
     whole_files = [item for item in selection if "::" not in item]
 
