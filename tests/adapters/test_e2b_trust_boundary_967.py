@@ -300,47 +300,47 @@ class TestPorcelainParsing:
         assert paths == ["ok.py"]
         assert rejected == 2
 
-    def test_a_faked_rename_cannot_swallow_the_next_real_record(self, workspace):
-        """A shadowed git can emit a rename header to eat the following entry.
+    def test_renames_are_disabled_so_there_is_no_paired_field(self, workspace):
+        """--no-renames is what removes the whole ambiguity class.
 
-        Honest git always follows `R  new` with a bare old path, so a field
-        that itself looks like `XY PATH` was never a rename pair.
+        Verified against real git: renaming `AD HOC.txt` to `new.py` gives
+        `R  new.py\\0AD HOC.txt\\0` normally, but `D  AD HOC.txt\\0A  new.py\\0`
+        with --no-renames — two independent records and no field to consume.
         """
+        sbx = _sbx(" M ok.py", content="x")
+        _download(sbx, workspace)
+        command = sbx.commands.run.call_args[0][0]
+        assert "--no-renames" in command, command
+
+    def test_every_entry_is_a_record_so_nothing_can_be_swallowed(self):
+        """A hostile `R` header can no longer eat the record after it."""
         from codeframe.adapters.e2b.adapter import E2BAgentAdapter
 
         paths, _ = E2BAgentAdapter._parse_porcelain("R  fake.py\0 M real_change.py\0")
-        assert "real_change.py" in paths, paths
+        assert paths == ["fake.py", "real_change.py"], paths
 
-    def test_an_honest_rename_still_consumes_its_old_path(self, workspace):
-        """The guard must not turn every rename's old name into a download."""
-        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+    def test_an_odd_old_filename_can_no_longer_be_misparsed(self):
+        """`AD HOC.txt` and `v1 notes.txt` are just paths on their own records.
 
-        paths, _ = E2BAgentAdapter._parse_porcelain("R  new.py\0old.py\0 M other.py\0")
-        assert paths == ["new.py", "other.py"]
-
-    def test_a_swallowed_record_is_at_least_warned_about(self, workspace, caplog):
-        import logging
-
-        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
-
-        with caplog.at_level(logging.WARNING):
-            E2BAgentAdapter._parse_porcelain("R  fake.py\0 M real_change.py\0")
-        assert "rename" in caplog.text.lower(), caplog.text
-
-    def test_an_old_path_that_looks_shaped_like_a_record_is_still_consumed(self):
-        """Renaming `v1 notes.txt` must not confuse the rename heuristic.
-
-        Its third character is a space, so a pure shape check would decline to
-        consume it and then re-parse it as a bogus record with status `v1`.
-        Real status characters come from a small alphabet, which disambiguates.
+        Both used to be misparsed by the lookahead heuristic — the first
+        because `A`/`D` are real status characters, the second because index 2
+        is a space. With no lookahead there is nothing left to guess.
         """
         from codeframe.adapters.e2b.adapter import E2BAgentAdapter
 
         paths, rejected = E2BAgentAdapter._parse_porcelain(
-            "R  final.py\0v1 notes.txt\0 M other.py\0"
+            "A  AD HOC.txt\0?? v1 notes.txt\0"
         )
-        assert paths == ["final.py", "other.py"], paths
+        assert paths == ["AD HOC.txt", "v1 notes.txt"], paths
         assert rejected == 0
+
+    @pytest.mark.parametrize("status", ["D ", " D", "AD", "MD"])
+    def test_a_deleted_file_is_not_fetched(self, workspace, status):
+        """It is not in the sandbox to read — trying only logs a false failure."""
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+
+        paths, _ = E2BAgentAdapter._parse_porcelain(f"{status} gone.py\0 M kept.py\0")
+        assert paths == ["kept.py"], paths
 
     @pytest.mark.parametrize("entry", ["v1 notes.txt", "hello world", "ab cd"])
     def test_a_non_status_prefix_is_not_a_record(self, entry):
@@ -352,11 +352,17 @@ class TestPorcelainParsing:
 
     @pytest.mark.parametrize("status", [" M", "M ", "??", "A ", " D", "R ", "!!", "UU"])
     def test_real_status_pairs_are_recognised(self, status):
+        """Tightening the alphabet must not start rejecting valid records.
+
+        Recognition, not download: a `D` pair is a valid record that is then
+        deliberately skipped (the file is gone), which the deletion test
+        covers.
+        """
         from codeframe.adapters.e2b.adapter import E2BAgentAdapter
 
         paths, rejected = E2BAgentAdapter._parse_porcelain(f"{status} f.py\0")
         assert rejected == 0
-        assert paths == ["f.py"]
+        assert paths == ([] if "D" in status else ["f.py"])
 
     def test_porcelain_is_requested_nul_separated(self, workspace):
         """-z is what removes the separator ambiguity above."""

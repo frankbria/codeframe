@@ -333,10 +333,8 @@ class E2BAgentAdapter:
         Returns:
             Tuple of (list of relative file paths, count downloaded).
         """
-        # -z: NUL-separated, so a filename containing " -> " (the rename
-        # separator in the default format) can no longer split a path in half.
         status_result = sbx.commands.run(
-            f"cd {_SANDBOX_WORKSPACE} && git status --porcelain -z",
+            f"cd {_SANDBOX_WORKSPACE} && git status --porcelain -z --no-renames",
             timeout=30,
         )
 
@@ -388,21 +386,26 @@ class E2BAgentAdapter:
     def _parse_porcelain(stdout: str) -> tuple[list[str], int]:
         """Parse ``git status --porcelain -z`` into paths, hostile input assumed.
 
-        ``-z`` is deliberate: it emits each path as raw bytes, so there is no
-        C-quoting to decode (``--porcelain`` alone would render a file named
-        ``café.txt`` as ``"caf\\303\\251.txt"``, quotes and all) and no
-        ``" -> "`` rename separator to be ambiguous with a filename that
-        contains that string.
+        Two flags carry the weight here, both verified against real git:
+
+        ``-z`` emits each path as raw bytes, so there is no C-quoting to decode
+        (``--porcelain`` alone renders ``café.txt`` as ``"caf\\303\\251.txt"``,
+        quotes and all) and no ``" -> "`` rename separator to collide with a
+        filename containing that string.
+
+        ``--no-renames`` reports a rename as an independent delete + add
+        instead of ``R  new\\0old\\0``. That removes the paired field entirely,
+        and with it a whole class of ambiguity: there is no lookahead to guess
+        at, so a hostile ``R`` header cannot make the parser swallow the record
+        after it, and an old filename shaped like a status record (``AD
+        HOC.txt``, ``v1 notes.txt``) cannot be misread as one. Every entry is a
+        record.
 
         Returns:
             Tuple of (paths, count rejected as unparseable).
         """
         def _looks_like_record(entry: str) -> bool:
-            # "XY PATH" — two status characters then a space. The status
-            # alphabet matters, not just the shape: a rename whose OLD name is
-            # something like "v1 notes.txt" also has a space at index 2, and a
-            # pure shape check would refuse to consume it as the old path and
-            # then re-parse it as a record with status "v1".
+            # "XY PATH" — two status characters then a space.
             return (
                 len(entry) >= 4
                 and entry[2] == " "
@@ -426,20 +429,13 @@ class E2BAgentAdapter:
                 continue
             status, raw = entry[:2], entry[3:]
 
-            # A rename/copy is "XY new\0old" — consume the old name, keep new.
-            # Honest git always follows the header with a bare path, so a
-            # field that itself looks like a record was never a rename pair:
-            # a shadowed git could otherwise fake a rename header purely to
-            # make this parser eat the next real entry, dropping it silently.
-            if status[0] in ("R", "C") or status[1] in ("R", "C"):
-                if index < len(entries) and not _looks_like_record(entries[index]):
-                    index += 1
-                else:
-                    logger.warning(
-                        "Rename record %r is not followed by an old path; "
-                        "not consuming the next entry",
-                        entry,
-                    )
+            # A deleted file is not in the sandbox to read. Skipping it avoids
+            # a misleading "Failed to download" for a file that is meant to be
+            # gone. Applying the deletion locally is a separate, parked defect
+            # (#966) — this only stops us fetching a path we know is absent.
+            if "D" in status:
+                logger.debug("Skipping deleted path: %r", raw)
+                continue
 
             # Verbatim: -z output is NOT C-quoted (that is the whole point of
             # the flag), so a file genuinely named `"a.py"` must keep its
