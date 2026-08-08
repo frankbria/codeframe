@@ -32,11 +32,20 @@ def test_gamma_passes(): assert True
 """
 
 
-@pytest.fixture
-def project(tmp_path: Path) -> Path:
+#: This repo's own pytest.ini starts addopts with `-v`. Verbosity is a single
+#: counter, so `-v` (ini) + `-q` (probe) nets to DEFAULT, and --collect-only
+#: then prints an indented <Module>/<Function> tree with no "::" anywhere. A
+#: bare ini hides that completely, which is why every fixture below is
+#: parametrized over both.
+INI_PLAIN = "[pytest]\n"
+INI_VERBOSE = "[pytest]\naddopts =\n    -v\n    --strict-markers\n"
+
+
+@pytest.fixture(params=[INI_PLAIN, INI_VERBOSE], ids=["plain-ini", "verbose-ini"])
+def project(request, tmp_path: Path) -> Path:
     """A tiny throwaway project with its own pytest cache."""
     (tmp_path / "test_gt.py").write_text(SUITE)
-    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    (tmp_path / "pytest.ini").write_text(request.param)
     return tmp_path
 
 
@@ -158,6 +167,54 @@ class TestAFileThatStoppedCollectingIsBreakage:
             SUITE.replace("test_beta_fails", "test_beta_renamed")
         )
         assert _selection(project) == ["test_other.py"]
+
+
+class TestUnparseableCollectionFallsBackLoudly:
+    """If the output shape is unreadable, do not conclude "all stale".
+
+    `-o addopts=` handles the ini, but a conftest can raise verbosity in code,
+    where no command-line flag can undo it. That prints the indented tree with
+    no "::" anywhere — indistinguishable, to a naive parser, from "nothing
+    resolved". Silently selecting nothing is the failure mode this whole issue
+    is about, so the parser refuses to guess.
+    """
+
+    def _make_verbose_conftest(self, project: Path) -> None:
+        (project / "conftest.py").write_text(
+            "def pytest_configure(config):\n"
+            "    config.option.verbose = max(config.option.verbose, 1)\n"
+        )
+
+    def test_it_falls_back_to_the_cached_files(self, project):
+        self._make_verbose_conftest(project)
+        _write_lastfailed(project, ["test_gt.py::test_beta_fails"])
+        assert _selection(project) == ["test_gt.py"], (
+            "unparseable collection silently selected nothing"
+        )
+
+    def test_it_says_so_on_stderr(self, project):
+        self._make_verbose_conftest(project)
+        _write_lastfailed(project, ["test_gt.py::test_beta_fails"])
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--print-selection"],
+            cwd=project, capture_output=True, text=True,
+        )
+        assert "could not parse" in result.stderr.lower(), result.stderr
+
+    def test_the_fallback_still_blocks_a_real_failure(self, project):
+        self._make_verbose_conftest(project)
+        _write_lastfailed(project, ["test_gt.py::test_beta_fails"])
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT)], cwd=project, capture_output=True, text=True
+        )
+        assert result.returncode != 0
+
+    def test_the_fallback_is_still_bounded_to_cached_files(self, project):
+        """Falling back must not become the full-suite run we are preventing."""
+        self._make_verbose_conftest(project)
+        (project / "test_untouched.py").write_text("def test_nope(): assert False\n")
+        _write_lastfailed(project, ["test_gt.py::test_beta_fails"])
+        assert "test_untouched.py" not in _selection(project)
 
 
 class TestWholeFileKeys:

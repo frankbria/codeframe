@@ -34,6 +34,24 @@ CACHE_RELATIVE = Path(".pytest_cache") / "v" / "cache" / "lastfailed"
 #: pytest banners a collection failure as "ERROR collecting <path>".
 _COLLECT_ERROR = re.compile(r"ERROR collecting (\S+)")
 
+#: pytest reports the count either as the padded summary rule
+#: "===== 2 tests collected in 0.06s =====" or, at higher verbosity, as
+#: "collected 2 items" near the top. Deliberately not anchored to the line
+#: start — the summary is surrounded by "=" padding.
+_COLLECTED_COUNT = re.compile(r"(\d+) tests? collected|collected (\d+) items?")
+
+
+class CollectFormatError(RuntimeError):
+    """pytest collected tests in a shape this script could not parse."""
+
+
+def _collected_something(stdout: str) -> bool:
+    for match in _COLLECTED_COUNT.finditer(stdout):
+        count = match.group(1) or match.group(2)
+        if count and int(count) > 0:
+            return True
+    return False
+
 
 def read_lastfailed(root: Path) -> list[str]:
     """Node IDs pytest recorded as failing, or [] if there is nothing usable.
@@ -73,8 +91,15 @@ def collectible(root: Path, files: list[str]) -> tuple[set[str], set[str]]:
         return set(), set()
 
     result = subprocess.run(
+        # `-o addopts=` is load-bearing, not tidiness. Verbosity is a single
+        # counter: this repo's pytest.ini starts addopts with `-v`, so ini -v
+        # plus our -q nets to DEFAULT verbosity, and --collect-only then prints
+        # an indented <Module>/<Function> tree with no "::" on any line. Every
+        # node ID would parse as unresolvable and the hook would silently
+        # select nothing, forever. Clearing addopts also drops -m filters and
+        # coverage flags, none of which belong in a collection probe.
         [sys.executable, "-m", "pytest", "--collect-only", "-q",
-         "--no-header", "-p", "no:cacheprovider", *files],
+         "--no-header", "-p", "no:cacheprovider", "-o", "addopts=", *files],
         cwd=root,
         capture_output=True,
         text=True,
@@ -86,6 +111,13 @@ def collectible(root: Path, files: list[str]) -> tuple[set[str], set[str]]:
         if "::" in line and not line.lstrip().startswith(("ERROR", "E "))
     }
     errored = set(_COLLECT_ERROR.findall(result.stdout))
+
+    if not resolved and not errored and _collected_something(result.stdout):
+        # pytest found tests but we could not read them — a format we do not
+        # understand. Do not silently conclude "everything is stale": say so
+        # and let the caller fall back to running the files themselves.
+        raise CollectFormatError(result.stdout[-400:])
+
     return resolved, errored
 
 
@@ -101,7 +133,17 @@ def select(root: Path) -> list[str]:
     if not live_files:
         return []
 
-    resolvable, errored = collectible(root, live_files)
+    try:
+        resolvable, errored = collectible(root, live_files)
+    except CollectFormatError as exc:
+        # Bounded and loud: run the cached files rather than guess. Still only
+        # the handful named in the cache, never the whole suite.
+        print(
+            "pretest_lastfailed: could not parse pytest collection output; "
+            f"falling back to running {len(live_files)} cached file(s).\n{exc}",
+            file=sys.stderr,
+        )
+        return live_files
 
     surviving: list[str] = []
     for node_id in recorded:
