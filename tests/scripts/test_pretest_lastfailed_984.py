@@ -209,6 +209,25 @@ class TestUnparseableCollectionFallsBackLoudly:
         )
         assert result.returncode != 0
 
+    def test_it_fires_even_when_one_file_also_errored(self, project):
+        """The mixed case: a broken file must not suppress the guard.
+
+        `errored` is populated by an "ERROR collecting" regex that does not
+        care about verbosity, so it stays non-empty while `resolved` is empty.
+        Gating the guard on `not errored` would let the healthy file's
+        still-failing test be pruned as stale.
+        """
+        self._make_verbose_conftest(project)
+        (project / "test_broken.py").write_text("def bad(: pass\n")
+        _write_lastfailed(
+            project,
+            ["test_gt.py::test_beta_fails", "test_broken.py::test_x"],
+        )
+        selection = _selection(project)
+        assert "test_gt.py" in selection, (
+            "the healthy file's live failure was pruned as stale"
+        )
+
     def test_the_fallback_is_still_bounded_to_cached_files(self, project):
         """Falling back must not become the full-suite run we are preventing."""
         self._make_verbose_conftest(project)

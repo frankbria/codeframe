@@ -112,7 +112,11 @@ def collectible(root: Path, files: list[str]) -> tuple[set[str], set[str]]:
     }
     errored = set(_COLLECT_ERROR.findall(result.stdout))
 
-    if not resolved and not errored and _collected_something(result.stdout):
+    # Not `and not errored`: a broken file coexisting with a healthy one still
+    # populates `errored` (that regex is verbosity-independent) while `resolved`
+    # stays empty, which would slip past the guard and prune the healthy file's
+    # live failure as stale.
+    if not resolved and _collected_something(result.stdout):
         # pytest found tests but we could not read them — a format we do not
         # understand. Do not silently conclude "everything is stale": say so
         # and let the caller fall back to running the files themselves.
