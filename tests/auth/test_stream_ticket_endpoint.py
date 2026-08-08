@@ -86,11 +86,20 @@ class TestStreamTicketEndpointAuthDisabled:
         body = resp.json()
         assert isinstance(body["ticket"], str) and body["ticket"]
 
-    def test_auth_disabled_ticket_redeems_to_none_user(self, auth_client, monkeypatch):
+    def test_auth_disabled_ticket_redeems_to_the_local_operator(
+        self, auth_client, monkeypatch
+    ):
+        """Was ``redeems_to_none_user`` before #963.
+
+        The auth-disabled principal now resolves to a real user row instead of
+        carrying user_id=None — that is the whole point of the change, since a
+        None identity broke every API-key operation. A ticket minted in this
+        mode therefore redeems to that operator rather than to None.
+        """
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
         resp = auth_client.post("/auth/stream-ticket")
         ticket = resp.json()["ticket"]
-        assert redeem_ticket(ticket) is None
+        assert redeem_ticket(ticket) == 1
 
 
 class TestStreamTicketScopeEnforcement:

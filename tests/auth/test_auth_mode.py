@@ -49,7 +49,12 @@ class TestRequireAuthBypass:
         monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
         result = await require_auth(api_key_auth=None, jwt_user=None)
         assert result["type"] == "disabled"
-        assert result["user_id"] is None
+        # user_id used to be None. api_keys.user_id is a NOT NULL foreign key,
+        # so that made list/create/revoke fail three different ways with auth
+        # off; the principal now resolves to the local operator row (#963).
+        # No user exists in this bare unit test, so it degrades to None here —
+        # the populated case is covered in test_auth_config_timing_963.py.
+        assert "user_id" in result
         assert result["scopes"] == [SCOPE_READ, SCOPE_WRITE, SCOPE_ADMIN]
 
     @pytest.mark.asyncio

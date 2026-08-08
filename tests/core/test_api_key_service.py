@@ -43,8 +43,8 @@ def db(tmp_path):
             is_active, is_superuser, is_verified, email_verified
         )
         VALUES
-            (?, 'a@example.com', 'User A', '!DISABLED!', 1, 0, 1, 1),
-            (?, 'b@example.com', 'User B', '!DISABLED!', 1, 0, 1, 1)
+            (?, 'a@example.com', 'User A', '$2b$12$testtesttesttesttesttestesttesttesttesttesttesttesttestte', 1, 0, 1, 1),
+            (?, 'b@example.com', 'User B', '$2b$12$testtesttesttesttesttestesttesttesttesttesttesttesttestte', 1, 0, 1, 1)
         """,
         (USER_A, USER_B),
     )

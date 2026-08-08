@@ -173,9 +173,20 @@ def test_valid_api_key_not_401(auth_app, monkeypatch, tmp_path):
 
     db = Database(db_path)
     db.initialize()
+    # A real key belongs to a real account. The only user a fresh database
+    # seeds is the admin@localhost placeholder, whose password is the
+    # '!DISABLED!' sentinel — keys owned by an account nobody can log in as are
+    # refused while auth is enforced (#963), because that is how a key minted
+    # in local auth-off mode would otherwise survive into an exposed server.
+    db.conn.execute(
+        "INSERT OR REPLACE INTO users (id, email, name, hashed_password, "
+        "is_active, is_superuser, is_verified, email_verified) "
+        "VALUES (2, 'real@example.com', 'Real', '$2b$12$abcdefghij', 1, 1, 1, 1)"
+    )
+    db.conn.commit()
     full_key, key_hash, prefix = generate_api_key()
     db.api_keys.create(
-        user_id=1,
+        user_id=2,
         name="enforcement-test",
         key_hash=key_hash,
         prefix=prefix,
