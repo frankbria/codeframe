@@ -377,8 +377,8 @@ class E2BAgentAdapter:
             # means the sandbox tried to write outside the workspace.
             emit(
                 "progress",
-                f"Rejected {rejected} path(s) outside the workspace — "
-                "the sandbox tried to write somewhere it may not",
+                f"Rejected {rejected} sandbox path(s) — unparseable, or "
+                "outside the workspace (see log for each)",
             )
         return modified_files, downloaded
 

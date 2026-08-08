@@ -193,7 +193,7 @@ class TestRejectionsAreWarnedAndCounted:
             lambda *a, **k: emitted.append(a),
         )
         blob = " ".join(str(a) for a in emitted).lower()
-        assert "2" in blob and ("reject" in blob or "outside" in blob), emitted
+        assert "2" in blob and "reject" in blob, emitted
 
     def test_a_rejected_path_is_never_read_from_the_sandbox(self, workspace):
         """Reject before the read, not after — no needless round trip."""
