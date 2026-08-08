@@ -386,6 +386,10 @@ class E2BAgentAdapter:
         Returns:
             Tuple of (paths, count rejected as unparseable).
         """
+        def _looks_like_record(entry: str) -> bool:
+            # "XY PATH" — exactly two status characters and a space.
+            return len(entry) >= 4 and entry[2] == " "
+
         entries = [e for e in stdout.split("\0") if e]
         paths: list[str] = []
         rejected = 0
@@ -394,8 +398,7 @@ class E2BAgentAdapter:
         while index < len(entries):
             entry = entries[index]
             index += 1
-            # "XY PATH" — exactly two status characters and a space.
-            if len(entry) < 4 or entry[2] != " ":
+            if not _looks_like_record(entry):
                 # Counted and warned, not dropped: real git cannot emit this,
                 # so a malformed record means the sandbox's git is not git.
                 rejected += 1
@@ -404,8 +407,19 @@ class E2BAgentAdapter:
             status, raw = entry[:2], entry[3:]
 
             # A rename/copy is "XY new\0old" — consume the old name, keep new.
+            # Honest git always follows the header with a bare path, so a
+            # field that itself looks like a record was never a rename pair:
+            # a shadowed git could otherwise fake a rename header purely to
+            # make this parser eat the next real entry, dropping it silently.
             if status[0] in ("R", "C") or status[1] in ("R", "C"):
-                index += 1
+                if index < len(entries) and not _looks_like_record(entries[index]):
+                    index += 1
+                else:
+                    logger.warning(
+                        "Rename record %r is not followed by an old path; "
+                        "not consuming the next entry",
+                        entry,
+                    )
 
             # Verbatim: -z output is NOT C-quoted (that is the whole point of
             # the flag), so a file genuinely named `"a.py"` must keep its

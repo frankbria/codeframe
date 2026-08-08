@@ -276,6 +276,33 @@ class TestPorcelainParsing:
         assert paths == ["ok.py"]
         assert rejected == 2
 
+    def test_a_faked_rename_cannot_swallow_the_next_real_record(self, workspace):
+        """A shadowed git can emit a rename header to eat the following entry.
+
+        Honest git always follows `R  new` with a bare old path, so a field
+        that itself looks like `XY PATH` was never a rename pair.
+        """
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+
+        paths, _ = E2BAgentAdapter._parse_porcelain("R  fake.py\0 M real_change.py\0")
+        assert "real_change.py" in paths, paths
+
+    def test_an_honest_rename_still_consumes_its_old_path(self, workspace):
+        """The guard must not turn every rename's old name into a download."""
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+
+        paths, _ = E2BAgentAdapter._parse_porcelain("R  new.py\0old.py\0 M other.py\0")
+        assert paths == ["new.py", "other.py"]
+
+    def test_a_swallowed_record_is_at_least_warned_about(self, workspace, caplog):
+        import logging
+
+        from codeframe.adapters.e2b.adapter import E2BAgentAdapter
+
+        with caplog.at_level(logging.WARNING):
+            E2BAgentAdapter._parse_porcelain("R  fake.py\0 M real_change.py\0")
+        assert "rename" in caplog.text.lower(), caplog.text
+
     def test_porcelain_is_requested_nul_separated(self, workspace):
         """-z is what removes the separator ambiguity above."""
         sbx = _sbx(" M ok.py", content="x")
