@@ -13,13 +13,26 @@ repos:
     hooks:
       - id: pytest-check
         name: Run last failed tests (fast feedback)
-        # --lfnf none: when no tests failed previously (or no cache), run
-        # NOTHING instead of the whole suite. Keeps this a fast-feedback hook
-        # that only re-runs what you just broke; full validation is CI's job.
+        # Re-runs only what you previously broke; full validation is CI's job.
+        #
+        # NOT `pytest --lf --lfnf none` (#984): --lfnf none guards only the
+        # EMPTY cache. With a non-empty lastfailed whose node IDs no longer
+        # resolve — you renamed a test — pytest runs the WHOLE SUITE, carrying
+        # -x. Renaming a test therefore hung the next commit. The script prunes
+        # unresolvable node IDs first, so a stale cache selects nothing.
+        #
         # uv run: the project's canonical invocation (no fragile venv-activate
         # guessing / bare `pytest` that may not be on PATH).
+        # timeout: a pre-commit hook needs a wall-clock ceiling whatever it
+        # decides to run. 124 = timed out → warn and pass; never block a commit
+        # on a hook that hung.
         # exit 5 = "no tests collected" (the deselect-all no-op) → treat as pass.
-        entry: bash -c 'uv run pytest --lf --lfnf none -x; code=$?; [ "$code" -eq 5 ] && code=0; exit $code'
+        entry: >-
+          bash -c 'timeout 300 uv run python scripts/pretest_lastfailed.py;
+          code=$?; [ "$code" -eq 5 ] && code=0;
+          if [ "$code" -eq 124 ]; then
+          echo "pytest-check timed out after 300s, skipping (see #984)";
+          code=0; fi; exit $code'
         language: system
         pass_filenames: false
         files: \.py$
