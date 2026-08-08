@@ -232,6 +232,114 @@ class TestApiKeysWorkWithAuthDisabled:
         assert resp.status_code == 201, resp.text
 
 
+class TestAuthOffKeysDoNotSurviveIntoAnExposedDeployment:
+    """A key minted with auth off must not become a durable admin credential.
+
+    Found in review of this issue: with auth off, key creation is attributed to
+    the local operator, which on a fresh install is the seeded
+    ``admin@localhost`` placeholder — is_active=1, is_superuser=1, and a
+    password nobody can use. Turn auth on afterwards and that key kept working,
+    because key auth otherwise checks only is_active/is_superuser. A durable
+    admin credential created without anyone authenticating.
+    """
+
+    def _db_with(self, tmp_path, *, real_account: bool):
+        from codeframe.auth.manager import DISABLED_PASSWORD, reset_auth_engine
+        from codeframe.platform_store.database import Database
+
+        db_path = tmp_path / "state.db"
+        reset_auth_engine()
+        db = Database(db_path)
+        db.initialize()
+        db.conn.execute(
+            "INSERT OR REPLACE INTO users (id, email, name, hashed_password, "
+            "is_active, is_superuser, is_verified, email_verified) "
+            "VALUES (1, 'admin@localhost', 'Admin', ?, 1, 1, 1, 1)",
+            (DISABLED_PASSWORD,),
+        )
+        if real_account:
+            db.conn.execute(
+                "INSERT OR REPLACE INTO users (id, email, name, hashed_password, "
+                "is_active, is_superuser, is_verified, email_verified) "
+                "VALUES (2, 'real@example.com', 'Real', '$2b$12$abcdefghij', 1, 1, 1, 1)"
+            )
+        db.conn.commit()
+        return db, db_path
+
+    @pytest.mark.asyncio
+    async def test_a_placeholder_owned_key_is_refused_once_auth_is_on(
+        self, tmp_path, monkeypatch
+    ):
+        from unittest.mock import MagicMock
+
+        from codeframe.auth import dependencies
+        from codeframe.core.api_key_service import ApiKeyService
+
+        db, db_path = self._db_with(tmp_path, real_account=False)
+        monkeypatch.setenv("DATABASE_PATH", str(db_path))
+        created = ApiKeyService(db).create_api_key(
+            user_id=1, name="local", scopes=["read", "admin"]
+        )
+
+        request = MagicMock()
+        request.app.state.db = db
+        request.state.db = db
+
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
+        assert await dependencies.get_api_key_auth(
+            request=request, api_key=created.key
+        ) is not None, "the key must still work in the mode that created it"
+
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+        assert await dependencies.get_api_key_auth(
+            request=request, api_key=created.key
+        ) is None, "a placeholder-owned key survived into an authenticated deployment"
+
+        db.close()
+
+    @pytest.mark.asyncio
+    async def test_a_real_accounts_key_is_unaffected(self, tmp_path, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from codeframe.auth import dependencies
+        from codeframe.core.api_key_service import ApiKeyService
+
+        db, db_path = self._db_with(tmp_path, real_account=True)
+        monkeypatch.setenv("DATABASE_PATH", str(db_path))
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+        created = ApiKeyService(db).create_api_key(
+            user_id=2, name="real", scopes=["read"]
+        )
+
+        request = MagicMock()
+        request.app.state.db = db
+        request.state.db = db
+
+        assert await dependencies.get_api_key_auth(
+            request=request, api_key=created.key
+        ) is not None
+
+        db.close()
+
+    @pytest.mark.asyncio
+    async def test_the_local_operator_prefers_a_login_capable_account(
+        self, tmp_path, monkeypatch
+    ):
+        from codeframe.auth import dependencies
+        from codeframe.auth.manager import reset_auth_engine
+
+        db, db_path = self._db_with(tmp_path, real_account=True)
+        db.close()
+        monkeypatch.setenv("DATABASE_PATH", str(db_path))
+        reset_auth_engine()
+
+        operator = await dependencies._local_operator_user()
+        assert operator is not None
+        assert operator.id == 2, "resolved the disabled placeholder over a real account"
+
+        reset_auth_engine()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. The API-key fallback never writes a database into cwd
 # ─────────────────────────────────────────────────────────────────────────────

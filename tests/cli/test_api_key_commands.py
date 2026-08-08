@@ -45,7 +45,7 @@ def db(tmp_path):
             id, email, name, hashed_password,
             is_active, is_superuser, is_verified, email_verified
         )
-        VALUES (1, 'test@example.com', 'Test User', '!DISABLED!', 1, 0, 1, 1)
+        VALUES (1, 'test@example.com', 'Test User', '$2b$12$testtesttesttesttesttestesttesttesttesttesttesttesttestte', 1, 0, 1, 1)
         """
     )
     db.conn.commit()

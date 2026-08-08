@@ -116,7 +116,7 @@ async def get_current_user(
     # open without a ticket" — a different decision than this issue asks for.
     on_ticket_path = request is not None and _query_ticket_allowed(request.url.path)
     if not auth_required() and not on_ticket_path:
-        operator = await _local_operator_user()
+        operator = await _local_operator_user(request)
         if operator is not None:
             return operator
         logger.error(
@@ -187,7 +187,18 @@ async def _authenticate_bearer_token(token: str) -> User:
         )
 
 
-async def _local_operator_user() -> Optional[User]:
+def _app_db(request: Optional[Request]) -> Any:
+    """The control-plane Database this request will read and write."""
+    if request is None:
+        return None
+    db = getattr(getattr(request, "app", None), "state", None)
+    db = getattr(db, "db", None) if db is not None else None
+    if db is None:
+        db = getattr(getattr(request, "state", None), "db", None)
+    return db
+
+
+async def _local_operator_user(request: Optional[Request] = None) -> Optional[User]:
     """The account the auth-disabled synthetic principal acts as (#963).
 
     With ``CODEFRAME_AUTH_REQUIRED=false`` the principal used to carry
@@ -196,20 +207,68 @@ async def _local_operator_user() -> Optional[User]:
     revoke 404'd, and create 401'd because it required a JWT. The first thing a
     self-hosted evaluator tries, broken three ways.
 
-    Resolves to the lowest-id account, which is the ``admin@localhost`` row
-    every database seeds. Deliberately **not** cached: caching a row keyed to a
-    database path is the exact staleness bug this same issue fixes in
-    ``get_async_session_maker``, and this is a single indexed primary-key read.
+    Resolved from **this request's** database when one is attached, not from
+    the SQLAlchemy auth engine. The two are the same file in production but not
+    necessarily in tests or a split-database setup, and handing back an id from
+    a different database produces a foreign-key failure at write time.
+
+    Prefers the lowest-id **login-capable** account, falling back to the
+    lowest-id account overall only when none exists (a fresh local install,
+    where the seeded ``admin@localhost`` placeholder is all there is). The
+    preference matters because anything created under this identity — notably
+    an API key — outlives the auth mode that created it; see
+    ``_owner_is_login_capable`` for the other half of that guard.
+
+    Deliberately **not** cached: caching a row keyed to a database is the exact
+    staleness bug this same issue fixes in ``get_async_session_maker``.
 
     Returns ``None`` when no user row exists at all, which callers surface as
     401 rather than inventing an identity.
     """
+    from codeframe.auth.manager import DISABLED_PASSWORD
+
+    db = _app_db(request)
+    if db is not None:
+        try:
+            row = db.conn.execute(
+                "SELECT id, email, is_active, is_superuser FROM users "
+                "WHERE hashed_password != ? ORDER BY id LIMIT 1",
+                (DISABLED_PASSWORD,),
+            ).fetchone()
+            if row is None:
+                row = db.conn.execute(
+                    "SELECT id, email, is_active, is_superuser FROM users "
+                    "ORDER BY id LIMIT 1"
+                ).fetchone()
+        except Exception as e:
+            logger.error("Could not resolve the local operator account: %s", e)
+            return None
+        if row is None:
+            return None
+        user = User()
+        user.id = row[0]
+        user.email = row[1]
+        user.is_active = bool(row[2])
+        user.is_superuser = bool(row[3])
+        user.hashed_password = ""
+        return user
+
+    # No request-scoped database: fall back to the auth engine.
     from sqlalchemy import select
 
     from codeframe.auth.manager import get_async_session_maker
 
     async_session_maker = get_async_session_maker()
     async with async_session_maker() as session:
+        result = await session.execute(
+            select(User)
+            .where(User.hashed_password != DISABLED_PASSWORD)
+            .order_by(User.id)
+            .limit(1)
+        )
+        user = result.scalar_one_or_none()
+        if user is not None:
+            return user
         result = await session.execute(select(User).order_by(User.id).limit(1))
         return result.scalar_one_or_none()
 
@@ -337,6 +396,39 @@ def _owner_is_active(db: Any, user_id: Any) -> bool:
         return False
 
     return bool(row[0]) if row is not None else False
+
+
+def _owner_is_login_capable(db: Any, user_id: Any) -> bool:
+    """Whether the key's owner is an account someone can actually log in as.
+
+    Guards a cross-mode escalation (#963 review): with auth disabled, key
+    creation is attributed to the local operator, which on a fresh install is
+    the seeded ``admin@localhost`` placeholder — ``is_active=1``,
+    ``is_superuser=1``, and a password of ``!DISABLED!`` that no one can use.
+    A key minted that way is a durable admin credential created without anyone
+    authenticating; when auth is later switched on and the server exposed, it
+    would keep working, because key auth otherwise checks only is_active and
+    is_superuser.
+
+    Enforced only while auth is required — with auth off the placeholder IS the
+    operator, and refusing it would re-break the flow this issue fixes.
+
+    Fails closed: a missing or unreadable row denies.
+    """
+    if not auth_required():
+        return True
+    try:
+        from codeframe.auth.manager import DISABLED_PASSWORD
+
+        row = db.conn.execute(
+            "SELECT hashed_password FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+    except Exception as e:
+        logger.error(f"Could not verify API key owner's login capability: {e}")
+        return False
+    if row is None:
+        return False
+    return row[0] != DISABLED_PASSWORD
 
 
 def _scopes_within_owner_grant(db: Any, key_record: Dict[str, Any]) -> list:
@@ -554,6 +646,18 @@ def _resolve_api_key(api_key: str, request: Optional[Request]) -> Optional[Dict[
             )
             return None
 
+        # A key owned by an account nobody can log in as is not a credential
+        # anyone authenticated to create (#963 review). Refused while auth is
+        # enforced, so a key minted in local auth-off mode cannot survive into
+        # an exposed deployment.
+        if not _owner_is_login_capable(db, key_record["user_id"]):
+            logger.warning(
+                "API key auth failed: owner (user_id=%s) cannot log in "
+                "(placeholder account); refusing while auth is enforced.",
+                key_record["user_id"],
+            )
+            return None
+
         # Refresh last_used_at at most once per key per window (#902) — this is
         # an UPDATE+COMMIT, and doing it on every request made each
         # authenticated call a database writer.
@@ -641,7 +745,7 @@ async def require_auth(
     if not auth_required():
         # A stable, real user_id (#963): api_keys.user_id is a NOT NULL foreign
         # key, so None made list/create/revoke fail in three different ways.
-        operator = await _local_operator_user()
+        operator = await _local_operator_user(request)
         return _resolve({
             "type": "disabled",
             "user_id": getattr(operator, "id", None),
