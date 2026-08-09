@@ -44,16 +44,31 @@ echo "==> Building clean image ($IMAGE)"
 docker build -q -t "$IMAGE" "$HERE"
 
 echo "==> Running walkthrough (artifacts -> $OUT)"
+# `|| RC=$?` so a non-zero container exit (crash, OOM, docker itself failing)
+# does not trip `set -e` and skip the chown below — that would leave the whole
+# artifacts directory root-owned on the host, which is exactly the run you most
+# want to be able to read. Step failures inside the walkthrough are handled
+# there and do not reach here.
+RC=0
 docker run --rm \
   -e ANTHROPIC_API_KEY \
   -v "$OUT:/artifacts" \
   "${SRC_MOUNT[@]}" \
-  "$IMAGE" 2>&1 | tee "$OUT/transcript.txt"
+  "$IMAGE" 2>&1 | tee "$OUT/transcript.txt" || RC=$?
 
 # The container runs as root, so the artifacts land root-owned on the host.
 docker run --rm -v "$OUT:/artifacts" --entrypoint chown "$IMAGE" \
   -R "$(id -u):$(id -g)" /artifacts || true
 
+if [ "$RC" -ne 0 ]; then
+  echo "==> WARNING: the container exited non-zero ($RC) — the run may be incomplete." >&2
+fi
+
 echo
 echo "==> Done. Artifacts in $OUT:"
 ls -la "$OUT"
+
+# Propagate the container's exit so a caller can tell a completed run from a
+# crashed one. A walkthrough that ran to the end exits 0 even when individual
+# documented steps failed — those are findings, and they are in timings.tsv.
+exit "$RC"
