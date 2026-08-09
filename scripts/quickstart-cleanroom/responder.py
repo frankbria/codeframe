@@ -110,8 +110,24 @@ def main() -> int:
     rejections = 0
     started = time.time()
 
+    def drain() -> None:
+        """Read whatever is left in the pipe. The child's last words — the final
+        panel, or the error that explains the exit — are written just before it
+        exits, so breaking out of the loop on `poll()` without draining silently
+        truncates the most important part of the evidence."""
+        nonlocal buf
+        while True:
+            chunk = os.read(proc.stdout.fileno(), 65536)
+            if not chunk:
+                return
+            text = chunk.decode("utf-8", "replace")
+            sys.stdout.write(text)
+            sys.stdout.flush()
+            buf += text
+
     while True:
         if proc.poll() is not None:
+            drain()
             break
         events = sel.select(timeout=IDLE_FLUSH)
         if events:
