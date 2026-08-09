@@ -1,0 +1,2 @@
+id	severity	summary
+P-PRD-INTERACTIVE	major	cf prd generate is interactive-only (no --non-interactive/--answers-file); it cannot be scripted, CI-tested or demoed reproducibly without a stand-in user

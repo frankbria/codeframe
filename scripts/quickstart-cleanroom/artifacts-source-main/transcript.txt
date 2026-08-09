@@ -1,0 +1,919 @@
+
+### INSTALL SOURCE: local tree at /src (pre-release check, NOT the published package)
+
+===== STEP: 1-install (documented=yes) =====
+$ uv tool install --reinstall /tmp/src
+
+Resolved 130 packages in 558ms
+   Building codeframe-ai @ file:///tmp/src
+Downloading ruff (10.9MiB)
+Downloading rapidfuzz (3.0MiB)
+Downloading pydantic-core (2.0MiB)
+Downloading openai (1.6MiB)
+Downloading hypothesis (1.1MiB)
+Downloading pygments (1.2MiB)
+Downloading tiktoken (1.1MiB)
+Downloading uvloop (3.6MiB)
+Downloading sqlalchemy (3.2MiB)
+Downloading cryptography (4.5MiB)
+Downloading aiohttp (1.7MiB)
+ Downloaded tiktoken
+ Downloaded pydantic-core
+ Downloaded aiohttp
+ Downloaded hypothesis
+ Downloaded rapidfuzz
+ Downloaded ruff
+ Downloaded uvloop
+ Downloaded cryptography
+ Downloaded pygments
+ Downloaded sqlalchemy
+ Downloaded openai
+      Built codeframe-ai @ file:///tmp/src
+Prepared 130 packages in 1.76s
+Installed 130 packages in 60ms
+ + aiohappyeyeballs==2.7.1
+ + aiohttp==3.14.3
+ + aiosignal==1.4.0
+ + aiosqlite==0.22.1
+ + annotated-doc==0.0.5
+ + annotated-types==0.8.0
+ + anthropic==0.121.0
+ + anyio==4.14.2
+ + argon2-cffi==25.1.0
+ + argon2-cffi-bindings==25.1.0
+ + attrs==26.1.0
+ + backports-tarfile==1.2.0
+ + bandit==1.9.4
+ + bcrypt==5.0.0
+ + certifi==2026.7.22
+ + cffi==2.1.1
+ + charset-normalizer==3.4.9
+ + click==8.4.2
+ + codeframe-ai==0.9.1 (from file:///tmp/src)
+ + colorama==0.4.6
+ + cryptography==50.0.0
+ + deprecated==1.3.1
+ + distro==1.9.0
+ + dnspython==2.8.0
+ + docstring-parser==0.18.0
+ + ecdsa==0.19.2
+ + email-validator==2.3.0
+ + fastapi==0.141.1
+ + fastapi-users==15.0.5
+ + fastapi-users-db-sqlalchemy==7.0.0
+ + filelock==3.32.2
+ + frozenlist==1.8.0
+ + gitdb==4.0.12
+ + gitpython==3.1.58
+ + greenlet==3.5.4
+ + h11==0.16.0
+ + httpcore==1.0.9
+ + httpcore2==2.9.1
+ + httptools==0.8.0
+ + httpx==0.28.1
+ + httpx2==2.9.1
+ + hypothesis==6.165.2
+ + idna==3.18
+ + importlib-metadata==9.0.0
+ + iniconfig==2.3.0
+ + jaraco-classes==3.4.0
+ + jaraco-context==6.1.2
+ + jaraco-functools==4.6.0
+ + jeepney==0.9.0
+ + jinja2==3.1.6
+ + jiter==0.16.0
+ + jsonschema==4.26.0
+ + jsonschema-specifications==2025.9.1
+ + keyring==25.7.0
+ + limits==5.8.0
+ + linkify-it-py==2.1.0
+ + makefun==1.16.0
+ + mando==0.7.1
+ + markdown-it-py==4.2.0
+ + markupsafe==3.0.3
+ + mcp==2.0.0
+ + mcp-types==2.0.0
+ + mdit-py-plugins==0.6.1
+ + mdurl==0.1.2
+ + more-itertools==11.1.0
+ + multidict==6.7.1
+ + openai==2.53.0
+ + opentelemetry-api==1.44.0
+ + packaging==26.3
+ + passlib==1.7.4
+ + platformdirs==4.11.1
+ + pluggy==1.6.0
+ + propcache==0.5.2
+ + pwdlib==0.3.0
+ + pyasn1==0.6.4
+ + pycparser==3.0
+ + pydantic==2.13.4
+ + pydantic-core==2.46.4
+ + pydantic-settings==2.15.0
+ + pygments==2.20.0
+ + pyjwt==2.13.0
+ + pytest==9.1.1
+ + pytest-asyncio==1.4.0
+ + pytest-json-report==1.5.0
+ + pytest-metadata==3.1.1
+ + python-dotenv==1.2.2
+ + python-jose==3.5.0
+ + python-multipart==0.0.32
+ + pyyaml==6.0.3
+ + radon==6.0.1
+ + rapidfuzz==3.14.5
+ + referencing==0.37.0
+ + regex==2026.7.19
+ + requests==2.34.2
+ + rich==15.0.0
+ + rpds-py==2026.6.3
+ + rsa==4.9.1
+ + ruff==0.16.2
+ + secretstorage==3.5.0
+ + shellingham==1.5.4
+ + six==1.17.0
+ + slowapi==0.1.10
+ + smmap==5.0.3
+ + sniffio==1.3.1
+ + sortedcontainers==2.4.0
+ + sqlalchemy==2.0.51
+ + sse-starlette==3.4.8
+ + starlette==1.6.0
+ + stevedore==5.9.0
+ + tenacity==9.1.4
+ + textual==8.2.8
+ + tiktoken==0.13.0
+ + tqdm==4.70.0
+ + tree-sitter==0.26.0
+ + tree-sitter-javascript==0.25.0
+ + tree-sitter-python==0.25.0
+ + tree-sitter-typescript==0.23.2
+ + truststore==0.10.4
+ + typer==0.27.1
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.2
+ + uc-micro-py==2.0.0
+ + urllib3==2.7.0
+ + uvicorn==0.52.1
+ + uvloop==0.22.1
+ + watchfiles==1.2.0
+ + websockets==17.0.1
+ + wrapt==2.3.0
+ + yarl==1.24.5
+ + zipp==4.1.0
+Installed 2 executables: cf, codeframe
+
+----- 1-install: OK (2s, exit 0) -----
+
+===== STEP: 1-smoke-cf-help (documented=yes) =====
+$ cf --help
+
+                                                                                
+ Usage: codeframe [OPTIONS] COMMAND [ARGS]...                                   
+                                                                                
+ CodeFRAME: Autonomous coding agent orchestration (v2 CLI)                      
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --version  -V        Show the CodeFRAME version and exit.                    │
+│ --help               Show this message and exit.                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ init        Initialize a CodeFRAME workspace for a repository.               │
+│ status      Show workspace status summary.                                   │
+│ summary     Print a short status report of the workspace.                    │
+│ review      Run verification gates (tests, lint).                            │
+│ serve       Start the optional FastAPI server (wraps core).                  │
+│ version     Show CodeFRAME version.                                          │
+│ prd         PRD (Product Requirements Document) management                   │
+│ tasks       Task generation and management                                   │
+│ work        Task execution and agent orchestration                           │
+│ events      Event log management                                             │
+│ blocker     Blocker management (human-in-the-loop)                           │
+│ patch       Patch and diff management                                        │
+│ commit      Git commit management                                            │
+│ checkpoint  State checkpoint management                                      │
+│ gates       Quality gate management                                          │
+│ schedule    Task scheduling and project timeline                             │
+│ templates   Task template management                                         │
+│ auth        Authentication commands                                          │
+│ pr          Pull request management (create, list, merge, close)             │
+│ env         Environment validation and tool management                       │
+│ engines     Engine management commands                                       │
+│ hooks       Workspace lifecycle hooks management                             │
+│ stats       Token usage and cost statistics                                  │
+│ proof       PROOF9 quality memory system — evidence-based verification       │
+│ dashboard   Terminal dashboard for monitoring workspace state                │
+│ import      Import projects from other tools into CodeFRAME                  │
+│ config      Manage machine-wide CodeFRAME configuration                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+----- 1-smoke-cf-help: OK (3s, exit 0) -----
+
+===== STEP: 1-version (documented=yes) =====
+$ cf --version
+
+codeframe 0.9.1
+
+----- 1-version: OK (0s, exit 0) -----
+
+===== STEP: 3-init (documented=yes) =====
+$ cf init . --detect
+
+Workspace initialized
+  Path: /work/todo-api
+  ID: 60d309bb-8486-4c21-8f05-bad2c24c2ed4
+  State: /work/todo-api/.codeframe
+  Tech Stack: Python with pip
+
+Next steps:
+  codeframe prd add <file.md>   Add a PRD
+  codeframe status              View workspace status
+
+----- 3-init: OK (3s, exit 0) -----
+
+>>> FINDING [P-PRD-INTERACTIVE/major] cf prd generate is interactive-only (no --non-interactive/--answers-file); it cannot be scripted, CI-tested or demoed reproducibly without a stand-in user
+
+
+===== STEP: 4-prd-generate (documented=yes) =====
+$ python3 /responder.py cf prd generate
+
+Using template: Standard PRD
+
+Starting AI-driven PRD discovery...
+The AI will ask questions to understand your project.
+Type /help for available commands
+
+Question 1 | Coverage: 0%
+░░░░░░░░░░░░░░░░░░░░
+
+╭──────────────────────────────────────────── Question ────────────────────────────────────────────╮
+│ What problem are you trying to solve with this project, and what inspired you to want to build   │
+│ it?                                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+Your answer (): 
+[responder] turn 1: answering -> 'What problem are you trying to solve with this project, and what inspired you to want to build it?'
+[responder] -> I'm tired of keeping todos scattered across different notes and losing track of what's actually due, so I'm building a self-hosted REST API where I can manage e
+✓ Answer recorded
+
+Question 2 | Coverage: 69%
+█████████████░░░░░░░
+
+╭──────────────────────────────────────────── Question ────────────────────────────────────────────╮
+│ When you say you want to "manage everything in one place," what are the 3-4 specific things you  │
+│ do most often with your todos—like creating them, checking them off, or reorganizing them—that   │
+│ would make this tool actually useful for you day-to-day?                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+Your answer (): 
+[responder] turn 2: answering -> 'When you say you want to "manage everything in one place," what are the 3-4 specific things you do most often '
+[responder] -> I create todos throughout the day when tasks come to mind, so fast todo creation is essential. I check off completed todos to get that sense of progress and to 
+✓ Answer recorded
+
+Question 3 | Coverage: 69%
+█████████████░░░░░░░
+
+╭──────────────────────────────────────────── Question ────────────────────────────────────────────╮
+│ Since you're building a self-hosted REST API, what's your preferred tech stack—what language,    │
+│ framework, and database are you thinking of using, and does it need to integrate with any        │
+│ existing tools or systems you already rely on?                                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+Your answer (): 
+[responder] turn 3: answering -> "Since you're building a self-hosted REST API, what's your preferred tech stack—what language, framework, and d"
+[responder] -> I'm using FastAPI with Python for the framework because it's lightweight, has excellent async support to handle the performance constraint of returning 1000 tod
+✓ Answer recorded
+
+
+Discovery complete!
+
+Generating PRD using 'standard' template...
+
+✓ PRD generated: Self-Hosted Todo Management REST API
+ID: 0382f23e-e38d-430b-8e57-23c43773c7c9
+
+Preview:
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ # Self-Hosted Todo Management REST API                                                           │
+│                                                                                                  │
+│ ## Executive Summary                                                                             │
+│                                                                                                  │
+│ A lightweight, self-hosted REST API for managing personal todos in a single, centralized         │
+│ location. Built with FastAPI and SQLite, this solution eliminates the need for scattered notes   │
+│ and multiple SaaS subscriptions by providing developers with a simple, performant API they can   │
+│ deploy on their own infrastructure. The MVP focuses on core todo management operations—create,   │
+│ read, update, and complete—with filtering capabilities to maintain focus on active work.         │
+│                                                                                                  │
+│ ## Problem Statement                                                                             │
+│                                                                                                  │
+│ Developers and technical users currently manage todos across fragmented systems—scattered notes, │
+│ multiple apps, and various SaaS tools—leading to lost tasks, duplicated effort, and subscription │
+│ fatigue. Existing solutions either require creating yet another account, lack self-hosting       │
+│ options, or introduce unnecessary complexity for what should be a straightforward task           │
+│ management system.                                                                               │
+│                                                                                                  │
+│ **Key Pain Points:**                                                                             │
+│ - Todos scattered across different note                                                          │
+│                                                                                                  │
+│ ... (use 'codeframe prd show --full' to see complete PRD)                                        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+Next steps:
+  codeframe prd show --full    # View complete PRD
+  codeframe tasks generate     # Generate tasks from PRD
+
+[responder] finished: exit=0 turns=3 rejections=0 elapsed=82s
+
+----- 4-prd-generate: OK (93s, exit 0) -----
+
+===== STEP: 4-prd-show (documented=yes) =====
+$ cf prd show
+
+
+PRD: Self-Hosted Todo Management REST API
+ID: 0382f23e-e38d-430b-8e57-23c43773c7c9
+Added: 2026-08-09 06:57:18.146927+00:00
+
+# Self-Hosted Todo Management REST API
+
+## Executive Summary
+
+A lightweight, self-hosted REST API for managing personal todos in a single, 
+centralized location. Built with FastAPI and SQLite, this solution eliminates 
+the need for scattered notes and multiple SaaS subscriptions by providing 
+developers with a simple, performant API they can deploy on their own 
+infrastructure. The MVP focuses on core todo management operations—create, read,
+update, and complete—with filtering capabilities to mainta
+
+... (use --full to see complete PRD)
+
+----- 4-prd-show: OK (0s, exit 0) -----
+
+===== STEP: 4-tasks-generate (documented=yes) =====
+$ cf tasks generate
+
+Generating tasks from PRD: Self-Hosted Todo Management REST API
+Using LLM for task generation...
+LLM generation failed (Expecting ',' delimiter: line 179 column 6 (char 6820)), using simple extraction
+
+Generated 20 tasks
+
+  1. Todos scattered across different notes and systems make it difficult to 
+maintain a complete view of pending work
+  2. Existing SaaS tools add unwanted subscriptions and external dependencies
+  3. No simple, self-hostable solution that developers can deploy and control 
+themselves
+  4. Lack of focus when completed items clutter active task lists
+  5. Comfortable with REST APIs and command-line tools
+  6. Prefers self-hosted solutions over SaaS subscriptions
+  7. Works on multiple projects simultaneously
+  8. Values simplicity and performance over feature bloat
+  9. Centralize task management in a single, reliable system
+  10. Maintain control over data and hosting infrastructure
+  11. Quickly capture tasks as they arise throughout the day
+  12. Focus on active work without distraction from completed items
+  13. Has access to a laptop or small VPS for hosting
+  14. Comfortable deploying Python applications
+  15. May build custom clients or integrations on top of the API
+  16. **Requirement:** Fast, lightweight endpoint to create new todos
+  17. **Fields:** Description (required), priority (optional), created timestamp
+(auto-generated)
+  18. **Performance:** Sub-50ms response time for single todo creation
+  19. **Validation:** Description must be non-empty, max 500 characters
+  20. **Requirement:** Mark todos as complete/incomplete
+
+Next steps:
+  codeframe tasks list              View all tasks
+  codeframe tasks set status READY <id>   Mark task ready
+  codeframe tasks set status READY --all  Mark all tasks ready
+
+----- 4-tasks-generate: OK (18s, exit 0) -----
+
+===== STEP: 4-tasks-list (documented=yes) =====
+$ cf tasks list
+
+                                     Tasks                                      
+┏━━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ID       ┃ Status  ┃ Pri ┃ Deps ┃ Title                                      ┃
+┡━━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 7ed42345 │ BACKLOG │  0  │  -   │ Todos scattered across different notes and │
+│          │         │     │      │ systems make...                            │
+│ 1269b291 │ BACKLOG │  1  │  -   │ Existing SaaS tools add unwanted           │
+│          │         │     │      │ subscriptions and exte...                  │
+│ e0cac14a │ BACKLOG │  2  │  -   │ No simple, self-hostable solution that     │
+│          │         │     │      │ developers can d...                        │
+│ 735ba25c │ BACKLOG │  3  │  -   │ Lack of focus when completed items clutter │
+│          │         │     │      │ active task ...                            │
+│ 78865699 │ BACKLOG │  4  │  -   │ Comfortable with REST APIs and             │
+│          │         │     │      │ command-line tools                         │
+│ 70666e98 │ BACKLOG │  5  │  -   │ Prefers self-hosted solutions over SaaS    │
+│          │         │     │      │ subscriptions                              │
+│ f018d8d8 │ BACKLOG │  6  │  -   │ Works on multiple projects simultaneously  │
+│ 03219cef │ BACKLOG │  7  │  -   │ Values simplicity and performance over     │
+│          │         │     │      │ feature bloat                              │
+│ 45d1c460 │ BACKLOG │  8  │  -   │ Centralize task management in a single,    │
+│          │         │     │      │ reliable system                            │
+│ b9fc4b93 │ BACKLOG │  9  │  -   │ Maintain control over data and hosting     │
+│          │         │     │      │ infrastructure                             │
+│ b19002ba │ BACKLOG │ 10  │  -   │ Quickly capture tasks as they arise        │
+│          │         │     │      │ throughout the day                         │
+│ b365fa50 │ BACKLOG │ 11  │  -   │ Focus on active work without distraction   │
+│          │         │     │      │ from completed...                          │
+│ 98caaa2f │ BACKLOG │ 12  │  -   │ Has access to a laptop or small VPS for    │
+│          │         │     │      │ hosting                                    │
+│ 70075023 │ BACKLOG │ 13  │  -   │ Comfortable deploying Python applications  │
+│ 143d115f │ BACKLOG │ 14  │  -   │ May build custom clients or integrations   │
+│          │         │     │      │ on top of the ...                          │
+│ e1294a29 │ BACKLOG │ 15  │  -   │ **Requirement:** Fast, lightweight         │
+│          │         │     │      │ endpoint to create n...                    │
+│ 906c283d │ BACKLOG │ 16  │  -   │ **Fields:** Description (required),        │
+│          │         │     │      │ priority (optional)...                     │
+│ 5a60af26 │ BACKLOG │ 17  │  -   │ **Performance:** Sub-50ms response time    │
+│          │         │     │      │ for single todo...                         │
+│ 7522bec4 │ BACKLOG │ 18  │  -   │ **Validation:** Description must be        │
+│          │         │     │      │ non-empty, max 500 ...                     │
+│ e1c5cf03 │ BACKLOG │ 19  │  -   │ **Requirement:** Mark todos as             │
+│          │         │     │      │ complete/incomplete                        │
+└──────────┴─────────┴─────┴──────┴────────────────────────────────────────────┘
+
+Total: 20 | BACKLOG: 20
+
+----- 4-tasks-list: OK (0s, exit 0) -----
+
+### Task status distribution before any promotion:
+│          │         │     │      │ systems make...                            │
+│ 1269b291 │ BACKLOG │  1  │  -   │ Existing SaaS tools add unwanted           │
+│          │         │     │      │ subscriptions and exte...                  │
+│ e0cac14a │ BACKLOG │  2  │  -   │ No simple, self-hostable solution that     │
+│          │         │     │      │ developers can d...                        │
+│ 735ba25c │ BACKLOG │  3  │  -   │ Lack of focus when completed items clutter │
+│          │         │     │      │ active task ...                            │
+│ 78865699 │ BACKLOG │  4  │  -   │ Comfortable with REST APIs and             │
+│          │         │     │      │ command-line tools                         │
+│ 70666e98 │ BACKLOG │  5  │  -   │ Prefers self-hosted solutions over SaaS    │
+│          │         │     │      │ subscriptions                              │
+│ f018d8d8 │ BACKLOG │  6  │  -   │ Works on multiple projects simultaneously  │
+│ 03219cef │ BACKLOG │  7  │  -   │ Values simplicity and performance over     │
+│          │         │     │      │ feature bloat                              │
+│ 45d1c460 │ BACKLOG │  8  │  -   │ Centralize task management in a single,    │
+│          │         │     │      │ reliable system                            │
+│ b9fc4b93 │ BACKLOG │  9  │  -   │ Maintain control over data and hosting     │
+│          │         │     │      │ infrastructure                             │
+│ b19002ba │ BACKLOG │ 10  │  -   │ Quickly capture tasks as they arise        │
+│          │         │     │      │ throughout the day                         │
+│ b365fa50 │ BACKLOG │ 11  │  -   │ Focus on active work without distraction   │
+│          │         │     │      │ from completed...                          │
+│ 98caaa2f │ BACKLOG │ 12  │  -   │ Has access to a laptop or small VPS for    │
+│          │         │     │      │ hosting                                    │
+│ 70075023 │ BACKLOG │ 13  │  -   │ Comfortable deploying Python applications  │
+│ 143d115f │ BACKLOG │ 14  │  -   │ May build custom clients or integrations   │
+│          │         │     │      │ on top of the ...                          │
+│ e1294a29 │ BACKLOG │ 15  │  -   │ **Requirement:** Fast, lightweight         │
+│          │         │     │      │ endpoint to create n...                    │
+│ 906c283d │ BACKLOG │ 16  │  -   │ **Fields:** Description (required),        │
+│          │         │     │      │ priority (optional)...                     │
+│ 5a60af26 │ BACKLOG │ 17  │  -   │ **Performance:** Sub-50ms response time    │
+│          │         │     │      │ for single todo...                         │
+│ 7522bec4 │ BACKLOG │ 18  │  -   │ **Validation:** Description must be        │
+│          │         │     │      │ non-empty, max 500 ...                     │
+│ e1c5cf03 │ BACKLOG │ 19  │  -   │ **Requirement:** Mark todos as             │
+│          │         │     │      │ complete/incomplete                        │
+└──────────┴─────────┴─────┴──────┴────────────────────────────────────────────┘
+
+Total: 20 | BACKLOG: 20
+
+===== STEP: 5-batch-run-as-readme-says (documented=yes) =====
+$ cf work batch run --all-ready
+
+No READY tasks found
+
+----- 5-batch-run-as-readme-says: OK (1s, exit 0) -----
+
+===== STEP: 5-promote-to-ready (documented=no) =====
+$ bash -c cf tasks set status READY --all --from BACKLOG
+
+Updated 20 tasks to READY
+
+----- 5-promote-to-ready: OK (6s, exit 0) -----
+
+### READY tasks after promotion:
+│          │        │     │      │ subscriptions                               │
+│ f018d8d8 │ READY  │  6  │  -   │ Works on multiple projects simultaneously   │
+│ 03219cef │ READY  │  7  │  -   │ Values simplicity and performance over      │
+│          │        │     │      │ feature bloat                               │
+│ 45d1c460 │ READY  │  8  │  -   │ Centralize task management in a single,     │
+│          │        │     │      │ reliable system                             │
+│ b9fc4b93 │ READY  │  9  │  -   │ Maintain control over data and hosting      │
+│          │        │     │      │ infrastructure                              │
+│ b19002ba │ READY  │ 10  │  -   │ Quickly capture tasks as they arise         │
+│          │        │     │      │ throughout the day                          │
+│ b365fa50 │ READY  │ 11  │  -   │ Focus on active work without distraction    │
+│          │        │     │      │ from completed...                           │
+│ 98caaa2f │ READY  │ 12  │  -   │ Has access to a laptop or small VPS for     │
+│          │        │     │      │ hosting                                     │
+│ 70075023 │ READY  │ 13  │  -   │ Comfortable deploying Python applications   │
+│ 143d115f │ READY  │ 14  │  -   │ May build custom clients or integrations on │
+│          │        │     │      │ top of the ...                              │
+│ e1294a29 │ READY  │ 15  │  -   │ **Requirement:** Fast, lightweight endpoint │
+│          │        │     │      │ to create n...                              │
+│ 906c283d │ READY  │ 16  │  -   │ **Fields:** Description (required),         │
+│          │        │     │      │ priority (optional)...                      │
+│ 5a60af26 │ READY  │ 17  │  -   │ **Performance:** Sub-50ms response time for │
+│          │        │     │      │ single todo...                              │
+│ 7522bec4 │ READY  │ 18  │  -   │ **Validation:** Description must be         │
+│          │        │     │      │ non-empty, max 500 ...                      │
+│ e1c5cf03 │ READY  │ 19  │  -   │ **Requirement:** Mark todos as              │
+│          │        │     │      │ complete/incomplete                         │
+└──────────┴────────┴─────┴──────┴─────────────────────────────────────────────┘
+
+Total: 20 | READY: 20
+
+### Resolved TASK_ID=7ed42345
+
+===== STEP: 5-work-start (documented=yes) =====
+$ bash -c cf work start '7ed42345' --execute
+
+06:57:47 RUN_STARTED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+
+Run started
+  Task: Todos scattered across different notes and systems make it difficult to 
+maintain a complete view of pending work
+  Run ID: 610c4fb5-9f27-4128-a7a7-589334b00dc2
+  Status: RUNNING
+
+Executing agent...
+06:57:48 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:57:48 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:57:48 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:57:51 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:57:52 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:57:52 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:57:52 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:57:58 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:57:58 AGENT_STEP_COMPLETED path=pyproject.toml status=SKIPPED
+06:57:59 AGENT_STEP_COMPLETED path=pyproject.toml
+06:57:59 AGENT_STEP_COMPLETED path=pyproject.toml status=SKIPPED
+06:57:59 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:57:59 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:00 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:03 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:05 AGENT_STEP_COMPLETED path=todo_api/__init__.py status=SKIPPED
+06:58:05 AGENT_STEP_COMPLETED path=todo_api/__init__.py
+06:58:05 AGENT_STEP_COMPLETED path=todo_api/__init__.py status=SKIPPED
+06:58:06 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:06 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:06 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:10 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:10 AGENT_STEP_COMPLETED path=todo_api/config.py status=SKIPPED
+06:58:10 AGENT_STEP_COMPLETED path=todo_api/config.py
+06:58:11 AGENT_STEP_COMPLETED path=todo_api/config.py status=SKIPPED
+06:58:11 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:11 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:12 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:17 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:17 AGENT_STEP_COMPLETED path=todo_api/database.py status=SKIPPED
+06:58:17 AGENT_STEP_COMPLETED path=todo_api/database.py
+06:58:17 AGENT_STEP_COMPLETED path=todo_api/database.py status=SKIPPED
+06:58:17 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:17 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:17 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:22 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:23 AGENT_STEP_COMPLETED path=todo_api/models.py status=SKIPPED
+06:58:23 AGENT_STEP_COMPLETED path=todo_api/models.py
+06:58:23 AGENT_STEP_COMPLETED path=todo_api/models.py status=SKIPPED
+06:58:23 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:23 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:23 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:30 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:30 AGENT_STEP_COMPLETED path=todo_api/schemas.py status=SKIPPED
+06:58:30 AGENT_STEP_COMPLETED path=todo_api/schemas.py
+06:58:30 AGENT_STEP_COMPLETED path=todo_api/schemas.py status=SKIPPED
+06:58:30 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:30 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:31 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:38 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:38 AGENT_STEP_COMPLETED path=todo_api/crud.py status=SKIPPED
+06:58:38 AGENT_STEP_COMPLETED path=todo_api/crud.py
+06:58:38 AGENT_STEP_COMPLETED path=todo_api/crud.py status=SKIPPED
+06:58:39 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:39 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:39 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:49 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:50 AGENT_STEP_COMPLETED path=todo_api/main.py status=SKIPPED
+06:58:50 AGENT_STEP_COMPLETED path=todo_api/main.py
+06:58:50 AGENT_STEP_COMPLETED path=todo_api/main.py status=SKIPPED
+06:58:50 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:50 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:50 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:53 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:53 AGENT_STEP_COMPLETED path=tests/__init__.py status=SKIPPED
+06:58:53 AGENT_STEP_COMPLETED path=tests/__init__.py
+06:58:53 AGENT_STEP_COMPLETED path=tests/__init__.py status=SKIPPED
+06:58:53 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:53 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:53 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:59 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:58:59 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+06:58:59 AGENT_STEP_COMPLETED path=tests/conftest.py
+06:58:59 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+06:58:59 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:00 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:00 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:27 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:27 AGENT_STEP_COMPLETED path=tests/test_api.py status=SKIPPED
+06:59:27 AGENT_STEP_COMPLETED path=tests/test_api.py
+06:59:28 AGENT_STEP_COMPLETED path=tests/test_api.py status=SKIPPED
+06:59:28 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:28 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:28 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:31 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:31 AGENT_STEP_COMPLETED path=pytest.ini status=SKIPPED
+06:59:31 AGENT_STEP_COMPLETED path=pytest.ini
+06:59:31 AGENT_STEP_COMPLETED path=pytest.ini status=SKIPPED
+06:59:31 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:31 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:31 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:51 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:52 AGENT_STEP_COMPLETED path=README.md status=SKIPPED
+06:59:52 AGENT_STEP_COMPLETED path=README.md
+06:59:52 AGENT_STEP_COMPLETED path=README.md status=SKIPPED
+06:59:52 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:52 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:52 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+06:59:55 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:01 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:02 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:02 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:07 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:17 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:17 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:17 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:21 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:21 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:21 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:21 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:27 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:28 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+07:00:28 AGENT_STEP_COMPLETED path=tests/conftest.py
+07:00:28 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+07:00:28 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:28 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:28 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:30 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:40 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:40 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:41 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:52 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:53 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+07:00:53 AGENT_STEP_COMPLETED path=tests/conftest.py
+07:00:53 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+07:00:53 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:54 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:54 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:00:57 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:06 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:07 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:07 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:11 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:11 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:11 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:11 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:15 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:15 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:15 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:15 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:21 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:21 AGENT_STEP_COMPLETED path=todo_api/main.py status=SKIPPED
+07:01:21 AGENT_STEP_COMPLETED path=todo_api/main.py
+07:01:21 AGENT_STEP_COMPLETED path=todo_api/main.py status=SKIPPED
+07:01:22 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:22 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:22 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:24 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:33 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:34 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:34 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:49 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:50 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:50 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:50 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:57 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:57 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:57 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:01:57 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:03 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:03 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:03 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:04 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:06 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:07 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:07 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:08 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:15 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:15 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+07:02:15 AGENT_STEP_COMPLETED path=tests/conftest.py
+07:02:15 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+07:02:15 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:15 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:15 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:17 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:19 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:19 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:19 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:25 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:25 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+07:02:25 AGENT_STEP_COMPLETED path=tests/conftest.py
+07:02:25 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+07:02:25 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:25 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:26 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:36 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:36 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+07:02:36 AGENT_STEP_COMPLETED path=tests/conftest.py
+07:02:36 AGENT_STEP_COMPLETED path=tests/conftest.py status=SKIPPED
+07:02:36 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:36 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:36 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:39 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:39 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:39 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:39 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:41 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:44 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:44 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:44 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:50 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:50 AGENT_STEP_COMPLETED path=.gitignore status=SKIPPED
+07:02:50 AGENT_STEP_COMPLETED path=.gitignore
+07:02:50 AGENT_STEP_COMPLETED path=.gitignore status=SKIPPED
+07:02:50 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:50 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:50 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:54 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:59 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:59 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:02:59 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:08 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:08 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:08 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:08 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:11 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:13 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:13 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:13 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:16 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:16 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:16 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:16 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:24 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:24 AGENT_STEP_COMPLETED path=examples/api_usage.sh status=SKIPPED
+07:03:24 AGENT_STEP_COMPLETED path=examples/api_usage.sh
+07:03:24 AGENT_STEP_COMPLETED path=examples/api_usage.sh status=SKIPPED
+07:03:24 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:24 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:25 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:28 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:28 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:29 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:29 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:38 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:39 AGENT_STEP_COMPLETED path=examples/client_example.py status=SKIPPED
+07:03:39 AGENT_STEP_COMPLETED path=examples/client_example.py
+07:03:39 AGENT_STEP_COMPLETED path=examples/client_example.py status=SKIPPED
+07:03:39 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:39 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:39 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:41 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:42 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:42 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:42 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:46 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:46 AGENT_STEP_COMPLETED path=Dockerfile status=SKIPPED
+07:03:46 AGENT_STEP_COMPLETED path=Dockerfile
+07:03:46 AGENT_STEP_COMPLETED path=Dockerfile status=SKIPPED
+07:03:46 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:46 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:46 AGENT_STEP_COMPLETED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+07:03:47 RUN_FAILED task_id=7ed42345-d769-47e6-a26c-13a326c52844
+Task execution failed
+
+----- 5-work-start: FAIL (361s, exit 1) -----
+
+===== STEP: 5-proof-run (documented=yes) =====
+$ cf proof run
+
+Running proof obligations (scope-filtered)...
+No applicable obligations found.
+
+----- 5-proof-run: OK (1s, exit 0) -----
+
+===== STEP: post-status (documented=yes) =====
+$ cf status
+
+
+CodeFRAME Workspace
+  Path: /work/todo-api
+  ID: 60d309bb-8486-4c21-8f05-bad2c24c2ed4
+  Created: 2026-08-09 06:55
+
+PRD
+  Title: Self-Hosted Todo Management REST API
+  Added: 2026-08-09 06:57
+
+Tasks
+  READY: 19
+  Total: 20
+
+Recent Activity
+  07:03:47 RUN_FAILED
+  07:03:46 AGENT_STEP_COMPLETED
+  07:03:46 AGENT_FAILED
+  07:03:46 AGENT_STEP_COMPLETED
+  07:03:46 AGENT_ITERATION_COMPLETED
+
+
+----- post-status: OK (0s, exit 0) -----
+
+===== STEP: post-tasks-list (documented=yes) =====
+$ cf tasks list
+
+                                     Tasks                                      
+┏━━━━━━━━━━┳━━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ID       ┃ Status ┃ Pri ┃ Deps ┃ Title                                       ┃
+┡━━━━━━━━━━╇━━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ 7ed42345 │ FAILED │  0  │  -   │ Todos scattered across different notes and  │
+│          │        │     │      │ systems make...                             │
+│ 1269b291 │ READY  │  1  │  -   │ Existing SaaS tools add unwanted            │
+│          │        │     │      │ subscriptions and exte...                   │
+│ e0cac14a │ READY  │  2  │  -   │ No simple, self-hostable solution that      │
+│          │        │     │      │ developers can d...                         │
+│ 735ba25c │ READY  │  3  │  -   │ Lack of focus when completed items clutter  │
+│          │        │     │      │ active task ...                             │
+│ 78865699 │ READY  │  4  │  -   │ Comfortable with REST APIs and command-line │
+│          │        │     │      │ tools                                       │
+│ 70666e98 │ READY  │  5  │  -   │ Prefers self-hosted solutions over SaaS     │
+│          │        │     │      │ subscriptions                               │
+│ f018d8d8 │ READY  │  6  │  -   │ Works on multiple projects simultaneously   │
+│ 03219cef │ READY  │  7  │  -   │ Values simplicity and performance over      │
+│          │        │     │      │ feature bloat                               │
+│ 45d1c460 │ READY  │  8  │  -   │ Centralize task management in a single,     │
+│          │        │     │      │ reliable system                             │
+│ b9fc4b93 │ READY  │  9  │  -   │ Maintain control over data and hosting      │
+│          │        │     │      │ infrastructure                              │
+│ b19002ba │ READY  │ 10  │  -   │ Quickly capture tasks as they arise         │
+│          │        │     │      │ throughout the day                          │
+│ b365fa50 │ READY  │ 11  │  -   │ Focus on active work without distraction    │
+│          │        │     │      │ from completed...                           │
+│ 98caaa2f │ READY  │ 12  │  -   │ Has access to a laptop or small VPS for     │
+│          │        │     │      │ hosting                                     │
+│ 70075023 │ READY  │ 13  │  -   │ Comfortable deploying Python applications   │
+│ 143d115f │ READY  │ 14  │  -   │ May build custom clients or integrations on │
+│          │        │     │      │ top of the ...                              │
+│ e1294a29 │ READY  │ 15  │  -   │ **Requirement:** Fast, lightweight endpoint │
+│          │        │     │      │ to create n...                              │
+│ 906c283d │ READY  │ 16  │  -   │ **Fields:** Description (required),         │
+│          │        │     │      │ priority (optional)...                      │
+│ 5a60af26 │ READY  │ 17  │  -   │ **Performance:** Sub-50ms response time for │
+│          │        │     │      │ single todo...                              │
+│ 7522bec4 │ READY  │ 18  │  -   │ **Validation:** Description must be         │
+│          │        │     │      │ non-empty, max 500 ...                      │
+│ e1c5cf03 │ READY  │ 19  │  -   │ **Requirement:** Mark todos as              │
+│          │        │     │      │ complete/incomplete                         │
+└──────────┴────────┴─────┴──────┴─────────────────────────────────────────────┘
+
+Total: 20 | FAILED: 1 | READY: 19
+
+----- post-tasks-list: OK (1s, exit 0) -----
+
+===== STEP: post-proof-status (documented=yes) =====
+$ cf proof status
+
+No proof requirements. Use 'cf proof capture' to add one.
+
+----- post-proof-status: OK (1s, exit 0) -----
+
+
+===== TOTAL WALL CLOCK: 494s (8 min) =====
+
+===== TIMINGS =====
+step	status	seconds	exit_code	documented
+1-install	OK	2	0	yes
+1-smoke-cf-help	OK	3	0	yes
+1-version	OK	0	0	yes
+3-init	OK	3	0	yes
+4-prd-generate	OK	93	0	yes
+4-prd-show	OK	0	0	yes
+4-tasks-generate	OK	18	0	yes
+4-tasks-list	OK	0	0	yes
+5-batch-run-as-readme-says	OK	1	0	yes
+5-promote-to-ready	OK	6	0	no
+5-work-start	FAIL	361	1	yes
+5-proof-run	OK	1	0	yes
+post-status	OK	0	0	yes
+post-tasks-list	OK	1	0	yes
+post-proof-status	OK	1	0	yes
+
+===== FINDINGS =====
+id	severity	summary
+P-PRD-INTERACTIVE	major	cf prd generate is interactive-only (no --non-interactive/--answers-file); it cannot be scripted, CI-tested or demoed reproducibly without a stand-in user

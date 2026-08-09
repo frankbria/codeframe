@@ -1,0 +1,6 @@
+# The default output directory lives inside this build context, so without
+# this every run would ship the previous run's transcripts and logs to the
+# Docker daemon before building — slower each time, and it hands captured
+# evidence to a daemon that may not be local.
+artifacts/
+artifacts-*/
