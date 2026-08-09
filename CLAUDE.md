@@ -227,7 +227,7 @@ cf work diagnose <task-id>
 cf work batch run [<id>...] [--all-ready] [--engine react|plan]
 cf work batch run --strategy serial|parallel|auto [--max-parallel 4] [--retry 3]
 cf work batch run --all-ready --llm-provider openai --llm-model qwen2.5-coder:7b
-cf work batch status|cancel|resume [batch_id]
+cf work batch status|stop|resume|follow [batch_id]
 
 # Blockers
 cf blocker list
@@ -243,7 +243,7 @@ cf summary
 cf env check|install|doctor
 
 # GitHub PR
-cf pr create|status|checks|merge
+cf pr create|list|get|status|merge|close
 
 # Telemetry (machine-wide, opt-in)
 cf config telemetry on|off|status

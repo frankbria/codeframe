@@ -98,7 +98,7 @@ Artifacts:
 Commands:
 - `codeframe prd generate` (primary - interactive AI session)
 - `codeframe prd add <file.md>` (secondary - existing file support)
-- `codeframe prd refine` (iterative improvement)
+- `codeframe prd refine` (iterative improvement) — **NOT IMPLEMENTED**; use `codeframe prd update` / `codeframe prd stress-test`
 
 Required behavior for `prd generate`:
 - AI conducts interactive discovery session asking:
@@ -119,7 +119,7 @@ Required behavior for `prd generate`:
 ### 3) Intelligent task generation with dependency analysis
 Commands:
 - `codeframe tasks generate` (enhanced with dependencies)
-- `codeframe tasks analyze` (dependency graph analysis)
+- `codeframe tasks analyze` (dependency graph analysis) — **NOT IMPLEMENTED**; use `codeframe tasks tree` / `codeframe schedule bottlenecks`
 
 Required behavior:
 - Decomposes PRD into granular, actionable tasks
@@ -160,7 +160,7 @@ Required behavior for batch execution:
 
 ### 5) Enhanced human-in-loop blocker resolution
 Commands:
-- `codeframe blockers list` (enhanced with context)
+- `codeframe blocker list` (enhanced with context) — note the singular `blocker`
 - `codeframe blocker answer <blocker-id> "<text>"` (with AI suggestions)
 - `codeframe blocker resolve <blocker-id>` (automated resolution options)
 
@@ -180,7 +180,7 @@ Required behavior:
 
 ### 6) Integrated Git workflow and PR management
 Commands:
-- `codeframe work start <task-id> --create-branch` (branch management)
+- `codeframe work start <task-id> --create-branch` (branch management) — **`--create-branch` NOT IMPLEMENTED**
 - `codeframe pr create` (PR creation with AI descriptions)
 - `codeframe pr list` (PR status monitoring)
 - `codeframe pr merge <pr-id>` (PR merging with verification)
@@ -209,7 +209,7 @@ Required behavior:
 Commands:
 - `codeframe review` (comprehensive code review)
 - `codeframe gates run` (automated quality checks)
-- `codeframe quality report` (quality metrics and trends)
+- `codeframe quality report` (quality metrics and trends) — **NOT IMPLEMENTED**; `codeframe stats` covers token/cost only
 
 Required behavior:
 - **Comprehensive Gate Suite**:
@@ -232,7 +232,7 @@ Required behavior:
 Commands:
 - `codeframe commit create -m "<message>"` (AI-generated commits)
 - `codeframe patch export` (safe patch generation)
-- `codeframe artifacts list` (artifact tracking)
+- `codeframe artifacts list` (artifact tracking) — **NOT IMPLEMENTED**
 
 Required behavior:
 - **Smart Commits**:
