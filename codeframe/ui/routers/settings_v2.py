@@ -52,6 +52,7 @@ from codeframe.core.notifications_config import (
     save_notifications_config,
     vet_webhook_host,
 )
+from codeframe.adapters.llm.base import DEFAULT_GENERATION_MODEL
 from codeframe.core.workspace import Workspace
 from codeframe.notifications.webhook import (
     WebhookNotificationService,
@@ -368,12 +369,13 @@ def _verify_anthropic_sync(key: str) -> tuple[bool, str]:
     stable, always-present API surface across all supported SDK versions
     (>=0.18). max_tokens=1 keeps the cost trivial. Non-auth exceptions
     are logged but not echoed to the client to avoid leaking provider
-    internals.
+    internals. The model is the undated alias: a dated ID gets retired and
+    then a *valid* key starts reporting as rejected (#1112).
     """
     try:
         client = _AnthropicClient(api_key=key)
         client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=DEFAULT_GENERATION_MODEL,
             max_tokens=1,
             messages=[{"role": "user", "content": "ping"}],
         )
