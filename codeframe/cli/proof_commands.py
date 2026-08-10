@@ -135,11 +135,24 @@ def run(
     gate: Optional[str] = typer.Option(
         None, "--gate", help="Run only this gate (e.g., unit, e2e)",
     ),
+    allow_empty: bool = typer.Option(
+        False,
+        "--allow-empty",
+        help=(
+            "Exit 0 when there are no applicable obligations. Off by default: "
+            "a run that verified nothing is not a pass (#1118)."
+        ),
+    ),
 ) -> None:
     """Run proof obligations for current changes.
 
     Determines which requirements apply to changed files,
     runs their obligations, and collects evidence.
+
+    Exit codes:
+        0  obligations ran and none failed
+        1  an obligation failed
+        2  nothing was verified — no applicable obligations (see --allow-empty)
 
     Example:
         codeframe proof run
@@ -172,8 +185,26 @@ def run(
     results = run_proof(workspace, full=full, gate_filter=gate_filter)
 
     if not results:
-        console.print("[green]No applicable obligations found.[/green]")
-        return
+        # An empty ledger is not a pass (#1118). Exiting 0 here is what let the
+        # quickstart's PROVE step read as "PROOF9 gates passed" when nothing had
+        # been checked — and every new workspace is in exactly this state.
+        #
+        # Exit 2 rather than 1: this is not a failure either, and a script needs
+        # to tell "the gate failed" from "the gate had nothing to check". CI
+        # treats any non-zero as a stop, which is the point.
+        console.print("[yellow]Nothing was verified.[/yellow]")
+        console.print(
+            "There are no proof obligations in this workspace, so this run "
+            "checked nothing — it is not a pass."
+        )
+        console.print(
+            "\nCapture your first requirement with:\n"
+            "  [bold]cf proof capture[/bold]"
+        )
+        if allow_empty:
+            console.print("\n[dim]--allow-empty: exiting 0 anyway.[/dim]")
+            return
+        raise typer.Exit(2)
 
     # Display results
     table = Table(title="Proof Results")
@@ -427,7 +458,13 @@ def status_cmd(
 
     reqs = ledger.list_requirements(workspace)
     if not reqs:
-        console.print("No proof requirements. Use 'cf proof capture' to add one.")
+        # Same framing as `cf proof run` (#1118): an empty ledger means nothing
+        # is being verified, which is a state to act on, not a clean bill.
+        console.print(
+            "[yellow]No proof requirements — nothing in this workspace is "
+            "being verified.[/yellow]"
+        )
+        console.print("Capture your first one with: [bold]cf proof capture[/bold]")
         return
 
     counts = {"open": 0, "satisfied": 0, "waived": 0}

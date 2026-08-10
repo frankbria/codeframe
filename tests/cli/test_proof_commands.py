@@ -247,12 +247,25 @@ class TestRun:
         assert result.exit_code == 1, result.output
         assert "FAIL" in result.output
 
-    def test_run_no_requirements_exits_zero(self, ws):
-        """run on an empty workspace should exit 0 and say no obligations."""
+    def test_run_no_requirements_does_not_exit_zero(self, ws):
+        """run on an empty workspace reports that nothing was verified (#1118).
+
+        This asserted exit 0 and "No applicable obligations found", which is the
+        vacuous pass #1118 removes: a green exit on an empty ledger reads as
+        "PROOF9 gates passed" when nothing was checked. Exit 2 is distinct from
+        both pass (0) and failure (1); --allow-empty opts back into 0.
+        """
         _, workspace_path = ws
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_path), "--full"])
+        assert result.exit_code == 2, result.output
+        assert "Nothing was verified" in result.output
+
+    def test_run_no_requirements_with_allow_empty_exits_zero(self, ws):
+        _, workspace_path = ws
+        result = runner.invoke(app, [
+            "proof", "run", "-w", str(workspace_path), "--full", "--allow-empty",
+        ])
         assert result.exit_code == 0, result.output
-        assert "No applicable obligations found" in result.output
 
     def test_run_invalid_gate_exits_nonzero(self, ws):
         """run with an unrecognised --gate should exit non-zero and print error."""

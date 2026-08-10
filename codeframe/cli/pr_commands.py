@@ -463,6 +463,22 @@ def _check_merge_gate(
         console.print(f"[red]PROOF9 gate check failed:[/red] {e} — merge blocked")
         raise typer.Exit(1)
     if not blocking_reqs:
+        # Consistent with `cf proof run` (#1118): say so when the ledger is
+        # empty, rather than letting silence read as "PROOF9 verified this".
+        # The merge is still allowed — blocking every merge in a workspace with
+        # no requirements would be a far larger change than this issue asks for,
+        # and #731's gate is about *open* requirements.
+        try:
+            from codeframe.core.proof import ledger as _ledger
+
+            if not _ledger.list_requirements(workspace):
+                console.print(
+                    "[yellow]PROOF9:[/yellow] the ledger is empty — this merge "
+                    "was not verified against any requirement."
+                )
+        except Exception:
+            # Reporting only; never let it affect the merge decision.
+            pass
         return None
 
     if not override:

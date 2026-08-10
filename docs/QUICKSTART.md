@@ -240,8 +240,12 @@ Then run the PROOF9 quality gates:
 codeframe proof run
 ```
 
-> On a brand-new workspace this reports `No applicable obligations found` and
-> exits 0 — there is nothing to verify yet, which is **not** the same as passing.
+> On a brand-new workspace this reports that **nothing was verified** and exits
+> **2** — there is nothing to check yet, which is not the same as passing, so it
+> is not reported as one (#1118). Exit codes: `0` obligations ran and none
+> failed, `1` an obligation failed, `2` nothing was verified. Pass
+> `--allow-empty` to exit 0 on an empty ledger where that is expected.
+>
 > Obligations accumulate as you capture glitches with `codeframe proof capture`;
 > each one becomes a permanent check. See `codeframe proof status` for the ledger.
 
