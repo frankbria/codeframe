@@ -185,6 +185,34 @@ def run(
     results = run_proof(workspace, full=full, gate_filter=gate_filter)
 
     if not results:
+        # run_proof returning {} is ambiguous: the ledger may be empty, or it may
+        # hold requirements none of which intersect the changed scope. Those are
+        # different states and only the first is the #1118 vacuous pass — failing
+        # a doc-only PR because its scope matched nothing would be a new bug.
+        try:
+            from codeframe.core.proof import ledger as _ledger
+
+            all_reqs = _ledger.list_requirements(workspace)
+        except Exception:
+            # A ledger we cannot read is not evidence of an empty one; treat it
+            # as the unverified case below rather than claiming scope filtering.
+            all_reqs = []
+
+        if all_reqs:
+            # The scope filter did its job. Nothing was verified, but that is
+            # the designed behaviour for a change these requirements do not
+            # cover — not a vacuous pass, and not a failure.
+            console.print(
+                f"[yellow]Nothing was verified.[/yellow] "
+                f"{len(all_reqs)} requirement(s) exist, but none apply to the "
+                f"changed files."
+            )
+            console.print(
+                "Run [bold]cf proof run --full[/bold] to check all of them "
+                "regardless of scope."
+            )
+            return
+
         # An empty ledger is not a pass (#1118). Exiting 0 here is what let the
         # quickstart's PROVE step read as "PROOF9 gates passed" when nothing had
         # been checked — and every new workspace is in exactly this state.

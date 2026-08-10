@@ -11,6 +11,7 @@ An empty ledger is now its own outcome: exit 2, distinct from pass (0) and fail
 """
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
@@ -91,3 +92,73 @@ class TestStatusSaysTheSameThing:
         lowered = result.output.lower()
         assert "nothing" in lowered and "verified" in lowered
         assert "cf proof capture" in result.output
+
+
+class TestAScopeFilteredRunIsNotAnEmptyLedger:
+    """Raised in review, and a real regression in my first version.
+
+    `run_proof` returning {} is ambiguous: the ledger may be empty, or it may
+    hold requirements none of which intersect the changed scope. Only the first
+    is the #1118 vacuous pass. Conflating them told a user with three
+    requirements that their ledger was empty, and failed CI on a doc-only PR
+    because its scope matched nothing — a new bug in the name of fixing one.
+    """
+
+    def _capture_req(self, workspace_dir: Path, scope_path: str) -> None:
+        """A real requirement scoped to a path the run will not touch."""
+        result = runner.invoke(
+            app,
+            [
+                "proof", "capture",
+                "--title", "Login must not 500",
+                "--description", "Expected 200, got 500 on POST /login",
+                "--where", scope_path,
+                "--severity", "high",
+                "--source", "production",
+                "-w", str(workspace_dir),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+    def _run_with_nothing_in_scope(self, workspace_dir: Path):
+        """`run_proof` returns {} because the scope filter skipped everything.
+
+        Patched rather than staged through git: with no working-tree changes the
+        detector fails closed and runs every requirement, so the real filter
+        cannot produce this state here. The ambiguity under test is in how the
+        CLI reports an empty result, not in scope detection.
+        """
+        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
+            return runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
+
+    def test_it_does_not_claim_the_ledger_is_empty(self, workspace_dir):
+        self._capture_req(workspace_dir, "src/auth/login.py")
+
+        result = self._run_with_nothing_in_scope(workspace_dir)
+
+        assert "no proof obligations in this workspace" not in result.output.lower()
+        assert "cf proof capture" not in result.output, (
+            "telling someone with requirements to capture their first one is wrong"
+        )
+
+    def test_it_does_not_fail_ci_on_an_out_of_scope_change(self, workspace_dir):
+        """A doc-only PR must not be failed by the scope filter working."""
+        self._capture_req(workspace_dir, "src/auth/login.py")
+
+        result = self._run_with_nothing_in_scope(workspace_dir)
+
+        assert result.exit_code == 0, result.output
+
+    def test_it_still_says_nothing_was_verified(self, workspace_dir):
+        """Accurate either way — it just is not the vacuous-pass case."""
+        self._capture_req(workspace_dir, "src/auth/login.py")
+
+        result = self._run_with_nothing_in_scope(workspace_dir)
+
+        assert "nothing was verified" in result.output.lower()
+        assert "--full" in result.output, "point at the way to check them anyway"
+
+    def test_a_truly_empty_ledger_still_exits_two(self, workspace_dir):
+        """The two paths must not have been collapsed the other way."""
+        result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
+        assert result.exit_code == 2
