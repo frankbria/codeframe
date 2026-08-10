@@ -116,11 +116,23 @@ def map_provider_error(
         if key_env:
             lines.append(f"  Key read from: ${key_env}")
         elif provider in _LOCAL_PROVIDERS:
-            lines.append(
-                "  This provider runs locally and needs no API key, so this is "
-                "usually the endpoint rejecting the request — check that the "
-                "server at your base_url is the one you expect."
-            )
+            # get_provider hands OPENAI_API_KEY to these too when it is set, and
+            # only substitutes "not-required" when it is not. So the advice has
+            # to follow what was actually sent, not the provider name — telling
+            # someone "needs no API key" while their key is being rejected is
+            # worse than the raw dict this whole change replaces.
+            if os.getenv("OPENAI_API_KEY"):
+                lines.append("  Key read from: $OPENAI_API_KEY")
+                lines.append(
+                    "  (this provider does not require a key, but one was set, "
+                    "so it was sent — unset it if the endpoint expects none)"
+                )
+            else:
+                lines.append(
+                    "  This provider runs locally and was sent no API key, so this "
+                    "is usually the endpoint rejecting the request — check that "
+                    "the server at your base_url is the one you expect."
+                )
         lines.append(f"  Provider: {provider} (set CODEFRAME_LLM_PROVIDER or llm.provider in .codeframe/config.yaml)")
         lines.append("")
         lines.append(f"Check that ${key_env} is set to a current key, then re-run." if key_env

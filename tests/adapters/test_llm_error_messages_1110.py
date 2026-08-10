@@ -226,7 +226,40 @@ class TestTheAdaptersUseIt:
 class TestReviewFindings:
     """Three findings from PR review, all real."""
 
-    def test_a_local_provider_is_not_told_to_check_openai_api_key(self):
+    def test_a_compatible_provider_with_a_key_set_is_told_about_that_key(self, monkeypatch):
+        """get_provider sends OPENAI_API_KEY to `compatible` when it is set.
+
+        Raised in review against the first version of this fix: saying "needs no
+        API key" while the user's key is the thing being rejected is worse than
+        the raw dict this change replaces.
+        """
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-wrong")
+        message = str(
+            map_provider_error(
+                _sdk_error(401),
+                provider="compatible",
+                model="gpt-4o",
+                purpose=Purpose.GENERATION,
+            )
+        )
+        assert "OPENAI_API_KEY" in message
+        assert "needs no API key" not in message
+
+    def test_a_local_provider_with_no_key_gets_endpoint_advice(self, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        message = str(
+            map_provider_error(
+                _sdk_error(401),
+                provider="ollama",
+                model="qwen2.5-coder:7b",
+                purpose=Purpose.GENERATION,
+            )
+        )
+        assert "base_url" in message
+        assert "OPENAI_API_KEY" not in message
+
+    def test_a_local_provider_is_not_told_to_check_openai_api_key(self, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         """ollama/vllm/compatible share OpenAIProvider but need no key at all.
 
         Telling an ollama user to check $OPENAI_API_KEY is actively wrong —
