@@ -90,6 +90,9 @@ def get_provider(provider_type: str = "anthropic", **kwargs) -> LLMProvider:
             # set the variable (#903). OpenAIProvider resolves and vets the env
             # itself when this is None.
             base_url=kwargs.get("base_url"),
+            # So an ollama/vllm failure does not tell the user to check
+            # OPENAI_API_KEY, which local providers do not even use (#1110).
+            provider_name=provider_type,
         )
     elif provider_type == "anthropic":
         model_selector = None

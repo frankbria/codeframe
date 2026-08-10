@@ -221,3 +221,79 @@ class TestTheAdaptersUseIt:
         with pytest.raises(LLMAuthError) as exc:
             provider.complete(messages=[{"role": "user", "content": "hi"}])
         assert exc.value.__cause__ is original
+
+
+class TestReviewFindings:
+    """Three findings from PR review, all real."""
+
+    def test_a_local_provider_is_not_told_to_check_openai_api_key(self):
+        """ollama/vllm/compatible share OpenAIProvider but need no key at all.
+
+        Telling an ollama user to check $OPENAI_API_KEY is actively wrong —
+        get_provider constructs them with api_key="not-required".
+        """
+        message = str(
+            map_provider_error(
+                _sdk_error(401),
+                provider="ollama",
+                model="qwen2.5-coder:7b",
+                purpose=Purpose.GENERATION,
+            )
+        )
+        assert "ollama" in message
+        assert "OPENAI_API_KEY" not in message
+        assert "base_url" in message
+
+    def test_get_provider_labels_each_compatible_type_correctly(self, monkeypatch):
+        from codeframe.adapters.llm import get_provider
+
+        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+        # "openai" is the only one that genuinely needs a key.
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        for provider_type in ("openai", "ollama", "vllm", "compatible"):
+            provider = get_provider(provider_type)
+            assert provider.provider_name == provider_type
+
+        # And the local ones still label correctly with no key at all.
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        for provider_type in ("ollama", "vllm", "compatible"):
+            assert get_provider(provider_type).provider_name == provider_type
+
+    def test_403_gets_its_own_message_not_the_generic_one(self):
+        exc = map_provider_error(
+            _sdk_error(403),
+            provider="anthropic",
+            model="claude-opus-4-5",
+            purpose=Purpose.PLANNING,
+        )
+        message = str(exc)
+        assert "The anthropic API call failed." not in message, "must not fall through"
+        assert "claude-opus-4-5" in message
+        assert "403" in message
+
+    @pytest.mark.parametrize("value", ["0", "false", "no", "off", ""])
+    def test_verbose_off_values_mean_off(self, monkeypatch, value):
+        """Matches the repo's boolean-env convention, not a bare truthy check."""
+        monkeypatch.setenv(VERBOSE_ENV, value)
+        message = str(
+            map_provider_error(
+                _sdk_error(401, "SECRET_PAYLOAD_MARKER"),
+                provider="anthropic",
+                model="m",
+                purpose=Purpose.GENERATION,
+            )
+        )
+        assert "SECRET_PAYLOAD_MARKER" not in message
+
+    @pytest.mark.parametrize("value", ["1", "true", "yes", "on", "TRUE"])
+    def test_verbose_on_values_mean_on(self, monkeypatch, value):
+        monkeypatch.setenv(VERBOSE_ENV, value)
+        message = str(
+            map_provider_error(
+                _sdk_error(401, "SECRET_PAYLOAD_MARKER"),
+                provider="anthropic",
+                model="m",
+                purpose=Purpose.GENERATION,
+            )
+        )
+        assert "SECRET_PAYLOAD_MARKER" in message

@@ -31,11 +31,21 @@ from codeframe.adapters.llm.base import (
 )
 
 VERBOSE_ENV = "CODEFRAME_VERBOSE"
+# Same truthy set the rest of the repo uses (env_provenance, hook_trust,
+# notifications_config): CODEFRAME_VERBOSE=0/false/no/off means off.
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def _verbose() -> bool:
+    return os.getenv(VERBOSE_ENV, "").strip().lower() in _TRUTHY
 
 # provider -> the env var its API key is read from. Mirrors
 # llm_resolution.REQUIRED_KEY_ENV, which cannot be imported here (core imports
 # the adapters, so the reverse direction is a cycle).
 _KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
+# OpenAI-compatible providers that run locally and need no credentials — they
+# are constructed with api_key="not-required", so key advice would misdirect.
+_LOCAL_PROVIDERS = frozenset({"ollama", "vllm", "compatible"})
 
 
 # Both SDKs name their exception classes the same way, so the type is a reliable
@@ -81,7 +91,7 @@ def _with_raw(message: str, exc: Exception) -> str:
     The raw text is never lost regardless: it stays on ``__cause__`` because
     every raise site uses ``raise ... from exc``.
     """
-    if os.getenv(VERBOSE_ENV):
+    if _verbose():
         return f"{message}\n\nProvider response:\n{exc}"
     return f"{message}\n\n(set {VERBOSE_ENV}=1 to see the raw provider response)"
 
@@ -105,6 +115,12 @@ def map_provider_error(
         lines = [f"The {provider} API rejected the API key."]
         if key_env:
             lines.append(f"  Key read from: ${key_env}")
+        elif provider in _LOCAL_PROVIDERS:
+            lines.append(
+                "  This provider runs locally and needs no API key, so this is "
+                "usually the endpoint rejecting the request — check that the "
+                "server at your base_url is the one you expect."
+            )
         lines.append(f"  Provider: {provider} (set CODEFRAME_LLM_PROVIDER or llm.provider in .codeframe/config.yaml)")
         lines.append("")
         lines.append(f"Check that ${key_env} is set to a current key, then re-run." if key_env
@@ -123,6 +139,19 @@ def map_provider_error(
             "This usually means the model was retired. `cf env check` verifies your setup.",
         ]
         return LLMModelNotFoundError(_with_raw("\n".join(lines), exc))
+
+    if status == 403:
+        return LLMAuthError(
+            _with_raw(
+                f"The {provider} API accepted the credentials but refused this request "
+                f"(HTTP 403).\n\n"
+                f"The key is valid but lacks access to {model!r} — check the plan or "
+                f"permissions on the account"
+                + (f" whose key is in ${key_env}." if key_env else ".")
+                + "\n\n`cf env check` verifies your setup.",
+                exc,
+            )
+        )
 
     if status == 429:
         return LLMRateLimitError(

@@ -48,6 +48,7 @@ class OpenAIProvider(LLMProvider):
         base_url: Optional[str] = None,
         model_selector: Optional[ModelSelector] = None,
         credential_manager: Optional["CredentialManager"] = None,
+        provider_name: str = "openai",
     ):
         """Initialize the OpenAI provider.
 
@@ -57,11 +58,17 @@ class OpenAIProvider(LLMProvider):
             base_url: Custom endpoint URL for OpenAI-compatible APIs
             model_selector: Optional model selector; when provided, defers to it for per-purpose routing
             credential_manager: Optional credential manager for secure key retrieval
+            provider_name: Which OpenAI-compatible provider this actually is
+                ("openai", "ollama", "vllm", "compatible"). Used only for error
+                messages (#1110) — telling an ollama user to check
+                OPENAI_API_KEY is wrong, since local providers run with
+                api_key="not-required".
 
         Raises:
             ValueError: If no API key is available
         """
         self._has_custom_selector = model_selector is not None
+        self.provider_name = provider_name
         super().__init__(model_selector)
 
         self.model = model
@@ -155,7 +162,7 @@ class OpenAIProvider(LLMProvider):
         except Exception as exc:
             raise map_provider_error(
                 exc,
-                provider="openai",
+                provider=self.provider_name,
                 model=kwargs["model"],
                 purpose=purpose,
             ) from exc
@@ -204,7 +211,7 @@ class OpenAIProvider(LLMProvider):
         except Exception as exc:
             raise map_provider_error(
                 exc,
-                provider="openai",
+                provider=self.provider_name,
                 model=kwargs["model"],
                 purpose=purpose,
             ) from exc
