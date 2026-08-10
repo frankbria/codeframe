@@ -90,6 +90,14 @@ class TestRunningACommandStillLoadsIt:
     def _child_in(self, cwd: Path, code: str, env_extra=None):
         env = dict(os.environ)
         env.pop("ANTHROPIC_API_KEY", None)
+        # HOME too, not just cwd: load_env_files reads ~/.env FIRST and both
+        # loads use override=False, so a contributor whose real ~/.env carries
+        # ANTHROPIC_API_KEY would win over the tmp .env and this test would
+        # fail on their machine. Point HOME at an empty dir beside the fixture.
+        empty_home = cwd / "home"
+        empty_home.mkdir(exist_ok=True)
+        env["HOME"] = str(empty_home)
+        env["USERPROFILE"] = str(empty_home)  # Path.home() on Windows
         env.update(env_extra or {})
         # PYTHONPATH so the child imports codeframe from the repo, while its
         # cwd — and therefore the .env load_env_files finds — is the tmp dir.
