@@ -209,32 +209,42 @@ def run(
             # through to the unverified case rather than inventing a reason.
             all_reqs, runnable = [], []
 
-        if runnable and not full:
-            # Scope is only consulted on a scoped run, so this is the one case
-            # where "the changed files" is a true explanation.
-            console.print(
-                f"[yellow]Nothing was verified.[/yellow] "
-                f"{len(runnable)} runnable requirement(s), but none apply to "
-                f"the changed files."
-            )
-            console.print(
-                "Run [bold]cf proof run --full[/bold] to check all of them "
-                "regardless of scope."
-            )
-            return
-
         if runnable:
-            # --full with runnable requirements and no results: not scope, and
-            # not a status filter either. Say only what is known rather than
-            # inventing a fourth reason.
+            # Four review rounds went by asserting a specific reason here and
+            # being wrong each time. The CLI genuinely cannot tell them apart:
+            # run_proof returns only results, and discards the scope_skipped
+            # list it computes internally (runner.py:334/435). With a non-empty
+            # runnable set an empty result can mean the scope filter excluded
+            # everything, --gate excluded every obligation, enabled_gates config
+            # did, or a requirement simply has none.
+            #
+            # So state what is known and list the candidates, rather than
+            # asserting one and sending the user somewhere useless. #1138 tracks
+            # having the runner report the reason so this can be precise.
             console.print(
                 f"[yellow]Nothing was verified.[/yellow] "
-                f"{len(runnable)} runnable requirement(s) produced no results."
+                f"{len(runnable)} requirement(s) were eligible for this run, "
+                f"but no obligations ran."
             )
-            console.print("See [bold]cf proof status[/bold] for the ledger.")
+            reasons = ["none of them cover the changed files"]
+            if gate_filter is not None:
+                reasons.append(f"--gate {gate_filter.value} excluded their obligations")
+            reasons.append("their obligations are disabled in proof_config.json")
+            reasons.append("they have no obligations defined")
+            console.print("Possible reasons: " + "; ".join(reasons) + ".")
+            if not full:
+                console.print(
+                    "Try [bold]cf proof run --full[/bold] to ignore scope, or "
+                    "[bold]cf proof status[/bold] for the ledger."
+                )
+            else:
+                console.print("See [bold]cf proof status[/bold] for the ledger.")
             return
 
         if all_reqs:
+            # This one IS knowable: the runnable set is empty while the ledger
+            # is not, so every requirement was excluded by its status. WAIVED is
+            # excluded from both modes; SATISFIED only from a scoped run.
             satisfied = sum(1 for r in all_reqs if r.status == ReqStatus.SATISFIED)
             waived = sum(1 for r in all_reqs if r.status == ReqStatus.WAIVED)
             detail = ", ".join(

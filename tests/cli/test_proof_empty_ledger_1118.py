@@ -170,15 +170,15 @@ class TestAScopeFilteredRunIsNotAnEmptyLedger:
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
         assert result.exit_code == 2
 
-    def test_full_mode_does_not_blame_the_changed_files(self, workspace_dir):
-        """--full never consults scope, so it must not blame the changed files."""
+    def test_full_mode_does_not_offer_full_as_the_remedy(self, workspace_dir):
+        """--full never consults scope, so re-running it changes nothing."""
         self._capture_req(workspace_dir, "src/auth/login.py")
         with patch("codeframe.core.proof.runner.run_proof", return_value={}):
             result = runner.invoke(
                 app, ["proof", "run", "-w", str(workspace_dir), "--full"]
             )
         assert result.exit_code == 0, result.output
-        assert "changed files" not in _flat(result.output)
+        assert "--full" not in _flat(result.output)
 
 
 class TestTheReasonIsDerivedNotGuessed:
@@ -234,15 +234,35 @@ class TestTheReasonIsDerivedNotGuessed:
         assert "none are runnable" in _flat(result.output)
         assert "waived" in result.output
 
-    def test_it_still_names_scope_when_scope_is_the_reason(self, workspace_dir):
-        """An OPEN requirement is runnable, so an empty result really is scope."""
+    def test_it_offers_scope_as_a_candidate_not_a_verdict(self, workspace_dir):
+        """With an eligible requirement the cause is genuinely ambiguous.
+
+        Scope, --gate, disabled gates in proof_config.json, or a requirement
+        with no obligations all produce {} here, and run_proof does not report
+        which. Asserting one was wrong four review rounds running.
+        """
         self._capture(workspace_dir)
 
         with patch("codeframe.core.proof.runner.run_proof", return_value={}):
             result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
 
+        flat = _flat(result.output)
         assert result.exit_code == 0, result.output
-        assert "changed files" in _flat(result.output)
+        assert "Possible reasons" in flat, "it must not assert a single cause"
+        assert "changed files" in flat, "scope is still one of the candidates"
+
+    def test_the_gate_filter_is_named_when_one_was_used(self, workspace_dir):
+        """`--gate unit` excluding every obligation is one of the causes."""
+        self._capture(workspace_dir)
+
+        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
+            result = runner.invoke(
+                app, ["proof", "run", "-w", str(workspace_dir), "--gate", "unit"]
+            )
+
+        flat = _flat(result.output)
+        assert result.exit_code == 0, result.output
+        assert "--gate unit" in flat
 
     def test_an_empty_ledger_is_still_the_vacuous_pass_case(self, workspace_dir):
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
