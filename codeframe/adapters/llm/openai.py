@@ -148,14 +148,17 @@ class OpenAIProvider(LLMProvider):
             kwargs["tools"] = self._convert_tools(tools)
             kwargs["tool_choice"] = "auto"
 
+        from codeframe.adapters.llm.errors import map_provider_error
+
         try:
             response = self.client.chat.completions.create(**kwargs)
-        except openai.AuthenticationError as exc:
-            raise ValueError(f"OpenAI authentication failed: {exc}") from exc
-        except openai.RateLimitError as exc:
-            raise ValueError(f"OpenAI rate limit exceeded: {exc}") from exc
-        except openai.NotFoundError as exc:
-            raise ValueError(f"OpenAI model not found: {exc}") from exc
+        except Exception as exc:
+            raise map_provider_error(
+                exc,
+                provider="openai",
+                model=kwargs["model"],
+                purpose=purpose,
+            ) from exc
 
         return self._parse_response(response)
 
@@ -170,14 +173,9 @@ class OpenAIProvider(LLMProvider):
     ) -> LLMResponse:
         """True async completion via openai.AsyncOpenAI.
 
-        Raises LLMAuthError / LLMRateLimitError / LLMConnectionError on failure.
+        Raises a typed LLMError with an actionable message on failure (#1110).
         """
         import openai as _openai
-        from codeframe.adapters.llm.base import (
-            LLMAuthError,
-            LLMRateLimitError,
-            LLMConnectionError,
-        )
 
         if self._async_client is None:
             self._async_client = _openai.AsyncOpenAI(
@@ -198,15 +196,18 @@ class OpenAIProvider(LLMProvider):
             kwargs["tools"] = self._convert_tools(tools)
             kwargs["tool_choice"] = "auto"
 
+        from codeframe.adapters.llm.errors import map_provider_error
+
         try:
             response = await self._async_client.chat.completions.create(**kwargs)
             return self._parse_response(response)
-        except _openai.AuthenticationError as exc:
-            raise LLMAuthError(str(exc)) from exc
-        except _openai.RateLimitError as exc:
-            raise LLMRateLimitError(str(exc)) from exc
-        except _openai.APIConnectionError as exc:
-            raise LLMConnectionError(str(exc)) from exc
+        except Exception as exc:
+            raise map_provider_error(
+                exc,
+                provider="openai",
+                model=kwargs["model"],
+                purpose=purpose,
+            ) from exc
 
     async def async_stream(
         self,

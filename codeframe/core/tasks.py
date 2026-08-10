@@ -24,6 +24,7 @@ from codeframe.core.state_machine import (
 )
 from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core.prd import PrdRecord
+from codeframe.adapters.llm.base import LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -1084,6 +1085,12 @@ def generate_from_prd(
             tasks_data = _extract_tasks_simple(prd.content)
         except ValueError:
             raise  # Config errors (missing API key) should fail loudly
+        except LLMError:
+            # Provider failures now arrive as typed LLMErrors carrying an
+            # actionable message (#1110). They must escape for the same reason
+            # ValueError does — degrading a bad key into bullet extraction hides
+            # the one thing the user needs to read.
+            raise
         except Exception as e:
             # Fall back to simple extraction
             logger.warning(f"LLM generation failed ({e}), using simple extraction")

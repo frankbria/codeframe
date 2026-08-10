@@ -331,7 +331,13 @@ class TestOpenAIProviderErrors:
     """Error handling."""
 
     def test_authentication_error_surfaced(self):
-        """AuthenticationError becomes a ValueError."""
+        """AuthenticationError becomes an actionable LLMAuthError (#1110).
+
+        This asserted a bare ValueError carrying the SDK's raw text. #1110
+        replaces that with a typed error whose message names the env var the
+        key is read from and a next step, because the raw form was the first
+        thing a new user saw on a bad key.
+        """
         import openai
         from codeframe.adapters.llm.openai import OpenAIProvider
 
@@ -345,11 +351,15 @@ class TestOpenAIProviderErrors:
                     "bad key", response=MagicMock(), body={}
                 )
 
-                with pytest.raises(ValueError, match="authentication failed"):
+                from codeframe.adapters.llm.base import LLMAuthError
+
+                with pytest.raises(LLMAuthError) as exc:
                     provider.complete([{"role": "user", "content": "hi"}])
+                assert "OPENAI_API_KEY" in str(exc.value)
+                assert "cf env check" in str(exc.value)
 
     def test_rate_limit_error_surfaced(self):
-        """RateLimitError is raised."""
+        """RateLimitError becomes a typed LLMRateLimitError (#1110)."""
         import openai
         from codeframe.adapters.llm.openai import OpenAIProvider
 
@@ -363,8 +373,11 @@ class TestOpenAIProviderErrors:
                     "rate limit", response=MagicMock(), body={}
                 )
 
-                with pytest.raises(ValueError, match="rate limit"):
+                from codeframe.adapters.llm.base import LLMRateLimitError
+
+                with pytest.raises(LLMRateLimitError) as exc:
                     provider.complete([{"role": "user", "content": "hi"}])
+                assert "rate" in str(exc.value).lower()
 
 
 class TestOpenAIProviderToolRoundTrip:

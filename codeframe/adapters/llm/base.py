@@ -33,6 +33,18 @@ class LLMConnectionError(LLMError):
     """Network or connection error."""
 
 
+class LLMModelNotFoundError(LLMError):
+    """The provider does not recognise the configured model (#1110).
+
+    Almost always a retired model ID — the failure mode that made 0.9.1
+    unusable — so it is worth distinguishing from a generic API error.
+    """
+
+
+class LLMOverloadedError(LLMError):
+    """The provider is temporarily unavailable (5xx / 529). Retry, don't reconfigure."""
+
+
 class Purpose(str, Enum):
     """Purpose of an LLM call, used for model selection."""
 
