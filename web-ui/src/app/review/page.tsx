@@ -49,6 +49,7 @@ export default function ReviewPage() {
   // Modal states
   const [showPatchModal, setShowPatchModal] = useState(false);
   const [patchContent, setPatchContent] = useState('');
+  const [patchBytes, setPatchBytes] = useState<ArrayBuffer | null>(null);
   const [patchFilename, setPatchFilename] = useState('');
   const [showPRModal, setShowPRModal] = useState(false);
   const [prUrl, setPrUrl] = useState('');
@@ -166,6 +167,7 @@ export default function ReviewPage() {
     try {
       const result = await reviewApi.getPatch(workspacePath);
       setPatchContent(result.patch);
+      setPatchBytes(result.bytes);
       setPatchFilename(result.filename);
       setShowPatchModal(true);
     } catch (err) {
@@ -373,6 +375,7 @@ export default function ReviewPage() {
         open={showPatchModal}
         onClose={() => setShowPatchModal(false)}
         patchContent={patchContent}
+        patchBytes={patchBytes}
         filename={patchFilename}
       />
 

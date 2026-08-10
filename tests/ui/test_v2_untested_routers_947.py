@@ -481,13 +481,19 @@ class TestReviewDiffAndPatch:
         assert [f["path"] for f in body["changed_files"]] == ["README.md"]
 
     def test_patch_filename_is_derived_from_the_branch(self, client, repo):
+        """The filename moved to Content-Disposition with #1077.
+
+        The response is application/octet-stream now — a patch is a file, and
+        JSON cannot carry a non-UTF-8 byte without an encoding step.
+        """
         (repo / "README.md").write_text("# changed\n")
         branch = _git("git", "branch", "--show-current", cwd=repo).stdout.strip()
 
         res = client.get("/api/v2/review/patch")
 
         assert res.status_code == 200, res.text
-        assert res.json()["filename"] == f"{branch.replace('/', '-')}.patch"
+        expected = f"{branch.replace('/', '-')}.patch"
+        assert expected in res.headers["content-disposition"]
 
     def test_a_generated_commit_message_is_not_empty(self, client, repo):
         (repo / "README.md").write_text("# changed\n")
@@ -691,7 +697,10 @@ class TestUnexpectedCoreFailuresBecome500s:
         ("codeframe.core.git", "get_current_branch", "GET", "/api/v2/git/branch", None),
         ("codeframe.core.git", "is_clean", "GET", "/api/v2/git/clean", None),
         ("codeframe.core.git", "get_diff_stats", "GET", "/api/v2/review/diff", None),
-        ("codeframe.core.git", "get_patch", "GET", "/api/v2/review/patch", None),
+        # get_patch_bytes, not get_patch: the endpoint returns raw bytes since
+        # #1077, and naming the old function left this route unguarded while
+        # the test still passed.
+        ("codeframe.core.git", "get_patch_bytes", "GET", "/api/v2/review/patch", None),
         (
             "codeframe.core.git",
             "generate_commit_message",

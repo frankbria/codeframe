@@ -492,6 +492,41 @@ def _index_diff_sections(diff_text: str) -> dict[str, str]:
     return sections
 
 
+def get_patch_bytes(workspace: Workspace, staged: bool = False) -> bytes:
+    """Get the patch as the exact bytes git produced (#1077).
+
+    A patch is byte-faithful by definition — it gets written out and fed to
+    ``git apply``. ``get_patch`` returns a str because GitPython decodes with
+    ``surrogateescape``, which is lossless in Python but cannot be serialised
+    into JSON: a lone surrogate raises, and the endpoint answered 500 for any
+    repository with one non-UTF-8 byte in a tracked file.
+
+    ``stdout_as_string=False`` skips the decode entirely, so nothing has to be
+    put back together afterwards.
+    """
+    repo = _get_repo(workspace)
+
+    def _restore_trailing_newline(out: bytes) -> bytes:
+        # GitPython strips the final newline from command output. `git apply`
+        # wants it, and `git diff` emits it, so put it back — otherwise the
+        # exported patch differs from git's own by exactly one byte.
+        if out and not out.endswith(b"\n"):
+            return out + b"\n"
+        return out
+
+    try:
+        if not repo.head.is_valid():
+            return b""
+        args = ["--patch", "--full-index"]
+        if staged:
+            args.insert(0, "--cached")
+        return _restore_trailing_newline(
+            repo.git.diff(*args, stdout_as_string=False)
+        )
+    except git.GitCommandError as e:
+        raise ValueError(f"Failed to get patch: {e}")
+
+
 def get_patch(workspace: Workspace, staged: bool = False) -> str:
     """Get patch-formatted diff for export.
 

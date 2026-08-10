@@ -113,4 +113,40 @@ describe('api response interceptor — 401 handling', () => {
     ).rejects.toMatchObject({ detail: 'Boom', status_code: 500 });
     expect(mockRedirectTo).not.toHaveBeenCalled();
   });
+
+  it('recovers the detail from a binary error body (#1077)', async () => {
+    // getPatch uses responseType: 'arraybuffer', so its ERROR body arrives as
+    // an ArrayBuffer too. Without decoding it the backend's reason is dropped
+    // and the user sees axios's generic "Request failed with status code 500".
+    const body = JSON.stringify({ detail: 'Failed to get patch: not a git repository' });
+    const bytes = new TextEncoder().encode(body).buffer;
+
+    const handler = getResponseRejectHandler();
+
+    await expect(
+      handler({
+        message: 'Request failed with status code 500',
+        response: { status: 500, data: bytes },
+      } as unknown as AxiosError)
+    ).rejects.toMatchObject({
+      detail: 'Failed to get patch: not a git repository',
+      status_code: 500,
+    });
+  });
+
+  it('falls back to the axios message when a binary body is not JSON', async () => {
+    const bytes = new TextEncoder().encode('<html>gateway timeout</html>').buffer;
+
+    const handler = getResponseRejectHandler();
+
+    await expect(
+      handler({
+        message: 'Request failed with status code 504',
+        response: { status: 504, data: bytes },
+      } as unknown as AxiosError)
+    ).rejects.toMatchObject({
+      detail: 'Request failed with status code 504',
+      status_code: 504,
+    });
+  });
 });
