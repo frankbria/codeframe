@@ -79,41 +79,63 @@ class TestImportingTheCliIsInert:
 
 
 class TestRunningACommandStillLoadsIt:
-    """AC: `cf` from a directory with a .env still picks the values up."""
+    """AC: `cf` from a directory with a .env still picks the values up.
 
-    def test_a_command_loads_the_env(self):
-        result = _child(
-            "import os\n"
-            "from typer.testing import CliRunner\n"
-            "from codeframe.cli.app import app\n"
-            "before = bool(os.environ.get('ANTHROPIC_API_KEY'))\n"
-            "CliRunner().invoke(app, ['config', 'telemetry', 'status'])\n"
-            "after = bool(os.environ.get('ANTHROPIC_API_KEY'))\n"
-            "print(f'{before}->{after}')\n"
-        )
-        assert result.returncode == 0, result.stderr
-        assert "False->True" in result.stdout, result.stdout + result.stderr
+    These build their own .env in a tmp dir and run the child there. The first
+    version asserted against the repository's own untracked .env, which passes
+    on a dev machine and fails in CI, where no such file exists — the test was
+    measuring the checkout, not the behaviour.
+    """
 
-    def test_the_operator_environment_still_wins(self):
-        """#904 precedence is unchanged — it just applies a moment later."""
+    def _child_in(self, cwd: Path, code: str, env_extra=None):
         env = dict(os.environ)
-        env["ANTHROPIC_API_KEY"] = "operator-value"
-        result = subprocess.run(
-            [
-                sys.executable, "-c",
-                "import os\n"
-                "from typer.testing import CliRunner\n"
-                "from codeframe.cli.app import app\n"
-                "CliRunner().invoke(app, ['config', 'telemetry', 'status'])\n"
-                "print(os.environ['ANTHROPIC_API_KEY'])\n",
-            ],
-            cwd=REPO_ROOT,
+        env.pop("ANTHROPIC_API_KEY", None)
+        env.update(env_extra or {})
+        # PYTHONPATH so the child imports codeframe from the repo, while its
+        # cwd — and therefore the .env load_env_files finds — is the tmp dir.
+        env["PYTHONPATH"] = str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+        return subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=cwd,
             capture_output=True,
             text=True,
             env=env,
         )
+
+    def test_a_command_loads_the_env(self, tmp_path):
+        (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=from-dot-env\n")
+
+        result = self._child_in(
+            tmp_path,
+            "import os\n"
+            "from typer.testing import CliRunner\n"
+            "from codeframe.cli.app import app\n"
+            "before = os.environ.get('ANTHROPIC_API_KEY')\n"
+            "CliRunner().invoke(app, ['config', 'telemetry', 'status'])\n"
+            "after = os.environ.get('ANTHROPIC_API_KEY')\n"
+            "print(f'{before}->{after}')\n",
+        )
+
         assert result.returncode == 0, result.stderr
-        assert "operator-value" in result.stdout, result.stdout + result.stderr
+        assert "None->from-dot-env" in result.stdout, result.stdout + result.stderr
+
+    def test_the_operator_environment_still_wins(self, tmp_path):
+        """#904 precedence is unchanged — it just applies a moment later."""
+        (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=from-dot-env\n")
+
+        result = self._child_in(
+            tmp_path,
+            "import os\n"
+            "from typer.testing import CliRunner\n"
+            "from codeframe.cli.app import app\n"
+            "CliRunner().invoke(app, ['config', 'telemetry', 'status'])\n"
+            "print(os.environ['ANTHROPIC_API_KEY'])\n",
+            env_extra={"ANTHROPIC_API_KEY": "from-operator"},
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "from-operator" in result.stdout, result.stdout + result.stderr
+        assert "from-dot-env" not in result.stdout
 
 
 class TestTheModuleHasNoImportTimeCall:
