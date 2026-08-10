@@ -2128,6 +2128,11 @@ def tasks_generate(
             "[bold]cf tasks generate --no-llm[/bold] to extract bullets directly."
         )
         raise typer.Exit(1)
+    except typer.Exit:
+        # A deliberate exit is not an error. typer.Exit subclasses
+        # RuntimeError, so without this the catch-all below prints
+        # its exit code as a second message: "Error: 1" (#1113).
+        raise
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
@@ -5823,6 +5828,11 @@ def schedule_show(
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+    except typer.Exit:
+        # A deliberate exit is not an error. typer.Exit subclasses
+        # RuntimeError, so without this the catch-all below prints
+        # its exit code as a second message: "Error: 1" (#1113).
+        raise
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
@@ -5916,6 +5926,11 @@ def schedule_predict(
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+    except typer.Exit:
+        # A deliberate exit is not an error. typer.Exit subclasses
+        # RuntimeError, so without this the catch-all below prints
+        # its exit code as a second message: "Error: 1" (#1113).
+        raise
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
@@ -5993,6 +6008,11 @@ def schedule_bottlenecks(
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+    except typer.Exit:
+        # A deliberate exit is not an error. typer.Exit subclasses
+        # RuntimeError, so without this the catch-all below prints
+        # its exit code as a second message: "Error: 1" (#1113).
+        raise
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
@@ -6152,6 +6172,11 @@ def templates_apply(
     except ValueError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+    except typer.Exit:
+        # A deliberate exit is not an error. typer.Exit subclasses
+        # RuntimeError, so without this the catch-all below prints
+        # its exit code as a second message: "Error: 1" (#1113).
+        raise
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
