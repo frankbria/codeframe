@@ -27,7 +27,11 @@ from pydantic import BaseModel, Field
 
 from codeframe.auth.api_keys import SCOPE_ADMIN
 from codeframe.auth.dependencies import require_auth, require_scope
-from codeframe.core.credentials import CredentialManager, CredentialProvider
+from codeframe.core.credentials import (
+    CredentialManager,
+    CredentialProvider,
+    CredentialStoreUnreadableError,
+)
 from codeframe.core.github_connect_service import (
     GitHubConnectError,
     InsufficientScopeError,
@@ -67,7 +71,18 @@ def get_credential_manager(auth: dict = Depends(require_auth)) -> CredentialMana
     store. Overridden in tests to point at an isolated temp directory.
     Runs the machine-wide migration — use only on write paths.
     """
-    return CredentialManager(user_id=auth.get("user_id"), migrate=True)
+    # CredentialManager's constructor runs the machine-wide migration, which
+    # can raise CredentialStoreUnreadableError since #954. Raised from a
+    # DEPENDENCY it bypasses each route's own try/except, so the client got a
+    # bare 500 instead of the formatted error every other path produces (#1085).
+    # The exception's message carries the recovery text the CLI already prints.
+    try:
+        return CredentialManager(user_id=auth.get("user_id"), migrate=True)
+    except CredentialStoreUnreadableError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=api_error(str(e), ErrorCodes.INTERNAL_ERROR),
+        )
 
 
 def get_credential_manager_readonly(auth: dict = Depends(require_auth)) -> CredentialManager:
@@ -76,7 +91,18 @@ def get_credential_manager_readonly(auth: dict = Depends(require_auth)) -> Crede
     Used on GET endpoints so that a plain status check cannot trigger a
     credential write into a new tenant's store (#790).
     """
-    return CredentialManager(user_id=auth.get("user_id"), migrate=False)
+    # CredentialManager's constructor runs the machine-wide migration, which
+    # can raise CredentialStoreUnreadableError since #954. Raised from a
+    # DEPENDENCY it bypasses each route's own try/except, so the client got a
+    # bare 500 instead of the formatted error every other path produces (#1085).
+    # The exception's message carries the recovery text the CLI already prints.
+    try:
+        return CredentialManager(user_id=auth.get("user_id"), migrate=False)
+    except CredentialStoreUnreadableError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=api_error(str(e), ErrorCodes.INTERNAL_ERROR),
+        )
 
 
 class ConnectRequest(BaseModel):

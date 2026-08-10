@@ -27,7 +27,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from codeframe.core.atomic_io import atomic_write_json
+from codeframe.core.atomic_io import atomic_write_json, read_modify_write_lock
 
 logger = logging.getLogger(__name__)
 
@@ -614,32 +614,38 @@ class ToolInstaller:
         """
         self.history_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load existing history. The file is on disk and can be anything —
-        # hand-edited, truncated, or written by an older version — and this runs
-        # AFTER a successful install, so a bad shape here must not turn a working
-        # install into a crash (#954). Anything that is not the expected
-        # dict-of-dicts is treated as "no usable history" rather than indexed
-        # into (a list or a string raised TypeError).
-        installations: dict = {}
-        if self.history_file.exists():
-            try:
-                with open(self.history_file, encoding="utf-8") as f:
-                    loaded = json.load(f)
-            except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-                loaded = None
-            if isinstance(loaded, dict) and isinstance(loaded.get("installations"), dict):
-                installations = loaded["installations"]
+        # Serialised, not just atomic (#1085). atomic_write_json stops a crash
+        # truncating the file; it does not stop two concurrent installs reading
+        # the same base and the second write dropping the first tool. Matters
+        # once `cf env install` runs tools in parallel.
+        with read_modify_write_lock(self.history_dir / ".history.lock"):
 
-        installations[result.tool_name] = {
-            "status": result.status.value,
-            "installed_at": datetime.now(UTC).isoformat(),
-            "command": result.command_used,
-            "message": result.message,
-        }
+            # Load existing history. The file is on disk and can be anything —
+            # hand-edited, truncated, or written by an older version — and this runs
+            # AFTER a successful install, so a bad shape here must not turn a working
+            # install into a crash (#954). Anything that is not the expected
+            # dict-of-dicts is treated as "no usable history" rather than indexed
+            # into (a list or a string raised TypeError).
+            installations: dict = {}
+            if self.history_file.exists():
+                try:
+                    with open(self.history_file, encoding="utf-8") as f:
+                        loaded = json.load(f)
+                except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+                    loaded = None
+                if isinstance(loaded, dict) and isinstance(loaded.get("installations"), dict):
+                    installations = loaded["installations"]
 
-        # Atomic: an in-place rewrite truncated the history first, so a crash
-        # mid-write lost every previously recorded install (#954).
-        atomic_write_json(self.history_file, {"installations": installations})
+            installations[result.tool_name] = {
+                "status": result.status.value,
+                "installed_at": datetime.now(UTC).isoformat(),
+                "command": result.command_used,
+                "message": result.message,
+            }
+
+            # Atomic: an in-place rewrite truncated the history first, so a crash
+            # mid-write lost every previously recorded install (#954).
+            atomic_write_json(self.history_file, {"installations": installations})
 
     def get_installation_history(self) -> dict:
         """Get the installation history.
