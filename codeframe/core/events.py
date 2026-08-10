@@ -53,6 +53,12 @@ class EventType:
     # Agent events
     AGENT_STEP_STARTED = "AGENT_STEP_STARTED"
     AGENT_STEP_COMPLETED = "AGENT_STEP_COMPLETED"
+    AGENT_STEP_SKIPPED = "AGENT_STEP_SKIPPED"
+    AGENT_STEP_FAILED = "AGENT_STEP_FAILED"
+    #: An agent event with no specific mapping. Distinct on purpose: folding
+    #: unknown events into AGENT_STEP_COMPLETED reported failures as successes
+    #: and made the console look like it was stuttering (#1116).
+    AGENT_EVENT = "AGENT_EVENT"
 
     # ReactAgent lifecycle events
     AGENT_STARTED = "AGENT_STARTED"
@@ -357,7 +363,7 @@ def print_event(event: Event) -> None:
     # Print key payload items if present
     if event.payload:
         items = []
-        for key in ["path", "task_id", "status", "name", "title"]:
+        for key in ["agent_event", "path", "task_id", "status", "name", "title"]:
             if key in event.payload:
                 items.append(f"{key}={event.payload[key]}")
         if items:
