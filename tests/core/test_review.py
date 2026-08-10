@@ -8,12 +8,12 @@ We patch the three analyzers so tests are deterministic and never shell out to
 Issue #654 (P6.8.1): test coverage hardening for untested core modules.
 """
 
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from codeframe.core import review as review_mod
+from codeframe.core import tasks
 from codeframe.core.review import (
     ReviewFinding,
     ReviewResult,
@@ -23,7 +23,7 @@ from codeframe.core.review import (
     review_task,
     get_review_summary,
 )
-from codeframe.core.workspace import Workspace
+from codeframe.core.workspace import Workspace, create_or_load_workspace
 from codeframe.lib.quality.complexity_analyzer import ComplexityAnalyzer
 from codeframe.lib.quality.security_scanner import SecurityScanner
 from codeframe.lib.quality.owasp_patterns import OWASPPatterns
@@ -46,14 +46,12 @@ class _Finding:
 
 @pytest.fixture
 def workspace(tmp_path) -> Workspace:
+    # A real, initialised workspace rather than a hand-built dataclass: since
+    # #1066 review_task looks the task up, which needs the database. The
+    # session-template conftest makes this ~0.1ms (#979).
     repo = tmp_path / "repo"
     repo.mkdir()
-    return Workspace(
-        id="ws-test",
-        repo_path=repo,
-        state_dir=repo / ".codeframe",
-        created_at=datetime.now(timezone.utc),
-    )
+    return create_or_load_workspace(repo)
 
 
 @pytest.fixture(autouse=True)
@@ -217,11 +215,34 @@ class TestReviewTask:
             return ReviewResult("approved", 100.0, [], "ok")
 
         monkeypatch.setattr(review_mod, "review_files", fake_review_files)
-        result = review_task(workspace, task_id="T-1", files_modified=["a.py"])
+        # A real task: review_task validates the id since #1066, so the old
+        # placeholder "T-1" would now raise before delegating.
+        task = tasks.create(workspace, title="review me", description="")
+        result = review_task(workspace, task_id=task.id, files_modified=["a.py"])
 
         assert result.status == "approved"
         assert captured["ws"] is workspace
         assert captured["files"] == ["a.py"]
+
+    def test_an_unknown_task_id_is_rejected(self, workspace):
+        """#1066: the id used to be a log line, so any id got a confident pass."""
+        with pytest.raises(review_mod.TaskNotFoundError) as exc:
+            review_task(workspace, task_id="no-such-task", files_modified=["a.py"])
+        assert "no-such-task" in str(exc.value)
+
+    def test_the_task_is_checked_before_any_file_is_touched(
+        self, workspace, monkeypatch
+    ):
+        """Validation must come first, or an unknown id still reaches the files."""
+        called = []
+        monkeypatch.setattr(
+            review_mod, "review_files", lambda ws, files: called.append(files)
+        )
+
+        with pytest.raises(review_mod.TaskNotFoundError):
+            review_task(workspace, task_id="nope", files_modified=["a.py"])
+
+        assert called == []
 
 
 class TestWorkspaceContainment:
@@ -353,8 +374,13 @@ class TestWorkspaceContainment:
         self, workspace, outsider, analyzed
     ):
         """review_task delegates to review_files, so it inherits the guard —
-        pinned because the issue names it as a shared code path."""
-        review_task(workspace, task_id="T-1", files_modified=[str(outsider)])
+        pinned because the issue names it as a shared code path.
+
+        A real task id: since #1066 an unknown one is rejected before the guard
+        is reached, which would leave this passing while testing nothing.
+        """
+        task = tasks.create(workspace, title="review me", description="")
+        review_task(workspace, task_id=task.id, files_modified=[str(outsider)])
 
         assert analyzed == [], f"analyzer was handed {analyzed}"
 

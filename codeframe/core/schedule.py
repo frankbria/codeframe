@@ -92,13 +92,16 @@ def get_schedule(
     Returns:
         ScheduleResult with task assignments
 
-    Raises:
-        ValueError: If no tasks found in workspace
+    An empty workspace yields an empty result rather than an error (#1066).
     """
     # Load tasks from workspace
     task_list = tasks.list_tasks(workspace, limit=1000)
     if not task_list:
-        raise ValueError("No tasks found in workspace")
+        # An empty workspace has an empty schedule, not a missing one (#1066).
+        # Raising here made the router answer 404, so a client could not tell
+        # "this workspace does not exist" from "you have not created any tasks
+        # yet" — and the latter is the first state every client meets.
+        return ScheduleResult(task_assignments=[], total_duration=0.0, agents_used=0)
 
     # Build ID mapping (v2 string UUID -> v1 integer)
     # We use task index as the integer ID
@@ -196,8 +199,7 @@ def predict_completion(
     Returns:
         CompletionPrediction with predicted date and confidence interval
 
-    Raises:
-        ValueError: If no tasks found in workspace
+    An empty workspace yields an empty result rather than an error (#1066).
     """
     if start_date is None:
         start_date = _utc_now()
@@ -205,7 +207,16 @@ def predict_completion(
     # Load tasks
     task_list = tasks.list_tasks(workspace, limit=1000)
     if not task_list:
-        raise ValueError("No tasks found in workspace")
+        # Nothing outstanding, so the project is "finished" as of now (#1066).
+        # completed_percentage is 100 rather than 0 because 0 remaining hours
+        # with 0% complete is self-contradictory; there is simply no work.
+        return CompletionPrediction(
+            predicted_date=start_date,
+            confidence_early=start_date,
+            confidence_late=start_date,
+            remaining_hours=0.0,
+            completed_percentage=100.0,
+        )
 
     # Build ID mapping
     uuid_to_int: dict[str, int] = {}
@@ -292,13 +303,13 @@ def get_bottlenecks(workspace: Workspace) -> list[BottleneckInfo]:
     Returns:
         List of BottleneckInfo objects
 
-    Raises:
-        ValueError: If no tasks found in workspace
+    An empty workspace yields an empty result rather than an error (#1066).
     """
     # Load tasks
     task_list = tasks.list_tasks(workspace, limit=1000)
     if not task_list:
-        raise ValueError("No tasks found in workspace")
+        # No tasks means no bottlenecks (#1066), not a missing resource.
+        return []
 
     # Build ID mapping
     uuid_to_int: dict[str, int] = {}

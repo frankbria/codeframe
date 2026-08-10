@@ -20,6 +20,10 @@ from codeframe.lib.quality.owasp_patterns import OWASPPatterns
 logger = logging.getLogger(__name__)
 
 
+class TaskNotFoundError(Exception):
+    """`review_task` was given an id no task in this workspace has (#1066)."""
+
+
 # ============================================================================
 # Data Classes
 # ============================================================================
@@ -340,6 +344,14 @@ def review_task(
     Returns:
         ReviewResult with findings and overall score
     """
+    # The id used to be a log line and nothing else (#1066), so this endpoint
+    # presented as task-scoped and was not: a stale, wrong or invented id got a
+    # confident 200 scoring whatever files_modified the caller also sent.
+    from codeframe.core import tasks as _tasks
+
+    if _tasks.get(workspace, task_id) is None:
+        raise TaskNotFoundError(f"Task not found: {task_id}")
+
     logger.info(f"Starting review for task {task_id} ({len(files_modified)} files)")
     return review_files(workspace, files_modified)
 
