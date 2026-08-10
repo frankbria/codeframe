@@ -39,6 +39,7 @@ LIVE_CALL_SITES = (
     "codeframe/adapters/llm",
     "codeframe/cli",
     "codeframe/core",
+    "codeframe/lib",
     "codeframe/ui",
 )
 EXCLUDED_FILES = (
@@ -111,11 +112,16 @@ def check_defaults_resolve() -> list[str]:
         except anthropic.NotFoundError:
             violations.append(f"{name} = {value!r} does not resolve — the API does not know this model")
         except Exception as exc:  # network, auth, rate limit — not the model's fault
+            # Keep whatever violations this loop already found. Replacing them
+            # with the transient-failure message would throw away the name of
+            # the model that is actually broken — and without REQUIRE_LIVE it
+            # would return "passed" despite a confirmed 404, which is exactly
+            # the class of silent pass this guard exists to prevent.
             detail = f"{name} = {value!r}: {type(exc).__name__}: {exc}"
             if os.getenv("MODEL_GUARD_REQUIRE_LIVE"):
-                return [f"live model check could not complete — {detail}"]
+                return violations + [f"live model check could not complete — {detail}"]
             print(f"  ! skipped live check for {detail}", file=sys.stderr)
-            return []
+            return violations
     return violations
 
 

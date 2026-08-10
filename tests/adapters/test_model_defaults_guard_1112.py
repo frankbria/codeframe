@@ -10,7 +10,9 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
+import httpx
 import pytest
 
 from scripts.check_model_defaults import (
@@ -53,6 +55,57 @@ def test_no_key_and_no_require_live_skips_quietly(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("MODEL_GUARD_REQUIRE_LIVE", raising=False)
     assert check_defaults_resolve() == []
+
+
+class TestAPartialLiveFailureKeepsWhatItFound:
+    """A transient error on one default must not discard a confirmed 404 on another.
+
+    Raised in review: the loop returned early on any non-NotFoundError, throwing
+    away violations already collected. Without REQUIRE_LIVE that returned `[]` —
+    "passed" — despite a model the API had just said does not exist.
+    """
+
+    @staticmethod
+    def _client_where_second_call_blows_up():
+        import anthropic
+
+        calls = {"n": 0}
+
+        def retrieve(model_id):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise anthropic.NotFoundError(
+                    "not found", response=httpx.Response(404, request=httpx.Request("GET", "http://x")), body=None
+                )
+            raise ConnectionError("transient network blip")
+
+        client = MagicMock()
+        client.models.retrieve.side_effect = retrieve
+        return client
+
+    def _run(self, monkeypatch, require_live: bool) -> list[str]:
+        import anthropic
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        if require_live:
+            monkeypatch.setenv("MODEL_GUARD_REQUIRE_LIVE", "1")
+        else:
+            monkeypatch.delenv("MODEL_GUARD_REQUIRE_LIVE", raising=False)
+        monkeypatch.setattr(
+            anthropic, "Anthropic", lambda *a, **k: self._client_where_second_call_blows_up()
+        )
+        return check_defaults_resolve()
+
+    def test_the_confirmed_404_survives_under_require_live(self, monkeypatch):
+        violations = self._run(monkeypatch, require_live=True)
+        assert any("does not resolve" in v for v in violations), violations
+        assert any("could not complete" in v for v in violations), violations
+
+    def test_the_confirmed_404_is_not_silently_dropped_without_require_live(self, monkeypatch):
+        violations = self._run(monkeypatch, require_live=False)
+        assert any("does not resolve" in v for v in violations), (
+            "a confirmed 404 must not be swallowed by a later transient error"
+        )
 
 
 def test_script_exits_zero_offline():
