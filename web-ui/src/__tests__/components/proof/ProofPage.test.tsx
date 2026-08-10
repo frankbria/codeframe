@@ -76,7 +76,8 @@ function makeReq(overrides: Partial<{
     satisfied_at: null,
     created_by: 'user',
     source_issue: null,
-    related_reqs: [], scope: null,
+    related_reqs: [],
+    scope: null,
   };
 }
 

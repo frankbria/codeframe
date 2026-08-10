@@ -3,11 +3,11 @@ import userEvent from '@testing-library/user-event';
 import { TaskBoardView } from '@/components/tasks/TaskBoardView';
 import { tasksApi } from '@/lib/api';
 
+import type { Task, TaskListResponse } from '@/types';
 // jest.mocked keeps the real signatures while exposing the mock API, so the
 // toHaveBeenCalledWith assertions below still type-check against the true
 // argument shapes rather than being cast to any.
 const mockedTasksApi = jest.mocked(tasksApi);
-import type { Task, TaskListResponse } from '@/types';
 
 // ─── Mocks ──────────────────────────────────────────────────────────
 

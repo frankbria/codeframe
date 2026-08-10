@@ -40,7 +40,8 @@ const MOCK_REQ: ProofRequirement = {
   satisfied_at: null,
   created_by: 'human',
   source_issue: null,
-  related_reqs: [], scope: null,
+  related_reqs: [],
+  scope: null,
 };
 
 function setup(props = DEFAULT_PROPS) {
