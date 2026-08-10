@@ -25,6 +25,7 @@ from codeframe.cli.app import (
     AnswersExhausted,
     _AnswerSource,
     _load_answers_file,
+    _handle_answer_attempts_exhausted,
     _load_brief_file,
     app,
 )
@@ -342,3 +343,75 @@ class TestNonUtf8InputIsReported:
         with pytest.raises(typer.BadParameter) as exc:
             _load_brief_file(path)
         assert "UTF-8" in str(exc.value)
+
+
+class TestReviewFindings:
+    """Two findings from PR review, both real."""
+
+    def test_a_bad_input_file_costs_no_llm_call(self, workspace_dir, tmp_path):
+        """start_discovery() generates the opening question — a paid, slow call.
+
+        Validation of the input file was happening after it, so a typo in a path
+        cost a request and minutes of wall time before failing.
+        """
+        with patch("codeframe.core.llm_resolution.create_provider") as create_provider:
+            result = runner.invoke(
+                app,
+                [
+                    "prd", "generate", "-w", str(workspace_dir),
+                    "--answers-file", str(tmp_path / "does-not-exist.json"),
+                ],
+                env={"ANTHROPIC_API_KEY": "test-key"},
+            )
+
+        assert result.exit_code != 0
+        create_provider.assert_not_called()
+
+    def test_a_bad_brief_file_costs_no_llm_call(self, workspace_dir, tmp_path):
+        with patch("codeframe.core.llm_resolution.create_provider") as create_provider:
+            result = runner.invoke(
+                app,
+                [
+                    "prd", "generate", "-w", str(workspace_dir),
+                    "--brief-file", str(tmp_path / "nope.md"),
+                ],
+                env={"ANTHROPIC_API_KEY": "test-key"},
+            )
+
+        assert result.exit_code != 0
+        create_provider.assert_not_called()
+
+    def test_brief_mode_gets_brief_advice_not_answers_advice(self, capsys):
+        """The retry-cap message must match the mode.
+
+        --brief-file has no canned list, so telling the user their "answer list
+        desynchronised" and to "supply answers" is unactionable. Exercised on the
+        handler directly: driving it through the CLI would mean mocking the whole
+        discovery engine, which is not what this finding is about.
+        """
+        import typer
+
+        source = _AnswerSource(None, "A brief.", MagicMock())
+        question = {"text": "What problem, and what inspired it?"}
+
+        with pytest.raises(typer.Exit):
+            _handle_answer_attempts_exhausted(MagicMock(), source, question)
+
+        out = capsys.readouterr().out
+        assert "brief" in out.lower()
+        assert "--answers-file" not in out
+        assert "canned" not in out.lower()
+        # It should quote the question the brief failed to cover.
+        assert "What problem" in out
+
+    def test_answers_file_mode_still_gets_answers_advice(self, capsys):
+        import typer
+
+        source = _AnswerSource(["a", "b"])
+
+        with pytest.raises(typer.Exit):
+            _handle_answer_attempts_exhausted(MagicMock(), source, {"text": "q"})
+
+        out = capsys.readouterr().out
+        assert "--answers-file" in out
+        assert "--brief-file" in out, "it should point at the mode that recovers"

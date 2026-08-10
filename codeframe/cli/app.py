@@ -196,13 +196,24 @@ def _handle_answer_attempts_exhausted(session, answers: "_AnswerSource", questio
         f"\n[yellow]That question has been answered {MAX_ANSWER_ATTEMPTS} times "
         f"without being accepted.[/yellow]"
     )
-    if not answers.interactive:
+    if answers.can_desynchronise:
         console.print(
             "[red]Error:[/red] giving up in non-interactive mode. The validator "
             "rejects partial answers, and AI-generated questions often have two "
-            "parts — a canned answer list cannot recover once it desynchronises. "
-            "Run interactively, or supply answers that address every part of the "
-            "question."
+            "parts — a canned --answers-file cannot recover once it "
+            "desynchronises. Use --brief-file, which answers the question "
+            "actually asked, or run interactively."
+        )
+        raise typer.Exit(1)
+    if not answers.interactive:
+        # --brief-file: there is no list to desynchronise, so repeated rejection
+        # means the brief does not cover what is being asked.
+        console.print(
+            "[red]Error:[/red] giving up in non-interactive mode. The stand-in "
+            "answered from the brief five times without being accepted, which "
+            "usually means the brief does not cover what this question asks:\n\n"
+            f"  {escape(question.get('text', ''))}\n\n"
+            "Extend the brief to cover it, or run interactively."
         )
         raise typer.Exit(1)
 
@@ -1741,6 +1752,12 @@ def prd_generate(
         )
         raise typer.Exit(2)
 
+    # Same rule for the file contents. start_discovery() generates the opening
+    # question, which is a paid call taking minutes (#902) — a missing or
+    # malformed input file must not get that far.
+    canned = _load_answers_file(answers_file) if answers_file else None
+    brief = _load_brief_file(brief_file) if brief_file else None
+
     console.print(f"[dim]Using template: {escape(template_obj.name)}[/dim]")
 
     try:
@@ -1793,8 +1810,6 @@ def prd_generate(
         console.print("[dim]The AI will ask questions to understand your project.[/dim]")
         console.print("[dim]Type /help for available commands[/dim]\n")
 
-        canned = _load_answers_file(answers_file) if answers_file else None
-        brief = _load_brief_file(brief_file) if brief_file else None
         brief_provider = None
         if brief is not None:
             # The stand-in answerer uses the same resolved provider chain as
