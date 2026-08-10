@@ -140,6 +140,29 @@ const createApiClient = (): AxiosInstance => {
     return config;
   });
 
+  // A binary response (responseType: 'arraybuffer', used by getPatch since
+  // #1077) delivers its ERROR body as an ArrayBuffer too, so `data.detail` is
+  // undefined and the backend's reason collapses into axios's generic
+  // "Request failed with status code 500". Decode it back first. This has to
+  // live in the interceptor: by the time a per-call catch runs, the buffer is
+  // gone and the rejection carries only the generic message.
+  // Object.prototype.toString rather than `instanceof ArrayBuffer`: the check
+  // has to hold across realms, and an ArrayBuffer built in another one (Node's
+  // in jsdom, an iframe in a browser) fails the instanceof.
+  const isArrayBuffer = (v: unknown): v is ArrayBuffer =>
+    Object.prototype.toString.call(v) === '[object ArrayBuffer]';
+
+  const extractDetail = (data: unknown): FastApiErrorDetail | undefined => {
+    if (isArrayBuffer(data)) {
+      try {
+        return JSON.parse(new TextDecoder().decode(data))?.detail;
+      } catch {
+        return undefined; // not JSON — fall back to axios's message
+      }
+    }
+    return (data as { detail?: FastApiErrorDetail } | undefined)?.detail;
+  };
+
   // Add response interceptor for error handling
   client.interceptors.response.use(
     (response) => response,
@@ -156,7 +179,10 @@ const createApiClient = (): AxiosInstance => {
 
       // Transform error for consistent handling
       const apiError: ApiError = {
-        detail: normalizeErrorDetail(error.response?.data?.detail, error.message),
+        detail: normalizeErrorDetail(
+          extractDetail(error.response?.data),
+          error.message
+        ),
         status_code: error.response?.status,
       };
       return Promise.reject(apiError);
