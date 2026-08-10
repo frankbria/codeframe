@@ -185,52 +185,76 @@ def run(
     results = run_proof(workspace, full=full, gate_filter=gate_filter)
 
     if not results:
-        # run_proof returning {} is ambiguous: the ledger may be empty, or it may
-        # hold requirements none of which intersect the changed scope. Those are
-        # different states and only the first is the #1118 vacuous pass — failing
-        # a doc-only PR because its scope matched nothing would be a new bug.
-        try:
-            from codeframe.core.proof import ledger as _ledger
-            from codeframe.core.proof.models import ReqStatus
+        # `run_proof` returning {} has three causes and they need different
+        # answers. Two review rounds went by patching one branch at a time and
+        # getting the reason wrong each time, so this asks the runner's own
+        # selector instead of inferring it from the mode:
+        #
+        #   ledger empty        -> nothing to verify at all (the #1118 case)
+        #   nothing runnable    -> requirements exist but all SATISFIED/WAIVED
+        #                          for this mode; scope was never consulted,
+        #                          because run_proof short-circuits first
+        #   nothing in scope    -> runnable requirements existed and the scope
+        #                          filter excluded every one
+        from codeframe.core.proof import ledger as _ledger
+        from codeframe.core.proof.models import ReqStatus
+        from codeframe.core.proof.runner import _requirements_for_run
 
+        try:
             all_reqs = _ledger.list_requirements(workspace)
+            # Same selector the runner uses, so this cannot drift from it.
+            runnable = _requirements_for_run(workspace, full=full)
         except Exception:
-            # A ledger we cannot read is not evidence of an empty one; treat it
-            # as the unverified case below rather than claiming scope filtering.
-            all_reqs = []
+            # A ledger we cannot read is not evidence of an empty one; fall
+            # through to the unverified case rather than inventing a reason.
+            all_reqs, runnable = [], []
+
+        if runnable and not full:
+            # Scope is only consulted on a scoped run, so this is the one case
+            # where "the changed files" is a true explanation.
+            console.print(
+                f"[yellow]Nothing was verified.[/yellow] "
+                f"{len(runnable)} runnable requirement(s), but none apply to "
+                f"the changed files."
+            )
+            console.print(
+                "Run [bold]cf proof run --full[/bold] to check all of them "
+                "regardless of scope."
+            )
+            return
+
+        if runnable:
+            # --full with runnable requirements and no results: not scope, and
+            # not a status filter either. Say only what is known rather than
+            # inventing a fourth reason.
+            console.print(
+                f"[yellow]Nothing was verified.[/yellow] "
+                f"{len(runnable)} runnable requirement(s) produced no results."
+            )
+            console.print("See [bold]cf proof status[/bold] for the ledger.")
+            return
 
         if all_reqs:
-            # Nothing was verified, but not because the ledger is empty. Why
-            # depends on the mode, and saying the wrong one sends the user in a
-            # circle: --full never consults scope at all.
-            if full:
-                # The runnable set (OPEN + SATISFIED) was empty. WAIVED
-                # requirements are deliberately excluded from every run, so an
-                # all-waived ledger lands here.
-                waived = sum(1 for r in all_reqs if r.status == ReqStatus.WAIVED)
-                console.print(
-                    f"[yellow]Nothing was verified.[/yellow] "
-                    f"{len(all_reqs)} requirement(s) exist, but none are "
-                    f"runnable"
-                    + (f" ({waived} waived)." if waived else ".")
+            satisfied = sum(1 for r in all_reqs if r.status == ReqStatus.SATISFIED)
+            waived = sum(1 for r in all_reqs if r.status == ReqStatus.WAIVED)
+            detail = ", ".join(
+                part
+                for part in (
+                    f"{satisfied} satisfied" if satisfied else "",
+                    f"{waived} waived" if waived else "",
                 )
-                console.print(
-                    "A waiver is an accepted risk and is never re-checked by a "
-                    "run — see [bold]cf proof status[/bold] for the ledger."
-                )
-            else:
-                # A scoped run with requirements present genuinely is a
-                # scope-skip: the filter did its job for a change they do not
-                # cover. Not a vacuous pass, and not a failure.
-                console.print(
-                    f"[yellow]Nothing was verified.[/yellow] "
-                    f"{len(all_reqs)} requirement(s) exist, but none apply to "
-                    f"the changed files."
-                )
-                console.print(
-                    "Run [bold]cf proof run --full[/bold] to check all of them "
-                    "regardless of scope."
-                )
+                if part
+            )
+            console.print(
+                f"[yellow]Nothing was verified.[/yellow] "
+                f"{len(all_reqs)} requirement(s) exist, but none are runnable"
+                + (f" ({detail})." if detail else ".")
+            )
+            console.print(
+                "A waiver is an accepted risk that no run re-checks; "
+                "[bold]cf proof run --full[/bold] also re-verifies satisfied "
+                "ones. See [bold]cf proof status[/bold] for the ledger."
+            )
             return
 
         # An empty ledger is not a pass (#1118). Exiting 0 here is what let the

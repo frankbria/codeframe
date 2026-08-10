@@ -11,13 +11,20 @@ An empty ledger is now its own outcome: exit 2, distinct from pass (0) and fail
 """
 
 from pathlib import Path
+import re
 from unittest.mock import patch
+
 
 import pytest
 from typer.testing import CliRunner
 
 from codeframe.cli.app import app
 from codeframe.core.workspace import create_or_load_workspace
+
+def _flat(text: str) -> str:
+    """Rich hard-wraps console output, so assertions must ignore line breaks."""
+    return re.sub(r"\s+", " ", text)
+
 
 pytestmark = pytest.mark.v2
 
@@ -164,36 +171,80 @@ class TestAScopeFilteredRunIsNotAnEmptyLedger:
         assert result.exit_code == 2
 
     def test_full_mode_does_not_blame_the_changed_files(self, workspace_dir):
-        """Second review finding: --full never consults scope.
-
-        Reachable with an all-waived ledger: the runnable set (OPEN+SATISFIED)
-        is empty, so `run_proof` returns {} while requirements exist. Saying
-        "none apply to the changed files" is false there, and "run --full" is
-        circular — the user just ran it.
-        """
+        """--full never consults scope, so it must not blame the changed files."""
         self._capture_req(workspace_dir, "src/auth/login.py")
-
         with patch("codeframe.core.proof.runner.run_proof", return_value={}):
             result = runner.invoke(
                 app, ["proof", "run", "-w", str(workspace_dir), "--full"]
             )
+        assert result.exit_code == 0, result.output
+        assert "changed files" not in _flat(result.output)
+
+
+class TestTheReasonIsDerivedNotGuessed:
+    """Third review finding, and the reason the first two kept recurring.
+
+    `run_proof` returning {} has three causes. Inferring which one from the
+    --full flag was wrong twice: it short-circuits when the runnable set is
+    empty, *before* scope detection, so an all-SATISFIED (scoped) or all-WAIVED
+    ledger never had its scope evaluated at all. The reason now comes from the
+    runner's own `_requirements_for_run`, so the CLI cannot drift from it.
+    """
+
+    def _capture(self, workspace_dir: Path) -> None:
+        result = runner.invoke(
+            app,
+            [
+                "proof", "capture",
+                "--title", "Login must not 500",
+                "--description", "Expected 200, got 500",
+                "--where", "src/auth/login.py",
+                "--severity", "high",
+                "--source", "production",
+                "-w", str(workspace_dir),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+    def _req_id(self, workspace_dir: Path) -> str:
+        from codeframe.core.proof import ledger
+        from codeframe.core.workspace import get_workspace
+
+        return ledger.list_requirements(get_workspace(workspace_dir))[0].id
+
+    def test_a_waived_only_ledger_is_not_blamed_on_scope(self, workspace_dir):
+        """The scoped path: run_proof short-circuits before scope is computed."""
+        self._capture(workspace_dir)
+        waive = runner.invoke(
+            app,
+            [
+                "proof", "waive", self._req_id(workspace_dir),
+                "--reason", "accepted risk for now",
+                "-w", str(workspace_dir),
+            ],
+        )
+        assert waive.exit_code == 0, waive.output
+
+        result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
 
         assert result.exit_code == 0, result.output
-        assert "changed files" not in result.output
-        assert "--full" not in result.output, "re-running --full changes nothing"
-        assert "not runnable" in result.output or "none are" in result.output
+        assert "changed files" not in _flat(result.output), (
+            "scope was never evaluated — the requirement was excluded by status"
+        )
+        assert "none are runnable" in _flat(result.output)
+        assert "waived" in result.output
 
-    def test_full_mode_names_waivers_when_that_is_the_reason(self, workspace_dir):
-        self._capture_req(workspace_dir, "src/auth/login.py")
-
-        reqs_out = runner.invoke(app, ["proof", "status", "-w", str(workspace_dir)])
-        assert reqs_out.exit_code == 0, reqs_out.output
+    def test_it_still_names_scope_when_scope_is_the_reason(self, workspace_dir):
+        """An OPEN requirement is runnable, so an empty result really is scope."""
+        self._capture(workspace_dir)
 
         with patch("codeframe.core.proof.runner.run_proof", return_value={}):
-            result = runner.invoke(
-                app, ["proof", "run", "-w", str(workspace_dir), "--full"]
-            )
-        # The captured requirement is OPEN, not waived, so no waiver count —
-        # but the message must still not claim scope filtering.
-        assert "waived" not in result.output or "0 waived" not in result.output
-        assert "changed files" not in result.output
+            result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
+
+        assert result.exit_code == 0, result.output
+        assert "changed files" in _flat(result.output)
+
+    def test_an_empty_ledger_is_still_the_vacuous_pass_case(self, workspace_dir):
+        result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
+        assert result.exit_code == 2
+        assert "cf proof capture" in result.output
