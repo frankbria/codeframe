@@ -853,7 +853,7 @@ def execute_agent(
         def on_agent_event(event_type: str, data: dict) -> None:
             events.emit_for_workspace(
                 workspace,
-                events.EventType.AGENT_STEP_STARTED if "started" in event_type else events.EventType.AGENT_STEP_COMPLETED,
+                _agent_event_to_event_type(event_type),
                 {"run_id": run.id, "agent_event": event_type, **data},
                 print_event=True,
             )
@@ -1116,6 +1116,47 @@ def execute_agent(
                 exec_ctx.preserve()
             else:
                 exec_ctx.cleanup()
+
+
+#: Agent event name suffix -> workspace EventType (#1116).
+#:
+#: The bridge used to be `AGENT_STEP_STARTED if "started" in name else
+#: AGENT_STEP_COMPLETED`, so a skipped file, a failed step and a completed step
+#: all arrived as AGENT_STEP_COMPLETED — 192 identical console lines in one run,
+#: and a failure reported as a success. Suffix rather than an exhaustive table
+#: because the agent vocabulary (step_*, planning_*, verification_*,
+#: self_correction_*, iterations_*) is consistently `<thing>_<outcome>`, so a new
+#: event name classifies correctly without this list being updated.
+_AGENT_EVENT_SUFFIXES: tuple[tuple[str, str], ...] = (
+    ("_skipped", "AGENT_STEP_SKIPPED"),
+    ("_failed", "AGENT_STEP_FAILED"),
+    ("_started", "AGENT_STEP_STARTED"),
+    ("_completed", "AGENT_STEP_COMPLETED"),
+)
+
+#: Names that are not `<thing>_<outcome>` or that have a better home.
+_AGENT_EVENT_OVERRIDES: dict[str, str] = {
+    "blocker_created": "BLOCKER_CREATED",
+    "escalation_blocker_created": "BLOCKER_CREATED",
+}
+
+
+def _agent_event_to_event_type(event_type: str) -> str:
+    """Map an agent event name to a workspace EventType.
+
+    Unmapped names get AGENT_EVENT rather than being folded into
+    AGENT_STEP_COMPLETED — an unknown event is not a completed one, and
+    pretending otherwise is what hid failures (#1116).
+    """
+    from codeframe.core import events as _events
+
+    name = (event_type or "").lower()
+    if name in _AGENT_EVENT_OVERRIDES:
+        return getattr(_events.EventType, _AGENT_EVENT_OVERRIDES[name])
+    for suffix, attr in _AGENT_EVENT_SUFFIXES:
+        if name.endswith(suffix):
+            return getattr(_events.EventType, attr)
+    return _events.EventType.AGENT_EVENT
 
 
 def _event_type_to_category(event_type: str):
