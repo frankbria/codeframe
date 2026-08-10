@@ -48,6 +48,7 @@ class OpenAIProvider(LLMProvider):
         base_url: Optional[str] = None,
         model_selector: Optional[ModelSelector] = None,
         credential_manager: Optional["CredentialManager"] = None,
+        provider_name: str = "openai",
     ):
         """Initialize the OpenAI provider.
 
@@ -57,11 +58,17 @@ class OpenAIProvider(LLMProvider):
             base_url: Custom endpoint URL for OpenAI-compatible APIs
             model_selector: Optional model selector; when provided, defers to it for per-purpose routing
             credential_manager: Optional credential manager for secure key retrieval
+            provider_name: Which OpenAI-compatible provider this actually is
+                ("openai", "ollama", "vllm", "compatible"). Used only for error
+                messages (#1110) — telling an ollama user to check
+                OPENAI_API_KEY is wrong, since local providers run with
+                api_key="not-required".
 
         Raises:
             ValueError: If no API key is available
         """
         self._has_custom_selector = model_selector is not None
+        self.provider_name = provider_name
         super().__init__(model_selector)
 
         self.model = model
@@ -148,14 +155,17 @@ class OpenAIProvider(LLMProvider):
             kwargs["tools"] = self._convert_tools(tools)
             kwargs["tool_choice"] = "auto"
 
+        from codeframe.adapters.llm.errors import map_provider_error
+
         try:
             response = self.client.chat.completions.create(**kwargs)
-        except openai.AuthenticationError as exc:
-            raise ValueError(f"OpenAI authentication failed: {exc}") from exc
-        except openai.RateLimitError as exc:
-            raise ValueError(f"OpenAI rate limit exceeded: {exc}") from exc
-        except openai.NotFoundError as exc:
-            raise ValueError(f"OpenAI model not found: {exc}") from exc
+        except Exception as exc:
+            raise map_provider_error(
+                exc,
+                provider=self.provider_name,
+                model=kwargs["model"],
+                purpose=purpose,
+            ) from exc
 
         return self._parse_response(response)
 
@@ -170,14 +180,9 @@ class OpenAIProvider(LLMProvider):
     ) -> LLMResponse:
         """True async completion via openai.AsyncOpenAI.
 
-        Raises LLMAuthError / LLMRateLimitError / LLMConnectionError on failure.
+        Raises a typed LLMError with an actionable message on failure (#1110).
         """
         import openai as _openai
-        from codeframe.adapters.llm.base import (
-            LLMAuthError,
-            LLMRateLimitError,
-            LLMConnectionError,
-        )
 
         if self._async_client is None:
             self._async_client = _openai.AsyncOpenAI(
@@ -198,15 +203,18 @@ class OpenAIProvider(LLMProvider):
             kwargs["tools"] = self._convert_tools(tools)
             kwargs["tool_choice"] = "auto"
 
+        from codeframe.adapters.llm.errors import map_provider_error
+
         try:
             response = await self._async_client.chat.completions.create(**kwargs)
             return self._parse_response(response)
-        except _openai.AuthenticationError as exc:
-            raise LLMAuthError(str(exc)) from exc
-        except _openai.RateLimitError as exc:
-            raise LLMRateLimitError(str(exc)) from exc
-        except _openai.APIConnectionError as exc:
-            raise LLMConnectionError(str(exc)) from exc
+        except Exception as exc:
+            raise map_provider_error(
+                exc,
+                provider=self.provider_name,
+                model=kwargs["model"],
+                purpose=purpose,
+            ) from exc
 
     async def async_stream(
         self,

@@ -132,8 +132,17 @@ class AnthropicProvider(LLMProvider):
         if tools:
             kwargs["tools"] = self._convert_tools(tools)
 
-        # Make the API call
-        response = self.client.messages.create(**kwargs)
+        # Make the API call. Failures are translated into typed LLMErrors with
+        # actionable text (#1110) — this path used to let the SDK exception
+        # escape, so `cf prd generate` printed a raw JSON repr at a new user.
+        from codeframe.adapters.llm.errors import map_provider_error
+
+        try:
+            response = self.client.messages.create(**kwargs)
+        except Exception as exc:
+            raise map_provider_error(
+                exc, provider="anthropic", model=model, purpose=purpose
+            ) from exc
 
         # Parse response
         return self._parse_response(response)
@@ -152,16 +161,8 @@ class AnthropicProvider(LLMProvider):
         Raises LLMAuthError / LLMRateLimitError / LLMConnectionError on failure.
         """
         from anthropic import AsyncAnthropic
-        from anthropic import (
-            AuthenticationError,
-            RateLimitError,
-            APIConnectionError,
-        )
-        from codeframe.adapters.llm.base import (
-            LLMAuthError,
-            LLMRateLimitError,
-            LLMConnectionError,
-        )
+
+        from codeframe.adapters.llm.errors import map_provider_error
 
         if self._async_client is None:
             self._async_client = AsyncAnthropic(
@@ -186,12 +187,12 @@ class AnthropicProvider(LLMProvider):
         try:
             response = await self._async_client.messages.create(**kwargs)
             return self._parse_response(response)
-        except AuthenticationError as exc:
-            raise LLMAuthError(str(exc)) from exc
-        except RateLimitError as exc:
-            raise LLMRateLimitError(str(exc)) from exc
-        except APIConnectionError as exc:
-            raise LLMConnectionError(str(exc)) from exc
+        except Exception as exc:
+            # Same mapping as the sync path — the async path previously produced
+            # typed errors but stringified the raw SDK body into them (#1110).
+            raise map_provider_error(
+                exc, provider="anthropic", model=model, purpose=purpose
+            ) from exc
 
     def supports(self, capability: str) -> bool:
         """Return True for capabilities this provider supports."""
