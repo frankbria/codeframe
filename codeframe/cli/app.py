@@ -2107,6 +2107,15 @@ def tasks_generate(
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+    except tasks.TaskGenerationError as e:
+        # The core message is surface-neutral because the web UI toasts it too
+        # (#1115 review); the CLI-specific remedy belongs here.
+        console.print(f"[red]Error:[/red] {e}")
+        console.print(
+            "  Retry with [bold]cf tasks generate[/bold], or "
+            "[bold]cf tasks generate --no-llm[/bold] to extract bullets directly."
+        )
+        raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)

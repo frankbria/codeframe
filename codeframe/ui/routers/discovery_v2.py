@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import prd_discovery, prd, tasks
+from codeframe.core.tasks import TaskGenerationError
 from codeframe.core.prd_discovery import (
     DiscoveryError,
     NoApiKeyError,
@@ -450,6 +451,13 @@ async def generate_tasks_from_prd(
         # it into a 500 "task generation failed", hiding both the reason and
         # the registered 400 handler.
         raise
+    except TaskGenerationError as e:
+        # The model returned something unusable — an upstream failure, not a bug
+        # here, so 502 rather than a generic 500 (#1115). Before, this path
+        # silently degraded to bullet extraction and returned 200 with a list of
+        # unimplementable "tasks"; the caller could not tell it had failed.
+        logger.warning(f"Task generation failed: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to generate tasks: {e}", exc_info=True)
         raise HTTPException(

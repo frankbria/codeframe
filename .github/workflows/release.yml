@@ -41,6 +41,17 @@ jobs:
             exit 1
           fi
 
+      # 0.9.1 shipped five retired model IDs and 404'd for every new user (#1112).
+      # This fails the release before it can happen again: every DEFAULT_*_MODEL
+      # must be a date-less alias AND must resolve against the live API.
+      # REQUIRE_LIVE means a missing/broken ANTHROPIC_API_KEY secret fails the
+      # release rather than silently skipping the check that matters most.
+      - name: Model-default release guard
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MODEL_GUARD_REQUIRE_LIVE: "1"
+        run: uv run python -m scripts.check_model_defaults
+
       - name: Build
         run: uv build
 

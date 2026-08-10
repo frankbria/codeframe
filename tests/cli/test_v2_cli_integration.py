@@ -840,18 +840,33 @@ class TestAITaskGeneration:
         assert "generated" in result.output.lower()
         assert provider.call_count >= 1
 
-    def test_generate_llm_returns_invalid_json_falls_back(
+    def test_generate_llm_returns_invalid_json_fails_loudly(
         self, workspace_with_prd, mock_llm
     ):
-        """When LLM returns garbage, generate_from_prd falls back to simple extraction."""
+        """When the LLM returns garbage, generation fails instead of degrading (#1115).
+
+        This test previously asserted the opposite — that the command exits 0 via
+        fallback extraction. That fallback is a markdown bullet splitter, and in
+        the field it turned a truncated response into twenty "tasks" made of
+        persona traits, with a green success message on top. `--no-llm` is now
+        the only way to ask for bullet extraction.
+        """
         mock_llm(["This is not valid JSON at all."])
 
         result = runner.invoke(
             app,
             ["tasks", "generate", "-w", str(workspace_with_prd)],
         )
-        # Should still succeed via fallback extraction
-        assert result.exit_code == 0, f"fallback failed: {result.output}"
+        assert result.exit_code != 0, f"should not have succeeded: {result.output}"
+        assert "--no-llm" in result.output
+
+    def test_generate_no_llm_still_extracts(self, workspace_with_prd):
+        """The escape hatch the failure message points at must actually work."""
+        result = runner.invoke(
+            app,
+            ["tasks", "generate", "--no-llm", "-w", str(workspace_with_prd)],
+        )
+        assert result.exit_code == 0, result.output
         assert "generated" in result.output.lower()
 
 
