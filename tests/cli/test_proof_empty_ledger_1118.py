@@ -162,3 +162,38 @@ class TestAScopeFilteredRunIsNotAnEmptyLedger:
         """The two paths must not have been collapsed the other way."""
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
         assert result.exit_code == 2
+
+    def test_full_mode_does_not_blame_the_changed_files(self, workspace_dir):
+        """Second review finding: --full never consults scope.
+
+        Reachable with an all-waived ledger: the runnable set (OPEN+SATISFIED)
+        is empty, so `run_proof` returns {} while requirements exist. Saying
+        "none apply to the changed files" is false there, and "run --full" is
+        circular — the user just ran it.
+        """
+        self._capture_req(workspace_dir, "src/auth/login.py")
+
+        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
+            result = runner.invoke(
+                app, ["proof", "run", "-w", str(workspace_dir), "--full"]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "changed files" not in result.output
+        assert "--full" not in result.output, "re-running --full changes nothing"
+        assert "not runnable" in result.output or "none are" in result.output
+
+    def test_full_mode_names_waivers_when_that_is_the_reason(self, workspace_dir):
+        self._capture_req(workspace_dir, "src/auth/login.py")
+
+        reqs_out = runner.invoke(app, ["proof", "status", "-w", str(workspace_dir)])
+        assert reqs_out.exit_code == 0, reqs_out.output
+
+        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
+            result = runner.invoke(
+                app, ["proof", "run", "-w", str(workspace_dir), "--full"]
+            )
+        # The captured requirement is OPEN, not waived, so no waiver count —
+        # but the message must still not claim scope filtering.
+        assert "waived" not in result.output or "0 waived" not in result.output
+        assert "changed files" not in result.output

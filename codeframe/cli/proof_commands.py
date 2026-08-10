@@ -191,6 +191,7 @@ def run(
         # a doc-only PR because its scope matched nothing would be a new bug.
         try:
             from codeframe.core.proof import ledger as _ledger
+            from codeframe.core.proof.models import ReqStatus
 
             all_reqs = _ledger.list_requirements(workspace)
         except Exception:
@@ -199,18 +200,37 @@ def run(
             all_reqs = []
 
         if all_reqs:
-            # The scope filter did its job. Nothing was verified, but that is
-            # the designed behaviour for a change these requirements do not
-            # cover — not a vacuous pass, and not a failure.
-            console.print(
-                f"[yellow]Nothing was verified.[/yellow] "
-                f"{len(all_reqs)} requirement(s) exist, but none apply to the "
-                f"changed files."
-            )
-            console.print(
-                "Run [bold]cf proof run --full[/bold] to check all of them "
-                "regardless of scope."
-            )
+            # Nothing was verified, but not because the ledger is empty. Why
+            # depends on the mode, and saying the wrong one sends the user in a
+            # circle: --full never consults scope at all.
+            if full:
+                # The runnable set (OPEN + SATISFIED) was empty. WAIVED
+                # requirements are deliberately excluded from every run, so an
+                # all-waived ledger lands here.
+                waived = sum(1 for r in all_reqs if r.status == ReqStatus.WAIVED)
+                console.print(
+                    f"[yellow]Nothing was verified.[/yellow] "
+                    f"{len(all_reqs)} requirement(s) exist, but none are "
+                    f"runnable"
+                    + (f" ({waived} waived)." if waived else ".")
+                )
+                console.print(
+                    "A waiver is an accepted risk and is never re-checked by a "
+                    "run — see [bold]cf proof status[/bold] for the ledger."
+                )
+            else:
+                # A scoped run with requirements present genuinely is a
+                # scope-skip: the filter did its job for a change they do not
+                # cover. Not a vacuous pass, and not a failure.
+                console.print(
+                    f"[yellow]Nothing was verified.[/yellow] "
+                    f"{len(all_reqs)} requirement(s) exist, but none apply to "
+                    f"the changed files."
+                )
+                console.print(
+                    "Run [bold]cf proof run --full[/bold] to check all of them "
+                    "regardless of scope."
+                )
             return
 
         # An empty ledger is not a pass (#1118). Exiting 0 here is what let the
