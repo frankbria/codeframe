@@ -80,3 +80,46 @@ class TestGenerateTasksProviderResolution:
             )
         assert response.status_code == 200, response.text
         mock_create.assert_not_called()
+
+
+class TestUnusableLLMOutputIsAnUpstreamFailure:
+    """#1115: the endpoint must report a failed decomposition, not a 200 or a 500.
+
+    Before, a truncated/garbage response degraded silently to bullet extraction
+    and returned 200 with a list of unimplementable "tasks" — the caller could
+    not tell it had failed. TaskGenerationError now maps to 502, matching how the
+    repo already remaps upstream GitHub failures.
+    """
+
+    def _post_with_llm_returning(self, test_client, monkeypatch, payload):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("CODEFRAME_LLM_PROVIDER", "ollama")
+        provider = MagicMock()
+        provider.complete.return_value = MagicMock(content=payload)
+        with patch(
+            "codeframe.core.llm_resolution.create_provider", return_value=provider
+        ):
+            return test_client.post("/api/v2/discovery/generate-tasks")
+
+    def test_truncated_json_returns_502(self, test_client, monkeypatch):
+        truncated = '[{"title": "Define the model", "description": "x"}, {"title": "Imple'
+        response = self._post_with_llm_returning(test_client, monkeypatch, truncated)
+
+        assert response.status_code == 502, response.text
+        assert "truncated" in response.json()["detail"].lower()
+
+    def test_garbage_returns_502_not_200(self, test_client, monkeypatch):
+        response = self._post_with_llm_returning(
+            test_client, monkeypatch, "I'm afraid I can't do that"
+        )
+
+        assert response.status_code == 502, response.text
+        assert response.json()["detail"].startswith("Task generation failed")
+
+    def test_the_detail_does_not_tell_a_web_user_to_run_a_cli_command(
+        self, test_client, monkeypatch
+    ):
+        """This detail is toasted verbatim by /prd — `cf tasks generate` is useless there."""
+        response = self._post_with_llm_returning(test_client, monkeypatch, "nonsense")
+
+        assert "cf tasks generate" not in response.json()["detail"]
