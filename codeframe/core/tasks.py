@@ -28,6 +28,15 @@ from codeframe.core.prd import PrdRecord
 logger = logging.getLogger(__name__)
 
 
+#: Surface-neutral remedy. This message is shown by the CLI *and* toasted by the
+#: web UI via the 502 from discovery_v2, so it must not name a CLI command — the
+#: CLI adds its own `--no-llm` hint on top (#1115 review).
+_RETRY_HINT = (
+    "Retry task generation, or generate without the LLM to fall back to plain "
+    "bullet extraction from the PRD."
+)
+
+
 class TaskGenerationError(Exception):
     """LLM task decomposition failed and must not degrade silently (#1115).
 
@@ -1170,8 +1179,9 @@ def generate_from_prd(
 ) -> list[Task]:
     """Generate tasks from a PRD.
 
-    Uses LLM to decompose the PRD into actionable tasks.
-    Falls back to simple extraction if LLM is unavailable.
+    Uses an LLM to decompose the PRD into actionable tasks. There is no silent
+    fallback: if the LLM path fails, TaskGenerationError is raised (#1115).
+    ``use_llm=False`` is the explicit opt-in to crude bullet extraction.
 
     Args:
         workspace: Target workspace
@@ -1309,16 +1319,13 @@ PRD:
             else f"the response was not valid JSON ({e})"
         )
         raise TaskGenerationError(
-            f"Task generation failed: {detail}. "
-            "Re-run `cf tasks generate` to retry, or use `cf tasks generate --no-llm` "
-            "to fall back to plain bullet extraction from the PRD."
+            f"Task generation failed: {detail}. " + _RETRY_HINT
         ) from e
 
     if not isinstance(tasks_raw, list):
         raise TaskGenerationError(
-            "Task generation failed: the model did not return a JSON array of tasks. "
-            "Re-run `cf tasks generate` to retry, or use `cf tasks generate --no-llm` "
-            "to fall back to plain bullet extraction from the PRD."
+            "Task generation failed: the model did not return a JSON array of "
+            "tasks. " + _RETRY_HINT
         )
 
     # Validate and extract rich fields
@@ -1371,8 +1378,7 @@ PRD:
     if not validated:
         raise TaskGenerationError(
             "Task generation failed: the model returned no usable tasks. "
-            "Re-run `cf tasks generate` to retry, or use `cf tasks generate --no-llm` "
-            "to fall back to plain bullet extraction from the PRD."
+            + _RETRY_HINT
         )
 
     return validated

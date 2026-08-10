@@ -183,7 +183,19 @@ class TestTheFallbackIsLoud:
     def test_the_error_tells_the_user_what_to_do(self):
         with pytest.raises(TaskGenerationError) as exc:
             _generate_tasks_with_llm(FIXTURE_PRD, provider=_provider_returning("not json"))
-        assert "--no-llm" in str(exc.value)
+        message = str(exc.value)
+        assert "Retry task generation" in message
+        assert "without the LLM" in message
+
+    def test_the_core_message_names_no_cli_command(self):
+        """The web UI toasts this via the 502, where `cf ...` is useless advice.
+
+        Raised in PR review. The CLI adds its own `--no-llm` line on top — see
+        tests/cli/test_v2_cli_integration.py::test_generate_llm_returns_invalid_json_fails_loudly.
+        """
+        with pytest.raises(TaskGenerationError) as exc:
+            _generate_tasks_with_llm(FIXTURE_PRD, provider=_provider_returning("not json"))
+        assert "cf tasks generate" not in str(exc.value)
 
     def test_generate_from_prd_does_not_swallow_it(self, tmp_path):
         ws, record = _workspace_with_prd(tmp_path)
