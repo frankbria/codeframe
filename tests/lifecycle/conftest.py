@@ -55,7 +55,14 @@ def pytest_collection_modifyitems(config, items):
     if not os.getenv("ANTHROPIC_API_KEY"):
         skip = pytest.mark.skip(reason="ANTHROPIC_API_KEY not set — lifecycle tests require real API")
         for item in items:
-            if "lifecycle" in str(item.fspath):
+            # The `lifecycle` marker, not a substring of the path. `"lifecycle"
+            # in str(item.fspath)` also matched test_api_key_lifecycle_919.py,
+            # test_proof_requirement_lifecycle_923.py and
+            # test_lifecycle_gates_948.py — none of which make an LLM call — so
+            # six real tests were being skipped for having "lifecycle" in their
+            # filename. It went unnoticed because #1064's import-time env load
+            # meant the key was always set locally; only CI ever skipped them.
+            if item.get_closest_marker("lifecycle"):
                 item.add_marker(skip)
 
 
