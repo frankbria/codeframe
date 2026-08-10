@@ -319,3 +319,26 @@ class TestTheBriefBackedMode:
         )
         assert result.exit_code != 0
         assert "alternatives" in result.output or "one" in result.output.lower()
+
+
+class TestNonUtf8InputIsReported:
+    """A strict read raises ValueError, which a FileNotFoundError-only handler
+    would let escape as a traceback (the #1029 rule)."""
+
+    def test_a_non_utf8_answers_file(self, tmp_path):
+        import typer
+
+        path = tmp_path / "answers.json"
+        path.write_bytes(b'["caf\xe9 latte"]')  # latin-1
+        with pytest.raises(typer.BadParameter) as exc:
+            _load_answers_file(path)
+        assert "UTF-8" in str(exc.value)
+
+    def test_a_non_utf8_brief_file(self, tmp_path):
+        import typer
+
+        path = tmp_path / "brief.md"
+        path.write_bytes(b"caf\xe9 latte")
+        with pytest.raises(typer.BadParameter) as exc:
+            _load_brief_file(path)
+        assert "UTF-8" in str(exc.value)

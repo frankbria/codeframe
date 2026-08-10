@@ -173,9 +173,11 @@ class _AnswerSource:
 def _load_brief_file(path: Path) -> str:
     """Read a plain-text project brief for --brief-file."""
     try:
-        brief = path.read_text().strip()
+        brief = path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         raise typer.BadParameter(f"brief file not found: {path}")
+    except UnicodeDecodeError as e:
+        raise typer.BadParameter(f"{path} is not valid UTF-8 ({e}).")
     if not brief:
         raise typer.BadParameter(f"{path} is empty.")
     return brief
@@ -225,9 +227,13 @@ def _load_answers_file(path: Path) -> list[str]:
     single format keeps the failure modes obvious.
     """
     try:
-        raw = json.loads(path.read_text())
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         raise typer.BadParameter(f"answers file not found: {path}")
+    except UnicodeDecodeError as e:
+        # A strict read raises ValueError, not OSError, so it would otherwise
+        # escape as a traceback (#1029).
+        raise typer.BadParameter(f"{path} is not valid UTF-8 ({e}).")
     except json.JSONDecodeError as e:
         raise typer.BadParameter(
             f"{path} is not valid JSON ({e}). Expected an array of answer strings."
