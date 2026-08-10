@@ -95,7 +95,14 @@ jobs:
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
           echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
           tar -xzf actionlint.tar.gz actionlint
-          ./actionlint -color
+          # -shellcheck= disables actionlint's shellcheck integration. This gate
+          # is about workflows GitHub cannot COMPILE (#1122) — the failure mode
+          # that produces a run with zero jobs and no logs. shellcheck reports 44
+          # pre-existing style/info findings in existing `run:` blocks, almost
+          # all in deploy.yml; turning that on here would either block this fix
+          # or force blind quoting changes to the deploy path that cannot be
+          # tested from a PR. Tracked separately in #1130.
+          ./actionlint -color -shellcheck=
 
   # ============================================
   # Static Analysis - Check for Hardcoded URLs

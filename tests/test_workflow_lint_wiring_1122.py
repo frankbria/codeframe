@@ -72,3 +72,29 @@ def test_every_workflow_file_still_parses():
         data = yaml.safe_load(path.read_text())
         assert isinstance(data, dict), f"{path.name} did not parse to a mapping"
         assert "jobs" in data, f"{path.name} declares no jobs"
+
+
+def test_the_shellcheck_suppression_is_documented_and_tracked():
+    """`-shellcheck=` is a deliberate scope limit, not a silent one (#1130).
+
+    actionlint runs shellcheck whenever it is on PATH — which it is on GitHub
+    runners but often not locally, so this class of check disappears without
+    warning depending on where you run it. If the suppression is ever removed,
+    this test should be deleted along with it; if it stays, it stays explained.
+    """
+    raw = TEST_WORKFLOW.read_text()
+    assert "-shellcheck=" in raw
+    assert "#1130" in raw, "the suppression must point at its follow-up issue"
+
+
+def test_workflow_compilability_is_still_checked():
+    """The suppression must not have disabled the thing the job exists for."""
+    invocation = next(
+        line for line in TEST_WORKFLOW.read_text().splitlines()
+        if "./actionlint" in line
+    )
+    # -shellcheck= narrows the checks; it must not be paired with anything that
+    # would also drop the expression/syntax pass. (Scoped to the invocation
+    # line — `paths-ignore` appears elsewhere in this file.)
+    assert "-ignore" not in invocation
+    assert "-shellcheck=" in invocation
