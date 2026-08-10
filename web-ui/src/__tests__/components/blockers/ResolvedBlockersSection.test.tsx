@@ -15,6 +15,7 @@ function makeBlocker(overrides: Partial<Blocker> = {}): Blocker {
     status: 'RESOLVED',
     created_at: '2026-02-19T10:00:00Z',
     answered_at: '2026-02-19T10:05:00Z',
+    created_by: 'agent',
     ...overrides,
   };
 }

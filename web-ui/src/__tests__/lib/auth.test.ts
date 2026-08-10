@@ -89,7 +89,7 @@ describe('login', () => {
     mockedAxios.post.mockRejectedValueOnce({
       response: { status: 400, data: { detail: 'LOGIN_BAD_CREDENTIALS' } },
     });
-    mockedAxios.isAxiosError = jest.fn(() => true) as unknown as typeof axios.isAxiosError;
+    mockedAxios.isAxiosError.mockReturnValue(true);
 
     await expect(login('user@example.com', 'wrong')).rejects.toThrow(
       /invalid email or password/i
@@ -143,7 +143,7 @@ describe('register', () => {
         data: { detail: 'Set CODEFRAME_BOOTSTRAP_TOKEN on the server.' },
       },
     });
-    mockedAxios.isAxiosError = jest.fn(() => true) as unknown as typeof axios.isAxiosError;
+    mockedAxios.isAxiosError.mockReturnValue(true);
 
     await expect(register('second@example.com', 'pw')).rejects.toThrow(
       /CODEFRAME_BOOTSTRAP_TOKEN/
@@ -154,7 +154,7 @@ describe('register', () => {
     mockedAxios.post.mockRejectedValueOnce({
       response: { status: 403, data: {} },
     });
-    mockedAxios.isAxiosError = jest.fn(() => true) as unknown as typeof axios.isAxiosError;
+    mockedAxios.isAxiosError.mockReturnValue(true);
 
     await expect(register('second@example.com', 'pw')).rejects.toThrow(
       /registration is closed/i

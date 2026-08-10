@@ -110,7 +110,7 @@ function setupRouter() {
     forward: jest.fn(),
     refresh: jest.fn(),
     prefetch: jest.fn(),
-  } as ReturnType<typeof useRouter>);
+  } as unknown as ReturnType<typeof useRouter>);
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────

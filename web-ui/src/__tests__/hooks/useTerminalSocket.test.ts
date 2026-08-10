@@ -24,7 +24,7 @@ class MockWebSocket {
 
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string | ArrayBuffer }) => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event: { code: number }) => void) | null = null;
   onerror: (() => void) | null = null;
 
   static instances: MockWebSocket[] = [];
@@ -49,7 +49,7 @@ class MockWebSocket {
     this.onopen?.();
   }
 
-  simulateBinaryMessage(bytes: Uint8Array) {
+  simulateBinaryMessage(bytes: Uint8Array<ArrayBuffer>) {
     this.onmessage?.({ data: bytes.buffer });
   }
 

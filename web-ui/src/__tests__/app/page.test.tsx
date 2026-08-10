@@ -87,8 +87,8 @@ describe('WorkspacePage', () => {
       // Set workspace path in localStorage
       localStorageMock.setItem('codeframe_workspace_path', '/home/user/my-app');
 
-      mockUseSWR.mockImplementation((key: string | null) => {
-        if (key && key.includes('/api/v2/workspaces/current')) {
+      mockUseSWR.mockImplementation(((key: unknown) => {
+        if (typeof key === 'string' && key.includes('/api/v2/workspaces/current')) {
           return {
             data: {
               id: 'ws-123',
@@ -100,9 +100,9 @@ describe('WorkspacePage', () => {
             error: undefined,
             isLoading: false,
             mutate: jest.fn(),
-          } as any;
+          } as never;
         }
-        if (key && key.includes('/api/v2/tasks')) {
+        if (typeof key === 'string' && key.includes('/api/v2/tasks')) {
           return {
             data: {
               tasks: [],
@@ -119,10 +119,10 @@ describe('WorkspacePage', () => {
             error: undefined,
             isLoading: false,
             mutate: jest.fn(),
-          } as any;
+          } as never;
         }
-        return { data: undefined, error: undefined, isLoading: false, mutate: jest.fn() } as any;
-      });
+        return { data: undefined, error: undefined, isLoading: false, mutate: jest.fn() } as never;
+      }) as never);
     });
 
     it('renders workspace header with path', async () => {
