@@ -67,6 +67,37 @@ jobs:
         run: npm run lint
 
   # ============================================
+  # Workflow Lint — a workflow that will not compile ships silently (#1122)
+  # ============================================
+  # An uncompilable workflow does not fail like a normal job: the run has zero
+  # jobs and no logs, `gh run view --log-failed` says "log not found", and it
+  # ignores its own trigger filters. deploy.yml failed that way on every push to
+  # main for a week and read as background noise. actionlint catches it in under
+  # a second. Deliberately NOT paths-filtered: a skipped required check is the
+  # same silence this job exists to remove.
+  workflow-lint:
+    name: Workflow Lint (actionlint)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Pinned release + checksum rather than a floating action: this job's
+      # whole job is to stop unverifiable CI config from landing.
+      - name: Run actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.7"
+          ACTIONLINT_SHA256: "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757"
+        run: |
+          set -euo pipefail
+          curl -sSLf -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -color
+
+  # ============================================
   # Static Analysis - Check for Hardcoded URLs
   # ============================================
   check-hardcoded-urls:
@@ -548,7 +579,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests, code-quality, check-hardcoded-urls, e2e-browser-smoke]
+    needs: [backend-tests, frontend-tests, code-quality, check-hardcoded-urls, e2e-browser-smoke, workflow-lint]
     if: always()
 
     steps:
@@ -559,6 +590,7 @@ jobs:
           echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Code Quality | ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Workflow Lint | ${{ needs.workflow-lint.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Hardcoded URLs | ${{ needs.check-hardcoded-urls.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Backend Tests | ${{ needs.backend-tests.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Frontend Tests | ${{ needs.frontend-tests.result }} |" >> $GITHUB_STEP_SUMMARY
@@ -568,6 +600,7 @@ jobs:
           # (failure / cancelled / timed_out) as a gate failure, not just
           # "failure". Other jobs keep the file's existing "failure"-only check.
           if [ "${{ needs.code-quality.result }}" == "failure" ] || \
+             [ "${{ needs.workflow-lint.result }}" == "failure" ] || \
              [ "${{ needs.check-hardcoded-urls.result }}" == "failure" ] || \
              [ "${{ needs.backend-tests.result }}" == "failure" ] || \
              [ "${{ needs.e2e-browser-smoke.result }}" == "failure" ] || \
