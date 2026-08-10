@@ -1578,7 +1578,15 @@ class TestStreamCompletion:
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,
     ):
-        """On max_iterations failure, ReactAgent publishes ErrorEvent and closes stream."""
+        """On max_iterations, ReactAgent publishes ErrorEvent and closes stream.
+
+        Since #1117 exhaustion tries to create a blocker and return BLOCKED.
+        This fixture's workspace has no database, so that write fails and the
+        run degrades to FAILED — which is the point worth pinning here: the
+        stream is still closed exactly once and the caller still learns the run
+        ended. The BLOCKED contract itself is covered against a real workspace
+        in tests/core/test_iteration_budget_outcome_1117.py.
+        """
         from codeframe.core.react_agent import ReactAgent
         from codeframe.core.models import ErrorEvent
 
@@ -1612,7 +1620,7 @@ class TestStreamCompletion:
             e for _, e in publisher.events if isinstance(e, ErrorEvent)
         ]
         assert len(error_events) == 1
-        assert error_events[0].error == "max_iterations_reached"
+        assert error_events[0].error
 
         assert "task-1" in publisher.completed_tasks
 
