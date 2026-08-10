@@ -78,8 +78,31 @@ def _assistant_user_pairs(messages: list[dict], cutoff: int):
 
 # Reason string emitted when a stall timeout triggers a blocker — used to
 # set the correct BlockerOrigin ("system") vs agent-generated blockers.
+
+def _iteration_budget_override() -> Optional[int]:
+    """The iteration budget forced by CODEFRAME_MAX_ITERATIONS, if any (#1117).
+
+    Returns None when unset or unusable, so the caller falls back to the
+    configured/adaptive budget. A bad value warns rather than crashing — this
+    sits on the Golden Path and a typo must not abort the run.
+    """
+    raw = os.getenv("CODEFRAME_MAX_ITERATIONS")
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("CODEFRAME_MAX_ITERATIONS=%r is not an integer; ignoring", raw)
+        return None
+    if value <= 0:
+        logger.warning("CODEFRAME_MAX_ITERATIONS=%d must be positive; ignoring", value)
+        return None
+    return value
+
+
 _REASON_STALL_DETECTED = "stall_detected"
 _REASON_COST_CAP_EXCEEDED = "cost_cap_exceeded"
+_REASON_ITERATION_BUDGET_EXHAUSTED = "iteration_budget_exhausted"
 
 #: Verification-failure reasons that mean "a blocker was created", so the run is
 #: BLOCKED rather than FAILED. Anything not listed falls through to FAILED —
@@ -88,6 +111,17 @@ _BLOCKED_REASONS = frozenset({
     "escalated_to_blocker",
     _REASON_STALL_DETECTED,
     _REASON_COST_CAP_EXCEEDED,
+    # Running out of iterations is not an error (#1117). The run that surfaced
+    # this had a nearly complete implementation on disk and told the user only
+    # "Task execution failed".
+    _REASON_ITERATION_BUDGET_EXHAUSTED,
+})
+
+#: Reasons the *runtime* stopped the run, as opposed to a blocker the agent
+#: raised about the work itself. These get BlockerOrigin "system".
+_SYSTEM_DETECTED_REASONS = frozenset({
+    _REASON_STALL_DETECTED,
+    _REASON_ITERATION_BUDGET_EXHAUSTED,
 })
 
 # Map tool names to agent phases for progress reporting.
@@ -241,7 +275,9 @@ class ReactAgent:
         Returns:
             AgentStatus.COMPLETED — task finished successfully.
             AgentStatus.BLOCKED — a blocker was created (check self.blocker_id).
-            AgentStatus.FAILED — max iterations or verification exhausted.
+            AgentStatus.FAILED — an error, or verification exhausted. NOT
+                iteration exhaustion, which returns BLOCKED with a blocker
+                since #1117.
         """
         self._current_task_id = task_id
         self._early_termination_reason = None
@@ -288,7 +324,12 @@ class ReactAgent:
                     elif self._stall_triggered.is_set():
                         reason = _REASON_STALL_DETECTED
                     else:
-                        reason = "max_iterations_reached"
+                        # Unreachable today: natural exhaustion returns BLOCKED
+                        # (#1117) and the remaining FAILED paths — stall with
+                        # --stall-action fail, loop detection — both set one of
+                        # the flags above. Kept as a defensive default, but no
+                        # longer mislabelled as a budget stop.
+                        reason = "unknown"
                     self._emit(EventType.AGENT_FAILED, {
                         "task_id": task_id,
                         "reason": reason,
@@ -477,8 +518,11 @@ class ReactAgent:
         """Core ReAct loop: iterate LLM calls until text-only or max iterations.
 
         Returns AgentStatus.COMPLETED when the LLM responds with text only.
-        Returns AgentStatus.BLOCKED when a blocker pattern is detected.
-        Returns AgentStatus.FAILED when max_iterations is reached.
+        Returns AgentStatus.BLOCKED when a blocker pattern is detected, and also
+        when the iteration budget is exhausted — that is a resumable stop with a
+        blocker, not a failure (#1117).
+        Returns AgentStatus.FAILED on a stall with --stall-action fail, or when
+        loop detection ends the run early.
         """
         messages: list[dict] = [
             {
@@ -766,8 +810,29 @@ class ReactAgent:
                     "task_id": self._current_task_id,
                 })
 
-        # Exhausted iterations
-        return AgentStatus.FAILED
+        # Exhausted iterations (#1117). Same shape as the cost cap above: the
+        # work is not wrong, it ran out of budget, and the partial result is
+        # already on disk. FAILED threw that away and told the user nothing.
+        # Kept under _create_text_blocker's 500-char context cap so the
+        # `cf work diagnose` pointer is not truncated away.
+        short_id = (self._current_task_id or "")[:8]
+        self._create_text_blocker(
+            (
+                f"Used the full budget of {self.max_iterations} iteration(s) "
+                f"without declaring the task complete.\n\n"
+                f"This is not an error. Partial work from this run is already in "
+                f"your working tree — review it with `git status` before "
+                f"re-running.\n\n"
+                f"To continue, raise the budget and re-run:\n"
+                f"  CODEFRAME_MAX_ITERATIONS={self.max_iterations * 2} "
+                f"cf work start {short_id} --execute\n"
+                f"(or set agent.max_iterations in .codeframe/config.yaml), "
+                f"or split the task up.\n\n"
+                f"What the run did: `cf work diagnose {short_id}`"
+            ),
+            _REASON_ITERATION_BUDGET_EXHAUSTED,
+        )
+        return AgentStatus.BLOCKED
 
     # ------------------------------------------------------------------
     # Final verification
@@ -1162,6 +1227,15 @@ class ReactAgent:
         else:
             budget_config = AgentBudgetConfig()
 
+        # CODEFRAME_MAX_ITERATIONS beats the config file (#1117), matching the
+        # LLM-provider precedence chain. Raising the cap is what the exhaustion
+        # blocker tells the user to do, so it has to work without editing a file
+        # inside the repo — and it has to be an *exact* budget, not a ceiling the
+        # complexity multiplier then scales away from.
+        override = _iteration_budget_override()
+        if override is not None:
+            return override
+
         base = budget_config.base_iterations
         # Default to medium complexity (2) when score is absent.
         score = getattr(context.task, "complexity_score", None) or 2
@@ -1378,11 +1452,20 @@ class ReactAgent:
         the run record to the blocker.  If creation fails the exception
         propagates — callers in ``run()`` catch it and return FAILED.
         """
-        question = (
-            f"Agent detected a blocker: {reason}\n\n"
-            f"Context:\n{text[:500]}"
-        )
-        origin = "system" if reason == _REASON_STALL_DETECTED else "agent"
+        # Budget/stall stops are detected by the runtime, not reported by the
+        # agent, so neither the wording nor the origin should claim otherwise
+        # (#1117) — "Agent detected a blocker: iteration_budget_exhausted" reads
+        # like the agent found a problem in the work, which is the opposite of
+        # what happened.
+        if reason in _SYSTEM_DETECTED_REASONS:
+            question = f"Run stopped: {reason}\n\n{text[:500]}"
+            origin = "system"
+        else:
+            question = (
+                f"Agent detected a blocker: {reason}\n\n"
+                f"Context:\n{text[:500]}"
+            )
+            origin = "agent"
         blocker = blockers.create(
             workspace=self.workspace,
             question=question,
