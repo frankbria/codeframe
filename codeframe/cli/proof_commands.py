@@ -226,7 +226,11 @@ def run(
                 f"{len(runnable)} requirement(s) were eligible for this run, "
                 f"but no obligations ran."
             )
-            reasons = ["none of them cover the changed files"]
+            reasons = []
+            if not full:
+                # --full provably ignores scope (runner.py:339), so listing it
+                # there would put an impossible cause in the candidate list.
+                reasons.append("none of them cover the changed files")
             if gate_filter is not None:
                 reasons.append(f"--gate {gate_filter.value} excluded their obligations")
             reasons.append("their obligations are disabled in proof_config.json")

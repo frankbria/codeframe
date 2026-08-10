@@ -268,3 +268,27 @@ class TestTheReasonIsDerivedNotGuessed:
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
         assert result.exit_code == 2
         assert "cf proof capture" in result.output
+
+    def test_full_mode_omits_scope_from_the_candidates(self, workspace_dir):
+        """--full provably ignores scope, so listing it is an impossible cause."""
+        self._capture(workspace_dir)
+
+        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
+            result = runner.invoke(
+                app,
+                ["proof", "run", "-w", str(workspace_dir), "--full", "--gate", "unit"],
+            )
+
+        flat = _flat(result.output)
+        assert result.exit_code == 0, result.output
+        assert "changed files" not in flat, "scope cannot be the reason under --full"
+        assert "--gate unit" in flat, "the real candidate is still named"
+
+    def test_the_gate_candidate_is_omitted_when_no_gate_was_passed(self, workspace_dir):
+        """Only list causes that could actually apply to this invocation."""
+        self._capture(workspace_dir)
+
+        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
+            result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
+
+        assert "--gate" not in _flat(result.output)
