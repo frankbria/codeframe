@@ -275,7 +275,9 @@ class ReactAgent:
         Returns:
             AgentStatus.COMPLETED — task finished successfully.
             AgentStatus.BLOCKED — a blocker was created (check self.blocker_id).
-            AgentStatus.FAILED — max iterations or verification exhausted.
+            AgentStatus.FAILED — an error, or verification exhausted. NOT
+                iteration exhaustion, which returns BLOCKED with a blocker
+                since #1117.
         """
         self._current_task_id = task_id
         self._early_termination_reason = None
@@ -322,7 +324,12 @@ class ReactAgent:
                     elif self._stall_triggered.is_set():
                         reason = _REASON_STALL_DETECTED
                     else:
-                        reason = "max_iterations_reached"
+                        # Unreachable today: natural exhaustion returns BLOCKED
+                        # (#1117) and the remaining FAILED paths — stall with
+                        # --stall-action fail, loop detection — both set one of
+                        # the flags above. Kept as a defensive default, but no
+                        # longer mislabelled as a budget stop.
+                        reason = "unknown"
                     self._emit(EventType.AGENT_FAILED, {
                         "task_id": task_id,
                         "reason": reason,
@@ -511,8 +518,11 @@ class ReactAgent:
         """Core ReAct loop: iterate LLM calls until text-only or max iterations.
 
         Returns AgentStatus.COMPLETED when the LLM responds with text only.
-        Returns AgentStatus.BLOCKED when a blocker pattern is detected.
-        Returns AgentStatus.FAILED when max_iterations is reached.
+        Returns AgentStatus.BLOCKED when a blocker pattern is detected, and also
+        when the iteration budget is exhausted — that is a resumable stop with a
+        blocker, not a failure (#1117).
+        Returns AgentStatus.FAILED on a stall with --stall-action fail, or when
+        loop detection ends the run early.
         """
         messages: list[dict] = [
             {
