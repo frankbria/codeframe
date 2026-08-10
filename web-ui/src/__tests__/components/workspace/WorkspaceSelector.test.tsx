@@ -305,7 +305,9 @@ describe('WorkspaceSelector', () => {
         />
       );
 
-      const projectA = screen.getByText('project-a').closest('[role="button"]');
+      const projectA = screen
+        .getByText('project-a')
+        .closest<HTMLElement>('[role="button"]');
       await userEvent.click(projectA!);
 
       expect(mockOnSelectWorkspace).toHaveBeenCalledWith(
@@ -322,7 +324,9 @@ describe('WorkspaceSelector', () => {
         />
       );
 
-      const projectA = screen.getByText('project-a').closest('[role="button"]');
+      const projectA = screen
+        .getByText('project-a')
+        .closest<HTMLElement>('[role="button"]');
       projectA?.focus();
       fireEvent.keyDown(projectA!, { key: 'Enter' });
 
@@ -342,7 +346,9 @@ describe('WorkspaceSelector', () => {
         />
       );
 
-      const projectA = screen.getByText('project-a').closest('[role="button"]');
+      const projectA = screen
+        .getByText('project-a')
+        .closest<HTMLElement>('[role="button"]');
       projectA?.focus();
       fireEvent.keyDown(projectA!, { key: ' ' });
 
@@ -408,7 +414,9 @@ describe('WorkspaceSelector', () => {
         />
       );
 
-      const projectA = screen.getByText('project-a').closest('[role="button"]');
+      const projectA = screen
+        .getByText('project-a')
+        .closest<HTMLElement>('[role="button"]');
       expect(projectA).toHaveAttribute('aria-disabled', 'true');
 
       await userEvent.click(projectA!);

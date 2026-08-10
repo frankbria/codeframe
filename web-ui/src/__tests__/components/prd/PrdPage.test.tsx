@@ -90,11 +90,14 @@ const fakePrd = {
 };
 
 function setupSWR() {
+  // Deliberately partial SWR responses: the component reads data/error/
+  // isLoading/mutate only, and SWRResponse gained members in next 16.3's
+  // bundled typings that no test here exercises.
   mockUseSWR.mockImplementation((key) => {
     if (typeof key === 'string' && key.includes('prd')) {
-      return { data: fakePrd, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useSWR>;
+      return { data: fakePrd, error: undefined, isLoading: false, mutate: jest.fn() } as unknown as ReturnType<typeof useSWR>;
     }
-    return { data: { tasks: [], by_status: {} }, error: undefined, isLoading: false, mutate: jest.fn() } as ReturnType<typeof useSWR>;
+    return { data: { tasks: [], by_status: {} }, error: undefined, isLoading: false, mutate: jest.fn() } as unknown as ReturnType<typeof useSWR>;
   });
 }
 

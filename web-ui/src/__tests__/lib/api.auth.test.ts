@@ -27,7 +27,8 @@ const mockRedirectTo = redirectTo as jest.MockedFunction<typeof redirectTo>;
 
 // Pull the registered handlers off the axios instance interceptor stacks.
 function getRequestHandler() {
-  // @ts-expect-error - axios keeps handlers on a private `.handlers` array
+  // axios keeps these on a `.handlers` array that is not in its public
+  // surface; the cast below documents the shape we rely on.
   const handlers = api.interceptors.request.handlers as Array<{
     fulfilled: (c: InternalAxiosRequestConfig) => InternalAxiosRequestConfig;
   }>;
@@ -35,7 +36,7 @@ function getRequestHandler() {
 }
 
 function getResponseRejectHandler() {
-  // @ts-expect-error - private handlers array
+  // Same private `.handlers` array as above.
   const handlers = api.interceptors.response.handlers as Array<{
     rejected: (e: AxiosError) => Promise<never>;
   }>;

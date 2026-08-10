@@ -2,7 +2,12 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskBoardView } from '@/components/tasks/TaskBoardView';
 import { tasksApi } from '@/lib/api';
+
 import type { Task, TaskListResponse } from '@/types';
+// jest.mocked keeps the real signatures while exposing the mock API, so the
+// toHaveBeenCalledWith assertions below still type-check against the true
+// argument shapes rather than being cast to any.
+const mockedTasksApi = jest.mocked(tasksApi);
 
 // ─── Mocks ──────────────────────────────────────────────────────────
 
@@ -241,7 +246,7 @@ describe('TaskBoardView', () => {
   });
 
   it('calls stopExecution and mutates when Stop is clicked', async () => {
-tasksApi.stopExecution.mockResolvedValue(undefined);
+    mockedTasksApi.stopExecution.mockResolvedValue(undefined);
     mockMutate.mockResolvedValue(undefined);
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
@@ -255,7 +260,9 @@ tasksApi.stopExecution.mockResolvedValue(undefined);
   });
 
   it('calls updateStatus(READY) and mutates when Reset is clicked', async () => {
-tasksApi.updateStatus.mockResolvedValue({});
+    mockedTasksApi.updateStatus.mockResolvedValue(
+      makeTask({ id: 't6', title: 'Deploy v1', status: 'READY' })
+    );
     mockMutate.mockResolvedValue(undefined);
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
@@ -269,7 +276,7 @@ tasksApi.updateStatus.mockResolvedValue({});
   });
 
   it('shows error banner when stop fails', async () => {
-tasksApi.stopExecution.mockRejectedValue({ detail: 'Task not running' });
+    mockedTasksApi.stopExecution.mockRejectedValue({ detail: 'Task not running' });
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<TaskBoardView workspacePath="/test" />);
@@ -319,7 +326,7 @@ tasksApi.stopExecution.mockRejectedValue({ detail: 'Task not running' });
   });
 
   it('executes batch stop after confirming', async () => {
-tasksApi.stopExecution.mockResolvedValue(undefined);
+    mockedTasksApi.stopExecution.mockResolvedValue(undefined);
     mockMutate.mockResolvedValue(undefined);
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
@@ -360,7 +367,9 @@ tasksApi.stopExecution.mockResolvedValue(undefined);
   });
 
   it('executes batch reset after confirming', async () => {
-tasksApi.updateStatus.mockResolvedValue({});
+    mockedTasksApi.updateStatus.mockResolvedValue(
+      makeTask({ id: 't6', title: 'Deploy v1', status: 'READY' })
+    );
     mockMutate.mockResolvedValue(undefined);
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
@@ -385,7 +394,7 @@ tasksApi.updateStatus.mockResolvedValue({});
   });
 
   it('shows error message when batch stop partially fails', async () => {
-tasksApi.stopExecution.mockRejectedValue({ detail: 'Task not running' });
+    mockedTasksApi.stopExecution.mockRejectedValue({ detail: 'Task not running' });
     mockMutate.mockResolvedValue(undefined);
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });

@@ -18,7 +18,6 @@ jest.mock('@/lib/api', () => ({
     getDiff: jest.fn(),
     getPatch: jest.fn(),
     generateCommitMessage: jest.fn(),
-    getFileDiff: jest.fn(),
   },
   gatesApi: { run: jest.fn() },
   gitApi: { commit: jest.fn(), getStatus: jest.fn() },
@@ -98,7 +97,6 @@ beforeEach(() => {
   jest.clearAllMocks();
   (gitApi.getStatus as jest.Mock).mockResolvedValue({ branch: 'main' });
   (prApi.list as jest.Mock).mockResolvedValue({ pull_requests: [] });
-  (reviewApi.getFileDiff as jest.Mock).mockResolvedValue({ diff: '' });
   // The page auto-generates a commit message once the diff loads; without a
   // resolved promise here every test dies on `.then of undefined`.
   mockGenerate.mockResolvedValue({ message: '' });
