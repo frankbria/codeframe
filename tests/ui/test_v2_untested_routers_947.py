@@ -403,12 +403,12 @@ class TestReviewFiles:
         assert summary["overall_score"] == full["overall_score"]
         assert summary["total_findings"] == len(full["findings"])
 
-    def test_an_unknown_task_id_is_accepted_silently(self, client, repo):
-        """Documenting, not endorsing. `review.review_task` uses `task_id` for a
-        log line and nothing else — it never loads the task — so the endpoint
-        looks task-scoped and is not. A caller passing a stale or wrong id gets
-        a confident 200 about whatever files it also sent. Filed separately
-        rather than changed under a test-only issue."""
+    def test_an_unknown_task_id_is_a_404(self, client, repo):
+        """The endpoint is task-scoped, so an id no task has is a 404 (#1066).
+
+        It used to use `task_id` for a log line and nothing else, so a stale or
+        invented id got a confident 200 scoring whatever files were also sent.
+        """
         (repo / "sample.py").write_text("x = 1\n")
 
         res = client.post(
@@ -416,7 +416,21 @@ class TestReviewFiles:
             json={"task_id": "no-such-task", "files_modified": ["sample.py"]},
         )
 
+        assert res.status_code == 404, res.text
+        assert "no-such-task" in res.json()["detail"]
+
+    def test_a_real_task_id_still_reviews(self, client, repo, workspace):
+        """The validation must not break the endpoint's actual job."""
+        (repo / "sample.py").write_text("x = 1\n")
+        task = tasks.create(workspace, title="real", description="")
+
+        res = client.post(
+            "/api/v2/review/task",
+            json={"task_id": task.id, "files_modified": ["sample.py"]},
+        )
+
         assert res.status_code == 200, res.text
+        assert "overall_score" in res.json()
 
     def test_review_task_requires_the_file_list(self, client):
         """files_modified is required with min_length=1, so the endpoint cannot
@@ -490,17 +504,20 @@ class TestReviewDiffAndPatch:
 
 
 class TestSchedule:
-    def test_an_empty_workspace_is_a_404(self, client):
-        """Documenting, not endorsing. `schedule.get_schedule` raises
-        ValueError("No tasks found in workspace") and the handler maps every
-        ValueError to 404 — so a brand-new workspace gets "Schedule not found"
-        for what is really an empty, perfectly valid schedule. Pinned here so
-        the behaviour is at least known; filed separately rather than changed
-        under a test-only issue."""
+    def test_an_empty_workspace_has_an_empty_schedule(self, client):
+        """An empty workspace's schedule is empty, not missing (#1066).
+
+        This used to be a 404 "Schedule not found", so a client could not tell
+        a nonexistent workspace from one with no tasks yet — the first state
+        every client meets.
+        """
         res = client.get("/api/v2/schedule")
 
-        assert res.status_code == 404
-        assert res.json()["detail"]["code"] == "NOT_FOUND"
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["task_assignments"] == []
+        assert body["total_duration"] == 0
+        assert body["agents_used"] == 0
 
     def test_tasks_are_assigned(self, client, workspace):
         for i in range(3):

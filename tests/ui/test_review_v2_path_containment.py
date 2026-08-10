@@ -140,25 +140,52 @@ class TestReviewFilesEndpoint:
 
 
 class TestReviewTaskEndpoint:
-    """The issue names review_task as sharing the vulnerable code path."""
+    """The issue names review_task as sharing the vulnerable code path.
 
-    def test_parent_traversal_is_rejected(self, client, outsider, analyzed):
+    These use a REAL task id. `review_task` validates it since #1066, so a
+    placeholder now 404s before the path guard is ever reached — which would
+    leave these passing while testing nothing about containment.
+    """
+
+    @pytest.fixture
+    def real_task_id(self, test_workspace) -> str:
+        from codeframe.core import tasks
+
+        return tasks.create(
+            test_workspace, title="review me", description=""
+        ).id
+
+    def test_parent_traversal_is_rejected(
+        self, client, outsider, analyzed, real_task_id
+    ):
         resp = client.post(
             "/api/v2/review/task",
-            json={"task_id": "T-1", "files_modified": ["../secrets.py"]},
+            json={"task_id": real_task_id, "files_modified": ["../secrets.py"]},
         )
 
         assert resp.status_code == 200, resp.text
         assert analyzed == [], f"analyzer opened {analyzed}"
 
-    def test_absolute_path_is_rejected(self, client, outsider, analyzed):
+    def test_absolute_path_is_rejected(self, client, outsider, analyzed, real_task_id):
         resp = client.post(
             "/api/v2/review/task",
             json={
-                "task_id": "T-1",
+                "task_id": real_task_id,
                 "files_modified": [str(outsider)],
             },
         )
 
         assert resp.status_code == 200, resp.text
+        assert analyzed == [], f"analyzer opened {analyzed}"
+
+    def test_an_unknown_task_is_rejected_before_any_file_is_opened(
+        self, client, outsider, analyzed
+    ):
+        """The new gate must not weaken containment — it runs ahead of it."""
+        resp = client.post(
+            "/api/v2/review/task",
+            json={"task_id": "no-such-task", "files_modified": [str(outsider)]},
+        )
+
+        assert resp.status_code == 404, resp.text
         assert analyzed == [], f"analyzer opened {analyzed}"

@@ -208,6 +208,11 @@ async def review_task(
             summary=result.summary,
         )
 
+    except review.TaskNotFoundError as e:
+        # The endpoint is task-scoped; an id no task has is a 404, not a 200
+        # scoring whatever files the caller happened to send (#1066).
+        # Plain-string detail, matching this router's existing convention.
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to review task: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
