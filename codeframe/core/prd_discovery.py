@@ -419,11 +419,28 @@ Be warm and encouraging. Just output the question, nothing else."""
 
         Raises:
             ValidationError: If answer is empty
+            DiscoveryError: If the session is already complete, or has no
+                question outstanding
         """
         answer_text = answer_text.strip()
 
         if not answer_text:
             raise ValidationError("Please provide an answer.")
+
+        # There is nothing to answer once discovery has finished (#961). Without
+        # this, a completed or freshly-loaded session passed self._current_question
+        # — None — straight into _validate_answer, which then asked the model to
+        # judge an answer against no question at all.
+        if self._is_complete:
+            raise DiscoveryError(
+                "This discovery session is already complete; there is no "
+                "question to answer. Start a new session to continue."
+            )
+        if not self._current_question:
+            raise DiscoveryError(
+                "No question is currently outstanding for this session. "
+                "Call get_current_question() first."
+            )
 
         # Validate with AI
         validation = self._validate_answer(self._current_question, answer_text)
@@ -1174,12 +1191,21 @@ def reset_discovery(
             (_utc_now().isoformat(), session_id, workspace.id),
         )
     else:
-        # Reset most recent non-completed session
+        # Reset ONLY the most recent non-completed session (#961). This used to
+        # update every row matching `state != 'completed'`, so a reset aimed at
+        # the session in front of the user also closed unrelated in-flight
+        # sessions belonging to other PRDs — silently destroying that work,
+        # and contradicting this function's own docstring.
         cursor.execute(
             """
             UPDATE discovery_sessions
             SET state = 'completed', updated_at = ?
-            WHERE workspace_id = ? AND state != 'completed'
+            WHERE id = (
+                SELECT id FROM discovery_sessions
+                WHERE workspace_id = ? AND state != 'completed'
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT 1
+            )
             """,
             (_utc_now().isoformat(), workspace.id),
         )

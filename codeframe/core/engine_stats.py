@@ -66,19 +66,6 @@ def record_run(
         conn.close()
 
 
-def _update_aggregate_stats(workspace: Workspace, engine: str) -> None:
-    """Recompute aggregate metrics for an engine (opens its own connection).
-
-    Convenience wrapper for external callers (e.g., data seeding).
-    """
-    conn = get_db_connection(workspace)
-    try:
-        _update_aggregate_stats_conn(conn, workspace.id, engine)
-        conn.commit()
-    finally:
-        conn.close()
-
-
 def _update_aggregate_stats_conn(conn, ws_id: str, engine: str) -> None:
     """Recompute aggregate metrics using an existing connection.
 

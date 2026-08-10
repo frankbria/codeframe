@@ -48,19 +48,52 @@ async def test_transient_db_error_surfaced_at_warning_plus(caplog):
 
 
 @pytest.mark.asyncio
-async def test_fallback_db_is_closed(monkeypatch):
-    """When no db is in state, the fallback Database is created and then closed."""
+async def test_fallback_db_is_cached_not_rebuilt_per_request(monkeypatch, tmp_path):
+    """The fallback is now process-wide, keyed on DATABASE_PATH (#963).
+
+    This replaced ``test_fallback_db_is_closed``, which asserted the fallback
+    Database was constructed and closed on every request. That per-request
+    construct-initialise-close cycle was the defect: it also defaulted to
+    ``os.getcwd()``, so a server started outside a workspace scattered SQLite
+    files and then authenticated against the empty database it had just made.
+    """
+    from codeframe.auth.dependencies import reset_fallback_db
+
     fallback = MagicMock()
-    fallback.api_keys.get_all_by_prefix.return_value = []  # key not found -> returns None
+    fallback.api_keys.get_all_by_prefix.return_value = []  # key not found
 
     ctor = MagicMock(return_value=fallback)
     monkeypatch.setattr("codeframe.platform_store.database.Database", ctor)
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "state.db"))
+    reset_fallback_db()
 
     full_key, _hash, _prefix = generate_api_key()
     request = _fake_request(app_db=None, req_db=None)
 
-    result = await get_api_key_auth(api_key=full_key, request=request)
+    assert await get_api_key_auth(api_key=full_key, request=request) is None
+    assert await get_api_key_auth(api_key=full_key, request=request) is None
 
-    assert result is None
+    # Built once across both requests, and not closed between them.
     ctor.assert_called_once()
-    fallback.close.assert_called_once()
+    fallback.close.assert_not_called()
+
+    reset_fallback_db()
+
+
+@pytest.mark.asyncio
+async def test_no_database_path_refuses_rather_than_using_cwd(monkeypatch, tmp_path):
+    """Without DATABASE_PATH the key is refused — no cwd default (#963)."""
+    from codeframe.auth.dependencies import reset_fallback_db
+
+    ctor = MagicMock()
+    monkeypatch.setattr("codeframe.platform_store.database.Database", ctor)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    reset_fallback_db()
+
+    full_key, _hash, _prefix = generate_api_key()
+    request = _fake_request(app_db=None, req_db=None)
+
+    assert await get_api_key_auth(api_key=full_key, request=request) is None
+    ctor.assert_not_called()
+
+    reset_fallback_db()

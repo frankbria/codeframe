@@ -28,6 +28,25 @@ const customJestConfig = {
   // Jest 30 dropped 'json-summary' from the default reporters; CI's coverage
   // threshold gate reads coverage/coverage-summary.json, so request it explicitly.
   coverageReporters: ['json', 'json-summary', 'lcov', 'text', 'clover'],
+  // Per-file floor for DiscoveryPanel, which sat at 0% (issue #965). The
+  // repo-wide gate is a 65% check in CI; this is enforced by the runner so
+  // `npm run test:coverage` fails locally too. Set below the achieved 94%/73%
+  // so ordinary refactoring does not trip it — it guards against the coverage
+  // *disappearing*, not against small movements.
+  //
+  // Deliberately only this file. A per-file threshold also fails when someone
+  // runs `--coverage` over a subset that excludes the file, so each entry is a
+  // small DX tax. src/lib/api.ts is not listed because its contract suite has
+  // a stronger, subset-safe guard: a test that fails when a new *Api namespace
+  // is exported without contract cases.
+  coverageThreshold: {
+    './src/components/prd/DiscoveryPanel.tsx': {
+      statements: 85,
+      branches: 65,
+      functions: 90,
+      lines: 85,
+    },
+  },
 };
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

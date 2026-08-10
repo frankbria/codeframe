@@ -153,167 +153,51 @@ class TestPrdTemplateManager:
         assert len(errors) > 0
         assert any("section" in e.lower() for e in errors)
 
-    def test_validate_template_invalid_jinja(self):
-        """Template with invalid Jinja2 syntax fails validation."""
+    def test_validate_template_requires_section_title_and_source(self):
+        """Sections are validated on the fields the PRD path actually reads.
+
+        This replaced a test asserting invalid Jinja2 syntax fails validation.
+        Nothing renders format_template since #962, so its syntax is not a
+        failure condition — and checking it would mean re-importing the
+        template engine whose removal was the point.
+        """
         manager = PrdTemplateManager()
         template = PrdTemplate(
-            id="bad-jinja",
-            name="Bad Jinja",
+            id="bad-section",
+            name="Bad Section",
             version=1,
             description="",
             sections=[
                 PrdTemplateSection(
                     id="broken",
-                    title="Broken",
-                    source="problem",
-                    format_template="{{ unclosed",  # Invalid Jinja2
+                    title="",
+                    source="",
+                    format_template="{{ unclosed",
                 )
             ],
         )
         errors = manager.validate_template(template)
-        assert len(errors) > 0
-        assert any("jinja" in e.lower() or "syntax" in e.lower() for e in errors)
+        assert any("title" in e.lower() for e in errors)
+        assert any("source" in e.lower() for e in errors)
 
-
-class TestPrdTemplateRendering:
-    """Tests for template rendering."""
-
-    def test_render_simple_template(self):
-        """Can render a simple template with discovery data."""
+    def test_unrenderable_format_template_is_no_longer_an_error(self):
+        """Broken Jinja in an inert field must not fail validation."""
         manager = PrdTemplateManager()
         template = PrdTemplate(
-            id="simple",
-            name="Simple",
+            id="inert",
+            name="Inert",
             version=1,
             description="",
             sections=[
                 PrdTemplateSection(
-                    id="problem",
-                    title="Problem",
+                    id="s",
+                    title="S",
                     source="problem",
-                    format_template="## Problem\n\n{{ problem }}",
+                    format_template="{{ unclosed",
                 )
             ],
         )
-
-        discovery_data = {
-            "problem": "Users need a better way to manage tasks",
-            "users": ["developers", "managers"],
-            "features": ["task creation", "assignment"],
-            "constraints": {"database": "PostgreSQL"},
-        }
-
-        rendered = manager.render_template(template, discovery_data)
-        assert "## Problem" in rendered
-        assert "Users need a better way to manage tasks" in rendered
-
-    def test_render_with_bullet_list(self):
-        """Can render template using bullet_list function."""
-        manager = PrdTemplateManager()
-        template = PrdTemplate(
-            id="with-list",
-            name="With List",
-            version=1,
-            description="",
-            sections=[
-                PrdTemplateSection(
-                    id="users",
-                    title="Users",
-                    source="users",
-                    format_template="## Users\n\n{{ users | bullet_list }}",
-                )
-            ],
-        )
-
-        discovery_data = {
-            "problem": "",
-            "users": ["developers", "managers", "admins"],
-            "features": [],
-            "constraints": {},
-        }
-
-        rendered = manager.render_template(template, discovery_data)
-        assert "- developers" in rendered
-        assert "- managers" in rendered
-        assert "- admins" in rendered
-
-    def test_render_with_numbered_list(self):
-        """Can render template using numbered_list function."""
-        manager = PrdTemplateManager()
-        template = PrdTemplate(
-            id="numbered",
-            name="Numbered",
-            version=1,
-            description="",
-            sections=[
-                PrdTemplateSection(
-                    id="features",
-                    title="Features",
-                    source="features",
-                    format_template="## Features\n\n{{ features | numbered_list }}",
-                )
-            ],
-        )
-
-        discovery_data = {
-            "problem": "",
-            "users": [],
-            "features": ["login", "dashboard", "reports"],
-            "constraints": {},
-        }
-
-        rendered = manager.render_template(template, discovery_data)
-        assert "1. login" in rendered
-        assert "2. dashboard" in rendered
-        assert "3. reports" in rendered
-
-    def test_render_with_default_filter(self):
-        """Missing data uses default value."""
-        manager = PrdTemplateManager()
-        template = PrdTemplate(
-            id="defaults",
-            name="Defaults",
-            version=1,
-            description="",
-            sections=[
-                PrdTemplateSection(
-                    id="tech",
-                    title="Tech",
-                    source="tech_stack",
-                    format_template="## Tech\n\n{{ tech_stack | default('Not specified') }}",
-                )
-            ],
-        )
-
-        discovery_data = {
-            "problem": "",
-            "users": [],
-            "features": [],
-            "constraints": {},
-            # Note: tech_stack is missing
-        }
-
-        rendered = manager.render_template(template, discovery_data)
-        assert "Not specified" in rendered
-
-    def test_render_multiple_sections(self):
-        """Can render template with multiple sections."""
-        manager = PrdTemplateManager()
-        template = manager.get_template("standard")
-        assert template is not None
-
-        discovery_data = {
-            "problem": "Test problem statement",
-            "users": ["users", "admins"],
-            "features": ["feature1", "feature2"],
-            "constraints": {"database": "PostgreSQL"},
-            "tech_stack": ["Python", "FastAPI"],
-        }
-
-        rendered = manager.render_template(template, discovery_data)
-        # Should have multiple sections rendered
-        assert "Test problem statement" in rendered
-        assert len(rendered) > 100  # Should be substantial
+        assert manager.validate_template(template) == []
 
 
 class TestBuiltinTemplates:
@@ -381,44 +265,6 @@ class TestBuiltinTemplates:
             assert section_id in section_ids, f"Missing section: {section_id}"
 
 
-class TestTemplateFunctions:
-    """Tests for template helper functions."""
-
-    def test_bullet_list_function(self):
-        """bullet_list creates markdown bullets."""
-        from codeframe.planning.prd_template_functions import bullet_list
-
-        result = bullet_list(["one", "two", "three"])
-        assert result == "- one\n- two\n- three"
-
-    def test_bullet_list_empty(self):
-        """bullet_list handles empty list."""
-        from codeframe.planning.prd_template_functions import bullet_list
-
-        result = bullet_list([])
-        assert result == ""
-
-    def test_numbered_list_function(self):
-        """numbered_list creates numbered items."""
-        from codeframe.planning.prd_template_functions import numbered_list
-
-        result = numbered_list(["first", "second"])
-        assert result == "1. first\n2. second"
-
-    def test_table_function(self):
-        """table creates markdown table."""
-        from codeframe.planning.prd_template_functions import table
-
-        items = [
-            {"name": "Feature A", "priority": "P1"},
-            {"name": "Feature B", "priority": "P2"},
-        ]
-        result = table(items, ["name", "priority"])
-        assert "| name | priority |" in result
-        assert "| Feature A | P1 |" in result
-        assert "| Feature B | P2 |" in result
-
-
 class TestSecurityValidation:
     """Tests for security-related validations."""
 
@@ -463,39 +309,6 @@ sections: []
 
         with pytest.raises(ValueError, match="empty or invalid"):
             load_template_from_file(empty_file)
-
-    def test_autoescape_prevents_html_injection(self):
-        """Jinja2 autoescape prevents HTML injection in rendered output."""
-        manager = PrdTemplateManager()
-        template = PrdTemplate(
-            id="xss-test",
-            name="XSS Test",
-            version=1,
-            description="Test XSS prevention",
-            sections=[
-                PrdTemplateSection(
-                    id="problem",
-                    title="Problem",
-                    source="problem",
-                    format_template="## Problem\n\n{{ problem }}",
-                )
-            ],
-        )
-
-        # Discovery data with HTML injection attempt
-        discovery_data = {
-            "problem": "<script>alert('xss')</script>",
-            "users": [],
-            "features": [],
-            "constraints": {},
-        }
-
-        rendered = manager.render_template(template, discovery_data)
-
-        # HTML should be escaped
-        assert "<script>" not in rendered
-        assert "&lt;script&gt;" in rendered
-
 
 class TestTemplateStorage:
     """Tests for template file storage."""

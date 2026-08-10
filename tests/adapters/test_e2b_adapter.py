@@ -269,8 +269,8 @@ class TestE2BAgentAdapter:
         # Adapter runs: git-combined (1 call), pip install, cf work start, git status
         diff_result = MagicMock()
         diff_result.exit_code = 0
-        # git status --porcelain format: "XY filename"
-        diff_result.stdout = " M main.py\n"
+        # `git status --porcelain -z`: "XY filename" records, NUL-terminated (#967)
+        diff_result.stdout = " M main.py\x00"
         sbx.commands.run.side_effect = [
             MagicMock(exit_code=0, stdout="", stderr=""),        # git init+add+commit
             MagicMock(exit_code=0, stdout="installed", stderr=""),  # pip install
@@ -375,7 +375,7 @@ class TestE2BAgentAdapter:
         # porcelain: modified file + untracked new file
         status_result = MagicMock()
         status_result.exit_code = 0
-        status_result.stdout = " M existing.py\n?? new_module.py\n"
+        status_result.stdout = " M existing.py\x00?? new_module.py\x00"
         sbx.commands.run.side_effect = [
             MagicMock(exit_code=0, stdout="", stderr=""),      # git combined
             MagicMock(exit_code=0, stdout="", stderr=""),      # pip install
@@ -463,16 +463,20 @@ class TestEngineRegistry:
         from codeframe.core.engine_registry import BUILTIN_ENGINES
         assert "cloud" not in BUILTIN_ENGINES
 
-    def test_get_external_adapter_cloud_returns_e2b_adapter(self):
+    def test_get_external_adapter_cloud_returns_e2b_adapter(self, monkeypatch):
         from codeframe.core.engine_registry import get_external_adapter
         from codeframe.adapters.e2b.adapter import E2BAgentAdapter
 
+        # The engine is gated as experimental (#966); opt in to reach the adapter.
+        monkeypatch.setenv("CODEFRAME_ENABLE_CLOUD_ENGINE", "1")
         adapter = get_external_adapter("cloud", timeout_minutes=10)
         assert isinstance(adapter, E2BAgentAdapter)
         assert adapter._timeout_minutes == 10
 
-    def test_resolve_cloud_engine(self):
+    def test_resolve_cloud_engine(self, monkeypatch):
         from codeframe.core.engine_registry import resolve_engine
+
+        monkeypatch.setenv("CODEFRAME_ENABLE_CLOUD_ENGINE", "1")
         assert resolve_engine("cloud") == "cloud"
 
     def test_is_external_engine_cloud(self):

@@ -99,3 +99,8 @@ test_audit_report.md
 tests/integration/.env.integration
 web-ui/test-results/
 .opencode-tmp/
+# #614 cold-start harness: keep the captured text evidence (the demo document
+# re-runs against it), drop the scratch run dir. The run logs are evidence, so
+# they override the blanket *.log rule above.
+scripts/quickstart-cleanroom/artifacts/
+!scripts/quickstart-cleanroom/artifacts-*/run-logs/*.log

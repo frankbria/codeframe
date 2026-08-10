@@ -10,7 +10,7 @@ This document focuses on gaps in the web product that block the end-to-end visio
 ### Completed foundation (prior phases)
 - **Phases 1–2.5**: CLI foundation, FastAPI server layer, ReAct agent — all complete
 - **Phase 3**: Web UI core screens — PRD editor, task board, execution monitor, blocker resolution, diff reviewer, PROOF9 requirements table, interactive agent sessions (`/sessions`) — all complete
-- **Phase 4.A–4.D**: Agent adapter protocol (ClaudeCode/Codex/OpenCode/Kilocode), execution environment (worktree isolation, E2B cloud), multi-provider LLM (OpenAI-compatible adapter) — all complete
+- **Phase 4.A–4.D**: Agent adapter protocol (ClaudeCode/Codex/OpenCode/Kilocode), execution environment (worktree isolation), multi-provider LLM (OpenAI-compatible adapter) — all complete. E2B cloud execution is **not** complete: it is EXPERIMENTAL and gated behind `CODEFRAME_ENABLE_CLOUD_ENGINE` (#966)
 
 ---
 

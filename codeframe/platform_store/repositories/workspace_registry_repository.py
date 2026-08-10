@@ -55,7 +55,7 @@ class WorkspaceRegistryRepository(BaseRepository):
 
         # INSERT ... ON CONFLICT(repo_path) DO UPDATE keeps the original id and
         # created_at while refreshing the mutable metadata and recency stamp.
-        self._execute(
+        self._execute_write(
             """
             INSERT INTO workspaces_registry (
                 id, repo_path, name, owner_user_id, tech_stack,
@@ -77,7 +77,6 @@ class WorkspaceRegistryRepository(BaseRepository):
             """,
             (new_id, repo_path, name, owner_user_id, tech_stack, now, now),
         )
-        self._commit()
 
         # Re-read so callers always get the canonical row (stable id on conflict).
         entry = self.get_by_path(repo_path)
@@ -153,11 +152,10 @@ class WorkspaceRegistryRepository(BaseRepository):
     def update_last_opened(self, workspace_id: str) -> None:
         """Bump ``last_opened_at`` for a registry entry to maintain recency."""
         now = datetime.now(timezone.utc).isoformat()
-        self._execute(
+        self._execute_write(
             "UPDATE workspaces_registry SET last_opened_at = ? WHERE id = ?",
             (now, workspace_id),
         )
-        self._commit()
 
     def delete(self, workspace_id: str, owner_user_id: Optional[int] = None) -> bool:
         """Deregister a workspace (registry-only — never touches disk files).
@@ -174,16 +172,15 @@ class WorkspaceRegistryRepository(BaseRepository):
             owned by ``owner_user_id`` when supplied).
         """
         if owner_user_id is not None:
-            cursor = self._execute(
+            cursor = self._execute_write(
                 "DELETE FROM workspaces_registry WHERE id = ? AND owner_user_id = ?",
                 (workspace_id, owner_user_id),
             )
         else:
-            cursor = self._execute(
+            cursor = self._execute_write(
                 "DELETE FROM workspaces_registry WHERE id = ?",
                 (workspace_id,),
             )
-        self._commit()
         return cursor.rowcount > 0
 
     def _row_to_workspace_registry(self, row) -> Dict[str, Any]:

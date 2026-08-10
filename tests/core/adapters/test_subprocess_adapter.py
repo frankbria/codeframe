@@ -61,7 +61,9 @@ class TestSubprocessAdapterRun:
         mock = MagicMock()
         mock.stdout = iter(stdout_lines or [])
         mock.stderr = MagicMock()
-        mock.stderr.read.return_value = stderr_text
+        # side_effect, not return_value: read(n) must eventually return ""
+        # or the chunked stderr drain (#955) never sees EOF.
+        mock.stderr.read.side_effect = [stderr_text, ""]
         mock.stdin = MagicMock()
         mock.returncode = returncode
         mock.wait.return_value = None
@@ -335,7 +337,9 @@ class TestSubprocessAdapterModifiedFiles:
         mock = MagicMock()
         mock.stdout = iter(stdout_lines or [])
         mock.stderr = MagicMock()
-        mock.stderr.read.return_value = stderr_text
+        # side_effect, not return_value: read(n) must eventually return ""
+        # or the chunked stderr drain (#955) never sees EOF.
+        mock.stderr.read.side_effect = [stderr_text, ""]
         mock.stdin = MagicMock()
         mock.returncode = returncode
         mock.wait.return_value = None

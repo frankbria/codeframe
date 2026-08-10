@@ -55,6 +55,16 @@ class IssueNotFoundError(Exception):
     callers map it to a 4xx rather than a 502.
     """
 
+
+class RateLimitedError(GitHubConnectError):
+    """GitHub throttled us — primary or secondary rate limit (#956).
+
+    GitHub answers a rate-limited request with 403 (sometimes 429), the same
+    status it uses for a token that lacks a scope. Reporting both as "missing
+    issues:read scope" sent users off to regenerate a PAT that was never the
+    problem, so the two are distinguished by headers/body here.
+    """
+
 # Parse the ``page=N`` query param out of a Link header's rel="last" URL.
 _LAST_PAGE_RE = re.compile(r'[?&]page=(\d+)[^>]*>;\s*rel="last"')
 
@@ -87,14 +97,53 @@ def _simplify(raw: dict) -> GitHubIssue:
     }
 
 
-def _raise_for_status(status_code: int, *, context: str) -> None:
-    """Map a GitHub HTTP status to a typed error. 2xx/410 are handled by callers."""
+def _rate_limit_retry_after(resp: httpx.Response) -> Optional[str]:
+    """Return the retry hint if ``resp`` is a rate-limit rejection, else ``None``.
+
+    GitHub signals throttling three ways, any one of which is sufficient: a
+    ``Retry-After`` header (secondary limit), an exhausted
+    ``X-RateLimit-Remaining``, or a body message naming the limit. The empty
+    string means "throttled, no hint" — distinct from ``None`` (not throttled).
+    Only ``Retry-After`` carries a delay; ``X-RateLimit-Reset`` is an absolute
+    unix timestamp and would read as a nonsense wait if echoed as seconds.
+    """
+    retry_after = resp.headers.get("retry-after")
+    if retry_after:
+        return retry_after
+    if resp.headers.get("x-ratelimit-remaining") == "0":
+        return ""
+    try:
+        body = resp.json()
+        message = str(body.get("message", "")) if isinstance(body, dict) else ""
+    except Exception:
+        message = ""
+    if "rate limit" in message.lower():
+        return ""
+    return None
+
+
+def _raise_403(resp: httpx.Response, scope_message: str) -> None:
+    """Raise the right error for a 403/429: throttling vs. a genuine scope gap."""
+    retry_after = _rate_limit_retry_after(resp)
+    if retry_after is None and resp.status_code != 429:
+        raise InsufficientScopeError(scope_message)
+    hint = f" Retry after {retry_after}s." if retry_after else ""
+    raise RateLimitedError(
+        "GitHub rate limit exceeded; the request was throttled, "
+        f"not rejected for missing permissions.{hint}"
+    )
+
+
+def _raise_for_status(resp: httpx.Response, *, context: str) -> None:
+    """Map a GitHub response to a typed error. 2xx/410 are handled by callers."""
+    status_code = resp.status_code
     if status_code == 401:
         raise InvalidTokenError("Invalid GitHub token.")
-    if status_code == 403:
-        raise InsufficientScopeError(
+    if status_code in (403, 429):
+        _raise_403(
+            resp,
             "Token cannot read issues for this repository "
-            "(missing issues:read scope)."
+            "(missing issues:read scope).",
         )
     if status_code >= 400:
         raise GitHubConnectError(
@@ -154,7 +203,8 @@ async def list_issues(
     Raises:
         ValueError: if ``repo`` is not a valid ``owner/repo`` string.
         InvalidTokenError: GitHub returned 401.
-        InsufficientScopeError: the token cannot read issues (403).
+        InsufficientScopeError: the token cannot read issues (403, not throttled).
+        RateLimitedError: GitHub throttled the request (403/429).
         GitHubConnectError: any other non-success response or network error.
     """
     owner, name = parse_repo(repo)
@@ -164,9 +214,10 @@ async def list_issues(
         client = httpx.AsyncClient(timeout=_TIMEOUT)
     try:
         headers = _headers(pat)
-        if search.strip():
+        term = _sanitize_search(search)
+        if term:
             return await _search_issues(
-                client, headers, owner, name, page, per_page, search, label
+                client, headers, owner, name, page, per_page, term, label
             )
         return await _list_issues(
             client, headers, owner, name, page, per_page, label
@@ -205,7 +256,7 @@ async def _list_issues(
     # 410 Gone == issues disabled on the repo: nothing to import, not an error.
     if resp.status_code == 410:
         return [], 0
-    _raise_for_status(resp.status_code, context="issues list")
+    _raise_for_status(resp, context="issues list")
 
     raw_items = resp.json()
     if not isinstance(raw_items, list):
@@ -255,7 +306,8 @@ async def get_issue(
     Raises:
         ValueError: if ``repo`` is not a valid ``owner/repo`` string.
         InvalidTokenError: GitHub returned 401.
-        InsufficientScopeError: the token cannot read issues (403).
+        InsufficientScopeError: the token cannot read issues (403, not throttled).
+        RateLimitedError: GitHub throttled the request (403/429).
         GitHubConnectError: any other non-success response or network error.
     """
     owner, name = parse_repo(repo)
@@ -288,10 +340,8 @@ async def get_issue(
                 raise GitHubConnectError("Could not reach GitHub. Try again later.")
             if repo_resp.status_code == 401:
                 raise InvalidTokenError("Invalid GitHub token.")
-            if repo_resp.status_code == 403:
-                raise InsufficientScopeError(
-                    "Token lacks access to this repository."
-                )
+            if repo_resp.status_code in (403, 429):
+                _raise_403(repo_resp, "Token lacks access to this repository.")
             if repo_resp.status_code == 404:
                 raise GitHubConnectError(
                     f"Repository '{repo}' is no longer accessible."
@@ -311,7 +361,7 @@ async def get_issue(
                     f"GitHub repo check returned status {repo_resp.status_code}."
                 )
             raise IssueNotFoundError(f"Issue #{number} was not found in '{repo}'.")
-        _raise_for_status(resp.status_code, context="get issue")
+        _raise_for_status(resp, context="get issue")
 
         raw = resp.json()
         if not isinstance(raw, dict):
@@ -370,7 +420,8 @@ async def close_issue(
     Raises:
         ValueError: if ``repo`` is not a valid ``owner/repo`` string.
         InvalidTokenError: GitHub returned 401.
-        InsufficientScopeError: the token cannot write issues (403).
+        InsufficientScopeError: the token cannot write issues (403, not throttled).
+        RateLimitedError: GitHub throttled the request (403/429).
         GitHubConnectError: any other non-success response or network error.
     """
     owner, name = parse_repo(repo)
@@ -409,7 +460,7 @@ async def close_issue(
             logger.warning("GitHub close issue failed: %s", type(exc).__name__)
             raise GitHubConnectError("Could not reach GitHub. Try again later.")
 
-        _raise_for_status(resp.status_code, context="close issue")
+        _raise_for_status(resp, context="close issue")
         # A redirect (3xx) — e.g. a moved/renamed/transferred repo — means the
         # PATCH was NOT applied (httpx does not follow redirects by default), so
         # the issue is still open. Treat it as a failure rather than reporting a
@@ -425,6 +476,30 @@ async def close_issue(
             await client.aclose()
 
 
+def _sanitize_search(search: str) -> str:
+    """Quote each free-text word so none can act as a qualifier (#956).
+
+    The term is joined into a ``q`` alongside ``repo:``/``is:`` qualifiers, so
+    raw text lets a user smuggle in their own: a search of ``repo:other/thing``
+    used to reach repositories outside the connected one, making the operator's
+    PAT enumerable through a text field in a hosted deployment. GitHub treats a
+    double-quoted string as literal, so quoting neutralises every qualifier.
+
+    Quoting *per word* rather than the whole string keeps the existing AND-of-
+    terms behaviour — one big phrase would silently turn "login bug" into an
+    exact-phrase search and drop results users used to get.
+
+    Embedded quotes are *removed*, not escaped — escaping semantics inside
+    GitHub's query language are version-dependent, and dropping them is the one
+    behaviour that cannot be talked into opening a second phrase.
+
+    Returns ``""`` when nothing searchable survives, so the caller falls back to
+    the plain list endpoint rather than sending an empty phrase.
+    """
+    words = search.replace('"', " ").split()
+    return " ".join(f'"{w}"' for w in words)
+
+
 async def _search_issues(
     client: httpx.AsyncClient,
     headers: dict[str, str],
@@ -432,11 +507,12 @@ async def _search_issues(
     name: str,
     page: int,
     per_page: int,
-    search: str,
+    term: str,
     label: str,
 ) -> tuple[list[GitHubIssue], int]:
+    """Search issues. ``term`` must already be ``_sanitize_search``-ed."""
     qualifiers = [
-        search.strip(),
+        term,
         f"repo:{owner}/{name}",
         "is:issue",
         "is:open",
@@ -454,7 +530,7 @@ async def _search_issues(
         logger.warning("GitHub issues search failed: %s", type(exc).__name__)
         raise GitHubConnectError("Could not reach GitHub. Try again later.")
 
-    _raise_for_status(resp.status_code, context="issues search")
+    _raise_for_status(resp, context="issues search")
 
     data = resp.json()
     if not isinstance(data, dict):

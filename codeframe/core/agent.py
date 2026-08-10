@@ -11,6 +11,7 @@ Coordinates the full agent execution loop:
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import json
 import re
 import shlex
 import subprocess
@@ -1251,8 +1252,11 @@ IMPORTANT:
             # invisible to it, so a capped run kept spending here.
             self.cost_tracker.record_response(response, call_type="diagnostic_fix")
 
-            # Parse the fix plan
-            import json
+            # Parse the fix plan. `json` is imported at module level (#957):
+            # a function-local `import json` here made the name local to this
+            # method, so `except json.JSONDecodeError` below raised
+            # UnboundLocalError whenever llm.complete() failed first — masking
+            # the real provider error.
             json_match = re.search(r"\{[\s\S]*\}", response.content)
             if not json_match:
                 self._verbose_print("[SELFCORRECT] No JSON found in LLM response")
@@ -1513,82 +1517,6 @@ IMPORTANT:
 
         # Default to technical - agent should try to fix it first
         return "technical"
-
-    def _resolve_tactical_decision(self, error: str, context: "TaskContext") -> str:
-        """Resolve a tactical decision using preferences and best judgment.
-
-        When the agent encounters a tactical question (implementation detail,
-        tooling choice, file handling, etc.), this method resolves it
-        autonomously instead of creating a blocker.
-
-        Args:
-            error: The error/question that triggered this
-            context: Task context with preferences
-
-        Returns:
-            Resolution instruction for the agent to follow
-        """
-        self._emit_event("tactical_resolution_started", {"question": error[:200]})
-
-        # Build resolution prompt using preferences
-        prefs = context.preferences
-        pref_section = prefs.to_prompt_section() if prefs.has_preferences() else ""
-
-        prompt = f"""You encountered a tactical implementation decision that should be resolved autonomously.
-
-## The Question/Decision
-{error}
-
-{pref_section}
-
-## Resolution Guidelines
-
-As an expert software engineer, resolve this decision using:
-1. Project preferences (above) if they apply
-2. Industry best practices if no preference
-3. The simpler approach when multiple options are equivalent
-4. Common conventions for this type of project
-
-IMPORTANT: This is a tactical decision you MUST resolve yourself. Do NOT ask the user.
-Do NOT say you need clarification. Make the best decision and proceed.
-
-Respond with a brief, clear instruction on what to do. For example:
-- "Use pytest as the test framework"
-- "Overwrite the existing file with the new implementation"
-- "Use the latest stable version of the library"
-- "Install using uv (the project's package manager)"
-
-Your decision:"""
-
-        try:
-            response = self.llm.complete(
-                messages=[{"role": "user", "content": prompt}],
-                purpose=Purpose.GENERATION,
-                max_tokens=256,
-                temperature=0.0,
-            )
-            # Counts toward the cap (#1004): these calls used to be
-            # invisible to it, so a capped run kept spending here.
-            self.cost_tracker.record_response(response, call_type="tactical_resolution")
-
-            resolution = response.strip()
-            self._emit_event(
-                "tactical_resolution_completed",
-                {"question": error[:200], "resolution": resolution[:200]},
-            )
-            self._debug_log(
-                f"TACTICAL DECISION RESOLVED: {resolution[:100]}",
-                level="INFO",
-                data={"question": error, "resolution": resolution},
-            )
-            return resolution
-
-        except Exception as e:
-            # On LLM failure, use a sensible default
-            self._emit_event(
-                "tactical_resolution_failed", {"question": error[:200], "error": str(e)}
-            )
-            return "Proceed with the most common/standard approach for this situation."
 
     def _should_create_blocker(
         self,

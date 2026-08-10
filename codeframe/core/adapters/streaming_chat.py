@@ -320,9 +320,20 @@ class StreamingChatAdapter:
 
         while messages and _count(messages) > _MAX_HISTORY_TOKENS:
             # Drop in pairs so we don't strand an assistant message at index 0
-            messages = messages[2:] if len(messages) >= 2 else messages[1:]
+            trimmed = messages[2:] if len(messages) >= 2 else messages[1:]
+            if not trimmed:
+                # A single turn that busts the budget on its own would otherwise
+                # trim the history to nothing, and the caller sends this list
+                # straight to the provider — an empty `messages` is an API error,
+                # so the request fails instead of the history being shortened.
+                # Keep the last turn and let the provider's own limit judge it.
+                # (#955)
+                break
+            messages = trimmed
 
-        # First message must have role "user"
+        # First message must have role "user". An empty result here means the
+        # history holds no user turn at all — unusable, and the caller's own
+        # guard, not something truncation invented.
         while messages and messages[0].get("role") != "user":
             messages = messages[1:]
 

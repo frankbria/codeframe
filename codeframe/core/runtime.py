@@ -13,7 +13,11 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
 from codeframe.core import engine_stats, events, tasks
-from codeframe.core.state_machine import TaskStatus, can_transition
+from codeframe.core.state_machine import (
+    InvalidTransitionError,
+    TaskStatus,
+    can_transition,
+)
 from codeframe.core.workspace import Workspace, get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -72,13 +76,25 @@ def start_task_run(workspace: Workspace, task_id: str) -> Run:
         Created Run
 
     Raises:
-        ValueError: If task not found
+        ValueError: If task not found, or if it is a composite (#958)
         InvalidTransitionError: If task can't transition to IN_PROGRESS
     """
     # Get the task
     task = tasks.get(workspace, task_id)
     if not task:
         raise ValueError(f"Task not found: {task_id}")
+
+    # Composites are containers, not work (#958). The bulk selectors filter
+    # is_leaf, but this is the *explicit* path — `cf work start <id>` and the
+    # v2 execute route with an explicit task_ids list both land here, so
+    # without this guard a composite's ID still reaches an engine. Rejecting at
+    # this chokepoint covers every explicit caller at once.
+    if not task.is_leaf:
+        raise ValueError(
+            f"Task {task_id} is a composite (a container for subtasks), not "
+            "executable work. Run its child tasks instead — its status is "
+            "rolled up from theirs."
+        )
 
     # Check if there's already an active run
     active = get_active_run(workspace, task_id)
@@ -324,7 +340,12 @@ def list_runs(
     return [_row_to_run(row) for row in rows]
 
 
-def complete_run(workspace: Workspace, run_id: str) -> Run:
+def complete_run(
+    workspace: Workspace,
+    run_id: str,
+    *,
+    github_autoclose: bool = True,
+) -> Run:
     """Mark a run as completed.
 
     Also transitions the task to DONE.
@@ -332,12 +353,17 @@ def complete_run(workspace: Workspace, run_id: str) -> Run:
     Args:
         workspace: Target workspace
         run_id: Run to complete
+        github_autoclose: Fire the linked-issue auto-close on the DONE
+            transition. ``False`` for fabricated completions (``--stub``) that
+            must not act on a real GitHub issue (#957).
 
     Returns:
         Updated Run
 
     Raises:
         ValueError: If run not found or not in RUNNING status
+        InvalidTransitionError: If the task cannot transition to DONE — raised
+            *before* the run is committed, so run and task never diverge.
     """
     run = get_run(workspace, run_id)
     if not run:
@@ -345,6 +371,32 @@ def complete_run(workspace: Workspace, run_id: str) -> Run:
 
     if run.status != RunStatus.RUNNING:
         raise ValueError(f"Run is not running: {run.status}")
+
+    # Transition the task FIRST (#957). The run UPDATE used to commit before
+    # this, so a rejected transition left the run COMPLETED and the task
+    # IN_PROGRESS — permanently divergent, with no path back. Letting the
+    # transition raise here leaves the run RUNNING, which is recoverable.
+    #
+    # A task already DONE is the goal state, not a failure: reconciliation
+    # (#1032, a daemon thread) and manual completion both move a task to DONE
+    # while its run is still active, and DONE -> DONE is a rejected transition.
+    # Raising there would send execute_agent's handler into fail_run and
+    # persist a successful run as FAILED.
+    #
+    # Handled by catching rather than pre-checking: a read-then-call guard is
+    # check-then-act, and update_status does its own fresh read + compare-and-
+    # set, so a DONE landing in between would still raise. Re-reading in the
+    # handler is the only way to tell "someone else already finished it"
+    # (success) from a genuinely illegal transition (still BACKLOG — raise, and
+    # the run stays RUNNING).
+    try:
+        tasks.update_status(
+            workspace, run.task_id, TaskStatus.DONE, github_autoclose=github_autoclose
+        )
+    except InvalidTransitionError:
+        task = tasks.get(workspace, run.task_id)
+        if task is None or task.status != TaskStatus.DONE:
+            raise
 
     now = _utc_now().isoformat()
 
@@ -363,9 +415,6 @@ def complete_run(workspace: Workspace, run_id: str) -> Run:
         conn.commit()
     finally:
         conn.close()
-
-    # Transition task to DONE
-    tasks.update_status(workspace, run.task_id, TaskStatus.DONE)
 
     # Emit run completed event
     events.emit_for_workspace(
@@ -592,6 +641,44 @@ def stop_run(workspace: Workspace, task_id: str) -> Run:
     return run
 
 
+#: Defaults for the stall-detection settings. Used to tell "the user asked for
+#: this" apart from "nobody set it" when deciding whether to warn (#957).
+_DEFAULT_STALL_TIMEOUT_S = 300
+_DEFAULT_STALL_ACTION = "blocker"
+
+#: Engines that actually implement stall detection.
+_STALL_AWARE_ENGINES = ("react", "built-in")
+
+
+def _warn_if_stall_settings_ignored(
+    engine: str, stall_timeout_s: int, stall_action: str
+) -> None:
+    """Warn when stall settings were supplied but the engine ignores them (#957).
+
+    Only the react/built-in engines wire ``stall_timeout_s``/``stall_action``
+    into their adapter; every other engine silently dropped them, so a user who
+    passed ``--stall-timeout 60 --stall-action retry`` got the defaults with no
+    indication. Stays quiet when the values are the defaults — nothing was
+    asked for, so nothing is being ignored.
+    """
+    if engine in _STALL_AWARE_ENGINES:
+        return
+    if (
+        stall_timeout_s == _DEFAULT_STALL_TIMEOUT_S
+        and stall_action == _DEFAULT_STALL_ACTION
+    ):
+        return
+    logger.warning(
+        "Engine '%s' does not support stall detection; ignoring "
+        "--stall-timeout=%s and --stall-action=%s "
+        "(supported by: %s).",
+        engine,
+        stall_timeout_s,
+        stall_action,
+        ", ".join(_STALL_AWARE_ENGINES),
+    )
+
+
 def execute_stub(workspace: Workspace, run: Run) -> None:
     """Stub agent execution loop (deprecated).
 
@@ -780,6 +867,9 @@ def execute_agent(
             on_agent_event(event.type, event.data)
 
         # Get adapter via registry and run
+        # Tell the user when their stall flags will be dropped (#957).
+        _warn_if_stall_settings_ignored(engine, stall_timeout_s, stall_action)
+
         if is_external_engine(engine):
             from codeframe.core.context_packager import TaskContextPackager
             from codeframe.core.adapters.verification_wrapper import VerificationWrapper
@@ -818,7 +908,7 @@ def execute_agent(
                 "fix_coordinator": fix_coordinator,
             }
             # Stall detection is only relevant for the react engine
-            if engine in ("react", "built-in"):
+            if engine in _STALL_AWARE_ENGINES:
                 builtin_kwargs["stall_timeout_s"] = stall_timeout_s
                 builtin_kwargs["stall_action"] = resolved_action
 
@@ -944,8 +1034,16 @@ def execute_agent(
                 status=agent_status.value.upper(),
                 duration_ms=_perf_duration_ms,
                 tokens_used=_perf_tokens,
-                gates_passed=None,
-                self_corrections=0,
+                # Real values off the adapter result (#958). These were
+                # hardcoded None/0, so `cf engines stats` and `compare`
+                # rendered 0% Gate Pass and 0 self-corrections forever.
+                # engine_stats stores gates_passed as 1/0/NULL.
+                gates_passed=(
+                    None
+                    if getattr(result, "gates_passed", None) is None
+                    else int(bool(result.gates_passed))
+                ),
+                self_corrections=getattr(result, "self_corrections", 0) or 0,
             )
         except Exception:
             logger.warning("Engine stats recording failed", exc_info=True)
@@ -1179,8 +1277,11 @@ def check_assignment_status(workspace: Workspace) -> AssignmentResult:
         else:
             print(status.reason)
     """
-    # Count tasks by status
-    status_counts = tasks.count_by_status(workspace)
+    # Count executable tasks only (#958). A composite parent rolls up to
+    # IN_PROGRESS as soon as one child finishes, even with nothing running —
+    # counting it here made this refuse to start the remaining READY leaf with
+    # "Execution already in progress."
+    status_counts = tasks.count_by_status(workspace, leaves_only=True)
     ready_count = status_counts.get(TaskStatus.READY.value, 0)
     in_progress_count = status_counts.get(TaskStatus.IN_PROGRESS.value, 0)
 
@@ -1209,15 +1310,25 @@ def check_assignment_status(workspace: Workspace) -> AssignmentResult:
 
 
 def get_ready_task_ids(workspace: Workspace) -> list[str]:
-    """Get IDs of all READY tasks in the workspace.
+    """Get IDs of all READY **executable** tasks in the workspace.
 
     Convenience function for starting batch execution.
+
+    Composite tasks (``is_leaf=False``) are excluded (#958). They are
+    aggregates built by ``cf tasks generate --recursive`` — their status is
+    rolled up from their children, so a composite reaching READY means "my
+    children are ready", not "run me". Handing one to an engine would execute
+    a container alongside the real work it contains.
 
     Args:
         workspace: Target workspace
 
     Returns:
-        List of task IDs in READY status
+        List of task IDs in READY status, leaf tasks only
     """
-    ready_tasks = tasks.list_tasks(workspace, status=TaskStatus.READY)
-    return [t.id for t in ready_tasks]
+    # limit=None: the default 100-row cap silently truncated this, so the v2
+    # API's "run all ready" route started a subset of a >100-task workspace and
+    # reported nothing wrong. `cf work batch run --all-ready` already passed
+    # limit=None (#743); this path had been missed.
+    ready_tasks = tasks.list_tasks(workspace, status=TaskStatus.READY, limit=None)
+    return [t.id for t in ready_tasks if t.is_leaf]

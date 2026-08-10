@@ -166,6 +166,10 @@ class ErrorCodes:
     # Distinct from UNAUTHORIZED so it is never carried on a 401 — the web UI
     # treats any 401 as CodeFRAME session expiry and logs the user out (#734).
     UPSTREAM_AUTH_FAILED = "UPSTREAM_AUTH_FAILED"
+    # An upstream service throttled us (GitHub rate limit). Distinct from
+    # FORBIDDEN so a transient 429 is never read as "your token lacks a
+    # scope" — that sent users to regenerate a working PAT (#956).
+    RATE_LIMITED = "RATE_LIMITED"
 
     # Server errors (5xx)
     INTERNAL_ERROR = "INTERNAL_ERROR"

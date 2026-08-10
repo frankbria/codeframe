@@ -30,23 +30,53 @@ engines_app = typer.Typer(
 )
 
 
+def _config_root() -> Optional[Path]:
+    """The enclosing workspace root, for the builtin engines' provider lookup.
+
+    ``Path.cwd()`` alone is wrong from a subdirectory: the provider resolution
+    reads ``.codeframe/config.yaml`` in exactly the directory it is handed, so
+    ``cf engines check react`` run from ``repo/src/`` misses a workspace
+    configured for OpenAI and reports ANTHROPIC_API_KEY instead. Same class of
+    bug as #926, and the same walk-up helper fixes it.
+
+    None means "not inside a workspace", which correctly leaves only the
+    environment tier to answer.
+    """
+    from codeframe.core.workspace import find_workspace_root
+
+    return find_workspace_root(Path.cwd())
+
+
 @engines_app.command("list")
 def engines_list() -> None:
     """List all available execution engines and their requirement status."""
-    from codeframe.core.engine_registry import VALID_ENGINES, EXTERNAL_ENGINES, check_requirements
+    from codeframe.core.engine_registry import (
+        ADVERTISED_ENGINES,
+        EXTERNAL_ENGINES,
+        check_requirements,
+        suggestable_engines,
+    )
+
+    # Gated engines are absent unless opted in, and labelled when present —
+    # this list is how a user picks an engine (#966).
+    listed = suggestable_engines()
 
     table = Table(title="Available Engines")
     table.add_column("Engine", style="cyan")
     table.add_column("Type", style="dim")
     table.add_column("Requirements", style="green")
 
-    for engine in sorted(VALID_ENGINES):
+    for engine in listed:
         engine_type = "external" if engine in EXTERNAL_ENGINES else "builtin"
         if engine == "built-in":
             engine_type = "alias → react"
+        elif engine not in ADVERTISED_ENGINES:
+            engine_type = f"{engine_type}, EXPERIMENTAL"
 
         try:
-            reqs = check_requirements(engine)
+            # The workspace root, so a builtin engine's requirement reflects the
+            # provider in this workspace's .codeframe/config.yaml (#955).
+            reqs = check_requirements(engine, _config_root())
         except ValueError:
             reqs = {}
 
@@ -72,7 +102,7 @@ def engines_check(
     from codeframe.core.engine_registry import check_requirements
 
     try:
-        reqs = check_requirements(name)
+        reqs = check_requirements(name, _config_root())
     except ValueError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)

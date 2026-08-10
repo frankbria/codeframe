@@ -14,13 +14,9 @@ Lifecycle:
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
-import os
 import subprocess
-import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -32,8 +28,6 @@ except ImportError:  # pragma: no cover - non-POSIX (e.g. native Windows)
 logger = logging.getLogger(__name__)
 
 WORKTREE_DIR = ".codeframe/worktrees"
-_REGISTRY_FILE = ".codeframe/worktrees.json"
-_registry_lock = threading.Lock()
 
 
 @contextlib.contextmanager
@@ -260,35 +254,42 @@ class TaskWorktree:
         """Remove worktree and delete task branch.
 
         Never raises — cleanup failures are logged as warnings.
+
+        Git's **exit code** is inspected, not just the absence of an exception
+        (#958). Both commands used to be fire-and-forget, so a failed branch
+        delete left ``cf/<task_id>`` behind and the *next* run of that task died
+        in ``_create_worktree_context`` ("a worktree or branch already exists")
+        with nothing in the log explaining why.
         """
         worktree_path = workspace_path / WORKTREE_DIR / task_id
         branch_name = f"cf/{task_id}"
 
-        # Remove worktree
-        try:
-            subprocess.run(
+        for what, cmd in (
+            (
+                f"remove worktree for {task_id}",
                 ["git", "worktree", "remove", str(worktree_path), "--force"],
-                cwd=str(workspace_path),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-        except Exception as exc:
-            logger.warning("Failed to remove worktree for %s: %s", task_id, exc)
-
-        # Delete branch
-        try:
-            subprocess.run(
-                ["git", "branch", "-D", branch_name],
-                cwd=str(workspace_path),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-        except Exception as exc:
-            logger.warning("Failed to delete branch %s: %s", branch_name, exc)
+            ),
+            (f"delete branch {branch_name}", ["git", "branch", "-D", branch_name]),
+        ):
+            try:
+                result = subprocess.run(
+                    cmd,
+                    cwd=str(workspace_path),
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+            except Exception as exc:
+                logger.warning("Failed to %s: %s", what, exc)
+                continue
+            if result.returncode != 0:
+                logger.warning(
+                    "Failed to %s (git exit %s): %s",
+                    what,
+                    result.returncode,
+                    (result.stderr or result.stdout or "").strip()[:500],
+                )
 
 
 def get_base_branch(workspace_path: Path) -> str:
@@ -310,79 +311,3 @@ def get_base_branch(workspace_path: Path) -> str:
         return "main"
     return branch
 
-
-def list_worktrees(workspace_path: Path) -> list[dict]:
-    """Return all entries in the worktree registry, or [] if absent/corrupt/malformed."""
-    registry_file = workspace_path / _REGISTRY_FILE
-    if not registry_file.exists():
-        return []
-    try:
-        data = json.loads(registry_file.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except Exception:
-        return []
-
-
-class WorktreeRegistry:
-    """Atomic registry of active worktrees for orphan detection.
-
-    Stores entries in ``.codeframe/worktrees.json``. All mutations are
-    protected by a module-level threading.Lock and written atomically
-    (write to .tmp then os.replace).
-    """
-
-    def register(self, workspace_path: Path, task_id: str, batch_id: str) -> None:
-        """Add or refresh a worktree entry for task_id."""
-        with _registry_lock:
-            entries = list_worktrees(workspace_path)
-            # Remove any existing entry for this task_id (idempotent)
-            entries = [e for e in entries if e["task_id"] != task_id]
-            entries.append({
-                "task_id": task_id,
-                "batch_id": batch_id,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "pid": os.getpid(),
-            })
-            self._write(workspace_path, entries)
-
-    def unregister(self, workspace_path: Path, task_id: str) -> None:
-        """Remove the worktree entry for task_id. Safe if absent."""
-        with _registry_lock:
-            entries = list_worktrees(workspace_path)
-            entries = [e for e in entries if e["task_id"] != task_id]
-            self._write(workspace_path, entries)
-
-    def list_stale(self, workspace_path: Path) -> list[dict]:
-        """Return entries whose registered PID is no longer alive."""
-        stale = []
-        for entry in list_worktrees(workspace_path):
-            pid = entry.get("pid")
-            if pid is None:
-                continue
-            try:
-                os.kill(pid, 0)
-            except ProcessLookupError:
-                stale.append(entry)
-            except PermissionError:
-                pass  # Process is alive but owned by another user — not stale
-        return stale
-
-    def cleanup_stale(self, workspace_path: Path) -> None:
-        """Remove stale worktree directories and unregister their entries."""
-        stale = self.list_stale(workspace_path)
-        if not stale:
-            return
-        wt = TaskWorktree()
-        for entry in stale:
-            task_id = entry["task_id"]
-            logger.info("Cleaning up orphaned worktree for task %s (pid %s)", task_id, entry.get("pid"))
-            wt.cleanup(workspace_path, task_id)
-            self.unregister(workspace_path, task_id)
-
-    @staticmethod
-    def _write(workspace_path: Path, entries: list[dict]) -> None:
-        registry_file = workspace_path / _REGISTRY_FILE
-        registry_file.parent.mkdir(parents=True, exist_ok=True)
-        tmp_file = registry_file.with_suffix(".json.tmp")
-        tmp_file.write_text(json.dumps(entries, indent=2))
-        os.replace(tmp_file, registry_file)

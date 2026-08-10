@@ -173,6 +173,12 @@ class ReactAgent:
         self._max_cost_usd: Optional[float] = None
         self._prior_task_cost_usd: float = 0.0
         self.max_verification_retries = max_verification_retries
+        #: Outcome of the final gate run: True/False once gates have run, None
+        #: if they never did. Read by the builtin adapter so `cf engines stats`
+        #: reports a real Gate Pass rate instead of a permanent 0% (#958).
+        self.gates_passed: Optional[bool] = None
+        #: How many times the agent retried after failed gates (#958).
+        self.self_correction_count: int = 0
         self._stall_timeout_s = stall_timeout_s
         self._stall_action = stall_action
         self.event_publisher = event_publisher
@@ -799,6 +805,10 @@ class ReactAgent:
                 iteration=attempt,
             )
             gate_result = gates.run(self.workspace)
+            # Record the outcome for engine stats (#958); attempt 0 is the
+            # first real gate run, every later pass is a self-correction.
+            self.gates_passed = gate_result.passed
+            self.self_correction_count = attempt
             if gate_result.passed:
                 return (True, None)
 

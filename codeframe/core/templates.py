@@ -150,6 +150,7 @@ def apply_template(
     template_id: str,
     issue_number: str = "1",
     context: Optional[dict[str, Any]] = None,
+    prd_id: Optional[str] = None,
 ) -> ApplyTemplateResult:
     """Apply a template to create tasks in a workspace.
 
@@ -161,12 +162,15 @@ def apply_template(
         template_id: Template ID to apply
         issue_number: Parent issue number for task numbering
         context: Optional context dict for template variables
+        prd_id: PRD to attribute the created tasks to (#962). ``cf templates
+            apply`` refuses to run without a PRD, but the tasks it created were
+            never linked to one — so they showed no provenance.
 
     Returns:
         ApplyTemplateResult with created task IDs
 
     Raises:
-        ValueError: If template not found
+        ValueError: If template not found, or a dependency index is out of range
     """
     manager = TaskTemplateManager()
     template = manager.get_template(template_id)
@@ -181,6 +185,22 @@ def apply_template(
         issue_number=issue_number,
     )
 
+    # Validate dependency indices BEFORE creating anything (#961). These used
+    # to be filtered with `if 0 <= idx < len(created_tasks)`, so a template
+    # naming a task that does not exist produced a graph that looked fine and
+    # then executed in the wrong order — silently. Checking up front also means
+    # a bad template leaves no half-built set of tasks behind.
+    for position, task_dict in enumerate(task_dicts):
+        for idx in task_dict.get("depends_on_indices", []) or []:
+            if not isinstance(idx, int) or not (0 <= idx < len(task_dicts)):
+                raise ValueError(
+                    f"Template '{template_id}' task #{position} "
+                    f"('{task_dict.get('title', '?')}') declares dependency "
+                    f"index {idx!r}, which is out of range for a template with "
+                    f"{len(task_dicts)} tasks (valid: 0..{len(task_dicts) - 1}). "
+                    "Fix the template's depends_on_indices."
+                )
+
     # Create tasks using v2 API
     created_tasks: list[tuple[tasks.Task, list[int]]] = []
     for task_dict in task_dicts:
@@ -192,20 +212,17 @@ def apply_template(
             estimated_hours=task_dict.get("estimated_hours"),
             complexity_score=task_dict.get("complexity_score"),
             uncertainty_level=task_dict.get("uncertainty_level"),
+            prd_id=prd_id,
         )
         created_tasks.append((task, task_dict.get("depends_on_indices", [])))
 
-    # Wire up dependencies using indices -> actual task IDs
+    # Wire up dependencies using indices -> actual task IDs. Every index was
+    # range-checked above, so no filtering is needed (and none should happen —
+    # silently dropping one is the defect this replaced).
     for task, dep_indices in created_tasks:
         if dep_indices:
-            # Map 0-based indices to actual task IDs
-            depends_on_ids = [
-                created_tasks[idx][0].id
-                for idx in dep_indices
-                if 0 <= idx < len(created_tasks)
-            ]
-            if depends_on_ids:
-                tasks.update_depends_on(workspace, task.id, depends_on_ids)
+            depends_on_ids = [created_tasks[idx][0].id for idx in dep_indices]
+            tasks.update_depends_on(workspace, task.id, depends_on_ids)
 
     created_task_ids = [task.id for task, _ in created_tasks]
 

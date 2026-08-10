@@ -18,7 +18,7 @@ def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:
     Returns:
         JWT token string
     """
-    from codeframe.auth.manager import SECRET, JWT_LIFETIME_SECONDS
+    from codeframe.auth.manager import SECRET, jwt_lifetime_seconds
 
     if secret is None:
         secret = SECRET
@@ -26,7 +26,7 @@ def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:
     payload = {
         "sub": str(user_id),
         "aud": ["fastapi-users:auth"],
-        "exp": datetime.now(timezone.utc) + timedelta(seconds=JWT_LIFETIME_SECONDS),
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=jwt_lifetime_seconds()),
     }
     return jwt.encode(payload, secret, algorithm="HS256")
 
@@ -44,7 +44,7 @@ def setup_test_user(db, user_id: int = 1) -> None:
             id, email, name, hashed_password,
             is_active, is_superuser, is_verified, email_verified
         )
-        VALUES (?, 'test@example.com', 'Test User', '!DISABLED!', 1, 0, 1, 1)
+        VALUES (?, 'test@example.com', 'Test User', '$2b$12$testtesttesttesttesttestesttesttesttesttesttesttesttestte', 1, 0, 1, 1)
         """,
         (user_id,),
     )

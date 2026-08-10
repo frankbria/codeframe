@@ -51,8 +51,8 @@ def scoped_app(tmp_path, monkeypatch):
             id, email, name, hashed_password,
             is_active, is_superuser, is_verified, email_verified
         ) VALUES
-            (1, 'test@example.com', 'Test', '!DISABLED!', 1, 0, 1, 1),
-            (2, 'admin@example.com', 'Admin', '!DISABLED!', 1, 1, 1, 1)
+            (1, 'test@example.com', 'Test', '$2b$12$testtesttesttesttesttestesttesttesttesttesttesttesttestte', 1, 0, 1, 1),
+            (2, 'admin@example.com', 'Admin', '$2b$12$testtesttesttesttesttestesttesttesttesttesttesttesttestte', 1, 1, 1, 1)
         """
     )
     db.conn.commit()

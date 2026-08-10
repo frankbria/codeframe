@@ -46,67 +46,81 @@ class TokenRepository(BaseRepository):
             ... )
             >>> usage_id = db.save_token_usage(usage)
         """
-        if self._sync_lock is not None:
-            with self._sync_lock:
-                cursor = self.conn.cursor()
-                cursor.execute(
-                    """
-                    INSERT INTO token_usage (
-                        task_id, agent_id, project_id, model_name,
-                        input_tokens, output_tokens, estimated_cost_usd,
-                        actual_cost_usd, call_type, timestamp
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        token_usage.task_id,
-                        token_usage.agent_id,
-                        token_usage.project_id,
-                        token_usage.model_name,
-                        token_usage.input_tokens,
-                        token_usage.output_tokens,
-                        token_usage.estimated_cost_usd,
-                        token_usage.actual_cost_usd,
-                        (
-                            token_usage.call_type.value
-                            if isinstance(token_usage.call_type, CallType)
-                            else token_usage.call_type
-                        ),
-                        token_usage.timestamp.isoformat(),
-                    ),
-                )
-                self.conn.commit()
-                return cursor.lastrowid
-        else:
-            cursor = self.conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO token_usage (
-                    task_id, agent_id, project_id, model_name,
-                    input_tokens, output_tokens, estimated_cost_usd,
-                    actual_cost_usd, call_type, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+        # Single INSERT path: _execute/_commit already take the shared lock when
+        # one was supplied, so the old duplicated lock/no-lock branches (#953)
+        # only risked the two copies drifting apart.
+        cursor = self._execute_write(
+            """
+            INSERT INTO token_usage (
+                task_id, agent_id, project_id, model_name,
+                input_tokens, output_tokens, estimated_cost_usd,
+                actual_cost_usd, call_type, timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                token_usage.task_id,
+                token_usage.agent_id,
+                token_usage.project_id,
+                token_usage.model_name,
+                token_usage.input_tokens,
+                token_usage.output_tokens,
+                token_usage.estimated_cost_usd,
+                token_usage.actual_cost_usd,
                 (
-                    token_usage.task_id,
-                    token_usage.agent_id,
-                    token_usage.project_id,
-                    token_usage.model_name,
-                    token_usage.input_tokens,
-                    token_usage.output_tokens,
-                    token_usage.estimated_cost_usd,
-                    token_usage.actual_cost_usd,
-                    (
-                        token_usage.call_type.value
-                        if isinstance(token_usage.call_type, CallType)
-                        else token_usage.call_type
-                    ),
-                    token_usage.timestamp.isoformat(),
+                    token_usage.call_type.value
+                    if isinstance(token_usage.call_type, CallType)
+                    else token_usage.call_type
                 ),
-            )
-            self.conn.commit()
-            return cursor.lastrowid
+                token_usage.timestamp.isoformat(),
+            ),
+        )
+        return cursor.lastrowid
 
 
+
+    def _build_usage_query(
+        self,
+        project_id: Optional[int] = None,
+        agent_id: Optional[str] = None,
+        task_ids: Optional[List[Union[int, str]]] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        limit: Optional[int] = None,
+    ) -> tuple[str, tuple]:
+        """Build the shared ``SELECT * FROM token_usage`` query and its params.
+
+        One builder for the three row-returning readers and the streaming
+        iterator, so a filter added here reaches all of them (#953).
+        """
+        query = "SELECT * FROM token_usage WHERE 1=1"
+        params: list = []
+
+        if project_id is not None:
+            query += " AND project_id = ?"
+            params.append(project_id)
+        if agent_id is not None:
+            query += " AND agent_id = ?"
+            params.append(agent_id)
+        if task_ids is not None:
+            placeholders = ",".join("?" for _ in task_ids)
+            query += f" AND task_id IN ({placeholders})"
+            params.extend(task_ids)
+        if start_date is not None:
+            query += " AND timestamp >= ?"
+            params.append(start_date.isoformat())
+        if end_date is not None:
+            query += " AND timestamp <= ?"
+            params.append(end_date.isoformat())
+
+        query += " ORDER BY timestamp DESC"
+
+        if limit is not None:
+            if limit <= 0:
+                raise ValueError("limit must be a positive integer")
+            query += " LIMIT ?"
+            params.append(limit)
+
+        return query, tuple(params)
 
     def get_token_usage(
         self,
@@ -114,6 +128,7 @@ class TokenRepository(BaseRepository):
         agent_id: Optional[str] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        limit: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Get token usage records with optional filtering.
 
@@ -122,6 +137,9 @@ class TokenRepository(BaseRepository):
             agent_id: Filter by agent ID (optional)
             start_date: Filter by start date (inclusive, optional)
             end_date: Filter by end date (inclusive, optional)
+            limit: Cap the number of rows returned (optional). Omit for the
+                unbounded result set; prefer ``get_token_usage_iter`` when the
+                caller only walks the rows once.
 
         Returns:
             List of token usage records as dictionaries
@@ -135,32 +153,14 @@ class TokenRepository(BaseRepository):
             >>> start = datetime.now() - timedelta(days=7)
             >>> usage = db.get_token_usage(agent_id="backend-001", start_date=start)
         """
-        cursor = self.conn.cursor()
-
-        # Build query with filters
-        query = "SELECT * FROM token_usage WHERE 1=1"
-        params = []
-
-        if project_id is not None:
-            query += " AND project_id = ?"
-            params.append(project_id)
-
-        if agent_id is not None:
-            query += " AND agent_id = ?"
-            params.append(agent_id)
-
-        if start_date is not None:
-            query += " AND timestamp >= ?"
-            params.append(start_date.isoformat())
-
-        if end_date is not None:
-            query += " AND timestamp <= ?"
-            params.append(end_date.isoformat())
-
-        query += " ORDER BY timestamp DESC"
-
-        cursor.execute(query, params)
-        return [dict(row) for row in cursor.fetchall()]
+        query, params = self._build_usage_query(
+            project_id=project_id,
+            agent_id=agent_id,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
+        return [dict(row) for row in self._fetchall(query, params)]
 
 
 
@@ -181,8 +181,7 @@ class TokenRepository(BaseRepository):
                 "call_count": int,
             }
         """
-        cursor = self.conn.cursor()
-        cursor.execute(
+        row = self._fetchone(
             """
             SELECT
                 COALESCE(SUM(input_tokens), 0) as total_input_tokens,
@@ -195,7 +194,6 @@ class TokenRepository(BaseRepository):
             """,
             (task_id,),
         )
-        row = cursor.fetchone()
 
         return {
             "task_id": task_id,
@@ -211,6 +209,7 @@ class TokenRepository(BaseRepository):
         task_ids: List[Union[int, str]],
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        limit: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Get token usage records filtered by a list of task IDs.
 
@@ -218,6 +217,7 @@ class TokenRepository(BaseRepository):
             task_ids: List of task IDs to filter by (v2 UUID strings or legacy ints)
             start_date: Optional start of date range (inclusive)
             end_date: Optional end of date range (inclusive)
+            limit: Cap the number of rows returned (optional)
 
         Returns:
             List of token usage records as dictionaries
@@ -225,89 +225,70 @@ class TokenRepository(BaseRepository):
         if not task_ids:
             return []
 
-        cursor = self.conn.cursor()
-        placeholders = ",".join("?" for _ in task_ids)
-        query = f"SELECT * FROM token_usage WHERE task_id IN ({placeholders})"
-        params: list = list(task_ids)
-
-        if start_date is not None:
-            query += " AND timestamp >= ?"
-            params.append(start_date.isoformat())
-
-        if end_date is not None:
-            query += " AND timestamp <= ?"
-            params.append(end_date.isoformat())
-
-        query += " ORDER BY timestamp DESC"
-
-        cursor.execute(query, params)
-        return [dict(row) for row in cursor.fetchall()]
+        query, params = self._build_usage_query(
+            task_ids=task_ids, start_date=start_date, end_date=end_date, limit=limit
+        )
+        return [dict(row) for row in self._fetchall(query, params)]
 
     def get_workspace_token_usage(
         self,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        limit: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Get all token usage records across the workspace.
 
         Args:
             start_date: Optional start of date range (inclusive)
             end_date: Optional end of date range (inclusive)
+            limit: Cap the number of rows returned (optional). Prefer
+                ``get_token_usage_iter`` to walk the whole table.
 
         Returns:
             List of token usage records as dictionaries
         """
-        cursor = self.conn.cursor()
-        query = "SELECT * FROM token_usage WHERE 1=1"
-        params: list = []
-
-        if start_date is not None:
-            query += " AND timestamp >= ?"
-            params.append(start_date.isoformat())
-
-        if end_date is not None:
-            query += " AND timestamp <= ?"
-            params.append(end_date.isoformat())
-
-        query += " ORDER BY timestamp DESC"
-
-        cursor.execute(query, params)
-        return [dict(row) for row in cursor.fetchall()]
+        query, params = self._build_usage_query(
+            start_date=start_date, end_date=end_date, limit=limit
+        )
+        return [dict(row) for row in self._fetchall(query, params)]
 
     def get_token_usage_iter(
         self,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        project_id: Optional[int] = None,
+        agent_id: Optional[str] = None,
         batch_size: int = 1000,
     ) -> "Iterator[Dict[str, Any]]":
-        """Stream workspace token_usage rows without materialising the whole table.
+        """Stream token_usage rows without materialising the whole table.
 
         Yields records one at a time, pulling from SQLite in ``batch_size``
         chunks via ``fetchmany`` so an export of a large table never loads the
-        entire result set into a Python list.
+        entire result set into a Python list. Accepts the same filters as
+        ``get_token_usage`` so aggregating callers can stream instead of
+        building an unbounded list (#953).
 
         Args:
             start_date: Optional start of date range (inclusive).
             end_date: Optional end of date range (inclusive).
+            project_id: Filter by project ID (optional).
+            agent_id: Filter by agent ID (optional).
             batch_size: Rows fetched per round-trip.
 
         Yields:
             Token usage records as dictionaries, newest first.
         """
-        # ponytail: uses a dedicated cursor on the shared connection; the export
-        # path is single-threaded, so no other query interleaves mid-iteration.
-        query = "SELECT * FROM token_usage WHERE 1=1"
-        params: list = []
-        if start_date is not None:
-            query += " AND timestamp >= ?"
-            params.append(start_date.isoformat())
-        if end_date is not None:
-            query += " AND timestamp <= ?"
-            params.append(end_date.isoformat())
-        query += " ORDER BY timestamp DESC"
-
-        cursor = self.conn.cursor()
-        cursor.execute(query, params)
+        # ponytail: holds one cursor on the shared connection for the whole
+        # walk; the lock covers the execute, not the fetchmany loop, so a
+        # concurrent writer's rows may or may not appear. Fine for reporting —
+        # switch to a snapshot transaction if an exact point-in-time is needed.
+        query, params = self._build_usage_query(
+            project_id=project_id,
+            agent_id=agent_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        cursor = self._execute(query, params)
         # try/finally closes the cursor even if the consumer breaks or raises
         # mid-stream (GeneratorExit), rather than leaving it open until GC.
         try:
@@ -365,8 +346,6 @@ class TokenRepository(BaseRepository):
             params.append(end_date.isoformat())
         query += " GROUP BY model_name ORDER BY total_cost_usd DESC"
 
-        cursor = self.conn.cursor()
-        cursor.execute(query, params)
         return [
             {
                 "model_name": row["model_name"],
@@ -375,7 +354,7 @@ class TokenRepository(BaseRepository):
                 "total_cost_usd": float(row["total_cost_usd"] or 0.0),
                 "call_count": int(row["call_count"] or 0),
             }
-            for row in cursor.fetchall()
+            for row in self._fetchall(query, tuple(params))
         ]
 
     def get_costs_summary(self, days: int) -> Dict[str, Any]:
@@ -409,11 +388,9 @@ class TokenRepository(BaseRepository):
         # are future-dated (clock skew, bad seed data).
         end_iso = (end_date + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
 
-        cursor = self.conn.cursor()
-
         # Totals over the window. total_spend includes NULL-task records so it
         # matches the chart; total_tasks only counts records linked to a task.
-        cursor.execute(
+        totals = self._fetchone(
             """
             SELECT
                 COALESCE(SUM(estimated_cost_usd), 0.0) AS total_spend,
@@ -423,24 +400,25 @@ class TokenRepository(BaseRepository):
             """,
             (start_iso, end_iso),
         )
-        totals = cursor.fetchone()
         total_spend = float(totals["total_spend"] or 0.0)
         total_tasks = int(totals["task_count"] or 0)
         avg_cost = (total_spend / total_tasks) if total_tasks > 0 else 0.0
 
         # Daily aggregation — group by calendar date in UTC
-        cursor.execute(
-            """
-            SELECT
-                DATE(timestamp) AS day,
-                COALESCE(SUM(estimated_cost_usd), 0.0) AS cost
-            FROM token_usage
-            WHERE timestamp >= ? AND timestamp < ?
-            GROUP BY DATE(timestamp)
-            """,
-            (start_iso, end_iso),
-        )
-        by_day: Dict[str, float] = {row["day"]: float(row["cost"] or 0.0) for row in cursor.fetchall()}
+        by_day: Dict[str, float] = {
+            row["day"]: float(row["cost"] or 0.0)
+            for row in self._fetchall(
+                """
+                SELECT
+                    DATE(timestamp) AS day,
+                    COALESCE(SUM(estimated_cost_usd), 0.0) AS cost
+                FROM token_usage
+                WHERE timestamp >= ? AND timestamp < ?
+                GROUP BY DATE(timestamp)
+                """,
+                (start_iso, end_iso),
+            )
+        }
 
         daily: List[Dict[str, Any]] = []
         for offset in range(days):
@@ -504,8 +482,7 @@ class TokenRepository(BaseRepository):
         # ROW_NUMBER() instead of an N+1 per-task subquery (#750). O(1) queries
         # regardless of `limit`. Ties on call count break on agent_id for a
         # deterministic result (previously "arbitrary").
-        cursor = self.conn.cursor()
-        cursor.execute(
+        rows = self._fetchall(
             """
             WITH per_task AS (
                 SELECT
@@ -548,7 +525,6 @@ class TokenRepository(BaseRepository):
             """,
             (start_iso, end_iso, limit, start_iso, end_iso),
         )
-        rows = cursor.fetchall()
 
         result: List[Dict[str, Any]] = []
         for row in rows:
@@ -589,8 +565,7 @@ class TokenRepository(BaseRepository):
         """
         start_iso, end_iso = self._window_iso_bounds(days)
 
-        cursor = self.conn.cursor()
-        cursor.execute(
+        rows = self._fetchall(
             """
             SELECT
                 agent_id,
@@ -605,7 +580,6 @@ class TokenRepository(BaseRepository):
             """,
             (start_iso, end_iso),
         )
-        rows = cursor.fetchall()
 
         by_agent: List[Dict[str, Any]] = []
         total_input = 0
@@ -628,84 +602,3 @@ class TokenRepository(BaseRepository):
             "total_input_tokens": total_input,
             "total_output_tokens": total_output,
         }
-
-    def get_project_costs_aggregate(self, project_id: int) -> Dict[str, Any]:
-        """Get aggregated cost statistics for a project.
-
-        This is a convenience method that aggregates costs by agent and model
-        in a single database query for better performance.
-
-        Args:
-            project_id: Project ID
-
-        Returns:
-            Dictionary with aggregated costs:
-            {
-                "total_cost": float,
-                "total_tokens": int,
-                "by_agent": {...},
-                "by_model": {...}
-            }
-
-        Example:
-            >>> stats = db.get_project_costs_aggregate(project_id=1)
-            >>> print(f"Total: ${stats['total_cost']:.2f}")
-        """
-        cursor = self.conn.cursor()
-
-        # Get overall totals
-        cursor.execute(
-            """
-            SELECT
-                COALESCE(SUM(estimated_cost_usd), 0) as total_cost,
-                COALESCE(SUM(input_tokens + output_tokens), 0) as total_tokens,
-                COUNT(*) as total_calls
-            FROM token_usage
-            WHERE project_id = ?
-            """,
-            (project_id,),
-        )
-        totals = cursor.fetchone()
-
-        # Get breakdown by agent
-        cursor.execute(
-            """
-            SELECT
-                agent_id,
-                SUM(estimated_cost_usd) as cost,
-                SUM(input_tokens + output_tokens) as tokens,
-                COUNT(*) as calls
-            FROM token_usage
-            WHERE project_id = ?
-            GROUP BY agent_id
-            ORDER BY cost DESC
-            """,
-            (project_id,),
-        )
-        by_agent = [dict(row) for row in cursor.fetchall()]
-
-        # Get breakdown by model
-        cursor.execute(
-            """
-            SELECT
-                model_name,
-                SUM(estimated_cost_usd) as cost,
-                SUM(input_tokens + output_tokens) as tokens,
-                COUNT(*) as calls
-            FROM token_usage
-            WHERE project_id = ?
-            GROUP BY model_name
-            ORDER BY cost DESC
-            """,
-            (project_id,),
-        )
-        by_model = [dict(row) for row in cursor.fetchall()]
-
-        return {
-            "total_cost": totals["total_cost"],
-            "total_tokens": totals["total_tokens"],
-            "total_calls": totals["total_calls"],
-            "by_agent": by_agent,
-            "by_model": by_model,
-        }
-

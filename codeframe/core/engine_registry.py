@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 from codeframe.core.adapters.agent_adapter import AgentAdapter
@@ -36,6 +37,57 @@ BUILTIN_ENGINES = frozenset({
     "built-in",
 })
 
+# Engines offered to users. "cloud" is valid but NOT advertised (#966): E2B
+# execution is out of launch scope and does not currently work end to end, so
+# it stays reachable only behind an explicit opt-in. Keeping it in
+# VALID_ENGINES lets the gate below answer with a specific message instead of
+# "unknown engine".
+ADVERTISED_ENGINES = frozenset(VALID_ENGINES - {"cloud"})
+
+#: Opt-in for the experimental cloud engine (#966).
+CLOUD_ENGINE_OPT_IN_ENV = "CODEFRAME_ENABLE_CLOUD_ENGINE"
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def cloud_engine_enabled() -> bool:
+    """Whether the experimental cloud engine has been opted into.
+
+    Read at call time, not import, so tests and a per-invocation environment
+    both take effect.
+    """
+    return os.environ.get(CLOUD_ENGINE_OPT_IN_ENV, "").strip().lower() in _TRUTHY
+
+
+def suggestable_engines() -> list[str]:
+    """The engine names to offer a user who named one that does not exist.
+
+    Every "must be one of" list goes through here so they cannot drift apart:
+    a gated engine is absent by default and present once opted into, in the
+    CLI's engine list, the config validator and the requirement check alike
+    (#966).
+    """
+    engines = VALID_ENGINES if cloud_engine_enabled() else ADVERTISED_ENGINES
+    return sorted(engines)
+
+
+def _reject_cloud_unless_enabled(engine: str) -> None:
+    """Raise unless the caller has opted into the experimental cloud engine.
+
+    Called from every entry point that can reach the E2B adapter — the CLI/env
+    resolution path AND the direct adapter lookups, because runtime calls those
+    without going through resolve_engine.
+    """
+    if engine != "cloud" or cloud_engine_enabled():
+        return
+    raise ValueError(
+        "The 'cloud' engine (E2B) is EXPERIMENTAL and unsupported. It is not "
+        "part of the supported surface and has known defects that can leave "
+        "your working tree inconsistent with what the gates then validate. "
+        f"To try it anyway, set {CLOUD_ENGINE_OPT_IN_ENV}=1. "
+        f"Supported engines: {', '.join(sorted(ADVERTISED_ENGINES))}."
+    )
+
 
 def resolve_engine(cli_engine: str | None = None) -> str:
     """Resolve which engine to use.
@@ -63,8 +115,10 @@ def resolve_engine(cli_engine: str | None = None) -> str:
     if engine not in VALID_ENGINES:
         raise ValueError(
             f"Invalid engine '{engine}'. "
-            f"Must be one of: {', '.join(sorted(VALID_ENGINES))}"
+            f"Must be one of: {', '.join(suggestable_engines())}"
         )
+
+    _reject_cloud_unless_enabled(engine)
 
     return engine
 
@@ -88,6 +142,8 @@ def get_external_adapter(engine: str, **kwargs: Any) -> AgentAdapter:
         ValueError: If engine is not an external engine.
         EnvironmentError: If the required binary is not installed.
     """
+    _reject_cloud_unless_enabled(engine)
+
     if engine == "claude-code":
         from codeframe.core.adapters.claude_code import ClaudeCodeAdapter
 
@@ -99,7 +155,9 @@ def get_external_adapter(engine: str, **kwargs: Any) -> AgentAdapter:
     elif engine == "opencode":
         from codeframe.core.adapters.opencode import OpenCodeAdapter
 
-        return OpenCodeAdapter()
+        # **kwargs, like every sibling: dropping them silently ignored the
+        # caller's timeout_s/auto_approve for this one engine (#955).
+        return OpenCodeAdapter(**kwargs)
     elif engine == "kilocode":
         from codeframe.core.adapters.kilocode import KilocodeAdapter
 
@@ -153,11 +211,16 @@ def get_builtin_adapter(
         )
 
 
-def check_requirements(engine: str) -> dict[str, bool]:
+def check_requirements(
+    engine: str, repo_path: Path | None = None
+) -> dict[str, bool]:
     """Check if an engine's requirements are met.
 
     Args:
         engine: Engine name to check.
+        repo_path: Workspace root, so a builtin engine's requirement reflects the
+            provider configured in ``.codeframe/config.yaml`` rather than the
+            default (#955). None checks the env tier only.
 
     Returns:
         Dict of requirement-name → bool (True if satisfied).
@@ -168,7 +231,7 @@ def check_requirements(engine: str) -> dict[str, bool]:
     if engine not in VALID_ENGINES:
         raise ValueError(
             f"Invalid engine '{engine}'. "
-            f"Must be one of: {', '.join(sorted(VALID_ENGINES))}"
+            f"Must be one of: {', '.join(suggestable_engines())}"
         )
 
     # Resolve alias
@@ -183,7 +246,9 @@ def check_requirements(engine: str) -> dict[str, bool]:
     if req_method is None or not callable(req_method):
         return {}
 
-    reqs = req_method()
+    # Builtin engines call the LLM themselves, so which key they need depends on
+    # the configured provider — the external adapters' requirements are fixed.
+    reqs = req_method(repo_path) if engine in BUILTIN_ENGINES else req_method()
     result: dict[str, bool] = {}
     for key in reqs:
         # Check environment variables for builtin engines

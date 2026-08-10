@@ -34,13 +34,12 @@ def workspace_with_batch(tmp_path):
         on_failure=conductor.OnFailure.CONTINUE,
         started_at=datetime(2026, 3, 17, 10, 0, 0, tzinfo=timezone.utc),
         completed_at=datetime(2026, 3, 17, 10, 5, 0, tzinfo=timezone.utc),
-        results={
-            "task-1": "COMPLETED",
-            "__config_reloads__": [
-                "2026-03-17T10:01:30+00:00",
-                "2026-03-17T10:03:45+00:00",
-            ],
-        },
+        results={"task-1": "COMPLETED"},
+        # Off results since #957 — results is task_id -> RunStatus only.
+        config_reloads=[
+            "2026-03-17T10:01:30+00:00",
+            "2026-03-17T10:03:45+00:00",
+        ],
     )
     conductor._save_batch(workspace, batch)
     return tmp_path

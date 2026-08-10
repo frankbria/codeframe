@@ -38,7 +38,7 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 **Phase 5.5 is complete** — GitHub Issues import. Repo connection via PAT (#563) is **complete**: Settings → **Integrations** tab connects a GitHub repo with a Personal Access Token. Backend `POST/DELETE/GET /api/v2/integrations/github/{connect,disconnect,status}` (`ui/routers/github_integrations_v2.py`). Validation is headless in `core/github_connect_service.py` (httpx; verifies token, repo visibility, and issues-read access; typed errors → 400/404/403 — a bad PAT is 400 `UPSTREAM_AUTH_FAILED`, never 401, so the web UI doesn't treat it as session expiry, #734). The PAT is stored machine-wide via `CredentialManager` (`CredentialProvider.GIT_GITHUB`, the #555 pattern) and **never returned in any response**; non-secret repo metadata persists per-workspace in `.codeframe/github_integration.json` (`core/github_integration_config.py`). Frontend: `GitHubIntegrationCard` + `integrationsApi`.
 
-Issue **browse** (#564) is **complete**: `GET /api/v2/integrations/github/issues?page&per_page&search&label` on the same router lists the connected repo's **open** issues (PRs filtered out) — repo from `.codeframe/github_integration.json`, PAT from `CredentialManager`, **409** when not connected. Headless fetch in `core/github_issues_service.py` (`list_issues`): plain `/repos/{o}/{r}/issues` by default, routes to `/search/issues` for free-text search, `labels=` filter, `Link`-header pagination, 60s in-process TTL cache, typed errors → 502/403/502 (a rejected stored PAT is 502 `UPSTREAM_AUTH_FAILED`, never 401 — #734; `pr_v2.py` likewise remaps upstream GitHub 401s to 502 via `_github_error_http`). Frontend: `GitHubIssueImportModal` (paginated list, debounced search, label filter, multi-select that persists across pages, select-all-on-page, Import-Selected gated on ≥1) + `integrationsApi.getIssues`; an **Import from GitHub** button on `/tasks` (`TaskBoardView`) shown only when connected.
+Issue **browse** (#564) is **complete**: `GET /api/v2/integrations/github/issues?page&per_page&search&label` on the same router lists the connected repo's **open** issues (PRs filtered out) — repo from `.codeframe/github_integration.json`, PAT from `CredentialManager`, **409** when not connected. Headless fetch in `core/github_issues_service.py` (`list_issues`): plain `/repos/{o}/{r}/issues` by default, routes to `/search/issues` for free-text search, `labels=` filter, `Link`-header pagination, 60s in-process TTL cache, typed errors → 502/403/429/502 (a rejected stored PAT is 502 `UPSTREAM_AUTH_FAILED`, never 401 — #734; `pr_v2.py` likewise remaps upstream GitHub 401s to 502 via `_github_error_http`). Three #956 invariants hold here: the cache key is a **tuple** `(repo, page, per_page, search, label, user_id)` — never a `|`-joined string, which let a `|` in the search text collide with the label field; free-text search is quoted **per word** by `_sanitize_search` so it cannot inject `repo:`/`is:` qualifiers and escape the connected repo; and a 403/429 that is really throttling (`Retry-After` / `X-RateLimit-Remaining: 0` / a body message naming the limit) raises `RateLimitedError` → **429** `RATE_LIMITED` instead of being misreported as a missing `issues:read` scope. Frontend: `GitHubIssueImportModal` (paginated list, debounced search, label filter, multi-select that persists across pages, select-all-on-page, Import-Selected gated on ≥1) + `integrationsApi.getIssues`; an **Import from GitHub** button on `/tasks` (`TaskBoardView`) shown only when connected.
 
 Issue **import + traceability** (#565) is **complete**: `POST /api/v2/integrations/github/import` (same router) turns selected issues into tasks — title verbatim, body as description (+ a best-effort `**Labels:**` footer), linked via `github_issue_number` + `external_url`; PRs are rejected (`NotAnIssueError`→422), missing issues 404, fetch failures 502, malformed saved repo 409. Import is two-phase (fetch+dedupe all, then create) with rollback on a mid-create DB error; dedup is keyed on the full issue URL and backed by a `UNIQUE(workspace_id, external_url)` index (atomic across concurrent imports). Issue ops live in `core/github_issues_service.py` (`get_issue`, `close_issue`). **Auto-close**: marking an opted-in imported task DONE closes the linked issue — fired from core `tasks.update_status` so the web UI, CLI, and agent/batch paths all trigger it; the close targets the task's *source* repo parsed from `external_url` (not the live connection) and runs off the caller's path (event loop in the server, non-daemon thread in CLI). `TaskResponse` exposes the three traceability fields; `PATCH /api/v2/tasks/{id}` accepts `auto_close_github_issue` (persist-first + rollback-on-rejected-transition, with late opt-in on already-DONE tasks). Frontend: `GitHubIssueBadge`, import wiring in `TaskBoardView` (progress, in-modal error, summary banner), badge + auto-close checkbox in `TaskDetailModal`, `integrationsApi.importIssues` + `tasksApi.updateGitHubSettings`. **Known limitation**: auto-close uses the single machine-wide GIT_GITHUB PAT, so closing an older imported repo's issue after reconnecting to a different repo may fail if that PAT lacks access.
 
@@ -107,7 +107,7 @@ Shipped pages: `/`, `/prd`, `/tasks`, `/execution`, `/execution/[taskId]`, `/blo
 Testing: `cd web-ui && npm test` must pass; `npm run build` must succeed. The `frontend-tests` CI job enforces this on every PR.
 
 ### What's implemented
-Full feature list in `docs/PRODUCT_ROADMAP.md`. Key capabilities: ReAct agent execution, batch execution (serial/parallel/auto), task dependencies, stall detection, self-correction, GitHub PR workflow, SSE streaming, API auth, rate limiting, OpenAPI docs, multi-provider LLM (Anthropic/OpenAI-compatible), agent adapters (ClaudeCode/Codex/OpenCode/Kilocode), worktree isolation, E2B cloud execution, interactive agent sessions (WebSocket chat + XTerm.js terminal), PROOF9 quality system (gate runs, per-gate evidence, run history).
+Full feature list in `docs/PRODUCT_ROADMAP.md`. Key capabilities: ReAct agent execution, batch execution (serial/parallel/auto), task dependencies, stall detection, self-correction, GitHub PR workflow, SSE streaming, API auth, rate limiting, OpenAPI docs, multi-provider LLM (Anthropic/OpenAI-compatible), agent adapters (ClaudeCode/Codex/OpenCode/Kilocode), worktree isolation, interactive agent sessions (WebSocket chat + XTerm.js terminal), PROOF9 quality system (gate runs, per-gate evidence, run history). E2B cloud execution exists but is EXPERIMENTAL and gated — see `CODEFRAME_ENABLE_CLOUD_ENGINE` below.
 
 ---
 
@@ -158,6 +158,8 @@ tests/
 ```bash
 uv run pytest                            # All tests
 uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle"  # The CI gate (every non-e2e, non-real-LLM test)
+                                         # ~6.5 min locally. If it is much slower on your
+                                         # machine, see "Suite speed" below.
 uv run pytest tests/core/                # Core module tests
 scripts/lifecycle --mode cli|all         # Real-LLM lifecycle tests (run locally before a PR)
                                          # api/web exit 3 — not implemented (#948, #1068)
@@ -167,6 +169,34 @@ uv run ruff check .
 cd web-ui && npm test
 cd web-ui && npm run build
 ```
+
+#### Suite speed (#979)
+
+The suite used to be fsync-bound: `_init_database` builds ~18 tables plus
+indexes and switches to WAL, and that cost **~1273 ms per test** on a real
+filesystem versus 2.7 ms on tmpfs. It ran once per test, which was most of the
+wall clock — measured at ~910 s, and reportedly ~4 h on a slower WSL2 disk.
+
+`tests/conftest.py` now builds that schema **once per session** and copies the
+file (0.1 ms) into place per test. `_init_database` output is byte-identical
+across builds, so the copy is exactly equivalent; the template is produced by
+calling the real function, so a schema change or `SCHEMA_VERSION` bump cannot
+leave it stale. Full suite: **~910 s → ~378 s**, same results, and CI benefits
+too. `tests/core/test_workspace_db_template_979.py` pins the equivalence.
+
+If your machine is still I/O-bound, put pytest's temp dirs on tmpfs:
+
+```bash
+mkdir -p /dev/shm/pytest-cf
+uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle" --basetemp=/dev/shm/pytest-cf
+```
+
+Opt-in on purpose — a real filesystem is what CI runs, and is the more faithful
+environment. `/dev/shm` is RAM-backed (the run must fit) and Linux-only. It
+composes with the ambient-workspace guard: `pytest_configure` registers
+`--basetemp` as an isolated root. With the template fix this now buys nothing
+here (378 s on disk vs 428 s on tmpfs before the fix); it is the lever only
+for disks where the gap is still large.
 
 ### Golden Path CLI
 ```bash
@@ -197,7 +227,7 @@ cf work diagnose <task-id>
 cf work batch run [<id>...] [--all-ready] [--engine react|plan]
 cf work batch run --strategy serial|parallel|auto [--max-parallel 4] [--retry 3]
 cf work batch run --all-ready --llm-provider openai --llm-model qwen2.5-coder:7b
-cf work batch status|cancel|resume [batch_id]
+cf work batch status|stop|resume|follow [batch_id]
 
 # Blockers
 cf blocker list
@@ -213,7 +243,7 @@ cf summary
 cf env check|install|doctor
 
 # GitHub PR
-cf pr create|status|checks|merge
+cf pr create|list|get|status|merge|close
 
 # Telemetry (machine-wide, opt-in)
 cf config telemetry on|off|status
@@ -341,6 +371,47 @@ CODEFRAME_ENABLE_TEST_ENDPOINTS=1     # Registers the integration-test-only
                                       # production — leave unset except in CI /
                                       # WebSocket integration test runs.
 
+# Experimental cloud engine (#966) — default OFF (refuse)
+CODEFRAME_ENABLE_CLOUD_ENGINE=1       # Unlock `--engine cloud` (the E2B adapter).
+                                      # Off by default and off the advertised
+                                      # surface: it is out of launch scope and
+                                      # does not currently work end-to-end, but
+                                      # it was reachable and listed next to the
+                                      # engines that do. `resolve_engine` and
+                                      # `get_external_adapter` now both refuse it
+                                      # (so CODEFRAME_ENGINE=cloud is not a way
+                                      # around the flag) with a message naming
+                                      # this variable. IsolationLevel.CLOUD is a
+                                      # separate thing and stays unimplemented.
+                                      #
+                                      # KNOWN DEFECTS — the price of lifting the
+                                      # gate. Deliberately NOT fixed in #966;
+                                      # this is the checklist for whoever makes
+                                      # the engine real:
+                                      #   1. Wrong package. `_INSTALL_CMD` runs
+                                      #      `pip install codeframe`, but the
+                                      #      project publishes as `codeframe-ai`
+                                      #      — every sandbox installs someone
+                                      #      else's package or nothing.
+                                      #   2. `CommandExitException` from the E2B
+                                      #      SDK is not handled, so a non-zero
+                                      #      command in the sandbox surfaces as
+                                      #      an unhandled traceback instead of a
+                                      #      failed run.
+                                      #   3. No working sync-back: results
+                                      #      produced in the sandbox do not
+                                      #      reliably land in the workspace, so a
+                                      #      "successful" run can leave nothing
+                                      #      behind.
+                                      #   4. File upload is unbatched (one
+                                      #      round-trip per file) — unusable on a
+                                      #      real repo.
+                                      #   5. The adapter's tests mock with
+                                      #      non-autospec mocks, so they pass
+                                      #      against signatures the SDK does not
+                                      #      have — they are not evidence the
+                                      #      engine works.
+
 # Delegated-agent HOME sandbox (#996) — default ON (sandboxed)
 CODEFRAME_AGENT_INHERIT_HOME=1        # Run delegated coding CLIs (claude-code,
                                       # codex, opencode, kilocode) with the
@@ -431,6 +502,20 @@ JWT_LIFETIME_SECONDS=86400            # JWT validity window; default 24h (was 7d
                                       # expiry. The web UI also ships a CSP
                                       # (web-ui/security-headers.js) to contain
                                       # XSS-based token exfiltration.
+                                      # Read when the JWT strategy is BUILT, not
+                                      # at import (#963) — it used to be a
+                                      # module-level int(os.getenv(...)) that
+                                      # ran before .env loaded, so setting this
+                                      # the documented way silently kept the
+                                      # default. KNOWN LIMITATION: logout does
+                                      # not revoke. POST /auth/jwt/logout only
+                                      # tells the client to drop its copy;
+                                      # verification is stateless signature
+                                      # checking with no server-side denylist
+                                      # (the `sessions` table is unused), so a
+                                      # leaked token stays valid for up to this
+                                      # lifetime. This value IS the mitigation —
+                                      # lower it if tokens may leak.
 
 # Outbound webhook SSRF guard (#656, #746) — default OFF (block)
 CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1    # Allow webhook URLs whose host resolves to

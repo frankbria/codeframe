@@ -794,7 +794,7 @@ prd_app = typer.Typer(
 # PRD templates subcommand group
 prd_templates_app = typer.Typer(
     name="templates",
-    help="PRD template management for customizable output formats",
+    help="PRD template management (section structure for AI-generated PRDs)",
     no_args_is_help=True,
 )
 
@@ -1467,7 +1467,7 @@ def prd_generate(
       /quit   - Exit without saving
       /help   - Show available commands
 
-    Use --template to select the output format:
+    Use --template to select which sections the PRD covers:
     - standard: Full PRD with all sections (default)
     - lean: Minimal PRD with problem, users, MVP features
     - enterprise: Formal PRD with compliance and traceability
@@ -1485,6 +1485,7 @@ def prd_generate(
     from codeframe.core import prd as prd_module
     from codeframe.core.prd_discovery import (
         PrdDiscoverySession,
+        DiscoveryError,
         NoApiKeyError,
         ValidationError,
         IncompleteSessionError,
@@ -1631,6 +1632,13 @@ def prd_generate(
 
                 except ValidationError as e:
                     console.print(f"[yellow]{e}[/yellow]")
+                except DiscoveryError as e:
+                    # The session is complete or has no question outstanding
+                    # (#961). Re-prompting cannot help, so leave the loop
+                    # rather than spinning — and never show a traceback. Must
+                    # follow ValidationError, which subclasses this.
+                    console.print(f"[red]Error:[/red] {e}")
+                    raise typer.Exit(1)
                 except KeyboardInterrupt:
                     console.print("\n")
                     if typer.confirm("Save progress before exiting?"):
@@ -1800,6 +1808,19 @@ def prd_stress_test(
         # the CLI shows a traceback where every other failure here is a red line.
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+    except Exception as e:
+        # A provider failure (auth, network, rate limit) is not a StressTestError
+        # and used to escape as a raw traceback (#961). This is a multi-call LLM
+        # run, so it is one of the likelier ways the command ends.
+        console.print(
+            f"[red]Error:[/red] PRD stress test failed while calling the LLM "
+            f"provider: {e}"
+        )
+        console.print(
+            "[dim]Check your API key and network connection, then retry. "
+            "Use --llm-provider/--llm-model to try a different model.[/dim]"
+        )
+        raise typer.Exit(1)
 
     # Show ambiguity report
     if result.ambiguities:
@@ -1828,9 +1849,35 @@ def prd_stress_test(
 
         # Update PRD with resolved answers
         console.print("[dim]Updating PRD with resolved ambiguities...[/dim]")
-        updated_content = resolve_ambiguities_into_prd(
-            record.content, result.ambiguities, provider,
-        )
+        try:
+            updated_content = resolve_ambiguities_into_prd(
+                record.content, result.ambiguities, provider,
+            )
+        except Exception as e:
+            # Second LLM call of the command, and it had no handler at all
+            # (#961). Failing here must not lose the answers silently, nor
+            # print a traceback.
+            console.print(
+                f"[red]Error:[/red] Could not apply your answers to the PRD: {e}"
+            )
+            console.print(
+                "[dim]Your answers were not saved and no new version was "
+                "created. Re-run the command to try again.[/dim]"
+            )
+            raise typer.Exit(1)
+        # resolve_ambiguities_into_prd returns the ORIGINAL content when the
+        # LLM rewrite looks truncated. Creating a version from that would
+        # discard the answers the user just typed while printing "✓ PRD updated
+        # to version N" — reporting success for a no-op (#960). prd_v2 already
+        # surfaces this as a 502; this is the CLI's half of that parity.
+        if updated_content == record.content:
+            console.print(
+                "[red]Error:[/red] PRD refinement produced no changes. The model "
+                "returned no usable output (it may have been truncated), so your "
+                "answers were not applied and no new version was created. "
+                "Please try again."
+            )
+            raise typer.Exit(1)
         new_record = prd_module.create_new_version(
             workspace, record.id, updated_content,
             f"Stress-test: resolved {len([a for a in result.ambiguities if a.resolved_answer])} ambiguities",
@@ -2587,7 +2634,7 @@ def work_start(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, cloud, or built-in",
+        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
@@ -2609,7 +2656,7 @@ def work_start(
     cloud_timeout: int = typer.Option(
         30,
         "--cloud-timeout",
-        help="Sandbox timeout in minutes for --engine cloud (1-60, default: 30)",
+        help="Sandbox timeout in minutes for the experimental cloud engine (1-60, default: 30)",
     ),
     llm_provider: Optional[str] = typer.Option(
         None,
@@ -2634,7 +2681,6 @@ def work_start(
         codeframe work start abc123 --execute --dry-run
         codeframe work start abc123 --execute --verbose
         codeframe work start abc123 --execute --isolation worktree
-        codeframe work start abc123 --execute --engine cloud --cloud-timeout 45
         codeframe work start abc123 --execute --llm-provider openai --llm-model gpt-4o
     """
     from codeframe.core.workspace import get_workspace
@@ -2681,7 +2727,19 @@ def work_start(
 
         # Validate API key before creating run record (avoids dangling IN_PROGRESS state)
         if execute:
-            from codeframe.core.engine_registry import is_external_engine
+            from codeframe.core.engine_registry import (
+                is_external_engine,
+                resolve_engine,
+            )
+
+            # Same reason: execute_agent resolves the engine, and the gated
+            # cloud engine (#966) raises there — after the run record exists.
+            try:
+                resolve_engine(engine)
+            except ValueError as exc:
+                console.print(f"[red]Error:[/red] {exc}")
+                raise typer.Exit(1)
+
             if engine == "codex":
                 # Not the OpenAI key check: `codex login` is the common way in
                 # and sets no env var at all (#1010).
@@ -2759,7 +2817,9 @@ def work_start(
         elif stub:
             console.print("\n[dim]Executing stub agent...[/dim]")
             runtime.execute_stub(workspace, run)
-            runtime.complete_run(workspace, run.id)
+            # The stub does no real work, so its fabricated DONE must not close
+            # a linked GitHub issue (#957).
+            runtime.complete_run(workspace, run.id, github_autoclose=False)
             console.print("[green]Run completed (stub)[/green]")
 
     except FileNotFoundError:
@@ -4000,7 +4060,7 @@ def batch_run(
     engine: Optional[str] = typer.Option(
         None,
         "--engine",
-        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, cloud, or built-in",
+        help="Agent engine: react (default), plan (legacy), claude-code, codex, opencode, kilocode, or built-in",
     ),
     stall_timeout: int = typer.Option(
         300,
@@ -4022,7 +4082,7 @@ def batch_run(
     cloud_timeout: int = typer.Option(
         30,
         "--cloud-timeout",
-        help="Sandbox timeout in minutes for --engine cloud (1-60, default: 30)",
+        help="Sandbox timeout in minutes for the experimental cloud engine (1-60, default: 30)",
     ),
     llm_provider: Optional[str] = typer.Option(
         None,
@@ -4072,6 +4132,10 @@ def batch_run(
         if all_ready:
             # limit=None so batches include READY tasks beyond the cap (#743)
             ready_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.READY, limit=None)
+            # Composites are aggregates, not work (#958): their status is rolled
+            # up from their children, so a READY parent means "my children are
+            # ready" — running it would execute the container beside its contents.
+            ready_tasks = [t for t in ready_tasks if t.is_leaf]
             if not ready_tasks:
                 console.print("[yellow]No READY tasks found[/yellow]")
                 return
@@ -4080,6 +4144,9 @@ def batch_run(
         elif all_blocked:
             from codeframe.core import runtime
             blocked_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.BLOCKED, limit=None)
+            # Composites are aggregates, not work (#958) — same reason as
+            # --all-ready above: a parent goes BLOCKED when its children do.
+            blocked_tasks = [t for t in blocked_tasks if t.is_leaf]
             if not blocked_tasks:
                 console.print("[yellow]No BLOCKED tasks found[/yellow]")
                 return
@@ -4133,6 +4200,17 @@ def batch_run(
         console.print(f"  Tasks: {len(ids_to_execute)}")
         console.print(f"  On failure: {on_failure}")
 
+        # Ahead of the dry-run return: a preview of an engine that would be
+        # refused is misleading, and this is also the pre-run guard that keeps
+        # the gate from raising after conductor.start_batch (#966).
+        from codeframe.core.engine_registry import resolve_engine
+
+        try:
+            resolve_engine(engine)
+        except ValueError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(1)
+
         if dry_run:
             console.print("\n[dim]Dry run - showing tasks without executing:[/dim]")
             for i, tid in enumerate(ids_to_execute):
@@ -4143,6 +4221,7 @@ def batch_run(
 
         # Validate API key before batch execution
         from codeframe.core.engine_registry import is_external_engine
+
         if engine == "codex":
             # Not the OpenAI key check: `codex login` is the common way in
             # and sets no env var at all (#1010).
@@ -4321,7 +4400,7 @@ def batch_status(
                 console.print(f"    {icon} {tid[:8]} - {title}")
 
             # Show config reloads if any occurred during batch
-            config_reloads = batch.results.get("__config_reloads__")
+            config_reloads = batch.config_reloads
             if config_reloads:
                 from datetime import datetime as _dt
 
@@ -6009,9 +6088,7 @@ def templates_apply(
     Requires a PRD to be added first.
     """
     from codeframe.core.workspace import get_workspace
-    from codeframe.planning.task_templates import TaskTemplateManager
-    from codeframe.core import prd, tasks
-    from codeframe.core.state_machine import TaskStatus
+    from codeframe.core import prd, tasks, templates as templates_core
 
     workspace_path = repo_path or Path.cwd()
 
@@ -6025,53 +6102,24 @@ def templates_apply(
             console.print("  codeframe prd add <file.md>")
             raise typer.Exit(1)
 
-        # Get template
-        manager = TaskTemplateManager()
-        template = manager.get_template(template_id)
-
-        if not template:
-            console.print(f"[red]Error:[/red] Template '{template_id}' not found.")
-            raise typer.Exit(1)
-
-        # Apply template
-        task_dicts = manager.apply_template(
+        # Delegate to core (#962). This command used to reimplement
+        # core.templates.apply_template and had drifted from it — notably it
+        # gated on a PRD existing and then never linked one. Delegating also
+        # picks up the out-of-range dependency-index check from #961.
+        result = templates_core.apply_template(
+            workspace,
             template_id=template_id,
-            context={},
             issue_number=issue_number,
+            prd_id=prd_record.id,
         )
 
-        # Create tasks using v2 API
-        created_tasks = []
-        for task_dict in task_dicts:
-            task = tasks.create(
-                workspace,
-                title=task_dict["title"],
-                description=task_dict["description"],
-                status=TaskStatus.BACKLOG,
-                estimated_hours=task_dict.get("estimated_hours"),
-                complexity_score=task_dict.get("complexity_score"),
-                uncertainty_level=task_dict.get("uncertainty_level"),
-            )
-            created_tasks.append((task, task_dict.get("depends_on_indices", [])))
-
-        # Wire up dependencies using indices -> actual task IDs
-        for i, (task, dep_indices) in enumerate(created_tasks):
-            if dep_indices:
-                # Map 0-based indices to actual task IDs
-                depends_on_ids = [
-                    created_tasks[idx][0].id
-                    for idx in dep_indices
-                    if 0 <= idx < len(created_tasks)
-                ]
-                if depends_on_ids:
-                    tasks.update_depends_on(workspace, task.id, depends_on_ids)
-
-        # Extract just the tasks for display
-        created_task_list = [t for t, _ in created_tasks]
-
-        console.print(f"\n[green]Created {len(created_task_list)} tasks from template '{template_id}'[/green]\n")
-        for i, task in enumerate(created_task_list, 1):
-            console.print(f"  {i}. {escape(task.title)}")
+        console.print(
+            f"\n[green]Created {result.tasks_created} tasks from template "
+            f"'{template_id}'[/green]\n"
+        )
+        for i, task_id in enumerate(result.task_ids, 1):
+            created = tasks.get(workspace, task_id)
+            console.print(f"  {i}. {escape(created.title)}")
 
         console.print("\nNext steps:")
         console.print("  codeframe tasks list              View all tasks")

@@ -9,18 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
 from pathlib import Path
 from typing import Callable, Literal, Protocol, runtime_checkable
-
-
-class AgentResultStatus(str, Enum):
-    """Terminal status from an agent execution."""
-
-    COMPLETED = "completed"
-    FAILED = "failed"
-    BLOCKED = "blocked"
-    TIMEOUT = "timeout"
 
 
 @dataclass
@@ -68,6 +58,12 @@ class AgentResult:
     token_usage: AdapterTokenUsage | None = None
     duration_ms: int = 0
     cloud_metadata: dict | None = None
+    #: Final verification-gate outcome, or None when gates never ran. Feeds the
+    #: Gate Pass column of `cf engines stats`, which was hardcoded to None and
+    #: so permanently displayed 0% (#958).
+    gates_passed: bool | None = None
+    #: How many times the engine retried after failed gates (#958).
+    self_corrections: int = 0
 
 
 @dataclass

@@ -135,13 +135,37 @@ class TestQueryParamTicketOnSSERoutes:
 
 
 class TestQueryParamTicketRejectedElsewhere:
-    def test_query_ticket_rejected_on_plain_route(self, app_with_user):
+    def test_query_ticket_rejected_on_plain_route(self, app_with_user, monkeypatch):
         """A valid ticket must NOT authenticate non-SSE routes — query
-        credentials are SSE-only (codex review P2)."""
+        credentials are SSE-only (codex review P2).
+
+        Pinned with auth ON. With auth OFF every ordinary route resolves to the
+        local operator (#963), so a 401 there would be measuring the auth mode
+        rather than the ticket rule this test exists for.
+        """
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
         client = TestClient(app_with_user)
         ticket = mint_ticket(user_id=1)
         resp = client.get(f"{PLAIN_PATH}?ticket={ticket}")
         assert resp.status_code == 401
+
+    def test_query_ticket_still_does_not_identify_a_user_with_auth_off(
+        self, app_with_user, monkeypatch
+    ):
+        """With auth off the route opens, but NOT because of the ticket (#963).
+
+        The ticket must remain unredeemed: the identity comes from the
+        local-operator fallback, not from a query credential on a plain route.
+        """
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "false")
+        client = TestClient(app_with_user)
+        ticket = mint_ticket(user_id=1)
+        resp = client.get(f"{PLAIN_PATH}?ticket={ticket}")
+        assert resp.status_code == 200
+        # Single-use: still redeemable, so the request did not consume it.
+        from codeframe.auth.stream_tickets import redeem_ticket
+
+        assert redeem_ticket(ticket) == 1
 
     def test_header_works_on_plain_route(self, app_with_user):
         client = TestClient(app_with_user)

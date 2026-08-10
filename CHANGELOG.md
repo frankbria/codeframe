@@ -120,6 +120,14 @@ Several of these change defaults and will require configuration on an existing d
 - **`scripts/lifecycle --mode api|web` exits 3** instead of reporting success for stubs
   that only ever raised `NotImplementedError` (#948).
 - Root documentation was brought back in line with the shipped product (#950).
+- **The cloud engine is experimental and gated (#966).** `--engine cloud` (E2B) now
+  refuses to run unless `CODEFRAME_ENABLE_CLOUD_ENGINE=1` is set, and it is gone from
+  `cf engines list`, the `--engine` help, the config validator's suggestions, and the
+  docs that counted it as shipped. **This breaks existing `--engine cloud` invocations**
+  — set the variable to keep them working. E2B execution is out of launch scope and does
+  not work end to end; the known defects are recorded under `CODEFRAME_ENABLE_CLOUD_ENGINE`
+  in `CLAUDE.md` as the checklist for lifting the gate. `--isolation cloud` was never
+  implemented and is unchanged.
 
 ## [0.9.1] - 2026-06-13
 

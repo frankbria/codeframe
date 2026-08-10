@@ -9,10 +9,10 @@ from __future__ import annotations
 import logging
 import os
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable
 
-from codeframe.adapters.e2b.credential_scanner import scan_path
+from codeframe.adapters.e2b.credential_scanner import EXCLUDED_DIRS, scan_path
 from codeframe.core.adapters.agent_adapter import (
     AgentEvent,
     AgentResult,
@@ -32,6 +32,47 @@ _SANDBOX_WORKSPACE = "/workspace"
 
 # Codeframe install command (uses the published package)
 _INSTALL_CMD = "pip install codeframe --quiet"
+
+
+#: The XY status characters `git status --porcelain` can emit. Used to tell a
+#: real status record from a bare path that merely has a space at index 2.
+_PORCELAIN_STATUS_CHARS = frozenset(" MADRCUT?!")
+
+
+def _safe_local_path(workspace_root: Path, rel_path: str) -> Path | None:
+    """Resolve *rel_path* inside *workspace_root*, or return None to reject.
+
+    The agent has arbitrary command execution in the sandbox before this runs
+    and can shadow the git binary, so every porcelain path is hostile input
+    (#967). Two ways out exist without this check: ``..`` segments, and an
+    absolute path — ``Path("/ws") / "/etc/passwd"`` is ``/etc/passwd``, because
+    pathlib discards the left side. Both used to reach ``mkdir(parents=True)``
+    and a write.
+
+    Both sides are resolved, which also closes the symlink route: a symlink
+    inside the workspace pointing outward resolves outward and is rejected,
+    while a workspace *reached* through a symlink is not falsely rejected.
+
+    Returns:
+        The absolute local path, or None if it escapes the workspace.
+    """
+    if not rel_path or PurePosixPath(rel_path).is_absolute() or Path(rel_path).is_absolute():
+        return None
+
+    try:
+        root = workspace_root.resolve()
+        candidate = (root / rel_path).resolve()
+    except (OSError, RuntimeError, ValueError) as exc:
+        # resolve() is not total: a symlink loop raises RuntimeError on Python
+        # 3.11/3.12 (3.13 resolves it quietly), and a bad path can raise
+        # OSError. Reject this one entry rather than aborting the whole
+        # download — an unresolvable path is exactly one we must not write to.
+        logger.warning("Could not resolve sandbox path %r: %s", rel_path, exc)
+        return None
+
+    if candidate == root or root not in candidate.parents:
+        return None
+    return candidate
 
 
 class E2BAgentAdapter:
@@ -257,14 +298,11 @@ class E2BAgentAdapter:
         emit: Callable[[str, str, dict | None], None],
     ) -> int:
         """Upload workspace files to sandbox, returning the count uploaded."""
-        _EXCLUDED = frozenset({
-            "__pycache__", ".git", ".mypy_cache", ".pytest_cache",
-            ".ruff_cache", "node_modules", ".venv", "venv",
-        })
-
         uploaded = 0
         for path in sorted(workspace_path.rglob("*")):
-            if any(part in _EXCLUDED for part in path.parts):
+            # The SAME set the credential scanner skips (#967) — a directory
+            # the scanner does not read must not be a directory we ship.
+            if any(part in EXCLUDED_DIRS for part in path.parts):
                 continue
             if not path.is_file():
                 continue
@@ -296,35 +334,30 @@ class E2BAgentAdapter:
             Tuple of (list of relative file paths, count downloaded).
         """
         status_result = sbx.commands.run(
-            f"cd {_SANDBOX_WORKSPACE} && git status --porcelain",
+            f"cd {_SANDBOX_WORKSPACE} && git status --porcelain -z --no-renames",
             timeout=30,
         )
 
         if status_result.exit_code != 0 or not status_result.stdout.strip():
             return [], 0
 
-        changed: list[str] = []
-        for line in status_result.stdout.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            # porcelain format: XY filename (or "XY old -> new" for renames)
-            parts = line.split(None, 1)
-            if len(parts) < 2:
-                continue
-            xy, filepath = parts
-            # Handle renames: "R old -> new" — take the new name after " -> "
-            if " -> " in filepath:
-                filepath = filepath.split(" -> ", 1)[1]
-            changed.append(filepath.strip())
+        changed, rejected = self._parse_porcelain(status_result.stdout)
 
         downloaded = 0
         modified_files: list[str] = []
 
         for rel_path in changed:
-            remote = f"{_SANDBOX_WORKSPACE}/{rel_path}"
-            local = workspace_path / rel_path
+            # Contain BEFORE the read and before any mkdir — a rejected path
+            # must cost nothing and create nothing (#967).
+            local = _safe_local_path(workspace_path, rel_path)
+            if local is None:
+                rejected += 1
+                logger.warning(
+                    "Rejected sandbox path outside the workspace: %r", rel_path
+                )
+                continue
 
+            remote = f"{_SANDBOX_WORKSPACE}/{rel_path}"
             try:
                 content = sbx.files.read(remote)
                 local.parent.mkdir(parents=True, exist_ok=True)
@@ -339,4 +372,76 @@ class E2BAgentAdapter:
                 logger.warning("Failed to download %s: %s", rel_path, exc)
 
         emit("progress", f"Downloaded {downloaded} changed file(s)")
+        if rejected:
+            # Counted and surfaced, never silently dropped: a rejection here
+            # means the sandbox tried to write outside the workspace.
+            emit(
+                "progress",
+                f"Rejected {rejected} sandbox path(s) — unparseable, or "
+                "outside the workspace (see log for each)",
+            )
         return modified_files, downloaded
+
+    @staticmethod
+    def _parse_porcelain(stdout: str) -> tuple[list[str], int]:
+        """Parse ``git status --porcelain -z`` into paths, hostile input assumed.
+
+        Two flags carry the weight here, both verified against real git:
+
+        ``-z`` emits each path as raw bytes, so there is no C-quoting to decode
+        (``--porcelain`` alone renders ``café.txt`` as ``"caf\\303\\251.txt"``,
+        quotes and all) and no ``" -> "`` rename separator to collide with a
+        filename containing that string.
+
+        ``--no-renames`` reports a rename as an independent delete + add
+        instead of ``R  new\\0old\\0``. That removes the paired field entirely,
+        and with it a whole class of ambiguity: there is no lookahead to guess
+        at, so a hostile ``R`` header cannot make the parser swallow the record
+        after it, and an old filename shaped like a status record (``AD
+        HOC.txt``, ``v1 notes.txt``) cannot be misread as one. Every entry is a
+        record.
+
+        Returns:
+            Tuple of (paths, count rejected as unparseable).
+        """
+        def _looks_like_record(entry: str) -> bool:
+            # "XY PATH" — two status characters then a space.
+            return (
+                len(entry) >= 4
+                and entry[2] == " "
+                and entry[0] in _PORCELAIN_STATUS_CHARS
+                and entry[1] in _PORCELAIN_STATUS_CHARS
+            )
+
+        entries = [e for e in stdout.split("\0") if e]
+        paths: list[str] = []
+        rejected = 0
+
+        index = 0
+        while index < len(entries):
+            entry = entries[index]
+            index += 1
+            if not _looks_like_record(entry):
+                # Counted and warned, not dropped: real git cannot emit this,
+                # so a malformed record means the sandbox's git is not git.
+                rejected += 1
+                logger.warning("Rejected malformed porcelain record: %r", entry)
+                continue
+            status, raw = entry[:2], entry[3:]
+
+            # A deleted file is not in the sandbox to read. Skipping it avoids
+            # a misleading "Failed to download" for a file that is meant to be
+            # gone. Applying the deletion locally is a separate, parked defect
+            # (#966) — this only stops us fetching a path we know is absent.
+            if "D" in status:
+                logger.debug("Skipping deleted path: %r", raw)
+                continue
+
+            # Verbatim: -z output is NOT C-quoted (that is the whole point of
+            # the flag), so a file genuinely named `"a.py"` must keep its
+            # quotes. Decoding here would silently rewrite it to `a.py` and
+            # clobber a different file. Whatever the name turns out to be,
+            # _safe_local_path is what decides where it may land.
+            paths.append(raw)
+
+        return paths, rejected

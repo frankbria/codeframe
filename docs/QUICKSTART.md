@@ -2,6 +2,18 @@
 
 Get your project built with AI agents in minutes.
 
+## Install
+
+```bash
+uv tool install codeframe-ai     # installs the `cf` command globally
+cf --help                        # smoke test — should print the command tree
+```
+
+No `uv`? `pipx install codeframe-ai` works too, or run without installing via
+`uvx codeframe-ai --help`. The PyPI package is `codeframe-ai`; it installs two
+equivalent executables, `cf` and `codeframe`. This guide spells out `codeframe`;
+`cf` is the short form used in the README and is interchangeable everywhere.
+
 ## Prerequisites
 
 1. **Python 3.11+** with `uv` package manager
@@ -222,6 +234,17 @@ Once complete, run verification:
 codeframe review
 ```
 
+Then run the PROOF9 quality gates:
+
+```bash
+codeframe proof run
+```
+
+> On a brand-new workspace this reports `No applicable obligations found` and
+> exits 0 — there is nothing to verify yet, which is **not** the same as passing.
+> Obligations accumulate as you capture glitches with `codeframe proof capture`;
+> each one becomes a permanent check. See `codeframe proof status` for the ledger.
+
 Create a checkpoint of your progress:
 
 ```bash
@@ -261,8 +284,9 @@ codeframe checkpoint create "MVP complete"
 | `codeframe tasks generate` | Generate tasks from PRD |
 | `codeframe tasks list` | List all tasks |
 | `codeframe tasks list --status READY` | Filter by status |
-| `codeframe tasks set status <STATUS> <id>` | Update single task |
+| `codeframe tasks set status <id> <STATUS>` | Update single task (id **before** status) |
 | `codeframe tasks set status <STATUS> --all` | Update all tasks |
+| `codeframe tasks set status <STATUS> --all --from BACKLOG` | Only tasks currently in BACKLOG |
 
 ### Work Commands
 | Command | Description |
@@ -283,7 +307,8 @@ codeframe checkpoint create "MVP complete"
 | `codeframe work batch run --dry-run` | Preview execution plan |
 | `codeframe work batch status` | Show batch status |
 | `codeframe work batch resume <batch-id>` | Re-run failed tasks |
-| `codeframe work batch cancel <batch-id>` | Cancel running batch |
+| `codeframe work batch stop <batch-id>` | Stop a running batch |
+| `codeframe work batch follow <batch-id>` | Stream live batch output |
 
 ### Blocker Commands
 | Command | Description |
@@ -299,6 +324,16 @@ codeframe checkpoint create "MVP complete"
 | `codeframe patch export` | Export changes as patch |
 | `codeframe checkpoint create "name"` | Save state snapshot |
 | `codeframe checkpoint list` | List checkpoints |
+
+### PROOF9 Commands
+| Command | Description |
+|---------|-------------|
+| `codeframe proof run` | Run all applicable proof obligations |
+| `codeframe proof capture` | Capture a glitch as a permanent requirement |
+| `codeframe proof list` | List proof requirements |
+| `codeframe proof status` | Summary across all gates |
+| `codeframe proof show <id>` | Requirement detail and evidence |
+| `codeframe proof waive <id> --reason "..."` | Waive with justification |
 
 ### Configuration Commands
 | Command | Description |
@@ -394,6 +429,20 @@ Known issue. Manually reset tasks if needed:
 # Current workaround (via SQLite)
 sqlite3 .codeframe/state.db "UPDATE tasks SET status='READY' WHERE status='IN_PROGRESS'"
 ```
+
+### "Task execution failed" with no explanation
+
+The most common cause is the agent exhausting its iteration budget rather than
+hitting an actual error. The run log records it plainly even though the CLI does
+not:
+
+```bash
+tail -20 .codeframe/runs/<run-id>/output.log   # look for "Iteration 45/45"
+```
+
+Check your working tree before re-running — a run that reports failure often
+leaves substantial, usable work behind (`git status`). See
+[#1117](https://github.com/frankbria/codeframe/issues/1117).
 
 ### No Blockers Despite Failures
 The agent may classify errors as "technical" and try to self-correct. Check event logs for details:

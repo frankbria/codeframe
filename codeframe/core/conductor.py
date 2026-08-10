@@ -572,7 +572,14 @@ class BatchRun:
         on_failure: Behavior on task failure
         started_at: When the batch started
         completed_at: When the batch finished (if finished)
-        results: Dict mapping task_id -> RunStatus value
+        results: Dict mapping task_id -> RunStatus value. Task entries ONLY —
+            config-reload bookkeeping used to be smuggled in here under a
+            ``__config_reloads__`` key, which leaked into the batch API and the
+            CLI as a bogus "task" (#957).
+        config_reloads: ISO timestamps of config reloads observed during the run
+        cloud_timeout_minutes: Sandbox timeout for the cloud engine (1-60).
+            Persisted so `resume` restores the user's value instead of silently
+            falling back to the callee default of 30 (#959).
     """
 
     id: str
@@ -592,6 +599,8 @@ class BatchRun:
     isolation: str = "none"
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
+    config_reloads: list[str] = field(default_factory=list)
+    cloud_timeout_minutes: int = 30
 
 
 def create_batch(
@@ -672,6 +681,9 @@ def create_batch(
         isolation=isolation,
         llm_provider=llm_provider,
         llm_model=llm_model,
+        # Persisted (#959): this used to be accepted and dropped, so the
+        # callee default of 30 always won and --cloud-timeout was a no-op.
+        cloud_timeout_minutes=cloud_timeout_minutes,
     )
 
     # Save to database
@@ -891,7 +903,7 @@ def get_batch(workspace: Workspace, batch_id: str) -> Optional[BatchRun]:
             SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
                    on_failure, started_at, completed_at, results, engine,
                    isolation, stall_timeout_s, stall_action, concurrency_by_status,
-                   llm_provider, llm_model
+                   llm_provider, llm_model, config_reloads, cloud_timeout_minutes
             FROM batch_runs
             WHERE workspace_id = ? AND id = ?
             """,
@@ -932,7 +944,7 @@ def list_batches(
                 SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
                        on_failure, started_at, completed_at, results, engine,
                        isolation, stall_timeout_s, stall_action, concurrency_by_status,
-                       llm_provider, llm_model
+                       llm_provider, llm_model, config_reloads, cloud_timeout_minutes
                 FROM batch_runs
                 WHERE workspace_id = ? AND status = ?
                 ORDER BY started_at DESC
@@ -946,7 +958,7 @@ def list_batches(
                 SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
                        on_failure, started_at, completed_at, results, engine,
                        isolation, stall_timeout_s, stall_action, concurrency_by_status,
-                       llm_provider, llm_model
+                       llm_provider, llm_model, config_reloads, cloud_timeout_minutes
                 FROM batch_runs
                 WHERE workspace_id = ?
                 ORDER BY started_at DESC
@@ -1024,7 +1036,7 @@ def find_batch_by_prefix(workspace: Workspace, prefix: str) -> list[BatchRun]:
             SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
                    on_failure, started_at, completed_at, results, engine,
                    isolation, stall_timeout_s, stall_action, concurrency_by_status,
-                   llm_provider, llm_model
+                   llm_provider, llm_model, config_reloads, cloud_timeout_minutes
             FROM batch_runs
             WHERE workspace_id = ? AND id LIKE ? ESCAPE '\\'
             ORDER BY started_at DESC
@@ -1352,6 +1364,7 @@ def _run_serial_resume(
                 stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                 worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                 llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                cloud_timeout_minutes=batch.cloud_timeout_minutes,
             )
         finally:
             exec_ctx.cleanup()
@@ -1550,6 +1563,7 @@ def _run_retries(
                     stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                     worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                     llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                    cloud_timeout_minutes=batch.cloud_timeout_minutes,
                 )
             finally:
                 exec_ctx.cleanup()
@@ -1681,7 +1695,11 @@ def _apply_pending_config_reload(
     reload_state: "ConfigReloadState",
     last_seen_reload: datetime,
 ) -> datetime:
-    """Check for config reloads and record them in batch results.
+    """Check for config reloads and record them on the batch.
+
+    Recorded on ``batch.config_reloads``, not inside ``batch.results`` — that
+    dict is typed ``task_id -> RunStatus`` and a list under a magic key leaked
+    out through the batch API and the CLI (#957).
 
     Args:
         batch: Current batch run.
@@ -1694,8 +1712,7 @@ def _apply_pending_config_reload(
     """
     if reload_state.has_reloaded_since(last_seen_reload):
         now = datetime.now(timezone.utc)
-        reloads = batch.results.setdefault("__config_reloads__", [])
-        reloads.append(now.isoformat())
+        batch.config_reloads.append(now.isoformat())
         _save_batch(workspace, batch)
         logger.debug(f"[config] Configuration reloaded at {now.strftime('%H:%M:%S')}")
         return now
@@ -1793,6 +1810,7 @@ def _execute_serial(
                     stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                     worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                     llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                    cloud_timeout_minutes=batch.cloud_timeout_minutes,
                 )
 
                 # If task is BLOCKED, try supervisor resolution
@@ -1806,6 +1824,7 @@ def _execute_serial(
                             stall_timeout_s=batch.stall_timeout_s, stall_action=batch.stall_action,
                             worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                             llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                            cloud_timeout_minutes=batch.cloud_timeout_minutes,
                         )
             finally:
                 exec_ctx.cleanup()
@@ -1948,14 +1967,13 @@ def _execute_parallel(
     Raises:
         CycleDetectedError: If circular dependencies are detected
     """
-    # Clean up orphaned worktrees from crashed workers on previous runs.
-    # Batch worktree isolation stays rejected at the CLI (#787 enables it only
-    # for the single-run path), so this fires just for legacy batches persisted
-    # with worktree isolation — harmless best-effort cleanup of pre-existing debris.
-    from codeframe.core.sandbox.context import IsolationLevel as _IL
-    if batch.isolation == _IL.WORKTREE.value:
-        from codeframe.core.worktrees import WorktreeRegistry
-        WorktreeRegistry().cleanup_stale(workspace.repo_path)
+    # No orphan-worktree sweep here (#958). It called WorktreeRegistry, which
+    # nothing ever registered into — sandbox/context.py deliberately skips
+    # registration because liveness-keyed cleanup would force-delete a branch
+    # that was *preserved* on failure or conflict. The sweep was therefore a
+    # no-op over an always-empty registry, and the registry is now gone. A
+    # leftover cf/<task_id> worktree is surfaced as an actionable error by
+    # _create_worktree_context on the next run instead.
 
     # Create execution plan based on dependencies
     plan = create_execution_plan(workspace, batch.task_ids)
@@ -2334,6 +2352,7 @@ def _execute_single_task(
             stall_action=batch.stall_action,
             worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
             llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+            cloud_timeout_minutes=batch.cloud_timeout_minutes,
         )
 
         # If task is BLOCKED, try supervisor resolution
@@ -2349,6 +2368,7 @@ def _execute_single_task(
                     stall_action=batch.stall_action,
                     worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                     llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                    cloud_timeout_minutes=batch.cloud_timeout_minutes,
                 )
     finally:
         exec_ctx.cleanup()
@@ -2464,6 +2484,7 @@ def _execute_group_parallel(
                 stall_action=batch.stall_action,
                 worktree_path=exec_ctx.workspace_path if exec_ctx.workspace_path != workspace.repo_path else None,
                 llm_provider=batch.llm_provider, llm_model=batch.llm_model,
+                cloud_timeout_minutes=batch.cloud_timeout_minutes,
             )
         finally:
             exec_ctx.cleanup()
@@ -2668,6 +2689,7 @@ def _save_batch(
     concurrency_json = (
         json.dumps(batch.concurrency.by_status) if batch.concurrency.by_status else None
     )
+    config_reloads_json = json.dumps(batch.config_reloads) if batch.config_reloads else None
 
     with _batch_db_lock:
         conn = get_db_connection(workspace)
@@ -2697,8 +2719,8 @@ def _save_batch(
                 (id, workspace_id, task_ids, status, strategy, max_parallel, on_failure,
                  started_at, completed_at, results, engine, isolation,
                  stall_timeout_s, stall_action, concurrency_by_status,
-                 llm_provider, llm_model)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 llm_provider, llm_model, config_reloads, cloud_timeout_minutes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     batch.id,
@@ -2718,6 +2740,8 @@ def _save_batch(
                     concurrency_json,
                     batch.llm_provider,
                     batch.llm_model,
+                    config_reloads_json,
+                    batch.cloud_timeout_minutes,
                 ),
             )
             conn.commit()
@@ -2736,6 +2760,14 @@ def _row_to_batch(row: tuple) -> BatchRun:
     concurrency_by_status = (
         json.loads(row[14]) if len(row) > 14 and row[14] else {}
     )
+    results = json.loads(row[9]) if row[9] else {}
+    config_reloads = json.loads(row[17]) if len(row) > 17 and row[17] else []
+    # Rows written before #957 carry the reload list INSIDE results under a
+    # magic key. Lift it out on read so an old batch never re-leaks it through
+    # the API; the next save persists it in its own column.
+    legacy_reloads = results.pop("__config_reloads__", None)
+    if legacy_reloads and not config_reloads:
+        config_reloads = list(legacy_reloads)
     return BatchRun(
         id=row[0],
         workspace_id=row[1],
@@ -2746,7 +2778,7 @@ def _row_to_batch(row: tuple) -> BatchRun:
         on_failure=OnFailure(row[6]),
         started_at=datetime.fromisoformat(row[7]),
         completed_at=datetime.fromisoformat(row[8]) if row[8] else None,
-        results=json.loads(row[9]) if row[9] else {},
+        results=results,
         engine=row[10] if len(row) > 10 and row[10] else "react",
         isolation=row[11] if len(row) > 11 and row[11] else "none",
         stall_timeout_s=row[12] if len(row) > 12 and row[12] is not None else 300,
@@ -2756,4 +2788,8 @@ def _row_to_batch(row: tuple) -> BatchRun:
         ),
         llm_provider=row[15] if len(row) > 15 else None,
         llm_model=row[16] if len(row) > 16 else None,
+        config_reloads=config_reloads,
+        cloud_timeout_minutes=(
+            row[18] if len(row) > 18 and row[18] is not None else 30
+        ),
     )

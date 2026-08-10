@@ -8,6 +8,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 
 import sqlite3
 import uuid
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -100,18 +101,15 @@ def create(
     blocker_id = str(uuid.uuid4())
     now = _utc_now().isoformat()
 
-    conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO blockers (id, workspace_id, task_id, question, status, created_at, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (blocker_id, workspace.id, task_id, question, BlockerStatus.OPEN.value, now, origin.value),
-    )
-    conn.commit()
-    conn.close()
+    with closing(get_db_connection(workspace)) as conn:
+        conn.execute(
+            """
+            INSERT INTO blockers (id, workspace_id, task_id, question, status, created_at, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (blocker_id, workspace.id, task_id, question, BlockerStatus.OPEN.value, now, origin.value),
+        )
+        conn.commit()
 
     blocker = Blocker(
         id=blocker_id,
@@ -144,9 +142,6 @@ def _find_open_duplicate(
     workspace: Workspace, task_id: Optional[str], question: str
 ) -> Optional[Blocker]:
     """Return an existing OPEN blocker with the same (task_id, question), if any."""
-    conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
     select = (
         "SELECT id, workspace_id, task_id, question, answer, status, created_at, "
         "answered_at, COALESCE(created_by, 'human') as created_by FROM blockers "
@@ -160,9 +155,8 @@ def _find_open_duplicate(
         select += " AND task_id = ?"
         params.append(task_id)
 
-    cursor.execute(select, params)
-    row = cursor.fetchone()
-    conn.close()
+    with closing(get_db_connection(workspace)) as conn:
+        row = conn.execute(select, params).fetchone()
 
     return _row_to_blocker(row) if row else None
 
@@ -204,40 +198,33 @@ def get(workspace: Workspace, blocker_id: str) -> Optional[Blocker]:
     Returns:
         Blocker if found, None otherwise
     """
-    conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    # Try exact match first
-    cursor.execute(
-        """
-        SELECT id, workspace_id, task_id, question, answer, status, created_at, answered_at,
-               COALESCE(created_by, 'human') as created_by
-        FROM blockers
-        WHERE workspace_id = ? AND id = ?
-        """,
-        (workspace.id, blocker_id),
-    )
-    row = cursor.fetchone()
-
-    # If no exact match, try prefix match
-    if not row:
-        cursor.execute(
+    with closing(get_db_connection(workspace)) as conn:
+        # Try exact match first
+        row = conn.execute(
             """
             SELECT id, workspace_id, task_id, question, answer, status, created_at, answered_at,
                    COALESCE(created_by, 'human') as created_by
             FROM blockers
-            WHERE workspace_id = ? AND id LIKE ?
+            WHERE workspace_id = ? AND id = ?
             """,
-            (workspace.id, f"{blocker_id}%"),
-        )
-        rows = cursor.fetchall()
-        if len(rows) == 1:
-            row = rows[0]
-        elif len(rows) > 1:
-            conn.close()
-            raise ValueError(f"Multiple blockers match '{blocker_id}'")
+            (workspace.id, blocker_id),
+        ).fetchone()
 
-    conn.close()
+        # If no exact match, try prefix match
+        if not row:
+            rows = conn.execute(
+                """
+                SELECT id, workspace_id, task_id, question, answer, status, created_at, answered_at,
+                       COALESCE(created_by, 'human') as created_by
+                FROM blockers
+                WHERE workspace_id = ? AND id LIKE ?
+                """,
+                (workspace.id, f"{blocker_id}%"),
+            ).fetchall()
+            if len(rows) == 1:
+                row = rows[0]
+            elif len(rows) > 1:
+                raise ValueError(f"Multiple blockers match '{blocker_id}'")
 
     if not row:
         return None
@@ -349,19 +336,16 @@ def answer(workspace: Workspace, blocker_id: str, text: str) -> Blocker:
 
     now = _utc_now().isoformat()
 
-    conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        UPDATE blockers
-        SET answer = ?, status = ?, answered_at = ?
-        WHERE id = ?
-        """,
-        (text, BlockerStatus.ANSWERED.value, now, blocker.id),
-    )
-    conn.commit()
-    conn.close()
+    with closing(get_db_connection(workspace)) as conn:
+        conn.execute(
+            """
+            UPDATE blockers
+            SET answer = ?, status = ?, answered_at = ?
+            WHERE id = ?
+            """,
+            (text, BlockerStatus.ANSWERED.value, now, blocker.id),
+        )
+        conn.commit()
 
     # Emit blocker answered event
     events.emit_for_workspace(
@@ -416,19 +400,16 @@ def resolve(workspace: Workspace, blocker_id: str) -> Blocker:
     if blocker.status == BlockerStatus.RESOLVED:
         raise ValueError(f"Blocker already resolved: {blocker_id}")
 
-    conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        UPDATE blockers
-        SET status = ?
-        WHERE id = ?
-        """,
-        (BlockerStatus.RESOLVED.value, blocker.id),
-    )
-    conn.commit()
-    conn.close()
+    with closing(get_db_connection(workspace)) as conn:
+        conn.execute(
+            """
+            UPDATE blockers
+            SET status = ?
+            WHERE id = ?
+            """,
+            (BlockerStatus.RESOLVED.value, blocker.id),
+        )
+        conn.commit()
 
     # Emit blocker resolved event
     events.emit_for_workspace(
@@ -451,20 +432,16 @@ def count_by_status(workspace: Workspace) -> dict[str, int]:
     Returns:
         Dict mapping status string to count
     """
-    conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        SELECT status, COUNT(*) as count
-        FROM blockers
-        WHERE workspace_id = ?
-        GROUP BY status
-        """,
-        (workspace.id,),
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    with closing(get_db_connection(workspace)) as conn:
+        rows = conn.execute(
+            """
+            SELECT status, COUNT(*) as count
+            FROM blockers
+            WHERE workspace_id = ?
+            GROUP BY status
+            """,
+            (workspace.id,),
+        ).fetchall()
 
     return {row[0]: row[1] for row in rows}
 

@@ -6,7 +6,9 @@ conductor.py and agent adapters to run tasks in isolated environments.
 Isolation levels:
   NONE     — shared filesystem, preserves current behavior (default)
   WORKTREE — git worktree per task with merge-back (single-run path only; #787)
-  CLOUD    — E2B Linux VM per task (reserved, raises NotImplementedError)
+  CLOUD    — not implemented, raises NotImplementedError. Cloud execution
+             exists only as an EXPERIMENTAL, unsupported engine gated behind
+             CODEFRAME_ENABLE_CLOUD_ENGINE (#966), not as an isolation level.
 
 Worktree scope (#787): worktree isolation is enabled for the in-process
 single-run path (``cf work start --isolation worktree`` → runtime.execute_agent),
@@ -99,8 +101,11 @@ def validate_isolation(isolation: IsolationLevel) -> None:
     """
     if isolation == IsolationLevel.CLOUD:
         raise NotImplementedError(
-            "IsolationLevel.CLOUD is reserved for the future E2B agent adapter phase. "
-            "Use 'none' instead."
+            "IsolationLevel.CLOUD is not implemented. For local isolation use "
+            "`--isolation worktree`. Cloud execution exists only as an "
+            "EXPERIMENTAL, unsupported E2B engine (`--engine cloud`, gated behind "
+            "CODEFRAME_ENABLE_CLOUD_ENGINE=1) — see the known limitations in "
+            "CLAUDE.md before relying on it (#966)."
         )
 
 
@@ -143,10 +148,12 @@ def create_execution_context(
 def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     """Create a git worktree and wire its merge-back / cleanup / preserve hooks.
 
-    The worktree is intentionally NOT registered in WorktreeRegistry: orphan
-    cleanup (keyed on process liveness) would force-delete a preserved branch
-    once this process exits, defeating the failure/conflict preservation the
-    acceptance criteria require.
+    Worktrees are deliberately not tracked in any liveness-keyed registry:
+    orphan cleanup keyed on process liveness would force-delete a *preserved*
+    branch once this process exits, defeating the failure/conflict preservation
+    the acceptance criteria require. The old ``WorktreeRegistry`` was therefore
+    never written to, and was deleted in #958; a leftover worktree surfaces as
+    the actionable error raised below on the next run instead.
     """
     import subprocess
 

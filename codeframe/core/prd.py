@@ -7,6 +7,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import json
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import Optional
 
 from codeframe.core.workspace import Workspace, get_db_connection
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -322,18 +325,28 @@ def list_chains(workspace: Workspace) -> list[PrdRecord]:
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
 
-    # Get the latest version for each unique chain_id
+    # Get the latest version for each unique chain.
+    #
+    # Grouping and joining on COALESCE(chain_id, parent_id, id) rather than
+    # chain_id alone (#961): a legacy row can still carry a NULL chain_id, and
+    # SQL's `NULL = NULL` is never true — so the INNER JOIN silently dropped
+    # those PRDs from the list entirely, with no error. The upgrade path
+    # backfills them, but this keeps the read correct for anything it misses
+    # (e.g. a child whose parent row is gone).
     cursor.execute(
         """
         SELECT p.id, p.workspace_id, p.title, p.content, p.metadata, p.created_at,
                p.version, p.parent_id, p.change_summary, p.chain_id
         FROM prds p
         INNER JOIN (
-            SELECT chain_id, MAX(version) as max_version
+            SELECT COALESCE(chain_id, parent_id, id) AS grp,
+                   MAX(version) as max_version
             FROM prds
             WHERE workspace_id = ?
-            GROUP BY chain_id
-        ) latest ON p.chain_id = latest.chain_id AND p.version = latest.max_version
+            GROUP BY COALESCE(chain_id, parent_id, id)
+        ) latest
+          ON COALESCE(p.chain_id, p.parent_id, p.id) = latest.grp
+         AND p.version = latest.max_version
         WHERE p.workspace_id = ?
         ORDER BY p.created_at DESC
         """,
@@ -554,10 +567,26 @@ def create_new_version(
 
         prd_id = str(uuid.uuid4())
         now = _utc_now().isoformat()
-        new_version = parent_version + 1
 
         # Copy chain_id from parent (maintains version grouping)
         chain_id = parent_chain_id or parent_prd_id
+
+        # Number from MAX(version) across the CHAIN, inside this transaction —
+        # not from the parent row (#960). Deriving it from the parent meant two
+        # refines against the same parent both produced parent_version + 1, and
+        # get_version then returned an arbitrary one of the duplicates. The
+        # BEGIN IMMEDIATE above takes a RESERVED lock, so a concurrent writer
+        # blocks here until we commit and then reads the number we just used.
+        cursor.execute(
+            """
+            SELECT MAX(version) FROM prds
+            WHERE workspace_id = ? AND (chain_id = ? OR id = ?)
+            """,
+            (workspace.id, chain_id, chain_id),
+        )
+        max_row = cursor.fetchone()
+        highest = max_row[0] if max_row and max_row[0] is not None else parent_version
+        new_version = max(highest, parent_version) + 1
 
         cursor.execute(
             """
@@ -594,7 +623,19 @@ def create_new_version(
             chain_id=chain_id,
         )
     except Exception:
-        cursor.execute("ROLLBACK")
+        # The rollback is best-effort cleanup, never the story (#961). A bare
+        # cursor.execute("ROLLBACK") raises "cannot rollback - no transaction
+        # is active" whenever the failure happened before BEGIN took effect or
+        # after the transaction already ended — and that replacement exception
+        # propagated instead of the real one, hiding the actual fault.
+        try:
+            cursor.execute("ROLLBACK")
+        except Exception:
+            logger.warning(
+                "Rollback failed while unwinding create_new_version; the "
+                "original error is re-raised.",
+                exc_info=True,
+            )
         raise
     finally:
         conn.close()

@@ -40,6 +40,7 @@ from codeframe.core.github_issues_service import (
     _TIMEOUT,
     IssueNotFoundError,
     NotAnIssueError,
+    RateLimitedError,
     get_issue,
     list_issues,
 )
@@ -160,9 +161,15 @@ class ImportResponse(BaseModel):
 # within the same server process. Bounded to
 # _ISSUE_CACHE_MAX_SIZE entries and swept on every set so search text (an
 # unbounded key space) can't accumulate stale payloads forever (#761).
+#
+# The key is a TUPLE, not a delimiter-joined string: joining on '|' meant a '|'
+# typed into the search box shifted into the label field and served one filter's
+# results for another — wrong data, no error (#956). A tuple is unambiguous by
+# construction and needs no encoding.
 _ISSUE_CACHE_TTL_SECONDS = 60.0
 _ISSUE_CACHE_MAX_SIZE = 256
-_ISSUE_CACHE: dict[str, tuple[float, Any]] = {}
+_IssueCacheKey = tuple  # (repo, page, per_page, search, label, user_id)
+_ISSUE_CACHE: dict[_IssueCacheKey, tuple[float, Any]] = {}
 
 
 def _evict_issue_cache() -> None:
@@ -178,7 +185,7 @@ def _evict_issue_cache() -> None:
             del _ISSUE_CACHE[key]
 
 
-def _issue_cache_get(key: str) -> Optional[Any]:
+def _issue_cache_get(key: _IssueCacheKey) -> Optional[Any]:
     entry = _ISSUE_CACHE.get(key)
     if entry is None:
         return None
@@ -189,7 +196,7 @@ def _issue_cache_get(key: str) -> Optional[Any]:
     return payload
 
 
-def _issue_cache_set(key: str, payload: Any) -> None:
+def _issue_cache_set(key: _IssueCacheKey, payload: Any) -> None:
     _ISSUE_CACHE[key] = (time.monotonic() + _ISSUE_CACHE_TTL_SECONDS, payload)
     _evict_issue_cache()
 
@@ -199,13 +206,12 @@ def _issue_cache_invalidate(repo: str, user_id: Optional[int]) -> None:
 
     Called after an import so reopening the browse modal doesn't keep offering
     just-imported issues as selectable (they would now be skipped as dupes).
-    Keys are ``repo|page|per_page|search|label|user_id``; only drop entries
-    belonging to the calling user so one tenant's import does not wipe another's
-    cache for the same repo (#790).
+    Keys are ``(repo, page, per_page, search, label, user_id)``; only drop
+    entries belonging to the calling user so one tenant's import does not wipe
+    another's cache for the same repo (#790). Matching is component-wise, so a
+    search term that happens to spell the repo name can't be swept (#956).
     """
-    prefix = f"{repo}|"
-    suffix = f"|{user_id}"
-    for key in [k for k in _ISSUE_CACHE if k.startswith(prefix) and k.endswith(suffix)]:
+    for key in [k for k in _ISSUE_CACHE if k[0] == repo and k[-1] == user_id]:
         _ISSUE_CACHE.pop(key, None)
 
 
@@ -410,9 +416,9 @@ async def get_issues(
     per_page = max(1, min(per_page, 100))
     repo = cfg["repo"]
 
-    # The user component keeps the repo|-prefixed invalidation in
-    # _issue_cache_invalidate working while separating tenants (#790).
-    cache_key = f"{repo}|{page}|{per_page}|{search}|{label}|{auth.get('user_id')}"
+    # Tuple key: repo first and user last so _issue_cache_invalidate can match
+    # both component-wise while keeping tenants separated (#790, #956).
+    cache_key = (repo, page, per_page, search, label, auth.get("user_id"))
     cached = _issue_cache_get(cache_key)
     if cached is not None:
         return cached
@@ -432,23 +438,10 @@ async def get_issues(
             status_code=409,
             detail=api_error(str(e), ErrorCodes.CONFLICT),
         )
-    except InvalidTokenError as e:
-        # 502, never 401: the stored PAT was rejected upstream — the caller's
-        # CodeFRAME session is fine (#734).
-        raise HTTPException(
-            status_code=502,
-            detail=api_error(str(e), ErrorCodes.UPSTREAM_AUTH_FAILED),
-        )
-    except InsufficientScopeError as e:
-        raise HTTPException(
-            status_code=403,
-            detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR),
-        )
     except GitHubConnectError as e:
-        raise HTTPException(
-            status_code=502,
-            detail=api_error(str(e), ErrorCodes.EXECUTION_FAILED),
-        )
+        # Every typed GitHub error subclasses this; _map_github_error is the
+        # single mapping shared with the import path.
+        raise _map_github_error(e)
 
     response = GitHubIssuesResponse(
         issues=[GitHubIssueItem(**issue) for issue in issues],
@@ -492,6 +485,12 @@ def _map_github_error(e: Exception) -> HTTPException:
     if isinstance(e, InsufficientScopeError):
         return HTTPException(
             status_code=403, detail=api_error(str(e), ErrorCodes.VALIDATION_ERROR)
+        )
+    if isinstance(e, RateLimitedError):
+        # 429, not 403: throttling is transient and retryable — reporting it as
+        # a scope gap sends users to regenerate a PAT that was fine (#956).
+        return HTTPException(
+            status_code=429, detail=api_error(str(e), ErrorCodes.RATE_LIMITED)
         )
     return HTTPException(
         status_code=502, detail=api_error(str(e), ErrorCodes.EXECUTION_FAILED)

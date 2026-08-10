@@ -126,7 +126,20 @@ cf tasks generate        # Decompose PRD into atomic tasks with dependencies
 cf tasks list            # Review what was generated
 ```
 
-**Step 5 — Build, Prove, and Ship**
+**Step 5 — Promote the tasks you want to run**
+
+`cf tasks generate` creates tasks in `BACKLOG` so you can review them before an
+agent touches your code. Move the ones you approve to `READY`:
+
+```bash
+cf tasks set status READY --all --from BACKLOG   # every BACKLOG task
+cf tasks set status <task-id> READY              # one task (note: id before status)
+```
+
+Skipping this step is why `--all-ready` below would otherwise report
+`No READY tasks found` and do nothing.
+
+**Step 6 — Build, Prove, and Ship**
 
 ```bash
 cf work batch run --all-ready   # Execute all READY tasks (delegates to agent)
@@ -135,6 +148,11 @@ cf pr create                    # Open a PR with proof report attached
 ```
 
 That is the entire workflow. Everything else is optional.
+
+> **See it run from scratch.** [Cold start on a clean machine](docs/demos/quickstart-cleanroom.md)
+> is a narrated walkthrough of exactly these steps in a throwaway container —
+> real transcripts, per-step timings, and the rough edges left in. Reproduce it
+> with `scripts/quickstart-cleanroom/run.sh`.
 
 ---
 
@@ -294,9 +312,11 @@ cf dashboard                          # Launch TUI dashboard
 
 ```bash
 cf pr create                          # Create PR from current branch
-cf pr status                          # PR status and review state
-cf pr checks                          # CI check results
+cf pr list                            # List open PRs
+cf pr status                          # PR status, review state and CI checks
+cf pr get <number>                    # Details for one PR
 cf pr merge                           # Merge approved PR
+cf pr close <number>                  # Close a PR without merging
 cf commit                             # Commit verified changes
 cf patch export                       # Export changes as patch
 ```

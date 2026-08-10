@@ -7,6 +7,7 @@ supervisor retry for Plan) so the runtime can treat all engines uniformly.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -26,6 +27,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _MAX_STALL_RETRIES = 1
+
+
+def llm_key_requirement(repo_path: Optional[Path] = None) -> dict[str, str]:
+    """The API key the *configured* LLM provider needs, if it needs one.
+
+    Builtin engines call the LLM directly, so a hardcoded ``ANTHROPIC_API_KEY``
+    made ``cf engines check react`` report the engine unready on an OpenAI or
+    Ollama workspace — and ready on a machine that merely happens to have an
+    Anthropic key exported while being configured for something else (#955).
+
+    The provider comes from the standard chain (``CODEFRAME_LLM_PROVIDER`` →
+    ``.codeframe/config.yaml`` → anthropic); ``repo_path`` is what enables the
+    config tier. Local providers (ollama, vllm, compatible) need no key, so they
+    report nothing to satisfy — which is what "Ready" should mean for them.
+    """
+    from codeframe.core.llm_resolution import REQUIRED_KEY_ENV, resolve_llm_settings
+
+    try:
+        provider = resolve_llm_settings(repo_path=repo_path).provider_type
+    except Exception:  # noqa: BLE001 - see below
+        # A requirements *check* must not be the thing that fails on a broken or
+        # untrusted workspace config; the run itself reports that properly.
+        provider = os.getenv("CODEFRAME_LLM_PROVIDER") or "anthropic"
+
+    key = REQUIRED_KEY_ENV.get(provider)
+    return {key: f"API key for the configured LLM provider ({provider})"} if key else {}
 
 
 def _adapter_token_usage(agent: object) -> Optional[AdapterTokenUsage]:
@@ -93,9 +120,9 @@ class BuiltinReactAdapter:
         return "react"
 
     @classmethod
-    def requirements(cls) -> dict[str, str]:
-        """Return requirement names and descriptions."""
-        return {"ANTHROPIC_API_KEY": "Anthropic API key for LLM calls"}
+    def requirements(cls, repo_path: Optional[Path] = None) -> dict[str, str]:
+        """Return requirement names and descriptions (#955: provider-aware)."""
+        return llm_key_requirement(repo_path)
 
     def run(
         self,
@@ -176,6 +203,12 @@ class BuiltinReactAdapter:
             status=result_status,
             output=f"ReactAgent finished with status: {status.value}",  # type: ignore[union-attr]
             token_usage=_adapter_token_usage(agent),
+            # Same pattern as the token counts above (#932): ReactAgent already
+            # tracks these, and runtime used to hardcode None/0 into the engine
+            # log, so Gate Pass showed 0% forever (#958). getattr-guarded — the
+            # plan engine and test doubles do not carry them.
+            gates_passed=getattr(agent, "gates_passed", None),
+            self_corrections=getattr(agent, "self_correction_count", 0) or 0,
         )
 
 
@@ -211,9 +244,9 @@ class BuiltinPlanAdapter:
         return "plan"
 
     @classmethod
-    def requirements(cls) -> dict[str, str]:
-        """Return requirement names and descriptions."""
-        return {"ANTHROPIC_API_KEY": "Anthropic API key for LLM calls"}
+    def requirements(cls, repo_path: Optional[Path] = None) -> dict[str, str]:
+        """Return requirement names and descriptions (#955: provider-aware)."""
+        return llm_key_requirement(repo_path)
 
     def run(
         self,

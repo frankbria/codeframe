@@ -16,6 +16,11 @@ from pathlib import Path
 
 from rapidfuzz import fuzz
 
+# Two fuzzy windows are "the same score" within this tolerance. Ratios come
+# from integer percentages divided by 100, so exact float equality would be
+# fine — the epsilon just keeps the tie test honest if that ever changes.
+_RATIO_EPSILON = 1e-9
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -364,17 +369,35 @@ class SearchReplaceEditor:
             return self._fail()
 
         best_ratio = 0.0
-        best_i = -1
+        tied: list[int] = []
 
         for i in range(len(content_lines) - n + 1):
             window = "\n".join(content_lines[i : i + n])
             ratio = fuzz.ratio(search, window) / 100.0
-            if ratio > best_ratio:
+            if ratio > best_ratio + _RATIO_EPSILON:
                 best_ratio = ratio
-                best_i = i
+                tied = [i]
+            elif abs(ratio - best_ratio) <= _RATIO_EPSILON:
+                tied.append(i)
 
         if best_ratio < self.fuzzy_threshold:
             return self._fail()
+
+        # Every other match level counts its occurrences and lets the caller
+        # reject an ambiguous search (`match_count > 1`). This one used to
+        # hardcode 1, so when two blocks scored the same the agent silently
+        # edited whichever came first — the wrong one half the time, with no
+        # error to notice (#955).
+        #
+        # Windows that overlap are the same region seen at different offsets
+        # (repetitive code makes several of them tie), so they count once;
+        # separate regions that tie are genuinely ambiguous.
+        distinct: list[int] = []
+        for i in tied:
+            if not distinct or i - distinct[-1] >= n:
+                distinct.append(i)
+
+        best_i = distinct[0]
 
         start_pos = self._line_offset(content, best_i)
         end_pos = self._line_offset(content, best_i + n)
@@ -392,7 +415,7 @@ class SearchReplaceEditor:
             start_pos=start_pos,
             end_pos=end_pos,
             matched_text=content[start_pos:end_pos],
-            match_count=1,
+            match_count=len(distinct),
         )
 
     # -- indentation -------------------------------------------------------
