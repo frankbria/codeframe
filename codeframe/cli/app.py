@@ -57,6 +57,190 @@ console = Console()
 #: wrote. Pointing only at `prd add` sent new users straight past Socratic
 #: discovery — the capability the product leads on. `cf` rather than
 #: `codeframe` because that is the name the README uses; both binaries work.
+#: How many rejected attempts at one discovery question before the loop stops
+#: and says something. Without a cap, a user who keeps missing a sub-clause of a
+#: two-part question loops forever with coverage pinned at 0% and no hint that
+#: they are stuck — measured at 21 turns / 0 accepted answers (#1114).
+MAX_ANSWER_ATTEMPTS = 5
+
+
+class AnswersExhausted(Exception):
+    """A non-interactive discovery run ran out of answers (#1114).
+
+    Distinct from EOF inside ``Prompt.ask``, which is what happened before and
+    surfaced as an opaque traceback with no indication of which question was
+    unanswered or how many had been consumed.
+    """
+
+
+#: Prompt for --brief-file. Deliberately instructs the stand-in to answer the
+#: question actually asked, including every part of a multi-part one — that is
+#: the difference between the 3-turn run and the 21-turn one (#1114).
+_BRIEF_ANSWER_PROMPT = """\
+You are a product owner being interviewed about a project you want built.
+Everything you know about it is in this brief:
+
+{brief}
+
+Answer this interview question:
+
+{question}
+
+Rules:
+- Answer only what was asked. If the question has two parts, answer both.
+- Use the brief. Where it is silent, give a plausible answer consistent with it.
+- Two to four sentences of plain prose. No preamble, no bullet points.
+"""
+
+
+class _AnswerSource:
+    """Where discovery answers come from: a TTY, canned answers, or a brief.
+
+    Keeping this behind one object is what stops ``if non_interactive`` from
+    being threaded through every branch of the discovery loop.
+
+    The three modes are not equivalent. A canned list cannot survive a rejected
+    answer — the questions are AI-generated, so the list desynchronises and never
+    resynchronises. ``--brief-file`` reads each question and answers *that*
+    question, which is the only non-interactive mode that reliably finishes
+    against a real model (#1114).
+    """
+
+    def __init__(
+        self,
+        answers: Optional[list[str]] = None,
+        brief: Optional[str] = None,
+        provider=None,
+    ):
+        self._answers = answers
+        self._brief = brief
+        self._provider = provider
+        self._index = 0
+
+    @property
+    def interactive(self) -> bool:
+        return self._answers is None and self._brief is None
+
+    @property
+    def consumed(self) -> int:
+        return self._index
+
+    @property
+    def can_desynchronise(self) -> bool:
+        """True for a fixed list, which cannot recover from a rejection."""
+        return self._answers is not None
+
+    def ask(self, question_text: str = "") -> str:
+        if self._brief is not None:
+            return self._ask_brief(question_text)
+        if self._answers is not None:
+            return self._ask_canned()
+        # Imported here, as prd_generate does — rich.prompt is only needed on
+        # the interactive path.
+        from rich.prompt import Prompt
+
+        return Prompt.ask("\nYour answer", default="").strip()
+
+    def _ask_canned(self) -> str:
+        if self._index >= len(self._answers):
+            raise AnswersExhausted(
+                f"ran out of answers after {self._index} of {len(self._answers)}"
+            )
+        answer = self._answers[self._index].strip()
+        self._index += 1
+        console.print(f"\n[dim]Your answer (from --answers-file):[/dim] {escape(answer)}")
+        return answer
+
+    def _ask_brief(self, question_text: str) -> str:
+        from codeframe.adapters.llm import Purpose
+
+        self._index += 1
+        response = self._provider.complete(
+            messages=[{
+                "role": "user",
+                "content": _BRIEF_ANSWER_PROMPT.format(
+                    brief=self._brief, question=question_text
+                ),
+            }],
+            purpose=Purpose.GENERATION,
+            max_tokens=600,
+        )
+        answer = (response.content or "").strip()
+        console.print(f"\n[dim]Your answer (from --brief-file):[/dim] {escape(answer)}")
+        return answer
+
+
+def _load_brief_file(path: Path) -> str:
+    """Read a plain-text project brief for --brief-file."""
+    try:
+        brief = path.read_text().strip()
+    except FileNotFoundError:
+        raise typer.BadParameter(f"brief file not found: {path}")
+    if not brief:
+        raise typer.BadParameter(f"{path} is empty.")
+    return brief
+
+
+def _handle_answer_attempts_exhausted(session, answers: "_AnswerSource", question: dict) -> bool:
+    """React to MAX_ANSWER_ATTEMPTS rejections on one question (#1114).
+
+    Returns True to keep trying, False when the caller should stop.
+
+    Non-interactive runs stop: a canned list that has desynchronised will not
+    resynchronise by being fed more of itself. Interactive runs are told what is
+    happening and offered the pause they would otherwise have to discover.
+    """
+    console.print(
+        f"\n[yellow]That question has been answered {MAX_ANSWER_ATTEMPTS} times "
+        f"without being accepted.[/yellow]"
+    )
+    if not answers.interactive:
+        console.print(
+            "[red]Error:[/red] giving up in non-interactive mode. The validator "
+            "rejects partial answers, and AI-generated questions often have two "
+            "parts — a canned answer list cannot recover once it desynchronises. "
+            "Run interactively, or supply answers that address every part of the "
+            "question."
+        )
+        raise typer.Exit(1)
+
+    console.print(
+        "[dim]Questions often have two parts; make sure the answer covers all of "
+        "them. You can also type /pause to save and come back.[/dim]"
+    )
+    if not typer.confirm("Keep trying this question?", default=True):
+        blocker_id = session.pause_discovery("Stuck on a question")
+        console.print("\n[green]✓[/green] Session paused")
+        console.print(
+            f"To resume: [cyan]cf prd generate --resume {blocker_id[:8]}[/cyan]"
+        )
+        return False
+    return True
+
+
+def _load_answers_file(path: Path) -> list[str]:
+    """Read a JSON array of answer strings.
+
+    JSON rather than one-per-line because real answers are prose and wrap. A
+    single format keeps the failure modes obvious.
+    """
+    try:
+        raw = json.loads(path.read_text())
+    except FileNotFoundError:
+        raise typer.BadParameter(f"answers file not found: {path}")
+    except json.JSONDecodeError as e:
+        raise typer.BadParameter(
+            f"{path} is not valid JSON ({e}). Expected an array of answer strings."
+        )
+    if not isinstance(raw, list) or not all(isinstance(a, str) for a in raw):
+        raise typer.BadParameter(
+            f"{path} must contain a JSON array of strings, one answer per question."
+        )
+    if not raw:
+        raise typer.BadParameter(f"{path} contains no answers.")
+    return raw
+
+
 PRD_NEXT_STEPS = (
     "  cf prd generate              Start AI-guided requirements discovery\n"
     "  cf prd add <file.md>         Import a PRD you already have"
@@ -1462,11 +1646,34 @@ def prd_generate(
         "--template", "-t",
         help="PRD template to use (standard, lean, enterprise, user-story-map, technical-spec)",
     ),
+    answers_file: Optional[Path] = typer.Option(
+        None,
+        "--answers-file",
+        help=(
+            "Run without a TTY, taking answers from a JSON array of strings. "
+            "Answers are consumed in order; the run fails loudly if they run out. "
+            "A fixed list cannot recover if the validator rejects one — prefer "
+            "--brief-file against a real model."
+        ),
+    ),
+    brief_file: Optional[Path] = typer.Option(
+        None,
+        "--brief-file",
+        help=(
+            "Run without a TTY by answering each question from a project brief. "
+            "Unlike --answers-file this reads the question actually asked, so it "
+            "survives a rejected answer."
+        ),
+    ),
 ) -> None:
     """Generate a PRD through AI-driven Socratic discovery.
 
     An AI product manager conducts an intelligent conversation to understand
     your project requirements, then generates a structured PRD.
+
+    Two non-interactive modes exist for CI and demos: --brief-file (answers each
+    question from a project brief; survives a rejected answer) and --answers-file
+    (a fixed list; cannot resynchronise once one is rejected).
 
     The AI:
     - Asks context-sensitive follow-up questions
@@ -1520,6 +1727,14 @@ def prd_generate(
             console.print(f"  {t.id} - {escape(t.name)}")
         raise typer.Exit(1)
 
+    if answers_file and brief_file:
+        # Checked before any work: a flag conflict must not cost an API call.
+        console.print(
+            "[red]Error:[/red] --answers-file and --brief-file are alternatives; "
+            "pass one."
+        )
+        raise typer.Exit(2)
+
     console.print(f"[dim]Using template: {escape(template_obj.name)}[/dim]")
 
     try:
@@ -1572,6 +1787,29 @@ def prd_generate(
         console.print("[dim]The AI will ask questions to understand your project.[/dim]")
         console.print("[dim]Type /help for available commands[/dim]\n")
 
+        canned = _load_answers_file(answers_file) if answers_file else None
+        brief = _load_brief_file(brief_file) if brief_file else None
+        brief_provider = None
+        if brief is not None:
+            # The stand-in answerer uses the same resolved provider chain as
+            # everything else, so --llm-provider/config apply to it too.
+            from codeframe.core.llm_resolution import (
+                create_provider,
+                resolve_llm_settings,
+            )
+
+            brief_provider = create_provider(resolve_llm_settings(workspace.repo_path))
+        answers = _AnswerSource(canned, brief, brief_provider)
+        if canned is not None:
+            console.print(
+                f"[dim]Non-interactive: {len(canned)} answer(s) "
+                f"from {answers_file}[/dim]\n"
+            )
+        elif brief is not None:
+            console.print(
+                f"[dim]Non-interactive: answering from {brief_file}[/dim]\n"
+            )
+
         # Discovery loop
         while not session.is_complete():
             question = session.get_current_question()
@@ -1591,13 +1829,18 @@ def prd_generate(
             console.print(Panel(question["text"], title="Question", border_style="cyan"))
 
             # Get answer
+            attempts = 0
             while True:
                 try:
-                    answer = Prompt.ask(
-                        "\nYour answer",
-                        default="",
-                    )
-                    answer = answer.strip()
+                    attempts += 1
+                    if attempts > MAX_ANSWER_ATTEMPTS:
+                        if not _handle_answer_attempts_exhausted(
+                            session, answers, question
+                        ):
+                            return
+                        attempts = 1
+
+                    answer = answers.ask(question["text"])
 
                     if not answer:
                         console.print("[yellow]Please enter an answer[/yellow]")
@@ -1642,6 +1885,19 @@ def prd_generate(
                             break
                         # Otherwise let user try again
 
+                except AnswersExhausted as e:
+                    # Loud and specific, rather than an EOF traceback out of
+                    # Prompt.ask that says nothing about where it stopped (#1114).
+                    console.print(
+                        f"\n[red]Error:[/red] --answers-file {e}.\n"
+                        f"Discovery was still on question "
+                        f"{question.get('question_number', '?')} at "
+                        f"{progress.get('percentage', 0)}% coverage.\n"
+                        "The questions are AI-generated, so a fixed list can "
+                        "desynchronise if an answer is rejected. Add more answers, "
+                        "or run interactively to finish the session."
+                    )
+                    raise typer.Exit(1)
                 except ValidationError as e:
                     console.print(f"[yellow]{e}[/yellow]")
                 except DiscoveryError as e:
