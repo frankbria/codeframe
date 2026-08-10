@@ -39,7 +39,11 @@ from codeframe.cli.import_commands import import_app
 # environment, and never supplies security-steering keys at all.
 from codeframe.core.env_provenance import load_env_files  # noqa: E402
 
-load_env_files()
+# NOT called here. Loading at import meant `from codeframe.cli.app import app`
+# wrote the repository's .env into os.environ for the rest of the process —
+# including in tests that never run a command, which silently flipped
+# `requires_api_key`-gated tests from skip to run (#1064). The root callback
+# below loads it when a command actually executes.
 
 # Create main app
 app = typer.Typer(
@@ -292,6 +296,11 @@ def _root(
     ),
 ) -> None:
     """CodeFRAME: Autonomous coding agent orchestration (v2 CLI)."""
+    # Import-time was too early (#1064): merely importing this module must not
+    # mutate the ambient environment. Typer runs this before any command, so
+    # every `cf ...` invocation still sees the operator's .env — the #904
+    # precedence rules are unchanged, they just apply a moment later.
+    load_env_files()
 
 
 # =============================================================================
