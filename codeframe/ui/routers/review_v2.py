@@ -7,7 +7,7 @@ that delegate to core modules. It uses the v2 Workspace model.
 import logging
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
@@ -308,16 +308,27 @@ async def get_review_diff(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/patch", response_model=PatchResponse)
+@router.get("/patch")
 @rate_limit_standard()
 async def get_review_patch(
     request: Request,
     staged: bool = False,
     workspace: Workspace = Depends(get_v2_workspace),
-) -> PatchResponse:
+) -> Response:
     """Get patch-formatted diff for export.
 
-    Returns the diff in patch format suitable for `git apply`.
+    Returns the raw bytes `git diff --patch --full-index` produced, as
+    application/octet-stream.
+
+    Not a JSON string (#1077): GitPython decodes with surrogateescape, and a
+    lone surrogate cannot be serialised into JSON — so one non-UTF-8 byte in a
+    tracked file made this endpoint 500, with the /review Export Patch button
+    dead for that repository. A patch is a file that gets fed back to
+    `git apply`, so it has to be byte-faithful end to end; JSON cannot carry
+    those bytes without an encoding step on both sides.
+
+    The suggested filename moves to Content-Disposition, where a file download
+    already expects it.
 
     Args:
         request: HTTP request for rate limiting
@@ -325,16 +336,19 @@ async def get_review_patch(
         workspace: v2 Workspace
 
     Returns:
-        PatchResponse with patch content and suggested filename
+        The patch bytes, with a Content-Disposition filename
     """
     try:
-        patch_content = await run_in_threadpool(git.get_patch, workspace, staged=staged)
+        patch_bytes = await run_in_threadpool(
+            git.get_patch_bytes, workspace, staged=staged
+        )
         branch = await run_in_threadpool(git.get_current_branch, workspace)
         filename = f"{branch.replace('/', '-')}.patch"
 
-        return PatchResponse(
-            patch=patch_content,
-            filename=filename,
+        return Response(
+            content=patch_bytes,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     except ValueError as e:

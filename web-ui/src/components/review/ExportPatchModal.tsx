@@ -17,6 +17,8 @@ interface ExportPatchModalProps {
   open: boolean;
   onClose: () => void;
   patchContent: string;
+  /** The exact git bytes; downloads use these, not the string (#1077). */
+  patchBytes: ArrayBuffer | null;
   filename: string;
 }
 
@@ -24,6 +26,7 @@ export function ExportPatchModal({
   open,
   onClose,
   patchContent,
+  patchBytes,
   filename,
 }: ExportPatchModalProps) {
   const [copied, setCopied] = useState(false);
@@ -47,7 +50,10 @@ export function ExportPatchModal({
   }, [patchContent]);
 
   const handleDownload = useCallback(() => {
-    const blob = new Blob([patchContent], { type: 'text/plain' });
+    // From bytes, not the decoded string: re-encoding as UTF-8 corrupts any
+    // non-UTF-8 byte and the patch then fails `git apply` (#1077).
+    if (!patchBytes) return;
+    const blob = new Blob([patchBytes], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -56,7 +62,7 @@ export function ExportPatchModal({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [patchContent, filename]);
+  }, [patchBytes, filename]);
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>

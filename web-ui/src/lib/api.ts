@@ -746,10 +746,22 @@ export const reviewApi = {
   },
 
   getPatch: async (workspacePath: string, staged?: boolean): Promise<PatchResponse> => {
-    const response = await api.get<PatchResponse>('/api/v2/review/patch', {
+    // arraybuffer, not JSON (#1077): a patch is a file that gets fed back to
+    // `git apply`, and JSON cannot carry a non-UTF-8 byte — the endpoint used
+    // to 500 on one. The decoded string is for display only.
+    const response = await api.get<ArrayBuffer>('/api/v2/review/patch', {
       params: { workspace_path: workspacePath, ...(staged ? { staged } : {}) },
+      responseType: 'arraybuffer',
     });
-    return response.data;
+
+    const disposition = response.headers['content-disposition'] ?? '';
+    const match = /filename="?([^"]+)"?/.exec(disposition);
+
+    return {
+      bytes: response.data,
+      patch: new TextDecoder().decode(response.data),
+      filename: match?.[1] ?? 'changes.patch',
+    };
   },
 
   generateCommitMessage: async (workspacePath: string, staged?: boolean): Promise<CommitMessageResponse> => {

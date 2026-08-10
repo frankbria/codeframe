@@ -397,9 +397,24 @@ describe('api.ts request contract', () => {
       expect(captured.params).toEqual({ workspace_path: '/ws', staged: true });
     });
 
-    it('getPatch → GET /api/v2/review/patch', async () => {
-      await reviewApi.getPatch('/ws');
+    it('getPatch → GET /api/v2/review/patch as bytes', async () => {
+      // The endpoint returns application/octet-stream since #1077 — a patch is
+      // a file fed back to `git apply`, and JSON cannot carry a non-UTF-8 byte.
+      stubResponseData = new Uint8Array([0x2b, 0x63, 0x61, 0x66, 0xe9]).buffer;
+
+      const result = await reviewApi.getPatch('/ws');
+
       expect(captured.url).toBe('/api/v2/review/patch');
+      expect(result.bytes).toBe(stubResponseData);
+      // The display string is decoded from those bytes; the invalid byte
+      // becomes U+FFFD here, which is fine for a textarea and never downloaded.
+      expect(result.patch.startsWith('+caf')).toBe(true);
+    });
+
+    it('getPatch falls back to a default filename without Content-Disposition', async () => {
+      stubResponseData = new Uint8Array([0x61]).buffer;
+      const result = await reviewApi.getPatch('/ws');
+      expect(result.filename).toBe('changes.patch');
     });
 
     it('generateCommitMessage → POST /api/v2/review/commit-message', async () => {

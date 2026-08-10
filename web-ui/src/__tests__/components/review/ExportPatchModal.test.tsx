@@ -10,6 +10,14 @@ import userEvent from '@testing-library/user-event';
 import { ExportPatchModal } from '@/components/review/ExportPatchModal';
 
 const PATCH = 'diff --git a/x b/x\n+added line\n';
+// The raw bytes the endpoint returns, written out literally: jsdom has no
+// TextEncoder, and a literal array shows the point anyway — byte 0xe9 is not
+// valid UTF-8, and the download must carry it through unchanged (#1077).
+const PATCH_BYTES = new Uint8Array([
+  0x2b, 0x63, 0x61, 0x66, // "+caf"
+  0xe9, // the non-UTF-8 byte
+  0x0a, // "\n"
+]).buffer;
 
 function setup(overrides: Record<string, unknown> = {}) {
   const onClose = jest.fn();
@@ -18,6 +26,7 @@ function setup(overrides: Record<string, unknown> = {}) {
       open
       onClose={onClose}
       patchContent={PATCH}
+      patchBytes={PATCH_BYTES}
       filename="changes.patch"
       {...overrides}
     />
@@ -84,6 +93,43 @@ describe('ExportPatchModal — copy to clipboard', () => {
 });
 
 describe('ExportPatchModal — download', () => {
+  it('downloads the raw bytes, not the re-encoded display string (#1077)', async () => {
+    const createObjectURL = jest.fn().mockReturnValue('blob:fake');
+    Object.assign(URL, { createObjectURL, revokeObjectURL: jest.fn() });
+
+    const realCreate = document.createElement.bind(document);
+    jest.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = realCreate(tag);
+      if (tag === 'a') {
+        jest.spyOn(el as HTMLAnchorElement, 'click').mockImplementation(() => {});
+      }
+      return el;
+    });
+
+    // jsdom's Blob has no arrayBuffer(), so capture what the constructor was
+    // handed — which is the claim under test: bytes, not the display string.
+    const RealBlob = global.Blob;
+    const parts: unknown[][] = [];
+    // @ts-expect-error - replacing the constructor for the assertion below
+    global.Blob = function (p: unknown[], opts?: BlobPropertyBag) {
+      parts.push(p);
+      return new RealBlob(p as BlobPart[], opts);
+    };
+
+    setup();
+    await userEvent.click(screen.getByRole('button', { name: /download/i }));
+
+    global.Blob = RealBlob;
+
+    const bytes = new Uint8Array(parts[0][0] as ArrayBuffer);
+    // 0xe9 survives. Building the Blob from `patchContent` would have
+    // re-encoded it as UTF-8 (0xc3 0xa9) and broken `git apply`.
+    expect(Array.from(bytes)).toEqual([0x2b, 0x63, 0x61, 0x66, 0xe9, 0x0a]);
+
+    (document.createElement as jest.Mock).mockRestore();
+  });
+
+
   it('builds a Blob download under the given filename and revokes the URL', async () => {
     const createObjectURL = jest.fn().mockReturnValue('blob:fake');
     const revokeObjectURL = jest.fn();

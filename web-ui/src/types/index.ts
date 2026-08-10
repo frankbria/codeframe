@@ -240,7 +240,14 @@ export interface DiffStatsResponse {
 }
 
 export interface PatchResponse {
+  /** Decoded for display and copy-to-clipboard. Lossy for non-UTF-8 bytes. */
   patch: string;
+  /**
+   * The exact bytes git produced. Downloads must use these, not `patch` —
+   * re-encoding the string as UTF-8 breaks `git apply` for any diff containing
+   * a non-UTF-8 byte (#1077).
+   */
+  bytes: ArrayBuffer;
   filename: string;
 }
 
