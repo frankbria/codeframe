@@ -7,7 +7,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-Over 200 commits since v0.9.1. `SECURITY.md` supports only the latest release, so the
+## [0.9.2]
+
+**0.9.1 could not work for anyone** and should not be used: it pinned five
+Anthropic model IDs that have since been retired, so every LLM-backed command
+returned a 404 on a fresh install even with a valid API key (#1112). The IDs
+were already corrected in the repository and had simply never been released.
+
+Over 200 further commits since v0.9.1. `SECURITY.md` supports only the latest release, so the
 security section below is the one to read before deploying anything older.
 
 ### Security
@@ -69,6 +76,13 @@ Several of these change defaults and will require configuration on an existing d
 
 ### Added
 
+- **A release guard that fails the build on an unresolvable model default
+  (#1112).** `scripts/check_model_defaults.py` runs before `uv build` and
+  rejects any dated model ID in the defaults or at a live call site, and — with
+  `MODEL_GUARD_REQUIRE_LIVE=1`, as the release job sets — verifies each default
+  actually resolves against the API. A missing `ANTHROPIC_API_KEY` secret fails
+  the release rather than silently skipping the check.
+
 - **Phase 5.5 — GitHub Issues import.** Connect a repo with a PAT from Settings →
   Integrations (#563), browse its open issues with search, label filter and pagination
   (#564), and import selected issues as tasks with `github_issue_number`/`external_url`
@@ -98,6 +112,14 @@ Several of these change defaults and will require configuration on an existing d
 - **A proactive web-UI auth guard plus an SSE/WebSocket token-expiry re-auth path (#651).**
 
 ### Fixed
+
+- **Retired Anthropic model IDs in the published package (#1112).** The
+  `DEFAULT_*_MODEL` constants use undated aliases (`claude-sonnet-4-5`,
+  `claude-haiku-4-5`), which Anthropic repoints, rather than dated IDs, which it
+  retires.
+- **`cf auth` reported valid API keys as invalid (#1112).** Key validation
+  probed `claude-3-haiku-20240307`, itself already retired. It now uses the
+  shared alias, as does the settings API's Anthropic key verification.
 
 - Token/cost data was silently dropped: `react_agent` int-cast UUID task ids and stored
   NULL in `token_usage` (#712, #558).
@@ -162,6 +184,7 @@ name claim is being pursued in parallel. The CLI entry point remains `cf`.
 - Version bumped from a placeholder `0.1.0` to an honest beta `0.9.0`; development status classifier moved to `4 - Beta`.
 - README installation section now leads with `uv tool install` instead of git-clone; status badge updated to **beta** with a stability statement.
 
-[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/frankbria/codeframe/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/frankbria/codeframe/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/frankbria/codeframe/releases/tag/v0.9.0

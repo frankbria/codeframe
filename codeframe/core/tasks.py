@@ -24,9 +24,127 @@ from codeframe.core.state_machine import (
 )
 from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core.prd import PrdRecord
-from codeframe.adapters.llm.base import LLMError
 
 logger = logging.getLogger(__name__)
+
+
+#: Surface-neutral remedy. This message is shown by the CLI *and* toasted by the
+#: web UI via the 502 from discovery_v2, so it must not name a CLI command — the
+#: CLI adds its own `--no-llm` hint on top (#1115 review).
+_RETRY_HINT = (
+    "Retry task generation, or generate without the LLM to fall back to plain "
+    "bullet extraction from the PRD."
+)
+
+
+class TaskGenerationError(Exception):
+    """LLM task decomposition failed and must not degrade silently (#1115).
+
+    This used to fall back to ``_extract_tasks_simple`` — a markdown bullet
+    splitter — which turned a truncated JSON response into twenty "tasks" made
+    of persona traits and requirement fragments, exiting 0 with a green success
+    message. Everything downstream then operated on non-tasks, and one of them
+    consumed a full agent run before anyone noticed. An error is strictly better.
+    """
+
+
+# Markdown that has no business in a task title: emphasis, list bullets, ATX
+# headings, inline code, and the `**Label:**` prefix the PRD template emits.
+_MD_LABEL_PREFIX_RE = re.compile(r"^\s*\*\*[^*]+:\*\*\s*")
+_MD_LEADING_MARKER_RE = re.compile(r"^\s*(?:[-*+]\s+|#{1,6}\s+|\d+\.\s+)")
+# Underscores are deliberately NOT stripped: task titles name identifiers and
+# files (`create_todo`, `test_tasks.py`) far more often than they use _emphasis_.
+_MD_INLINE_RE = re.compile(r"[*`]{1,3}")
+
+
+# PRD sections that describe context, not work. Bullets under these are pain
+# points, persona traits, user goals and assumptions — every one of them showed
+# up as a "task" in the #1115 report, and none of them is implementable.
+# The heading must *be* one of these, not merely contain one. `## Goal Tracking`
+# is a feature section whose bullets are real work; dropping it because it says
+# "goal" silently loses tasks, which is a worse failure than letting a persona
+# bullet through. Optional leading numbering and trailing punctuation only.
+_NON_WORK_SECTION_RE = re.compile(
+    r"^\s*#{1,6}\s*(?:[\d.]+\s+)?("
+    r"problem statements?|pain points?|key pain points?|background|context|motivation|"
+    r"target users?|user personas?|personas?|audience|"
+    r"user goals?|goals?|objectives?|success metrics?|success criteria|"
+    r"assumptions?|constraints?|out of scope|non-goals?|risks?|glossary"
+    r")\s*:?\s*$",
+    re.IGNORECASE,
+)
+# The same content also appears under bold pseudo-headings (`**User Goals:**`)
+# in the PRD template, which are not ATX headings at all.
+# Same rule as the ATX case: the term must be the whole pseudo-heading, except
+# that a colon may introduce a qualifier (`**Primary Persona: The Developer**`).
+# So `**Goal Tracking:**` — a feature — does not match, but `**User Goals:**` does.
+_NON_WORK_PSEUDO_HEADING_RE = re.compile(
+    r"^\s*\*\*\s*("
+    r"key pain points?|pain points?|user goals?|goals?|assumptions?|constraints?|"
+    r"primary personas?|secondary personas?|personas?|target users?|out of scope|non-goals?"
+    r")\s*(?::[^*]*)?\*\*\s*:?\s*$",
+    re.IGNORECASE,
+)
+# Document scaffolding — a heading naming the document's own structure.
+_STRUCTURAL_HEADING_RE = re.compile(
+    r"\s*(executive summary|summary|overview|introduction|requirements?|"
+    r"functional requirements|technical requirements|specification|scope|"
+    r"appendix|references|table of contents|milestones?|timeline)\s*",
+    re.IGNORECASE,
+)
+_ATX_HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
+_BOLD_PSEUDO_HEADING_RE = re.compile(r"^\s*\*\*[^*]+\*\*\s*:?\s*$")
+
+
+def _strip_non_work_sections(prd_content: str) -> str:
+    """Drop the PRD sections that describe context rather than work (#1115).
+
+    Used by the ``--no-llm`` extractor, which is a bullet splitter and cannot
+    tell a persona trait from a requirement on its own. A section stays skipped
+    until a heading of the same or higher level ends it.
+    """
+    kept: list[str] = []
+    skipping = False
+    skip_depth = 0
+
+    for line in prd_content.splitlines():
+        atx = _ATX_HEADING_RE.match(line)
+        if atx:
+            depth = len(line.strip()) - len(line.strip().lstrip("#"))
+            if _NON_WORK_SECTION_RE.match(line):
+                skipping, skip_depth = True, depth
+                continue
+            # A heading at the same or higher level closes the skipped section.
+            if skipping and depth <= skip_depth:
+                skipping = False
+        elif _BOLD_PSEUDO_HEADING_RE.match(line):
+            # Pseudo-headings only nest inside the current section, so any of
+            # them ends a pseudo-heading skip but never an ATX one.
+            if _NON_WORK_PSEUDO_HEADING_RE.match(line):
+                if not skipping:
+                    skipping, skip_depth = True, 99
+                continue
+            if skipping and skip_depth == 99:
+                skipping = False
+
+        if not skipping:
+            kept.append(line)
+
+    return "\n".join(kept)
+
+
+def _clean_task_title(title: str) -> str:
+    """Strip markdown so a title reads as a task, not as a slice of the PRD.
+
+    A literal ``**`` in a task title is proof the text was cut out of the source
+    document rather than composed (#1115), so this runs on both the LLM path and
+    the ``--no-llm`` extractor.
+    """
+    cleaned = str(title)
+    cleaned = _MD_LEADING_MARKER_RE.sub("", cleaned)
+    cleaned = _MD_LABEL_PREFIX_RE.sub("", cleaned)
+    cleaned = _MD_INLINE_RE.sub("", cleaned)
+    return cleaned.strip()
 
 
 def _utc_now() -> datetime:
@@ -1061,8 +1179,9 @@ def generate_from_prd(
 ) -> list[Task]:
     """Generate tasks from a PRD.
 
-    Uses LLM to decompose the PRD into actionable tasks.
-    Falls back to simple extraction if LLM is unavailable.
+    Uses an LLM to decompose the PRD into actionable tasks. There is no silent
+    fallback: if the LLM path fails, TaskGenerationError is raised (#1115).
+    ``use_llm=False`` is the explicit opt-in to crude bullet extraction.
 
     Args:
         workspace: Target workspace
@@ -1075,26 +1194,13 @@ def generate_from_prd(
         List of created Tasks
     """
     if use_llm:
-        try:
-            tasks_data = _generate_tasks_with_llm(
-                prd.content, provider, repo_path=workspace.repo_path
-            )
-        except json.JSONDecodeError as e:
-            # Invalid JSON from LLM response — fall back to simple extraction
-            logger.warning(f"LLM generation failed ({e}), using simple extraction")
-            tasks_data = _extract_tasks_simple(prd.content)
-        except ValueError:
-            raise  # Config errors (missing API key) should fail loudly
-        except LLMError:
-            # Provider failures now arrive as typed LLMErrors carrying an
-            # actionable message (#1110). They must escape for the same reason
-            # ValueError does — degrading a bad key into bullet extraction hides
-            # the one thing the user needs to read.
-            raise
-        except Exception as e:
-            # Fall back to simple extraction
-            logger.warning(f"LLM generation failed ({e}), using simple extraction")
-            tasks_data = _extract_tasks_simple(prd.content)
+        # No silent fallback to _extract_tasks_simple (#1115). It is a markdown
+        # bullet splitter; degrading into it turns a failed decomposition into
+        # twenty unimplementable "tasks" and a green success message. `--no-llm`
+        # is the explicit way to ask for bullet extraction.
+        tasks_data = _generate_tasks_with_llm(
+            prd.content, provider, repo_path=workspace.repo_path
+        )
     else:
         tasks_data = _extract_tasks_simple(prd.content)
 
@@ -1113,13 +1219,16 @@ def generate_from_prd(
         )
         created_tasks.append(task)
 
-    # Resolve title-based dependencies to task IDs
+    # Resolve title-based dependencies to task IDs. The refreshed Task from
+    # update_depends_on replaces the stale one: it was being discarded, so
+    # generate_from_prd returned tasks whose depends_on was empty even though
+    # the row on disk had them (#1115).
     title_to_id = {t.title: t.id for t in created_tasks}
-    for task_data, task in zip(tasks_data, created_tasks):
+    for i, (task_data, task) in enumerate(zip(tasks_data, created_tasks)):
         dep_titles = task_data.get("depends_on_titles", [])
         dep_ids = [title_to_id[t] for t in dep_titles if t in title_to_id]
         if dep_ids:
-            update_depends_on(workspace, task.id, dep_ids)
+            created_tasks[i] = update_depends_on(workspace, task.id, dep_ids)
 
     return created_tasks
 
@@ -1147,12 +1256,31 @@ def _generate_tasks_with_llm(
 
         provider = create_provider(resolve_llm_settings(repo_path))
 
-    prompt = f"""Analyze the following PRD and generate a list of actionable development tasks.
+    prompt = f"""Decompose the following PRD into atomic, actionable development tasks.
+
+A task is a unit of engineering work. It names something concrete that gets
+built: a module, a model, an endpoint, a migration, a test suite, a config file.
+
+DO NOT emit tasks for PRD content that is not work. In particular, never turn
+these into tasks:
+- problem statements and pain points (they describe why the project exists)
+- user personas and persona traits (they describe who the user is)
+- user goals and success metrics (they describe outcomes, not work)
+- assumptions and constraints
+
+Every title MUST:
+- start with an imperative verb (Define, Create, Implement, Add, Configure, Wire)
+- name the concrete artifact ("Implement POST /todos", not "Fast todo creation")
+- be plain text under 80 characters — no markdown, no `**`, no leading `-` or `#`
 
 For each task, provide:
-1. "title": Clear, specific title (under 80 characters)
-2. "description": What needs to be done
-3. "depends_on_titles": List of other task titles this depends on (empty list if none)
+1. "title": as above
+2. "description": what needs to be done, including relevant acceptance detail
+3. "depends_on_titles": titles of tasks that must land first — copied EXACTLY as
+   written in their own "title" field. Populate this: data models come before the
+   logic that uses them, that logic comes before the endpoints that expose it,
+   and tests come after the thing they test. An empty graph means the
+   decomposition is wrong.
 4. "complexity": Complexity score 1-5 (1=trivial, 5=very complex)
 5. "estimated_hours": Estimated hours to complete (float)
 6. "uncertainty": "low", "medium", or "high"
@@ -1168,7 +1296,10 @@ PRD:
     response = provider.complete(
         messages=[{"role": "user", "content": prompt}],
         purpose=Purpose.GENERATION,
-        max_tokens=2000,
+        # 2000 truncated a 20-task array mid-object and the parse failure was
+        # the whole of #1115. A full decomposition with descriptions and file
+        # lists runs well past that; leave real headroom.
+        max_tokens=16000,
     )
 
     # Extract JSON from response
@@ -1176,10 +1307,26 @@ PRD:
 
     # Try to find JSON array in response
     json_match = re.search(r"\[[\s\S]*\]", response_text)
-    if json_match:
-        tasks_raw = json.loads(json_match.group())
-    else:
-        tasks_raw = json.loads(response_text)
+    try:
+        tasks_raw = json.loads(json_match.group() if json_match else response_text)
+    except json.JSONDecodeError as e:
+        # Distinguish "the model wrote prose" from "the response ran out of
+        # tokens" — they need different things from the user (#1115).
+        truncated = not response_text.endswith("]")
+        detail = (
+            "the response was truncated before the JSON array closed"
+            if truncated
+            else f"the response was not valid JSON ({e})"
+        )
+        raise TaskGenerationError(
+            f"Task generation failed: {detail}. " + _RETRY_HINT
+        ) from e
+
+    if not isinstance(tasks_raw, list):
+        raise TaskGenerationError(
+            "Task generation failed: the model did not return a JSON array of "
+            "tasks. " + _RETRY_HINT
+        )
 
     # Validate and extract rich fields
     validated = []
@@ -1205,14 +1352,34 @@ PRD:
         if files:
             desc += "\n\nFiles to modify: " + ", ".join(str(f) for f in files)
 
+        title = _clean_task_title(str(task["title"]))[:200]
+        if not title:
+            continue
+
+        # Dependency titles are cleaned the same way, or a model that echoes a
+        # markdown-y title back would fail to match and silently drop the edge.
+        dep_titles = [
+            cleaned
+            for cleaned in (
+                _clean_task_title(str(d)) for d in task.get("depends_on_titles", []) or []
+            )
+            if cleaned
+        ]
+
         validated.append({
-            "title": str(task["title"])[:200],
+            "title": title,
             "description": desc,
-            "depends_on_titles": task.get("depends_on_titles", []),
+            "depends_on_titles": dep_titles,
             "complexity": complexity,
             "estimated_hours": estimated_hours,
             "uncertainty": uncertainty,
         })
+
+    if not validated:
+        raise TaskGenerationError(
+            "Task generation failed: the model returned no usable tasks. "
+            + _RETRY_HINT
+        )
 
     return validated
 
@@ -1230,6 +1397,9 @@ def _extract_tasks_simple(prd_content: str) -> list[dict]:
     """
     tasks = []
 
+    # Persona traits, pain points and user goals are not work (#1115).
+    prd_content = _strip_non_work_sections(prd_content)
+
     # Find bullet points and numbered items
     patterns = [
         r"^[-*]\s+(.+)$",  # Bullet points
@@ -1240,7 +1410,14 @@ def _extract_tasks_simple(prd_content: str) -> list[dict]:
     for pattern in patterns:
         matches = re.findall(pattern, prd_content, re.MULTILINE)
         for match in matches:
-            title = match.strip()
+            # Strip markdown here too — `**Requirement:** ...` in a title is the
+            # #1115 tell that text was sliced out of the PRD, and --no-llm users
+            # deserve better than that even though this path is a crude split.
+            title = _clean_task_title(match)
+            # Structural headings survive the section filter (their *children*
+            # are real work) but are not themselves tasks.
+            if _STRUCTURAL_HEADING_RE.fullmatch(title):
+                continue
             # Skip very short items or ones that look like headers
             if len(title) > 10 and not title.endswith(":"):
                 tasks.append({

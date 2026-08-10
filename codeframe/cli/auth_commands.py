@@ -157,10 +157,13 @@ def validate_anthropic_credential(api_key: str) -> Tuple[bool, str]:
         from anthropic import Anthropic, AuthenticationError as AnthropicAuthError
         from anthropic import APIConnectionError, RateLimitError, APIStatusError
 
+        from codeframe.adapters.llm.base import DEFAULT_GENERATION_MODEL
+
         client = Anthropic(api_key=api_key)
-        # Make a minimal request to validate
+        # Make a minimal request to validate. The model must be an undated alias:
+        # a dated ID gets retired and then a *valid* key reports as invalid (#1112).
         client.messages.create(
-            model="claude-3-haiku-20240307",
+            model=DEFAULT_GENERATION_MODEL,
             max_tokens=1,
             messages=[{"role": "user", "content": "hi"}],
         )
