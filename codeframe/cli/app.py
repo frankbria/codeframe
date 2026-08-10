@@ -51,6 +51,17 @@ app = typer.Typer(
 
 console = Console()
 
+#: The single "you need a PRD" hint, shared by every command that reaches this
+#: state (#1111). `prd generate` is the primary path per GOLDEN_PATH §2 and is
+#: what the README leads with; `prd add` is the fallback for a PRD you already
+#: wrote. Pointing only at `prd add` sent new users straight past Socratic
+#: discovery — the capability the product leads on. `cf` rather than
+#: `codeframe` because that is the name the README uses; both binaries work.
+PRD_NEXT_STEPS = (
+    "  cf prd generate              Start AI-guided requirements discovery\n"
+    "  cf prd add <file.md>         Import a PRD you already have"
+)
+
 
 def _get_version() -> str:
     """Resolve the installed CodeFRAME version, falling back gracefully."""
@@ -237,8 +248,8 @@ def init(
 
         console.print()
         console.print("Next steps:")
-        console.print("  codeframe prd add <file.md>   Add a PRD")
-        console.print("  codeframe status              View workspace status")
+        console.print(PRD_NEXT_STEPS)
+        console.print("  cf status                    View workspace status")
 
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
@@ -485,7 +496,8 @@ def status(
             console.print(f"  Title: [green]{escape(latest_prd.title)}[/green]")
             console.print(f"  Added: {latest_prd.created_at.strftime('%Y-%m-%d %H:%M')}")
         else:
-            console.print("  [dim]No PRD loaded. Run 'codeframe prd add <file>'[/dim]")
+            console.print("  [dim]No PRD loaded. Run 'cf prd generate', or "
+                          "'cf prd add <file>' if you already have one.[/dim]")
 
         # Task counts
         console.print("\n[bold]Tasks[/bold]")
@@ -1024,7 +1036,7 @@ def prd_show(
 
         if not record:
             console.print("[yellow]No PRD found.[/yellow]")
-            console.print("Add one with: codeframe prd add <file.md>")
+            console.print(PRD_NEXT_STEPS)
             return
 
         console.print(f"\n[bold]PRD:[/bold] {escape(record.title)}")
@@ -1076,7 +1088,7 @@ def prd_list(
 
         if not records:
             console.print("[yellow]No PRDs found.[/yellow]")
-            console.print("Add one with: codeframe prd add <file.md>")
+            console.print(PRD_NEXT_STEPS)
             return
 
         console.print(f"\n[bold]PRDs ({len(records)}):[/bold]\n")
@@ -1998,7 +2010,7 @@ def tasks_generate(
         prd_record = prd.get_latest(workspace)
         if not prd_record:
             console.print("[red]Error:[/red] No PRD found.")
-            console.print("Add one first: codeframe prd add <file.md>")
+            console.print(PRD_NEXT_STEPS)
             raise typer.Exit(1)
 
         # --overwrite must not lose the existing tasks if generation fails
@@ -6107,8 +6119,8 @@ def templates_apply(
         # Check for PRD
         prd_record = prd.get_latest(workspace)
         if not prd_record:
-            console.print("[red]Error:[/red] No PRD found. Add one first:")
-            console.print("  codeframe prd add <file.md>")
+            console.print("[red]Error:[/red] No PRD found.")
+            console.print(PRD_NEXT_STEPS)
             raise typer.Exit(1)
 
         # Delegate to core (#962). This command used to reimplement
