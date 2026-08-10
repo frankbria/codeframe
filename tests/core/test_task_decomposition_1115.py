@@ -120,6 +120,40 @@ class TestTitlesAreNeverRawMarkdown:
         # ...while the actual requirements survive.
         assert any("endpoint to create new todos" in t for t in titles)
 
+    def test_a_feature_section_is_not_dropped_for_naming_a_goal(self):
+        """The section filter must not eat real work (found in third-party review).
+
+        `## Goal Tracking` is a feature, not the PRD's "User Goals" section.
+        Substring matching on "goal" silently dropped every task under it —
+        losing implementable work is worse than letting a persona bullet through.
+        """
+        prd = (
+            "# App\n\n"
+            "## Goal Tracking\n\n"
+            "- Implement goal CRUD API endpoints\n"
+            "- Add goal progress calculation\n\n"
+            "## User Goals\n\n"
+            "- Centralize everything in one place\n"
+        )
+        titles = [t["title"] for t in _extract_tasks_simple(prd)]
+        assert "Implement goal CRUD API endpoints" in titles
+        assert "Add goal progress calculation" in titles
+        assert "Centralize everything in one place" not in titles
+
+    def test_a_bold_feature_pseudo_heading_is_not_dropped_either(self):
+        """`**Goal Tracking:**` is a feature; `**User Goals:**` is not."""
+        prd = (
+            "# App\n\n"
+            "## Features\n\n"
+            "**Goal Tracking:**\n"
+            "- Implement goal CRUD API endpoints\n\n"
+            "**Primary Persona: The Self-Hosting Developer**\n"
+            "- Comfortable with REST APIs\n"
+        )
+        titles = [t["title"] for t in _extract_tasks_simple(prd)]
+        assert "Implement goal CRUD API endpoints" in titles
+        assert "Comfortable with REST APIs" not in titles
+
     def test_the_simple_extractor_emits_no_markdown_markers(self):
         for task in _extract_tasks_simple(FIXTURE_PRD):
             assert "**" not in task["title"]

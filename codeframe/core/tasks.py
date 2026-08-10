@@ -51,22 +51,29 @@ _MD_INLINE_RE = re.compile(r"[*`]{1,3}")
 # PRD sections that describe context, not work. Bullets under these are pain
 # points, persona traits, user goals and assumptions — every one of them showed
 # up as a "task" in the #1115 report, and none of them is implementable.
+# The heading must *be* one of these, not merely contain one. `## Goal Tracking`
+# is a feature section whose bullets are real work; dropping it because it says
+# "goal" silently loses tasks, which is a worse failure than letting a persona
+# bullet through. Optional leading numbering and trailing punctuation only.
 _NON_WORK_SECTION_RE = re.compile(
-    r"^\s*#{1,6}\s*.*\b("
-    r"problem statement|pain point|background|context|motivation|"
-    r"target user|user persona|persona|audience|"
-    r"user goal|goal|objective|success (metric|criteria)|"
-    r"assumption|constraint|out of scope|non-goal|risk|glossary"
-    r")",
+    r"^\s*#{1,6}\s*(?:[\d.]+\s+)?("
+    r"problem statements?|pain points?|key pain points?|background|context|motivation|"
+    r"target users?|user personas?|personas?|audience|"
+    r"user goals?|goals?|objectives?|success metrics?|success criteria|"
+    r"assumptions?|constraints?|out of scope|non-goals?|risks?|glossary"
+    r")\s*:?\s*$",
     re.IGNORECASE,
 )
 # The same content also appears under bold pseudo-headings (`**User Goals:**`)
 # in the PRD template, which are not ATX headings at all.
+# Same rule as the ATX case: the term must be the whole pseudo-heading, except
+# that a colon may introduce a qualifier (`**Primary Persona: The Developer**`).
+# So `**Goal Tracking:**` — a feature — does not match, but `**User Goals:**` does.
 _NON_WORK_PSEUDO_HEADING_RE = re.compile(
     r"^\s*\*\*\s*("
-    r"key pain points|pain points|user goals|goals|assumptions|constraints|"
-    r"primary persona|secondary persona|persona|target users|out of scope|non-goals"
-    r")\b[^*]*:?\s*\*\*\s*:?\s*$",
+    r"key pain points?|pain points?|user goals?|goals?|assumptions?|constraints?|"
+    r"primary personas?|secondary personas?|personas?|target users?|out of scope|non-goals?"
+    r")\s*(?::[^*]*)?\*\*\s*:?\s*$",
     re.IGNORECASE,
 )
 # Document scaffolding — a heading naming the document's own structure.
