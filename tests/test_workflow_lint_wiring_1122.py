@@ -125,15 +125,27 @@ class TestEnvironmentSecretsAreReachable:
     #: the list here means adding one to a job without its environment fails.
     ENVIRONMENT_SECRETS = {"ANTHROPIC_API_KEY": "staging"}
 
-    #: (workflow, job) pairs knowingly referencing a secret their environment
-    #: does not supply. Exempted with a pointer, not silenced: the `production`
-    #: environment holds zero secrets, so deploy-production cannot work at all —
-    #: tracked in #1143, which is an operator decision (populate it, or delete
-    #: the job), not something a code change can fix.
-    KNOWN_GAPS = {("deploy.yml", "deploy-production")}
+    #: (workflow, job) pairs that reference a secret their environment does not
+    #: supply AND guard against it. The bare exemption these replace was a
+    #: promise nobody checked; #1143 turned it into a preflight step, so the
+    #: entry is now conditional on that step still being there.
+    #:
+    #: `production` holds zero secrets while deploy-production references two
+    #: dozen. Populating it is an operator decision; failing loudly first is not.
+    GUARDED = {("deploy.yml", "deploy-production")}
 
     def _jobs(self, path: Path) -> dict:
         return (yaml.safe_load(path.read_text()) or {}).get("jobs", {}) or {}
+
+    @staticmethod
+    def _has_preflight(job: dict) -> bool:
+        """A first step that refuses to continue when a secret is empty."""
+        for step in job.get("steps", []):
+            if "preflight" in step.get("name", "").lower() and "exit 1" in step.get(
+                "run", ""
+            ):
+                return True
+        return False
 
     def test_every_job_using_an_environment_secret_declares_it(self):
         offenders: list[str] = []
@@ -150,7 +162,12 @@ class TestEnvironmentSecretsAreReachable:
                     declared = job.get("environment")
                     if isinstance(declared, dict):
                         declared = declared.get("name")
-                    if (path.name, job_name) in self.KNOWN_GAPS:
+                    if (path.name, job_name) in self.GUARDED:
+                        # Only exempt while the guard actually exists.
+                        assert self._has_preflight(job), (
+                            f"{path.name}:{job_name} is exempt because it "
+                            "preflights its secrets — that step is now gone"
+                        )
                         continue
                     if declared != environment:
                         offenders.append(
@@ -162,6 +179,47 @@ class TestEnvironmentSecretsAreReachable:
             "these jobs will receive an empty secret at runtime:\n  "
             + "\n  ".join(offenders)
         )
+
+    def test_the_production_guard_runs_before_anything_uses_a_secret(self):
+        """#1143: the preflight is only useful as the FIRST step. Behind the SSH
+        setup it reports nothing the SSH failure had not already reported."""
+        job = self._jobs(REPO_ROOT / ".github" / "workflows" / "deploy.yml")[
+            "deploy-production"
+        ]
+        names = [s.get("name", "") for s in job["steps"]]
+
+        assert "preflight" in names[0].lower(), names[:3]
+
+    def test_the_production_guard_covers_every_secret_it_claims_to(self):
+        """The failure mode this replaces was a missing secret resolving to an
+        empty string in silence, so a guard that omits one is worse than none —
+        it says "configured" while a blank AUTH_SECRET goes to the remote .env.
+        """
+        import re
+
+        job = self._jobs(REPO_ROOT / ".github" / "workflows" / "deploy.yml")[
+            "deploy-production"
+        ]
+        preflight = next(
+            s for s in job["steps"] if "preflight" in s.get("name", "").lower()
+        )
+        checked = set(re.findall(r"[A-Z0-9_]{3,}", preflight["run"]))
+
+        # Every secret the step wires into its own env must be in the list it
+        # iterates — otherwise it is declared and never looked at.
+        for name in preflight.get("env", {}):
+            assert name in checked, f"{name} is passed to the guard but never checked"
+
+    def test_the_production_environment_has_no_fictional_url(self):
+        """It pointed at codeframe.example.com, which the GitHub deployments
+        page renders as a live link to a target that does not exist (#1143)."""
+        job = self._jobs(REPO_ROOT / ".github" / "workflows" / "deploy.yml")[
+            "deploy-production"
+        ]
+        environment = job.get("environment")
+
+        url = environment.get("url", "") if isinstance(environment, dict) else ""
+        assert "example.com" not in url, url
 
     def test_the_release_build_job_can_see_the_key_it_requires(self):
         """Specific to the guard: it sets MODEL_GUARD_REQUIRE_LIVE, so an empty

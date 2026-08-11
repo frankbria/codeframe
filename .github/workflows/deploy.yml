@@ -353,9 +353,76 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
     environment:
       name: production
-      url: https://codeframe.example.com
+      # No url: production has never been deployed and has no host. A
+      # placeholder (codeframe.example.com) shipped here for a long time,
+      # which reads on the GitHub deployments page as a real target (#1143).
 
     steps:
+      # The `production` environment holds ZERO secrets while this job
+      # references two dozen, and GitHub resolves a missing environment secret
+      # to an empty string with no warning. Today that surfaces as an SSH auth
+      # failure five steps in — a symptom that says nothing about the cause.
+      # Worse, populating only the SSH secrets would let the job proceed and
+      # write a remote .env with AUTH_SECRET= — an empty JWT signing key.
+      #
+      # So: fail first, name every missing secret, and say what to do. This is
+      # option 3 from #1143 (guard, don't delete): staging is the only deploy
+      # target today, but launch is the direction of travel, so removing the
+      # job would just have to be rewritten later.
+      #
+      # Values are read from env, never interpolated into the script — an
+      # expression inside a run block executes on the runner (see the release
+      # job below for the same rule).
+      - name: Preflight — production must actually be configured
+        env:
+          # Required: without any of these the deploy is broken or unsafe.
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+          HOST: ${{ secrets.HOST }}
+          USER: ${{ secrets.USER }}
+          PROJECT_PATH: ${{ secrets.PROJECT_PATH }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          API_PORT: ${{ secrets.API_PORT }}
+          API_URL: ${{ secrets.API_URL }}
+          WS_URL: ${{ secrets.WS_URL }}
+          CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+          PM2_BACKEND_NAME: ${{ secrets.PM2_BACKEND_NAME }}
+          PM2_FRONTEND_NAME: ${{ secrets.PM2_FRONTEND_NAME }}
+        run: |
+          set -euo pipefail
+          REQUIRED="SSH_KEY SSH_KNOWN_HOSTS TS_OAUTH_CLIENT_ID TS_OAUTH_SECRET
+                    HOST USER PROJECT_PATH AUTH_SECRET ANTHROPIC_API_KEY
+                    API_PORT API_URL WS_URL CORS_ORIGINS
+                    PM2_BACKEND_NAME PM2_FRONTEND_NAME"
+
+          missing=""
+          for name in $REQUIRED; do
+            # Whitespace-only counts as missing: a secret set to " " is not set.
+            value="${!name:-}"
+            if [ -z "$(printf '%s' "$value" | tr -d '[:space:]')" ]; then
+              missing="${missing} ${name}"
+            fi
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::error::The production environment is not configured."
+            echo ""
+            echo "Missing (or blank) secrets:"
+            for name in $missing; do echo "  - ${name}"; done
+            echo ""
+            echo "GitHub exposes environment secrets only to jobs declaring that"
+            echo "environment, and 'production' currently holds none. Staging is"
+            echo "the only working deploy target. Set them with:"
+            echo "  gh secret set <NAME> --env production"
+            echo "and see the staging environment for the full expected set."
+            exit 1
+          fi
+
+          echo "✅ All required production secrets are present and non-empty."
+
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
