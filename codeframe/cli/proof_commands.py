@@ -160,8 +160,8 @@ def run(
         codeframe proof run --gate unit
     """
     from codeframe.core.workspace import get_workspace
-    from codeframe.core.proof.models import Gate, GateOutcome
-    from codeframe.core.proof.runner import run_proof
+    from codeframe.core.proof.models import PROOF_CONFIG_FILENAME, Gate, GateOutcome
+    from codeframe.core.proof.runner import EmptyReason, run_proof_with_diagnostics
 
     workspace_path = repo_path or Path.cwd()
     try:
@@ -182,115 +182,76 @@ def run(
     mode = "full" if full else "scope-filtered"
     console.print(f"[dim]Running proof obligations ({mode})...[/dim]")
 
-    results = run_proof(workspace, full=full, gate_filter=gate_filter)
+    results, diagnostics = run_proof_with_diagnostics(
+        workspace, full=full, gate_filter=gate_filter
+    )
 
     if not results:
-        # `run_proof` returning {} has three causes and they need different
-        # answers. Two review rounds went by patching one branch at a time and
-        # getting the reason wrong each time, so this asks the runner's own
-        # selector instead of inferring it from the mode:
-        #
-        #   ledger empty        -> nothing to verify at all (the #1118 case)
-        #   nothing runnable    -> requirements exist but all SATISFIED/WAIVED
-        #                          for this mode; scope was never consulted,
-        #                          because run_proof short-circuits first
-        #   nothing in scope    -> runnable requirements existed and the scope
-        #                          filter excluded every one
-        from codeframe.core.proof import ledger as _ledger
-        from codeframe.core.proof.models import ReqStatus
-        from codeframe.core.proof.runner import _requirements_for_run
+        # The runner now reports WHY (#1138). Before that, this block inferred
+        # the cause from the mode and the ledger, and four consecutive review
+        # rounds on #1137 caught it asserting a reason that was wrong — each
+        # time about a different one of the six causes. It ended up listing
+        # candidates instead, which was honest but useless. The runner is the
+        # only thing that knows, so ask it.
+        reason = diagnostics.reason
 
-        try:
-            all_reqs = _ledger.list_requirements(workspace)
-            # Same selector the runner uses, so this cannot drift from it.
-            runnable = _requirements_for_run(workspace, full=full)
-        except Exception:
-            # A ledger we cannot read is not evidence of an empty one; fall
-            # through to the unverified case rather than inventing a reason.
-            all_reqs, runnable = [], []
-
-        if runnable:
-            # Four review rounds went by asserting a specific reason here and
-            # being wrong each time. The CLI genuinely cannot tell them apart:
-            # run_proof returns only results, and discards the scope_skipped
-            # list it computes internally (runner.py:334/435). With a non-empty
-            # runnable set an empty result can mean the scope filter excluded
-            # everything, --gate excluded every obligation, enabled_gates config
-            # did, or a requirement simply has none.
+        if reason is EmptyReason.NO_REQUIREMENTS:
+            # An empty ledger is not a pass (#1118). Exiting 0 here is what let
+            # the quickstart's PROVE step read as "PROOF9 gates passed" when
+            # nothing had been checked — and every new workspace is in exactly
+            # this state.
             #
-            # So state what is known and list the candidates, rather than
-            # asserting one and sending the user somewhere useless. #1138 tracks
-            # having the runner report the reason so this can be precise.
+            # Exit 2 rather than 1: this is not a failure either, and a script
+            # needs to tell "the gate failed" from "the gate had nothing to
+            # check". CI treats any non-zero as a stop, which is the point.
+            console.print("[yellow]Nothing was verified.[/yellow]")
             console.print(
-                f"[yellow]Nothing was verified.[/yellow] "
-                f"{len(runnable)} requirement(s) were eligible for this run, "
-                f"but no obligations ran."
+                "There are no proof obligations in this workspace, so this run "
+                "checked nothing — it is not a pass."
             )
-            reasons = []
-            if not full:
-                # --full provably ignores scope (runner.py:339), so listing it
-                # there would put an impossible cause in the candidate list.
-                reasons.append("none of them cover the changed files")
-            if gate_filter is not None:
-                reasons.append(f"--gate {gate_filter.value} excluded their obligations")
-            reasons.append("their obligations are disabled in proof_config.json")
-            reasons.append("they have no obligations defined")
-            console.print("Possible reasons: " + "; ".join(reasons) + ".")
-            if not full:
-                console.print(
-                    "Try [bold]cf proof run --full[/bold] to ignore scope, or "
-                    "[bold]cf proof status[/bold] for the ledger."
-                )
-            else:
-                console.print("See [bold]cf proof status[/bold] for the ledger.")
-            return
+            console.print(
+                "\nCapture your first requirement with:\n"
+                "  [bold]cf proof capture[/bold]"
+            )
+            if allow_empty:
+                console.print("\n[dim]--allow-empty: exiting 0 anyway.[/dim]")
+                return
+            raise typer.Exit(2)
 
-        if all_reqs:
-            # This one IS knowable: the runnable set is empty while the ledger
-            # is not, so every requirement was excluded by its status. WAIVED is
-            # excluded from both modes; SATISFIED only from a scoped run.
-            satisfied = sum(1 for r in all_reqs if r.status == ReqStatus.SATISFIED)
-            waived = sum(1 for r in all_reqs if r.status == ReqStatus.WAIVED)
-            detail = ", ".join(
-                part
-                for part in (
-                    f"{satisfied} satisfied" if satisfied else "",
-                    f"{waived} waived" if waived else "",
-                )
-                if part
-            )
-            console.print(
-                f"[yellow]Nothing was verified.[/yellow] "
-                f"{len(all_reqs)} requirement(s) exist, but none are runnable"
-                + (f" ({detail})." if detail else ".")
-            )
-            console.print(
+        console.print(
+            f"[yellow]Nothing was verified.[/yellow] {diagnostics.describe()}."
+        )
+
+        hints = {
+            EmptyReason.EXCLUDED_BY_STATUS: (
                 "A waiver is an accepted risk that no run re-checks; "
-                "[bold]cf proof run --full[/bold] also re-verifies satisfied "
-                "ones. See [bold]cf proof status[/bold] for the ledger."
-            )
-            return
-
-        # An empty ledger is not a pass (#1118). Exiting 0 here is what let the
-        # quickstart's PROVE step read as "PROOF9 gates passed" when nothing had
-        # been checked — and every new workspace is in exactly this state.
-        #
-        # Exit 2 rather than 1: this is not a failure either, and a script needs
-        # to tell "the gate failed" from "the gate had nothing to check". CI
-        # treats any non-zero as a stop, which is the point.
-        console.print("[yellow]Nothing was verified.[/yellow]")
-        console.print(
-            "There are no proof obligations in this workspace, so this run "
-            "checked nothing — it is not a pass."
-        )
-        console.print(
-            "\nCapture your first requirement with:\n"
-            "  [bold]cf proof capture[/bold]"
-        )
-        if allow_empty:
-            console.print("\n[dim]--allow-empty: exiting 0 anyway.[/dim]")
-            return
-        raise typer.Exit(2)
+                "[bold]cf proof run --full[/bold] also re-verifies satisfied ones."
+            ),
+            EmptyReason.EXCLUDED_BY_SCOPE: (
+                "[bold]cf proof run --full[/bold] ignores scope entirely."
+            ),
+            EmptyReason.EXCLUDED_BY_GATE_FILTER: (
+                "Drop [bold]--gate[/bold] to run every obligation."
+            ),
+            EmptyReason.EXCLUDED_BY_CONFIG: (
+                "Check [bold]enabled_gates[/bold] in "
+                f"[bold].codeframe/{PROOF_CONFIG_FILENAME}[/bold]."
+            ),
+            EmptyReason.EXCLUDED_BY_FILTER_COMBINATION: (
+                "Drop [bold]--gate[/bold], or add that gate to "
+                f"[bold]enabled_gates[/bold] in [bold].codeframe/{PROOF_CONFIG_FILENAME}"
+                "[/bold] — each filter alone leaves work to do, but they do not "
+                "overlap."
+            ),
+            EmptyReason.NO_OBLIGATIONS: (
+                "Add obligations to those requirements, or they can never be "
+                "satisfied."
+            ),
+        }
+        if reason in hints:
+            console.print(hints[reason])
+        console.print("See [bold]cf proof status[/bold] for the ledger.")
+        return
 
     # Display results
     table = Table(title="Proof Results")
