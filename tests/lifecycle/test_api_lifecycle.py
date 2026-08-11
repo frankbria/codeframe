@@ -98,8 +98,22 @@ class ApiDriver:
         return self.client.get("/api/v2/tasks", params=self.params)
 
     def approve(self, task_ids):
+        """Approve exactly ``task_ids`` and nothing else.
+
+        The endpoint's contract is exclusion-based — `ApproveTasksRequest` has
+        `excluded_task_ids` and no `task_ids` — and Pydantic drops unknown
+        fields, so posting `task_ids` approves EVERY backlog task while
+        returning 200. Caught in review; `test_approval_is_scoped_to_the_chosen
+        _tasks` below fails on that version.
+        """
+        wanted = set(task_ids)
+        excluded = [
+            t["id"] for t in self.list_tasks().json()["tasks"] if t["id"] not in wanted
+        ]
         return self.client.post(
-            "/api/v2/tasks/approve", params=self.params, json={"task_ids": list(task_ids)}
+            "/api/v2/tasks/approve",
+            params=self.params,
+            json={"excluded_task_ids": excluded},
         )
 
     def execute(self, task_ids, strategy: str = "serial"):
@@ -173,6 +187,21 @@ class TestTheGoldenPathOverHttp:
         final = api.await_batch(batch_id)
         assert final["status"] == "COMPLETED", final
         assert api.task(task_ids[0]).json()["status"] == "DONE"
+
+    def test_approval_is_scoped_to_the_chosen_tasks(self, api):
+        """Approving one task must not release the rest of the backlog."""
+        api.init_workspace()
+        api.upload_prd()
+        api.generate_tasks()
+        tasks = api.list_tasks().json()["tasks"]
+        assert len(tasks) >= 2, "need a second task for this to prove anything"
+
+        chosen = tasks[0]["id"]
+        assert api.approve([chosen]).status_code == 200
+
+        after = {t["id"]: t["status"] for t in api.list_tasks().json()["tasks"]}
+        assert after[chosen] == "READY"
+        assert all(status == "BACKLOG" for tid, status in after.items() if tid != chosen), after
 
     def test_generation_is_rejected_without_a_prd(self, api):
         """The order of the pipeline is part of the contract."""
