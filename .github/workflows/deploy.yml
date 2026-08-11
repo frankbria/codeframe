@@ -52,7 +52,11 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
     environment:
       name: staging
-      url: https://dev.codeframeapp.com
+      # dev.codeframeapp.com has DNS to this box but no nginx site and no
+      # certificate, so the shared VPS serves another project's cert and TLS
+      # fails. The GitHub deployment link therefore looked like staging was
+      # down when it was serving fine. dev.codeframe.sh is the real host.
+      url: https://dev.codeframe.sh
 
     steps:
       - name: Checkout code

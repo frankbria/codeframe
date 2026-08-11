@@ -1,3 +1,10 @@
+> **SUPERSEDED — do not follow.** This documents `dev.codeframeapp.com` on
+> `47.88.89.175`. Both are dead: the box was rebuilt at `195.35.14.177` on
+> 2026-07-01 and staging is now **<https://dev.codeframe.sh>**, configured at
+> `/etc/nginx/sites-available/dev.codeframe.sh.conf`. `dev.codeframeapp.com`
+> still resolves to the new box but has no site block and no certificate, so it
+> fails TLS. Kept for history only; see `deploy/README.md`.
+
 # Nginx & SSL Configuration Complete
 
 **Date**: 2025-10-25

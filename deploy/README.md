@@ -24,6 +24,12 @@ ever travel over HTTPS/WSS between the browser and Caddy. Plaintext
    sudo systemctl reload caddy
    ```
    Caddy provisions and renews the Let's Encrypt certificate automatically.
+> **Staging lives at <https://dev.codeframe.sh>.** It runs behind nginx on a
+> shared VPS (`/etc/nginx/sites-available/dev.codeframe.sh.conf`), with the
+> backend on 14200 and the frontend on 14100 under pm2. `dev.codeframeapp.com`
+> is an older domain that was never finished — it resolves to the same box but
+> has no site block and no certificate.
+
 3. Set the public origins in `.env.staging` / `.env.production`:
    ```
    NEXT_PUBLIC_API_URL=https://your-domain
