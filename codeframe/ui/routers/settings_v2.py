@@ -40,6 +40,7 @@ from codeframe.core.config import (
     save_environment_config,
 )
 from codeframe.core.credentials import (
+    CredentialStoreUnreadableError,
     CredentialManager,
     CredentialProvider,
     CredentialSource,
@@ -72,7 +73,7 @@ from codeframe.ui.models import (
     VerifyKeyRequest,
     VerifyKeyResponse,
 )
-from codeframe.ui.response_models import ErrorCodes, api_error
+from codeframe.ui.response_models import ErrorCodes, api_error, internal_error
 from codeframe.core.notifications_config import redact_webhook_url
 
 logger = logging.getLogger(__name__)
@@ -87,7 +88,27 @@ def get_credential_manager(auth: dict = Depends(require_auth)) -> CredentialMana
     store. Overridden in tests to point at an isolated temp directory.
     Runs the machine-wide migration — use only on write (admin-scoped) paths.
     """
-    return CredentialManager(user_id=auth.get("user_id"), migrate=True)
+    # CredentialManager's constructor runs the machine-wide migration, which
+    # can raise CredentialStoreUnreadableError since #954. Raised from a
+    # DEPENDENCY it bypasses each route's own try/except, so the client got a
+    # bare 500 instead of the formatted error every other path produces (#1085).
+    # The exception's message carries the recovery text the CLI already prints.
+    try:
+        return CredentialManager(user_id=auth.get("user_id"), migrate=True)
+    except CredentialStoreUnreadableError as e:
+        # internal_error, NOT str(e) (#934): the exception message embeds the
+        # absolute store path — /home/<operator>/.codeframe/users/<id>/... —
+        # so rendering it would hand an authenticated tenant the operator's
+        # home directory and the per-tenant storage layout. The full message
+        # goes to the operator's log under the correlation id; the client gets
+        # the recovery step, which is the part that is actually actionable and
+        # contains no path.
+        body = internal_error(e, operation="read the credential store", logger=logger)
+        body["detail"] += (
+            " The credential store could not be read; re-enter your keys with "
+            "`cf auth setup`."
+        )
+        raise HTTPException(status_code=500, detail=body)
 
 
 def get_credential_manager_readonly(auth: dict = Depends(require_auth)) -> CredentialManager:
@@ -96,7 +117,27 @@ def get_credential_manager_readonly(auth: dict = Depends(require_auth)) -> Crede
     Used on GET endpoints so that a plain status check cannot trigger a
     credential write into a new tenant's store (#790).
     """
-    return CredentialManager(user_id=auth.get("user_id"), migrate=False)
+    # CredentialManager's constructor runs the machine-wide migration, which
+    # can raise CredentialStoreUnreadableError since #954. Raised from a
+    # DEPENDENCY it bypasses each route's own try/except, so the client got a
+    # bare 500 instead of the formatted error every other path produces (#1085).
+    # The exception's message carries the recovery text the CLI already prints.
+    try:
+        return CredentialManager(user_id=auth.get("user_id"), migrate=False)
+    except CredentialStoreUnreadableError as e:
+        # internal_error, NOT str(e) (#934): the exception message embeds the
+        # absolute store path — /home/<operator>/.codeframe/users/<id>/... —
+        # so rendering it would hand an authenticated tenant the operator's
+        # home directory and the per-tenant storage layout. The full message
+        # goes to the operator's log under the correlation id; the client gets
+        # the recovery step, which is the part that is actually actionable and
+        # contains no path.
+        body = internal_error(e, operation="read the credential store", logger=logger)
+        body["detail"] += (
+            " The credential store could not be read; re-enter your keys with "
+            "`cf auth setup`."
+        )
+        raise HTTPException(status_code=500, detail=body)
 
 
 def _config_to_response(config: EnvironmentConfig) -> AgentSettingsResponse:

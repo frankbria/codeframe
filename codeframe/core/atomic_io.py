@@ -24,10 +24,20 @@ writers collide, with the loser's cleanup deleting the winner's in-flight file
 """
 
 import json
+import logging
 import os
 import tempfile
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Union
+
+try:  # optional, exactly as credentials.py treats it
+    from filelock import FileLock
+except ImportError:  # pragma: no cover - exercised by the no-filelock path
+    FileLock = None  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "atomic_write_bytes",
@@ -148,3 +158,57 @@ def atomic_write_text(
 def atomic_write_json(path: Union[str, Path], payload: Any, mode: int | None = None) -> None:
     """Durably replace ``path`` with ``payload`` serialized as indented JSON."""
     atomic_write_text(path, json.dumps(payload, indent=2), mode=mode)
+
+
+# ---------------------------------------------------------------------------
+# Serialising a read-modify-write
+# ---------------------------------------------------------------------------
+#
+# An atomic write stops a crash from truncating the file. It does NOT stop two
+# writers from losing each other's work: both read the same base, both write a
+# whole new file, and the second one wins (#1085). Anything doing
+# read-modify-write on a shared file needs this as well as atomic_write_*.
+#
+# `filelock` is optional. Without it this degrades to thread-only
+# serialisation, which is honest for a single-process CLI and logged once so
+# the weaker guarantee is not silent.
+
+_THREAD_LOCKS: dict[Path, threading.Lock] = {}
+_FILELOCK_WARNED = False
+
+
+def read_modify_write_lock(lock_path: Union[str, Path]):
+    """Serialise a read-modify-write keyed on ``lock_path``.
+
+    Returns a context manager holding a process-wide thread lock and, when
+    ``filelock`` is installed, a cross-process file lock on the same path.
+
+    ``lock_path`` is the lock file itself, not the data file — callers pass
+    something like ``dir / ".history.lock"``.
+    """
+    return _ReadModifyWriteLock(Path(lock_path))
+
+
+@contextmanager
+def _ReadModifyWriteLock(lock_path: Path):  # noqa: N802 - reads as a class at call sites
+    global _FILELOCK_WARNED
+
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    thread_lock = _THREAD_LOCKS.setdefault(lock_path, threading.Lock())
+
+    file_lock = None
+    if FileLock is not None:
+        file_lock = FileLock(str(lock_path))
+    elif not _FILELOCK_WARNED:
+        _FILELOCK_WARNED = True
+        logger.warning(
+            "filelock is not installed — read-modify-write is serialised within "
+            "this process only. Concurrent processes can still lose an entry."
+        )
+
+    with thread_lock:
+        if file_lock is None:
+            yield
+        else:
+            with file_lock:
+                yield
