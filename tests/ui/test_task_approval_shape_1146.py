@@ -56,7 +56,9 @@ def three_tasks(workspace):
 
 
 def _statuses(workspace) -> dict:
-    return {t.id: t.status for t in core_tasks.list_tasks(workspace)}
+    # limit=None: list_tasks defaults to 100, so the >100 cases below would
+    # otherwise assert about a page rather than the backlog.
+    return {t.id: t.status for t in core_tasks.list_tasks(workspace, limit=None)}
 
 
 class TestTheInclusionShapeApprovesExactlyThose:
@@ -165,6 +167,55 @@ class TestAmbiguousOrWrongRequestsAreRefused:
         client.post("/api/v2/tasks/approve", json={"taskIds": [three_tasks[0].id]})
 
         assert set(_statuses(workspace).values()) == {TaskStatus.BACKLOG}
+
+
+class TestABacklogLargerThanThePageSize:
+    """Review finding, and the exclusion path had it too.
+
+    `tasks.list_tasks` defaults to `limit=100` (#743). `approve_tasks` used that
+    default, so "approve everything" silently approved the first 100 of a bigger
+    backlog — and the new inclusion path would have 422'd a valid id that sorted
+    past the cap, which is precisely the "quietly does less than asked" failure
+    this PR exists to remove.
+    """
+
+    #: One past the default page size. Keeping it just over the boundary keeps
+    #: the test fast while still crossing it.
+    COUNT = 105
+
+    @pytest.fixture
+    def many_tasks(self, workspace):
+        return [
+            core_tasks.create(workspace, title=f"Bulk {i:03d}", description="d")
+            for i in range(self.COUNT)
+        ]
+
+    def test_approving_everything_reaches_past_the_page_size(
+        self, client, workspace, many_tasks
+    ):
+        res = client.post("/api/v2/tasks/approve", json={})
+
+        assert res.status_code == 200, res.text
+        assert res.json()["approved_count"] == self.COUNT
+        assert set(_statuses(workspace).values()) == {TaskStatus.READY}
+
+    def test_a_task_past_the_page_size_can_be_named(self, client, workspace, many_tasks):
+        chosen = many_tasks[-1].id
+
+        res = client.post("/api/v2/tasks/approve", json={"task_ids": [chosen]})
+
+        assert res.status_code == 200, res.text
+        assert res.json()["approved_task_ids"] == [chosen]
+        assert _statuses(workspace)[chosen] == TaskStatus.READY
+
+    def test_the_excluded_count_covers_the_whole_backlog(
+        self, client, many_tasks
+    ):
+        body = client.post(
+            "/api/v2/tasks/approve", json={"task_ids": [many_tasks[0].id]}
+        ).json()
+
+        assert body["excluded_count"] == self.COUNT - 1
 
 
 class TestTheCoreFunctionCarriesTheRule:

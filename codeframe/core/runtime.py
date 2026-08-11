@@ -1267,8 +1267,12 @@ def approve_tasks(
             "they mean opposite things and there is no safe way to combine them"
         )
 
-    # Get all BACKLOG tasks
-    backlog_tasks = tasks.list_tasks(workspace, status=TaskStatus.BACKLOG)
+    # Get all BACKLOG tasks. limit=None is load-bearing: list_tasks defaults to
+    # 100 (#743), so "approve everything" silently approved the first 100 of a
+    # larger backlog, and the inclusion path would 422 a perfectly valid id that
+    # happened to sort past the cap. Caught in review on #1146; the exclusion
+    # path had the same defect all along.
+    backlog_tasks = tasks.list_tasks(workspace, status=TaskStatus.BACKLOG, limit=None)
 
     if included_task_ids is not None:
         wanted = set(included_task_ids)
