@@ -21,6 +21,13 @@ jobs:
   build:
     name: Build sdist + wheel
     runs-on: ubuntu-latest
+    # ANTHROPIC_API_KEY lives in the `staging` environment, and GitHub only
+    # exposes environment secrets to jobs that declare that environment. The
+    # model-default guard below sets MODEL_GUARD_REQUIRE_LIVE=1, so without
+    # this the secret resolves empty and every release fails by design.
+    # Same convention as lifecycle.yml and engine-smoke.yml, which is where
+    # this key already lives for CI.
+    environment: staging
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

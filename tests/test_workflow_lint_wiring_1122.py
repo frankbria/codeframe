@@ -98,3 +98,70 @@ def test_workflow_compilability_is_still_checked():
     # line — `paths-ignore` appears elsewhere in this file.)
     assert "-ignore" not in invocation
     assert "-shellcheck=" in invocation
+
+
+class TestEnvironmentSecretsAreReachable:
+    """A job using an environment secret must declare that environment.
+
+    GitHub exposes environment secrets ONLY to jobs with a matching
+    `environment:` key. A job that references one without declaring it gets an
+    empty string — silently, with no warning from actionlint, which cannot know
+    where a secret lives.
+
+    That is not hypothetical: release.yml's build job referenced
+    ANTHROPIC_API_KEY without declaring `environment: staging`, so the
+    model-default guard's MODEL_GUARD_REQUIRE_LIVE=1 would have failed every
+    release. Caught by inspecting the repo's actual secrets, not by CI.
+    """
+
+    #: Secrets that live in an environment rather than at repo level. Keeping
+    #: the list here means adding one to a job without its environment fails.
+    ENVIRONMENT_SECRETS = {"ANTHROPIC_API_KEY": "staging"}
+
+    #: (workflow, job) pairs knowingly referencing a secret their environment
+    #: does not supply. Exempted with a pointer, not silenced: the `production`
+    #: environment holds zero secrets, so deploy-production cannot work at all —
+    #: tracked in #1143, which is an operator decision (populate it, or delete
+    #: the job), not something a code change can fix.
+    KNOWN_GAPS = {("deploy.yml", "deploy-production")}
+
+    def _jobs(self, path: Path) -> dict:
+        return (yaml.safe_load(path.read_text()) or {}).get("jobs", {}) or {}
+
+    def test_every_job_using_an_environment_secret_declares_it(self):
+        offenders: list[str] = []
+
+        for path in sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml")):
+            raw_jobs = self._jobs(path)
+            for job_name, job in raw_jobs.items():
+                if not isinstance(job, dict):
+                    continue
+                body = yaml.safe_dump(job)
+                for secret, environment in self.ENVIRONMENT_SECRETS.items():
+                    if f"secrets.{secret}" not in body:
+                        continue
+                    declared = job.get("environment")
+                    if isinstance(declared, dict):
+                        declared = declared.get("name")
+                    if (path.name, job_name) in self.KNOWN_GAPS:
+                        continue
+                    if declared != environment:
+                        offenders.append(
+                            f"{path.name}:{job_name} uses secrets.{secret} but "
+                            f"declares environment={declared!r}, not {environment!r}"
+                        )
+
+        assert offenders == [], (
+            "these jobs will receive an empty secret at runtime:\n  "
+            + "\n  ".join(offenders)
+        )
+
+    def test_the_release_build_job_can_see_the_key_it_requires(self):
+        """Specific to the guard: it sets MODEL_GUARD_REQUIRE_LIVE, so an empty
+        secret is a hard failure rather than a skipped check."""
+        release = REPO_ROOT / ".github" / "workflows" / "release.yml"
+        build = self._jobs(release)["build"]
+
+        raw = yaml.safe_dump(build)
+        assert "MODEL_GUARD_REQUIRE_LIVE" in raw
+        assert build.get("environment") == "staging"
