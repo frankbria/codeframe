@@ -18,7 +18,7 @@ from typing import Any, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
@@ -43,11 +43,27 @@ router = APIRouter(prefix="/api/v2/tasks", tags=["tasks-v2"])
 
 
 class ApproveTasksRequest(BaseModel):
-    """Request for task approval."""
+    """Request for task approval.
+
+    Accepts either shape (#1146). It used to accept only ``excluded_task_ids``,
+    and Pydantic's default is to DROP unknown fields — so the intuitive
+    ``{"task_ids": [...]}`` returned 200 having approved the entire backlog,
+    the exact inverse of the caller's intent, in silence. ``extra="forbid"``
+    closes that even for a field neither name covers.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     excluded_task_ids: list[str] = Field(
         default_factory=list,
-        description="Task IDs to exclude from approval",
+        description="Task IDs to exclude; every other BACKLOG task is approved",
+    )
+    task_ids: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Approve exactly these tasks and nothing else. Mutually exclusive "
+            "with excluded_task_ids."
+        ),
     )
     start_execution: bool = Field(
         default=False,
@@ -63,6 +79,15 @@ class ApproveTasksRequest(BaseModel):
         valid = ("plan", "react")
         if self.engine not in valid:
             raise ValueError(f"engine must be one of: {', '.join(valid)}")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_selection(self) -> "ApproveTasksRequest":
+        if self.task_ids is not None and self.excluded_task_ids:
+            raise ValueError(
+                "Pass task_ids or excluded_task_ids, not both — they mean "
+                "opposite things"
+            )
         return self
 
 
@@ -666,10 +691,16 @@ async def approve_tasks_endpoint(
     """
     try:
         # Approve tasks (transition BACKLOG → READY)
-        result = runtime.approve_tasks(
-            workspace,
-            excluded_task_ids=body.excluded_task_ids,
-        )
+        try:
+            result = runtime.approve_tasks(
+                workspace,
+                excluded_task_ids=body.excluded_task_ids,
+                included_task_ids=body.task_ids,
+            )
+        except ValueError as e:
+            # A named task that is not approvable. 422, not 500: the request is
+            # well-formed and the server is fine — the ids are wrong.
+            raise HTTPException(status_code=422, detail=api_error(str(e), "INVALID_TASK_IDS"))
 
         batch_id = None
         message = f"Approved {result.approved_count} task(s)."

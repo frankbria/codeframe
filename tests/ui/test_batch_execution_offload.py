@@ -184,7 +184,7 @@ async def test_approve_with_execution_also_returns_immediately(
     monkeypatch.setattr(
         tasks_v2.runtime,
         "approve_tasks",
-        lambda ws, excluded_task_ids=None: type(
+        lambda ws, excluded_task_ids=None, included_task_ids=None: type(
             "R",
             (),
             {
@@ -267,7 +267,7 @@ class TestOneBatchPerWorkspace:
         monkeypatch.setattr(
             tasks_v2.runtime,
             "approve_tasks",
-            lambda ws, excluded_task_ids=None: type(
+            lambda ws, excluded_task_ids=None, included_task_ids=None: type(
                 "R",
                 (),
                 {
