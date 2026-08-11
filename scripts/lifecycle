@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# lifecycle — Run CodeFRAME full lifecycle tests (real LLM calls)
+# lifecycle — Run CodeFRAME full lifecycle tests
 #
 # Usage:
 #   scripts/lifecycle [options]
 #
 # Options:
-#   --mode cli|all           Which test mode (default: cli)
-#                            api and web are NOT implemented — they exit 3
-#                            rather than reporting a false pass (#948, #1068)
+#   --mode cli|api|all       Which test mode (default: cli)
+#                            cli — real LLM calls, needs ANTHROPIC_API_KEY, costs money
+#                            api — Golden Path over HTTP on the mock provider, free
+#                            all — both
+#                            web is NOT implemented — it exits 3 rather than
+#                            reporting a false pass (#948, #1068)
 #   --model haiku|sonnet     LLM model to use (default: haiku, cheaper)
 #   --verbose / -v           Pass -s to pytest (show live output)
 #   --no-cleanup             Keep temp directories after test (for inspection)
@@ -45,18 +48,18 @@ case "$MODE" in
   *) echo "Error: --mode must be cli, api, web, or all" >&2; exit 1 ;;
 esac
 
-# api and web are NOT implemented (#948). They used to resolve to files whose
+# `web` is still NOT implemented (#948/#1068). It used to resolve to a file whose
 # only content was a @pytest.mark.skip class raising NotImplementedError, so
-# pytest collected nothing but skips and exited 0 — and CLAUDE.md advertises
-# this script as the pre-PR gate. Two of its four modes therefore reported
-# success for work that did not exist. Fail loudly instead; tracked in #1068.
-if [[ "$MODE" == "api" || "$MODE" == "web" ]]; then
-  echo "Error: --mode $MODE is not implemented." >&2
+# pytest collected nothing but skips and exited 0 — while CLAUDE.md advertises
+# this script as the pre-PR gate. Fail loudly rather than report success for work
+# that does not exist. `api` is now real and runs on the mock provider.
+if [[ "$MODE" == "web" ]]; then
+  echo "Error: --mode web is not implemented." >&2
   echo "" >&2
-  echo "  The $MODE lifecycle test does not exist yet. It used to 'pass' by" >&2
+  echo "  The web lifecycle test does not exist yet. It used to 'pass' by" >&2
   echo "  collecting only skipped stubs — see issue #1068 for the plan." >&2
   echo "" >&2
-  echo "  Run the implemented mode instead:  scripts/lifecycle --mode cli" >&2
+  echo "  Implemented modes:  scripts/lifecycle --mode cli|api" >&2
   exit 3
 fi
 
@@ -66,7 +69,9 @@ case "$MODEL" in
 esac
 
 # ── Check API key ────────────────────────────────────────────────────────────
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+# `api` runs entirely on the mock provider: no key, no cost, no network. That is
+# the point of it — it can run on every PR, where the paid cli mode cannot.
+if [[ "$MODE" != "api" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
   echo "Error: ANTHROPIC_API_KEY is not set." >&2
   echo "" >&2
   echo "Export it first:" >&2
@@ -78,12 +83,26 @@ if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
 fi
 
 # ── Resolve test path ────────────────────────────────────────────────────────
+# The marker matters as much as the path. pytest.ini defaults to
+# -m "not e2e_llm and not lifecycle", so the paid cli tests need -m lifecycle to
+# be selected at all, while the mock-driven api tests are deliberately unmarked
+# and are selected by that same default. Getting this wrong silently runs
+# nothing, which is the failure mode #948 was about.
 case "$MODE" in
-  cli) TEST_PATH="tests/lifecycle/test_cli_lifecycle.py" ;;
-  # 'all' is currently the same set as 'cli' — the api and web modes are
-  # rejected above. Kept as a distinct mode so it starts covering them the
-  # moment #1068 lands, rather than needing a caller to change.
-  all) TEST_PATH="tests/lifecycle/" ;;
+  cli)
+    TEST_PATH="tests/lifecycle/test_cli_lifecycle.py"
+    MARKER_ARGS=(-m lifecycle)
+    ;;
+  api)
+    TEST_PATH="tests/lifecycle/test_api_lifecycle.py"
+    MARKER_ARGS=(-m "not lifecycle")
+    ;;
+  all)
+    TEST_PATH="tests/lifecycle/"
+    # Always true, so it clears pytest.ini's default and selects both the
+    # marked (cli) and unmarked (api) tests in one run.
+    MARKER_ARGS=(-m "lifecycle or not lifecycle")
+    ;;
 esac
 
 # ── Cost warning ─────────────────────────────────────────────────────────────
@@ -94,6 +113,9 @@ fi
 if [[ "$MODE" == "all" ]]; then
   COST_HINT="~\$1.50–5.00"
 fi
+if [[ "$MODE" == "api" ]]; then
+  COST_HINT="free (mock provider, no API calls)"
+fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo ""
@@ -102,12 +124,12 @@ echo "  ────────────────────────
 echo "  Mode:    $MODE"
 echo "  Model:   $MODEL (set via CODEFRAME_LIFECYCLE_MODEL)"
 echo "  Path:    $TEST_PATH"
-echo "  Cost:    $COST_HINT (real API calls)"
+echo "  Cost:    $COST_HINT"
 echo ""
 
 if [[ -n "$DRY_RUN" ]]; then
   echo "[dry-run] Would run:"
-  echo "  CODEFRAME_LIFECYCLE_MODEL=$MODEL uv run pytest $TEST_PATH -m lifecycle -v $VERBOSE"
+  echo "  CODEFRAME_LIFECYCLE_MODEL=$MODEL uv run pytest $TEST_PATH ${MARKER_ARGS[*]} -v $VERBOSE"
   echo ""
   exit 0
 fi
@@ -125,7 +147,7 @@ fi
 # ── Build pytest args ─────────────────────────────────────────────────────────
 PYTEST_ARGS=(
   "$TEST_PATH"
-  -m lifecycle
+  "${MARKER_ARGS[@]}"
   -v
   --tb=long
   --no-header
@@ -145,5 +167,8 @@ echo "  Starting... (this may take 10–30 minutes)"
 echo ""
 
 export CODEFRAME_LIFECYCLE_MODEL="$MODEL"
+if [[ "$MODE" == "api" ]]; then
+  export CODEFRAME_LLM_PROVIDER=mock
+fi
 
 uv run pytest "${PYTEST_ARGS[@]}"
