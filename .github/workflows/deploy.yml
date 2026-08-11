@@ -239,7 +239,13 @@ jobs:
             cd web-ui
             npm ci
             echo "🔒 Running security audit..."
-            npm audit --audit-level=critical
+            # high, not critical (#1131). At critical, six high-severity
+            # findings accumulated unnoticed until #1124 went looking. These are
+            # build-time deps, which still run on a runner holding repo
+            # credentials. Tradeoff accepted: audit results change without a
+            # code change, so a newly published high can block a deploy — that
+            # is the gate doing its job, and the fix is to bump the dep.
+            npm audit --audit-level=high
             # NEXT_PUBLIC vars must be set at build time for Next.js
             export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}"
             export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL}"
@@ -658,7 +664,13 @@ jobs:
             cd web-ui
             npm ci
             echo "🔒 Running security audit..."
-            npm audit --audit-level=critical
+            # high, not critical (#1131). At critical, six high-severity
+            # findings accumulated unnoticed until #1124 went looking. These are
+            # build-time deps, which still run on a runner holding repo
+            # credentials. Tradeoff accepted: audit results change without a
+            # code change, so a newly published high can block a deploy — that
+            # is the gate doing its job, and the fix is to bump the dep.
+            npm audit --audit-level=high
             # NEXT_PUBLIC vars must be set at build time for Next.js
             export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}"
             export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL}"
