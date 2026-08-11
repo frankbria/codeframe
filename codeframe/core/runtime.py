@@ -1225,6 +1225,7 @@ class ApprovalResult:
 def approve_tasks(
     workspace: Workspace,
     excluded_task_ids: Optional[list[str]] = None,
+    included_task_ids: Optional[list[str]] = None,
 ) -> ApprovalResult:
     """Approve tasks for execution by transitioning them to READY status.
 
@@ -1238,10 +1239,21 @@ def approve_tasks(
 
     Args:
         workspace: Target workspace
-        excluded_task_ids: Optional list of task IDs to exclude from approval
+        excluded_task_ids: Task IDs to exclude; everything else in BACKLOG is
+            approved. This is the original, exclusion-shaped contract.
+        included_task_ids: Approve exactly these and nothing else (#1146). The
+            intuitive shape, and mutually exclusive with the one above — a call
+            passing both is ambiguous, so it raises rather than picking one.
+            An id here that is not in BACKLOG raises too: silently approving
+            fewer tasks than asked for is the failure this parameter exists to
+            prevent.
 
     Returns:
         ApprovalResult with counts and IDs
+
+    Raises:
+        ValueError: both lists given, or an included id is not an approvable
+            BACKLOG task
 
     Example:
         result = approve_tasks(workspace, excluded_task_ids=["task-1", "task-2"])
@@ -1249,10 +1261,26 @@ def approve_tasks(
         if result.approved_count > 0:
             batch = start_approved_batch(workspace, result.approved_task_ids)
     """
-    excluded = set(excluded_task_ids or [])
+    if excluded_task_ids and included_task_ids:
+        raise ValueError(
+            "Pass excluded_task_ids or included_task_ids, not both — "
+            "they mean opposite things and there is no safe way to combine them"
+        )
 
     # Get all BACKLOG tasks
     backlog_tasks = tasks.list_tasks(workspace, status=TaskStatus.BACKLOG)
+
+    if included_task_ids is not None:
+        wanted = set(included_task_ids)
+        approvable = {t.id for t in backlog_tasks}
+        unknown = sorted(wanted - approvable)
+        if unknown:
+            raise ValueError(
+                "not approvable (unknown, or not in BACKLOG): " + ", ".join(unknown)
+            )
+        excluded = approvable - wanted
+    else:
+        excluded = set(excluded_task_ids or [])
 
     approved_ids = []
     excluded_ids = []
