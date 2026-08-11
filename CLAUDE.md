@@ -161,8 +161,11 @@ uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle"  # The CI gate (every
                                          # ~6.5 min locally. If it is much slower on your
                                          # machine, see "Suite speed" below.
 uv run pytest tests/core/                # Core module tests
-scripts/lifecycle --mode cli|all         # Real-LLM lifecycle tests (run locally before a PR)
-                                         # api/web exit 3 — not implemented (#948, #1068)
+scripts/lifecycle --mode cli|api|all     # Lifecycle tests (run locally before a PR)
+                                         # cli — real LLM calls, needs a key, costs money
+                                         # api — Golden Path over HTTP on the mock provider,
+                                         #       free, and also runs in normal CI (#1068)
+                                         # web exits 3 — not implemented (#948, #1068)
 uv run ruff check .
 
 # Web UI
