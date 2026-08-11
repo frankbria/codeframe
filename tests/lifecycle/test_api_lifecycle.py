@@ -34,7 +34,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-pytestmark = pytest.mark.v2
+# A hang here would be worse than a failure: this suite is unmarked so the
+# default CI gate collects it, and a non-terminating request would stall the
+# whole backend job rather than reporting anything. The whole file runs in ~7s,
+# so 120s can only fire on a genuine block. Same reasoning as the absent SSE
+# test below — pytest-timeout is a dependency, so this costs nothing.
+pytestmark = [pytest.mark.v2, pytest.mark.timeout(120)]
 
 PRD_CONTENT = """# CSV Stats
 
