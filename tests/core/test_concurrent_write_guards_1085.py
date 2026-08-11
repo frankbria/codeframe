@@ -129,7 +129,19 @@ class TestTheLockItself:
 
 
 class TestAnUnreadableStoreIsAFormattedError:
-    """AC: the v2 routers return api_error(...), not a bare 500."""
+    """AC: the v2 routers return the standard error shape, not a bare 500.
+
+    Formatted, but NOT by rendering str(e). The exception message embeds the
+    absolute store path (/home/<operator>/.codeframe/users/<id>/...), so
+    echoing it would hand an authenticated tenant the operator's home directory
+    and the per-tenant layout — a disclosure the bare 500 did not have. #934's
+    internal_error() correlation-id pattern exists for exactly this.
+    """
+
+    LEAKY_MESSAGE = (
+        "Cannot read /home/operator/.codeframe/users/5/credentials.encrypted; "
+        "re-enter with `cf auth setup`"
+    )
 
     @pytest.fixture
     def client(self):
@@ -141,33 +153,38 @@ class TestAnUnreadableStoreIsAFormattedError:
         app.dependency_overrides[require_auth] = lambda: {"user_id": None}
         return TestClient(app, raise_server_exceptions=False)
 
-    def test_the_response_body_has_the_standard_shape(self, client):
+    def _response(self, client):
         with patch(
             "codeframe.ui.routers.settings_v2.CredentialManager",
-            side_effect=CredentialStoreUnreadableError(
-                "credential store unreadable; re-enter with `cf auth setup`"
-            ),
+            side_effect=CredentialStoreUnreadableError(self.LEAKY_MESSAGE),
         ):
-            res = client.get("/api/v2/settings/keys")
+            return client.get("/api/v2/settings/keys")
+
+    def test_the_response_body_has_the_standard_shape(self, client):
+        res = self._response(client)
 
         assert res.status_code == 500
         body = res.json()
-        # The formatted shape every other route produces, not a bare string.
-        assert "detail" in body
         assert isinstance(body["detail"], dict), body
         assert "code" in body["detail"], body["detail"]
 
-    def test_the_recovery_text_reaches_the_client(self, client):
-        """The CLI already prints this; the HTTP surface dropped it."""
-        with patch(
-            "codeframe.ui.routers.settings_v2.CredentialManager",
-            side_effect=CredentialStoreUnreadableError(
-                "credential store unreadable; re-enter with `cf auth setup`"
-            ),
-        ):
-            res = client.get("/api/v2/settings/keys")
+    def test_it_does_not_leak_the_store_path(self, client):
+        """The bare 500 leaked nothing; a formatted error must not do worse."""
+        rendered = json.dumps(self._response(client).json())
 
-        assert "cf auth setup" in json.dumps(res.json())
+        assert "/home/operator" not in rendered
+        assert "credentials.encrypted" not in rendered
+        assert "users/5" not in rendered
+
+    def test_it_carries_a_correlation_id(self, client):
+        """The id is what ties a user's report to the full traceback in the log."""
+        body = self._response(client).json()["detail"]
+        assert body.get("correlation_id")
+        assert body["correlation_id"] in body["detail"]
+
+    def test_the_actionable_recovery_step_still_reaches_the_client(self, client):
+        """The path is the secret; `cf auth setup` is the useful part."""
+        assert "cf auth setup" in json.dumps(self._response(client).json())
 
 
 class TestAnUnreadableStoreIsNeverOverwritten:
