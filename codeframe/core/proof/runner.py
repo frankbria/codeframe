@@ -8,7 +8,9 @@ and attaches evidence artifacts.
 import json
 import logging
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Optional, Sequence
 
 from codeframe.core.proof import ledger
@@ -25,6 +27,141 @@ from codeframe.core.proof.scope import get_changed_scope, intersects
 from codeframe.core.workspace import Workspace
 
 logger = logging.getLogger(__name__)
+
+
+class EmptyReason(str, Enum):
+    """Why a proof run produced no results (#1138).
+
+    ``run_proof`` used to return only ``dict[req_id, [(gate, outcome)]]``, and
+    an empty dict has six different causes. The reasons were computed inside the
+    runner and then thrown away, so ``cf proof run`` had to guess — four
+    consecutive review rounds on #1137 caught a guess that was confidently
+    wrong, each time about a different one of these.
+    """
+
+    #: Results were produced; there is nothing to explain.
+    NOT_EMPTY = "not_empty"
+    #: The ledger holds no requirements at all.
+    NO_REQUIREMENTS = "no_requirements"
+    #: Requirements exist but none were eligible: WAIVED always, and SATISFIED
+    #: unless the run is --full.
+    EXCLUDED_BY_STATUS = "excluded_by_status"
+    #: Every eligible requirement was out of scope for the current changes.
+    EXCLUDED_BY_SCOPE = "excluded_by_scope"
+    #: --gate excluded every obligation of every in-scope requirement.
+    EXCLUDED_BY_GATE_FILTER = "excluded_by_gate_filter"
+    #: proof_config.json's enabled_gates did the same.
+    EXCLUDED_BY_CONFIG = "excluded_by_config"
+    #: Neither filter excluded everything on its own, but their intersection is
+    #: empty — e.g. obligations {unit, sec} with --gate unit and
+    #: enabled_gates ["sec"]. Blaming either alone would send the user to fix
+    #: something that is not, by itself, the problem.
+    EXCLUDED_BY_FILTER_COMBINATION = "excluded_by_filter_combination"
+    #: In-scope requirements exist but define no obligations to run.
+    NO_OBLIGATIONS = "no_obligations"
+    #: More than one of the above applies, so naming one would be a lie.
+    MIXED = "mixed"
+
+
+@dataclass
+class ProofRunDiagnostics:
+    """What the runner decided, alongside what it produced.
+
+    Counts rather than a single verdict: with three requirements dropped for
+    three different reasons, any single reason is wrong. ``reason`` collapses
+    them only when the collapse is honest.
+    """
+
+    total_requirements: int = 0
+    considered: int = 0
+    evaluated: int = 0
+    scope_skipped: list[str] = field(default_factory=list)
+    gate_filtered: list[str] = field(default_factory=list)
+    config_filtered: list[str] = field(default_factory=list)
+    filter_combination: list[str] = field(default_factory=list)
+    no_obligations: list[str] = field(default_factory=list)
+
+    @property
+    def reason(self) -> EmptyReason:
+        if self.evaluated:
+            return EmptyReason.NOT_EMPTY
+        if not self.total_requirements:
+            return EmptyReason.NO_REQUIREMENTS
+        if not self.considered:
+            return EmptyReason.EXCLUDED_BY_STATUS
+
+        buckets = {
+            EmptyReason.EXCLUDED_BY_SCOPE: self.scope_skipped,
+            EmptyReason.NO_OBLIGATIONS: self.no_obligations,
+            EmptyReason.EXCLUDED_BY_GATE_FILTER: self.gate_filtered,
+            EmptyReason.EXCLUDED_BY_CONFIG: self.config_filtered,
+            EmptyReason.EXCLUDED_BY_FILTER_COMBINATION: self.filter_combination,
+        }
+        non_empty = [name for name, ids in buckets.items() if ids]
+        if len(non_empty) == 1:
+            return non_empty[0]
+        if non_empty:
+            return EmptyReason.MIXED
+        # Considered requirements, none evaluated, and no bucket claims them —
+        # a path this code does not know about. Say so rather than picking one.
+        return EmptyReason.MIXED
+
+    def describe(self) -> str:
+        """One sentence a CLI or API can show verbatim."""
+        return _REASON_TEXT[self.reason](self)
+
+
+def _describe_mixed(d: "ProofRunDiagnostics") -> str:
+    parts = []
+    if d.scope_skipped:
+        parts.append(f"{len(d.scope_skipped)} out of scope for the current changes")
+    if d.no_obligations:
+        parts.append(f"{len(d.no_obligations)} with no obligations defined")
+    if d.gate_filtered:
+        parts.append(f"{len(d.gate_filtered)} excluded by the --gate filter")
+    if d.config_filtered:
+        parts.append(f"{len(d.config_filtered)} excluded by enabled_gates in proof_config.json")
+    if d.filter_combination:
+        parts.append(
+            f"{len(d.filter_combination)} excluded by --gate and enabled_gates together"
+        )
+    if not parts:
+        return (
+            f"{d.considered} requirement(s) were considered and none produced a "
+            "result, for a reason this runner does not classify"
+        )
+    return "nothing ran: " + ", ".join(parts)
+
+
+_REASON_TEXT = {
+    EmptyReason.NOT_EMPTY: lambda d: f"{d.evaluated} requirement(s) verified",
+    EmptyReason.NO_REQUIREMENTS: lambda d: "the requirement ledger is empty",
+    EmptyReason.EXCLUDED_BY_STATUS: lambda d: (
+        f"all {d.total_requirements} requirement(s) are waived, or satisfied on a "
+        "scoped run — re-run with --full to include satisfied ones"
+    ),
+    EmptyReason.EXCLUDED_BY_SCOPE: lambda d: (
+        f"all {len(d.scope_skipped)} open requirement(s) are out of scope for the "
+        "current changes — re-run with --full to include them"
+    ),
+    EmptyReason.EXCLUDED_BY_GATE_FILTER: lambda d: (
+        f"the --gate filter excluded every obligation of all "
+        f"{len(d.gate_filtered)} in-scope requirement(s)"
+    ),
+    EmptyReason.EXCLUDED_BY_CONFIG: lambda d: (
+        f"enabled_gates in proof_config.json excluded every obligation of all "
+        f"{len(d.config_filtered)} in-scope requirement(s)"
+    ),
+    EmptyReason.EXCLUDED_BY_FILTER_COMBINATION: lambda d: (
+        f"--gate and enabled_gates in proof_config.json do not overlap, so no "
+        f"obligation of the {len(d.filter_combination)} in-scope requirement(s) "
+        "could run — each filter alone would have left something to do"
+    ),
+    EmptyReason.NO_OBLIGATIONS: lambda d: (
+        f"all {len(d.no_obligations)} in-scope requirement(s) define no obligations"
+    ),
+    EmptyReason.MIXED: _describe_mixed,
+}
 
 
 def _new_run_id() -> str:
@@ -273,6 +410,24 @@ def run_proof(
 ) -> dict[str, list[tuple[Gate, GateOutcome]]]:
     """Execute proof obligations and collect evidence.
 
+    The results only. Callers that need to explain an EMPTY result — every
+    caller that shows a human anything — want :func:`run_proof_with_diagnostics`
+    instead (#1138). Kept because ~60 call sites do not care.
+    """
+    return run_proof_with_diagnostics(
+        workspace, full=full, gate_filter=gate_filter, run_id=run_id
+    )[0]
+
+
+def run_proof_with_diagnostics(
+    workspace: Workspace,
+    *,
+    full: bool = False,
+    gate_filter: Optional[Gate] = None,
+    run_id: Optional[str] = None,
+) -> tuple[dict[str, list[tuple[Gate, GateOutcome]]], ProofRunDiagnostics]:
+    """Execute proof obligations and collect evidence, with the reasoning.
+
     Args:
         workspace: Target workspace
         full: If True, run ALL obligations regardless of scope
@@ -280,7 +435,8 @@ def run_proof(
         run_id: Unique run identifier (auto-generated if not provided)
 
     Returns:
-        Dict mapping req_id → list of (Gate, GateOutcome) tuples
+        ``(results, diagnostics)`` — results maps req_id → [(Gate, GateOutcome)],
+        and diagnostics explains anything the results do not (#1138).
     """
     if not run_id:
         run_id = _new_run_id()
@@ -297,6 +453,12 @@ def run_proof(
 
     # Get all open requirements
     reqs = _requirements_for_run(workspace, full=full)
+    # The ledger total is what separates "no requirements exist" from "none were
+    # eligible" — _requirements_for_run returns [] for both.
+    diagnostics = ProofRunDiagnostics(
+        total_requirements=len(ledger.list_requirements(workspace)),
+        considered=len(reqs),
+    )
     if not reqs:
         completed_at = datetime.now(timezone.utc)
         ledger.save_run(
@@ -311,7 +473,7 @@ def run_proof(
                 duration_ms=int((completed_at - started_at).total_seconds() * 1000),
             ),
         )
-        return {}
+        return {}, diagnostics
 
     # Warn loudly when config disables every gate — a "vacuous pass" is
     # easy to overlook: nothing runs, overall_passed=True, no evidence.
@@ -340,6 +502,9 @@ def run_proof(
             if not intersects(req.scope, changed_scope):
                 scope_skipped.append(req.id)
                 continue
+
+        if not req.obligations:
+            diagnostics.no_obligations.append(req.id)
 
         req_results: list[tuple[Gate, GateOutcome]] = []
 
@@ -376,6 +541,29 @@ def run_proof(
             # Update obligation status
             obl.status = _OUTCOME_TO_OBLIGATION_STATUS[outcome]
             req_results.append((obl.gate, outcome))
+
+        if not req_results and req.obligations:
+            # Every obligation was filtered out. Attribute it to the filter that
+            # did it ALONE, so the hint points somewhere that helps.
+            survives_gate = [
+                o for o in req.obligations
+                if gate_filter is None or o.gate == gate_filter
+            ]
+            survives_config = [
+                o for o in req.obligations
+                if enabled_gates is None or o.gate in enabled_gates
+            ]
+            if not survives_gate:
+                # --gate is the user's explicit flag, so it is named first when
+                # it is sufficient on its own.
+                diagnostics.gate_filtered.append(req.id)
+            elif not survives_config:
+                diagnostics.config_filtered.append(req.id)
+            else:
+                # Each filter leaves something; their intersection does not.
+                # Neither is "the" cause, and blaming one sends the user to fix
+                # something that is not by itself the problem (review finding).
+                diagnostics.filter_combination.append(req.id)
 
         if req_results:
             results[req.id] = req_results
@@ -434,4 +622,10 @@ def run_proof(
 
     _report_scope_skipped(run_id, scope_skipped)
 
-    return results
+    diagnostics.scope_skipped = scope_skipped
+    diagnostics.evaluated = len(results)
+
+    if not results:
+        logger.info("Proof run %s produced no results: %s", run_id, diagnostics.describe())
+
+    return results, diagnostics

@@ -128,14 +128,26 @@ class TestAScopeFilteredRunIsNotAnEmptyLedger:
         assert result.exit_code == 0, result.output
 
     def _run_with_nothing_in_scope(self, workspace_dir: Path):
-        """`run_proof` returns {} because the scope filter skipped everything.
+        """The runner returns ({}, scope-skipped) — everything was out of scope.
 
         Patched rather than staged through git: with no working-tree changes the
         detector fails closed and runs every requirement, so the real filter
         cannot produce this state here. The ambiguity under test is in how the
         CLI reports an empty result, not in scope detection.
+
+        Patches `run_proof_with_diagnostics`, which is what the CLI calls since
+        #1138. Patching the old `run_proof` here did not fail loudly — the real
+        run just went ahead and these tests started asserting on a live result.
         """
-        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
+        from codeframe.core.proof.runner import ProofRunDiagnostics
+
+        diagnostics = ProofRunDiagnostics(
+            total_requirements=1, considered=1, scope_skipped=["REQ-0001"]
+        )
+        with patch(
+            "codeframe.core.proof.runner.run_proof_with_diagnostics",
+            return_value=({}, diagnostics),
+        ):
             return runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
 
     def test_it_does_not_claim_the_ledger_is_empty(self, workspace_dir):
@@ -171,24 +183,34 @@ class TestAScopeFilteredRunIsNotAnEmptyLedger:
         assert result.exit_code == 2
 
     def test_full_mode_does_not_offer_full_as_the_remedy(self, workspace_dir):
-        """--full never consults scope, so re-running it changes nothing."""
+        """--full never consults scope, so re-running it changes nothing.
+
+        No patch needed since #1138: `--gate perf` genuinely excludes every
+        obligation of a captured requirement, so this is a real empty run whose
+        real reason is the gate filter.
+        """
         self._capture_req(workspace_dir, "src/auth/login.py")
-        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
-            result = runner.invoke(
-                app, ["proof", "run", "-w", str(workspace_dir), "--full"]
-            )
+
+        result = runner.invoke(
+            app, ["proof", "run", "-w", str(workspace_dir), "--full", "--gate", "perf"]
+        )
+
         assert result.exit_code == 0, result.output
         assert "--full" not in _flat(result.output)
 
 
-class TestTheReasonIsDerivedNotGuessed:
-    """Third review finding, and the reason the first two kept recurring.
+class TestTheReasonIsNamedNotGuessed:
+    """#1138 finished what #1137's four review rounds kept failing at.
 
-    `run_proof` returning {} has three causes. Inferring which one from the
-    --full flag was wrong twice: it short-circuits when the runnable set is
-    empty, *before* scope detection, so an all-SATISFIED (scoped) or all-WAIVED
-    ledger never had its scope evaluated at all. The reason now comes from the
-    runner's own `_requirements_for_run`, so the CLI cannot drift from it.
+    `run_proof` returning {} has six causes, and the CLI could not tell them
+    apart because the runner computed the reasons and threw them away. It ended
+    up listing candidates — honest, and useless. `run_proof_with_diagnostics`
+    now returns the reason, so every case below asserts the ACTUAL cause is
+    named and the wrong ones are absent.
+
+    Almost none of these need a patch any more: a waived ledger, a gate filter
+    that matches nothing, and a requirement with no obligations are all states
+    the CLI can be driven into for real.
     """
 
     def _capture(self, workspace_dir: Path) -> None:
@@ -227,68 +249,67 @@ class TestTheReasonIsDerivedNotGuessed:
 
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
 
+        flat = _flat(result.output)
         assert result.exit_code == 0, result.output
-        assert "changed files" not in _flat(result.output), (
+        assert "changed files" not in flat and "out of scope" not in flat, (
             "scope was never evaluated — the requirement was excluded by status"
         )
-        assert "none are runnable" in _flat(result.output)
-        assert "waived" in result.output
+        assert "waived" in flat
 
-    def test_it_offers_scope_as_a_candidate_not_a_verdict(self, workspace_dir):
-        """With an eligible requirement the cause is genuinely ambiguous.
-
-        Scope, --gate, disabled gates in proof_config.json, or a requirement
-        with no obligations all produce {} here, and run_proof does not report
-        which. Asserting one was wrong four review rounds running.
-        """
+    def test_the_gate_filter_is_named_as_the_reason_not_a_candidate(self, workspace_dir):
+        """A real run: `--gate perf` excludes every obligation capture created."""
         self._capture(workspace_dir)
 
-        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
+        result = runner.invoke(
+            app, ["proof", "run", "-w", str(workspace_dir), "--gate", "perf"]
+        )
+
+        flat = _flat(result.output)
+        assert result.exit_code == 0, result.output
+        assert "--gate" in flat
+        assert "Possible reasons" not in flat, "the cause is known now, not guessed"
+        assert "out of scope" not in flat, "scope was not what excluded them"
+
+    def test_scope_is_named_when_scope_is_the_reason(self, workspace_dir):
+        """Still patched: with no working-tree changes the detector fails closed
+        and runs everything, so the real filter cannot produce this state."""
+        from codeframe.core.proof.runner import ProofRunDiagnostics
+
+        self._capture(workspace_dir)
+        diagnostics = ProofRunDiagnostics(
+            total_requirements=1, considered=1, scope_skipped=[self._req_id(workspace_dir)]
+        )
+
+        with patch(
+            "codeframe.core.proof.runner.run_proof_with_diagnostics",
+            return_value=({}, diagnostics),
+        ):
             result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
 
         flat = _flat(result.output)
         assert result.exit_code == 0, result.output
-        assert "Possible reasons" in flat, "it must not assert a single cause"
-        assert "changed files" in flat, "scope is still one of the candidates"
-
-    def test_the_gate_filter_is_named_when_one_was_used(self, workspace_dir):
-        """`--gate unit` excluding every obligation is one of the causes."""
-        self._capture(workspace_dir)
-
-        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
-            result = runner.invoke(
-                app, ["proof", "run", "-w", str(workspace_dir), "--gate", "unit"]
-            )
-
-        flat = _flat(result.output)
-        assert result.exit_code == 0, result.output
-        assert "--gate unit" in flat
+        assert "out of scope" in flat
+        assert "--full" in flat, "point at the way to check them anyway"
+        assert "--gate" not in flat, "no gate filter was used; it cannot be the cause"
 
     def test_an_empty_ledger_is_still_the_vacuous_pass_case(self, workspace_dir):
         result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
         assert result.exit_code == 2
         assert "cf proof capture" in result.output
 
-    def test_full_mode_omits_scope_from_the_candidates(self, workspace_dir):
-        """--full provably ignores scope, so listing it is an impossible cause."""
+    def test_no_wrong_remedy_is_offered_when_no_gate_was_passed(self, workspace_dir):
+        """Only the actual cause is named, so --gate must not appear."""
+        from codeframe.core.proof.runner import ProofRunDiagnostics
+
         self._capture(workspace_dir)
+        diagnostics = ProofRunDiagnostics(
+            total_requirements=1, considered=1, scope_skipped=["REQ-0001"]
+        )
 
-        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
-            result = runner.invoke(
-                app,
-                ["proof", "run", "-w", str(workspace_dir), "--full", "--gate", "unit"],
-            )
-
-        flat = _flat(result.output)
-        assert result.exit_code == 0, result.output
-        assert "changed files" not in flat, "scope cannot be the reason under --full"
-        assert "--gate unit" in flat, "the real candidate is still named"
-
-    def test_the_gate_candidate_is_omitted_when_no_gate_was_passed(self, workspace_dir):
-        """Only list causes that could actually apply to this invocation."""
-        self._capture(workspace_dir)
-
-        with patch("codeframe.core.proof.runner.run_proof", return_value={}):
+        with patch(
+            "codeframe.core.proof.runner.run_proof_with_diagnostics",
+            return_value=({}, diagnostics),
+        ):
             result = runner.invoke(app, ["proof", "run", "-w", str(workspace_dir)])
 
         assert "--gate" not in _flat(result.output)
