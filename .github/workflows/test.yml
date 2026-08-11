@@ -95,14 +95,21 @@ jobs:
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
           echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
           tar -xzf actionlint.tar.gz actionlint
-          # -shellcheck= disables actionlint's shellcheck integration. This gate
-          # is about workflows GitHub cannot COMPILE (#1122) — the failure mode
-          # that produces a run with zero jobs and no logs. shellcheck reports 44
-          # pre-existing style/info findings in existing `run:` blocks, almost
-          # all in deploy.yml; turning that on here would either block this fix
-          # or force blind quoting changes to the deploy path that cannot be
-          # tested from a PR. Tracked separately in #1130.
-          ./actionlint -color -shellcheck=
+          # The shell linting is ON (#1130 cleared the 44 pre-existing findings).
+          # It is not decoration: an unquoted heredoc delimiter made the runner
+          # command-substitute lines inside deploy.yml's ssh block that only
+          # LOOKED like comments, so "pm2 restart NAME" written in prose was
+          # executed on the runner. Only this linter sees that class.
+          # actionlint silently skips it when the binary is absent from PATH, so
+          # assert it is installed before trusting a clean run.
+          # (A comment here may not begin with the tool's own name — that is
+          # read as a malformed directive, and no backticks either.)
+          command -v shellcheck >/dev/null || {
+            echo "::error::shellcheck is not on PATH — actionlint would skip"
+            echo "every shell finding and this gate would pass vacuously."
+            exit 1
+          }
+          ./actionlint -color
 
   # ============================================
   # Static Analysis - Check for Hardcoded URLs
@@ -204,10 +211,11 @@ jobs:
           # where the env var is for something unrelated to the localhost URL.
           ISSUES=""
 
-          # Check common API-related files for hardcoded URLs
-          for file in $(find web-ui/src -type f \( -name "*.ts" -o -name "*.tsx" \) \
-            -not -path "*/.next/*" \
-            -not -path "*/node_modules/*"); do
+          # Check common API-related files for hardcoded URLs. Read from find
+          # rather than word-splitting its output: a path containing a space
+          # would otherwise split into two non-existent files and every grep
+          # below would silently miss.
+          while IFS= read -r file; do
 
             # Skip test files
             if [[ $file == *".test."* ]] || [[ $file == *".spec."* ]]; then
@@ -221,7 +229,9 @@ jobs:
                 ISSUES="${ISSUES}\n  - ${file}: Contains localhost URL without env var reference"
               fi
             fi
-          done
+          done < <(find web-ui/src -type f \( -name "*.ts" -o -name "*.tsx" \) \
+            -not -path "*/.next/*" \
+            -not -path "*/node_modules/*")
 
           if [ -n "$ISSUES" ]; then
             echo "⚠️ API files with potential issues (heuristic check):"
@@ -335,7 +345,7 @@ jobs:
       - name: Check coverage threshold (65%)
         working-directory: web-ui
         run: |
-          COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.statements.pct')
+          COVERAGE=$(jq '.total.statements.pct' coverage/coverage-summary.json)
           echo "Coverage: ${COVERAGE}%"
           if (( $(echo "$COVERAGE < 65" | bc -l) )); then
             echo "❌ Coverage ${COVERAGE}% is below 65% threshold"
@@ -592,16 +602,18 @@ jobs:
     steps:
       - name: Report test results
         run: |
-          echo "## Test Suite Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Code Quality | ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Workflow Lint | ${{ needs.workflow-lint.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Hardcoded URLs | ${{ needs.check-hardcoded-urls.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Backend Tests | ${{ needs.backend-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend Tests | ${{ needs.frontend-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| E2E Browser Smoke | ${{ needs.e2e-browser-smoke.result }} |" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Test Suite Results"
+            echo ""
+            echo "| Check | Status |"
+            echo "|-------|--------|"
+            echo "| Code Quality | ${{ needs.code-quality.result }} |"
+            echo "| Workflow Lint | ${{ needs.workflow-lint.result }} |"
+            echo "| Hardcoded URLs | ${{ needs.check-hardcoded-urls.result }} |"
+            echo "| Backend Tests | ${{ needs.backend-tests.result }} |"
+            echo "| Frontend Tests | ${{ needs.frontend-tests.result }} |"
+            echo "| E2E Browser Smoke | ${{ needs.e2e-browser-smoke.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           # The smoke job is a merge gate: treat any non-success terminal state
           # (failure / cancelled / timed_out) as a gate failure, not just
@@ -614,10 +626,14 @@ jobs:
              [ "${{ needs.e2e-browser-smoke.result }}" == "cancelled" ] || \
              [ "${{ needs.e2e-browser-smoke.result }}" == "timed_out" ] || \
              [ "${{ needs.frontend-tests.result }}" == "failure" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ Some checks failed. Please review the logs above." >> $GITHUB_STEP_SUMMARY
+            {
+              echo ""
+              echo "❌ Some checks failed. Please review the logs above."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           else
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "✅ All checks passed!" >> $GITHUB_STEP_SUMMARY
+            {
+              echo ""
+              echo "✅ All checks passed!"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi

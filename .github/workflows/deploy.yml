@@ -182,7 +182,10 @@ jobs:
           # Base64 encode to prevent any shell interpretation during transfer
           ENV_BASE64=$(echo "$ENV_CONTENT" | base64 -w 0)
 
-          # Transfer and decode safely on remote, verify creation
+          # Transfer and decode safely on remote, verify creation.
+          # shellcheck disable=SC2029  # client-side expansion is the point:
+          # ENV_BASE64 and REMOTE_PATH exist only on the runner, and the remote
+          # side must receive their values, not their names.
           ssh "${REMOTE_USER}@${REMOTE_HOST}" "
             set -e
             echo '${ENV_BASE64}' | base64 -d > '${REMOTE_PATH}/.env.staging.tmp'
@@ -204,6 +207,11 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
           NEXT_PUBLIC_WS_URL: ${{ secrets.WS_URL }}
         run: |
+          # shellcheck disable=SC2087  # client-side expansion is deliberate:
+          # ${NEXT_PUBLIC_*} and ${BACKEND_NAME}/${FRONTEND_NAME} are runner env
+          # and must be baked in here. The forms that must resolve on the server
+          # are escaped as \${...} below. Keep this heredoc backtick-free — an
+          # unquoted delimiter substitutes even '#' lines (#1130).
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
             set -e
             echo "🚀 Starting deployment to staging..."
@@ -261,11 +269,14 @@ jobs:
             echo "Debug: FRONTEND_NAME='\${FRONTEND_NAME}'"
 
             # Cold-start from the ecosystem file so its dotenv.config() re-reads
-            # .env.staging on every deploy. A plain `pm2 restart <name> --update-env`
+            # .env.staging on every deploy. A plain "pm2 restart NAME --update-env"
             # refreshes env from the deploy shell (which never sources .env.staging),
             # so newly-added vars like WORKSPACE_ROOT (#896) never reach the process
-            # and the backend crash-loops. Delete by name (NOT `pm2 delete all`,
+            # and the backend crash-loops. Delete by name (NOT "pm2 delete all",
             # which would kill unrelated apps on this shared box), then start fresh.
+            # No backticks in here: this heredoc's delimiter is unquoted, so the
+            # runner's shell command-substitutes even inside a line starting with
+            # '#' — it is heredoc data, not a shell comment (#1130).
             echo "🔁 (Re)starting PM2 services from config..."
             pm2 delete "\${BACKEND_NAME}" "\${FRONTEND_NAME}" 2>/dev/null || true
             pm2 start ecosystem.staging.config.js --update-env
@@ -282,15 +293,15 @@ jobs:
           MAX_ATTEMPTS=12
           SLEEP_SECONDS=5
 
-          for i in $(seq 1 $MAX_ATTEMPTS); do
+          for i in $(seq 1 "$MAX_ATTEMPTS"); do
             echo "Health check attempt $i/$MAX_ATTEMPTS..."
             if ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:${{ secrets.API_PORT }}/health"; then
               echo "✅ Health check passed on attempt $i"
               exit 0
             fi
-            if [ $i -lt $MAX_ATTEMPTS ]; then
+            if [ "$i" -lt "$MAX_ATTEMPTS" ]; then
               echo "⏳ Waiting ${SLEEP_SECONDS}s before retry..."
-              sleep $SLEEP_SECONDS
+              sleep "$SLEEP_SECONDS"
             fi
           done
 
@@ -311,12 +322,14 @@ jobs:
           # Branch names carry the same metacharacter risk as tags (#933).
           BRANCH_NAME: ${{ github.ref_name }}
         run: |
-          echo "## Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: $BRANCH_NAME" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deployed by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Staging Deployment Summary"
+            echo ""
+            echo "- **Branch**: $BRANCH_NAME"
+            echo "- **Commit**: \`${{ github.sha }}\`"
+            echo "- **Deployed by**: ${{ github.actor }}"
+            echo "- **Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================
   # Deploy to Production
@@ -458,7 +471,10 @@ jobs:
           # Base64 encode to prevent any shell interpretation during transfer
           ENV_BASE64=$(echo "$ENV_CONTENT" | base64 -w 0)
 
-          # Transfer and decode safely on remote, verify creation
+          # Transfer and decode safely on remote, verify creation.
+          # shellcheck disable=SC2029  # client-side expansion is the point:
+          # ENV_BASE64 and REMOTE_PATH exist only on the runner, and the remote
+          # side must receive their values, not their names.
           ssh "${REMOTE_USER}@${REMOTE_HOST}" "
             set -e
             echo '${ENV_BASE64}' | base64 -d > '${REMOTE_PATH}/.env.production.tmp'
@@ -475,6 +491,11 @@ jobs:
 
       - name: Create pre-deployment backup
         run: |
+          # shellcheck disable=SC2087  # client-side expansion is deliberate:
+          # ${NEXT_PUBLIC_*} and ${BACKEND_NAME}/${FRONTEND_NAME} are runner env
+          # and must be baked in here. The forms that must resolve on the server
+          # are escaped as \${...} below. Keep this heredoc backtick-free — an
+          # unquoted delimiter substitutes even '#' lines (#1130).
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
             set -e
             echo "💾 Creating pre-deployment backup..."
@@ -592,6 +613,11 @@ jobs:
           # which this workflow does not control.
           RELEASE_TAG_B64="$(printf '%s' "$RELEASE_TAG" | base64 | tr -d '\n')"
 
+          # shellcheck disable=SC2087  # client-side expansion is deliberate:
+          # ${RELEASE_TAG_B64} and the NEXT_PUBLIC_* vars are runner env and must
+          # be baked in here; what has to resolve server-side is escaped \${...}.
+          # Keep this heredoc backtick-free — an unquoted delimiter substitutes
+          # even '#' lines (#1130).
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
             set -e
             echo "🚀 Starting deployment to production..."
@@ -664,8 +690,10 @@ jobs:
 
             # Cold-start from the ecosystem file so its dotenv.config() re-reads
             # .env.production on every deploy — see the staging job for why a plain
-            # `pm2 restart <name>` silently drops newly-added .env vars (#896).
-            # Delete by name (NOT `pm2 delete all`) to spare unrelated apps.
+            # "pm2 restart NAME" silently drops newly-added .env vars (#896).
+            # Delete by name (NOT "pm2 delete all") to spare unrelated apps.
+            # No backticks: unquoted heredoc, so '#' lines are still substituted
+            # on the runner (#1130).
             echo "🔁 (Re)starting PM2 services from config..."
             pm2 delete "\${BACKEND_NAME}" "\${FRONTEND_NAME}" 2>/dev/null || true
             pm2 start ecosystem.production.config.js --update-env
@@ -682,15 +710,15 @@ jobs:
           MAX_ATTEMPTS=12
           SLEEP_SECONDS=5
 
-          for i in $(seq 1 $MAX_ATTEMPTS); do
+          for i in $(seq 1 "$MAX_ATTEMPTS"); do
             echo "Health check attempt $i/$MAX_ATTEMPTS..."
             if ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:${{ secrets.API_PORT }}/health"; then
               echo "✅ Health check passed on attempt $i"
               exit 0
             fi
-            if [ $i -lt $MAX_ATTEMPTS ]; then
+            if [ "$i" -lt "$MAX_ATTEMPTS" ]; then
               echo "⏳ Waiting ${SLEEP_SECONDS}s before retry..."
-              sleep $SLEEP_SECONDS
+              sleep "$SLEEP_SECONDS"
             fi
           done
 
@@ -713,9 +741,11 @@ jobs:
           # in the issue, but the identical defect one step later.
           RELEASE_VERSION: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
-          echo "## Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: $RELEASE_VERSION" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deployed by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Production Deployment Summary"
+            echo ""
+            echo "- **Version**: $RELEASE_VERSION"
+            echo "- **Commit**: \`${{ github.sha }}\`"
+            echo "- **Deployed by**: ${{ github.actor }}"
+            echo "- **Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          } >> "$GITHUB_STEP_SUMMARY"

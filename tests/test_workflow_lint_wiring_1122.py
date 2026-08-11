@@ -74,17 +74,24 @@ def test_every_workflow_file_still_parses():
         assert "jobs" in data, f"{path.name} declares no jobs"
 
 
-def test_the_shellcheck_suppression_is_documented_and_tracked():
-    """`-shellcheck=` is a deliberate scope limit, not a silent one (#1130).
+def test_the_shellcheck_suppression_is_gone():
+    """#1130 cleared the 44 pre-existing findings, so the opt-out came out.
 
-    actionlint runs shellcheck whenever it is on PATH — which it is on GitHub
-    runners but often not locally, so this class of check disappears without
-    warning depending on where you run it. If the suppression is ever removed,
-    this test should be deleted along with it; if it stays, it stays explained.
+    It was never cosmetic: with it in place, an unquoted heredoc delimiter in
+    deploy.yml let the runner command-substitute lines inside the ssh block
+    that only looked like comments. Nothing but shellcheck catches that.
     """
+    assert "-shellcheck=" not in TEST_WORKFLOW.read_text()
+
+
+def test_the_job_fails_when_shellcheck_is_missing_rather_than_passing_vacuously():
+    """actionlint SKIPS every shell finding when the binary is absent from
+    PATH — it does not warn. Without this guard the gate would go quietly
+    hollow the day the runner image drops shellcheck."""
     raw = TEST_WORKFLOW.read_text()
-    assert "-shellcheck=" in raw
-    assert "#1130" in raw, "the suppression must point at its follow-up issue"
+
+    assert "command -v shellcheck" in raw
+    assert "::error::" in raw
 
 
 def test_workflow_compilability_is_still_checked():
@@ -93,11 +100,11 @@ def test_workflow_compilability_is_still_checked():
         line for line in TEST_WORKFLOW.read_text().splitlines()
         if "./actionlint" in line
     )
-    # -shellcheck= narrows the checks; it must not be paired with anything that
-    # would also drop the expression/syntax pass. (Scoped to the invocation
-    # line — `paths-ignore` appears elsewhere in this file.)
+    # Nothing on the invocation line may drop the expression/syntax pass, which
+    # is what the job was created for. (Scoped to the invocation line —
+    # `paths-ignore` appears elsewhere in this file.)
     assert "-ignore" not in invocation
-    assert "-shellcheck=" in invocation
+    assert "-shellcheck=" not in invocation
 
 
 class TestEnvironmentSecretsAreReachable:
