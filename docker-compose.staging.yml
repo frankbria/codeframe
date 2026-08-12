@@ -4,8 +4,10 @@ services:
   backend:
     image: ghcr.io/frankbria/codeframe-backend:${IMAGE_TAG:-staging}
     ports:
-      - "127.0.0.1:14200:14200"
+      # From the environment so this and the deploy's health check read the
+      # same API_PORT and cannot drift apart (review finding on #1121).
+      - "127.0.0.1:${BACKEND_PORT:-14200}:14200"
   frontend:
     image: ghcr.io/frankbria/codeframe-frontend:${IMAGE_TAG:-staging}
     ports:
-      - "127.0.0.1:14100:14100"
+      - "127.0.0.1:${FRONTEND_PORT:-14100}:14100"

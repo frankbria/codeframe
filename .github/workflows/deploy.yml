@@ -367,6 +367,10 @@ jobs:
 
             export IMAGE_TAG="${{ github.sha }}"
             export ENV_FILE=.env.staging
+            # Same rule as production: the port the verify step curls is the
+            # port the container publishes.
+            export BACKEND_PORT="\$(grep -E '^API_PORT=' .env.staging 2>/dev/null | cut -d= -f2- || true)"
+            export BACKEND_PORT="\${BACKEND_PORT:-14200}"
             COMPOSE="docker compose --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml"
 
             # One-time migration off the PM2 layout. The old deploy kept the
@@ -742,9 +746,18 @@ jobs:
             mkdir -p \${TMP_BACKUP}
 
             # Record current commit
-            git rev-parse HEAD > \${TMP_BACKUP}/previous_commit.txt
-            git log -1 --format="%H %s" >> \${TMP_BACKUP}/previous_commit.txt
-            echo "📝 Current commit: \$(head -1 \${TMP_BACKUP}/previous_commit.txt)"
+            # Since #1121 the host has no checkout — the deploy pulls an image
+            # instead — so these can legitimately find no repository. Under
+            # set -e that aborted the whole backup step on a fresh host. The
+            # commit is recorded when it happens to be knowable, and the image
+            # tag (which IS the version now) is recorded always.
+            {
+              git rev-parse HEAD 2>/dev/null || echo "no-checkout"
+              git log -1 --format="%H %s" 2>/dev/null || true
+            } > \${TMP_BACKUP}/previous_commit.txt
+            docker compose -f docker-compose.yml -f docker-compose.production.yml \
+              images --format json > \${TMP_BACKUP}/previous_images.json 2>/dev/null || true
+            echo "📝 Previous version: \$(head -1 \${TMP_BACKUP}/previous_commit.txt)"
 
             # Backup database
             if [ -f .codeframe/state.db ]; then
@@ -841,6 +854,10 @@ jobs:
 
             export IMAGE_TAG="${{ github.sha }}"
             export ENV_FILE=.env.production
+            # One source of truth for the port: the same API_PORT the verify
+            # step curls also decides what the container publishes.
+            export BACKEND_PORT="\$(grep -E '^API_PORT=' .env.production 2>/dev/null | cut -d= -f2- || true)"
+            export BACKEND_PORT="\${BACKEND_PORT:-14400}"
             COMPOSE="docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.production.yml"
 
             echo "📥 Pulling images..."

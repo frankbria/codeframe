@@ -5,12 +5,16 @@
 # file exists so the two paths are not half-migrated (a #1121 acceptance
 # criterion), not because it has been exercised. Ports differ from staging so
 # both could run on one host without a conflict.
+# Ports come from the environment, with production-specific defaults, so the
+# published port and the port the verify step curls cannot drift apart — they
+# both read API_PORT. Hardcoding 14400 here made the two disagree the moment an
+# operator set API_PORT to anything else (review finding).
 services:
   backend:
     image: ghcr.io/frankbria/codeframe-backend:${IMAGE_TAG:-production}
     ports:
-      - "127.0.0.1:14400:14200"
+      - "127.0.0.1:${BACKEND_PORT:-14400}:14200"
   frontend:
     image: ghcr.io/frankbria/codeframe-frontend:${IMAGE_TAG:-production}
     ports:
-      - "127.0.0.1:14300:14100"
+      - "127.0.0.1:${FRONTEND_PORT:-14300}:14100"

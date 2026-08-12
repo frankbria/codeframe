@@ -39,12 +39,12 @@ services:
       # moment a new tag is pulled, which is exactly the point of the image.
       - codeframe-data:/data
       - codeframe-workspaces:/workspaces
-    ports:
-      # LOOPBACK ONLY. nginx terminates TLS and is the sole public listener
-      # (#747). Publishing on 0.0.0.0 here would expose the API directly,
-      # bypassing the proxy — the containerised form of the bug the PM2 config
-      # guarded against by hard-coding --host 127.0.0.1.
-      - "127.0.0.1:${BACKEND_PORT:-14200}:14200"
+    # No ports: here. Compose APPENDS port lists across files rather than
+    # replacing them, so a mapping in the base plus one in an override means the
+    # service tries to bind BOTH — production would have published 14200 and
+    # 14400. Each environment override owns its mapping. They are all
+    # LOOPBACK ONLY: nginx terminates TLS and is the sole public listener
+    # (#747), and a test asserts every mapping in every override.
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:14200/health"]
       interval: 10s
@@ -63,8 +63,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    ports:
-      - "127.0.0.1:${FRONTEND_PORT:-14100}:14100"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:14100/"]
       interval: 10s
