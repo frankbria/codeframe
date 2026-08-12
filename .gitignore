@@ -94,6 +94,7 @@ tests/e2e/test-results/
 tests/e2e/.auth/
 tests/e2e/.codeframe/
 tests/e2e/.e2e-workspace/
+tests/e2e/.e2e-lifecycle-workspace/
 tests/e2e/.e2e-state.db*
 test_audit_report.md
 tests/integration/.env.integration
