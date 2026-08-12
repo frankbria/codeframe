@@ -1,0 +1,75 @@
+# CodeFRAME on the deploy host (#1121).
+#
+# The deploy is `docker compose pull && docker compose up -d`. No git pull, no
+# uv sync, no npm ci, no build of any kind on the box — that shape is what
+# could leave a half-deployed host with new code and a dead process, and it is
+# why deploy.yml needed a concurrency group to stop two runs racing
+# `uv venv --clear` against a live port rebind.
+#
+# Usage (the deploy job does this for you):
+#   docker compose --env-file .env.staging -f docker-compose.yml \
+#     -f docker-compose.staging.yml pull
+#   docker compose --env-file .env.staging -f docker-compose.yml \
+#     -f docker-compose.staging.yml up -d
+#
+# ROLLBACK: the images are tagged by commit SHA, so a previous version is
+# already built. Set IMAGE_TAG to that SHA and re-run the same two commands —
+# no rebuild. See deploy/README.md.
+
+# Explicit project name so the volume names are predictable
+# (codeframe_codeframe-data, codeframe_codeframe-workspaces) rather than derived
+# from whatever directory the deploy happens to run in. The migration step in
+# deploy.yml addresses them by name.
+name: codeframe
+
+services:
+  backend:
+    image: ghcr.io/frankbria/codeframe-backend:${IMAGE_TAG:-staging}
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-.env.staging}
+    environment:
+      # These are the deployment's, not the operator's, so they are set here
+      # rather than trusted from .env — a stale DATABASE_PATH in a generated
+      # env file would put the DB inside the container and lose it on restart.
+      DATABASE_PATH: /data/codeframe.db
+      WORKSPACE_ROOT: /workspaces
+    volumes:
+      # Both survive a deploy. Anything written inside the image is gone the
+      # moment a new tag is pulled, which is exactly the point of the image.
+      - codeframe-data:/data
+      - codeframe-workspaces:/workspaces
+    # No ports: here. Compose APPENDS port lists across files rather than
+    # replacing them, so a mapping in the base plus one in an override means the
+    # service tries to bind BOTH — production would have published 14200 and
+    # 14400. Each environment override owns its mapping. They are all
+    # LOOPBACK ONLY: nginx terminates TLS and is the sole public listener
+    # (#747), and a test asserts every mapping in every override.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:14200/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  frontend:
+    image: ghcr.io/frankbria/codeframe-frontend:${IMAGE_TAG:-staging}
+    restart: unless-stopped
+    # No environment: block on purpose. Everything the frontend needs
+    # (NEXT_PUBLIC_* and BACKEND_ORIGIN) is baked into the image at build time
+    # — Next inlines the first into the client bundle and snapshots the second
+    # into the standalone server's config. Setting them here would look like
+    # configuration and change nothing.
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:14100/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  codeframe-data:
+  codeframe-workspaces:

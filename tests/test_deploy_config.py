@@ -1,8 +1,11 @@
-"""Production deploy smoke checks (#727 / P0.16).
+"""Deploy configuration smoke checks (#727 / P0.16, rewritten for #1121).
 
-The production deploy job referenced a missing ecosystem.production.config.js
-and exported a wrong uv PATH ($HOME/.cargo/bin, unescaped), so a fresh
-production host aborted under `set -e`. These guard against regressions.
+Originally these guarded the PM2 shape: a missing ecosystem.production.config.js
+and a wrong uv PATH aborted a fresh production host under `set -e`. #1121
+replaced build-on-server with pre-built images, so the same invariants are now
+asserted against the compose stack — the app must bind loopback only, the deploy
+must not build anything on the box, and state must live on volumes rather than
+inside an image that a pull replaces.
 """
 
 import re
@@ -16,85 +19,189 @@ pytestmark = pytest.mark.v2
 
 REPO = Path(__file__).resolve().parents[1]
 DEPLOY_YML = REPO / ".github" / "workflows" / "deploy.yml"
-PROD_ECOSYSTEM = REPO / "ecosystem.production.config.js"
-STAGING_ECOSYSTEM = REPO / "ecosystem.staging.config.js"
+COMPOSE = REPO / "docker-compose.yml"
+COMPOSE_STAGING = REPO / "docker-compose.staging.yml"
+COMPOSE_PRODUCTION = REPO / "docker-compose.production.yml"
+BACKEND_DOCKERFILE = REPO / "Dockerfile"
+FRONTEND_DOCKERFILE = REPO / "web-ui" / "Dockerfile"
 CADDYFILE = REPO / "deploy" / "Caddyfile.example"
 STAGING_ENV = REPO / ".env.staging.example"
 PROD_ENV = REPO / ".env.production.example"
 
 
-def test_production_ecosystem_config_exists():
-    assert PROD_ECOSYSTEM.is_file(), (
-        "ecosystem.production.config.js must exist — deploy.yml runs "
-        "`pm2 start ecosystem.production.config.js`"
-    )
+def _compose(*paths) -> dict:
+    """Parsed compose, so assertions are about structure rather than substrings."""
+    import yaml
+
+    merged: dict = {}
+    for path in paths:
+        data = yaml.safe_load(path.read_text()) or {}
+        for name, service in (data.get("services") or {}).items():
+            merged.setdefault(name, {}).update(service)
+    return merged
 
 
-def test_deploy_uses_correct_uv_path():
+def test_the_compose_stack_exists():
+    for path in (COMPOSE, COMPOSE_STAGING, COMPOSE_PRODUCTION):
+        assert path.is_file(), f"{path.name} is missing — deploy.yml runs it"
+
+
+def test_both_environments_are_migrated():
+    """AC: no half-migrated environment. Production has never been deployed,
+    which is exactly how it would get left behind."""
     text = DEPLOY_YML.read_text()
-    # The broken cargo path must be gone...
-    assert "cargo/bin" not in text, "deploy.yml still exports the wrong uv PATH (cargo/bin)"
-    # ...and every uv PATH export uses the escaped ~/.local/bin (expands on the host).
-    assert 'export PATH="\\$HOME/.local/bin:\\$PATH"' in text
+
+    assert "docker-compose.staging.yml" in text
+    assert "docker-compose.production.yml" in text
 
 
-def test_no_dangling_ecosystem_reference():
-    """Every ecosystem.*.config.js file the workflow starts must exist."""
-    text = DEPLOY_YML.read_text()
-    for name in set(re.findall(r"ecosystem\.[\w.]*config\.js", text)):
-        assert (REPO / name).is_file(), f"deploy.yml references missing {name}"
+def test_the_dockerfiles_exist():
+    assert BACKEND_DOCKERFILE.is_file()
+    assert FRONTEND_DOCKERFILE.is_file()
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
-def test_production_config_is_valid_javascript():
-    """Smoke-test: the config parses as valid JS. `node --check` is syntax-only
-    (no execution / module resolution), so it doesn't need the root npm deps
-    that only exist on the deploy host, yet still catches a broken config."""
-    result = subprocess.run(
-        ["node", "--check", "ecosystem.production.config.js"],
-        cwd=str(REPO),
-        capture_output=True,
-        text=True,
+def _deploy_commands() -> str:
+    """Every `run:` line in the DEPLOY jobs, comments stripped.
+
+    Parsed and de-commented rather than grepped over the raw file: the workflow
+    explains WHY it no longer runs `uv sync`, and a substring check reports that
+    prose as a violation. My first version did exactly that — the same
+    classifier mistake as #1113/#1116/#1064.
+    """
+    import yaml
+
+    workflow = yaml.safe_load(DEPLOY_YML.read_text())
+    lines = []
+    for name, job in workflow["jobs"].items():
+        if not name.startswith("deploy-"):
+            continue  # the build jobs are SUPPOSED to build
+        for step in job.get("steps", []):
+            for line in step.get("run", "").splitlines():
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    lines.append(stripped)
+    return "\n".join(lines)
+
+
+def test_the_deploy_builds_nothing_on_the_server():
+    """AC: no pm2, no uv sync, no npm run build over SSH.
+
+    This is the whole point of #1121 — a build that happens on the box can fail
+    halfway and leave new code beside a dead process, with no previous image to
+    restart.
+    """
+    commands = _deploy_commands()
+
+    for forbidden in ("pm2 start", "pm2 restart", "uv sync", "uv venv", "npm run build", "npm ci"):
+        assert forbidden not in commands, (
+            f"a deploy job still runs `{forbidden}` — the server must "
+            "pull a pre-built image, not build one"
+        )
+
+
+def test_the_only_surviving_pm2_use_is_the_one_time_cutover():
+    """`pm2 delete` is still there ON PURPOSE, and only in that direction.
+
+    The PM2 processes hold 14100/14200, so the first containerised deploy
+    cannot bind until they are retired — the real staging deploy failed with
+    "address already in use" before this existed. Retiring is allowed; starting
+    one again is the regression.
+    """
+    commands = _deploy_commands()
+
+    if "pm2 " not in commands:
+        return  # the cutover has been removed entirely; also fine
+    assert "pm2 delete" in commands
+    assert "pm2 start" not in commands, "the deploy must never start a PM2 app again"
+
+
+def test_the_deploy_pulls_an_image_addressed_by_commit():
+    """A moving tag would make a deploy unreproducible and a rollback guesswork."""
+    commands = _deploy_commands()
+
+    assert "IMAGE_TAG=" in commands and "github.sha" in commands, (
+        "the deploy must pin the image to the commit it was built from"
     )
-    assert result.returncode == 0, result.stderr
+    # The command is $COMPOSE pull, where COMPOSE holds the -f flags — so
+    # match case-insensitively rather than on the literal lowercase form.
+    assert "compose pull" in commands.lower()
 
 
-def test_production_config_defines_two_apps():
-    """The config must define backend + frontend apps. Checked statically so it
-    needs no node/npm deps: both app blocks reference the venv python and next."""
-    text = PROD_ECOSYSTEM.read_text()
-    assert ".venv/bin/python" in text  # backend app
-    assert "web-ui/node_modules/.bin/next" in text  # frontend app
-    assert text.count("name:") == 2  # exactly two pm2 apps
+def test_the_deploy_never_issues_a_host_wide_docker_command():
+    """The shared-VPS invariant from #912, carried over.
+
+    `pm2 delete all` once stopped every unrelated app on this box. The compose
+    equivalents are just as blunt: `docker system prune`, `docker stop $(docker
+    ps -q)`, `docker compose down` without a project scope. Compose commands
+    here must always name the project's own files.
+    """
+    commands = _deploy_commands()
+
+    for forbidden in ("docker system prune", "docker container prune", "docker stop $(", "docker rm -f $("):
+        assert forbidden not in commands, (
+            f"`{forbidden}` would hit unrelated apps on the shared VPS (#912)"
+        )
+
+
+def test_state_lives_on_volumes_not_in_the_image():
+    """AC: the SQLite DB and WORKSPACE_ROOT survive a deploy. Anything written
+    inside the image is gone the moment a new tag is pulled."""
+    services = _compose(COMPOSE)
+    volumes = services["backend"]["volumes"]
+    joined = " ".join(volumes)
+
+    assert "/data" in joined
+    assert "/workspaces" in joined
+
+    env = services["backend"]["environment"]
+    assert env["DATABASE_PATH"].startswith("/data/")
+    assert env["WORKSPACE_ROOT"] == "/workspaces"
+
+
+def test_the_backend_image_carries_git():
+    """core/workspace and the sandbox create repos and worktrees. A slim base
+    without git turns that into a runtime failure nothing here would catch."""
+    assert "git" in BACKEND_DOCKERFILE.read_text()
+
+
+def test_the_dependency_install_is_frozen():
+    """An image resolved from a drifted lock is not what CI tested."""
+    assert "--frozen" in BACKEND_DOCKERFILE.read_text()
+    assert "npm ci" in FRONTEND_DOCKERFILE.read_text()
 
 
 # ---------------------------------------------------------------------------
 # TLS reverse proxy (#747 / P1.20): app processes bind loopback; a
 # TLS-terminating proxy is the sole public listener; documented origins are
-# https/wss.
+# https/wss. Under compose the binding that matters is the PUBLISHED port —
+# 0.0.0.0 inside a container is fine and normal, publishing on 0.0.0.0 is not.
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cfg", [PROD_ECOSYSTEM, STAGING_ECOSYSTEM], ids=["prod", "staging"])
-def test_frontend_binds_loopback(cfg):
-    """The Next.js frontend must bind 127.0.0.1, never 0.0.0.0 — the Caddy
-    reverse proxy is the only process allowed to listen on public interfaces."""
-    text = cfg.read_text()
-    assert "-H 127.0.0.1" in text, f"{cfg.name}: frontend must bind 127.0.0.1"
-    assert "-H 0.0.0.0" not in text, f"{cfg.name}: frontend must not bind 0.0.0.0"
+@pytest.mark.parametrize(
+    "override", [COMPOSE_STAGING, COMPOSE_PRODUCTION], ids=["staging", "production"]
+)
+@pytest.mark.parametrize("service", ["backend", "frontend"])
+def test_published_ports_are_loopback_only(override, service):
+    services = _compose(COMPOSE, override)
+
+    for mapping in services[service]["ports"]:
+        assert str(mapping).startswith("127.0.0.1:"), (
+            f"{override.name}:{service} publishes {mapping} — a non-loopback "
+            "binding exposes the app directly and bypasses the TLS proxy (#747)"
+        )
 
 
-@pytest.mark.parametrize("cfg", [PROD_ECOSYSTEM, STAGING_ECOSYSTEM], ids=["prod", "staging"])
-def test_backend_binds_loopback(cfg):
-    """The backend must be started with an explicit loopback --host, so binding
-    doesn't silently depend on an operator's (possibly stale) HOST env var."""
-    text = cfg.read_text()
-    assert "--host 127.0.0.1" in text or "--host ${HOST}" in text, (
-        f"{cfg.name}: backend must pass an explicit loopback --host"
-    )
-    # If it parametrizes HOST, the default must be loopback.
-    if "--host ${HOST}" in text:
-        assert "|| '127.0.0.1'" in text, f"{cfg.name}: HOST must default to 127.0.0.1"
+@pytest.mark.parametrize("service", ["backend", "frontend"])
+def test_each_service_has_a_healthcheck(service):
+    """`up -d` returning is not the same as the app serving. Without these the
+    deploy reports success the instant the container starts."""
+    assert "healthcheck" in _compose(COMPOSE)[service]
+
+
+def test_the_frontend_waits_for_a_healthy_backend():
+    depends = _compose(COMPOSE)["frontend"]["depends_on"]
+    assert depends["backend"]["condition"] == "service_healthy"
 
 
 def test_env_examples_bind_backend_loopback():

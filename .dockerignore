@@ -1,0 +1,9 @@
+.git
+.venv
+web-ui
+tests
+docs
+node_modules
+*.db
+.pytest_cache
+__pycache__

