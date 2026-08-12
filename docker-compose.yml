@@ -16,6 +16,12 @@
 # already built. Set IMAGE_TAG to that SHA and re-run the same two commands —
 # no rebuild. See deploy/README.md.
 
+# Explicit project name so the volume names are predictable
+# (codeframe_codeframe-data, codeframe_codeframe-workspaces) rather than derived
+# from whatever directory the deploy happens to run in. The migration step in
+# deploy.yml addresses them by name.
+name: codeframe
+
 services:
   backend:
     image: ghcr.io/frankbria/codeframe-backend:${IMAGE_TAG:-staging}

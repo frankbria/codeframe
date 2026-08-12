@@ -163,6 +163,12 @@ jobs:
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The job pipes this token to the server for `docker login ghcr.io`.
+      # Without it the images build fine and the deploy then fails at pull —
+      # GHCR packages are private by default even for a public repo.
+      packages: read
     # Gate: tests pass AND both images built. A deploy can no longer reach the
     # host unless the artifact it will run already exists.
     needs: [test, docker-build-staging]
@@ -359,6 +365,38 @@ jobs:
             export ENV_FILE=.env.staging
             COMPOSE="docker compose --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml"
 
+            # One-time migration off the PM2 layout. The old deploy kept the
+            # SQLite DB and workspaces on the host filesystem; the containers
+            # use named volumes, so without this the first containerised deploy
+            # would come up with an empty database — silently losing the
+            # operator's own login account. Idempotent: it only ever fires when
+            # the volume has no DB yet, so re-running a deploy cannot clobber
+            # live data with a stale copy.
+            LEGACY_DB="\$(grep -E '^DATABASE_PATH=' .env.staging 2>/dev/null | cut -d= -f2-)"
+            if [ -n "\${LEGACY_DB}" ] && [ -f "\${LEGACY_DB}" ]; then
+              echo "🗃️  Legacy DB at \${LEGACY_DB} — seeding the volume if it is empty"
+              docker volume create codeframe_codeframe-data >/dev/null
+              # The copy runs inside a throwaway container because a named
+              # volume's host path is a docker implementation detail. SRC comes
+              # in as env so no path has to survive another round of quoting.
+              docker run --rm \
+                -e SRC="/legacy/\$(basename "\${LEGACY_DB}")" \
+                -v codeframe_codeframe-data:/data \
+                -v "\$(dirname "\${LEGACY_DB}")":/legacy:ro \
+                alpine:3.20 sh -c '
+                  if [ -f /data/codeframe.db ]; then
+                    echo "   volume already has a database — left alone"
+                  else
+                    cp "\$SRC" /data/codeframe.db && echo "   copied into the volume"
+                  fi
+                  # The backend runs as uid 10001 (non-root). Docker only
+                  # applies the image directory'"'"'s ownership when it initialises
+                  # an EMPTY named volume — this one was pre-populated above, so
+                  # without this chown the DB lands root-owned and the app
+                  # cannot write to it. Verified on the box.
+                  chown -R 10001:10001 /data'
+            fi
+
             echo "📥 Pulling images..."
             \$COMPOSE pull
 
@@ -429,6 +467,9 @@ jobs:
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     # Gate: tests pass AND the images exist. See deploy-staging.
     needs: [test, docker-build-production]
     # Serialize production deploys (own group, independent of staging).

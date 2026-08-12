@@ -226,6 +226,32 @@ COMPOSE="docker compose --env-file .env.staging \
 $COMPOSE pull && $COMPOSE up -d
 ```
 
+### Migrating an existing PM2 host (one-time, automatic)
+
+The PM2 layout kept the SQLite database on the host filesystem
+(`DATABASE_PATH=/opt/codeframe/.codeframe/state.db`). The containers use a named
+volume, so the first containerised deploy would otherwise come up with an empty
+database — losing the operator's own login account.
+
+The deploy job handles it: if `.env.<env>`'s `DATABASE_PATH` points at a file
+that exists and the volume has no database yet, it copies it in and chowns it to
+the container's uid. It is idempotent — once the volume has a database the step
+leaves it alone, so re-running a deploy can never clobber live data with a stale
+copy.
+
+To do it by hand:
+
+```bash
+docker volume create codeframe_codeframe-data
+docker run --rm \
+  -v codeframe_codeframe-data:/data \
+  -v /opt/codeframe/.codeframe:/legacy:ro \
+  alpine:3.20 sh -c 'cp /legacy/state.db /data/codeframe.db && chown -R 10001:10001 /data'
+```
+
+`WORKSPACE_ROOT` is not migrated: it holds cloned repositories and worktrees,
+which are reproducible. Copy it the same way if a host has ones worth keeping.
+
 ### Rollback
 
 The images are addressed by commit SHA, so every previous version is already
