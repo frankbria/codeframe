@@ -134,7 +134,14 @@ def test_every_stop_path_names_what_it_stops():
         rel = path.relative_to(REPO_ROOT)
 
         if "pm2 stop" in text or "pm2 delete" in text:
-            assert "ecosystem" in text, f"{rel}: pm2 stop without naming a target"
+            # Either form of naming counts: the ecosystem file (the old shape)
+            # or an explicit per-process name (deploy.yml's one-time cutover,
+            # which reads the two legacy names from secrets). What must never
+            # appear is the unscoped `all`, which _PM2_ALL above catches.
+            named = "ecosystem" in text or re.search(
+                r'pm2 (stop|delete) "?\\?\$\{?\w+', text
+            )
+            assert named, f"{rel}: pm2 stop/delete without naming a target"
 
         for line in text.splitlines():
             stripped = line.strip()

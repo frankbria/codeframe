@@ -338,6 +338,10 @@ jobs:
           # the server needs no long-term registry credential and no new
           # secret has to be created for it.
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Legacy only — read once, to retire the PM2 processes that still
+          # hold the ports. Nothing else in this workflow uses PM2 any more.
+          LEGACY_BACKEND_NAME: ${{ secrets.PM2_BACKEND_NAME }}
+          LEGACY_FRONTEND_NAME: ${{ secrets.PM2_FRONTEND_NAME }}
         run: |
           # The compose files are the only thing the host needs from the repo,
           # and they are small — copy them rather than keeping a git checkout
@@ -372,10 +376,32 @@ jobs:
             # operator's own login account. Idempotent: it only ever fires when
             # the volume has no DB yet, so re-running a deploy cannot clobber
             # live data with a stale copy.
+            # One-time cutover: the PM2 processes still hold 14100/14200, so
+            # the containers cannot bind and the deploy dies with
+            # "address already in use". Stop them BY NAME — never a pm2 delete
+            # of "all", which on this shared VPS takes out unrelated apps
+            # (#912). No backticks in here: unquoted heredoc (#1130).
+            # A no-op forever after, and on any host that never ran PM2.
+            if command -v pm2 >/dev/null 2>&1; then
+              for legacy in "${LEGACY_BACKEND_NAME}" "${LEGACY_FRONTEND_NAME}"; do
+                if [ -n "\${legacy}" ] && pm2 describe "\${legacy}" >/dev/null 2>&1; then
+                  echo "🛑 Retiring PM2 process \${legacy}"
+                  pm2 delete "\${legacy}" >/dev/null 2>&1 || true
+                fi
+              done
+              pm2 save >/dev/null 2>&1 || true
+            fi
+
             LEGACY_DB="\$(grep -E '^DATABASE_PATH=' .env.staging 2>/dev/null | cut -d= -f2-)"
             if [ -n "\${LEGACY_DB}" ] && [ -f "\${LEGACY_DB}" ]; then
               echo "🗃️  Legacy DB at \${LEGACY_DB} — seeding the volume if it is empty"
-              docker volume create codeframe_codeframe-data >/dev/null
+              # Labelled so compose adopts it as its own. Without these it
+              # warns "already exists but was not created by Docker Compose" on
+              # every single deploy — noise that trains you to ignore the log.
+              docker volume create \
+                --label com.docker.compose.project=codeframe \
+                --label com.docker.compose.volume=codeframe-data \
+                codeframe_codeframe-data >/dev/null
               # The copy runs inside a throwaway container because a named
               # volume's host path is a docker implementation detail. SRC comes
               # in as env so no path has to survive another round of quoting.

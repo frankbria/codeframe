@@ -92,11 +92,27 @@ def test_the_deploy_builds_nothing_on_the_server():
     """
     commands = _deploy_commands()
 
-    for forbidden in ("pm2 ", "uv sync", "uv venv", "npm run build", "npm ci"):
+    for forbidden in ("pm2 start", "pm2 restart", "uv sync", "uv venv", "npm run build", "npm ci"):
         assert forbidden not in commands, (
-            f"a deploy job still runs `{forbidden.strip()}` — the server must "
+            f"a deploy job still runs `{forbidden}` — the server must "
             "pull a pre-built image, not build one"
         )
+
+
+def test_the_only_surviving_pm2_use_is_the_one_time_cutover():
+    """`pm2 delete` is still there ON PURPOSE, and only in that direction.
+
+    The PM2 processes hold 14100/14200, so the first containerised deploy
+    cannot bind until they are retired — the real staging deploy failed with
+    "address already in use" before this existed. Retiring is allowed; starting
+    one again is the regression.
+    """
+    commands = _deploy_commands()
+
+    if "pm2 " not in commands:
+        return  # the cutover has been removed entirely; also fine
+    assert "pm2 delete" in commands
+    assert "pm2 start" not in commands, "the deploy must never start a PM2 app again"
 
 
 def test_the_deploy_pulls_an_image_addressed_by_commit():
