@@ -80,13 +80,32 @@ class TestNoRefNameInterpolationInRunScripts:
         assert 'base64' in workflow
         assert 'RELEASE_TAG_B64' in workflow
 
-    def test_git_checkout_of_the_tag_is_quoted(self, workflow: str):
-        """An unquoted `git checkout $TAG_NAME` word-splits and globs."""
-        assert re.search(r'git checkout "\\?\$TAG_NAME"', workflow), (
-            "the tag checkout must be quoted"
+    def test_the_tag_never_reaches_a_shell_unquoted(self, workflow: str):
+        """#1121 removed the `git checkout $TAG_NAME` this used to guard — the
+        production deploy no longer checks out anything, because the image was
+        built from the commit in CI.
+
+        The invariant it protected is unchanged and now stronger: the tag is
+        carried base64-encoded, so no metacharacter in a ref name is parsed by
+        a shell on either side. What must never come back is a bare
+        interpolation of the tag into a command.
+        """
+        # De-commented: the workflow EXPLAINS that it no longer checks out the
+        # tag, so a raw substring check reports that prose as the thing it
+        # forbids. Third time this session I have written that bug — it is the
+        # same classifier mistake as #1113/#1116/#1064.
+        from tests.test_deploy_config import _deploy_commands
+
+        assert "git checkout" not in _deploy_commands(), (
+            "the deploy checks out code again — if that is intended, restore "
+            "the quoting assertion this replaced"
         )
-        assert not re.search(r"git checkout \\?\$TAG_NAME\s*$", workflow, re.M), (
-            "found an unquoted `git checkout $TAG_NAME`"
+        assert "RELEASE_TAG_B64" in workflow, (
+            "the release tag must still be encoded before it crosses to the "
+            "server"
+        )
+        assert not re.search(r"\bcheckout\s+\\?\$TAG_NAME\b", workflow), (
+            "found an unquoted tag interpolation"
         )
 
 

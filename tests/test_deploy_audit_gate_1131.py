@@ -33,6 +33,10 @@ pytestmark = pytest.mark.v2
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
+#: #1121 moved the gate off the deploy host and into the image build, where an
+#: image with a high advisory cannot be produced at all. The level assertions
+#: follow it; the deploy no longer runs npm anywhere.
+FRONTEND_DOCKERFILE = REPO_ROOT / "web-ui" / "Dockerfile"
 
 AUDIT_RE = re.compile(r"npm audit --audit-level=(\w+)")
 
@@ -41,12 +45,28 @@ LEVELS = ["info", "low", "moderate", "high", "critical"]
 
 
 def _audit_levels() -> list[str]:
-    return AUDIT_RE.findall(DEPLOY.read_text())
+    return AUDIT_RE.findall(FRONTEND_DOCKERFILE.read_text())
 
 
-def test_both_deploy_jobs_run_an_audit():
-    """Staging and production. A gate on one path only is not a gate."""
-    assert len(_audit_levels()) == 2, _audit_levels()
+def test_the_image_build_runs_an_audit():
+    """One gate now covers both environments, because both deploy the same
+    frontend image build. Fewer places to forget it, not more."""
+    assert _audit_levels(), (
+        "no npm audit in web-ui/Dockerfile — #1121 moved the gate here when it "
+        "removed build-on-server; deleting that step must not delete the gate"
+    )
+
+
+def test_the_deploy_no_longer_audits_because_it_no_longer_builds():
+    """Guards the move itself: if build-on-server ever comes back, its audit
+    has to come back with it rather than being silently absent."""
+    # De-commented: the workflow EXPLAINS why it no longer runs npm ci, and a
+    # raw substring check reports that prose as a violation.
+    from tests.test_deploy_config import _deploy_commands
+
+    commands = _deploy_commands()
+    assert "npm audit" not in commands
+    assert "npm ci" not in commands
 
 
 def test_the_gate_is_no_weaker_than_high():
@@ -60,20 +80,21 @@ def test_the_gate_is_no_weaker_than_high():
 
 
 def test_the_level_is_explained_where_it_is_set():
-    """The next person to see a deploy fail on a fresh advisory needs to know
+    """The next person to see a BUILD fail on a fresh advisory needs to know
     the block is deliberate, not a flake."""
-    raw = DEPLOY.read_text()
-    assert "#1131" in raw
+    assert "#1131" in FRONTEND_DOCKERFILE.read_text()
 
 
-def test_the_audit_runs_before_anything_is_restarted():
-    """A gate that fires after PM2 has already been pointed at the new build
-    reports a problem that has shipped."""
-    raw = DEPLOY.read_text()
-    for match in AUDIT_RE.finditer(raw):
-        after = raw[match.end() :]
-        # Within the same job, the restart must come later in the file.
-        assert "pm2 start" in after, "audit appears after the last pm2 start"
+def test_the_audit_runs_before_the_app_is_built():
+    """A gate that fires after `npm run build` reports a problem that is
+    already inside the artifact."""
+    raw = FRONTEND_DOCKERFILE.read_text()
+    match = AUDIT_RE.search(raw)
+
+    assert match, "no audit to order"
+    assert "npm run build" in raw[match.end() :], (
+        "the audit must precede the build, not follow it"
+    )
 
 
 class TestTheWebUiLockfileHasNoKnownHighAdvisories:

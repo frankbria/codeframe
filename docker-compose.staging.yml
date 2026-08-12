@@ -1,0 +1,11 @@
+# Staging overrides (#1121). Ports match what nginx already proxies on the box:
+# /api /auth /ws /health → 14200, / → 14100.
+services:
+  backend:
+    image: ghcr.io/frankbria/codeframe-backend:${IMAGE_TAG:-staging}
+    ports:
+      - "127.0.0.1:14200:14200"
+  frontend:
+    image: ghcr.io/frankbria/codeframe-frontend:${IMAGE_TAG:-staging}
+    ports:
+      - "127.0.0.1:14100:14100"
