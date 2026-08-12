@@ -150,21 +150,27 @@ if [[ -t 0 && -z "${LIFECYCLE_NO_CONFIRM:-}" ]]; then
 fi
 
 # ── Build pytest args ─────────────────────────────────────────────────────────
-PYTEST_ARGS=(
-  "$PYTEST_PATH"
-  "${MARKER_ARGS[@]}"
-  -v
-  --tb=long
-  --no-header
-  --timeout=1800
-)
+# Only when there is a pytest leg. `web` sets MARKER_ARGS=(), and under
+# `set -u` bash < 4.4 (macOS still ships 3.2) errors on "${empty[@]}" — so
+# building this unconditionally would break the one mode that never uses it.
+PYTEST_ARGS=()
+if [[ "$RUN_PYTEST" == "1" ]]; then
+  PYTEST_ARGS=(
+    "$PYTEST_PATH"
+    "${MARKER_ARGS[@]}"
+    -v
+    --tb=long
+    --no-header
+    --timeout=1800
+  )
 
-if [[ -n "$VERBOSE" ]]; then
-  PYTEST_ARGS+=(-s)
-fi
+  if [[ -n "$VERBOSE" ]]; then
+    PYTEST_ARGS+=(-s)
+  fi
 
-if [[ -n "$NO_CLEANUP" ]]; then
-  PYTEST_ARGS+=(--basetemp=/tmp/lifecycle-keep)
+  if [[ -n "$NO_CLEANUP" ]]; then
+    PYTEST_ARGS+=(--basetemp=/tmp/lifecycle-keep)
+  fi
 fi
 
 # ── Run ───────────────────────────────────────────────────────────────────────
