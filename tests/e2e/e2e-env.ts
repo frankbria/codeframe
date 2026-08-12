@@ -16,6 +16,18 @@ export const FRONTEND_URL = process.env.E2E_FRONTEND_URL || 'http://localhost:30
 /** Per-workspace data lives here (PRD, tasks, blockers, proof, token_usage). */
 export const WORKSPACE_DIR = process.env.E2E_WORKSPACE_DIR || path.join(__dirname, '.e2e-workspace');
 
+/**
+ * The backend's WORKSPACE_ROOT allowlist (#896) — the PARENT of the seeded
+ * workspace, so specs that need their own workspace (the #1068 lifecycle spec)
+ * can create a sibling and still be inside a real allowlist. Not the repo root
+ * and not unrestricted: the guard stays meaningful.
+ */
+export const WORKSPACE_ROOT = process.env.E2E_WORKSPACE_ROOT || path.dirname(WORKSPACE_DIR);
+
+/** A throwaway workspace the lifecycle spec builds from nothing (#1068). */
+export const LIFECYCLE_WORKSPACE_DIR =
+  process.env.E2E_LIFECYCLE_WORKSPACE_DIR || path.join(__dirname, '.e2e-lifecycle-workspace');
+
 /** Central platform-store DB (auth users, interactive sessions). */
 export const CENTRAL_DB_PATH = process.env.E2E_CENTRAL_DB || path.join(__dirname, '.e2e-state.db');
 

@@ -5,7 +5,7 @@ import {
   CENTRAL_DB_PATH,
   FRONTEND_URL,
   STORAGE_STATE_PATH,
-  WORKSPACE_DIR,
+  WORKSPACE_ROOT,
 } from './e2e-env';
 
 /**
@@ -68,10 +68,16 @@ export default defineConfig({
   webServer: [
     {
       // WORKSPACE_ROOT is required: auth is on by default and the backend
-      // refuses to start without a workspace allowlist (#896). Pointing it at
-      // the seeded workspace also makes the suite exercise the allowlist the
-      // way a real deployment does, instead of running unrestricted.
-      command: `AUTH_SECRET=${AUTH_SECRET} DATABASE_PATH=${CENTRAL_DB_PATH} WORKSPACE_ROOT=${WORKSPACE_DIR} uv run uvicorn codeframe.ui.server:app --port ${BACKEND_PORT}`,
+      // refuses to start without a workspace allowlist (#896). It points at the
+      // PARENT of the seeded workspace, not the workspace itself, so the
+      // lifecycle spec can create its own sibling workspace and still be inside
+      // a real allowlist — the suite keeps exercising the guard the way a
+      // deployment does, rather than running unrestricted (#1068).
+      //
+      // CODEFRAME_LLM_PROVIDER=mock makes task generation and execution
+      // deterministic and free. Without it the backend defaults to anthropic
+      // and the lifecycle spec would need a paid key.
+      command: `AUTH_SECRET=${AUTH_SECRET} DATABASE_PATH=${CENTRAL_DB_PATH} WORKSPACE_ROOT=${WORKSPACE_ROOT} CODEFRAME_LLM_PROVIDER=mock uv run uvicorn codeframe.ui.server:app --port ${BACKEND_PORT}`,
       cwd: '../..',
       url: `${BACKEND_URL}/health`,
       reuseExistingServer: !process.env.CI,

@@ -57,57 +57,67 @@ def _e2e_backend_job() -> dict:
     return workflow["jobs"]["e2e-backend-tests"]
 
 
-class TestUnimplementedLifecycleModesFailLoudly:
-    """AC1. The modes must not report success for a suite that does not exist."""
+class TestEveryAdvertisedModeIsReal:
+    """AC1, inverted. #948 wrote this class to prove `api` and `web` FAILED
+    rather than reporting success for a suite that did not exist. #1147 made
+    `api` real; #1068 makes `web` real. So the assertion flips: every mode the
+    help text offers must now resolve to a suite, and a typo must still be
+    rejected — those two are different failures and a caller wrapping this
+    script has to tell them apart.
+    """
 
-    # `api` is implemented as of #1068 and is asserted below to WORK. Only
-    # `web` remains unbuilt, so only `web` must still fail loudly.
-    @pytest.mark.parametrize("mode", ["web"])
-    def test_the_mode_exits_non_zero(self, mode: str):
+    @pytest.mark.parametrize("mode", ["cli", "api", "web", "all"])
+    def test_the_mode_resolves_to_a_real_suite(self, mode: str):
         proc = _run_lifecycle("--mode", mode)
-
-        assert proc.returncode != 0, (
-            f"--mode {mode} still exits 0 — a caller reads that as a pass"
-        )
-
-    @pytest.mark.parametrize("mode", ["web"])
-    def test_it_says_why_and_points_somewhere(self, mode: str):
-        proc = _run_lifecycle("--mode", mode)
-
-        assert "not implemented" in proc.stderr.lower(), proc.stderr
-        assert "#1068" in proc.stderr, "no pointer to the tracking issue"
-
-    @pytest.mark.parametrize("mode", ["web"])
-    def test_its_exit_code_differs_from_a_typo(self, mode: str):
-        """`--mode api` and `--mode banana` are different failures: one is
-        "not built yet", the other is "you mistyped". Same code would conflate
-        them for any script wrapping this one."""
-        unimplemented = _run_lifecycle("--mode", mode).returncode
-        typo = _run_lifecycle("--mode", "banana").returncode
-
-        assert unimplemented != typo
-
-    def test_the_implemented_mode_still_works(self):
-        proc = _run_lifecycle("--mode", "cli")
 
         assert proc.returncode == 0, proc.stderr
+        assert "not implemented" not in proc.stderr.lower(), proc.stderr
+
+    def test_a_typo_is_still_rejected(self):
+        assert _run_lifecycle("--mode", "banana").returncode != 0
+
+    def test_cli_mode_runs_the_paid_suite(self):
+        proc = _run_lifecycle("--mode", "cli")
+
         assert "test_cli_lifecycle.py" in proc.stdout
+        assert "-m lifecycle" in proc.stdout
 
     def test_api_mode_is_implemented_now(self):
-        """The flip #1068 asks for: `api` resolves to a real suite (#1068)."""
+        """#1147: `api` resolves to a real suite."""
         proc = _run_lifecycle("--mode", "api")
 
         assert proc.returncode == 0, proc.stderr
         assert "test_api_lifecycle.py" in proc.stdout
-        assert "not implemented" not in proc.stderr.lower()
 
-    def test_api_mode_needs_no_api_key(self):
-        """The whole point of driving it with the mock provider: it is free,
-        so CI can run it on every PR where the paid cli mode cannot."""
-        proc = _run_lifecycle("--mode", "api", drop_api_key=True)
+    def test_web_mode_is_implemented_now(self):
+        """#1068: `web` resolves to the browser spec, run by Playwright rather
+        than pytest — the reason it needed its own branch."""
+        proc = _run_lifecycle("--mode", "web")
+
+        assert proc.returncode == 0, proc.stderr
+        assert "lifecycle.spec.ts" in proc.stdout
+        assert "playwright" in proc.stdout.lower()
+        assert "pytest" not in proc.stdout, (
+            "web has no pytest leg; running one against a path with no tests "
+            "is how a mode reports success for nothing (#948)"
+        )
+
+    @pytest.mark.parametrize("mode", ["api", "web"])
+    def test_the_free_modes_need_no_api_key(self, mode: str):
+        """Both run on the mock provider. That is what lets CI run them on
+        every PR, where the paid cli mode cannot."""
+        proc = _run_lifecycle("--mode", mode, drop_api_key=True)
 
         assert proc.returncode == 0, proc.stderr
         assert "ANTHROPIC_API_KEY" not in proc.stderr
+
+    def test_all_runs_both_engines(self):
+        """`all` must not silently drop the browser half."""
+        proc = _run_lifecycle("--mode", "all")
+
+        assert proc.returncode == 0, proc.stderr
+        assert "pytest" in proc.stdout
+        assert "playwright" in proc.stdout.lower()
 
     def test_api_mode_selects_tests_rather_than_silently_matching_none(self):
         """pytest.ini defaults to `-m "not lifecycle"`, and the script used to
@@ -116,14 +126,9 @@ class TestUnimplementedLifecycleModesFailLoudly:
         silent success #948 removed the stubs for."""
         proc = _run_lifecycle("--mode", "api")
 
-        assert "-m not lifecycle" in proc.stdout or "not lifecycle" in proc.stdout
+        assert "not lifecycle" in proc.stdout
 
-    def test_all_still_works(self):
-        proc = _run_lifecycle("--mode", "all")
-
-        assert proc.returncode == 0, proc.stderr
-
-    def test_the_help_text_no_longer_advertises_them(self):
+    def test_the_help_text_offers_every_working_mode(self):
         proc = subprocess.run(
             [str(LIFECYCLE), "--help"],
             cwd=REPO_ROOT,
@@ -132,20 +137,43 @@ class TestUnimplementedLifecycleModesFailLoudly:
             timeout=30,
         )
 
-        assert "cli|api|web|all" not in proc.stdout, (
-            "--help still offers web, the one mode that cannot run"
+        assert "--mode cli|api|web|all" in proc.stdout, (
+            "every advertised mode is implemented now; the help text should "
+            "say so"
         )
-        assert "--mode cli|api|all" in proc.stdout, (
-            "--help must offer api now that it is implemented (#1068)"
-        )
+        assert "not implemented" not in proc.stdout.lower()
 
 
 class TestNoAdvertisedModeCollectsOnlySkips:
     """AC1's second half, measured rather than assumed."""
 
-    def test_the_web_stub_file_is_still_gone(self):
-        """`api` came back as a real suite in #1068; `web` has not."""
+    def test_the_python_web_stub_is_still_gone(self):
+        """The web lifecycle came back as a Playwright spec, NOT as the pytest
+        file #948 deleted. If that filename reappears, something recreated the
+        stub rather than using the browser harness."""
         assert not (REPO_ROOT / "tests" / "lifecycle" / "test_web_lifecycle.py").exists()
+
+    def test_the_browser_lifecycle_spec_exists_and_is_tagged(self):
+        """#1068's web half. The tag is how scripts/lifecycle and the CI job
+        select it — an untagged spec silently runs in neither."""
+        spec = (REPO_ROOT / "tests" / "e2e" / "lifecycle.spec.ts").read_text()
+
+        assert "@lifecycle" in spec
+        assert spec.count("test(") >= 2, "too thin to be a lifecycle suite"
+
+    def test_ci_runs_the_browser_lifecycle_spec(self):
+        """It is free and takes seconds, so it belongs on every PR. A spec that
+        only ever ran locally is the same gap #948 was about."""
+        workflow = yaml.safe_load(WORKFLOW.read_text())
+        steps = [
+            step.get("run", "")
+            for job in workflow["jobs"].values()
+            for step in job.get("steps", [])
+        ]
+
+        assert any("@lifecycle" in run for run in steps), (
+            "no CI step selects the browser lifecycle spec"
+        )
 
     def test_the_api_file_is_a_real_suite_not_a_stub(self):
         """It exists again — so assert it is the opposite of what #948 deleted:

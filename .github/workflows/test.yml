@@ -512,9 +512,14 @@ jobs:
         working-directory: tests/e2e
         run: npx playwright install --with-deps chromium
 
-      - name: Run Playwright smoke suite
+      - name: Run Playwright smoke + lifecycle suites
         working-directory: tests/e2e
-        run: npx playwright test --project=chromium --grep @smoke
+        # @lifecycle is the browser Golden Path (#1068). It runs on the mock
+        # provider — free, ~13s including server startup — so it belongs on
+        # every PR rather than in the nightly sweep. It is the only spec here
+        # that exercises the WRITE path (PRD upload, generation, execution)
+        # instead of asserting how seeded rows render.
+        run: npx playwright test --project=chromium --grep "@smoke|@lifecycle"
 
       - name: Upload Playwright report
         if: always()

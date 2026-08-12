@@ -5,12 +5,11 @@
 #   scripts/lifecycle [options]
 #
 # Options:
-#   --mode cli|api|all       Which test mode (default: cli)
+#   --mode cli|api|web|all   Which test mode (default: cli)
 #                            cli — real LLM calls, needs ANTHROPIC_API_KEY, costs money
 #                            api — Golden Path over HTTP on the mock provider, free
-#                            all — both
-#                            web is NOT implemented — it exits 3 rather than
-#                            reporting a false pass (#948, #1068)
+#                            web — Golden Path through the browser (Playwright), free
+#                            all — every one of them
 #   --model haiku|sonnet     LLM model to use (default: haiku, cheaper)
 #   --verbose / -v           Pass -s to pytest (show live output)
 #   --no-cleanup             Keep temp directories after test (for inspection)
@@ -48,30 +47,16 @@ case "$MODE" in
   *) echo "Error: --mode must be cli, api, web, or all" >&2; exit 1 ;;
 esac
 
-# `web` is still NOT implemented (#948/#1068). It used to resolve to a file whose
-# only content was a @pytest.mark.skip class raising NotImplementedError, so
-# pytest collected nothing but skips and exited 0 — while CLAUDE.md advertises
-# this script as the pre-PR gate. Fail loudly rather than report success for work
-# that does not exist. `api` is now real and runs on the mock provider.
-if [[ "$MODE" == "web" ]]; then
-  echo "Error: --mode web is not implemented." >&2
-  echo "" >&2
-  echo "  The web lifecycle test does not exist yet. It used to 'pass' by" >&2
-  echo "  collecting only skipped stubs — see issue #1068 for the plan." >&2
-  echo "" >&2
-  echo "  Implemented modes:  scripts/lifecycle --mode cli|api" >&2
-  exit 3
-fi
-
 case "$MODEL" in
   haiku|sonnet) ;;
   *) echo "Error: --model must be haiku or sonnet" >&2; exit 1 ;;
 esac
 
 # ── Check API key ────────────────────────────────────────────────────────────
-# `api` runs entirely on the mock provider: no key, no cost, no network. That is
-# the point of it — it can run on every PR, where the paid cli mode cannot.
-if [[ "$MODE" != "api" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
+# `api` and `web` run entirely on the mock provider: no key, no cost, no
+# network. That is the point of them — they can run on every PR, where the paid
+# cli mode cannot.
+if [[ "$MODE" != "api" && "$MODE" != "web" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
   echo "Error: ANTHROPIC_API_KEY is not set." >&2
   echo "" >&2
   echo "Export it first:" >&2
@@ -88,6 +73,9 @@ fi
 # be selected at all, while the mock-driven api tests are deliberately unmarked
 # and are selected by that same default. Getting this wrong silently runs
 # nothing, which is the failure mode #948 was about.
+RUN_PYTEST=1
+RUN_PLAYWRIGHT=0
+
 case "$MODE" in
   cli)
     TEST_PATH="tests/lifecycle/test_cli_lifecycle.py"
@@ -97,13 +85,25 @@ case "$MODE" in
     TEST_PATH="tests/lifecycle/test_api_lifecycle.py"
     MARKER_ARGS=(-m "not lifecycle")
     ;;
+  web)
+    # Playwright, not pytest: the browser lifecycle spec lives in the #684/#703
+    # harness, which already starts both servers. RUN_PYTEST=0 skips the pytest
+    # leg entirely rather than running it against a path that holds no tests.
+    TEST_PATH="tests/e2e/lifecycle.spec.ts"
+    MARKER_ARGS=()
+    RUN_PYTEST=0
+    RUN_PLAYWRIGHT=1
+    ;;
   all)
-    TEST_PATH="tests/lifecycle/"
+    TEST_PATH="tests/lifecycle/ + tests/e2e/lifecycle.spec.ts"
+    PYTEST_PATH="tests/lifecycle/"
     # Always true, so it clears pytest.ini's default and selects both the
     # marked (cli) and unmarked (api) tests in one run.
     MARKER_ARGS=(-m "lifecycle or not lifecycle")
+    RUN_PLAYWRIGHT=1
     ;;
 esac
+PYTEST_PATH="${PYTEST_PATH:-$TEST_PATH}"
 
 # ── Cost warning ─────────────────────────────────────────────────────────────
 COST_HINT="~\$0.50–1.00"
@@ -113,7 +113,7 @@ fi
 if [[ "$MODE" == "all" ]]; then
   COST_HINT="~\$1.50–5.00"
 fi
-if [[ "$MODE" == "api" ]]; then
+if [[ "$MODE" == "api" || "$MODE" == "web" ]]; then
   COST_HINT="free (mock provider, no API calls)"
 fi
 
@@ -129,7 +129,12 @@ echo ""
 
 if [[ -n "$DRY_RUN" ]]; then
   echo "[dry-run] Would run:"
-  echo "  CODEFRAME_LIFECYCLE_MODEL=$MODEL uv run pytest $TEST_PATH ${MARKER_ARGS[*]} -v $VERBOSE"
+  if [[ "$RUN_PYTEST" == "1" ]]; then
+    echo "  CODEFRAME_LIFECYCLE_MODEL=$MODEL uv run pytest $PYTEST_PATH ${MARKER_ARGS[*]} -v $VERBOSE"
+  fi
+  if [[ "$RUN_PLAYWRIGHT" == "1" ]]; then
+    echo "  (cd tests/e2e && npx playwright test --project=chromium --grep @lifecycle)"
+  fi
   echo ""
   exit 0
 fi
@@ -146,7 +151,7 @@ fi
 
 # ── Build pytest args ─────────────────────────────────────────────────────────
 PYTEST_ARGS=(
-  "$TEST_PATH"
+  "$PYTEST_PATH"
   "${MARKER_ARGS[@]}"
   -v
   --tb=long
@@ -171,4 +176,18 @@ if [[ "$MODE" == "api" ]]; then
   export CODEFRAME_LLM_PROVIDER=mock
 fi
 
-uv run pytest "${PYTEST_ARGS[@]}"
+STATUS=0
+if [[ "$RUN_PYTEST" == "1" ]]; then
+  uv run pytest "${PYTEST_ARGS[@]}" || STATUS=$?
+fi
+
+if [[ "$RUN_PLAYWRIGHT" == "1" ]]; then
+  # The harness starts its own backend and frontend and sets the mock provider
+  # on the backend itself, so nothing is exported here.
+  echo ""
+  echo "  Browser lifecycle (Playwright)..."
+  ( cd "$(dirname "$0")/../tests/e2e" \
+      && npx playwright test --project=chromium --grep @lifecycle ) || STATUS=$?
+fi
+
+exit "$STATUS"

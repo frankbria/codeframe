@@ -18,11 +18,55 @@ from codeframe.adapters.llm.base import (
 )
 
 
+#: The task-decomposition prompt asks for this exact shape (core/tasks.py).
+#: Matched on a full sentence, not a keyword: a substring like "json" would
+#: reshape unrelated calls, which is the classifier mistake #1113/#1116/#1064
+#: each made in turn.
+_TASK_DECOMPOSITION_MARKER = "Return ONLY a JSON array of objects with these fields."
+
+#: What the mock answers that prompt with. Two tasks with a real dependency
+#: edge, because a decomposition with an empty graph is one the prompt itself
+#: calls wrong — and a lifecycle test that never exercises depends_on is not
+#: exercising the decomposer.
+_MOCK_DECOMPOSITION = """[
+  {
+    "title": "Implement the core function",
+    "description": "Add the function described by the PRD, with input validation.",
+    "depends_on_titles": [],
+    "complexity": 2,
+    "estimated_hours": 1.5,
+    "uncertainty": "low",
+    "files_to_modify": ["stats.py"]
+  },
+  {
+    "title": "Add a test for the core function",
+    "description": "Cover the happy path and one edge case.",
+    "depends_on_titles": ["Implement the core function"],
+    "complexity": 1,
+    "estimated_hours": 0.5,
+    "uncertainty": "low",
+    "files_to_modify": ["tests/test_stats.py"]
+  }
+]"""
+
+
 class MockProvider(LLMProvider):
     """Mock LLM provider for testing.
 
     Tracks all calls and returns configurable responses.
     Useful for unit tests and development without API costs.
+
+    The default response is the literal string ``"Mock response"``, which no
+    real caller can parse. That is fine for a provider nobody parses, but task
+    generation asks for a JSON array and #1115 correctly turned an unparseable
+    answer into a hard error — so `CODEFRAME_LLM_PROVIDER=mock` could not drive
+    the Golden Path's THINK step at all, and the lifecycle tests had to skip the
+    LLM branch entirely (#1068).
+
+    So the default is now shape-aware for exactly one prompt: the task
+    decomposition. Everything else is unchanged, and an explicitly queued
+    response or handler still wins — those are what a test uses to say what it
+    means.
     """
 
     def __init__(
@@ -140,12 +184,20 @@ class MockProvider(LLMProvider):
             self.response_index += 1
             return response
 
-        # Default response
+        # Shape-aware default: answer the task-decomposition prompt with
+        # something its parser can actually read. Only when the caller left the
+        # default in place — a test that set default_response meant it.
+        content = self.default_response
+        if content == "Mock response" and any(
+            _TASK_DECOMPOSITION_MARKER in str(m.get("content", "")) for m in messages
+        ):
+            content = _MOCK_DECOMPOSITION
+
         return LLMResponse(
-            content=self.default_response,
+            content=content,
             model=model,
             input_tokens=len(str(messages)),
-            output_tokens=len(self.default_response),
+            output_tokens=len(content),
         )
 
     def stream(
