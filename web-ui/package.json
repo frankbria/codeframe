@@ -35,29 +35,29 @@
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
     "sonner": "^2.0.7",
-    "swr": "^2.4.2",
+    "swr": "^2.5.0",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.6",
-    "@next/eslint-plugin-next": "^16.2.12",
+    "@next/eslint-plugin-next": "^16.3.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.1",
+    "@testing-library/user-event": "^14.6.3",
     "@types/jest": "^30.0.0",
-    "@types/node": "^26.1.2",
+    "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@types/testing-library__jest-dom": "^6.0.0",
-    "eslint": "^10.8.0",
+    "eslint": "^10.8.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jest": "^30.0.0",
     "jest-environment-jsdom": "^30.0.0",
     "msw": "^2.15.0",
-    "postcss": "^8.5.25",
+    "postcss": "^8.5.26",
     "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.65.0"
+    "typescript-eslint": "^8.66.0"
   }
 }
