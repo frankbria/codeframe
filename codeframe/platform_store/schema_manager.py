@@ -38,6 +38,19 @@ def _migration_001_interactive_sessions_user_id(cursor: sqlite3.Cursor) -> None:
         )
 
 
+def _migration_002_drop_dead_auth_tables(cursor: sqlite3.Cursor) -> None:
+    """Drop the three BetterAuth tables no query ever touched (#968).
+
+    ``create_schema`` is idempotent CREATE-IF-NOT-EXISTS against a long-lived
+    ``state.db``, so deleting the DDL alone would leave these sitting in every
+    deployed database forever — including their ``REFERENCES users(id) ON DELETE
+    CASCADE`` foreign keys, which are still enforced. SQLite drops a table's
+    indexes with the table, so no separate DROP INDEX is needed.
+    """
+    for table in ("accounts", "sessions", "verification"):
+        cursor.execute(f"DROP TABLE IF EXISTS {table}")
+
+
 class SchemaManager:
     """Manages database schema creation and migrations.
 
@@ -63,12 +76,13 @@ class SchemaManager:
     """
 
     #: Version a fully-migrated database reports via ``PRAGMA user_version``.
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     #: Ordered ``(target_version, callable(cursor))`` pairs. Each callable must
     #: be idempotent — it also runs once against a freshly created database.
     MIGRATIONS = [
         (1, _migration_001_interactive_sessions_user_id),
+        (2, _migration_002_drop_dead_auth_tables),
     ]
 
     def __init__(self, conn: sqlite3.Connection):
@@ -88,7 +102,7 @@ class SchemaManager:
         """
         cursor = self.conn.cursor()
 
-        # Authentication tables (users, accounts, sessions, verification, api_keys)
+        # Authentication tables (users, api_keys)
         self._create_auth_tables(cursor)
 
         # Audit log table
@@ -135,63 +149,10 @@ class SchemaManager:
             """
         )
 
-        # Accounts table (BetterAuth compatible - stores passwords and OAuth)
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS accounts (
-                id TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                account_id TEXT NOT NULL,
-                provider_id TEXT NOT NULL,
-                password TEXT,
-                access_token TEXT,
-                refresh_token TEXT,
-                id_token TEXT,
-                access_token_expires_at TIMESTAMP,
-                refresh_token_expires_at TIMESTAMP,
-                scope TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(user_id, provider_id)
-            )
-        """
-        )
-
-        # Create index on user_id for faster login lookups
-        cursor.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id)
-        """
-        )
-
-        # Sessions table (BetterAuth compatible)
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS sessions (
-                id TEXT PRIMARY KEY,
-                token TEXT UNIQUE NOT NULL,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                expires_at TIMESTAMP NOT NULL,
-                ip_address TEXT,
-                user_agent TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """
-        )
-
-        # Verification table (BetterAuth compatible)
-        # Used for email verification tokens when requireEmailVerification is enabled
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS verification (
-                id TEXT PRIMARY KEY,
-                identifier TEXT NOT NULL,
-                value TEXT NOT NULL,
-                expires_at TIMESTAMP NOT NULL
-            )
-        """
-        )
+        # NOTE (#968): `accounts`, `sessions` and `verification` used to be created
+        # here for a BetterAuth migration that never happened. No query ever touched
+        # them — auth is stateless JWT (users) plus `api_keys` — so they are dropped
+        # by migration 002 rather than recreated.
 
         # API Keys table for programmatic access
         cursor.execute(
@@ -334,13 +295,9 @@ class SchemaManager:
             "ON audit_logs(resource_type, resource_id, timestamp DESC)"
         )
 
-        # Authentication indexes (api_keys/accounts indexes are created inline
-        # with their tables in _create_auth_tables)
+        # Authentication indexes (the api_keys index is created inline with its
+        # table in _create_auth_tables)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)"
-        )
 
         # Workspace registry indexes (issue #601)
         cursor.execute(

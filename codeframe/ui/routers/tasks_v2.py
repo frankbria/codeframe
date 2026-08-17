@@ -891,7 +891,7 @@ def _spawn_agent_worker(
     database (#1005).
     """
     from codeframe.core.models import ErrorEvent
-    from codeframe.ui.routers.streaming_v2 import get_event_publisher
+    from codeframe.ui.streaming_utils import get_event_publisher
 
     publisher = get_event_publisher()
 
@@ -1268,7 +1268,7 @@ async def stream_task_events(
             detail=api_error("Task not found", ErrorCodes.NOT_FOUND, f"No task with id {task_id}"),
         )
 
-    from codeframe.ui.routers.streaming_v2 import (
+    from codeframe.ui.streaming_utils import (
         event_stream_generator,
         format_sse_event,
         get_event_publisher,

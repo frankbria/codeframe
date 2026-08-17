@@ -1,28 +1,25 @@
 """SSE streaming utilities for real-time task execution events.
 
-This module provides shared SSE utilities (formatting, event generation,
-publisher management) used by streaming consumers.
+Formatting, event generation and publisher management shared by streaming
+consumers. The SSE endpoint itself lives in ``tasks_v2.py`` —
+``GET /api/v2/tasks/{task_id}/stream`` — because it must be reachable by a
+browser ``EventSource`` (no custom auth headers).
 
-The actual SSE endpoint for tasks is in tasks_v2.py:
-  GET /api/v2/tasks/{task_id}/stream (requires workspace_path only)
+This used to sit in ``routers/`` as ``streaming_v2.py`` and carry an ``APIRouter``
+with no route decorators on it, which ``server.py`` dutifully mounted as a no-op.
+#968 moved it here: it is a utility module, and now it cannot be re-mounted.
 """
 
 import asyncio
 import logging
 from typing import AsyncGenerator, Callable, Optional
 
-from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse  # noqa: F401 — re-exported
+from fastapi import Request
 
 from codeframe.core.models import ExecutionEvent
 from codeframe.core.streaming import EventPublisher
 
 logger = logging.getLogger(__name__)
-
-router = APIRouter(
-    prefix="/api/v2/tasks",
-    tags=["streaming"],
-)
 
 # Global event publisher instance
 # In production, this should be dependency-injected
@@ -164,10 +161,3 @@ async def event_stream_generator(
             if not publisher._subscribers[task_id]:
                 del publisher._subscribers[task_id]
         logger.info(f"Closing SSE stream for task {task_id}")
-
-
-# NOTE: The SSE stream endpoint for tasks is defined in tasks_v2.py
-# (GET /api/v2/tasks/{task_id}/stream) which only requires workspace_path
-# and is compatible with browser EventSource (no custom auth headers needed).
-# This module retains the shared utilities (format_sse_event, format_sse_comment,
-# event_stream_generator, get_event_publisher) used by other streaming consumers.

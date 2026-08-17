@@ -107,8 +107,7 @@ async def list_resources(
 
 The `get_v2_workspace()` dependency resolves workspace from:
 1. `workspace_path` query parameter (explicit)
-2. Server's `default_workspace_path` state (configured)
-3. Current working directory (fallback)
+2. Current working directory (fallback)
 
 ### 4. Core Module Delegation
 

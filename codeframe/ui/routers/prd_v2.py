@@ -313,7 +313,7 @@ async def _stress_test_event_stream(
     browser ``EventSource`` can display them via its message handler.
 
     Stops early if the client disconnects, so an abandoned stream does not keep
-    issuing LLM calls — mirroring ``event_stream_generator`` in streaming_v2.
+    issuing LLM calls — mirroring ``event_stream_generator`` in ui/streaming_utils.py.
     """
     from codeframe.core.prd_stress_test import stress_test_prd_stream
 

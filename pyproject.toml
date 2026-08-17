@@ -60,21 +60,22 @@ dependencies = [
     "hypothesis>=6.148.0",
     "fastapi-users[sqlalchemy]>=15.0.2",
     "filelock>=3.0",
-    "python-jose[cryptography]>=3.4.0",
-    "passlib[argon2]>=1.7.4",
+    # bcrypt: api_keys.py hashes/verifies with it directly (passlib was removed
+    # in #968 — it had no importer, and bcrypt was arriving only transitively
+    # via fastapi-users -> pwdlib).
+    "bcrypt>=4.2.0",
     "keyring>=24.0.0",
     "jinja2>=3.1.6",
     "slowapi>=0.1.9",
     "rapidfuzz>=3.0.0",
     # Security floors — pin transitive deps to patched versions for Dependabot CVE alerts (#659).
-    # These are pulled by fastapi / fastapi-users / mcp / python-jose / keyring; floored here so
+    # These are pulled by fastapi / fastapi-users / mcp / keyring; floored here so
     # `uv lock` resolves to non-vulnerable versions regardless of the parents' lower bounds.
     "starlette>=1.0.1",       # Range-header FileResponse O(n^2) DoS (forces a compatible fastapi)
     "python-multipart>=0.0.27",  # arbitrary file write + DoS in multipart parsing
     "pyjwt>=2.12.0",          # accepts unknown `crit` header extensions
     "cryptography>=46.0.7",   # subgroup attack on SECT curves
     "urllib3>=2.7.0",         # header leak across redirects, decompression bombs
-    "pyasn1>=0.6.3",          # decoder DoS / unbounded recursion
     "mcp>=1.23.0",            # DNS-rebinding protection off by default
     "idna>=3.15",             # DoS in IDNA processing
 ]
