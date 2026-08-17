@@ -76,7 +76,6 @@ dependencies = [
     "pyjwt>=2.12.0",          # accepts unknown `crit` header extensions
     "cryptography>=46.0.7",   # subgroup attack on SECT curves
     "urllib3>=2.7.0",         # header leak across redirects, decompression bombs
-    "pyasn1>=0.6.3",          # decoder DoS / unbounded recursion
     "mcp>=1.23.0",            # DNS-rebinding protection off by default
     "idna>=3.15",             # DoS in IDNA processing
 ]

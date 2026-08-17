@@ -637,7 +637,6 @@ class GlobalConfig(BaseSettings):
     # file access and agent execution. Set API_HOST=0.0.0.0 to expose it.
     api_host: str = Field("127.0.0.1", alias="API_HOST")
     api_port: int = Field(8080, alias="API_PORT")
-    cors_origins: str = Field("http://localhost:3000,http://localhost:5173", alias="CORS_ORIGINS")
 
     # Logging configuration
     log_level: str = Field("INFO", alias="LOG_LEVEL")

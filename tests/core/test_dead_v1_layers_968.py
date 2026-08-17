@@ -22,6 +22,13 @@ pytestmark = pytest.mark.v2
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEAD_AUTH_TABLES = ("accounts", "sessions", "verification")
+#: Note these belong to `sessions`/`accounts`, NOT to the live
+#: `interactive_sessions` table, whose own indexes must survive.
+DEAD_AUTH_INDEXES = (
+    "idx_sessions_user_id",
+    "idx_sessions_expires_at",
+    "idx_accounts_user_id",
+)
 
 
 def _tables(conn: sqlite3.Connection) -> set:
@@ -30,14 +37,28 @@ def _tables(conn: sqlite3.Connection) -> set:
     }
 
 
+def _indexes(conn: sqlite3.Connection) -> set:
+    return {
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
+    }
+
+
 # --- the migration ----------------------------------------------------------
 
 
 def test_fresh_database_has_no_dead_auth_tables(tmp_path):
+    """A fresh install builds none of the three, and none of their indexes.
+
+    The index half is the sharp edge: ``_create_indexes`` used to build
+    ``idx_sessions_user_id`` / ``idx_sessions_expires_at`` *outside* the DDL
+    block, so removing only the CREATE TABLE statements would make every fresh
+    ``Database.initialize()`` raise ``no such table: sessions``.
+    """
     db = Database(tmp_path / "fresh.db")
     db.initialize()
     try:
         assert _tables(db.conn).isdisjoint(DEAD_AUTH_TABLES)
+        assert _indexes(db.conn).isdisjoint(DEAD_AUTH_INDEXES)
         # users/api_keys are the live auth surface and must survive.
         assert {"users", "api_keys"} <= _tables(db.conn)
     finally:
@@ -79,6 +100,8 @@ def test_legacy_database_gets_the_dead_auth_tables_dropped(tmp_path):
     db.initialize()
     try:
         assert _tables(db.conn).isdisjoint(DEAD_AUTH_TABLES)
+        # SQLite drops a table's indexes with the table.
+        assert _indexes(db.conn).isdisjoint(DEAD_AUTH_INDEXES)
         assert db.conn.execute("PRAGMA user_version").fetchone()[0] == (
             SchemaManager.SCHEMA_VERSION
         )
