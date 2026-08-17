@@ -31,7 +31,7 @@ class TestSSEEventFormat:
 
     def test_progress_event_sse_format(self):
         """ProgressEvent should format correctly for SSE."""
-        from codeframe.ui.routers.streaming_v2 import format_sse_event
+        from codeframe.ui.streaming_utils import format_sse_event
 
         event = ProgressEvent(
             task_id="task-1",
@@ -57,7 +57,7 @@ class TestSSEEventFormat:
 
     def test_output_event_sse_format(self):
         """OutputEvent should include stream and line in SSE format."""
-        from codeframe.ui.routers.streaming_v2 import format_sse_event
+        from codeframe.ui.streaming_utils import format_sse_event
 
         event = OutputEvent(
             task_id="task-1",
@@ -75,7 +75,7 @@ class TestSSEEventFormat:
 
     def test_completion_event_sse_format(self):
         """CompletionEvent should include status and duration."""
-        from codeframe.ui.routers.streaming_v2 import format_sse_event
+        from codeframe.ui.streaming_utils import format_sse_event
 
         event = CompletionEvent(
             task_id="task-1",
@@ -95,7 +95,7 @@ class TestSSEEventFormat:
 
     def test_heartbeat_event_sse_format(self):
         """HeartbeatEvent should be minimal in SSE format."""
-        from codeframe.ui.routers.streaming_v2 import format_sse_event
+        from codeframe.ui.streaming_utils import format_sse_event
 
         event = HeartbeatEvent(task_id="task-1")
 
@@ -107,7 +107,7 @@ class TestSSEEventFormat:
 
     def test_sse_comment_format(self):
         """SSE comments should start with colon."""
-        from codeframe.ui.routers.streaming_v2 import format_sse_comment
+        from codeframe.ui.streaming_utils import format_sse_comment
 
         comment = format_sse_comment("heartbeat")
 
@@ -122,22 +122,12 @@ class TestStreamingRouterEndpoint:
     NOTE: The SSE stream endpoint (GET /api/v2/tasks/{task_id}/stream) lives
     in tasks_v2.py. It only requires workspace_path, making it compatible
     with browser EventSource which cannot send custom auth headers.
-    streaming_v2.py provides shared utilities only (no endpoints).
+    ui/streaming_utils.py provides shared utilities only (no endpoints).
     """
-
-    def test_streaming_router_has_no_endpoints(self):
-        """streaming_v2 router should have no endpoints (utilities only)."""
-        from codeframe.ui.routers.streaming_v2 import router
-
-        assert len(router.routes) == 0
-
-
-class TestEventPublisherGlobal:
-    """Tests for global EventPublisher management."""
 
     def test_get_event_publisher_singleton(self):
         """get_event_publisher should return the same instance."""
-        from codeframe.ui.routers.streaming_v2 import (
+        from codeframe.ui.streaming_utils import (
             get_event_publisher,
             set_event_publisher,
         )
@@ -156,7 +146,7 @@ class TestEventPublisherGlobal:
     def test_set_event_publisher(self):
         """set_event_publisher should override the global instance."""
         from codeframe.core.streaming import EventPublisher
-        from codeframe.ui.routers.streaming_v2 import (
+        from codeframe.ui.streaming_utils import (
             get_event_publisher,
             set_event_publisher,
         )
@@ -182,7 +172,7 @@ class TestStreamCompletionRaceGuard:
     async def test_after_subscribe_terminal_emits_synthetic_and_stops(self):
         """If the run is already terminal, emit a synthetic completion and end."""
         from codeframe.core.streaming import EventPublisher
-        from codeframe.ui.routers.streaming_v2 import event_stream_generator
+        from codeframe.ui.streaming_utils import event_stream_generator
 
         publisher = EventPublisher()
         terminal = CompletionEvent(task_id="t1", status="completed", duration_seconds=1.0)
@@ -209,7 +199,7 @@ class TestStreamCompletionRaceGuard:
         in the queue and is delivered instead of being lost.
         """
         from codeframe.core.streaming import EventPublisher
-        from codeframe.ui.routers.streaming_v2 import event_stream_generator
+        from codeframe.ui.streaming_utils import event_stream_generator
 
         publisher = EventPublisher()
         gen = event_stream_generator(

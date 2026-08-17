@@ -82,29 +82,3 @@ class TestConfigGetCredential:
                 manager = CredentialManager()
                 value = manager.get_credential(CredentialProvider.LLM_ANTHROPIC)
                 assert value is None
-
-
-class TestValidateCredentialsForSprint:
-    """Tests for sprint-based credential validation."""
-
-    def test_sprint_1_requires_anthropic(self):
-        """Sprint 1 requires Anthropic API key."""
-        from codeframe.core.config import GlobalConfig
-
-        # Create a config with no Anthropic key by mocking the property
-        config = GlobalConfig()
-        config.anthropic_api_key = None
-
-        with pytest.raises(ValueError) as exc_info:
-            config.validate_required_for_sprint(1)
-
-        assert "ANTHROPIC_API_KEY" in str(exc_info.value)
-
-    def test_sprint_1_passes_with_key(self):
-        """Sprint 1 passes when Anthropic key is set."""
-        from codeframe.core.config import GlobalConfig
-
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-valid-key"}):
-            config = GlobalConfig()
-            # Should not raise
-            config.validate_required_for_sprint(1)

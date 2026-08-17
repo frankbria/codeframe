@@ -368,15 +368,6 @@ CODEFRAME_BOOTSTRAP_TOKEN=<secret>    # Out-of-band secret gating the
                                       # account"; `cf auth register
                                       # --bootstrap-token` sends the header.
 
-# Test-only endpoints (#753) — default OFF
-CODEFRAME_ENABLE_TEST_ENDPOINTS=1     # Registers the integration-test-only
-                                      # POST /test/broadcast route (pushes a WS
-                                      # broadcast to all subscribers). Read once
-                                      # at import time; unset = route absent
-                                      # (404, not in OpenAPI). Never set in
-                                      # production — leave unset except in CI /
-                                      # WebSocket integration test runs.
-
 # Experimental cloud engine (#966) — default OFF (refuse)
 CODEFRAME_ENABLE_CLOUD_ENGINE=1       # Unlock `--engine cloud` (the E2B adapter).
                                       # Off by default and off the advertised
@@ -518,8 +509,10 @@ JWT_LIFETIME_SECONDS=86400            # JWT validity window; default 24h (was 7d
                                       # tells the client to drop its copy;
                                       # verification is stateless signature
                                       # checking with no server-side denylist
-                                      # (the `sessions` table is unused), so a
-                                      # leaked token stays valid for up to this
+                                      # (there is no session store at all — the
+                                      # vestigial `sessions` table was dropped
+                                      # in #968), so a leaked token stays valid
+                                      # for up to this
                                       # lifetime. This value IS the mitigation —
                                       # lower it if tokens may leak.
 

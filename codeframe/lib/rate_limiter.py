@@ -379,15 +379,15 @@ def _create_rate_limit_decorator(limit_key: str) -> Callable:
     return decorator
 
 
-# Rate limit decorators for each category
-def rate_limit_auth() -> Callable:
-    """Decorator for authentication endpoint rate limits.
-
-    Default: 10 requests/minute (configurable via RATE_LIMIT_AUTH)
-    """
-    return _create_rate_limit_decorator("auth_limit")()
-
-
+# Rate limit decorators for each category.
+#
+# There is deliberately no `rate_limit_auth` decorator (#968): the fastapi-users
+# auth routes are mounted via library factory functions, so a decorator — which
+# binds at import time and must wrap an endpoint we own — cannot reach them.
+# `enforce_auth_rate_limit` below is the dependency that actually throttles them.
+# Nor a `rate_limit_websocket` one: slowapi needs an HTTP Request and returns a
+# 429 response, neither of which a WebSocket handler has, and connection rate is
+# already bounded at the `POST /auth/stream-ticket` mint step.
 def rate_limit_standard() -> Callable:
     """Decorator for standard API endpoint rate limits.
 
@@ -402,14 +402,6 @@ def rate_limit_ai() -> Callable:
     Default: 20 requests/minute (configurable via RATE_LIMIT_AI)
     """
     return _create_rate_limit_decorator("ai_limit")()
-
-
-def rate_limit_websocket() -> Callable:
-    """Decorator for WebSocket connection rate limits.
-
-    Default: 30 connections/minute (configurable via RATE_LIMIT_WEBSOCKET)
-    """
-    return _create_rate_limit_decorator("websocket_limit")()
 
 
 def get_auth_rate_limit_key(request: Request) -> str:
