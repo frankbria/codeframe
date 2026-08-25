@@ -116,12 +116,11 @@ def get_v2_workspace(
     request: Request = None,
     auth: Dict[str, Any] = Depends(require_auth),
 ) -> Workspace:
-    """Get v2 Workspace from path or server default.
+    """Get v2 Workspace from path or the server's working directory.
 
     This dependency resolves a Workspace from either:
     1. An explicit workspace_path query parameter
-    2. The server's default workspace (from app.state.default_workspace_path)
-    3. The server's current working directory
+    2. The server's current working directory
 
     Args:
         workspace_path: Optional explicit path to workspace
@@ -141,13 +140,12 @@ def get_v2_workspace(
             # Use workspace here
             ...
     """
-    # Resolve workspace path
+    # Resolve workspace path. (#968 removed a middle branch that read a
+    # server-configured default off app.state; nothing ever assigned that
+    # attribute, so the branch was unreachable and the default was always cwd.)
     if workspace_path:
         path = Path(workspace_path).resolve()
-    elif request and getattr(request.app.state, "default_workspace_path", None):
-        path = Path(request.app.state.default_workspace_path).resolve()
     else:
-        # Fall back to current working directory
         path = Path.cwd()
 
     # Enforce the workspace allowlist (issue #655).

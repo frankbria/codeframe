@@ -20,7 +20,6 @@ class TestRateLimitConfig:
         assert config.auth_limit == "10/minute"
         assert config.standard_limit == "100/minute"
         assert config.ai_limit == "20/minute"
-        assert config.websocket_limit == "30/minute"
         assert config.enabled is True
         assert config.storage == "memory"
         assert config.redis_url is None
@@ -41,7 +40,6 @@ class TestRateLimitConfig:
             "RATE_LIMIT_AUTH",
             "RATE_LIMIT_STANDARD",
             "RATE_LIMIT_AI",
-            "RATE_LIMIT_WEBSOCKET",
             "RATE_LIMIT_STORAGE",
             "RATE_LIMIT_TRUSTED_PROXIES",
             "REDIS_URL",
@@ -55,7 +53,6 @@ class TestRateLimitConfig:
             assert config.auth_limit == "10/minute"
             assert config.standard_limit == "100/minute"
             assert config.ai_limit == "20/minute"
-            assert config.websocket_limit == "30/minute"
             assert config.enabled is True
             assert config.storage == "memory"
 
@@ -77,7 +74,6 @@ class TestRateLimitConfig:
             "RATE_LIMIT_AUTH": "5/minute",
             "RATE_LIMIT_STANDARD": "200/minute",
             "RATE_LIMIT_AI": "10/minute",
-            "RATE_LIMIT_WEBSOCKET": "50/minute",
             "RATE_LIMIT_STORAGE": "redis",
             "REDIS_URL": "redis://localhost:6379/0",
             "RATE_LIMIT_TRUSTED_PROXIES": "10.0.0.1,172.16.0.0/12",
@@ -90,7 +86,6 @@ class TestRateLimitConfig:
             assert config.auth_limit == "5/minute"
             assert config.standard_limit == "200/minute"
             assert config.ai_limit == "10/minute"
-            assert config.websocket_limit == "50/minute"
             assert config.enabled is True
             assert config.storage == "redis"
             assert config.redis_url == "redis://localhost:6379/0"

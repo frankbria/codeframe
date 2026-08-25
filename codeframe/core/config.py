@@ -1,7 +1,8 @@
 """Configuration management for CodeFRAME.
 
 This module provides two configuration systems:
-1. Legacy v1 config (JSON-based): ProjectConfig, GlobalConfig
+1. Process config (environment-driven): GlobalConfig, read from the environment
+   and ``.env`` — secrets, rate limits, CORS, log level.
 2. v2 environment config (YAML-based): EnvironmentConfig
 
 v2 environment config is stored in .codeframe/config.yaml and controls:
@@ -11,7 +12,6 @@ v2 environment config is stored in .codeframe/config.yaml and controls:
 - Lint tools (ruff, eslint, prettier)
 """
 
-import json
 import logging
 from dataclasses import (
     dataclass,
@@ -24,10 +24,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from codeframe.core.atomic_io import atomic_write_json, atomic_write_text
+from codeframe.core.atomic_io import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -605,70 +605,14 @@ def get_default_environment_config() -> EnvironmentConfig:
 
 
 # =============================================================================
-# v1 Legacy Configuration (JSON-based)
+# Process configuration (environment-driven)
 # =============================================================================
-
-
-class ProviderConfig(BaseModel):
-    """LLM provider configuration."""
-
-    lead_agent: str = "claude"
-    backend_agent: str = "claude"
-    frontend_agent: str = "gpt4"
-    test_agent: str = "claude"
-    review_agent: str = "gpt4"
-
-
-class AgentPolicyConfig(BaseModel):
-    """Global agent management policies."""
-
-    require_review_below_maturity: str = "supporting"
-    allow_full_autonomy: bool = False
-
-
-class InterruptionConfig(BaseModel):
-    """Interruption mode configuration."""
-
-    enabled: bool = True
-    sync_blockers: list[str] = Field(default_factory=lambda: ["requirement", "security"])
-    async_blockers: list[str] = Field(default_factory=lambda: ["technical", "external"])
-    auto_continue: bool = True
-
-
-class NotificationChannelConfig(BaseModel):
-    """Notification channel configuration."""
-
-    enabled: bool = True
-    channels: list[str] = Field(default_factory=list)
-    webhook_url: Optional[str] = None
-    batch_interval: Optional[int] = None
-
-
-class NotificationsConfig(BaseModel):
-    """Multi-channel notification configuration."""
-
-    sync_blockers: NotificationChannelConfig = Field(default_factory=NotificationChannelConfig)
-    async_blockers: NotificationChannelConfig = Field(default_factory=NotificationChannelConfig)
-
-
-class CheckpointConfig(BaseModel):
-    """Checkpoint configuration."""
-
-    auto_save_interval: int = 1800  # seconds
-    pre_compactification: bool = True
-    per_task_completion: bool = True
-
-
-class ProjectConfig(BaseModel):
-    """Project-specific configuration."""
-
-    project_name: str
-    project_type: str = "python"
-    providers: ProviderConfig = Field(default_factory=ProviderConfig)
-    agent_policy: AgentPolicyConfig = Field(default_factory=AgentPolicyConfig)
-    interruption_mode: InterruptionConfig = Field(default_factory=InterruptionConfig)
-    notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
-    checkpoints: CheckpointConfig = Field(default_factory=CheckpointConfig)
+#
+# The JSON-file config layer that used to live here — ProjectConfig and its
+# ProviderConfig / AgentPolicyConfig / InterruptionConfig / NotificationsConfig /
+# CheckpointConfig members, read and written by a `Config` manager against
+# .codeframe/config.json — was deleted in #968. Nothing in the product read it;
+# workspace settings live in .codeframe/config.yaml via EnvironmentConfig above.
 
 
 class GlobalConfig(BaseSettings):
@@ -693,7 +637,6 @@ class GlobalConfig(BaseSettings):
     # file access and agent execution. Set API_HOST=0.0.0.0 to expose it.
     api_host: str = Field("127.0.0.1", alias="API_HOST")
     api_port: int = Field(8080, alias="API_PORT")
-    cors_origins: str = Field("http://localhost:3000,http://localhost:5173", alias="CORS_ORIGINS")
 
     # Logging configuration
     log_level: str = Field("INFO", alias="LOG_LEVEL")
@@ -718,7 +661,6 @@ class GlobalConfig(BaseSettings):
     rate_limit_auth: str = Field("10/minute", alias="RATE_LIMIT_AUTH")
     rate_limit_standard: str = Field("100/minute", alias="RATE_LIMIT_STANDARD")
     rate_limit_ai: str = Field("20/minute", alias="RATE_LIMIT_AI")
-    rate_limit_websocket: str = Field("30/minute", alias="RATE_LIMIT_WEBSOCKET")
     # Comma-separated list of trusted proxy IPs/CIDRs (e.g., "10.0.0.0/8,172.16.0.0/12")
     rate_limit_trusted_proxies: str = Field("", alias="RATE_LIMIT_TRUSTED_PROXIES")
 
@@ -753,59 +695,6 @@ class GlobalConfig(BaseSettings):
             raise ValueError(f"RATE_LIMIT_STORAGE must be one of {allowed}, got: {v}")
         return v
 
-    def get_cors_origins_list(self) -> list[str]:
-        """Parse CORS origins from comma-separated string."""
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
-
-    def validate_required_for_sprint(self, sprint: int = 1) -> None:
-        """Validate that required configuration is present for a given sprint.
-
-        Args:
-            sprint: Sprint number (1-8)
-
-        Raises:
-            ValueError: If required configuration is missing
-        """
-        errors = []
-
-        if sprint >= 1:
-            # Sprint 1 requires Anthropic API key for Lead Agent
-            if not self.anthropic_api_key:
-                errors.append(
-                    "ANTHROPIC_API_KEY is required for Sprint 1 (Lead Agent with Claude).\n"
-                    "  Get your API key at: https://console.anthropic.com/\n"
-                    "  Then add it to your .env file (see .env.example)"
-                )
-
-        if sprint >= 4:
-            # Sprint 4+ may require OpenAI for multi-agent
-            if not self.openai_api_key and not self.anthropic_api_key:
-                errors.append(
-                    "At least one AI provider API key is required.\n"
-                    "  ANTHROPIC_API_KEY or OPENAI_API_KEY must be set."
-                )
-
-        if sprint >= 5:
-            # Sprint 5+ may require notification services
-            pass  # Notifications are optional, will use webhook fallback
-
-        if errors:
-            error_msg = "\n\n".join(errors)
-            raise ValueError(
-                f"\n{'='*70}\nCONFIGURATION ERROR\n{'='*70}\n\n{error_msg}\n\n{'='*70}\n"
-            )
-
-    def ensure_directories(self) -> None:
-        """Ensure required directories exist."""
-        # Create database directory
-        db_path = Path(self.database_path)
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Create log directory if log file is specified
-        if self.log_file:
-            log_path = Path(self.log_file)
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-
 
 def load_environment(env_file: str = ".env") -> None:
     """Load environment variables from .env file.
@@ -830,102 +719,6 @@ def load_environment(env_file: str = ".env") -> None:
         load_env_files(explicit_file=env_path)
 
 
-class Config:
-    """Configuration manager for CodeFRAME."""
-
-    def __init__(self, project_dir: Path):
-        self.project_dir = project_dir
-        self.config_dir = project_dir / ".codeframe"
-        self.config_file = self.config_dir / "config.json"
-        self._project_config: Optional[ProjectConfig] = None
-        self._global_config: Optional[GlobalConfig] = None
-
-        # Load environment variables
-        load_environment()
-
-    def load(self) -> ProjectConfig:
-        """Load project configuration."""
-        if self._project_config:
-            return self._project_config
-
-        if not self.config_file.exists():
-            raise FileNotFoundError(f"Config not found: {self.config_file}")
-
-        with open(self.config_file) as f:
-            data = json.load(f)
-            self._project_config = ProjectConfig(**data)
-
-        return self._project_config
-
-    def save(self, config: ProjectConfig) -> None:
-        """Save project configuration."""
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        # Atomic (#954) — see save_environment_config.
-        atomic_write_json(self.config_file, config.model_dump())
-        self._project_config = config
-
-    def get_global(self) -> GlobalConfig:
-        """Load global configuration from environment variables.
-
-        Returns:
-            GlobalConfig instance with values from environment
-
-        Raises:
-            ValueError: If required configuration is missing
-        """
-        if not self._global_config:
-            self._global_config = GlobalConfig()
-        return self._global_config
-
-    def validate_for_sprint(self, sprint: int = 1) -> None:
-        """Validate configuration for a specific sprint.
-
-        Args:
-            sprint: Sprint number to validate for
-
-        Raises:
-            ValueError: If required configuration is missing
-        """
-        global_config = self.get_global()
-        global_config.validate_required_for_sprint(sprint)
-        global_config.ensure_directories()
-
-    def set(self, key: str, value: Any) -> None:
-        """Set configuration value using dot notation."""
-        config = self.load()
-        keys = key.split(".")
-        obj = config.model_dump()
-
-        # Navigate to the correct nested dict
-        current = obj
-        for k in keys[:-1]:
-            if k not in current:
-                current[k] = {}
-            current = current[k]
-
-        # Set the value
-        current[keys[-1]] = value
-
-        # Reload and save
-        self._project_config = ProjectConfig(**obj)
-        self.save(self._project_config)
-
-    def get(self, key: str) -> Any:
-        """Get configuration value using dot notation."""
-        config = self.load()
-        keys = key.split(".")
-        obj = config.model_dump()
-
-        current = obj
-        for k in keys:
-            if k not in current:
-                return None
-            current = current[k]
-
-        return current
-
-
-# Module-level singleton for GlobalConfig
 _global_config: Optional[GlobalConfig] = None
 
 

@@ -9,7 +9,6 @@ Environment Variables (via GlobalConfig):
     RATE_LIMIT_AUTH: Rate limit for authentication endpoints (default: 10/minute)
     RATE_LIMIT_STANDARD: Rate limit for standard API endpoints (default: 100/minute)
     RATE_LIMIT_AI: Rate limit for AI/expensive operations (default: 20/minute)
-    RATE_LIMIT_WEBSOCKET: Rate limit for WebSocket connections (default: 30/minute)
     RATE_LIMIT_STORAGE: Storage backend - memory or redis (default: memory)
     RATE_LIMIT_TRUSTED_PROXIES: Comma-separated trusted proxy IPs/CIDRs
     REDIS_URL: Redis connection URL for distributed rate limiting (optional)
@@ -32,7 +31,6 @@ class RateLimitConfig:
         auth_limit: Rate limit for authentication endpoints
         standard_limit: Rate limit for standard API endpoints
         ai_limit: Rate limit for AI/expensive operations
-        websocket_limit: Rate limit for WebSocket connections
         enabled: Whether rate limiting is enabled
         storage: Storage backend ('memory' or 'redis')
         redis_url: Redis connection URL for distributed rate limiting
@@ -42,7 +40,6 @@ class RateLimitConfig:
     auth_limit: str = "10/minute"
     standard_limit: str = "100/minute"
     ai_limit: str = "20/minute"
-    websocket_limit: str = "30/minute"
     enabled: bool = True
     storage: str = "memory"
     redis_url: Optional[str] = None
@@ -128,7 +125,6 @@ class RateLimitConfig:
             auth_limit=global_config.rate_limit_auth,
             standard_limit=global_config.rate_limit_standard,
             ai_limit=global_config.rate_limit_ai,
-            websocket_limit=global_config.rate_limit_websocket,
             enabled=enabled,
             storage=storage,
             redis_url=redis_url,

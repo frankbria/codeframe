@@ -188,7 +188,6 @@ _REPO_FORBIDDEN_EXACT = frozenset(
         # Whether the guards run at all
         "CODEFRAME_AUTH_REQUIRED",        # `false` disables authentication
         "CODEFRAME_DEPLOYMENT_MODE",      # flips hosted-mode gating
-        "CODEFRAME_ENABLE_TEST_ENDPOINTS",  # arms /test/broadcast (#753)
         "WORKSPACE_ROOT",         # the workspace allowlist (#655/#896)
         # Where code is found and run
         "PATH",

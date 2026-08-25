@@ -394,20 +394,6 @@ class TestRateLimitDecorators:
         decorator = rate_limit_ai()
         assert callable(decorator)
 
-    def test_rate_limit_auth_decorator_exists(self):
-        """rate_limit_auth decorator should exist and be callable."""
-        from codeframe.lib.rate_limiter import rate_limit_auth
-
-        decorator = rate_limit_auth()
-        assert callable(decorator)
-
-    def test_rate_limit_websocket_decorator_exists(self):
-        """rate_limit_websocket decorator should exist and be callable."""
-        from codeframe.lib.rate_limiter import rate_limit_websocket
-
-        decorator = rate_limit_websocket()
-        assert callable(decorator)
-
 
 class TestRateLimiterDisabled:
     """Tests for disabled rate limiting behavior."""

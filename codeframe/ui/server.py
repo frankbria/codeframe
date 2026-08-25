@@ -38,13 +38,12 @@ from codeframe.ui.routers import (
     session_chat_ws,
     settings_v2,
     terminal_ws,
-    streaming_v2,
     tasks_v2,
     templates_v2,
     workspace_v2,
 )
 from codeframe.auth import router as auth_router
-from codeframe.auth.dependencies import require_auth, require_method_scope
+from codeframe.auth.dependencies import require_method_scope
 from codeframe.platform_store.database import Database
 from codeframe.lib.rate_limiter import (
     get_rate_limiter,
@@ -848,39 +847,6 @@ async def health_check():
 
 
 # ============================================================================
-# Test-Only Endpoints (for WebSocket integration tests)
-# ============================================================================
-#
-# Gated behind CODEFRAME_ENABLE_TEST_ENDPOINTS (#753): /test/broadcast lets any
-# *authenticated* principal push arbitrary JSON to every WebSocket subscriber,
-# so it must never be reachable in production. Registered only when the flag is
-# set; integration tests set it explicitly. The flag is read once at import
-# time, so the route is genuinely absent (not in OpenAPI, 404 on request) when
-# unset, rather than gated inside the handler.
-if os.getenv("CODEFRAME_ENABLE_TEST_ENDPOINTS"):
-
-    @app.post("/test/broadcast", dependencies=[Depends(require_auth)])
-    async def test_broadcast(message: dict, project_id: int = None):
-        """Trigger a WebSocket broadcast for testing purposes.
-
-        This endpoint is only intended for use in integration tests to trigger
-        broadcasts from the server subprocess. In production, broadcasts are
-        triggered by actual server-side events.
-
-        Args:
-            message: The message dict to broadcast
-            project_id: Optional project ID for filtered broadcasts
-
-        Returns:
-            Success confirmation
-        """
-        from codeframe.ui.shared import manager
-
-        await manager.broadcast(message, project_id=project_id)
-        return {"status": "broadcast_sent", "project_id": project_id}
-
-
-# ============================================================================
 # Router Mounting (v2 only)
 # ============================================================================
 
@@ -919,7 +885,6 @@ app.include_router(proof_v2.router, dependencies=_AUTH)         # /api/v2/proof
 app.include_router(review_v2.router, dependencies=_AUTH)        # /api/v2/review
 app.include_router(schedule_v2.router, dependencies=_AUTH)      # /api/v2/schedule
 app.include_router(settings_v2.router, dependencies=_AUTH)      # /api/v2/settings
-app.include_router(streaming_v2.router, dependencies=_AUTH)     # /api/v2/tasks/{id}/stream (SSE)
 app.include_router(tasks_v2.router, dependencies=_AUTH)         # /api/v2/tasks
 app.include_router(templates_v2.router, dependencies=_AUTH)     # /api/v2/templates
 app.include_router(workspace_v2.router, dependencies=_AUTH)     # /api/v2/workspaces

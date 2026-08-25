@@ -7,7 +7,6 @@ FastAPI server instead of TestClient's mocked WebSocket connections.
 
 import jwt
 import os
-import secrets
 import signal
 import socket
 import subprocess
@@ -21,16 +20,10 @@ import pytest
 import requests
 import shutil
 
-# Both legacy WebSocket suites are now collected normally instead of being hidden
-# here:
-#   * test_websocket_subscriptions.py is a pure unit suite (WebSocketSubscription
-#     manager / ConnectionManager with mock sockets — no server, no get_db) and
-#     passes as-is.
-#   * test_websocket_integration.py targets the removed v1 `/ws` project-
-#     subscription protocol (no such route or subscribe handler exists on the v2
-#     server), so it carries a truthful module-level skip until it is rewritten
-#     against the v2 workspace-scoped streaming API — not the false "server is a
-#     stub" reason it used to hide behind.
+# Both legacy WebSocket suites were deleted in #968 along with the v1
+# ConnectionManager / WebSocketSubscriptionManager they were the only consumers
+# of. The live WebSocket routes (`/ws/sessions/{id}/chat` and `.../terminal`) are
+# covered by their own suites.
 
 from codeframe.platform_store.database import Database  # noqa: E402
 
@@ -88,32 +81,6 @@ def wait_for_server(url: str, timeout: float = 10.0) -> bool:
         time.sleep(0.1)
 
     return False
-
-
-def create_test_session_token(db: Database, user_id: int = 1) -> str:
-    """Create a session token for WebSocket authentication.
-
-    Args:
-        db: Database instance
-        user_id: User ID for the session
-
-    Returns:
-        Session token string
-    """
-    token = secrets.token_urlsafe(32)
-    session_id = f"test-session-{secrets.token_hex(8)}"
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-
-    db.conn.execute(
-        """
-        INSERT INTO sessions (id, token, user_id, expires_at)
-        VALUES (?, ?, ?, ?)
-        """,
-        (session_id, token, user_id, expires_at),
-    )
-    db.conn.commit()
-
-    return token
 
 
 @pytest.fixture(scope="module")

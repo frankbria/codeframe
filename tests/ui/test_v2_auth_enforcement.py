@@ -39,8 +39,8 @@ V2_GET_ENDPOINTS = [
     ("proof", "/api/v2/proof/requirements"),
     ("review", "/api/v2/review/diff"),
     ("schedule", "/api/v2/schedule"),
-    # streaming_v2 holds SSE utilities only; the SSE route itself is mounted
-    # under the tasks prefix — assert the auth dependency fires on it too.
+    # The SSE helpers live in ui/streaming_utils.py; the SSE route itself is
+    # mounted under the tasks prefix — assert the auth dependency fires on it too.
     ("streaming-sse", "/api/v2/tasks/abc/stream"),
     ("settings", "/api/v2/settings"),
     ("tasks", "/api/v2/tasks"),
@@ -49,25 +49,17 @@ V2_GET_ENDPOINTS = [
 ]
 
 
-def _build_auth_app(tmp_path, monkeypatch, *, enable_test_endpoints):
+def _build_auth_app(tmp_path, monkeypatch):
     """Reload the real server app with auth enforcement enabled.
 
     Provisions a dedicated initialized database with a test user (id=1) so
     the JWT lookup path works in any environment — never rely on a dev
     machine's ambient DATABASE_PATH (this fixture originally did, and passed
     locally while failing in CI with "no such table: users").
-
-    ``enable_test_endpoints`` controls CODEFRAME_ENABLE_TEST_ENDPOINTS (#753),
-    which the server reads at import time to decide whether to register the
-    test-only ``/test/broadcast`` route.
     """
     db_path = tmp_path / "state.db"
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
     monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
-    if enable_test_endpoints:
-        monkeypatch.setenv("CODEFRAME_ENABLE_TEST_ENDPOINTS", "1")
-    else:
-        monkeypatch.delenv("CODEFRAME_ENABLE_TEST_ENDPOINTS", raising=False)
     reset_auth_engine()
 
     db = Database(db_path)
@@ -84,9 +76,9 @@ def _build_auth_app(tmp_path, monkeypatch, *, enable_test_endpoints):
     db.conn.commit()
     db.close()
 
-    # server module is import-time; reload it so the CODEFRAME_ENABLE_TEST_ENDPOINTS
-    # gate is re-evaluated. The require_auth dependency reads the env at request
-    # time, so a freshly constructed TestClient over the app honors the monkeypatch.
+    # The server module builds `app` at import time; reload it so this test's
+    # environment is the one it sees. The require_auth dependency reads the env at
+    # request time, so a freshly constructed TestClient honors the monkeypatch.
     from codeframe.ui import server
 
     importlib.reload(server)
@@ -126,17 +118,8 @@ def _pop_credential_overrides(app) -> None:
 
 @pytest.fixture
 def auth_app(tmp_path, monkeypatch):
-    """Real server app with auth enforcement and test endpoints enabled."""
-    app = _build_auth_app(tmp_path, monkeypatch, enable_test_endpoints=True)
-    yield app
-    _pop_credential_overrides(app)
-    reset_auth_engine()
-
-
-@pytest.fixture
-def auth_app_no_test_endpoints(tmp_path, monkeypatch):
-    """Real server app with auth enforcement but NO test endpoints (#753)."""
-    app = _build_auth_app(tmp_path, monkeypatch, enable_test_endpoints=False)
+    """Real server app with auth enforcement enabled."""
+    app = _build_auth_app(tmp_path, monkeypatch)
     yield app
     _pop_credential_overrides(app)
     reset_auth_engine()
@@ -224,26 +207,6 @@ class TestSSEStreamTicketAuth:
         # dependency let the request through instead of rejecting it with 401.
         assert resp.status_code != 401, resp.text
         reset_stream_tickets()
-
-
-def test_test_broadcast_requires_auth(auth_app):
-    # When the flag enables the endpoint, it still enforces auth.
-    client = TestClient(auth_app, raise_server_exceptions=False)
-    resp = client.post("/test/broadcast", json={"message": {"x": 1}})
-    assert resp.status_code == 401
-
-
-def test_test_broadcast_gated_off_without_flag(auth_app_no_test_endpoints):
-    """#753: without CODEFRAME_ENABLE_TEST_ENDPOINTS the route is not registered,
-    so even a valid authenticated principal cannot trigger a broadcast."""
-    client = TestClient(auth_app_no_test_endpoints, raise_server_exceptions=False)
-    token = create_test_jwt_token(user_id=1)
-    resp = client.post(
-        "/test/broadcast",
-        json={"message": {"x": 1}},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert resp.status_code == 404
 
 
 class TestPublicEndpointsStayOpen:

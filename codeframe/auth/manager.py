@@ -362,7 +362,8 @@ def get_jwt_strategy() -> JWTStrategy:
     **Known limitation — logout does not revoke.** ``POST /auth/jwt/logout``
     only tells the client to drop its copy; the token itself stays valid until
     it expires, because verification is stateless signature-checking with no
-    server-side denylist (the ``sessions`` table is unused). A leaked token is
+    server-side denylist (there is no session store at all — the vestigial
+    ``sessions`` table was dropped in #968). A leaked token is
     therefore usable for up to JWT_LIFETIME_SECONDS. The mitigating control is
     that lifetime — default 24h (#657), and now actually configurable — plus
     the web UI's CSP against XSS exfiltration. Real revocation needs a

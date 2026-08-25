@@ -1,8 +1,8 @@
 """Control-plane database management for CodeFRAME.
 
-The global database is a **control-plane store** only: auth (users/accounts/
-sessions/verification), API keys, audit logs, interactive sessions, and token
-usage. All v2 domain data (tasks/blockers/PRD/...) lives in the per-workspace
+The global database is a **control-plane store** only: auth (users), API keys,
+audit logs, interactive sessions, and token usage. All v2 domain data
+(tasks/blockers/PRD/...) lives in the per-workspace
 ``.codeframe/state.db`` via ``codeframe.core.workspace`` — not here.
 
 The class acts as a thin facade, delegating to the surviving control-plane

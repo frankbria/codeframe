@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 import pytest
-from codeframe.core.config import Config, GlobalConfig, load_environment
+from codeframe.core.config import GlobalConfig, load_environment
 
 
 class TestGlobalConfig:
@@ -29,14 +29,6 @@ class TestGlobalConfig:
         assert config.log_level == "INFO"
         assert config.debug is False
         assert config.default_provider == "claude"
-
-    def test_cors_origins_parsing(self):
-        """Test CORS origins list parsing."""
-        config = GlobalConfig(cors_origins="http://localhost:3000, http://localhost:5173")
-        origins = config.get_cors_origins_list()
-        assert len(origins) == 2
-        assert "http://localhost:3000" in origins
-        assert "http://localhost:5173" in origins
 
     def test_log_level_validation(self, monkeypatch):
         """Test log level validation."""
@@ -72,42 +64,9 @@ class TestGlobalConfig:
         with pytest.raises(ValueError, match="API_PORT must be between"):
             GlobalConfig(_env_file=None)
 
-    def test_sprint_1_validation_success(self, monkeypatch):
-        """Test Sprint 1 validation with API key."""
-        # Set API key via env var (that's how BaseSettings works)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
 
-        config = GlobalConfig(_env_file=None)
-        # Should not raise
-        config.validate_required_for_sprint(sprint=1)
-
-    def test_sprint_1_validation_failure(self, monkeypatch):
-        """Test Sprint 1 validation without API key."""
-        # Ensure no API key in environment
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-        config = GlobalConfig(_env_file=None)
-        with pytest.raises(ValueError, match="ANTHROPIC_API_KEY is required"):
-            config.validate_required_for_sprint(sprint=1)
-
-    def test_ensure_directories(self, tmp_path, monkeypatch):
-        """Test that ensure_directories creates required paths."""
-        db_path = tmp_path / "test_db" / "state.db"
-        log_path = tmp_path / "logs" / "test.log"
-
-        # Set paths via env var (that's how BaseSettings works)
-        monkeypatch.setenv("DATABASE_PATH", str(db_path))
-        monkeypatch.setenv("LOG_FILE", str(log_path))
-
-        config = GlobalConfig(_env_file=None)
-        config.ensure_directories()
-
-        assert db_path.parent.exists()
-        assert log_path.parent.exists()
-
-
-class TestConfig:
-    """Test Config manager class."""
+class TestEnvironmentLoading:
+    """Test environment variable loading."""
 
     def test_load_environment(self, tmp_path, monkeypatch):
         """Test environment file loading."""
@@ -128,50 +87,6 @@ class TestConfig:
         finally:
             os.chdir(original_cwd)
 
-    def test_config_initialization(self, tmp_path):
-        """Test Config initialization."""
-        config = Config(tmp_path)
-        assert config.project_dir == tmp_path
-        assert config.config_dir == tmp_path / ".codeframe"
-        assert config.config_file == tmp_path / ".codeframe" / "config.json"
-
-    def test_validate_for_sprint(self, tmp_path, monkeypatch):
-        """Test sprint validation through Config."""
-        # Set API key in environment
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
-
-        config = Config(tmp_path)
-        # Should not raise with API key set
-        config.validate_for_sprint(sprint=1)
-
-    def test_validate_for_sprint_missing_key(self, tmp_path, monkeypatch):
-        """Test sprint validation fails without API key."""
-        # Ensure no API key in environment
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-        # Prevent load_environment from reading .env files
-        monkeypatch.setattr("codeframe.core.config.load_environment", lambda *args, **kwargs: None)
-
-        config = Config(tmp_path)
-        # Override _global_config to ensure fresh GlobalConfig without env file
-        config._global_config = None
-
-        # Patch get_global to not read from .env
-        from codeframe.core.config import GlobalConfig
-
-        def patched_get_global():
-            if not config._global_config:
-                config._global_config = GlobalConfig(_env_file=None)
-            return config._global_config
-
-        monkeypatch.setattr(config, "get_global", patched_get_global)
-
-        with pytest.raises(ValueError, match="ANTHROPIC_API_KEY is required"):
-            config.validate_for_sprint(sprint=1)
-
-
-class TestEnvironmentLoading:
-    """Test environment variable loading."""
 
     def test_load_from_env_file(self, tmp_path, monkeypatch):
         """Test loading from .env file."""
