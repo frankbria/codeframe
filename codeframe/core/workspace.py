@@ -153,8 +153,20 @@ def _create_core_tables(cursor: sqlite3.Cursor) -> None:
 
     Every statement is ``IF NOT EXISTS``, so calling this on an existing
     database adds what is absent and touches nothing else. Column-level
-    migrations (ALTER TABLE) stay in ``_ensure_schema_upgrades``: this function
-    only guarantees that every object exists.
+    migrations (ALTER TABLE) live in ``_ensure_schema_upgrades``: this function
+    only guarantees that every table exists.
+
+    That split was not true when the function was extracted (#1060) — it
+    inherited 13 ALTERs from ``_init_database``, 12 of which
+    ``_ensure_schema_upgrades`` then performed a second time on the same rows.
+    #1104 moved the last one (``blockers.created_by``) out and deleted the
+    duplicates, so there is now exactly one place a column migration is
+    written. ``tests/core/test_schema_alter_split_1104.py`` keeps it that way.
+
+    Deleting them exposed why they had looked load-bearing: the ``tasks``
+    CREATE never listed the four #565 traceability columns, so even a brand new
+    database was getting them by migration, and ``idx_tasks_external_url``
+    indexed a column the CREATE did not declare. They are declared here now.
     """
     # Workspace metadata
     cursor.execute("""
@@ -205,6 +217,10 @@ def _create_core_tables(cursor: sqlite3.Cursor) -> None:
             lineage TEXT DEFAULT '[]',
             is_leaf INTEGER DEFAULT 1,
             hierarchical_id TEXT,
+            requirement_ids TEXT DEFAULT '[]',
+            github_issue_number INTEGER,
+            external_url TEXT,
+            auto_close_github_issue INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
@@ -212,35 +228,6 @@ def _create_core_tables(cursor: sqlite3.Cursor) -> None:
             CHECK (status IN ('BACKLOG', 'READY', 'IN_PROGRESS', 'BLOCKED', 'FAILED', 'DONE', 'MERGED'))
         )
     """)
-
-    # Migration: Add columns to existing tasks table
-    # SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first
-    cursor.execute("PRAGMA table_info(tasks)")
-    columns = {row[1] for row in cursor.fetchall()}
-    if "depends_on" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN depends_on TEXT DEFAULT '[]'")
-    if "estimated_hours" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN estimated_hours REAL")
-    if "complexity_score" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN complexity_score INTEGER")
-    if "uncertainty_level" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN uncertainty_level TEXT")
-    if "github_issue_number" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN github_issue_number INTEGER")
-    if "parent_id" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN parent_id TEXT")
-    if "lineage" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN lineage TEXT DEFAULT '[]'")
-    if "is_leaf" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN is_leaf INTEGER DEFAULT 1")
-    if "hierarchical_id" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN hierarchical_id TEXT")
-    if "requirement_ids" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN requirement_ids TEXT DEFAULT '[]'")
-    if "external_url" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN external_url TEXT")
-    if "auto_close_github_issue" not in columns:
-        cursor.execute("ALTER TABLE tasks ADD COLUMN auto_close_github_issue INTEGER DEFAULT 0")
 
     # Append-only event log
     cursor.execute("""
@@ -272,12 +259,6 @@ def _create_core_tables(cursor: sqlite3.Cursor) -> None:
             CHECK (created_by IN ('system', 'agent', 'human'))
         )
     """)
-
-    # Migration: Add created_by column to existing blockers table
-    cursor.execute("PRAGMA table_info(blockers)")
-    blocker_columns = {row[1] for row in cursor.fetchall()}
-    if "created_by" not in blocker_columns:
-        cursor.execute("ALTER TABLE blockers ADD COLUMN created_by TEXT NOT NULL DEFAULT 'human'")
 
     # Checkpoints (state snapshots)
     cursor.execute("""
@@ -649,6 +630,15 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         if column not in batch_columns:
             cursor.execute(ddl)
     conn.commit()
+
+    # Add created_by column to the blockers table if it doesn't exist.
+    # Lived in _create_core_tables until #1104 moved it here, where the rest of
+    # the column migrations already were.
+    cursor.execute("PRAGMA table_info(blockers)")
+    blocker_columns = {row[1] for row in cursor.fetchall()}
+    if "created_by" not in blocker_columns:
+        cursor.execute("ALTER TABLE blockers ADD COLUMN created_by TEXT NOT NULL DEFAULT 'human'")
+        conn.commit()
 
     # Add tech_stack column to workspace table if it doesn't exist
     # First check if workspace table exists

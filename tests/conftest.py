@@ -359,10 +359,10 @@ def _workspace_db_template(tmp_path_factory):
 
     def _copy_template(db_path):
         # An EXISTING database is a migration, not a build: `_init_database`
-        # is `CREATE TABLE IF NOT EXISTS` plus ALTER TABLE steps, so copying
-        # over it would discard the caller's data and skip every migration —
-        # making migration tests pass for the wrong reason, because the
-        # template already contains the column the migration was meant to add.
+        # is `CREATE TABLE IF NOT EXISTS`, so copying over it would discard
+        # the caller's data and skip the schema work they asked for — making
+        # schema tests pass for the wrong reason, because the template already
+        # contains whatever they expected to be added.
         # Only a new file may be templated. The hot path is unaffected:
         # create_or_load_workspace builds at a fresh temp path.
         if Path(db_path).exists():

@@ -127,12 +127,12 @@ class TestTheTemplateMatchesARealBuild:
 
 
 class TestAnExistingDatabaseIsAMigration:
-    """`_init_database` on an existing file migrates it — it does not rebuild.
+    """`_init_database` on an existing file tops it up — it does not rebuild.
 
     The template must only ever serve a *new* database. Copying over an
-    existing one discards its contents and skips every ALTER TABLE, which
-    makes migration tests pass for the wrong reason: the template already has
-    the column the migration was supposed to add.
+    existing one discards its contents and skips the schema work the caller
+    asked for, which makes schema tests pass for the wrong reason: the
+    template already has whatever they expected to be added.
     """
 
     def test_an_existing_database_keeps_its_data(self, tmp_path):
@@ -153,28 +153,22 @@ class TestAnExistingDatabaseIsAMigration:
         finally:
             conn.close()
 
-    def test_the_alter_table_migration_actually_runs(self, tmp_path):
-        """The concrete case: a pre-created_by blockers table gets the column."""
+    def test_a_missing_table_is_actually_created(self, tmp_path):
+        """The concrete case: a database missing `blockers` gets the table.
+
+        Was `test_the_alter_table_migration_actually_runs`, which watched a
+        legacy `blockers` table gain `created_by`. #1104 moved every column
+        migration to `_ensure_schema_upgrades`, so `_init_database` no longer
+        performs that one — see `test_schema_alter_split_1104.py`. What this
+        test is really for is unchanged: prove the REAL function ran and not a
+        template copy, on a file that already exists.
+        """
         from codeframe.core import workspace as ws
 
         db = tmp_path / "state.db"
         conn = sqlite3.connect(db)
-        conn.execute("""
-            CREATE TABLE blockers (
-                id TEXT PRIMARY KEY,
-                workspace_id TEXT NOT NULL,
-                task_id TEXT,
-                question TEXT NOT NULL,
-                answer TEXT,
-                status TEXT NOT NULL DEFAULT 'OPEN',
-                created_at TEXT NOT NULL,
-                answered_at TEXT
-            )
-        """)
-        conn.execute(
-            "INSERT INTO blockers (id, workspace_id, question, status, created_at) "
-            "VALUES ('b1', 'w1', 'q?', 'OPEN', '2026-01-01')"
-        )
+        conn.execute("CREATE TABLE keepsake (id TEXT PRIMARY KEY)")
+        conn.execute("INSERT INTO keepsake VALUES ('k1')")
         conn.commit()
         conn.close()
 
@@ -182,10 +176,14 @@ class TestAnExistingDatabaseIsAMigration:
 
         conn = sqlite3.connect(db)
         try:
-            columns = {r[1] for r in conn.execute("PRAGMA table_info(blockers)")}
-            assert "created_by" in columns
-            # Migrated, not replaced — a rebuild would have dropped the row.
-            assert conn.execute("SELECT id FROM blockers").fetchall() == [("b1",)]
+            tables = {
+                r[0] for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            assert "blockers" in tables, "the template was copied instead"
+            # Topped up, not replaced — a rebuild would have dropped the row.
+            assert conn.execute("SELECT id FROM keepsake").fetchall() == [("k1",)]
         finally:
             conn.close()
 
