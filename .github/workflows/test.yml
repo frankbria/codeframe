@@ -39,6 +39,14 @@ jobs:
         with:
           enable-cache: true
 
+      # Must run BEFORE `uv sync`, which re-locks on the fly and would mask the
+      # drift it is meant to catch. Nothing else in CI compares uv.lock against
+      # pyproject.toml, so a dependency change committed without `uv lock` passed
+      # every job and then failed the image build -- the Dockerfile uses
+      # `uv sync --frozen`, which refuses a mismatched lock (#1164, found via #968).
+      - name: Verify uv.lock is up to date with pyproject.toml
+        run: uv lock --check
+
       - name: Create virtual environment
         run: uv venv
 
