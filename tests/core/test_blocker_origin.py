@@ -84,9 +84,20 @@ class TestExistingBlockersMigration:
         assert fetched.created_by == BlockerOrigin.HUMAN
 
     def test_alter_table_migration_adds_created_by_column(self, tmp_path: Path):
-        """ALTER TABLE migration: initializing a DB without created_by column adds it."""
+        """ALTER TABLE migration: opening a DB without created_by adds it.
+
+        Drives `_ensure_schema_upgrades`, not `_init_database`: since #1104 the
+        latter is the fresh-workspace path and carries no column migrations.
+        That matches production, where `_init_database` only ever runs against a
+        brand new temp file and an existing database reaches
+        `_ensure_schema_upgrades` via `get_workspace`.
+        """
         import sqlite3
-        from codeframe.core.workspace import _init_database, CODEFRAME_DIR, STATE_DB_NAME
+        from codeframe.core.workspace import (
+            _ensure_schema_upgrades,
+            CODEFRAME_DIR,
+            STATE_DB_NAME,
+        )
 
         # Create a DB with the old blockers schema (no created_by column)
         repo = tmp_path / "old-repo"
@@ -118,8 +129,8 @@ class TestExistingBlockersMigration:
         conn.close()
         assert "created_by" not in columns_before
 
-        # Run the full init (triggers the ALTER TABLE migration)
-        _init_database(db_path)
+        # Run the upgrade path (triggers the ALTER TABLE migration)
+        _ensure_schema_upgrades(db_path)
 
         # Confirm column is present after migration
         conn = sqlite3.connect(str(db_path))
