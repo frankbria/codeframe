@@ -6,9 +6,17 @@
 published 0.9.2 was dead on arrival — the same shape of failure as #1112, and
 invisible to CI, which resolves the locked 0.70.0 and never sees 1.x.
 
-This asserts the contract that actually matters: every keyword the adapter
-passes is one the *installed* SDK accepts. It fails the moment the lock moves to
-an SDK whose signature has drifted, whatever the pin says.
+This asserts the contract that actually matters: every keyword the adapter passes
+unconditionally is one the *installed* SDK accepts. It fails the moment the lock
+moves to an SDK whose signature has drifted, whatever the pin says.
+
+Covers both entry points the adapter uses. `messages.stream()` is a separate
+signature from `messages.create()`, and the sync `stream()` also sends
+`temperature`, so it was exposed to this same break.
+
+Deliberately NOT asserted: `betas` and `thinking`, which `async_stream` sends only
+for interleaved extended thinking and already guards with a `TypeError` fallback
+(#766). Those are allowed to be absent; the kwargs below are not.
 """
 
 import inspect
@@ -17,32 +25,40 @@ import pytest
 
 pytestmark = pytest.mark.v2
 
-# Every key AnthropicProvider.complete / async_complete put into `kwargs`.
+# Every key AnthropicProvider puts into `kwargs` unconditionally, across
+# complete / async_complete (-> messages.create) and stream / async_stream
+# (-> messages.stream). The union is the same set for both.
 ADAPTER_KWARGS = {"model", "max_tokens", "messages", "temperature", "system", "tools"}
 
 
-def _create_params(create) -> set[str]:
-    return set(inspect.signature(create).parameters)
+def _missing(method) -> set[str]:
+    return ADAPTER_KWARGS - set(inspect.signature(method).parameters)
 
 
-def test_sync_client_accepts_every_kwarg_the_adapter_sends():
-    from anthropic import Anthropic
+def _clients():
+    from anthropic import Anthropic, AsyncAnthropic
 
-    missing = ADAPTER_KWARGS - _create_params(Anthropic(api_key="x").messages.create)
+    return Anthropic(api_key="x"), AsyncAnthropic(api_key="x")
+
+
+@pytest.mark.parametrize("call", ["create", "stream"])
+def test_sync_client_accepts_every_kwarg_the_adapter_sends(call):
+    sync, _ = _clients()
+
+    missing = _missing(getattr(sync.messages, call))
     assert not missing, (
         f"installed anthropic SDK no longer accepts {sorted(missing)} on "
-        "Messages.create(); AnthropicProvider still sends them. Migrate the "
+        f"Messages.{call}(); AnthropicProvider still sends them. Migrate the "
         "adapter before raising the pin in pyproject.toml."
     )
 
 
-def test_async_client_accepts_every_kwarg_the_adapter_sends():
-    from anthropic import AsyncAnthropic
+@pytest.mark.parametrize("call", ["create", "stream"])
+def test_async_client_accepts_every_kwarg_the_adapter_sends(call):
+    _, async_ = _clients()
 
-    missing = ADAPTER_KWARGS - _create_params(
-        AsyncAnthropic(api_key="x").messages.create
-    )
+    missing = _missing(getattr(async_.messages, call))
     assert not missing, (
         f"installed anthropic SDK no longer accepts {sorted(missing)} on async "
-        "Messages.create(); AnthropicProvider.async_complete still sends them."
+        f"Messages.{call}(); AnthropicProvider still sends them."
     )

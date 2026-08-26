@@ -1,6 +1,6 @@
 # CodeFRAME cold start: the 15-minute quickstart, validated from a clean machine
 
-*2026-08-26T02:11:53Z*
+*2026-08-26T02:31:35Z*
 
 **Issue [#614](https://github.com/frankbria/codeframe/issues/614)** asks a single
 question: can someone on a clean machine, with only Python 3.11+, `uv` and an
@@ -203,7 +203,7 @@ uv run pytest tests/adapters/test_sdk_kwargs_guard_614.py -q 2>&1 | grep -E "pas
 ```
 
 ```output
-============================== 2 passed ===============================
+============================== 4 passed ===============================
 ```
 
 That guard is not a tautology — it introspects the *installed* SDK.
