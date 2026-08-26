@@ -108,39 +108,39 @@ step "3-init" yes 300 -- cf init . --detect
 ########################################
 # README Step 4 — Think: PRD + tasks
 #
-# `cf prd generate` is interactive and asks an AI-determined number of
-# AI-generated questions, so there is no fixed answer list that stays in sync:
-# one rejected answer desynchronises a canned list permanently. responder.py
-# stands in for an attentive user — it reads each question and answers that
-# question from a fixed project brief. Turns and rejections are logged, so the
-# transcript still shows what a real person would have had to sit through.
+# `cf prd generate` is a Socratic interview: an AI-determined number of
+# AI-generated questions, so a canned answer list desynchronises permanently on
+# the first rejection. `--brief-file` (#1114) answers the question actually
+# asked from a fixed project brief, which is what makes this step reproducible.
+# It replaced the harness's own stand-in user (responder.py), so the walkthrough
+# now exercises a shipped code path rather than one that only exists here.
 ########################################
-note P-PRD-INTERACTIVE major \
-  "cf prd generate is interactive-only (no --non-interactive/--answers-file); it cannot be scripted, CI-tested or demoed reproducibly without a stand-in user"
-
-step "4-prd-generate" yes 1500 -- python3 /responder.py cf prd generate
+step "4-prd-generate" yes 1500 -- cf prd generate --brief-file /brief.md
 
 step "4-prd-show" yes 120 -- cf prd show
 step "4-tasks-generate" yes 900 -- cf tasks generate
 step "4-tasks-list" yes 120 -- cf tasks list
 
 ########################################
-# README Step 5 — Build / Prove / Ship
+# README Step 5 — Promote the tasks you want to run
 #
-# The README goes straight to `cf work batch run --all-ready`. QUICKSTART Step 4
-# says tasks are generated into BACKLOG and must be promoted to READY first. Run
-# the README's command verbatim and see whether it is a no-op.
+# `cf tasks generate` leaves tasks in BACKLOG, so `--all-ready` below is a
+# silent no-op without this. That used to be a finding: the README skipped
+# straight to the batch run and a new user got `No READY tasks found` and exit 0
+# (#1120 added the step). It is documented now, so it runs in README order —
+# and `documented=yes` here is what would go back to `no` if the docs regressed.
 ########################################
 printf '\n### Task status distribution before any promotion:\n'
 cf tasks list 2>&1 | tail -40
 
-step "5-batch-run-as-readme-says" yes 900 -- cf work batch run --all-ready
-
-# Promotion is documented in QUICKSTART Step 4 but absent from the README happy
-# path. Do it after the literal README run above, so the no-op stays on record.
-step "5-promote-to-ready" no 120 -- bash -c "cf tasks set status READY --all --from BACKLOG"
+step "5-promote-to-ready" yes 120 -- bash -c "cf tasks set status READY --all --from BACKLOG"
 printf '\n### READY tasks after promotion:\n'
 cf tasks list --status READY 2>&1 | tail -30
+
+########################################
+# README Step 6 — Build / Prove / Ship
+########################################
+step "6-batch-run" yes 900 -- cf work batch run --all-ready
 
 # Acceptance criterion names `cf work start` specifically. `cf tasks list` only
 # renders an 8-char ID prefix (Rich column, max_width=8), so that prefix is all
@@ -149,12 +149,12 @@ TASK_ID=$(cf tasks list --status READY 2>/dev/null | grep -oE '\b[0-9a-f]{8}\b' 
 printf '\n### Resolved TASK_ID=%s\n' "${TASK_ID:-<none>}"
 
 if [ -n "$TASK_ID" ]; then
-  step "5-work-start" yes 1200 -- bash -c "cf work start '$TASK_ID' --execute"
+  step "6-work-start" yes 1200 -- bash -c "cf work start '$TASK_ID' --execute"
 else
   note P-NO-TASK-ID critical "Could not resolve a task ID from 'cf tasks list' output — cf work start <id> is not reachable by following the docs"
 fi
 
-step "5-proof-run" yes 900 -- cf proof run
+step "6-proof-run" yes 900 -- cf proof run
 
 ########################################
 # Post-run state

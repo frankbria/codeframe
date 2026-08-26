@@ -5,8 +5,16 @@ get from nothing to `cf proof run` in under 15 minutes?**
 
 Run it before every release. It installs the *published* package by default, so
 it catches the class of bug where the code on `main` is fine but the artifact
-users actually install is not — which is exactly what it caught the first time
-(#1112: 0.9.1 shipped retired model IDs, so every AI command 404'd).
+users actually install is not. It has now caught that class twice:
+
+- **#1112** — 0.9.1 shipped retired model IDs, so every AI command 404'd.
+- **#614 (this run)** — 0.9.2 pinned `anthropic>=0.18.0` with no ceiling, so a
+  fresh install resolved `anthropic` 1.0.0, which removed `temperature` from
+  `Messages.create()`. Every AI command died with a `TypeError`. CI never saw it:
+  the lockfile resolves 0.70.0, and only a *fresh, unlocked* install drifts.
+
+Both were invisible to the test suite and to `uv sync`. That is the whole point
+of the harness — it is the only thing here that installs what a user installs.
 
 ## Usage
 
@@ -38,14 +46,14 @@ Artifacts land in `artifacts/` (gitignored) or the directory you name:
   continues, so one run collects every papercut instead of one per run. Steps the
   harness had to add because the docs omitted them are marked `documented=no` in
   `timings.tsv` — that column is itself a docs-drift signal.
-- **`responder.py` stands in for a human at `cf prd generate`.** That command is
-  interactive-only with AI-generated questions, so a canned answer list
-  desynchronises on the first rejection (measured: 21 turns, 0 accepted). The
-  responder reads each question and answers *that* question from a fixed brief,
-  logging every turn and rejection. Delete it once #1114 lands a real
-  non-interactive mode.
-- The container carries only Python 3.11, `uv`, `git` and `anthropic` (for the
-  responder alone — `cf` runs in its own uv-managed venv).
+- **`cf prd generate --brief-file brief.md` stands in for a human.** That command
+  is a Socratic interview with AI-generated questions, so a canned answer list
+  desynchronises on the first rejection (measured: 21 turns, 0 accepted).
+  `--brief-file` answers the question actually asked from a fixed brief. This
+  used to be a `responder.py` the harness carried itself; #1114 shipped the real
+  thing, so the walkthrough now exercises a code path users have.
+- The container carries only Python 3.11, `uv` and `git` — `cf` installs itself
+  into its own uv-managed venv, which is the thing under test.
 
 ## Regenerating the demo document
 

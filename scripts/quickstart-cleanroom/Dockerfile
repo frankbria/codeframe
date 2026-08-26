@@ -12,10 +12,6 @@ RUN apt-get update -qq \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 
-# For responder.py only — the stand-in user that answers `cf prd generate`.
-# `cf` itself lives in its own uv-managed venv and does not use this.
-RUN pip install --no-cache-dir -q anthropic
-
 # A first-time user has no git identity; `cf init`/`cf commit` need one.
 RUN git config --global user.email "cleanroom@example.com" \
     && git config --global user.name "Cleanroom User" \
@@ -24,6 +20,9 @@ RUN git config --global user.email "cleanroom@example.com" \
 
 WORKDIR /work
 COPY walkthrough.sh /walkthrough.sh
-COPY responder.py /responder.py
-RUN chmod +x /walkthrough.sh /responder.py
+# The project brief the stand-in user answers from, via `cf prd generate
+# --brief-file`. Only the brief is baked in; the answering is a shipped code
+# path, not something this harness implements.
+COPY brief.md /brief.md
+RUN chmod +x /walkthrough.sh
 ENTRYPOINT ["/walkthrough.sh"]
