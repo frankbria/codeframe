@@ -170,10 +170,35 @@ scripts/lifecycle --mode cli|api|web|all # Lifecycle tests (run locally before a
                                          # all — every one of them
 uv run ruff check .
 
+scripts/quickstart-cleanroom/run.sh      # Cold-start check — RUN BEFORE EVERY RELEASE
+                                         # Installs the PUBLISHED package on a clean
+                                         # container and follows the README. Needs a
+                                         # real key and ~10 min. Add `--source <dir>`
+                                         # to check an unreleased fix instead.
+
 # Web UI
 cd web-ui && npm test
 cd web-ui && npm run build
 ```
+
+#### The cold-start check is not optional (#1112, #1168)
+
+Nothing else here installs what a user installs. `uv.lock` is what CI, `uv sync`
+and every developer machine resolve; `uv tool install codeframe-ai` resolves the
+**ranges** in `pyproject.toml` against live PyPI instead. Those two drift apart
+silently, and twice now a release has been dead on arrival on the one install
+path the README documents while every gate was green:
+
+- **#1112** — 0.9.1 shipped retired model IDs; every AI command 404'd.
+- **#1168** — 0.9.2 pinned `anthropic>=0.18.0` with no ceiling, so a fresh
+  install resolved `anthropic` 1.0.0, which removed `temperature` from
+  `Messages.create()`; every AI command raised `TypeError`.
+
+So: **a floor-only pin on an SDK is a latent DOA release.** Cap the major on
+anything whose call signature we depend on, and remember the lockfile hides it.
+`tests/adapters/test_sdk_kwargs_guard_614.py` catches the drift once it reaches
+the lock; only the cold-start harness catches it before that. Automating the
+gap is #1169.
 
 #### Suite speed (#979)
 
