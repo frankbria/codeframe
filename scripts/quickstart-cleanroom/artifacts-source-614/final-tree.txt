@@ -1,0 +1,59 @@
+total 248
+drwxr-xr-x 9 root root  4096 Aug 26 02:05 .
+drwxr-xr-x 1 root root  4096 Aug 26 01:47 ..
+drwxr-xr-x 4 root root  4096 Aug 26 02:06 .codeframe
+drwxr-xr-x 8 root root  4096 Aug 26 01:47 .git
+drwxr-xr-x 3 root root  4096 Aug 26 01:50 .pytest_cache
+drwxr-xr-x 5 root root  4096 Aug 26 01:49 .venv
+-rw-r--r-- 1 root root  6900 Aug 26 02:03 GET_TODOS_IMPLEMENTATION.md
+-rw-r--r-- 1 root root  5657 Aug 26 02:05 GET_TODO_BY_ID_IMPLEMENTATION.md
+-rw-r--r-- 1 root root  4089 Aug 26 01:54 IMPLEMENTATION_SUMMARY.md
+-rw-r--r-- 1 root root  1468 Aug 26 02:05 QUICK_REFERENCE.md
+-rw-r--r-- 1 root root  2047 Aug 26 01:53 README.md
+-rw-r--r-- 1 root root  5849 Aug 26 01:57 SCHEMAS_IMPLEMENTATION.md
+drwxr-xr-x 2 root root  4096 Aug 26 02:04 __pycache__
+drwxr-xr-x 3 root root  4096 Aug 26 01:58 app
+-rw-r--r-- 1 root root  3070 Aug 26 02:05 example_get_todo_by_id.py
+-rw-r--r-- 1 root root  4459 Aug 26 02:03 example_get_todos.py
+-rw-r--r-- 1 root root  4075 Aug 26 01:56 example_schemas.py
+-rw-r--r-- 1 root root  8192 Aug 26 01:58 example_todos.db
+-rwxr-xr-x 1 root root  4071 Aug 26 01:54 example_usage.py
+-rw-r--r-- 1 root root   228 Aug 26 01:51 pyproject.toml
+-rwxr-xr-x 1 root root  1119 Aug 26 01:53 run.py
+drwxr-xr-x 3 root root  4096 Aug 26 01:49 src
+-rw-r--r-- 1 root root  7747 Aug 26 02:04 test_api_get_todo_by_id.py
+-rw-r--r-- 1 root root 10215 Aug 26 02:02 test_api_get_todos.py
+-rw-r--r-- 1 root root  6512 Aug 26 02:00 test_api_todos.py
+-rw-r--r-- 1 root root  2990 Aug 26 01:58 test_crud.py
+-rw-r--r-- 1 root root  1840 Aug 26 01:52 test_custom_db_path.py
+-rw-r--r-- 1 root root  5454 Aug 26 01:51 test_database.py
+-rw-r--r-- 1 root root  1857 Aug 26 01:53 test_integration.py
+-rw-r--r-- 1 root root  4460 Aug 26 01:49 test_models.py
+-rw-r--r-- 1 root root  8688 Aug 26 01:56 test_schemas.py
+-rw-r--r-- 1 root root 73312 Aug 26 01:51 uv.lock
+ M README.md
+ M pyproject.toml
+?? GET_TODOS_IMPLEMENTATION.md
+?? GET_TODO_BY_ID_IMPLEMENTATION.md
+?? IMPLEMENTATION_SUMMARY.md
+?? QUICK_REFERENCE.md
+?? SCHEMAS_IMPLEMENTATION.md
+?? __pycache__/
+?? app/
+?? example_get_todo_by_id.py
+?? example_get_todos.py
+?? example_schemas.py
+?? example_todos.db
+?? example_usage.py
+?? run.py
+?? src/
+?? test_api_get_todo_by_id.py
+?? test_api_get_todos.py
+?? test_api_todos.py
+?? test_crud.py
+?? test_custom_db_path.py
+?? test_database.py
+?? test_integration.py
+?? test_models.py
+?? test_schemas.py
+?? uv.lock

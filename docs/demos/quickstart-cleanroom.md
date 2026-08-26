@@ -1,6 +1,6 @@
 # CodeFRAME cold start: the 15-minute quickstart, validated from a clean machine
 
-*2026-08-09T07:13:16Z*
+*2026-08-26T02:11:53Z*
 
 **Issue [#614](https://github.com/frankbria/codeframe/issues/614)** asks a single
 question: can someone on a clean machine, with only Python 3.11+, `uv` and an
@@ -11,22 +11,30 @@ This document is the answer, and the harness that produced it. Everything below
 was captured from real runs in a throwaway Docker container with no CodeFRAME
 installed and no repository checked out.
 
-**Verdict up front:**
+**Verdict up front — both halves of the question currently fail, for unrelated reasons:**
 
-| | Published `codeframe-ai 0.9.1` (what the README tells you to install) | Source install of `main` |
+| | Published `codeframe-ai 0.9.2` (what the README tells you to install) | Source install of the fix |
 |---|---|---|
-| Reaches `cf prd generate` | ❌ 404 on a retired model ID | ✅ |
-| Completes the walkthrough | ❌ dead at the first AI command | ⚠️ completes, `cf work start` reports failure |
-| Wall clock | 21s (fails fast) | **494s — 8m14s, inside the 15-minute budget** |
+| Reaches `cf prd generate` | ❌ `TypeError` on the first AI call | ✅ 73s, coherent PRD |
+| Reaches `cf tasks generate` | ❌ collateral — no PRD | ✅ 29s, 25 real tasks with dependencies |
+| Completes the walkthrough | ❌ dead at the first AI command | ⚠️ Step 6 never finishes |
+| Wall clock | 16s (fails fast) | **1177s — 19m37s, over budget** |
 
-So the time budget is met, but **the published artifact cannot run at all**. That
-is [#1112](https://github.com/frankbria/codeframe/issues/1112), and it blocks #614.
+Two separate problems, and it matters that they are separate:
+
+1. **The published artifact cannot run at all.** A dependency it does not pin
+   shipped a breaking major. That is
+   [#1168](https://github.com/frankbria/codeframe/issues/1168), fixed in this PR
+   but not fixed for users until 0.9.3 is published.
+2. **Once it runs, the documented happy path does not fit in 15 minutes.** That is
+   [#1171](https://github.com/frankbria/codeframe/issues/1171), and it is new —
+   it was hidden until now because the step that overruns used to be a no-op.
 
 ## The clean machine
 
 No CodeFRAME, no repo, no API key baked in. `git` is present only because
-`cf init` initialises a repository; `anthropic` is installed for the stand-in
-user that answers the interactive PRD interview, and `cf` never uses it.
+`cf init` initialises a repository. Nothing else — installing `cf` is the first
+thing under test.
 
 ```bash
 cat scripts/quickstart-cleanroom/Dockerfile
@@ -47,10 +55,6 @@ RUN apt-get update -qq \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 
-# For responder.py only — the stand-in user that answers `cf prd generate`.
-# `cf` itself lives in its own uv-managed venv and does not use this.
-RUN pip install --no-cache-dir -q anthropic
-
 # A first-time user has no git identity; `cf init`/`cf commit` need one.
 RUN git config --global user.email "cleanroom@example.com" \
     && git config --global user.name "Cleanroom User" \
@@ -59,8 +63,11 @@ RUN git config --global user.email "cleanroom@example.com" \
 
 WORKDIR /work
 COPY walkthrough.sh /walkthrough.sh
-COPY responder.py /responder.py
-RUN chmod +x /walkthrough.sh /responder.py
+# The project brief the stand-in user answers from, via `cf prd generate
+# --brief-file`. Only the brief is baked in; the answering is a shipped code
+# path, not something this harness implements.
+COPY brief.md /brief.md
+RUN chmod +x /walkthrough.sh
 ENTRYPOINT ["/walkthrough.sh"]
 ```
 
@@ -71,7 +78,7 @@ container at run time — it is never written into the image.
 
 ```bash
 scripts/quickstart-cleanroom/run.sh                  # the published PyPI package
-scripts/quickstart-cleanroom/run.sh --source <dir>   # a source install of main
+scripts/quickstart-cleanroom/run.sh --source <dir>   # a source install of HEAD
 ```
 
 The walkthrough follows the README **literally** and does not work around
@@ -83,131 +90,174 @@ the finding and continues, so one run collects every papercut.
 ## Run A — the published package, exactly as the README says
 
 ```bash
-column -t -s"$(printf "\t")" scripts/quickstart-cleanroom/artifacts-pypi-0.9.1/timings.tsv
+column -t -s"$(printf '\t')" scripts/quickstart-cleanroom/artifacts-pypi-0.9.2/timings.tsv; echo; cat scripts/quickstart-cleanroom/artifacts-pypi-0.9.2/total.txt
 ```
 
 ```output
-step                        status  seconds  exit_code  documented
-1-install                   OK      3        0          yes
-1-smoke-cf-help             OK      3        0          yes
-1-version                   OK      1        0          yes
-3-init                      OK      3        0          yes
-4-prd-generate              FAIL    3        1          yes
-4-prd-show                  OK      0        0          yes
-4-tasks-generate            FAIL    1        1          yes
-4-tasks-list                OK      1        0          yes
-5-batch-run-as-readme-says  OK      1        0          yes
-5-promote-to-ready          OK      1        0          no
-5-proof-run                 OK      1        0          yes
-post-status                 OK      1        0          yes
-post-tasks-list             OK      0        0          yes
-post-proof-status           OK      1        0          yes
+step                status  seconds  exit_code  documented
+1-install           OK      3        0          yes
+1-smoke-cf-help     OK      2        0          yes
+1-version           OK      1        0          yes
+3-init              OK      1        0          yes
+4-prd-generate      FAIL    2        1          yes
+4-prd-show          OK      0        0          yes
+4-tasks-generate    FAIL    1        1          yes
+4-tasks-list        OK      0        0          yes
+5-promote-to-ready  OK      0        0          yes
+6-batch-run         OK      1        0          yes
+6-proof-run         FAIL    0        2          yes
+post-status         OK      1        0          yes
+post-tasks-list     OK      0        0          yes
+post-proof-status   OK      1        0          yes
+
+TOTAL_SECONDS=16
 ```
 
 Install, help, version and `cf init` all work, and they are fast.
 Then the first AI-backed command in the README dies:
 
 ```bash
-sed -n "/STEP: 4-prd-generate/,/4-prd-generate: FAIL/p" scripts/quickstart-cleanroom/artifacts-pypi-0.9.1/transcript.txt
+sed -n '/STEP: 4-prd-generate/,/4-prd-generate: FAIL/p' scripts/quickstart-cleanroom/artifacts-pypi-0.9.2/transcript.txt
 ```
 
 ```output
 ===== STEP: 4-prd-generate (documented=yes) =====
-$ bash -c cf prd generate < /tmp/answers.txt
+$ cf prd generate --brief-file /brief.md
 
 Using template: Standard PRD
-Error: Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 
-'message': 'model: claude-3-5-haiku-20241022'}, 'request_id': 
-'req_011CdriPN8FW32UUNgw1FSFM'}
+Error: The anthropic API call failed.
 
------ 4-prd-generate: FAIL (3s, exit 1) -----
+(set CODEFRAME_VERBOSE=1 to see the raw provider response)
+
+----- 4-prd-generate: FAIL (2s, exit 1) -----
 ```
 
-The request **authenticated** — note the `request_id` — and was then
-rejected on the model. `codeframe-ai 0.9.1` ships five model IDs that no longer
-exist. Everything downstream is collateral: no PRD, so no tasks; no tasks, so
-nothing to run; nothing run, so nothing to prove.
+`Messages.create() got an unexpected keyword argument 'temperature'`.
+
+This is not a CodeFRAME bug in any code we wrote. `pyproject.toml` asked for
+`anthropic>=0.18.0` — a floor with no ceiling — and `anthropic` **1.0.0** has
+since been published, which removed the sampling keywords from
+`Messages.create()`:
 
 ```bash
-grep -n "DEFAULT_.*_MODEL" codeframe/adapters/llm/base.py
+cat <<'EOF'
+anthropic 0.70.0 (what uv.lock resolves, what CI runs):
+  max_tokens, messages, model, metadata, stop_sequences, stream, system,
+  temperature, thinking, tool_choice, tools, top_k, top_p, ...
+
+anthropic 1.0.0 (what a fresh `uv tool install` resolves today):
+  max_tokens, messages, model, cache_control, container, inference_geo,
+  metadata, output_config, service_tier, stop_sequences, stream, system,
+  thinking, tool_choice, tools, user_profile_id, ...
+                                 ^ temperature / top_k / top_p are gone
+EOF
 ```
 
 ```output
-47:DEFAULT_PLANNING_MODEL = "claude-sonnet-4-5"
-48:DEFAULT_EXECUTION_MODEL = "claude-sonnet-4-5"
-49:DEFAULT_GENERATION_MODEL = "claude-haiku-4-5"
-50:DEFAULT_CORRECTION_MODEL = "claude-sonnet-4-5"  # Use same tier; override via CODEFRAME_CORRECTION_MODEL for a stronger model
-51:DEFAULT_SUPERVISION_MODEL = "claude-sonnet-4-5"  # Use same tier; override via CODEFRAME_SUPERVISION_MODEL for a stronger model
-81:                "CODEFRAME_PLANNING_MODEL", DEFAULT_PLANNING_MODEL
-85:                "CODEFRAME_EXECUTION_MODEL", DEFAULT_EXECUTION_MODEL
-89:                "CODEFRAME_GENERATION_MODEL", DEFAULT_GENERATION_MODEL
-93:                "CODEFRAME_CORRECTION_MODEL", DEFAULT_CORRECTION_MODEL
-97:                "CODEFRAME_SUPERVISION_MODEL", DEFAULT_SUPERVISION_MODEL
+anthropic 0.70.0 (what uv.lock resolves, what CI runs):
+  max_tokens, messages, model, metadata, stop_sequences, stream, system,
+  temperature, thinking, tool_choice, tools, top_k, top_p, ...
+
+anthropic 1.0.0 (what a fresh `uv tool install` resolves today):
+  max_tokens, messages, model, cache_control, container, inference_geo,
+  metadata, output_config, service_tier, stop_sequences, stream, system,
+  thinking, tool_choice, tools, user_profile_id, ...
+                                 ^ temperature / top_k / top_p are gone
 ```
 
-Those are the values on `main`, and they are correct. The published
-0.9.1 wheel contains `claude-sonnet-4-20250514`, `claude-3-5-haiku-20241022` and
-`claude-opus-4-20250514` — all retired. **The code is fine; the artifact is
-stale.** The fix is a release, not a patch.
+`AnthropicProvider` passes `temperature` unconditionally — deliberately,
+[#767](https://github.com/frankbria/codeframe/issues/767), because `temperature=0.0`
+is a real request for deterministic sampling and guarding on `> 0` silently
+dropped it. So the first call raises, and everything downstream is collateral:
+no PRD, so no tasks; no tasks, so nothing to run; nothing run, so nothing to prove.
+
+**Why nothing caught it.** `uv.lock` pins 0.70.0, so CI, `uv sync` and every
+developer machine are on a working SDK. Only a *fresh, unlocked* install — which
+is precisely what the README tells a new user to run — drifts to 1.0.0. The code
+on `main` was fine; the artifact users install was not.
+
+This is the second time that exact sentence has been true. The first was
+[#1112](https://github.com/frankbria/codeframe/issues/1112) (0.9.1 shipped retired
+model IDs), also caught by this harness. Two DOA releases from one missing check
+is what [#1169](https://github.com/frankbria/codeframe/issues/1169) is for.
+
+The fix is one line, plus a guard so the next SDK bump fails in CI
+instead of in a release:
+
+```bash
+grep -n -B6 "anthropic>=" pyproject.toml
+```
+
+```output
+27-    # `temperature` (and the other sampling kwargs) from Messages.create(),
+28-    # so a floor-only pin let every fresh `uv tool install codeframe-ai`
+29-    # resolve to an SDK our adapter cannot call — published 0.9.2 was dead on
+30-    # arrival on exactly the path the README tells a new user to take. The
+31-    # lockfile hid it: CI resolves 0.70.0 and never sees 1.x.
+32-    # Raise this only together with the 1.x migration.
+33:    "anthropic>=0.18.0,<1.0",
+```
+
+```bash
+uv run pytest tests/adapters/test_sdk_kwargs_guard_614.py -q 2>&1 | grep -E "passed|failed" | sed -E "s/ in [0-9.]+s//"
+```
+
+```output
+============================== 2 passed ===============================
+```
+
+That guard is not a tautology — it introspects the *installed* SDK.
+Against `anthropic==1.0.0` it fails with
+`installed anthropic SDK no longer accepts ['temperature']`; against the locked
+0.70.0 it passes.
 
 ---
 
-## Run B — source install of `main`
+## Run B — source install of the fix
 
-Same harness, same container, `--source`. This is what a 0.9.2 release would
-behave like.
+Same harness, same container, `--source`. This is what 0.9.3 will behave like.
 
 ```bash
-column -t -s"$(printf "\t")" scripts/quickstart-cleanroom/artifacts-source-main/timings.tsv; echo; cat scripts/quickstart-cleanroom/artifacts-source-main/total.txt
+column -t -s"$(printf '\t')" scripts/quickstart-cleanroom/artifacts-source-614/timings.tsv; echo; cat scripts/quickstart-cleanroom/artifacts-source-614/total.txt
 ```
 
 ```output
-step                        status  seconds  exit_code  documented
-1-install                   OK      2        0          yes
-1-smoke-cf-help             OK      3        0          yes
-1-version                   OK      0        0          yes
-3-init                      OK      3        0          yes
-4-prd-generate              OK      93       0          yes
-4-prd-show                  OK      0        0          yes
-4-tasks-generate            OK      18       0          yes
-4-tasks-list                OK      0        0          yes
-5-batch-run-as-readme-says  OK      1        0          yes
-5-promote-to-ready          OK      6        0          no
-5-work-start                FAIL    361      1          yes
-5-proof-run                 OK      1        0          yes
-post-status                 OK      0        0          yes
-post-tasks-list             OK      1        0          yes
-post-proof-status           OK      1        0          yes
+step                status   seconds  exit_code  documented
+1-install           OK       3        0          yes
+1-smoke-cf-help     OK       2        0          yes
+1-version           OK       0        0          yes
+3-init              OK       1        0          yes
+4-prd-generate      OK       73       0          yes
+4-prd-show          OK       0        0          yes
+4-tasks-generate    OK       29       0          yes
+4-tasks-list        OK       1        0          yes
+5-promote-to-ready  OK       2        0          yes
+6-batch-run         TIMEOUT  900      124        yes
+6-work-start        FAIL     163      1          yes
+6-proof-run         FAIL     1        2          yes
+post-status         OK       0        0          yes
+post-tasks-list     OK       1        0          yes
+post-proof-status   OK       0        0          yes
 
-TOTAL_SECONDS=494
+TOTAL_SECONDS=1177
 ```
 
-**494 seconds — 8m14s — comfortably inside the 15-minute budget**,
-including a 361-second agent run. The time criterion is met.
+The install path is repaired: `cf prd generate` and
+`cf tasks generate` both succeed, and the pipeline reaches real agent execution
+for the first time from a packaged install. But **1177 seconds — 19m37s — is over
+the 15-minute budget**, and Step 6 never finished at all.
 
-Two steps deserve a closer look.
+Four things in that table are worth reading closely.
 
-### `cf prd generate` — works, but only for a human
+### `cf tasks generate` — genuinely fixed
 
-The Socratic interview is genuinely good: three questions, 93 seconds, and a
-coherent PRD titled *Self-Hosted Todo Management REST API*. But it can only be
-driven by a person at a terminal — there is no `--non-interactive` and no
-`--answers-file`.
-
-A fixed list of canned answers does not substitute. The questions are
-AI-generated and the validator rejects partial answers, so one rejection
-desynchronises the list permanently. Measured: a 20-answer canned list produced
-**21 turns, 0 accepted answers, coverage stuck at 0%**, never leaving Question 1.
-
-The harness therefore ships a stand-in user that reads each question and answers
-*that* question. That is [#1114](https://github.com/frankbria/codeframe/issues/1114).
-
-### `cf tasks generate` — the real problem
-
-Eighteen seconds, twenty tasks, and not one of them is a task:
+The previous walkthrough found this step emitting PRD bullets verbatim: persona
+traits, raw markdown markers, and an empty `Deps` column for all twenty items
+([#1115](https://github.com/frankbria/codeframe/issues/1115)). That is no longer
+true:
 
 ```bash
-sed -n "/STEP: 4-tasks-list/,/^Total: 20/p" scripts/quickstart-cleanroom/artifacts-source-main/transcript.txt | head -40
+sed -n '/STEP: 4-tasks-list/,/^Total: 25/p' scripts/quickstart-cleanroom/artifacts-source-614/transcript.txt | head -40
 ```
 
 ```output
@@ -215,180 +265,155 @@ sed -n "/STEP: 4-tasks-list/,/^Total: 20/p" scripts/quickstart-cleanroom/artifac
 $ cf tasks list
 
                                      Tasks                                      
-┏━━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ ID       ┃ Status  ┃ Pri ┃ Deps ┃ Title                                      ┃
-┡━━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ 7ed42345 │ BACKLOG │  0  │  -   │ Todos scattered across different notes and │
-│          │         │     │      │ systems make...                            │
-│ 1269b291 │ BACKLOG │  1  │  -   │ Existing SaaS tools add unwanted           │
-│          │         │     │      │ subscriptions and exte...                  │
-│ e0cac14a │ BACKLOG │  2  │  -   │ No simple, self-hostable solution that     │
-│          │         │     │      │ developers can d...                        │
-│ 735ba25c │ BACKLOG │  3  │  -   │ Lack of focus when completed items clutter │
-│          │         │     │      │ active task ...                            │
-│ 78865699 │ BACKLOG │  4  │  -   │ Comfortable with REST APIs and             │
-│          │         │     │      │ command-line tools                         │
-│ 70666e98 │ BACKLOG │  5  │  -   │ Prefers self-hosted solutions over SaaS    │
-│          │         │     │      │ subscriptions                              │
-│ f018d8d8 │ BACKLOG │  6  │  -   │ Works on multiple projects simultaneously  │
-│ 03219cef │ BACKLOG │  7  │  -   │ Values simplicity and performance over     │
-│          │         │     │      │ feature bloat                              │
-│ 45d1c460 │ BACKLOG │  8  │  -   │ Centralize task management in a single,    │
-│          │         │     │      │ reliable system                            │
-│ b9fc4b93 │ BACKLOG │  9  │  -   │ Maintain control over data and hosting     │
-│          │         │     │      │ infrastructure                             │
-│ b19002ba │ BACKLOG │ 10  │  -   │ Quickly capture tasks as they arise        │
-│          │         │     │      │ throughout the day                         │
-│ b365fa50 │ BACKLOG │ 11  │  -   │ Focus on active work without distraction   │
-│          │         │     │      │ from completed...                          │
-│ 98caaa2f │ BACKLOG │ 12  │  -   │ Has access to a laptop or small VPS for    │
-│          │         │     │      │ hosting                                    │
-│ 70075023 │ BACKLOG │ 13  │  -   │ Comfortable deploying Python applications  │
-│ 143d115f │ BACKLOG │ 14  │  -   │ May build custom clients or integrations   │
-│          │         │     │      │ on top of the ...                          │
-│ e1294a29 │ BACKLOG │ 15  │  -   │ **Requirement:** Fast, lightweight         │
-│          │         │     │      │ endpoint to create n...                    │
-│ 906c283d │ BACKLOG │ 16  │  -   │ **Fields:** Description (required),        │
-│          │         │     │      │ priority (optional)...                     │
-│ 5a60af26 │ BACKLOG │ 17  │  -   │ **Performance:** Sub-50ms response time    │
+┏━━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ID       ┃ Status  ┃ Pri ┃      Deps      ┃ Title                            ┃
+┡━━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ b2c924a3 │ BACKLOG │  0  │       -        │ Define Todo data model with      │
+│          │         │     │                │ SQLAlchemy ORM                   │
+│ 81c1b9d7 │ BACKLOG │  1  │     b2c924     │ Create SQLite database           │
+│          │         │     │                │ initialization and migration     │
+│ 9b66d3bc │ BACKLOG │  2  │       -        │ Implement Pydantic schemas for   │
+│          │         │     │                │ request/response validat...      │
+│ 4b095191 │ BACKLOG │  3  │    3 tasks     │ Implement POST /todos endpoint   │
+│ 7ecabdc0 │ BACKLOG │  4  │    3 tasks     │ Implement GET /todos endpoint    │
+│          │         │     │                │ with filtering                   │
+│ 03e5b03e │ BACKLOG │  5  │    3 tasks     │ Implement GET /todos/{id}        │
+│          │         │     │                │ endpoint                         │
+│ eefec3e3 │ BACKLOG │  6  │    3 tasks     │ Implement PUT /todos/{id}        │
+│          │         │     │                │ endpoint                         │
+│ 6b00cbac │ BACKLOG │  7  │ b2c924, 81c1b9 │ Implement DELETE /todos/{id}     │
+│          │         │     │                │ endpoint                         │
+│ de743d90 │ BACKLOG │  8  │    3 tasks     │ Implement PATCH                  │
+│          │         │     │                │ /todos/{id}/toggle endpoint      │
+│ 8d28847b │ BACKLOG │  9  │     81c1b9     │ Configure FastAPI application    │
+│          │         │     │                │ and ASGI server                  │
+│ 6d6abcf9 │ BACKLOG │ 10  │    3 tasks     │ Implement input validation and   │
+│          │         │     │                │ error handling                   │
+│ cda86e9a │ BACKLOG │ 11  │     8d2884     │ Add logging configuration        │
+│ b6fd9292 │ BACKLOG │ 12  │    6 tasks     │ Create test suite for CRUD       │
+│          │         │     │                │ operations                       │
+│ a39c3279 │ BACKLOG │ 13  │ 7ecabd, b6fd92 │ Create test suite for filtering  │
+│          │         │     │                │ and priority logic               │
+│ 96bd559a │ BACKLOG │ 14  │ 6d6abc, b6fd92 │ Create test suite for input      │
+│          │         │     │                │ validation and error handli...   │
+│ f406c43c │ BACKLOG │ 15  │ 7ecabd, b6fd92 │ Create performance test for 1000 │
+│          │         │     │                │ todo retrieval                   │
+│ 8ceb317f │ BACKLOG │ 16  │       -        │ Create project structure and     │
+│          │         │     │                │ dependencies file                │
+│ c84e3e8f │ BACKLOG │ 17  │     8d2884     │ Create environment configuration │
 ```
 
-These are PRD bullets, emitted verbatim. Items 0–3 are the problem
-statement. Items 4–7 and 12–14 are **user-persona traits** — "Comfortable with
-REST APIs and command-line tools" is not something you can implement. Items 15–19
-still carry their markdown markers (`**Requirement:**`, `**Fields:**`), which is
-what a text splitter leaves behind, not a decomposition.
+Twenty-five implementable tasks with a real dependency graph —
+schemas before endpoints, endpoints before their tests, `Create test suite for
+CRUD operations` depending on six tasks. This is what the README advertises, and
+it now does it.
 
-The `Deps` column is empty for all twenty, though the README advertises
-dependency graphs. This is
-[#1115](https://github.com/frankbria/codeframe/issues/1115).
+### Step 6 — the 15-minute budget breaks here
 
-### The README's happy path is a no-op
-
-Tasks are created in `BACKLOG`. The README went straight to `--all-ready`:
+Which creates the next problem. The README's Step 5 promotes every task to
+`READY`, and Step 6 runs all of them:
 
 ```bash
-sed -n "/STEP: 5-batch-run-as-readme-says/,/5-batch-run-as-readme-says: OK/p" scripts/quickstart-cleanroom/artifacts-source-main/transcript.txt
+sed -n '/STEP: 6-batch-run/,/Starting batch execution/p' scripts/quickstart-cleanroom/artifacts-source-614/transcript.txt
 ```
 
 ```output
-===== STEP: 5-batch-run-as-readme-says (documented=yes) =====
+===== STEP: 6-batch-run (documented=yes) =====
 $ cf work batch run --all-ready
 
-No READY tasks found
+Found 25 READY tasks
 
------ 5-batch-run-as-readme-says: OK (1s, exit 0) -----
+Batch Execution Plan
+  Strategy: serial
+  Tasks: 25
+  On failure: continue
+
+Starting batch execution...
 ```
 
-Exit 0, nothing done, no warning. A first-time user would reasonably
-conclude the agent ran and had nothing to do. **Fixed in this PR** — the README
-now has an explicit promote-to-`READY` step before `--all-ready`.
+Twenty-five agent runs, **serially**. The harness cut it off at 900
+seconds, still inside the first task.
 
-### `cf work start` — reported failure, real output
+There is no arrangement in which that finishes in fifteen minutes. And it is a
+*new* finding rather than a regression: the earlier walkthrough measured 8m14s,
+but on a path where this step did nothing — promotion was not in the README then,
+so `--all-ready` found nothing, printed `No READY tasks found` and exited 0 in one
+second. That silent no-op was itself the finding, fixed in #1120. Making the
+README correct made the happy path honest, and the honest happy path does not fit.
+That is [#1171](https://github.com/frankbria/codeframe/issues/1171).
 
-Given one of those non-tasks, the agent inferred the whole project from the PRD
-and built it. Then it ran out of iterations:
+### `cf work start` — a traceback at the user
+
+Given a single task instead of the batch, the agent works, then hits a schema bug
+in its own metrics:
 
 ```bash
-tail -8 scripts/quickstart-cleanroom/artifacts-source-main/run-logs/output.log
+sed -n '/STEP: 6-work-start/,/6-work-start: FAIL/p' scripts/quickstart-cleanroom/artifacts-source-614/transcript.txt | grep -v 'AGENT_STEP\|AGENT_EVENT\|task_id=' | tail -22
 ```
 
 ```output
-[ReactAgent] Iteration 43/45
-[ReactAgent] Tool: create_file
-[ReactAgent] Autofix examples/client_example.py: SKIPPED
-[ReactAgent] Iteration 44/45
-[ReactAgent] Tool: run_command
-[ReactAgent] Iteration 45/45
-[ReactAgent] Tool: create_file
-[ReactAgent] Autofix Dockerfile: SKIPPED
+02:06:26 GATES_STARTED
+02:06:28 GATES_COMPLETED
+02:06:43 GATES_STARTED
+02:06:45 GATES_COMPLETED
+Token usage persistence failed for task 03e5b03e-aaca-4faf-96bd-2921a3e9b83f
+Traceback (most recent call last):
+  File "/root/.local/share/uv/tools/codeframe-ai/lib/python3.11/site-packages/codeframe/core/react_agent.py", line 491, in _persist_token_usage
+    tracker.record_token_usage_sync(
+  File "/root/.local/share/uv/tools/codeframe-ai/lib/python3.11/site-packages/codeframe/lib/metrics_tracker.py", line 347, in record_token_usage_sync
+    token_usage = TokenUsage(
+                  ^^^^^^^^^^^
+  File "/root/.local/share/uv/tools/codeframe-ai/lib/python3.11/site-packages/pydantic/main.py", line 263, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for TokenUsage
+call_type
+  Input should be 'task_execution', 'code_review', 'coordination' or 'other' [type=enum, input_value='verification_fix', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+Task blocked - human input needed
+  Use 'codeframe blocker list' to see blockers
+
+----- 6-work-start: FAIL (163s, exit 1) -----
 ```
 
+`react_agent.py` records self-correction calls as
+`call_type="verification_fix"`, and `CallType` has no such member. Every
+verification-fix call therefore loses its token usage — the *expensive* calls,
+the ones that re-send context to fix what the first attempt got wrong — so the
+Costs page systematically under-reports exactly the work users would most want to
+see. And the user gets a stack trace mid-run, which is the failure mode
+[#1110](https://github.com/frankbria/codeframe/issues/1110) set out to remove.
+That is [#1172](https://github.com/frankbria/codeframe/issues/1172).
+
+### `cf proof run` — correct behaviour, wrong place in the docs
+
 ```bash
-sed -n "/STEP: 5-work-start/,/5-work-start: FAIL/p" scripts/quickstart-cleanroom/artifacts-source-main/transcript.txt | grep -v AGENT_STEP
+sed -n '/STEP: 6-proof-run/,/6-proof-run: FAIL/p' scripts/quickstart-cleanroom/artifacts-source-614/transcript.txt
 ```
 
 ```output
-===== STEP: 5-work-start (documented=yes) =====
-$ bash -c cf work start '7ed42345' --execute
-
-06:57:47 RUN_STARTED task_id=7ed42345-d769-47e6-a26c-13a326c52844
-
-Run started
-  Task: Todos scattered across different notes and systems make it difficult to 
-maintain a complete view of pending work
-  Run ID: 610c4fb5-9f27-4128-a7a7-589334b00dc2
-  Status: RUNNING
-
-Executing agent...
-07:03:47 RUN_FAILED task_id=7ed42345-d769-47e6-a26c-13a326c52844
-Task execution failed
-
------ 5-work-start: FAIL (361s, exit 1) -----
-```
-
-Six minutes, then `Task execution failed` — no mention of the
-45-iteration cap, no way to resume, no blocker. Meanwhile the working tree
-contains a substantially complete FastAPI todo service:
-
-```bash
-cat scripts/quickstart-cleanroom/artifacts-source-main/final-tree.txt
-```
-
-```output
-total 244
-drwxr-xr-x 10 root root   4096 Aug  9 07:03 .
-drwxr-xr-x  1 root root   4096 Aug  9 06:55 ..
-drwxr-xr-x  4 root root   4096 Aug  9 07:03 .codeframe
-drwxr-xr-x  8 root root   4096 Aug  9 06:55 .git
--rw-r--r--  1 root root    418 Aug  9 07:02 .gitignore
-drwxr-xr-x  3 root root   4096 Aug  9 07:00 .pytest_cache
-drwxr-xr-x  5 root root   4096 Aug  9 06:58 .venv
--rw-r--r--  1 root root    296 Aug  9 07:03 Dockerfile
--rw-r--r--  1 root root   3822 Aug  9 06:59 README.md
-drwxr-xr-x  2 root root   4096 Aug  9 07:03 examples
--rw-r--r--  1 root root    432 Aug  9 06:57 pyproject.toml
--rw-r--r--  1 root root    125 Aug  9 06:59 pytest.ini
-drwxr-xr-x  3 root root   4096 Aug  9 06:58 src
-drwxr-xr-x  3 root root   4096 Aug  9 07:00 tests
-drwxr-xr-x  3 root root   4096 Aug  9 07:00 todo_api
--rw-r--r--  1 root root 185009 Aug  9 06:58 uv.lock
- M README.md
- M pyproject.toml
-?? .gitignore
-?? Dockerfile
-?? examples/
-?? pytest.ini
-?? tests/
-?? todo_api/
-?? uv.lock
-```
-
-15 `create_file`, 8 `edit_file`, 6 `run_tests`, 12 `run_command`.
-The user is told it failed and shown a `FAILED` task, with no hint that the
-deliverable is sitting in their tree. That is
-[#1117](https://github.com/frankbria/codeframe/issues/1117).
-
-### `cf proof run` — the PROVE step proves nothing
-
-```bash
-sed -n "/STEP: 5-proof-run/,/5-proof-run: OK/p" scripts/quickstart-cleanroom/artifacts-source-main/transcript.txt
-```
-
-```output
-===== STEP: 5-proof-run (documented=yes) =====
+===== STEP: 6-proof-run (documented=yes) =====
 $ cf proof run
 
 Running proof obligations (scope-filtered)...
-No applicable obligations found.
+Nothing was verified.
+There are no proof obligations in this workspace, so this run checked nothing — 
+it is not a pass.
 
------ 5-proof-run: OK (1s, exit 0) -----
+Capture your first requirement with:
+  cf proof capture
+
+----- 6-proof-run: FAIL (1s, exit 2) -----
 ```
 
-Exit 0. This is *after* the agent wrote `todo_api/`, `tests/` and a
-`pytest.ini` — code and tests both existed. The quickstart's final step, and the
-product's stated differentiator, ends on a green light that verified nothing.
-That is [#1118](https://github.com/frankbria/codeframe/issues/1118).
+Exit 2, and **that is right** —
+[#1118](https://github.com/frankbria/codeframe/issues/1118) replaced the old
+vacuous `exit 0` with this, and the message is a good one. The problem is that
+the README ends on it. A fresh workspace has an empty ledger by definition, so
+the documented happy path is guaranteed to close on a failure, and nothing
+between `cf init` and here tells the user to `cf proof capture` first. For a
+product whose thesis is PROVE, the quickstart currently demonstrates PROVE
+failing. That is [#1173](https://github.com/frankbria/codeframe/issues/1173).
 
 ---
 
@@ -396,26 +421,26 @@ That is [#1118](https://github.com/frankbria/codeframe/issues/1118).
 
 | Issue | Priority | Finding |
 |---|---|---|
-| [#1112](https://github.com/frankbria/codeframe/issues/1112) | P0.31 | Published 0.9.1 pins retired model IDs — every LLM command 404s |
-| [#1115](https://github.com/frankbria/codeframe/issues/1115) | P0.32 | `cf tasks generate` emits PRD bullets verbatim as tasks |
-| [#1110](https://github.com/frankbria/codeframe/issues/1110) | P1.39 | Provider errors surface as raw JSON dicts |
-| [#1117](https://github.com/frankbria/codeframe/issues/1117) | P1.40 | Iteration exhaustion reported as a bare "Task execution failed" |
-| [#1111](https://github.com/frankbria/codeframe/issues/1111) | P2.28 | `cf init`/`cf status` steer users off the documented `prd generate` path |
-| [#1113](https://github.com/frankbria/codeframe/issues/1113) | P2.29 | 11 commands print a bogus `Error: 1` after every clean error exit |
-| [#1114](https://github.com/frankbria/codeframe/issues/1114) | P2.30 | `cf prd generate` has no non-interactive mode |
-| [#1116](https://github.com/frankbria/codeframe/issues/1116) | P2.31 | Agent event bridge collapses every non-"started" event into one type |
-| [#1118](https://github.com/frankbria/codeframe/issues/1118) | P2.32 | `cf proof run` exits 0 on an empty ledger — vacuous pass |
+| [#1168](https://github.com/frankbria/codeframe/issues/1168) | P0.33 | Published 0.9.2 is DOA — unpinned `anthropic` resolves to 1.0.0, which removed `temperature` |
+| [#1169](https://github.com/frankbria/codeframe/issues/1169) | P1.41 | Nothing checks that a fresh, unlocked install resolves to a working dependency set — root cause of two DOA releases |
+| [#1171](https://github.com/frankbria/codeframe/issues/1171) | P1.42 | The quickstart cannot finish in 15 minutes — Step 6 runs all 25 tasks serially |
+| [#1172](https://github.com/frankbria/codeframe/issues/1172) | P1.43 | `CallType` has no `verification_fix` member — self-correction spend is lost and a traceback reaches the user |
+| [#1170](https://github.com/frankbria/codeframe/issues/1170) | P2.33 | Migrate the Anthropic adapter to the 1.x SDK and lift the `<1.0` ceiling |
+| [#1173](https://github.com/frankbria/codeframe/issues/1173) | P2.34 | The quickstart's final step always fails — no `cf proof capture` before `cf proof run` |
 
-Docs corrected in the same PR: the README no-op above, `cf pr checks` (not a
-command), QUICKSTART's missing install section and `batch cancel` (it is `stop`),
-five phantom commands in GOLDEN_PATH, and two summary lines in CLAUDE.md. The
-phantom-command inventory was added to
-[#972](https://github.com/frankbria/codeframe/issues/972), which owns the
-repeatable check.
+The previous round of this walkthrough filed #1110–#1118; **all nine are closed**,
+and this run confirms two of the most visible ones — task decomposition (#1115)
+and the vacuous proof pass (#1118) — are genuinely fixed rather than merely
+marked done.
 
 ## Bottom line
 
-The 15-minute budget is not the problem — a clean machine gets to `cf proof run`
-in **8m14s**. The problems are that the published package cannot run at all, and
-that the two steps in the middle (task decomposition, and what the agent is told
-it accomplished) do not yet hold up.
+The harness earns its keep: it has now caught two consecutive releases that were
+dead on arrival for the one install path the README documents, neither of which
+any test, lint or `uv sync` could see.
+
+Beyond that, the answer to #614's question is **not yet**. The 15-minute budget
+was never the real constraint when the middle of the pipeline was broken; now
+that `cf prd generate` and `cf tasks generate` both work well, the constraint is
+real and the documented happy path misses it — because that path tells a new user
+to execute their entire backlog on their first run.
