@@ -165,6 +165,11 @@ class CallType(str, Enum):
     TASK_EXECUTION = "task_execution"
     CODE_REVIEW = "code_review"
     COORDINATION = "coordination"
+    # ReactAgent bills its self-correction retries separately from the main
+    # execution loop. Missing here, TokenUsage rejected every such record and
+    # _persist_token_usage dropped it with only a WARNING (#712) — caught by
+    # the cold-start cleanroom run against published 0.9.3.
+    VERIFICATION_FIX = "verification_fix"
     OTHER = "other"
 
 
