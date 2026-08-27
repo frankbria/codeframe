@@ -137,6 +137,20 @@ class TestTheVersionAgrees:
 
         assert f"## [{self._pyproject_version()}]" in changelog
 
+    def test_the_package_reports_that_version_too(self):
+        """`codeframe.__version__` is what `cf version`, telemetry, and the
+        codex adapter actually report — this doc-version check covers README
+        and CHANGELOG but never the package itself, and that's exactly where
+        the drift lived: 0.9.0/0.9.1/0.9.2 all shipped `__version__ = "0.1.0"`,
+        hand-typed and never bumped alongside pyproject.toml."""
+        import importlib
+
+        import codeframe
+
+        importlib.reload(codeframe)
+
+        assert codeframe.__version__ == self._pyproject_version()
+
 
 class TestTheRoadmapDoesNotContradictItself:
     """PROVE and SHIP listed as pending exactly what the Web UI section listed as

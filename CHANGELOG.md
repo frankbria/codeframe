@@ -7,6 +7,45 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.9.3]
+
+**Published `codeframe-ai 0.9.2` was dead on arrival, the same as `0.9.1` before it
+(#1168).** `pyproject.toml` pinned `anthropic>=0.18.0` with no ceiling. A fresh
+`uv tool install codeframe-ai` resolved that to `anthropic` 1.0.0, which removed
+`temperature` from `Messages.create()` — every LLM-backed command (`cf prd
+generate`, `cf tasks generate`, `cf work start`, ...) raised `TypeError` on the
+first call, on the exact install path the README documents. `uv.lock` resolves
+`anthropic` 0.70.0, so CI and every developer machine never saw it.
+
+This is the second consecutive release dead on arrival on the published-package
+install path while every existing gate stayed green — `0.9.1` shipped retired
+model IDs (#1112), `0.9.2` shipped this. Neither the test suite nor CI installs
+the published package the way a new user does; only the cold-start cleanroom
+harness (`scripts/quickstart-cleanroom/run.sh`) catches it, and it was not run
+against `0.9.2` before release.
+
+### Fixed
+
+- **`anthropic` is now pinned `>=0.18.0,<1.0` (#1168, #1174).** The ceiling is
+  load-bearing, not caution: it stops the next SDK major bump from silently
+  breaking every fresh install the same way. A new guard test
+  (`tests/adapters/test_sdk_kwargs_guard_614.py`) asserts every keyword argument
+  the adapter sends unconditionally is one the *installed* SDK still accepts, so
+  a future signature drift fails in CI instead of in a release.
+- **`codeframe.__version__` no longer lies (caught by pre-PR `codex review`
+  during this release).** It was a hand-typed literal (`"0.1.0"`) that had not
+  been bumped since the module was written, so `cf version`, every telemetry
+  event, and the Codex adapter's user-agent all reported `0.1.0` through the
+  `0.9.0`, `0.9.1` and `0.9.2` releases — the same "artifact metadata lies
+  about the artifact" failure class as #1112 and #1168, a third instance the
+  existing `tests/test_root_docs_950.py` version-drift guard never covered
+  because it only checked README/CHANGELOG against `pyproject.toml`, not the
+  package itself. `__version__` is now read from installed package metadata
+  via `importlib.metadata.version("codeframe-ai")` (falling back to
+  `"0.0.0+unknown"` for an uninstalled source checkout) so it can't drift from
+  `pyproject.toml` again, and the guard test now asserts the imported
+  `codeframe.__version__` matches the pyproject version too.
+
 ## [0.9.2]
 
 **0.9.1 could not work for anyone** and should not be used: it pinned five
