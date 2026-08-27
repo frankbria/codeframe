@@ -17,11 +17,21 @@ jobs:
       (github.event.pull_request.changed_files >= 5 ||
        github.event.pull_request.additions >= 20 ||
        github.event.pull_request.deletions >= 20)
-    uses: frankbria/glm-review/.github/workflows/review.yml@b877d15a0f8c0855d0d2ebdcce32ae09cec1bb2d # main
+    uses: frankbria/glm-review/.github/workflows/review.yml@00c986ec828acb6add2f4035f28b4918ef67b78e # main
+    # `issues: write` and `id-token: write` are gone (#1167). They were not
+    # optional on the old pin: GitHub fails a run when a caller grants less than
+    # the called job requests, and b877d15's job declared both. Upstream dropped
+    # them after verifying the reviewer never mints an OIDC token and that PR
+    # comments are authorised by `pull-requests`, not `issues`, even though they
+    # go through the shared /issues/{n}/comments endpoint.
+    #
+    # The new pin also uploads the agent's turn-by-turn transcript as a build
+    # artifact (14-day retention). This repo is public, so that artifact is too —
+    # it holds the PR diff and whatever repo files the reviewer opened, all of
+    # which are already public here. Set `upload_transcript: false` if that ever
+    # stops being true.
     permissions:
       contents: read
       pull-requests: write
-      issues: write
-      id-token: write
     secrets:
       ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
