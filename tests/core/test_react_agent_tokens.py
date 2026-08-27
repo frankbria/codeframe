@@ -348,3 +348,84 @@ class TestPersistDoesNotPolluteWorkspaceDb:
         assert "api_keys" not in tables
         assert "sessions" not in tables
         assert "audit_logs" not in tables
+
+
+class TestEveryEmittedCallTypeIsValid:
+    """The cold-start cleanroom run against published 0.9.3 caught
+    `_persist_token_usage` throwing on every verification-fix cycle:
+
+        ValidationError: 1 validation error for TokenUsage
+        call_type Input should be 'task_execution', 'code_review',
+        'coordination' or 'other' [input_value='verification_fix']
+
+    ReactAgent emitted a `call_type` that `CallType` did not define, so the
+    record was dropped and only a WARNING was logged (#712). Same silent
+    token/cost data-loss class as #558.
+
+    These are guards, not one-off assertions: the first pins the whole set of
+    literals the agent can emit, so adding another unlisted one fails here
+    rather than in a release.
+    """
+
+    def test_every_call_type_react_agent_emits_is_a_valid_calltype(self):
+        """Pin the source literals against the enum, so a new one can't drift."""
+        import re
+        from pathlib import Path
+
+        from codeframe.core.models import CallType
+
+        source = Path(
+            __import__("codeframe.core.react_agent", fromlist=["x"]).__file__
+        ).read_text()
+        # Accepted tradeoff: this matches the `"call_type": "literal"` dict shape
+        # only, so rewriting a call site to an f-string or a variable would drop
+        # it from this guard silently rather than fail loudly. Kept as a source
+        # scan because it is the only way to pin *every* emitted literal at once;
+        # the `assert emitted` below catches a refactor that breaks the shape
+        # everywhere, and test_a_verification_fix_record_actually_persists backs
+        # it up behaviourally.
+        emitted = set(re.findall(r'"call_type":\s*"([^"]+)"', source))
+
+        assert emitted, "expected react_agent to emit at least one call_type"
+        valid = {member.value for member in CallType}
+        assert emitted <= valid, (
+            f"react_agent emits call_type(s) {sorted(emitted - valid)} that "
+            f"CallType does not define {sorted(valid)} — TokenUsage will reject "
+            f"them and the usage record is silently dropped"
+        )
+
+    def test_a_verification_fix_record_actually_persists(self, tmp_path):
+        """End-to-end: the record must land in token_usage, not be swallowed."""
+        import sqlite3
+
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.workspace import create_or_load_workspace
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        ws = create_or_load_workspace(repo)
+
+        agent = ReactAgent(workspace=ws, llm_provider=MockProvider())
+        agent._token_records = [
+            {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "model": "claude-sonnet-4-5",
+                "call_type": "verification_fix",
+                "iteration": 1,
+            }
+        ]
+
+        agent._persist_token_usage("a1b2c3d4-uuid-task")
+
+        conn = sqlite3.connect(str(ws.db_path))
+        try:
+            rows = conn.execute(
+                "SELECT call_type FROM token_usage"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        assert rows == [("verification_fix",)], (
+            "the verification-fix token record was dropped instead of persisted"
+        )
