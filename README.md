@@ -74,7 +74,7 @@ THE CLOSED LOOP
 ---
 
 > [!NOTE]
-> **CodeFRAME is in public beta (`0.9.2`).** The vision and the Golden Path CLI
+> **CodeFRAME is in public beta (`0.9.3`).** The vision and the Golden Path CLI
 > (`cf init/prd/tasks/work/proof/pr`) and v2 API are stable enough to build on;
 > the web UI and anything marked "in progress" in
 > [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) are still moving, and
