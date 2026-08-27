@@ -67,7 +67,12 @@ def test_the_release_is_gated_on_it():
         None,
     )
     assert gate, "release.yml does not call the unlocked-resolution workflow"
-    assert gate in release["jobs"]["build"]["needs"], (
+    # `needs:` is a string when there is one dependency and a list when there are
+    # several. Normalise, so this stays a membership check and never degrades
+    # into a substring match against a similarly-named job.
+    needs = release["jobs"]["build"]["needs"]
+    needs = [needs] if isinstance(needs, str) else needs
+    assert gate in needs, (
         f"release job 'build' does not need {gate!r}, so a tag can publish a "
         "release whose unlocked resolution was never checked"
     )
