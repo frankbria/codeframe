@@ -18,8 +18,17 @@ permissions:
   contents: read
 
 jobs:
+  # A release must not ship a dependency range set that only resolves on this
+  # repo's lockfile (#1169). This resolves pyproject.toml from scratch against
+  # live PyPI and smoke-tests the result — the resolution a new user actually
+  # gets from `uv tool install codeframe-ai`.
+  unlocked-resolution:
+    name: Unlocked resolution
+    uses: ./.github/workflows/unlocked-resolution.yml
+
   build:
     name: Build sdist + wheel
+    needs: unlocked-resolution
     runs-on: ubuntu-latest
     # ANTHROPIC_API_KEY lives in the `staging` environment, and GitHub only
     # exposes environment secrets to jobs that declare that environment. The
