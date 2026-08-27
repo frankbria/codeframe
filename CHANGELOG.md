@@ -7,6 +7,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- **Self-correction token/cost records were silently dropped (#1168 follow-up).**
+  `ReactAgent` bills each verification-fix retry as `call_type="verification_fix"`
+  (`react_agent.py:943`), but `CallType` never defined that member, so `TokenUsage`
+  rejected every such record and `_persist_token_usage` swallowed it with only a
+  WARNING (#712). Every self-correction cycle's tokens and cost vanished from
+  `token_usage` — the same data-loss class as #558's int-cast UUID task IDs.
+  The column is `call_type TEXT` with no `CHECK` constraint, so the enum was the
+  whole fix; no migration. Caught by the cold-start cleanroom run against
+  published `0.9.3`, which was the first run to get far enough to reach the code.
+  Guarded by a test that pins every `call_type` literal `react_agent` emits
+  against the enum, so the next unlisted one fails in CI rather than in a release.
+
 ## [0.9.3]
 
 **Published `codeframe-ai 0.9.2` was dead on arrival, the same as `0.9.1` before it

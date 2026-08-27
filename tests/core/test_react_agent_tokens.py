@@ -377,6 +377,13 @@ class TestEveryEmittedCallTypeIsValid:
         source = Path(
             __import__("codeframe.core.react_agent", fromlist=["x"]).__file__
         ).read_text()
+        # Accepted tradeoff: this matches the `"call_type": "literal"` dict shape
+        # only, so rewriting a call site to an f-string or a variable would drop
+        # it from this guard silently rather than fail loudly. Kept as a source
+        # scan because it is the only way to pin *every* emitted literal at once;
+        # the `assert emitted` below catches a refactor that breaks the shape
+        # everywhere, and test_a_verification_fix_record_actually_persists backs
+        # it up behaviourally.
         emitted = set(re.findall(r'"call_type":\s*"([^"]+)"', source))
 
         assert emitted, "expected react_agent to emit at least one call_type"
