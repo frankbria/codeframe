@@ -1,0 +1,79 @@
+name: Unlocked Resolution
+
+# Resolves the dependency *ranges* in pyproject.toml with no lockfile, against
+# live PyPI, and smoke-tests the result (#1169).
+#
+# Everything else in CI resolves uv.lock. A user running `uv tool install
+# codeframe-ai` gets none of it — pip/uv resolve the ranges from scratch, today,
+# against whatever is on PyPI today. The two resolutions drift apart silently and
+# continuously, and twice that drift shipped a dead-on-arrival release while
+# every gate was green:
+#
+#   0.9.1  retired Anthropic model IDs      -> every AI command 404'd    (#1112)
+#   0.9.2  anthropic>=0.18.0 -> 1.0.0, which
+#          removed `temperature`            -> every AI command TypeError'd (#1168)
+#
+# The schedule is the point: this break arrives from upstream, not from a commit
+# of ours, so it can appear on a day nobody pushed anything.
+#
+# Known limitation: a red scheduled run notifies via GitHub's normal workflow
+# notifications; it does not open an issue. Deliberate — one moving part.
+
+on:
+  schedule:
+    # Daily, 06:00 UTC — a few hours before a working day starts, so a break
+    # that landed on PyPI overnight is known before anyone tags a release.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+  workflow_call: # release.yml gates on this
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "tests/adapters/test_sdk_kwargs_guard_614.py"
+      - "tests/adapters/test_model_defaults_guard_1112.py"
+      - ".github/workflows/unlocked-resolution.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  unlocked-install:
+    name: Fresh resolve + smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        # No enable-cache on purpose: a cached resolution is the locked
+        # resolution wearing a different hat, and defeats the whole job.
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Resolve the ranges, not the lock
+        # `uv pip install` is the pip-compatible interface: it ignores uv.lock
+        # and resolves pyproject.toml from scratch. `uv sync`/`uv run` would not.
+        run: |
+          uv venv --python 3.11 "$RUNNER_TEMP/unlocked"
+          uv pip install --python "$RUNNER_TEMP/unlocked" .
+          {
+            echo "### Resolved from pyproject.toml ranges (no lockfile)"
+            echo '```'
+            uv pip list --python "$RUNNER_TEMP/unlocked"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: cf --help imports the whole package
+        run: |
+          "$RUNNER_TEMP/unlocked/bin/cf" --help
+
+      - name: SDK signature + model-default guards against the resolved env
+        # Installing cleanly is not evidence: 0.9.2 installed fine and raised on
+        # the first API call. These two assert the adapters can actually call
+        # what the resolution produced.
+        run: |
+          "$RUNNER_TEMP/unlocked/bin/python" -m pytest \
+            tests/adapters/test_sdk_kwargs_guard_614.py \
+            tests/adapters/test_model_defaults_guard_1112.py \
+            -q

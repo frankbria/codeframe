@@ -197,8 +197,18 @@ path the README documents while every gate was green:
 So: **a floor-only pin on an SDK is a latent DOA release.** Cap the major on
 anything whose call signature we depend on, and remember the lockfile hides it.
 `tests/adapters/test_sdk_kwargs_guard_614.py` catches the drift once it reaches
-the lock; only the cold-start harness catches it before that. Automating the
-gap is #1169.
+the lock. Before that, the **Unlocked Resolution** workflow
+(`.github/workflows/unlocked-resolution.yml`, #1169) catches it: it resolves the
+`pyproject.toml` ranges with no lockfile against live PyPI, installs into a
+throwaway env, and runs `cf --help` plus both SDK guards against *that* env. It
+runs daily on a schedule — this break arrives from upstream, so it can appear on
+a day nobody pushed — on PRs touching `pyproject.toml` or the guards, and as a
+required gate on `release.yml`. `tests/ci/test_unlocked_resolution_guard_1169.py`
+pins those properties.
+
+That job needs no API key and takes seconds, so it is not a replacement for the
+cold-start harness: it checks the *resolution*, the harness checks the
+*published package* on a clean container. Both still matter.
 
 #### Suite speed (#979)
 
