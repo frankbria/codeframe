@@ -1,0 +1,22 @@
+total 120
+drwxr-xr-x 7 root root  4096 Aug 27 03:30 .
+drwxr-xr-x 1 root root  4096 Aug 27 03:11 ..
+drwxr-xr-x 4 root root  4096 Aug 27 03:31 .codeframe
+drwxr-xr-x 8 root root  4096 Aug 27 03:11 .git
+drwxr-xr-x 5 root root  4096 Aug 27 03:13 .venv
+-rw-r--r-- 1 root root  4349 Aug 27 03:26 API_USAGE.md
+-rw-r--r-- 1 root root  1151 Aug 27 03:17 README.md
+-rw-r--r-- 1 root root  2188 Aug 27 03:18 SETUP.md
+drwxr-xr-x 3 root root  4096 Aug 27 03:19 app
+-rw-r--r-- 1 root root   187 Aug 27 03:17 pyproject.toml
+-rw-r--r-- 1 root root   288 Aug 27 03:16 run.py
+drwxr-xr-x 3 root root  4096 Aug 27 03:13 src
+-rw-r--r-- 1 root root 68784 Aug 27 03:18 uv.lock
+ M README.md
+ M pyproject.toml
+?? API_USAGE.md
+?? SETUP.md
+?? app/
+?? run.py
+?? src/
+?? uv.lock

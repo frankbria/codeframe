@@ -1,0 +1,16 @@
+step	status	seconds	exit_code	documented
+1-install	OK	4	0	yes
+1-smoke-cf-help	OK	3	0	yes
+1-version	OK	2	0	yes
+3-init	OK	1	0	yes
+4-prd-generate	OK	80	0	yes
+4-prd-show	OK	0	0	yes
+4-tasks-generate	OK	32	0	yes
+4-tasks-list	OK	1	0	yes
+5-promote-to-ready	OK	1	0	yes
+6-batch-run	TIMEOUT	925	124	yes
+6-work-start	FAIL	188	1	yes
+6-proof-run	FAIL	1	2	yes
+post-status	OK	1	0	yes
+post-tasks-list	OK	0	0	yes
+post-proof-status	OK	1	0	yes
