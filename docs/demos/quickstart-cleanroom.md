@@ -1,6 +1,6 @@
 # CodeFRAME cold start: the 15-minute quickstart, validated from a clean machine
 
-*2026-08-28T02:00:48Z*
+*2026-08-28T02:25:29Z*
 
 **Issue [#614](https://github.com/frankbria/codeframe/issues/614)** asks a single
 question: can someone on a clean machine, with only Python 3.11+, `uv` and an
@@ -426,8 +426,10 @@ failing. That is [#1173](https://github.com/frankbria/codeframe/issues/1173).
 ## Run C — published 0.9.3, after the quickstart fix
 
 Same harness, same container, published package again — the path a new user
-actually takes. The only thing that changed between Run B and Run C is which
-commands the README tells them to run.
+actually takes. Not a controlled experiment against Run B: that one was a source
+install, this one is published 0.9.3, and `cf tasks generate` produced 21 tasks
+here against 25 there. What matters is that neither of those differences is worth
+fourteen minutes, and the step that was is gone.
 
 ```bash
 column -t -s"$(printf '\t')" scripts/quickstart-cleanroom/artifacts-1171/timings.tsv; echo; cat scripts/quickstart-cleanroom/artifacts-1171/total.txt

@@ -216,8 +216,10 @@ sb note "$DOC" "---
 ## Run C — published 0.9.3, after the quickstart fix
 
 Same harness, same container, published package again — the path a new user
-actually takes. The only thing that changed between Run B and Run C is which
-commands the README tells them to run."
+actually takes. Not a controlled experiment against Run B: that one was a source
+install, this one is published 0.9.3, and \`cf tasks generate\` produced 21 tasks
+here against 25 there. What matters is that neither of those differences is worth
+fourteen minutes, and the step that was is gone."
 
 sb exec "$DOC" bash "column -t -s\"\$(printf '\t')\" $C/timings.tsv; echo; cat $C/total.txt"
 

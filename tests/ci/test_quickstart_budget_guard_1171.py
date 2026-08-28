@@ -147,14 +147,19 @@ def test_harness_never_promotes_an_empty_task_id():
         "(#1171)."
     )
     else_branch = script.index("else", guard.end())
-    promote = script.index('step "5-promote-one"')
-    work_start = script.index('step "6-work-start"')
+    # The block's own `fi`, at column 0. Checking only that the steps come after
+    # `else` is not enough: `else :; fi` followed by the steps would satisfy that
+    # while leaving them unguarded again.
+    closing_fi = re.search(r"^fi$", script[else_branch:], re.MULTILINE)
+    assert closing_fi, "The TASK_ID guard block is never closed (#1171)."
+    block = script[else_branch : else_branch + closing_fi.start()]
 
-    assert else_branch < promote < work_start, (
-        "The promote and work-start steps must sit in the non-empty TASK_ID "
-        "branch — otherwise an unresolved ID yields a measurement of nothing "
-        "(#1171)."
-    )
+    for step in ('step "5-promote-one"', 'step "6-work-start"'):
+        assert step in block, (
+            f"{step} is outside the non-empty TASK_ID branch — an unresolved ID "
+            "would promote an empty ID and still report a total measuring "
+            "nothing (#1171)."
+        )
     assert "P-NO-TASK-ID" in script, (
         "The unresolvable-ID path must still file a finding, or the run looks "
         "clean (#1171)."
