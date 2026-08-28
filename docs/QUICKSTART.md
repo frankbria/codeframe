@@ -221,11 +221,13 @@ codeframe work batch run task-id-1 task-id-2 task-id-3
 
 ### Step 6: Monitor Progress
 
-While the batch runs, you can check status in another terminal:
+Option A is one synchronous run — it streams to your terminal and you just watch
+it. For a batch (Options B and C), check on it from a second terminal:
 
 ```bash
-codeframe work batch status
-codeframe status
+codeframe work batch status            # all recent batches, with their IDs
+codeframe work batch follow <batch-id> # live progress for one of them
+codeframe status                       # workspace-wide summary
 ```
 
 ### Step 7: Handle Blockers
