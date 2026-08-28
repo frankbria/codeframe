@@ -1,6 +1,6 @@
 # CodeFRAME cold start: the 15-minute quickstart, validated from a clean machine
 
-*2026-08-28T01:47:50Z*
+*2026-08-28T02:00:48Z*
 
 **Issue [#614](https://github.com/frankbria/codeframe/issues/614)** asks a single
 question: can someone on a clean machine, with only Python 3.11+, `uv` and an
@@ -455,9 +455,9 @@ TOTAL_SECONDS=352
 
 **352 seconds. Five minutes fifty-two.** No step timed out.
 
-The whole 14-minute difference is one step that is no longer there. Everything
-else in Run B already summed to about 315 seconds; `6-batch-run` was the
-overrun, on its own. Step 5 now promotes a single task and Step 6 runs it:
+The whole 825-second difference is one step that is no longer there. Everything
+else in Run B already summed to 276 seconds; `6-batch-run` was the overrun, on
+its own, and no scheduling strategy makes twenty-five serial agent runs fit. Step 5 now promotes a single task and Step 6 runs it:
 
 ```bash
 sed -n '/STEP: 5-promote-one/,/^Total: 1 /p' scripts/quickstart-cleanroom/artifacts-1171/transcript.txt

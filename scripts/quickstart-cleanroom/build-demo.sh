@@ -223,9 +223,9 @@ sb exec "$DOC" bash "column -t -s\"\$(printf '\t')\" $C/timings.tsv; echo; cat $
 
 sb note "$DOC" "**352 seconds. Five minutes fifty-two.** No step timed out.
 
-The whole 14-minute difference is one step that is no longer there. Everything
-else in Run B already summed to about 315 seconds; \`6-batch-run\` was the
-overrun, on its own. Step 5 now promotes a single task and Step 6 runs it:"
+The whole 825-second difference is one step that is no longer there. Everything
+else in Run B already summed to 276 seconds; \`6-batch-run\` was the overrun, on
+its own, and no scheduling strategy makes twenty-five serial agent runs fit. Step 5 now promotes a single task and Step 6 runs it:"
 
 sb exec "$DOC" bash "sed -n '/STEP: 5-promote-one/,/^Total: 1 /p' $C/transcript.txt"
 
