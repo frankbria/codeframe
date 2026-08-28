@@ -122,36 +122,41 @@ step "4-tasks-generate" yes 900 -- cf tasks generate
 step "4-tasks-list" yes 120 -- cf tasks list
 
 ########################################
-# README Step 5 — Promote the tasks you want to run
+# README Step 5 — Promote one task
 #
-# `cf tasks generate` leaves tasks in BACKLOG, so `--all-ready` below is a
-# silent no-op without this. That used to be a finding: the README skipped
-# straight to the batch run and a new user got `No READY tasks found` and exit 0
-# (#1120 added the step). It is documented now, so it runs in README order —
-# and `documented=yes` here is what would go back to `no` if the docs regressed.
+# `cf tasks generate` leaves tasks in BACKLOG, so nothing runs without this.
+# That used to be a finding: the README skipped straight to the batch run and a
+# new user got `No READY tasks found` and exit 0 (#1120 added the step).
+#
+# It promotes ONE task, not the whole backlog (#1171). `cf tasks generate` makes
+# 20+ tasks for a small API; promoting all of them and running
+# `cf work batch run --all-ready` is that many serial agent runs, which TIMEOUTed
+# at 900 s here and put the walkthrough at 19m37s. The README now leads with a
+# single task and this follows it.
+#
+# `cf tasks list` only renders an 8-char ID prefix (Rich column, max_width=8),
+# so that prefix is all a user following the docs can copy — and `cf tasks set`
+# accepts a partial ID.
 ########################################
 printf '\n### Task status distribution before any promotion:\n'
 cf tasks list 2>&1 | tail -40
 
-step "5-promote-to-ready" yes 120 -- bash -c "cf tasks set status READY --all --from BACKLOG"
+TASK_ID=$(cf tasks list --status BACKLOG 2>/dev/null | grep -oE '\b[0-9a-f]{8}\b' | head -1)
+printf '\n### Resolved TASK_ID=%s\n' "${TASK_ID:-<none>}"
+
+if [ -z "$TASK_ID" ]; then
+  note P-NO-TASK-ID critical "Could not resolve a task ID from 'cf tasks list' output — the documented 'cf tasks set status <task-id> READY' is not reachable by following the docs"
+fi
+
+step "5-promote-one" yes 120 -- bash -c "cf tasks set status '$TASK_ID' READY"
 printf '\n### READY tasks after promotion:\n'
 cf tasks list --status READY 2>&1 | tail -30
 
 ########################################
 # README Step 6 — Build / Prove / Ship
 ########################################
-step "6-batch-run" yes 900 -- cf work batch run --all-ready
-
-# Acceptance criterion names `cf work start` specifically. `cf tasks list` only
-# renders an 8-char ID prefix (Rich column, max_width=8), so that prefix is all
-# a user following the docs can copy.
-TASK_ID=$(cf tasks list --status READY 2>/dev/null | grep -oE '\b[0-9a-f]{8}\b' | head -1)
-printf '\n### Resolved TASK_ID=%s\n' "${TASK_ID:-<none>}"
-
 if [ -n "$TASK_ID" ]; then
   step "6-work-start" yes 1200 -- bash -c "cf work start '$TASK_ID' --execute"
-else
-  note P-NO-TASK-ID critical "Could not resolve a task ID from 'cf tasks list' output — cf work start <id> is not reachable by following the docs"
 fi
 
 step "6-proof-run" yes 900 -- cf proof run

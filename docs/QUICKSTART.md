@@ -179,13 +179,25 @@ codeframe tasks list
 All tasks start in `BACKLOG`. Move them to `READY` when you're satisfied:
 
 ```bash
-# Move all BACKLOG tasks to READY
+# One task -- copy the 8-char ID from `codeframe tasks list` (id before status)
+codeframe tasks set status <task-id> READY
+
+# Or every BACKLOG task at once
 codeframe tasks set status READY --all --from BACKLOG
 ```
 
 ### Step 5: Execute Tasks
 
-#### Option A: Run All Ready Tasks (Recommended)
+#### Option A: Run a Single Task (Start Here)
+
+```bash
+codeframe work start <task-id> --execute
+```
+
+One agent run, a few minutes. This is what the README quickstart does, and it is
+the fastest way to see the whole loop.
+
+#### Option B: Run All Ready Tasks
 
 ```bash
 codeframe work batch run --all-ready --strategy auto
@@ -196,7 +208,11 @@ This will:
 - Execute tasks in parallel where possible
 - Create blockers when human input is needed
 
-#### Option B: Run Specific Tasks
+A generated backlog is typically 20+ tasks and each one is a full agent run, so
+this is **long-running**. Start it, then watch it from another terminal with
+`codeframe work batch follow`.
+
+#### Option C: Run Specific Tasks
 
 ```bash
 codeframe work batch run task-id-1 task-id-2 task-id-3

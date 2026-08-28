@@ -126,28 +126,52 @@ cf tasks generate        # Decompose PRD into atomic tasks with dependencies
 cf tasks list            # Review what was generated
 ```
 
-**Step 5 — Promote the tasks you want to run**
+**Step 5 — Promote one task**
 
 `cf tasks generate` creates tasks in `BACKLOG` so you can review them before an
-agent touches your code. Move the ones you approve to `READY`:
+agent touches your code. Pick one and move it to `READY` — `cf tasks list` prints
+an 8-character ID for each task, and that prefix is all you need:
 
 ```bash
-cf tasks set status READY --all --from BACKLOG   # every BACKLOG task
-cf tasks set status <task-id> READY              # one task (note: id before status)
+cf tasks list                            # copy the ID of the task you want
+cf tasks set status <task-id> READY      # note: id before status
 ```
 
-Skipping this step is why `--all-ready` below would otherwise report
-`No READY tasks found` and do nothing.
+Start with one. A generated backlog is typically 20+ tasks, and your first run
+should show you the loop, not build the whole project in one sitting.
 
 **Step 6 — Build, Prove, and Ship**
 
 ```bash
-cf work batch run --all-ready   # Execute all READY tasks (delegates to agent)
-cf proof run                    # Run PROOF9 quality gates
-cf pr create                    # Open a PR with proof report attached
+cf work start <task-id> --execute   # Hand the task to an agent
+cf proof run                        # Run PROOF9 quality gates
+cf pr create                        # Open a PR with proof report attached
 ```
 
-That is the entire workflow. Everything else is optional.
+That is the entire workflow — from an empty directory to a PR in about ten
+minutes, most of it spent in Step 4 and the agent run.
+
+<details>
+<summary>Running the whole backlog</summary>
+
+Once you trust the loop, promote everything and let it run:
+
+```bash
+cf tasks set status READY --all --from BACKLOG   # every BACKLOG task
+cf work batch run --all-ready                    # execute them
+```
+
+This is **long-running** — each task is a full agent run, and serial is the
+default strategy — so start it and watch it from another terminal rather than
+waiting on the prompt:
+
+```bash
+cf work batch follow
+```
+
+`--strategy parallel --max-parallel 4` and `--retry 2` are worth knowing about
+before you kick off a large batch; see [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
+</details>
 
 > **See it run from scratch.** [Cold start on a clean machine](docs/demos/quickstart-cleanroom.md)
 > is a narrated walkthrough of exactly these steps in a throwaway container —
