@@ -1,0 +1,804 @@
+
+### INSTALL SOURCE: published PyPI package codeframe-ai
+
+===== STEP: 1-install (documented=yes) =====
+$ uv tool install codeframe-ai
+
+Resolved 124 packages in 2.82s
+Downloading pydantic-core (2.0MiB)
+Downloading aiohttp (1.7MiB)
+Downloading pygments (1.2MiB)
+Downloading openai (1.6MiB)
+Downloading anthropic (1.1MiB)
+Downloading cryptography (4.5MiB)
+Downloading tiktoken (1.2MiB)
+Downloading ruff (9.8MiB)
+Downloading uvloop (3.6MiB)
+Downloading rapidfuzz (3.0MiB)
+Downloading sqlalchemy (3.2MiB)
+Downloading hypothesis (1.1MiB)
+ Downloaded hypothesis
+ Downloaded pygments
+ Downloaded tiktoken
+ Downloaded anthropic
+ Downloaded openai
+ Downloaded aiohttp
+ Downloaded pydantic-core
+ Downloaded rapidfuzz
+ Downloaded sqlalchemy
+ Downloaded uvloop
+ Downloaded ruff
+ Downloaded cryptography
+Prepared 124 packages in 3.86s
+Installed 124 packages in 1.39s
+ + aiohappyeyeballs==2.7.1
+ + aiohttp==3.14.3
+ + aiosignal==1.4.0
+ + aiosqlite==0.22.1
+ + annotated-doc==0.0.5
+ + annotated-types==0.8.0
+ + anthropic==0.125.0
+ + anyio==4.14.2
+ + argon2-cffi==25.1.0
+ + argon2-cffi-bindings==26.1.0
+ + attrs==26.1.0
+ + backports-tarfile==1.2.0
+ + bandit==1.9.4
+ + bcrypt==5.0.0
+ + certifi==2026.7.22
+ + cffi==2.1.1
+ + charset-normalizer==3.5.1
+ + click==8.5.0
+ + codeframe-ai==0.9.3
+ + colorama==0.4.6
+ + cryptography==50.0.1
+ + deprecated==1.3.1
+ + distro==1.9.0
+ + dnspython==2.8.0
+ + docstring-parser==0.18.0
+ + email-validator==2.3.0
+ + fastapi==0.141.1
+ + fastapi-users==15.0.5
+ + fastapi-users-db-sqlalchemy==7.0.0
+ + filelock==3.32.4
+ + frozenlist==1.8.0
+ + gitdb==4.0.12
+ + gitpython==3.1.60
+ + greenlet==3.5.5
+ + h11==0.16.0
+ + httpcore==1.0.9
+ + httpcore2==2.12.0
+ + httptools==0.8.0
+ + httpx==0.28.1
+ + httpx2==2.12.0
+ + hypothesis==6.165.10
+ + idna==3.19
+ + importlib-metadata==9.0.0
+ + iniconfig==2.3.0
+ + jaraco-classes==3.4.0
+ + jaraco-context==6.1.2
+ + jaraco-functools==4.6.0
+ + jeepney==0.9.0
+ + jinja2==3.1.6
+ + jiter==0.16.0
+ + jsonschema==4.26.0
+ + jsonschema-specifications==2025.9.1
+ + keyring==25.7.0
+ + limits==5.8.0
+ + linkify-it-py==2.1.1
+ + makefun==1.16.0
+ + mando==0.7.1
+ + markdown-it-py==4.2.0
+ + markupsafe==3.0.3
+ + mcp==2.1.1
+ + mcp-types==2.1.1
+ + mdit-py-plugins==0.6.1
+ + mdurl==0.1.2
+ + more-itertools==11.1.0
+ + multidict==6.7.1
+ + openai==3.5.0
+ + opentelemetry-api==1.44.0
+ + packaging==26.3
+ + platformdirs==4.11.5
+ + pluggy==1.6.0
+ + propcache==0.5.2
+ + pwdlib==0.3.0
+ + pycparser==3.0
+ + pydantic==2.13.4
+ + pydantic-core==2.46.4
+ + pydantic-settings==2.15.0
+ + pygments==2.21.0
+ + pyjwt==2.13.0
+ + pytest==9.1.1
+ + pytest-asyncio==1.4.0
+ + pytest-json-report==1.5.0
+ + pytest-metadata==3.1.1
+ + python-dotenv==1.2.3
+ + python-multipart==0.0.32
+ + pyyaml==6.0.3
+ + radon==6.0.1
+ + rapidfuzz==3.14.5
+ + referencing==0.37.0
+ + regex==2026.7.19
+ + requests==2.34.2
+ + rich==15.0.0
+ + rpds-py==2026.6.3
+ + ruff==0.16.5
+ + secretstorage==3.5.0
+ + shellingham==1.5.4
+ + six==1.17.0
+ + slowapi==0.1.10
+ + smmap==5.0.3
+ + sniffio==1.3.1
+ + sortedcontainers==2.4.0
+ + sqlalchemy==2.0.52
+ + sse-starlette==3.4.8
+ + starlette==1.6.0
+ + stevedore==5.9.1
+ + tenacity==9.1.4
+ + textual==8.2.8
+ + tiktoken==0.14.0
+ + tree-sitter==0.26.0
+ + tree-sitter-javascript==0.25.0
+ + tree-sitter-python==0.25.0
+ + tree-sitter-typescript==0.23.2
+ + truststore==0.10.4
+ + typer==0.27.1
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.4
+ + uc-micro-py==2.0.0
+ + urllib3==2.7.0
+ + uvicorn==0.52.4
+ + uvloop==0.22.1
+ + watchfiles==1.2.0
+ + websockets==17.1
+ + wrapt==2.3.0
+ + yarl==1.24.5
+ + zipp==4.1.0
+Installed 2 executables: cf, codeframe
+
+----- 1-install: OK (20s, exit 0) -----
+
+===== STEP: 1-smoke-cf-help (documented=yes) =====
+$ cf --help
+
+                                                                                
+ Usage: codeframe [OPTIONS] COMMAND [ARGS]...                                   
+                                                                                
+ CodeFRAME: Autonomous coding agent orchestration (v2 CLI)                      
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --version  -V        Show the CodeFRAME version and exit.                    │
+│ --help               Show this message and exit.                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ init        Initialize a CodeFRAME workspace for a repository.               │
+│ status      Show workspace status summary.                                   │
+│ summary     Print a short status report of the workspace.                    │
+│ review      Run verification gates (tests, lint).                            │
+│ serve       Start the optional FastAPI server (wraps core).                  │
+│ version     Show CodeFRAME version.                                          │
+│ prd         PRD (Product Requirements Document) management                   │
+│ tasks       Task generation and management                                   │
+│ work        Task execution and agent orchestration                           │
+│ events      Event log management                                             │
+│ blocker     Blocker management (human-in-the-loop)                           │
+│ patch       Patch and diff management                                        │
+│ commit      Git commit management                                            │
+│ checkpoint  State checkpoint management                                      │
+│ gates       Quality gate management                                          │
+│ schedule    Task scheduling and project timeline                             │
+│ templates   Task template management                                         │
+│ auth        Authentication commands                                          │
+│ pr          Pull request management (create, list, merge, close)             │
+│ env         Environment validation and tool management                       │
+│ engines     Engine management commands                                       │
+│ hooks       Workspace lifecycle hooks management                             │
+│ stats       Token usage and cost statistics                                  │
+│ proof       PROOF9 quality memory system — evidence-based verification       │
+│ dashboard   Terminal dashboard for monitoring workspace state                │
+│ import      Import projects from other tools into CodeFRAME                  │
+│ config      Manage machine-wide CodeFRAME configuration                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+----- 1-smoke-cf-help: OK (16s, exit 0) -----
+
+===== STEP: 1-version (documented=yes) =====
+$ cf --version
+
+codeframe 0.9.3
+
+----- 1-version: OK (4s, exit 0) -----
+
+===== STEP: 3-init (documented=yes) =====
+$ cf init . --detect
+
+Workspace initialized
+  Path: /work/todo-api
+  ID: 0ee997b6-9fe4-4409-bfcc-b39d64f36896
+  State: /work/todo-api/.codeframe
+  Tech Stack: Python with pip
+
+Next steps:
+  cf prd generate              Start AI-guided requirements discovery
+  cf prd add <file.md>         Import a PRD you already have
+  cf status                    View workspace status
+
+----- 3-init: OK (4s, exit 0) -----
+
+===== STEP: 4-prd-generate (documented=yes) =====
+$ cf prd generate --brief-file /brief.md
+
+Using template: Standard PRD
+
+Starting AI-driven PRD discovery...
+The AI will ask questions to understand your project.
+Type /help for available commands
+
+Non-interactive: answering from /brief.md
+
+Question 1 | Coverage: 0%
+░░░░░░░░░░░░░░░░░░░░
+
+╭────────────────────────────────── Question ──────────────────────────────────╮
+│ What problem are you looking to solve with this project, and what made you   │
+│ decide to build something now?                                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+Your answer (from --brief-file): I keep my todos scattered across different 
+notes and constantly lose track of what's due, which has become frustrating 
+enough that I finally decided to build a solution. I want a single, self-hosted 
+place to manage them all without signing up for yet another SaaS 
+service—something simple that I and other developers can run on our own 
+infrastructure and actually trust to stick around.
+✓ Answer recorded
+
+Question 2 | Coverage: 67%
+█████████████░░░░░░░
+
+╭────────────────────────────────── Question ──────────────────────────────────╮
+│ When you imagine opening this tool to manage your todos, what are the 3-4    │
+│ things you'd do first—like, what's the bare minimum set of actions that      │
+│ would make it actually useful to you?                                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+Your answer (from --brief-file): I'd create a new todo with a title and priority
+so I can capture what's on my mind right now, then immediately list all my todos
+to see everything in one place. Next, I'd mark a few as completed so I can 
+distinguish what's actually done from what's still pending. Finally, I'd 
+probably filter to show only incomplete items so I can focus on what actually 
+needs my attention instead of scrolling past finished work.
+✓ Answer recorded
+
+Question 3 | Coverage: 70%
+██████████████░░░░░░
+
+╭────────────────────────────────── Question ──────────────────────────────────╮
+│ You mentioned wanting this to be self-hosted so developers can run it on     │
+│ their own infrastructure—when you picture yourself deploying this, what does │
+│ your setup look like? Are you thinking a single Docker container, a Node.js  │
+│ app, something else, and what hosting environment would you actually use?    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+Your answer (from --brief-file): I'm picturing a single Docker container that 
+runs the FastAPI app with uvicorn, which I'd deploy to a small VPS or even run 
+locally on my laptop during development—something like a $5/month DigitalOcean 
+droplet or a Raspberry Pi would be plenty. The SQLite database lives on the same
+machine as a single file, so there's no external dependency to manage, and the 
+whole thing stays under my control without needing to sign up for any hosted 
+services. I don't need orchestration or scaling; it's just one process handling 
+my todos and maybe a few teammates' if we decide to share access later.
+✓ Answer recorded
+
+
+Discovery complete!
+
+Generating PRD using 'standard' template...
+
+✓ PRD generated: Self-Hosted Todo Manager
+ID: aa69af4e-8100-412f-a891-dd14065abbfb
+
+Preview:
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ # Self-Hosted Todo Manager                                                   │
+│                                                                              │
+│ ## Executive Summary                                                         │
+│                                                                              │
+│ A lightweight, self-hosted todo management application designed for          │
+│ developers who want complete control over their task data without relying on │
+│ external SaaS services. The application addresses the common problem of      │
+│ scattered todos across multiple notes by providing a single, reliable source │
+│ of truth that runs entirely on user-controlled infrastructure. Built with    │
+│ FastAPI and SQLite, it deploys as a single Docker container requiring        │
+│ minimal resources (suitable for a $5/month VPS or Raspberry Pi), with no     │
+│ external dependencies or service sign-ups required.                          │
+│                                                                              │
+│ ## Problem Statement                                                         │
+│                                                                              │
+│ Developers currently manage todos across fragmented note-taking systems,     │
+│ leading to lost tasks and missed deadlines. Existing solutions require:      │
+│ - Subscription to yet another SaaS service                                   │
+│ - Trust in third-party data persistence                                      │
+│ - Dependency on external infrastructure availability                         │
+│ - Ongoing costs for simple task management                                   │
+│                                                                              │
+│ **Core Problem**: Need for a simple, se                                      │
+│                                                                              │
+│ ... (use 'codeframe prd show --full' to see complete PRD)                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+Next steps:
+  codeframe prd show --full    # View complete PRD
+  codeframe tasks generate     # Generate tasks from PRD
+
+----- 4-prd-generate: OK (76s, exit 0) -----
+
+===== STEP: 4-prd-show (documented=yes) =====
+$ cf prd show
+
+
+PRD: Self-Hosted Todo Manager
+ID: aa69af4e-8100-412f-a891-dd14065abbfb
+Added: 2026-08-28 01:35:04.666981+00:00
+
+# Self-Hosted Todo Manager
+
+## Executive Summary
+
+A lightweight, self-hosted todo management application designed for developers 
+who want complete control over their task data without relying on external SaaS 
+services. The application addresses the common problem of scattered todos across
+multiple notes by providing a single, reliable source of truth that runs 
+entirely on user-controlled infrastructure. Built with FastAPI and SQLite, it 
+deploys as a single Docker container requiring minimal reso
+
+... (use --full to see complete PRD)
+
+----- 4-prd-show: OK (0s, exit 0) -----
+
+===== STEP: 4-tasks-generate (documented=yes) =====
+$ cf tasks generate
+
+Generating tasks from PRD: Self-Hosted Todo Manager
+Using LLM for task generation...
+
+Generated 21 tasks
+
+  1. Define Todo data model and database schema
+     Create SQLite schema with todos table including id, title, p
+  2. Create database initialization and migration module
+     Implement database connection pooling, initialization logic,
+  3. Implement Todo repository/data access layer
+     Create data access functions for CRUD operations: create_tod
+  4. Create Pydantic models for request/response validation
+     Define TodoCreate, TodoUpdate, and TodoResponse Pydantic mod
+  5. Implement POST /todos endpoint
+     Create FastAPI endpoint to create new todo. Accept title (re
+  6. Implement GET /todos endpoint with status filtering
+     Create FastAPI endpoint to list all todos. Support optional 
+  7. Implement GET /todos/{id} endpoint
+     Create FastAPI endpoint to retrieve single todo by id. Retur
+  8. Implement PATCH /todos/{id}/status endpoint
+     Create FastAPI endpoint to toggle todo completion status. Ac
+  9. Implement GET /health endpoint
+     Create health check endpoint that verifies database connecti
+  10. Create unit test suite for repository layer
+     Write unit tests for all data access functions (create_todo,
+  11. Create integration test suite for API endpoints
+     Write integration tests for all endpoints (POST /todos, GET 
+  12. Create FastAPI application factory and configuration
+     Set up FastAPI app initialization with environment variable 
+  13. Create Dockerfile for application containerization
+     Write Dockerfile using python:3.11-slim base image. Install 
+  14. Create Docker Compose configuration for quick start
+     Write docker-compose.yml with service definition for todo ap
+  15. Create requirements.txt with Python dependencies
+     List all Python package dependencies with pinned versions: f
+  16. Create comprehensive README with deployment instructions
+     Write README.md covering: project overview, quick start with
+  17. Create API documentation and examples
+     Document all endpoints with request/response examples, statu
+  18. Create backup and restore documentation
+     Document backup strategy (copy SQLite file from /app/data/to
+  19. Create .dockerignore and .gitignore files
+     Configure .dockerignore to exclude tests, docs, git files, a
+  20. Perform end-to-end testing of complete workflow
+     Test full user workflow: build Docker image, start container
+  21. Create project structure and initialization files
+     Set up directory structure: app/, tests/, docs/, scripts/. C
+
+Next steps:
+  codeframe tasks list              View all tasks
+  codeframe tasks set status READY <id>   Mark task ready
+  codeframe tasks set status READY --all  Mark all tasks ready
+
+----- 4-tasks-generate: OK (34s, exit 0) -----
+
+===== STEP: 4-tasks-list (documented=yes) =====
+$ cf tasks list
+
+                                     Tasks                                      
+┏━━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ID       ┃ Status  ┃ Pri ┃      Deps      ┃ Title                            ┃
+┡━━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ d0d82298 │ BACKLOG │  0  │       -        │ Define Todo data model and       │
+│          │         │     │                │ database schema                  │
+│ 6e123151 │ BACKLOG │  1  │     d0d822     │ Create database initialization   │
+│          │         │     │                │ and migration module             │
+│ 1f24793d │ BACKLOG │  2  │     6e1231     │ Implement Todo repository/data   │
+│          │         │     │                │ access layer                     │
+│ da1d213b │ BACKLOG │  3  │       -        │ Create Pydantic models for       │
+│          │         │     │                │ request/response validation      │
+│ a1ca57b4 │ BACKLOG │  4  │ 1f2479, da1d21 │ Implement POST /todos endpoint   │
+│ b7ea6109 │ BACKLOG │  5  │ 1f2479, da1d21 │ Implement GET /todos endpoint    │
+│          │         │     │                │ with status filtering            │
+│ b1d78b24 │ BACKLOG │  6  │ 1f2479, da1d21 │ Implement GET /todos/{id}        │
+│          │         │     │                │ endpoint                         │
+│ c6c9fe62 │ BACKLOG │  7  │ 1f2479, da1d21 │ Implement PATCH                  │
+│          │         │     │                │ /todos/{id}/status endpoint      │
+│ 79fed00c │ BACKLOG │  8  │     6e1231     │ Implement GET /health endpoint   │
+│ bbfe6ca6 │ BACKLOG │  9  │     1f2479     │ Create unit test suite for       │
+│          │         │     │                │ repository layer                 │
+│ 4723573f │ BACKLOG │ 10  │    5 tasks     │ Create integration test suite    │
+│          │         │     │                │ for API endpoints                │
+│ 87e664e7 │ BACKLOG │ 11  │     6e1231     │ Create FastAPI application       │
+│          │         │     │                │ factory and configuration        │
+│ b8d2d1d0 │ BACKLOG │ 12  │     87e664     │ Create Dockerfile for            │
+│          │         │     │                │ application containerization     │
+│ edcd64f6 │ BACKLOG │ 13  │     b8d2d1     │ Create Docker Compose            │
+│          │         │     │                │ configuration for quick start    │
+│ 6a4d1ea1 │ BACKLOG │ 14  │       -        │ Create requirements.txt with     │
+│          │         │     │                │ Python dependencies              │
+│ 2192586b │ BACKLOG │ 15  │     edcd64     │ Create comprehensive README with │
+│          │         │     │                │ deployment instruction...        │
+│ 4c263eb4 │ BACKLOG │ 16  │    5 tasks     │ Create API documentation and     │
+│          │         │     │                │ examples                         │
+│ 6d87f5fe │ BACKLOG │ 17  │     219258     │ Create backup and restore        │
+│          │         │     │                │ documentation                    │
+│ e26f0d1a │ BACKLOG │ 18  │       -        │ Create .dockerignore and         │
+│          │         │     │                │ .gitignore files                 │
+│ 951765fe │ BACKLOG │ 19  │ 472357, edcd64 │ Perform end-to-end testing of    │
+│          │         │     │                │ complete workflow                │
+│ 3ce941e9 │ BACKLOG │ 20  │       -        │ Create project structure and     │
+│          │         │     │                │ initialization files             │
+└──────────┴─────────┴─────┴────────────────┴──────────────────────────────────┘
+
+Total: 21 | BACKLOG: 21
+
+----- 4-tasks-list: OK (0s, exit 0) -----
+
+### Task status distribution before any promotion:
+│          │         │     │                │ and migration module             │
+│ 1f24793d │ BACKLOG │  2  │     6e1231     │ Implement Todo repository/data   │
+│          │         │     │                │ access layer                     │
+│ da1d213b │ BACKLOG │  3  │       -        │ Create Pydantic models for       │
+│          │         │     │                │ request/response validation      │
+│ a1ca57b4 │ BACKLOG │  4  │ 1f2479, da1d21 │ Implement POST /todos endpoint   │
+│ b7ea6109 │ BACKLOG │  5  │ 1f2479, da1d21 │ Implement GET /todos endpoint    │
+│          │         │     │                │ with status filtering            │
+│ b1d78b24 │ BACKLOG │  6  │ 1f2479, da1d21 │ Implement GET /todos/{id}        │
+│          │         │     │                │ endpoint                         │
+│ c6c9fe62 │ BACKLOG │  7  │ 1f2479, da1d21 │ Implement PATCH                  │
+│          │         │     │                │ /todos/{id}/status endpoint      │
+│ 79fed00c │ BACKLOG │  8  │     6e1231     │ Implement GET /health endpoint   │
+│ bbfe6ca6 │ BACKLOG │  9  │     1f2479     │ Create unit test suite for       │
+│          │         │     │                │ repository layer                 │
+│ 4723573f │ BACKLOG │ 10  │    5 tasks     │ Create integration test suite    │
+│          │         │     │                │ for API endpoints                │
+│ 87e664e7 │ BACKLOG │ 11  │     6e1231     │ Create FastAPI application       │
+│          │         │     │                │ factory and configuration        │
+│ b8d2d1d0 │ BACKLOG │ 12  │     87e664     │ Create Dockerfile for            │
+│          │         │     │                │ application containerization     │
+│ edcd64f6 │ BACKLOG │ 13  │     b8d2d1     │ Create Docker Compose            │
+│          │         │     │                │ configuration for quick start    │
+│ 6a4d1ea1 │ BACKLOG │ 14  │       -        │ Create requirements.txt with     │
+│          │         │     │                │ Python dependencies              │
+│ 2192586b │ BACKLOG │ 15  │     edcd64     │ Create comprehensive README with │
+│          │         │     │                │ deployment instruction...        │
+│ 4c263eb4 │ BACKLOG │ 16  │    5 tasks     │ Create API documentation and     │
+│          │         │     │                │ examples                         │
+│ 6d87f5fe │ BACKLOG │ 17  │     219258     │ Create backup and restore        │
+│          │         │     │                │ documentation                    │
+│ e26f0d1a │ BACKLOG │ 18  │       -        │ Create .dockerignore and         │
+│          │         │     │                │ .gitignore files                 │
+│ 951765fe │ BACKLOG │ 19  │ 472357, edcd64 │ Perform end-to-end testing of    │
+│          │         │     │                │ complete workflow                │
+│ 3ce941e9 │ BACKLOG │ 20  │       -        │ Create project structure and     │
+│          │         │     │                │ initialization files             │
+└──────────┴─────────┴─────┴────────────────┴──────────────────────────────────┘
+
+Total: 21 | BACKLOG: 21
+
+### Resolved TASK_ID=d0d82298
+
+===== STEP: 5-promote-one (documented=yes) =====
+$ bash -c cf tasks set status 'd0d82298' READY
+
+Task updated
+  Define Todo data model and database schema
+  Status: BACKLOG -> READY
+
+----- 5-promote-one: OK (0s, exit 0) -----
+
+### READY tasks after promotion:
+                                     Tasks                                     
+┏━━━━━━━━━━┳━━━━━━━━┳━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ID       ┃ Status ┃ Pri ┃ Deps ┃ Title                                      ┃
+┡━━━━━━━━━━╇━━━━━━━━╇━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ d0d82298 │ READY  │  0  │  -   │ Define Todo data model and database schema │
+└──────────┴────────┴─────┴──────┴────────────────────────────────────────────┘
+
+Total: 1 | BACKLOG: 20 | READY: 1
+
+===== STEP: 6-work-start (documented=yes) =====
+$ bash -c cf work start 'd0d82298' --execute
+
+01:35:43 RUN_STARTED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+
+Run started
+  Task: Define Todo data model and database schema
+  Run ID: 7f175ca6-def7-4115-89b0-ad8bced6912e
+  Status: RUNNING
+
+Executing agent...
+01:35:43 AGENT_STEP_STARTED agent_event=AGENT_STARTED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:43 AGENT_EVENT agent_event=AGENT_BUDGET_CALCULATED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:43 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:46 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:49 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:49 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:49 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:52 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:52 AGENT_EVENT agent_event=AGENT_AUTOFIX_APPLIED path=app/__init__.py status=SKIPPED
+01:35:53 AGENT_STEP_STARTED agent_event=GATES_STARTED path=app/__init__.py
+01:35:53 AGENT_STEP_COMPLETED agent_event=GATES_COMPLETED path=app/__init__.py status=SKIPPED
+01:35:53 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:53 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:53 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:59 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:35:59 AGENT_EVENT agent_event=AGENT_AUTOFIX_APPLIED path=app/models.py status=SKIPPED
+01:35:59 AGENT_STEP_STARTED agent_event=GATES_STARTED path=app/models.py
+01:35:59 AGENT_STEP_COMPLETED agent_event=GATES_COMPLETED path=app/models.py status=SKIPPED
+01:36:00 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:00 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:00 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:15 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:16 AGENT_EVENT agent_event=AGENT_AUTOFIX_APPLIED path=app/database.py status=SKIPPED
+01:36:16 AGENT_STEP_STARTED agent_event=GATES_STARTED path=app/database.py
+01:36:16 AGENT_STEP_COMPLETED agent_event=GATES_COMPLETED path=app/database.py status=SKIPPED
+01:36:16 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:16 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:17 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:19 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:20 AGENT_EVENT agent_event=AGENT_AUTOFIX_APPLIED path=tests/__init__.py status=SKIPPED
+01:36:20 AGENT_STEP_STARTED agent_event=GATES_STARTED path=tests/__init__.py
+01:36:20 AGENT_STEP_COMPLETED agent_event=GATES_COMPLETED path=tests/__init__.py status=SKIPPED
+01:36:20 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:20 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:23 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:44 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:44 AGENT_EVENT agent_event=AGENT_AUTOFIX_APPLIED path=tests/test_database.py status=SKIPPED
+01:36:44 AGENT_STEP_STARTED agent_event=GATES_STARTED path=tests/test_database.py
+01:36:45 AGENT_STEP_COMPLETED agent_event=GATES_COMPLETED path=tests/test_database.py status=SKIPPED
+01:36:45 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:45 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:45 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:57 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:57 AGENT_EVENT agent_event=AGENT_AUTOFIX_APPLIED path=tests/test_models.py status=SKIPPED
+01:36:57 AGENT_STEP_STARTED agent_event=GATES_STARTED path=tests/test_models.py
+01:36:57 AGENT_STEP_COMPLETED agent_event=GATES_COMPLETED path=tests/test_models.py status=SKIPPED
+01:36:57 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:57 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:36:57 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:02 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:02 AGENT_EVENT agent_event=AGENT_AUTOFIX_APPLIED path=pyproject.toml status=SKIPPED
+01:37:02 AGENT_STEP_STARTED agent_event=GATES_STARTED path=pyproject.toml
+01:37:02 AGENT_STEP_COMPLETED agent_event=GATES_COMPLETED path=pyproject.toml status=SKIPPED
+01:37:02 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:02 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:02 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:05 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:13 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:13 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:13 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:17 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:20 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:20 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:20 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:34 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:34 AGENT_EVENT agent_event=AGENT_AUTOFIX_APPLIED path=app/README.md status=SKIPPED
+01:37:34 AGENT_STEP_STARTED agent_event=GATES_STARTED path=app/README.md
+01:37:34 AGENT_STEP_COMPLETED agent_event=GATES_COMPLETED path=app/README.md status=SKIPPED
+01:37:34 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:34 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:34 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:39 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:39 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:39 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:39 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:42 AGENT_EVENT agent_event=AGENT_TOOL_DISPATCHED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:46 AGENT_EVENT agent_event=AGENT_TOOL_RESULT task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:46 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:46 AGENT_STEP_STARTED agent_event=AGENT_ITERATION_STARTED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:55 AGENT_STEP_COMPLETED agent_event=AGENT_ITERATION_COMPLETED 
+task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:37:56 GATES_STARTED
+01:37:59 GATES_COMPLETED
+01:38:17 GATES_STARTED
+01:38:20 GATES_COMPLETED
+01:38:33 GATES_STARTED
+01:38:39 GATES_COMPLETED
+01:38:40 BLOCKER_CREATED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+01:38:40 AGENT_STEP_FAILED agent_event=AGENT_FAILED task_id=d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+Token usage persistence failed for task d0d82298-fdbf-4b3f-a21b-b67ba804bc9c
+Traceback (most recent call last):
+  File "/root/.local/share/uv/tools/codeframe-ai/lib/python3.11/site-packages/codeframe/core/react_agent.py", line 491, in _persist_token_usage
+    tracker.record_token_usage_sync(
+  File "/root/.local/share/uv/tools/codeframe-ai/lib/python3.11/site-packages/codeframe/lib/metrics_tracker.py", line 347, in record_token_usage_sync
+    token_usage = TokenUsage(
+                  ^^^^^^^^^^^
+  File "/root/.local/share/uv/tools/codeframe-ai/lib/python3.11/site-packages/pydantic/main.py", line 263, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for TokenUsage
+call_type
+  Input should be 'task_execution', 'code_review', 'coordination' or 'other' [type=enum, input_value='verification_fix', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+Task blocked - human input needed
+  Use 'codeframe blocker list' to see blockers
+
+----- 6-work-start: FAIL (179s, exit 1) -----
+
+===== STEP: 6-proof-run (documented=yes) =====
+$ cf proof run
+
+Running proof obligations (scope-filtered)...
+Nothing was verified.
+There are no proof obligations in this workspace, so this run checked nothing — 
+it is not a pass.
+
+Capture your first requirement with:
+  cf proof capture
+
+----- 6-proof-run: FAIL (1s, exit 2) -----
+
+===== STEP: post-status (documented=yes) =====
+$ cf status
+
+
+CodeFRAME Workspace
+  Path: /work/todo-api
+  ID: 0ee997b6-9fe4-4409-bfcc-b39d64f36896
+  Created: 2026-08-28 01:33
+
+PRD
+  Title: Self-Hosted Todo Manager
+  Added: 2026-08-28 01:35
+
+Tasks
+  BACKLOG: 20
+  BLOCKED: 1
+  Total: 21
+
+Recent Activity
+  01:38:40 AGENT_STEP_FAILED
+  01:38:40 AGENT_FAILED
+  01:38:40 BLOCKER_CREATED
+  01:38:39 GATES_COMPLETED
+  01:38:33 GATES_STARTED
+
+
+----- post-status: OK (0s, exit 0) -----
+
+===== STEP: post-tasks-list (documented=yes) =====
+$ cf tasks list
+
+                                     Tasks                                      
+┏━━━━━━━━━━┳━━━━━━━━━┳━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ID       ┃ Status  ┃ Pri ┃      Deps      ┃ Title                            ┃
+┡━━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ d0d82298 │ BLOCKED │  0  │       -        │ Define Todo data model and       │
+│          │         │     │                │ database schema                  │
+│ 6e123151 │ BACKLOG │  1  │     d0d822     │ Create database initialization   │
+│          │         │     │                │ and migration module             │
+│ 1f24793d │ BACKLOG │  2  │     6e1231     │ Implement Todo repository/data   │
+│          │         │     │                │ access layer                     │
+│ da1d213b │ BACKLOG │  3  │       -        │ Create Pydantic models for       │
+│          │         │     │                │ request/response validation      │
+│ a1ca57b4 │ BACKLOG │  4  │ 1f2479, da1d21 │ Implement POST /todos endpoint   │
+│ b7ea6109 │ BACKLOG │  5  │ 1f2479, da1d21 │ Implement GET /todos endpoint    │
+│          │         │     │                │ with status filtering            │
+│ b1d78b24 │ BACKLOG │  6  │ 1f2479, da1d21 │ Implement GET /todos/{id}        │
+│          │         │     │                │ endpoint                         │
+│ c6c9fe62 │ BACKLOG │  7  │ 1f2479, da1d21 │ Implement PATCH                  │
+│          │         │     │                │ /todos/{id}/status endpoint      │
+│ 79fed00c │ BACKLOG │  8  │     6e1231     │ Implement GET /health endpoint   │
+│ bbfe6ca6 │ BACKLOG │  9  │     1f2479     │ Create unit test suite for       │
+│          │         │     │                │ repository layer                 │
+│ 4723573f │ BACKLOG │ 10  │    5 tasks     │ Create integration test suite    │
+│          │         │     │                │ for API endpoints                │
+│ 87e664e7 │ BACKLOG │ 11  │     6e1231     │ Create FastAPI application       │
+│          │         │     │                │ factory and configuration        │
+│ b8d2d1d0 │ BACKLOG │ 12  │     87e664     │ Create Dockerfile for            │
+│          │         │     │                │ application containerization     │
+│ edcd64f6 │ BACKLOG │ 13  │     b8d2d1     │ Create Docker Compose            │
+│          │         │     │                │ configuration for quick start    │
+│ 6a4d1ea1 │ BACKLOG │ 14  │       -        │ Create requirements.txt with     │
+│          │         │     │                │ Python dependencies              │
+│ 2192586b │ BACKLOG │ 15  │     edcd64     │ Create comprehensive README with │
+│          │         │     │                │ deployment instruction...        │
+│ 4c263eb4 │ BACKLOG │ 16  │    5 tasks     │ Create API documentation and     │
+│          │         │     │                │ examples                         │
+│ 6d87f5fe │ BACKLOG │ 17  │     219258     │ Create backup and restore        │
+│          │         │     │                │ documentation                    │
+│ e26f0d1a │ BACKLOG │ 18  │       -        │ Create .dockerignore and         │
+│          │         │     │                │ .gitignore files                 │
+│ 951765fe │ BACKLOG │ 19  │ 472357, edcd64 │ Perform end-to-end testing of    │
+│          │         │     │                │ complete workflow                │
+│ 3ce941e9 │ BACKLOG │ 20  │       -        │ Create project structure and     │
+│          │         │     │                │ initialization files             │
+└──────────┴─────────┴─────┴────────────────┴──────────────────────────────────┘
+
+Total: 21 | BACKLOG: 20 | BLOCKED: 1
+
+----- post-tasks-list: OK (1s, exit 0) -----
+
+===== STEP: post-proof-status (documented=yes) =====
+$ cf proof status
+
+No proof requirements — nothing in this workspace is being verified.
+Capture your first one with: cf proof capture
+
+----- post-proof-status: OK (1s, exit 0) -----
+
+
+===== TOTAL WALL CLOCK: 352s (5 min) =====
+
+===== TIMINGS =====
+step	status	seconds	exit_code	documented
+1-install	OK	20	0	yes
+1-smoke-cf-help	OK	16	0	yes
+1-version	OK	4	0	yes
+3-init	OK	4	0	yes
+4-prd-generate	OK	76	0	yes
+4-prd-show	OK	0	0	yes
+4-tasks-generate	OK	34	0	yes
+4-tasks-list	OK	0	0	yes
+5-promote-one	OK	0	0	yes
+6-work-start	FAIL	179	1	yes
+6-proof-run	FAIL	1	2	yes
+post-status	OK	0	0	yes
+post-tasks-list	OK	1	0	yes
+post-proof-status	OK	1	0	yes
+
+===== FINDINGS =====
+id	severity	summary

@@ -148,8 +148,15 @@ cf proof run                        # Run PROOF9 quality gates
 cf pr create                        # Open a PR with proof report attached
 ```
 
-That is the entire workflow — from an empty directory to a PR in about ten
-minutes, most of it spent in Step 4 and the agent run.
+That is the entire workflow. An empty directory through `cf proof run` is
+**5m52s** of wall clock on a clean machine — measured, not estimated, in
+[this walkthrough](docs/demos/quickstart-cleanroom.md) — most of it in
+`cf prd generate` and the agent run. `cf pr create` is fast but needs a GitHub
+remote, so it is outside that number.
+
+If the agent needs a decision it cannot make, it stops and files a blocker
+rather than guessing — `cf blocker list` shows it and `cf blocker answer <id>
+"..."` unblocks the task.
 
 <details>
 <summary>Running the whole backlog</summary>
@@ -166,7 +173,8 @@ default strategy — so start it and watch it from another terminal rather than
 waiting on the prompt:
 
 ```bash
-cf work batch follow
+cf work batch status              # lists recent batches and their IDs
+cf work batch follow <batch-id>   # live progress for one of them
 ```
 
 `--strategy parallel --max-parallel 4` and `--retry 2` are worth knowing about

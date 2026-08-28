@@ -267,7 +267,8 @@ cf work diagnose <task-id>
 cf work batch run [<id>...] [--all-ready] [--engine react|plan]
 cf work batch run --strategy serial|parallel|auto [--max-parallel 4] [--retry 3]
 cf work batch run --all-ready --llm-provider openai --llm-model qwen2.5-coder:7b
-cf work batch status|stop|resume|follow [batch_id]
+cf work batch status [batch_id]          # batch_id optional here
+cf work batch stop|resume|follow <batch_id>   # ...and required here
 
 # Blockers
 cf blocker list

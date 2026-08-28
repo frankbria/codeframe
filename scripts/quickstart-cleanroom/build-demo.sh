@@ -8,6 +8,7 @@ cd "$REPO"
 DOC=docs/demos/quickstart-cleanroom.md
 A=scripts/quickstart-cleanroom/artifacts-pypi-0.9.2
 B=scripts/quickstart-cleanroom/artifacts-source-614
+C=scripts/quickstart-cleanroom/artifacts-1171
 mkdir -p docs/demos
 rm -f "$DOC"
 
@@ -25,24 +26,30 @@ This document is the answer, and the harness that produced it. Everything below
 was captured from real runs in a throwaway Docker container with no CodeFRAME
 installed and no repository checked out.
 
-**Verdict up front — both halves of the question currently fail, for unrelated reasons:**
+**Verdict up front — it took three runs to get a yes:**
 
-| | Published `codeframe-ai 0.9.2` (what the README tells you to install) | Source install of the fix |
-|---|---|---|
-| Reaches `cf prd generate` | ❌ `TypeError` on the first AI call | ✅ 73s, coherent PRD |
-| Reaches `cf tasks generate` | ❌ collateral — no PRD | ✅ 29s, 25 real tasks with dependencies |
-| Completes the walkthrough | ❌ dead at the first AI command | ⚠️ Step 6 never finishes |
-| Wall clock | 16s (fails fast) | **1177s — 19m37s, over budget** |
+| | Published `0.9.2` | Source install of the `0.9.2` fix | Published `0.9.3`, quickstart fixed |
+|---|---|---|---|
+| Reaches `cf prd generate` | ❌ `TypeError` on the first AI call | ✅ 73s, coherent PRD | ✅ 76s |
+| Reaches `cf tasks generate` | ❌ collateral — no PRD | ✅ 29s, 25 real tasks with dependencies | ✅ 34s, 21 tasks |
+| Completes the walkthrough | ❌ dead at the first AI command | ⚠️ Step 6 never finishes | ✅ every step returns |
+| Wall clock | 16s (fails fast) | **1177s — 19m37s, over budget** | **352s — 5m52s, inside budget** |
 
-Two separate problems, and it matters that they are separate:
+Three separate problems, and it matters that they are separate:
 
-1. **The published artifact cannot run at all.** A dependency it does not pin
-   shipped a breaking major. That is
-   [#1168](https://github.com/frankbria/codeframe/issues/1168), fixed in this PR
-   but not fixed for users until 0.9.3 is published.
-2. **Once it runs, the documented happy path does not fit in 15 minutes.** That is
-   [#1171](https://github.com/frankbria/codeframe/issues/1171), and it is new —
-   it was hidden until now because the step that overruns used to be a no-op.
+1. **The published artifact could not run at all.** A dependency it did not pin
+   shipped a breaking major. That was
+   [#1168](https://github.com/frankbria/codeframe/issues/1168), fixed and
+   published as 0.9.3.
+2. **Once it ran, the documented happy path did not fit in 15 minutes.** That was
+   [#1171](https://github.com/frankbria/codeframe/issues/1171), and it was new —
+   hidden until then because the step that overran used to be a no-op. Run C
+   below is the re-measurement after the fix.
+3. **The walkthrough still ends on two known failures** —
+   [#1172](https://github.com/frankbria/codeframe/issues/1172) (fixed after
+   0.9.3 was cut, so still present in the published package Run C installs) and
+   [#1173](https://github.com/frankbria/codeframe/issues/1173). Neither costs
+   time; both are visible to a new user.
 EOF
 )"
 
@@ -204,6 +211,35 @@ between \`cf init\` and here tells the user to \`cf proof capture\` first. For a
 product whose thesis is PROVE, the quickstart currently demonstrates PROVE
 failing. That is [#1173](https://github.com/frankbria/codeframe/issues/1173)."
 
+sb note "$DOC" "---
+
+## Run C — published 0.9.3, after the quickstart fix
+
+Same harness, same container, published package again — the path a new user
+actually takes. The only thing that changed between Run B and Run C is which
+commands the README tells them to run."
+
+sb exec "$DOC" bash "column -t -s\"\$(printf '\t')\" $C/timings.tsv; echo; cat $C/total.txt"
+
+sb note "$DOC" "**352 seconds. Five minutes fifty-two.** No step timed out.
+
+The whole 14-minute difference is one step that is no longer there. Everything
+else in Run B already summed to about 315 seconds; \`6-batch-run\` was the
+overrun, on its own. Step 5 now promotes a single task and Step 6 runs it:"
+
+sb exec "$DOC" bash "sed -n '/STEP: 5-promote-one/,/^Total: 1 /p' $C/transcript.txt"
+
+sb note "$DOC" "Worth noting what \`head -1\` picked: priority 0, \`Deps\` empty —
+\`cf tasks generate\` orders its output foundational-first, so following the
+docs literally lands on a task with nothing blocking it. That is luck the
+quickstart is allowed to rely on but the docs should not claim; a user picking
+any other ID gets the same run, because \`cf work start\` does not gate on
+dependencies.
+
+The two remaining non-zero exits are unchanged and are not budget problems: the
+agent files a blocker after 179s rather than guessing at a decision, and
+\`cf proof run\` still reports an empty ledger in one second."
+
 sb note "$DOC" "$(cat <<'EOF'
 ---
 
@@ -229,11 +265,16 @@ The harness earns its keep: it has now caught two consecutive releases that were
 dead on arrival for the one install path the README documents, neither of which
 any test, lint or `uv sync` could see.
 
-Beyond that, the answer to #614's question is **not yet**. The 15-minute budget
-was never the real constraint when the middle of the pipeline was broken; now
-that `cf prd generate` and `cf tasks generate` both work well, the constraint is
-real and the documented happy path misses it — because that path tells a new user
-to execute their entire backlog on their first run.
+On #614's actual question — **yes, in 5m52s**, once the quickstart stopped
+telling a first-time user to execute their entire backlog. The budget was never
+the real constraint while the middle of the pipeline was broken; when it finally
+became real, the fix was in the documentation, not in making 25 serial agent runs
+faster. Nothing makes 25 serial agent runs fit in fifteen minutes.
+
+Two documented steps still exit non-zero, and both are worth knowing about before
+you follow this yourself: the agent files a blocker rather than guessing (exit 1,
+by design — `cf blocker answer` resumes it), and `cf proof run` on a fresh
+workspace has nothing to verify ([#1173](https://github.com/frankbria/codeframe/issues/1173)).
 EOF
 )"
 

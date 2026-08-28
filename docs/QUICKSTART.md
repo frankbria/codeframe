@@ -209,8 +209,9 @@ This will:
 - Create blockers when human input is needed
 
 A generated backlog is typically 20+ tasks and each one is a full agent run, so
-this is **long-running**. Start it, then watch it from another terminal with
-`codeframe work batch follow`.
+this is **long-running**. Start it, then watch it from another terminal:
+`codeframe work batch status` lists the batch IDs and
+`codeframe work batch follow <batch-id>` streams one.
 
 #### Option C: Run Specific Tasks
 

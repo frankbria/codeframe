@@ -144,18 +144,22 @@ cf tasks list 2>&1 | tail -40
 TASK_ID=$(cf tasks list --status BACKLOG 2>/dev/null | grep -oE '\b[0-9a-f]{8}\b' | head -1)
 printf '\n### Resolved TASK_ID=%s\n' "${TASK_ID:-<none>}"
 
-if [ -z "$TASK_ID" ]; then
-  note P-NO-TASK-ID critical "Could not resolve a task ID from 'cf tasks list' output — the documented 'cf tasks set status <task-id> READY' is not reachable by following the docs"
-fi
-
-step "5-promote-one" yes 120 -- bash -c "cf tasks set status '$TASK_ID' READY"
-printf '\n### READY tasks after promotion:\n'
-cf tasks list --status READY 2>&1 | tail -30
-
 ########################################
 # README Step 6 — Build / Prove / Ship
+#
+# Both steps are inside the TASK_ID guard on purpose. Without it an empty ID
+# would run `cf tasks set status '' READY`, skip the agent run, and still reach
+# `cf proof run` — a fast total that looks like a passing measurement of a path
+# nobody walked. `set -uo pipefail` has no `-e`, so nothing else would stop it.
+# The critical finding is the signal; the timings must not imply otherwise.
 ########################################
-if [ -n "$TASK_ID" ]; then
+if [ -z "$TASK_ID" ]; then
+  note P-NO-TASK-ID critical "Could not resolve a task ID from 'cf tasks list' output — the documented 'cf tasks set status <task-id> READY' is not reachable by following the docs, and neither Step 5 nor Step 6 ran. The total below does NOT measure the documented path."
+else
+  step "5-promote-one" yes 120 -- bash -c "cf tasks set status '$TASK_ID' READY"
+  printf '\n### READY tasks after promotion:\n'
+  cf tasks list --status READY 2>&1 | tail -30
+
   step "6-work-start" yes 1200 -- bash -c "cf work start '$TASK_ID' --execute"
 fi
 
