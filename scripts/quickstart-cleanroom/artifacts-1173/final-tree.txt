@@ -1,0 +1,17 @@
+total 80
+drwxr-xr-x 9 root root  4096 Sep  1 22:53 .
+drwxr-xr-x 1 root root  4096 Sep  1 22:47 ..
+drwxr-xr-x 5 root root  4096 Sep  1 22:53 .codeframe
+drwxr-xr-x 8 root root  4096 Sep  1 22:47 .git
+drwxr-xr-x 3 root root  4096 Sep  1 22:53 .pytest_cache
+drwxr-xr-x 4 root root  4096 Sep  1 22:50 .venv
+-rw-r--r-- 1 root root    55 Sep  1 22:47 README.md
+drwxr-xr-x 3 root root  4096 Sep  1 22:50 app
+-rw-r--r-- 1 root root   169 Sep  1 22:53 pyproject.toml
+drwxr-xr-x 2 root root  4096 Sep  1 22:47 src
+drwxr-xr-x 3 root root  4096 Sep  1 22:53 tests
+-rw-r--r-- 1 root root 34144 Sep  1 22:53 uv.lock
+ M pyproject.toml
+?? app/
+?? tests/
+?? uv.lock

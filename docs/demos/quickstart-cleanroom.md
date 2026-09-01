@@ -421,6 +421,42 @@ between `cf init` and here tells the user to `cf proof capture` first. For a
 product whose thesis is PROVE, the quickstart currently demonstrates PROVE
 failing. That is [#1173](https://github.com/frankbria/codeframe/issues/1173).
 
+#### Fixed — a later run of this same harness
+
+The capture-then-run fix turned out to be two steps short of green, not one.
+`cf proof capture` writes `draft_*` stubs that pytest deliberately does not
+collect, and every obligation carries a `must_pass` evidence rule, so
+capture-then-run moves the quickstart from exit 2 to exit **1**. The README now
+documents the whole loop — capture, implement the generated stub, then
+`cf proof run --full` — and this harness follows it:
+
+```bash
+sed -n '/STEP: 7-proof-run/,/7-proof-run: OK/p' scripts/quickstart-cleanroom/artifacts-1173/transcript.txt
+```
+
+```output
+===== STEP: 7-proof-run (documented=yes) =====
+$ cf proof run --full
+
+Running proof obligations (full)...
+         Proof Results
+┏━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━┓
+┃ REQ      ┃ Gate     ┃ Result ┃
+┡━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━┩
+│ REQ-0001 │ unit     │ PASS   │
+│ REQ-0001 │ contract │ PASS   │
+└──────────┴──────────┴────────┘
+
+All obligations satisfied.
+
+----- 7-proof-run: OK (2s, exit 0) -----
+```
+
+`cf proof status` afterwards reports `Satisfied: 1` — real evidence in the
+ledger, from tests that actually ran. The three added steps cost **7 seconds**
+(352s → 359s, still 5m59s and inside budget). Full artifacts:
+`scripts/quickstart-cleanroom/artifacts-1173/`.
+
 ---
 
 ## Run C — published 0.9.3, after the quickstart fix
@@ -508,7 +544,7 @@ agent files a blocker after 179s rather than guessing at a decision, and
 | [#1171](https://github.com/frankbria/codeframe/issues/1171) | P1.42 | The quickstart cannot finish in 15 minutes — Step 6 runs all 25 tasks serially |
 | [#1172](https://github.com/frankbria/codeframe/issues/1172) | P1.43 | `CallType` has no `verification_fix` member — self-correction spend is lost and a traceback reaches the user |
 | [#1170](https://github.com/frankbria/codeframe/issues/1170) | P2.33 | Migrate the Anthropic adapter to the 1.x SDK and lift the `<1.0` ceiling |
-| [#1173](https://github.com/frankbria/codeframe/issues/1173) | P2.34 | The quickstart's final step always fails — no `cf proof capture` before `cf proof run` |
+| [#1173](https://github.com/frankbria/codeframe/issues/1173) | P2.34 | The quickstart's final step always fails — no `cf proof capture` before `cf proof run` — **fixed; a later run of this harness reaches `All obligations satisfied.`** |
 
 The previous round of this walkthrough filed #1110–#1118; **all nine are closed**,
 and this run confirms two of the most visible ones — task decomposition (#1115)
@@ -521,13 +557,17 @@ The harness earns its keep: it has now caught two consecutive releases that were
 dead on arrival for the one install path the README documents, neither of which
 any test, lint or `uv sync` could see.
 
-On #614's actual question — **yes, in 5m52s**, once the quickstart stopped
+On #614's actual question — **yes, in 5m52s** (5m59s once the quickstart also
+proved something, below), once the quickstart stopped
 telling a first-time user to execute their entire backlog. The budget was never
 the real constraint while the middle of the pipeline was broken; when it finally
 became real, the fix was in the documentation, not in making 25 serial agent runs
 faster. Nothing makes 25 serial agent runs fit in fifteen minutes.
 
-Two documented steps still exit non-zero, and both are worth knowing about before
+One documented step still exits non-zero, and it is worth knowing about before
 you follow this yourself: the agent files a blocker rather than guessing (exit 1,
-by design — `cf blocker answer` resumes it), and `cf proof run` on a fresh
-workspace has nothing to verify ([#1173](https://github.com/frankbria/codeframe/issues/1173)).
+by design — `cf blocker answer` resumes it). The other one — `cf proof run` on a
+fresh workspace having nothing to verify
+([#1173](https://github.com/frankbria/codeframe/issues/1173)) — is fixed: the
+quickstart now captures a requirement and implements its stub first, and the
+PROVE step ends on `All obligations satisfied.` in 5m59s total.

@@ -191,11 +191,11 @@ check, and `cf pr merge` refuses to merge while any of them is open.
 cf pr create                        # Open a PR with proof report attached
 ```
 
-That is the entire workflow. An empty directory through `cf proof run` is
-**5m52s** of wall clock on a clean machine — measured, not estimated, in
+That is the entire workflow. An empty directory through a green `cf proof run`
+is **5m59s** of wall clock on a clean machine — measured, not estimated, in
 [this walkthrough](docs/demos/quickstart-cleanroom.md) — most of it in
-`cf prd generate` and the agent run. `cf pr create` needs a GitHub remote, so it
-is outside that measurement.
+`cf prd generate` and the agent run; Step 7 costs 7 seconds of it. `cf pr create`
+needs a GitHub remote, so it is outside that measurement.
 
 If the agent needs a decision it cannot make, it stops and files a blocker
 rather than guessing — `cf blocker list` shows it and `cf blocker answer <id>
