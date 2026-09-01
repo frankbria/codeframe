@@ -196,6 +196,8 @@ path the README documents while every gate was green:
 
 So: **a floor-only pin on an SDK is a latent DOA release.** Cap the major on
 anything whose call signature we depend on, and remember the lockfile hides it.
+The adapter now runs on `anthropic` 1.x and the pin is `>=1.0,<2` (#1170) — the
+*ceiling* is the lesson, not the version, so do not make it floor-only again.
 `tests/adapters/test_sdk_kwargs_guard_614.py` catches the drift once it reaches
 the lock. Before that, the **Unlocked Resolution** workflow
 (`.github/workflows/unlocked-resolution.yml`, #1169) catches it: it resolves the
@@ -205,6 +207,16 @@ runs daily on a schedule — this break arrives from upstream, so it can appear 
 a day nobody pushed — on PRs touching `pyproject.toml` or the guards, and as a
 required gate on `release.yml`. `tests/ci/test_unlocked_resolution_guard_1169.py`
 pins those properties.
+
+#1170 moved where the risk lives, so the #614 guard now carries two halves. The
+signature check stayed, but it got weaker: `temperature` was a real bet on the
+signature, while `extra_body` — where `temperature` travels on 1.x — is generic
+SDK plumbing that will never vanish. The second half is a wire-level test that
+drives the installed client through a mock transport and decodes the request
+body, so it fails if `extra_body` ever stops being merged into the request. It
+lives in that same file deliberately: this file and
+`test_model_defaults_guard_1112.py` are what Unlocked Resolution runs, and a
+guard that the unlocked job cannot see is not guarding the install path.
 
 That job needs no API key and takes seconds, so it is not a replacement for the
 cold-start harness: it checks the *resolution*, the harness checks the
