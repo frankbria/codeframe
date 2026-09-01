@@ -163,7 +163,66 @@ else
   step "6-work-start" yes 1200 -- bash -c "cf work start '$TASK_ID' --execute"
 fi
 
-step "6-proof-run" yes 900 -- cf proof run
+########################################
+# README Step 7 — Prove
+#
+# `cf proof run` verifies obligations, and a fresh workspace has none, so the
+# README used to end on a guaranteed exit 2 (#1173). The documented sequence is
+# now three steps: capture a glitch, implement the stubs it generates, then run.
+#
+# The glitch is deliberately about pyproject.toml — a file this harness creates
+# itself, so the capture never depends on what the agent happened to write.
+#
+# The unit/contract gates shell out to the project's own pytest, so the project
+# needs it. The README says so; `uv add` is how a uv project gets it.
+########################################
+step "7-add-pytest" yes 300 -- uv add --dev pytest
+
+step "7-proof-capture" yes 300 -- cf proof capture \
+  --title "Project metadata is wrong" \
+  --description "Calculation is wrong: pyproject.toml reports the incorrect project name" \
+  --where pyproject.toml --severity high --source qa
+
+# The harness standing in for the human's edit, the same way --brief-file stands
+# in for the Socratic interview. The README tells the reader to drop the draft_
+# prefix and replace the placeholder assert with a real assertion; this does
+# exactly that, and nothing else. If capture wrote no stubs, that is the
+# finding — do not paper over it.
+implement_stubs() {
+  local drafts count=0
+  drafts=$(find tests/proof -name 'draft_test_*.py' 2>/dev/null)
+  if [ -z "$drafts" ]; then
+    return 1
+  fi
+  local draft real
+  for draft in $drafts; do
+    real=$(dirname "$draft")/$(basename "$draft" | sed 's/^draft_//')
+    # A real assertion on the real project metadata: the name in pyproject.toml
+    # is what the captured glitch claims is wrong.
+    sed 's|    assert False, "Not implemented yet — replace with real assertions"|    import tomllib\n    with open("pyproject.toml", "rb") as fh:\n        meta = tomllib.load(fh)\n    assert meta["project"]["name"] == "todo-api"|' \
+      "$draft" >"$real"
+    # If the stub template's placeholder ever changes, sed matches nothing and
+    # copies `assert False` through verbatim. That still fails the proof run, but
+    # it fails looking like a broken gate rather than a stale harness — so say so.
+    if grep -q 'Not implemented yet' "$real"; then
+      printf 'STUB PLACEHOLDER NOT REPLACED in %s — this harness is out of date\n' "$real"
+      return 1
+    fi
+    rm -f "$draft"
+    printf 'implemented %s\n' "$real"
+    count=$((count + 1))
+  done
+  printf '%s stub(s) implemented\n' "$count"
+}
+# `step` runs its command under `timeout`, which execs a real binary and cannot
+# see a shell function — hence the export plus `bash -c`.
+export -f implement_stubs
+
+if ! step "7-proof-implement" yes 120 -- bash -c implement_stubs; then
+  note P-NO-PROOF-STUBS critical "cf proof capture generated no draft_test_*.py stubs, so the documented 'implement the stub' step has nothing to act on and 'cf proof run' cannot reach exit 0."
+fi
+
+step "7-proof-run" yes 900 -- cf proof run --full
 
 ########################################
 # Post-run state
