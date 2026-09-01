@@ -126,3 +126,79 @@ def test_temperature_reaches_the_request_body_over_the_wire(temperature):
     )
 
     assert captured["body"]["temperature"] == temperature
+
+
+#: A minimal well-formed SSE stream, enough for ``messages.stream()`` to build a
+#: final message. Only the request matters here; this is just a valid reply.
+_STREAM_SSE = "\n".join(
+    [
+        "event: message_start",
+        'data: {"type":"message_start","message":{"id":"m","type":"message",'
+        '"role":"assistant","model":"claude-sonnet-4-5","content":[],'
+        '"stop_reason":null,"stop_sequence":null,'
+        '"usage":{"input_tokens":1,"output_tokens":0}}}',
+        "",
+        "event: content_block_start",
+        'data: {"type":"content_block_start","index":0,'
+        '"content_block":{"type":"text","text":""}}',
+        "",
+        "event: content_block_delta",
+        'data: {"type":"content_block_delta","index":0,'
+        '"delta":{"type":"text_delta","text":"hi"}}',
+        "",
+        "event: content_block_stop",
+        'data: {"type":"content_block_stop","index":0}',
+        "",
+        "event: message_delta",
+        'data: {"type":"message_delta",'
+        '"delta":{"stop_reason":"end_turn","stop_sequence":null},'
+        '"usage":{"output_tokens":1}}',
+        "",
+        "event: message_stop",
+        'data: {"type":"message_stop"}',
+        "",
+    ]
+)
+
+
+@pytest.mark.parametrize("temperature", [0.0, 0.7])
+def test_temperature_reaches_the_stream_request_body_too(temperature):
+    """Same wire assertion for ``messages.stream()``, which is its own method.
+
+    ``stream()`` is a different SDK entry point from ``create()`` with its own
+    signature and its own manager, so "create merges extra_body" is not
+    evidence that stream does. Without this, the sync streaming path would rest
+    on exactly the signature-only check this file already says proves nothing
+    for a generic kwarg like ``extra_body``.
+    """
+    import anthropic
+    import httpx2
+
+    captured = {}
+
+    def handler(request):
+        captured["body"] = json.loads(request.content)
+        return httpx2.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=_STREAM_SSE.encode(),
+        )
+
+    from codeframe.adapters.llm.anthropic import AnthropicProvider
+
+    provider = AnthropicProvider(api_key="test-key")
+    provider._client = anthropic.Anthropic(
+        api_key="test-key",
+        http_client=anthropic.DefaultHttpxClient(
+            transport=httpx2.MockTransport(handler)
+        ),
+    )
+
+    chunks = list(
+        provider.stream(
+            messages=[{"role": "user", "content": "hi"}], temperature=temperature
+        )
+    )
+
+    assert chunks == ["hi"], chunks
+    assert captured["body"]["temperature"] == temperature
