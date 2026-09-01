@@ -23,14 +23,16 @@ classifiers = [
 ]
 
 dependencies = [
-    # Ceiling is load-bearing, not caution (#614): anthropic 1.0.0 removed
-    # `temperature` (and the other sampling kwargs) from Messages.create(),
-    # so a floor-only pin let every fresh `uv tool install codeframe-ai`
-    # resolve to an SDK our adapter cannot call — published 0.9.2 was dead on
-    # arrival on exactly the path the README tells a new user to take. The
-    # lockfile hid it: CI resolves 0.70.0 and never sees 1.x.
-    # Raise this only together with the 1.x migration.
-    "anthropic>=0.18.0,<1.0",
+    # Ceiling is load-bearing, not caution (#614). anthropic 1.0.0 removed
+    # `temperature` (and the other sampling kwargs) from Messages.create(), and
+    # a floor-only pin let every fresh `uv tool install codeframe-ai` resolve to
+    # an SDK our adapter could not call — published 0.9.2 was dead on arrival on
+    # exactly the path the README tells a new user to take. The lockfile hid it:
+    # CI resolved 0.70.0 and never saw 1.x.
+    # The adapter migrated to 1.x in #1170, so the floor moved with it. The
+    # MAJOR ceiling stays: it is the lesson, not the version. Do not make this
+    # floor-only again — raise it only together with a 2.x migration.
+    "anthropic>=1.0,<2",
     # Runtime, not dev (#910): `cf review`'s security leg shells out to bandit,
     # and when it was missing the scan silently produced no findings — so every
     # clean `pip install` scored 100 and reported "approved" without ever

@@ -7,6 +7,25 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- **The Anthropic adapter runs on the `anthropic` 1.x SDK; the `<1.0` ceiling is
+  lifted to `>=1.0,<2` (#1170).** 0.9.3 capped the SDK to stop the bleeding from
+  #1168, which froze the project on the 0.x line. 1.x removed `temperature`,
+  `top_p` and `top_k` from `Messages.create()`; they did **not** move to
+  `output_config` (that parameter is `{effort, format}`). The adapter now sends
+  `temperature` in `extra_body`, which the SDK merges into the request JSON
+  verbatim — so the request on the wire is unchanged, and the #767 invariant
+  holds: `temperature=0.0` is a real request for deterministic sampling, never
+  "unset". Sampling is still accepted by the API on the models CodeFrame
+  defaults to (`claude-sonnet-4-5`, `claude-haiku-4-5`); the newer families that
+  reject it (Opus 4.7+, Opus 5, Sonnet 5) rejected it on 0.x too, so this is
+  behavioural parity rather than a new limitation. Verified against the live API
+  on 1.2.0 across all five paths the adapter uses — completion, tool use, tool
+  results, sync streaming, and async streaming including the interleaved-thinking
+  beta branch. No `httpx` -> `httpx2` work was needed: the adapter hands the SDK
+  no `httpx` objects. The major ceiling stays on purpose.
+
 ### Fixed
 
 - **Self-correction token/cost records were silently dropped (#1168 follow-up).**

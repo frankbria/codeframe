@@ -124,7 +124,13 @@ class AnthropicProvider(LLMProvider):
         # Pass temperature unconditionally: temperature=0.0 is a valid request
         # for deterministic sampling, not "unset". Guarding on `> 0` silently
         # dropped it and let the API default to 1.0 (#767).
-        kwargs["temperature"] = temperature
+        #
+        # It rides in extra_body because anthropic 1.x dropped the sampling
+        # kwargs from the typed signature (#1170); the SDK merges extra_body
+        # into the request JSON verbatim, so the wire request is unchanged. The
+        # model families that reject sampling (Opus 4.7+, Opus 5, Sonnet 5)
+        # rejected it on 0.x too — parity, not a new limitation.
+        kwargs["extra_body"] = {"temperature": temperature}
 
         if system:
             kwargs["system"] = system
@@ -175,10 +181,9 @@ class AnthropicProvider(LLMProvider):
             "max_tokens": max_tokens,
             "messages": self._convert_messages(messages),
         }
-        # Pass temperature unconditionally: temperature=0.0 is a valid request
-        # for deterministic sampling, not "unset". Guarding on `> 0` silently
-        # dropped it and let the API default to 1.0 (#767).
-        kwargs["temperature"] = temperature
+        # temperature in extra_body — same reasoning as complete() above
+        # (#767 invariant, #1170 transport).
+        kwargs["extra_body"] = {"temperature": temperature}
         if system:
             kwargs["system"] = system
         if tools:
@@ -350,10 +355,9 @@ class AnthropicProvider(LLMProvider):
             "messages": self._convert_messages(messages),
         }
 
-        # Pass temperature unconditionally: temperature=0.0 is a valid request
-        # for deterministic sampling, not "unset". Guarding on `> 0` silently
-        # dropped it and let the API default to 1.0 (#767).
-        kwargs["temperature"] = temperature
+        # temperature in extra_body — same reasoning as complete() above
+        # (#767 invariant, #1170 transport).
+        kwargs["extra_body"] = {"temperature": temperature}
 
         if system:
             kwargs["system"] = system

@@ -16,7 +16,13 @@ def _provider() -> AnthropicProvider:
 
 @pytest.mark.parametrize("temperature", [0.0, 0.7])
 def test_complete_passes_temperature_unconditionally(monkeypatch, temperature):
-    """temperature=0.0 must reach the API, not be dropped (#767)."""
+    """temperature=0.0 must reach the API, not be dropped (#767, #1170).
+
+    On the 1.x SDK the kwarg is gone from ``Messages.create()``, so the adapter
+    sends it in ``extra_body`` — which the SDK merges into the request JSON
+    verbatim. The invariant is unchanged: 0.0 is a request for deterministic
+    sampling, never "unset".
+    """
     provider = _provider()
     fake_client = MagicMock()
     fake_client.messages.create.return_value = MagicMock()
@@ -28,12 +34,13 @@ def test_complete_passes_temperature_unconditionally(monkeypatch, temperature):
     provider.complete(messages=[{"role": "user", "content": "hi"}], temperature=temperature)
 
     kwargs = fake_client.messages.create.call_args.kwargs
-    assert kwargs["temperature"] == temperature
+    assert "temperature" not in kwargs, "1.x rejects the top-level kwarg"
+    assert kwargs["extra_body"]["temperature"] == temperature
 
 
 @pytest.mark.parametrize("temperature", [0.0, 0.7])
 async def test_async_complete_passes_temperature_unconditionally(monkeypatch, temperature):
-    """Async path must also pass temperature=0.0 (#767)."""
+    """Async path must also pass temperature=0.0 (#767, #1170)."""
 
     async def _create(**kwargs):
         _create.captured = kwargs
@@ -51,12 +58,13 @@ async def test_async_complete_passes_temperature_unconditionally(monkeypatch, te
         messages=[{"role": "user", "content": "hi"}], temperature=temperature
     )
 
-    assert _create.captured["temperature"] == temperature
+    assert "temperature" not in _create.captured
+    assert _create.captured["extra_body"]["temperature"] == temperature
 
 
 @pytest.mark.parametrize("temperature", [0.0, 0.7])
 def test_stream_passes_temperature_unconditionally(temperature):
-    """Sync streaming path must also pass temperature=0.0 (#767)."""
+    """Sync streaming path must also pass temperature=0.0 (#767, #1170)."""
     provider = _provider()
     fake_client = MagicMock()
     stream_cm = MagicMock()
@@ -67,4 +75,5 @@ def test_stream_passes_temperature_unconditionally(temperature):
     list(provider.stream(messages=[{"role": "user", "content": "hi"}], temperature=temperature))
 
     kwargs = fake_client.messages.stream.call_args.kwargs
-    assert kwargs["temperature"] == temperature
+    assert "temperature" not in kwargs, "1.x rejects the top-level kwarg"
+    assert kwargs["extra_body"]["temperature"] == temperature
