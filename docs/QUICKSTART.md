@@ -253,20 +253,44 @@ Once complete, run verification:
 codeframe review
 ```
 
-Then run the PROOF9 quality gates:
+Then run the PROOF9 quality gates. PROOF9 verifies *obligations*, and a new
+workspace has none, so give it something to check before you run it:
 
 ```bash
-codeframe proof run
+codeframe proof capture \
+  --title "add() returns the wrong sum for negative numbers" \
+  --description "Calculation is wrong: add(-1, -1) returned 0 instead of -2" \
+  --where src/calc.py --severity high --source qa
 ```
 
-> On a brand-new workspace this reports that **nothing was verified** and exits
-> **2** — there is nothing to check yet, which is not the same as passing, so it
-> is not reported as one (#1118). Exit codes: `0` obligations ran and none
-> failed, `1` an obligation failed, `2` nothing was verified. Pass
-> `--allow-empty` to exit 0 on an empty ledger where that is expected.
+That creates a requirement, picks the gates that would have caught the glitch,
+and writes a **draft** test stub per gate under `tests/proof/<REQ-ID>/`. The
+stubs are named `draft_*.py` so pytest does not collect them yet, and each is a
+placeholder `assert False`. Implement them: drop the `draft_` prefix from each
+filename and replace the placeholder with an assertion that proves the bug is
+fixed. Then:
+
+```bash
+codeframe proof run --full
+```
+
+> `--full` checks every open requirement; plain `codeframe proof run` checks
+> only the ones your current diff touches, so it can legitimately find nothing
+> to do on a clean tree.
 >
-> Obligations accumulate as you capture glitches with `codeframe proof capture`;
-> each one becomes a permanent check. See `codeframe proof status` for the ledger.
+> Exit codes: `0` obligations ran and none failed, `1` an obligation failed,
+> `2` nothing was verified. **Skip the capture step and you get exit 2** — there
+> is nothing to check yet, which is not the same as passing, so it is not
+> reported as one (#1118). Pass `--allow-empty` to exit 0 on an empty ledger
+> where that is expected. Run before implementing the stubs and you get exit 1:
+> a `must_pass` obligation whose test does not exist is a failure, not a pass.
+>
+> The `unit` and `contract` gates run **your project's** pytest, so the project
+> needs pytest available (`uv add --dev pytest`). A gate with no way to run is
+> reported as unverified, never as a pass.
+>
+> Obligations accumulate as you capture glitches; each one becomes a permanent
+> check. See `codeframe proof status` for the ledger.
 
 Create a checkpoint of your progress:
 

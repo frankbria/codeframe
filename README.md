@@ -140,19 +140,62 @@ cf tasks set status <task-id> READY      # note: id before status
 Start with one. A generated backlog is typically 20+ tasks, and your first run
 should show you the loop, not build the whole project in one sitting.
 
-**Step 6 — Build, Prove, and Ship**
+**Step 6 — Build: hand the task to an agent**
 
 ```bash
-cf work start <task-id> --execute   # Hand the task to an agent
-cf proof run                        # Run PROOF9 quality gates
+cf work start <task-id> --execute
+```
+
+**Step 7 — Prove: capture a requirement, then verify it**
+
+PROOF9 verifies *obligations*, and a new workspace has none — so verifying it
+first would report that nothing was checked and exit `2`. That is deliberate: a
+run that checked nothing is not a pass. Give it something to check.
+
+```bash
+cf proof capture \
+  --title "add() returns the wrong sum for negative numbers" \
+  --description "Calculation is wrong: add(-1, -1) returned 0 instead of -2" \
+  --where src/calc.py --severity high --source qa
+```
+
+That creates a requirement, picks the gates that would have caught it, and
+writes a **draft** test stub per gate under `tests/proof/<REQ-ID>/`. The stubs
+are named `draft_*.py` so pytest does not collect them yet, and each one is a
+placeholder `assert False`. Turn them into real tests — drop the `draft_`
+prefix from each filename, and replace the placeholder with an assertion that
+actually proves the bug is fixed:
+
+```bash
+ls tests/proof/REQ-0001/          # draft_test_..._unit.py, draft_test_..._contract.py
+# rename each to test_*.py and write the real assertion
+```
+
+Now the gates have evidence to collect:
+
+```bash
+cf proof run --full               # -> All obligations satisfied. (exit 0)
+```
+
+`--full` checks every open requirement; plain `cf proof run` checks only the
+ones your current diff touches. The `unit` and `contract` gates run **your
+project's** pytest, so the project needs pytest available (`uv add --dev
+pytest`) — a gate with no way to run is reported as unverified, never as a pass.
+
+This is the loop that compounds: every glitch you capture stays a permanent
+check, and `cf pr merge` refuses to merge while any of them is open.
+
+**Step 8 — Ship**
+
+```bash
 cf pr create                        # Open a PR with proof report attached
 ```
 
-That is the entire workflow. An empty directory through `cf proof run` is
-**5m52s** of wall clock on a clean machine — measured, not estimated, in
+That is the entire workflow. An empty directory through a green `cf proof run`
+is **5m59s** of wall clock on a clean machine — measured, not estimated, in
 [this walkthrough](docs/demos/quickstart-cleanroom.md) — most of it in
-`cf prd generate` and the agent run. `cf pr create` needs a GitHub remote, so it
-is outside that measurement.
+`cf prd generate` and the agent run; Step 7 costs 7 seconds of it. `cf pr create`
+needs a GitHub remote, so it is outside that measurement.
 
 If the agent needs a decision it cannot make, it stops and files a blocker
 rather than guessing — `cf blocker list` shows it and `cf blocker answer <id>
