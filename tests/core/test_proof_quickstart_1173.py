@@ -90,9 +90,17 @@ def _implement(stub_path):
     import path.
     """
     implemented = stub_path.with_name(stub_path.name.removeprefix("draft_"))
-    body = stub_path.read_text(encoding="utf-8").replace(
+    original = stub_path.read_text(encoding="utf-8")
+    body = original.replace(
         'assert False, "Not implemented yet — replace with real assertions"',
         "def add(a, b):\n        return a + b\n\n    assert add(-1, -1) == -2",
+    )
+    # Without this, a change to the stub template turns the replace into a no-op
+    # and every test below would still pass — proving only that the *template*
+    # is green, which is the exact thing this file exists to rule out.
+    assert body != original, (
+        f"{stub_path.name} no longer contains the placeholder assertion the "
+        "README tells the reader to replace"
     )
     implemented.write_text(body, encoding="utf-8")
     stub_path.unlink()
