@@ -171,6 +171,42 @@ class TestTheTimeoutVerdictIsStickyPerProcess:
         assert store.retrieve(CredentialProvider.LLM_ANTHROPIC) is None
 
 
+    def test_that_concurrent_first_callers_start_only_one_worker(
+        self, tmp_path, blocking_keyring
+    ):
+        """The sticky verdict has to survive a burst, or it bounds nothing.
+
+        Unserialized, every thread in a burst of concurrent requests reads the
+        flag as False, starts its own unkillable worker and waits the full
+        timeout — one leaked thread per in-flight request.
+        """
+        import threading
+
+        before = {t for t in threading.enumerate() if t.name == "codeframe-keyring"}
+        stores = [CredentialStore(tmp_path) for _ in range(8)]
+        barrier = threading.Barrier(len(stores))
+
+        def hammer(store):
+            barrier.wait()
+            store.retrieve(CredentialProvider.LLM_ANTHROPIC)
+
+        started = time.monotonic()
+        threads = [threading.Thread(target=hammer, args=(s,)) for s in stores]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(BOUND)
+        elapsed = time.monotonic() - started
+
+        assert not any(t.is_alive() for t in threads), "a caller never returned"
+        leaked = {
+            t for t in threading.enumerate() if t.name == "codeframe-keyring"
+        } - before
+        assert len(leaked) <= 1, f"leaked {len(leaked)} blocked keyring threads"
+        # Eight callers, one timeout between them — not eight serialized ones.
+        assert elapsed < 1.0, f"burst paid the timeout more than once ({elapsed:.2f}s)"
+
+
 class TestTheEscapeHatch:
     def test_that_disable_keyring_skips_the_backend_entirely(
         self, tmp_path, blocking_keyring, monkeypatch

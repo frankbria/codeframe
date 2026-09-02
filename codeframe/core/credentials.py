@@ -111,6 +111,14 @@ DEFAULT_KEYRING_TIMEOUT = 2.0
 # server, so without this every request would pay the timeout again (#1181).
 _KEYRING_TIMED_OUT = False
 
+# One keyring call at a time per process. Without it, a burst of concurrent
+# first callers each read _KEYRING_TIMED_OUT as False and each start its own
+# unkillable worker, so the sticky verdict would bound nothing. Serialized, the
+# losers wait on the lock and then see the verdict the winner set. Cheap: a
+# healthy keyring call is milliseconds, credential reads are rare, and the
+# backend serializes on its own socket anyway.
+_KEYRING_CALL_LOCK = threading.Lock()
+
 
 class KeyringTimeoutError(KeyringError):  # type: ignore[misc,valid-type]
     """A keyring call did not return within the timeout.
@@ -138,9 +146,16 @@ def _keyring_call(fn, *args):
     every call is time-boxed here instead.
 
     The blocked call cannot be cancelled (it is waiting inside libdbus), so the
-    worker thread is abandoned as a daemon. That is bounded: the sticky
-    ``_KEYRING_TIMED_OUT`` flag means at most one abandoned thread per process.
+    worker thread is abandoned as a daemon. That is bounded to one per process
+    by the sticky ``_KEYRING_TIMED_OUT`` flag plus the lock that makes the flag
+    mean something under concurrency.
     """
+    with _KEYRING_CALL_LOCK:
+        return _keyring_call_locked(fn, *args)
+
+
+def _keyring_call_locked(fn, *args):
+    """The body of :func:`_keyring_call`, run one caller at a time."""
     global _KEYRING_TIMED_OUT
 
     if _KEYRING_TIMED_OUT:
