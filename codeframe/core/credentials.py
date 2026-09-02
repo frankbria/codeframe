@@ -182,9 +182,10 @@ def _keyring_call_locked(fn, *args):
         except BaseException as exc:  # re-raised on the calling thread below
             outcome.append(("error", exc))
 
+    timeout = _keyring_timeout()
     worker = threading.Thread(target=run, daemon=True, name="codeframe-keyring")
     worker.start()
-    worker.join(_keyring_timeout())
+    worker.join(timeout)
 
     if worker.is_alive():
         _KEYRING_TIMED_OUT = True
@@ -192,7 +193,7 @@ def _keyring_call_locked(fn, *args):
             "Keyring backend did not respond within %.1fs; falling back to the "
             "encrypted credential file for the rest of this process. Set "
             "CODEFRAME_DISABLE_KEYRING=1 to skip the keyring entirely.",
-            _keyring_timeout(),
+            timeout,
         )
         raise KeyringTimeoutError("keyring call timed out")
 
