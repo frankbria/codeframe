@@ -656,10 +656,20 @@ class TestKeyringIntegration:
     """
 
     def test_keyring_availability_check(self):
-        """Verify keyring availability detection works."""
+        """Availability detection reaches a verdict in bounded time (#1181).
+
+        This used to assert "importable implies available" — the very
+        assumption that let a backend which is installed and selected but
+        unresponsive (headless box, no session D-Bus) hang every credential
+        read forever. Importable is not responsive; the only invariant is that
+        a verdict comes back, and quickly.
+        """
+        import time
+
+        started = time.monotonic()
         store = CredentialStore()
-        # If we got here, keyring is available, so check should pass
-        assert store._keyring_available or not KEYRING_AVAILABLE
+        assert isinstance(store._keyring_available, bool)
+        assert time.monotonic() - started < 10
 
     def test_keyring_backend_detection(self):
         """Verify we can detect the keyring backend type."""
