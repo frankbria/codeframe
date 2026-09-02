@@ -170,7 +170,6 @@ class TestTheTimeoutVerdictIsStickyPerProcess:
         assert store._keyring_available is False
         assert store.retrieve(CredentialProvider.LLM_ANTHROPIC) is None
 
-
     def test_that_concurrent_first_callers_start_only_one_worker(
         self, tmp_path, blocking_keyring
     ):
@@ -247,6 +246,58 @@ class TestTheServerEndpointReturns:
         assert time.monotonic() - started < BOUND
         assert response.status_code == 200
         assert all(entry["source"] == "none" for entry in response.json())
+
+    @pytest.mark.asyncio
+    async def test_that_the_event_loop_stays_responsive_during_the_timeout(
+        self, tmp_path, blocking_keyring, monkeypatch
+    ):
+        """The handler must not pay the timeout *on the event loop*.
+
+        A blocking `join` in an `async def` route stalls every other in-flight
+        request for the duration, not just the caller — the same failure this
+        bounds, one layer up.
+        """
+        import asyncio
+
+        from codeframe.ui.routers import settings_v2
+
+        for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN"):
+            monkeypatch.delenv(var, raising=False)
+
+        manager = CredentialManager.__new__(CredentialManager)
+        manager._store = CredentialStore(tmp_path)
+
+        ticks = 0
+
+        async def heartbeat():
+            nonlocal ticks
+            while True:
+                await asyncio.sleep(0.02)
+                ticks += 1
+
+        import httpx
+        from fastapi import FastAPI
+
+        app = FastAPI()
+        app.include_router(settings_v2.router)
+        app.dependency_overrides[settings_v2.get_credential_manager_readonly] = (
+            lambda: manager
+        )
+
+        beat = asyncio.create_task(heartbeat())
+        try:
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                response = await client.get("/api/v2/settings/keys")
+        finally:
+            beat.cancel()
+
+        assert response.status_code == 200
+
+        # The keyring timeout is 0.3s here; a loop held hostage ticks ~0 times.
+        assert ticks >= 5, f"event loop was blocked (only {ticks} ticks)"
 
 
 class TestARealKeyringErrorStillBehavesAsBefore:

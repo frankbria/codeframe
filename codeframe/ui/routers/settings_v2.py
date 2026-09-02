@@ -292,7 +292,13 @@ async def list_key_status(
     manager: CredentialManager = Depends(get_credential_manager_readonly),
 ) -> list[KeyStatusResponse]:
     """Return status of each known API key without exposing plaintext."""
-    return [_build_status(p, manager) for p in KEY_PROVIDERS]
+    # Off the event loop: a credential read reaches the OS keyring, and an
+    # unresponsive backend parks the calling thread for the timeout (#1181).
+    # On the loop that would stall every other in-flight request, not just this
+    # one — the same failure this bounds, one layer up.
+    return await run_in_threadpool(
+        lambda: [_build_status(p, manager) for p in KEY_PROVIDERS]
+    )
 
 
 @router.put(
@@ -318,7 +324,7 @@ async def store_key(
             ),
         )
     try:
-        manager.set_credential(cp, body.value)
+        await run_in_threadpool(manager.set_credential, cp, body.value)
     except Exception as e:
         logger.error(f"Failed to store credential: {e}", exc_info=True)
         raise HTTPException(
@@ -329,7 +335,9 @@ async def store_key(
         )
     # _resolve_provider validated `provider` against KEY_PROVIDERS, so the
     # cast is safe — clearer than a type: ignore.
-    return _build_status(cast(KeyProvider, provider), manager)
+    return await run_in_threadpool(
+        _build_status, cast(KeyProvider, provider), manager
+    )
 
 
 @router.delete(
@@ -346,7 +354,7 @@ async def delete_key(
     """Delete a stored credential. Idempotent — non-existent keys are a no-op."""
     cp = _resolve_provider(provider)
     try:
-        manager.delete_credential(cp)
+        await run_in_threadpool(manager.delete_credential, cp)
     except Exception as e:
         # Underlying store can raise on a hard keyring error; treat absence as success.
         msg = str(e).lower()
@@ -455,7 +463,7 @@ async def verify_key(
     (programmer bugs) raise 5xx.
     """
     cp = _resolve_provider(body.provider)
-    key = body.value if body.value else manager.get_credential(cp)
+    key = body.value if body.value else await run_in_threadpool(manager.get_credential, cp)
     if not key:
         return VerifyKeyResponse(
             provider=body.provider, valid=False, message="No key provided or stored"

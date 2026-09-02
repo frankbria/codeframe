@@ -131,9 +131,17 @@ class KeyringTimeoutError(KeyringError):  # type: ignore[misc,valid-type]
 
 def _keyring_timeout() -> float:
     """Read the timeout per call, not at import (the #963 lesson)."""
+    raw = os.environ.get("CODEFRAME_KEYRING_TIMEOUT")
+    if raw is None:
+        return DEFAULT_KEYRING_TIMEOUT
     try:
-        return float(os.environ.get("CODEFRAME_KEYRING_TIMEOUT", DEFAULT_KEYRING_TIMEOUT))
+        return float(raw)
     except ValueError:
+        logger.warning(
+            "CODEFRAME_KEYRING_TIMEOUT=%r is not a number; using %.1fs.",
+            raw,
+            DEFAULT_KEYRING_TIMEOUT,
+        )
         return DEFAULT_KEYRING_TIMEOUT
 
 
