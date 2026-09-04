@@ -129,6 +129,19 @@ class KeyringTimeoutError(KeyringError):  # type: ignore[misc,valid-type]
     """
 
 
+def _env_flag(name: str) -> bool:
+    """Whether an opt-in env flag is set. Truthy: ``1``, ``true``, ``yes``, ``on``.
+
+    Mirrors ``ui/server._env_flag`` rather than importing it — core stays
+    headless. An explicit allowlist, not "anything but 0", so
+    ``CODEFRAME_DISABLE_KEYRING=no`` means no.
+    """
+    value = os.environ.get(name)
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _keyring_timeout() -> float:
     """Read the timeout per call, not at import (the #963 lesson)."""
     raw = os.environ.get("CODEFRAME_KEYRING_TIMEOUT")
@@ -622,7 +635,7 @@ class CredentialStore:
         """Check if keyring is available and working."""
         if not KEYRING_AVAILABLE:
             return False
-        if os.environ.get("CODEFRAME_DISABLE_KEYRING", "").lower() not in ("", "0", "false"):
+        if _env_flag("CODEFRAME_DISABLE_KEYRING"):
             return False
         if _KEYRING_TIMED_OUT:
             # An earlier call already proved this backend unresponsive (#1181).

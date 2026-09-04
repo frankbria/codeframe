@@ -215,6 +215,27 @@ class TestTheEscapeHatch:
         assert store._keyring_available is False
         assert creds._KEYRING_TIMED_OUT is False  # never even probed
 
+    @pytest.mark.parametrize("value", ["1", "true", "YES", "on"])
+    def test_that_truthy_values_disable(self, tmp_path, blocking_keyring, monkeypatch, value):
+        monkeypatch.setenv("CODEFRAME_DISABLE_KEYRING", value)
+        assert CredentialStore(tmp_path)._keyring_available is False
+
+    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off"])
+    def test_that_non_truthy_values_do_not_disable(
+        self, tmp_path, monkeypatch, value
+    ):
+        """An explicit allowlist, not "anything but 0" — `=no` must mean no."""
+        working = type("Working", (), {
+            "get_password": lambda self, s, u: None,
+            "set_password": lambda self, s, u, p: None,
+            "delete_password": lambda self, s, u: None,
+        })()
+        monkeypatch.setattr(creds, "KEYRING_AVAILABLE", True)
+        monkeypatch.setattr(creds.keyring, "get_keyring", lambda: working)
+        monkeypatch.setenv("CODEFRAME_DISABLE_KEYRING", value)
+
+        assert CredentialStore(tmp_path)._keyring_available is True
+
 
 class TestTheServerEndpointReturns:
     """``GET /api/v2/settings/keys`` reaches the keyring through ``_build_status``.
