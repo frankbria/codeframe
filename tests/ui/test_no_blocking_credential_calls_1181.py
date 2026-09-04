@@ -32,11 +32,19 @@ BLOCKING_CREDENTIAL_CALLS = {
 
 
 def _offenders(path: Path) -> list[str]:
-    """Credential calls made directly inside an `async def` route body.
+    """Credential calls *invoked* inside an `async def` route body.
 
-    A call is fine if it is an argument to `run_in_threadpool` — that is the
-    wrapped form. Anything else in an async body is on the loop, since a plain
-    `def` helper called from async is still executing on the loop thread.
+    The wrapped form — `await run_in_threadpool(manager.get_credential, cp)` —
+    passes for a structural reason, not a special case: the method is passed by
+    reference, so it produces no `ast.Call` node of its own and there is nothing
+    to flag. Only an actual invocation in an async body is reported.
+
+    Deliberately strict about nested helpers: a `def` defined inside the route
+    and handed to `run_in_threadpool` really does run off the loop, but this
+    still flags the calls inside it. No router uses that shape, and the failure
+    mode of strictness is a loud, obvious test failure — where the failure mode
+    of cleverness is a hole. Move such a helper to module scope if it ever shows
+    up.
     """
     tree = ast.parse(path.read_text())
     found = []
@@ -45,17 +53,8 @@ def _offenders(path: Path) -> list[str]:
         if not isinstance(node, ast.AsyncFunctionDef):
             continue
 
-        offloaded = {
-            id(arg)
-            for sub in ast.walk(node)
-            if isinstance(sub, ast.Call)
-            and isinstance(sub.func, ast.Name)
-            and sub.func.id == "run_in_threadpool"
-            for arg in sub.args
-        }
-
         for sub in ast.walk(node):
-            if not isinstance(sub, ast.Call) or id(sub.func) in offloaded:
+            if not isinstance(sub, ast.Call):
                 continue
             func = sub.func
             if isinstance(func, ast.Attribute) and func.attr in BLOCKING_CREDENTIAL_CALLS:
@@ -91,3 +90,11 @@ def test_that_the_guard_can_actually_see_an_offender(tmp_path):
         "    return await run_in_threadpool(manager.get_credential, PROVIDER)\n"
     )
     assert _offenders(good) == []
+
+    # A sync helper is not a route, so its calls are not on the loop.
+    sync_only = tmp_path / "sync_router.py"
+    sync_only.write_text(
+        "def helper(manager):\n"
+        "    return manager.get_credential(PROVIDER)\n"
+    )
+    assert _offenders(sync_only) == []
