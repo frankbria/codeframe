@@ -23,6 +23,7 @@ from typing import Any, Optional
 import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from codeframe.auth.api_keys import SCOPE_ADMIN
@@ -351,9 +352,15 @@ async def connect(
     # ambient token and the rollback below would persist it into this user's
     # store, where they could then use it (#900). Only a genuinely stored
     # prior credential is worth restoring.
-    prior_pat = manager.get_stored_credential(CredentialProvider.GIT_GITHUB)
+    prior_pat = await run_in_threadpool(
+        manager.get_stored_credential, CredentialProvider.GIT_GITHUB
+    )
     try:
-        manager.set_credential(CredentialProvider.GIT_GITHUB, body.pat)
+        # Off the event loop: this reaches the OS keyring, and an unresponsive
+        # backend parks the calling thread for the timeout (#1181).
+        await run_in_threadpool(
+            manager.set_credential, CredentialProvider.GIT_GITHUB, body.pat
+        )
     except Exception as e:
         logger.error("Failed to store GitHub PAT: %s", e, exc_info=True)
         raise HTTPException(
@@ -379,9 +386,13 @@ async def connect(
         logger.error("Failed to save integration config: %s", e, exc_info=True)
         try:
             if prior_pat is not None:
-                manager.set_credential(CredentialProvider.GIT_GITHUB, prior_pat)
+                await run_in_threadpool(
+                    manager.set_credential, CredentialProvider.GIT_GITHUB, prior_pat
+                )
             else:
-                manager.delete_credential(CredentialProvider.GIT_GITHUB)
+                await run_in_threadpool(
+                    manager.delete_credential, CredentialProvider.GIT_GITHUB
+                )
         except Exception:
             pass
         raise HTTPException(
@@ -415,7 +426,9 @@ async def disconnect(
     """Clear stored repo metadata and delete the GitHub PAT. Idempotent."""
     clear_github_integration_config(workspace)
     try:
-        manager.delete_credential(CredentialProvider.GIT_GITHUB)
+        await run_in_threadpool(
+            manager.delete_credential, CredentialProvider.GIT_GITHUB
+        )
     except Exception as e:
         # Treat absence as success; only surface hard failures.
         msg = str(e).lower()

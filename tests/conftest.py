@@ -260,6 +260,22 @@ def mock_env(monkeypatch) -> dict[str, str]:
 
 
 @pytest.fixture(autouse=True)
+def reset_keyring_timeout_verdict():
+    """Clear the process-sticky "keyring is unresponsive" verdict (#1181).
+
+    A single real timeout would otherwise disable the keyring for the rest of
+    the session and silently push every later keyring test onto the file
+    fallback — an order-dependent failure. Same treatment as
+    ``_MIGRATION_COMPLETE``.
+    """
+    import codeframe.core.credentials as credentials_module
+
+    credentials_module._KEYRING_TIMED_OUT = False
+    yield
+    credentials_module._KEYRING_TIMED_OUT = False
+
+
+@pytest.fixture(autouse=True)
 def reset_singletons():
     """Reset any singleton instances between tests.
 

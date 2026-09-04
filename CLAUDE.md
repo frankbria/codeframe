@@ -539,6 +539,33 @@ CODEFRAME_CREDENTIAL_SECRET=<secret>  # Mixed into the PBKDF2 KDF for the
                                       # previously stored credentials become
                                       # undecryptable and must be re-entered.
 
+# Unresponsive keyring backends (#1181)
+CODEFRAME_DISABLE_KEYRING=1           # Skip the OS keyring entirely and use the
+                                      # encrypted file store. A backend that is
+                                      # installed and *selected* but never
+                                      # answers — SecretService on a headless
+                                      # box, container or SSH session with no
+                                      # session D-Bus — raises nothing, it
+                                      # blocks. Detection by exception therefore
+                                      # never fired, so the fallback never
+                                      # engaged and every credential read hung
+                                      # forever: the test suite wedged, and
+                                      # GET /api/v2/settings/keys hung a request
+                                      # thread. Every keyring call is now
+                                      # time-boxed and a timeout is treated
+                                      # exactly like KeyringError; the verdict
+                                      # is sticky per process, so the timeout is
+                                      # paid once, not once per request. This
+                                      # variable is the explicit opt-out (and
+                                      # avoids even the first timeout).
+CODEFRAME_KEYRING_TIMEOUT=2.0         # Seconds allowed per keyring call before
+                                      # falling through to the encrypted file.
+                                      # Read at call time, not import (#963).
+                                      # Raise it if a healthy backend with an
+                                      # unlock prompt needs longer.
+                                      # `PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring`
+                                      # remains the keyring-native equivalent.
+
 # Session token lifetime (#657 — defense-in-depth)
 JWT_LIFETIME_SECONDS=86400            # JWT validity window; default 24h (was 7d).
                                       # Shorter window limits exposure of the

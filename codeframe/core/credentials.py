@@ -2,7 +2,12 @@
 
 This module provides:
 - Platform-native keyring integration (primary storage)
-- Encrypted file fallback when keyring unavailable
+- Encrypted file fallback when keyring unavailable — where "unavailable" includes
+  *unresponsive*, not just missing or raising: a backend can be installed and
+  selected yet never answer (SecretService with no session D-Bus), so every
+  keyring call is time-boxed and a timeout falls through to the file (#1181).
+  ``CODEFRAME_DISABLE_KEYRING=1`` skips the keyring outright;
+  ``CODEFRAME_KEYRING_TIMEOUT`` tunes the bound.
 - Environment variable override support
 - Credential validation and rotation
 
@@ -95,6 +100,120 @@ _MIGRATION_COMPLETE: set[Path] = set()
 # a process. The optional file lock (requires ``filelock``) extends that
 # serialization across processes.
 _MIGRATION_THREAD_LOCKS: dict[Path, threading.Lock] = {}
+
+# Default bound on any single keyring call. Long enough for a healthy
+# SecretService round-trip (including an unlock prompt round-trip), short enough
+# that a dead backend does not read as a hang.
+DEFAULT_KEYRING_TIMEOUT = 2.0
+
+# Sticky, per-process: once a keyring call has timed out, the backend is dead for
+# the life of this process. CredentialStore is constructed per request on the
+# server, so without this every request would pay the timeout again (#1181).
+_KEYRING_TIMED_OUT = False
+
+# One keyring call at a time per process. Without it, a burst of concurrent
+# first callers each read _KEYRING_TIMED_OUT as False and each start its own
+# unkillable worker, so the sticky verdict would bound nothing. Serialized, the
+# losers wait on the lock and then see the verdict the winner set. Cheap: a
+# healthy keyring call is milliseconds, credential reads are rare, and the
+# backend serializes on its own socket anyway.
+_KEYRING_CALL_LOCK = threading.Lock()
+
+
+class KeyringTimeoutError(KeyringError):  # type: ignore[misc,valid-type]
+    """A keyring call did not return within the timeout.
+
+    Subclasses ``KeyringError`` on purpose: every existing call site already
+    treats a ``KeyringError`` as "keyring failed, use the encrypted file", which
+    is exactly the right response to a backend that never answers.
+    """
+
+
+def _env_flag(name: str) -> bool:
+    """Whether an opt-in env flag is set. Truthy: ``1``, ``true``, ``yes``, ``on``.
+
+    Mirrors ``ui/server._env_flag`` rather than importing it — core stays
+    headless. An explicit allowlist, not "anything but 0", so
+    ``CODEFRAME_DISABLE_KEYRING=no`` means no.
+    """
+    value = os.environ.get(name)
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _keyring_timeout() -> float:
+    """Read the timeout per call, not at import (the #963 lesson)."""
+    raw = os.environ.get("CODEFRAME_KEYRING_TIMEOUT")
+    if raw is None:
+        return DEFAULT_KEYRING_TIMEOUT
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning(
+            "CODEFRAME_KEYRING_TIMEOUT=%r is not a number; using %.1fs.",
+            raw,
+            DEFAULT_KEYRING_TIMEOUT,
+        )
+        return DEFAULT_KEYRING_TIMEOUT
+
+
+def _keyring_call(fn, *args):
+    """Run one keyring call under a timeout.
+
+    A backend that is installed and selected but unresponsive — SecretService on
+    a headless box with no session D-Bus — raises nothing, it blocks forever.
+    Detecting "unavailable" by exception alone therefore never fires (#1181), so
+    every call is time-boxed here instead.
+
+    The blocked call cannot be cancelled (it is waiting inside libdbus), so the
+    worker thread is abandoned as a daemon. That is bounded to one per process
+    by the sticky ``_KEYRING_TIMED_OUT`` flag plus the lock that makes the flag
+    mean something under concurrency.
+    """
+    with _KEYRING_CALL_LOCK:
+        return _keyring_call_locked(fn, *args)
+
+
+def _keyring_call_locked(fn, *args):
+    """The body of :func:`_keyring_call`, run one caller at a time."""
+    global _KEYRING_TIMED_OUT
+
+    if _KEYRING_TIMED_OUT:
+        # Already proved unresponsive. Short-circuit *here*, not just in
+        # _check_keyring: a store built before the timeout still has
+        # _keyring_available=True, and store() chases a timed-out set_password
+        # with a delete_password. Without this each of those starts another
+        # unkillable worker and waits the timeout again.
+        raise KeyringTimeoutError("keyring backend already timed out in this process")
+
+    outcome: list = []
+
+    def run() -> None:
+        try:
+            outcome.append(("ok", fn(*args)))
+        except BaseException as exc:  # re-raised on the calling thread below
+            outcome.append(("error", exc))
+
+    timeout = _keyring_timeout()
+    worker = threading.Thread(target=run, daemon=True, name="codeframe-keyring")
+    worker.start()
+    worker.join(timeout)
+
+    if worker.is_alive():
+        _KEYRING_TIMED_OUT = True
+        logger.warning(
+            "Keyring backend did not respond within %.1fs; falling back to the "
+            "encrypted credential file for the rest of this process. Set "
+            "CODEFRAME_DISABLE_KEYRING=1 to skip the keyring entirely.",
+            timeout,
+        )
+        raise KeyringTimeoutError("keyring call timed out")
+
+    kind, value = outcome[0]
+    if kind == "error":
+        raise value
+    return value
 
 
 def _get_migration_locks(storage_dir: Path) -> tuple[threading.Lock, Any | None]:
@@ -516,10 +635,16 @@ class CredentialStore:
         """Check if keyring is available and working."""
         if not KEYRING_AVAILABLE:
             return False
+        if _env_flag("CODEFRAME_DISABLE_KEYRING"):
+            return False
+        if _KEYRING_TIMED_OUT:
+            # An earlier call already proved this backend unresponsive (#1181).
+            return False
 
         try:
-            # Try to get the keyring backend
-            kr = keyring.get_keyring()
+            # Try to get the keyring backend. Backend selection itself can block
+            # on a dead D-Bus, so it is time-boxed like every other call.
+            kr = _keyring_call(keyring.get_keyring)
             # Check if it's a real backend (not fail keyring)
             if "fail" in kr.__class__.__name__.lower():
                 return False
@@ -669,13 +794,13 @@ class CredentialStore:
         # Try keyring first
         if self._keyring_available:
             try:
-                keyring.set_password(self._keyring_service_name, key, data)
+                _keyring_call(keyring.set_password, self._keyring_service_name, key, data)
                 logger.debug(f"Stored {key} in keyring")
                 return
             except Exception as e:
                 logger.warning(f"Keyring storage failed, using encrypted file: {e}")
                 try:
-                    keyring.delete_password(self._keyring_service_name, key)
+                    _keyring_call(keyring.delete_password, self._keyring_service_name, key)
                 except Exception:
                     pass
                 self._keyring_available = False
@@ -705,11 +830,15 @@ class CredentialStore:
         # Try keyring first
         if self._keyring_available:
             try:
-                data = keyring.get_password(self._keyring_service_name, key)
+                data = _keyring_call(keyring.get_password, self._keyring_service_name, key)
                 if data:
                     return Credential.from_dict(json.loads(data))
             except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
                 logger.warning(f"Malformed credential data in keyring for {key}: {e}")
+            except KeyringTimeoutError:
+                # Unresponsive backend: stop asking it on this instance too, so
+                # the timeout is paid once rather than on every read (#1181).
+                self._keyring_available = False
             except Exception as e:
                 logger.debug(f"Keyring retrieval failed: {e}")
 
@@ -735,12 +864,17 @@ class CredentialStore:
         # Try keyring
         if self._keyring_available:
             try:
-                keyring.delete_password(self._keyring_service_name, key)
+                _keyring_call(keyring.delete_password, self._keyring_service_name, key)
                 logger.debug(f"Deleted {key} from keyring")
             except PasswordDeleteError:
                 # Not in the keyring (e.g. a file-only entry) — that is
                 # "nothing to do", not a failure. Continue to file cleanup.
                 logger.debug(f"{key} not present in keyring; nothing to delete there")
+            except KeyringTimeoutError:
+                # An unresponsive backend must degrade, not fail the delete: the
+                # entry may well be file-only, and the file cleanup below is the
+                # part that matters (#1181).
+                self._keyring_available = False
             except Exception as e:
                 logger.warning(f"Keyring deletion failed: {e}")
                 raise
