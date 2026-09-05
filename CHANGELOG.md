@@ -7,6 +7,21 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+
+- **`DESIGN_PARTNERS.md` — the beta design-partner program (#619).** #618 shipped
+  the intake path but nothing said what applying got you. The page states the
+  offer (direct line to the maintainer, roadmap influence weighted ahead of
+  general requests, opt-in public credit, continuity into commercial pricing),
+  the commitment (real usage over a full cycle, a bi-weekly cadence, and either a
+  paid pilot or a written time commitment), a 5-10 team cohort, the six intake
+  questions, and activation the week after the launch announcement. It reuses the
+  existing `hello@codeframe.sh` + pinned-Discussion intake rather than opening a
+  second inbox, and publishes no pilot price — `LICENSING.md` says pricing is
+  still being finalized and a number here would contradict it. Linked from
+  `README.md` and `LICENSING.md`; `tests/test_design_partners_619.py` and the
+  `ROOT_DOCS` link check pin all of it.
+
 ### Changed
 
 - **The Anthropic adapter runs on the `anthropic` 1.x SDK; the `<1.0` ceiling is

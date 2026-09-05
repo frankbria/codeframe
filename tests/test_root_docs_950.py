@@ -32,6 +32,7 @@ ROOT_DOCS = [
     "CHANGELOG.md",
     "SECURITY.md",
     "LICENSING.md",
+    "DESIGN_PARTNERS.md",
     "CLAUDE.md",
 ]
 
