@@ -78,6 +78,8 @@ commercial need, **tell us now** — early conversations shape what we build.
   if you'd rather do it in the open. This is the capture point for launch —
   even before pricing is published.
 - **Design partners & early access:** email **hello@codeframe.sh** or reply to
-  the same pinned discussion to be included.
+  the same pinned discussion to be included. See
+  [DESIGN_PARTNERS.md](DESIGN_PARTNERS.md) for what the design-partner program
+  offers and asks for.
 
 We read every one.
