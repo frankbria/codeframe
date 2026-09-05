@@ -17,7 +17,7 @@ jobs:
       (github.event.pull_request.changed_files >= 5 ||
        github.event.pull_request.additions >= 20 ||
        github.event.pull_request.deletions >= 20)
-    uses: frankbria/glm-review/.github/workflows/review.yml@00c986ec828acb6add2f4035f28b4918ef67b78e # main
+    uses: frankbria/glm-review/.github/workflows/review.yml@77dfa9c6633712256edab41fd0db42663a9416b7 # main
     # `issues: write` and `id-token: write` are gone (#1167). They were not
     # optional on the old pin: GitHub fails a run when a caller grants less than
     # the called job requests, and b877d15's job declared both. Upstream dropped
@@ -30,6 +30,18 @@ jobs:
     # it holds the PR diff and whatever repo files the reviewer opened, all of
     # which are already public here. Set `upload_transcript: false` if that ever
     # stops being true.
+    #
+    # This pin (#1167) stops the reviewer coin-flipping between its two limits.
+    # Turns bind first, not the clock — successful reviews finish in 6m44s-17m33s
+    # — so the cap is `--max-turns 60`, sized against measured cost. The
+    # 35-minute timeout now sits on the review *step*, with 40 minutes on the job
+    # as an outer backstop. That placement is the whole fix: a job timeout
+    # cancels every remaining step, `if: always()` included, which is why the old
+    # 20-minute kill uploaded no transcript and left nothing behind. A step
+    # timeout fails only that step, so the run can still replace its own
+    # "Reviewing..." stub with an explicit "GLM review did not complete" notice.
+    # A run that reviewed nothing is now distinguishable from one that found
+    # nothing.
     permissions:
       contents: read
       pull-requests: write
