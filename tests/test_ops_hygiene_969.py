@@ -4,9 +4,9 @@
 deploying — wired into a pipeline it is a green step and no deployment.
 `seed-staging.sh` faked success against the removed v1 `/api/projects`.
 `install-systemd-service.sh` installed a unit file that had already been deleted.
-The health-check unit hardcoded `User=frankbria` and `/home/frankbria/...`, and 38
-dated AI session-scratch files sat in `claudedocs/` in a repo prospective customers
-clone.
+The health-check unit named the maintainer's account in `User=` and repeated their
+home directory in four paths, and 38 dated AI session-scratch files sat in
+`claudedocs/` in a repo prospective customers clone.
 
 These are the checks that keep it purged. They are deliberately about *classes* of
 defect, not a list of filenames: a script that claims success without doing work, a
