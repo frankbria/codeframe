@@ -43,11 +43,19 @@ fi
 
 # Copy service and timer files to systemd directory
 echo -e "${BLUE}Installing systemd files...${NC}"
-sed -e "s|__CF_USER__|${CF_USER}|g" -e "s|__CF_ROOT__|${PROJECT_ROOT}|g" \
-    "$SERVICE_FILE" > "$SYSTEMD_DIR/codeframe-health-check.service"
-cp "$TIMER_FILE" "$SYSTEMD_DIR/codeframe-health-check.timer"
-chmod 644 "$SYSTEMD_DIR/codeframe-health-check.service"
-chmod 644 "$SYSTEMD_DIR/codeframe-health-check.timer"
+# Escape sed replacement metacharacters (\ & and our | delimiter) so a repo path
+# containing one cannot corrupt the unit. Render to a temp file first: writing
+# straight to $SYSTEMD_DIR truncates the target before sed runs, so a sed failure
+# under `set -e` would leave an empty unit behind.
+sed_escape() { printf '%s' "$1" | sed 's/[\\&|]/\\&/g'; }
+
+unit_tmp="$(mktemp)"
+trap 'rm -f "$unit_tmp"' EXIT
+sed -e "s|__CF_USER__|$(sed_escape "$CF_USER")|g" \
+    -e "s|__CF_ROOT__|$(sed_escape "$PROJECT_ROOT")|g" \
+    "$SERVICE_FILE" > "$unit_tmp"
+install -m 644 "$unit_tmp" "$SYSTEMD_DIR/codeframe-health-check.service"
+install -m 644 "$TIMER_FILE" "$SYSTEMD_DIR/codeframe-health-check.timer"
 
 # Reload systemd daemon
 echo -e "${BLUE}Reloading systemd daemon...${NC}"

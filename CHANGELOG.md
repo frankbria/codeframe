@@ -33,6 +33,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   deriving the root from its own location and the account from `$SUDO_USER`. The
   `.env.staging`/`.env.production` examples point at `/opt/codeframe`, and a
   captured kilocode `--help` fixture no longer ships the maintainer's cwd.
+  `scripts/health-check.sh` is also tracked executable at last: it was `100644`
+  while every other tracked script was `100755`, so the unit's `ExecStart`
+  failed 203/EXEC on a fresh clone and nothing in the tree chmodded it.
   `tests/test_ops_hygiene_969.py` pins all of it by defect class rather than by
   filename: no shipped file or captured fixture may carry a personal home path, no
   systemd unit may name a literal account, no script may announce simulated

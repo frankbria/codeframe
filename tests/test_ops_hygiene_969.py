@@ -30,7 +30,7 @@ FROZEN = ("legacydocs/", "specs/", "sprints/")
 
 #: `/home/<somebody>` — but a documentation placeholder is fine. `/home/user` is
 #: what QUICKSTART shows; `$USER` and `<user>` are what a parameterized script uses.
-PERSONAL_HOME = re.compile(r"/home/(?!user\b|\$\{?USER|<user>|%u\b)[a-z_][\w.-]*")
+PERSONAL_HOME = re.compile(r"/home/(?!user\b|\$\{?USER|<user>|%u\b)[A-Za-z_][\w.-]*")
 
 #: systemd `User=` naming a literal account rather than a substituted placeholder.
 LITERAL_SYSTEMD_USER = re.compile(r"^User=(?!__|\$|%)(\S+)", re.MULTILINE)
@@ -127,6 +127,35 @@ class TestNoScriptClaimsSuccessItDidNotEarn:
     )
     def test_the_known_dead_script_is_gone(self, path: str):
         assert not (REPO_ROOT / path).exists(), f"{path} is still here"
+
+
+class TestUnitsCanActuallyRunWhatTheyName:
+    """`scripts/health-check.sh` was tracked 100644 while every other tracked
+    script was 100755. The generated unit `ExecStart`s it, so a fresh clone
+    installed a timer that fails 203/EXEC on its first fire — and nothing in the
+    tree chmods it."""
+
+    def test_every_path_a_systemd_unit_execs_is_tracked_executable(self):
+        units = sorted(REPO_ROOT.glob("systemd/*.service"))
+        assert units, "no systemd units found — this check would pass vacuously"
+
+        execs = re.compile(r"^ExecStart=(?:__CF_ROOT__|[^\s]*?)/(scripts/\S+)", re.M)
+        named = {m for u in units for m in execs.findall(u.read_text())}
+        assert named, "no ExecStart script paths parsed — the regex broke"
+
+        modes = subprocess.run(
+            ["git", "ls-files", "-s", *sorted(named)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+        assert len(modes) == len(named), f"a unit ExecStarts an untracked path: {named}"
+
+        not_executable = [line for line in modes if not line.startswith("100755")]
+        assert (
+            not not_executable
+        ), f"systemd ExecStart targets are not tracked executable: {not_executable}"
 
 
 class TestInstallersPointAtFilesThatExist:
