@@ -176,18 +176,27 @@ class TestEveryCommandRejectsAMissingKeyIdentically:
 
 
 class TestBatchHelpDoesNotAdvertiseWorktree:
-    def test_help_no_longer_offers_worktree(self):
-        """The advertised choices must be the accepted ones."""
+    def _isolation_choices(self, *path):
+        """The choices `--help` renders, read off the command itself.
+
+        Not scraped from the rendered help: Rich wraps that to the terminal
+        width and paints it with ANSI, so the same command reads differently
+        on a CI runner than it does locally.
+        """
+        import typer
+
         from codeframe.cli.app import app
 
-        result = runner.invoke(app, ["work", "batch", "run", "--help"])
-        assert result.exit_code == 0
-        assert "[none|worktree]" not in result.output
-        assert "[none]" in result.output
+        command = typer.main.get_command(app)
+        for name in path:
+            command = command.commands[name]
+        param = next(p for p in command.params if "--isolation" in p.opts)
+        return list(param.type.choices)
+
+    def test_help_no_longer_offers_worktree(self):
+        """The advertised choices must be the accepted ones."""
+        assert self._isolation_choices("work", "batch", "run") == ["none"]
 
     def test_work_start_still_offers_worktree(self):
         """#787: the single-run path really does support it."""
-        from codeframe.cli.app import app
-
-        result = runner.invoke(app, ["work", "start", "--help"])
-        assert "worktree" in result.output
+        assert "worktree" in self._isolation_choices("work", "start")

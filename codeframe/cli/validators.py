@@ -181,9 +181,11 @@ def require_keys_for_engine(
         model_flag: `--llm-model`, if the command has one.
 
     Returns:
-        The resolved LLM settings when a provider is involved (the caller
-        usually feeds them straight to `create_provider`), or None for an
-        external engine, which brings its own credentials.
+        The resolved LLM settings when a builtin engine's LLM provider is
+        involved (the caller usually feeds them straight to `create_provider`),
+        or None for an external engine. An external engine still has its own
+        credentials checked here — codex and cloud above — it just has no
+        provider to resolve.
 
     Raises:
         typer.Exit: If a required key or login cannot be found.
