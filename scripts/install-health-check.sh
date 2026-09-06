@@ -49,6 +49,12 @@ echo -e "${BLUE}Installing systemd files...${NC}"
 # under `set -e` would leave an empty unit behind.
 sed_escape() { printf '%s' "$1" | sed 's/[\\&|]/\\&/g'; }
 
+# systemd opens the StandardOutput/StandardError fds BEFORE ExecStart, and it does
+# not create parent directories — so an absent logs/ (untracked, so absent on any
+# fresh clone) makes the service fail to spawn at all. health-check.sh's own
+# `mkdir -p` runs too late to help.
+install -d -m 755 -o "$CF_USER" "$PROJECT_ROOT/logs"
+
 unit_tmp="$(mktemp)"
 trap 'rm -f "$unit_tmp"' EXIT
 sed -e "s|__CF_USER__|$(sed_escape "$CF_USER")|g" \

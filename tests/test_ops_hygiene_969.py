@@ -157,6 +157,29 @@ class TestUnitsCanActuallyRunWhatTheyName:
             not not_executable
         ), f"systemd ExecStart targets are not tracked executable: {not_executable}"
 
+    def test_the_installer_creates_every_directory_a_unit_logs_into(self):
+        """systemd opens the `append:` fds before `ExecStart` and does not create
+        parent directories, so a unit logging into an untracked `logs/` cannot
+        start on a fresh clone. The script's own `mkdir -p` runs far too late."""
+        installer = _text("scripts/install-health-check.sh")
+        assert installer, "the installer is missing — this check would pass vacuously"
+
+        appended = re.compile(r"^(?:StandardOutput|StandardError)=append:(\S+)/[^/]+$", re.M)
+        dirs = {
+            d for u in REPO_ROOT.glob("systemd/*.service") for d in appended.findall(u.read_text())
+        }
+        assert dirs, "no append: log targets parsed — the regex broke"
+
+        uncreated = sorted(
+            d
+            for d in dirs
+            if not re.search(
+                rf"(?:install -d|mkdir -p)[^\n]*{re.escape(d.replace('__CF_ROOT__', '$PROJECT_ROOT'))}",
+                installer,
+            )
+        )
+        assert not uncreated, f"units log into directories nothing creates: {uncreated}"
+
 
 class TestInstallersPointAtFilesThatExist:
     """`install-systemd-service.sh` installed `codeframe-staging.service` for months
