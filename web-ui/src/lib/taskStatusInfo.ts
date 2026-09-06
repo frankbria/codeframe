@@ -46,3 +46,25 @@ export const STATUS_INFO: Record<TaskStatus, StatusInfo> = {
     nextSteps: 'This task is complete.',
   },
 };
+
+/** Map backend TaskStatus to badge variant name. */
+export const STATUS_BADGE_VARIANT: Record<TaskStatus, string> = {
+  BACKLOG: 'backlog',
+  READY: 'ready',
+  IN_PROGRESS: 'in-progress',
+  DONE: 'done',
+  BLOCKED: 'blocked',
+  FAILED: 'failed',
+  MERGED: 'merged',
+};
+
+/** Human-readable status labels, used for badges and board column headers. */
+export const STATUS_LABEL: Record<TaskStatus, string> = {
+  BACKLOG: 'Backlog',
+  READY: 'Ready',
+  IN_PROGRESS: 'In Progress',
+  DONE: 'Done',
+  BLOCKED: 'Blocked',
+  FAILED: 'Failed',
+  MERGED: 'Merged',
+};

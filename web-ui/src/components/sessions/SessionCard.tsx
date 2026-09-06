@@ -17,6 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { formatUsd } from '@/lib/format';
 import type { Session } from '@/types';
 
 interface SessionCardProps {
@@ -50,7 +51,7 @@ export function SessionCard({ session, onEnd }: SessionCardProps) {
         {/* Details */}
         <p className="truncate text-xs text-muted-foreground">{workspaceName}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">{session.model}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">${session.cost_usd.toFixed(4)}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{formatUsd(session.cost_usd)}</p>
 
         {/* Action buttons */}
         <div className="mt-2 flex gap-1">

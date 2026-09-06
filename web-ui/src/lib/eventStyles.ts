@@ -18,11 +18,8 @@ import {
   ArrowTurnBackwardIcon,
   Alert02Icon,
   Cancel01Icon,
-  CommandLineIcon,
-  AlertDiamondIcon,
   Loading03Icon,
   WifiDisconnected01Icon,
-  FileEditIcon,
 } from '@hugeicons/core-free-icons';
 
 // ── Agent state derivation ─────────────────────────────────────────────
@@ -112,16 +109,6 @@ export const agentStateIcons: Record<UIAgentState, IconSvgElement> = {
   FAILED: Cancel01Icon,
   DISCONNECTED: WifiDisconnected01Icon,
 };
-
-/**
- * Icon data for specific event sub-types used inside event detail renderers
- * (e.g. shell output uses a terminal icon, errors use a diamond alert).
- */
-export const eventDetailIcons = {
-  shellCommand: CommandLineIcon,
-  errorDetail: AlertDiamondIcon,
-  fileChange: FileEditIcon,
-} as const;
 
 // ── Connection status dot ──────────────────────────────────────────────
 

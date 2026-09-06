@@ -8,60 +8,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
-import { STATUS_INFO } from '@/lib/taskStatusInfo';
-import type { Task, TaskStatus, ProofRequirement, TaskCostEntry } from '@/types';
+import { STATUS_INFO, STATUS_BADGE_VARIANT, STATUS_LABEL } from '@/lib/taskStatusInfo';
+import { formatUsd, formatCount } from '@/lib/format';
+import type { Task, ProofRequirement, TaskCostEntry } from '@/types';
 
 /** Format cost for the inline badge.
  *
  * AI per-task costs commonly sit below $0.01, so 2dp would display "$0.00"
- * and hide real spend. Mirrors TopTasksTable's 4dp precision under $1 and
- * falls back to 2dp once costs cross a dollar.
+ * and hide real spend. 4dp under a cent, 2dp above — a compact badge does not
+ * have room for more.
  */
-function formatBadgeCost(value: number): string {
-  if (value < 0.01) {
-    return value.toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 4,
-      maximumFractionDigits: 4,
-    });
-  }
-  if (value < 1) {
-    return `$${value.toFixed(2)}`;
-  }
-  return value.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+function badgeCost(value: number): string {
+  return value < 0.01 ? formatUsd(value) : formatUsd(value, { minimumFractionDigits: 2 });
 }
-
-function formatTokens(n: number): string {
-  return n.toLocaleString('en-US');
-}
-
-/** Map backend TaskStatus to badge variant name. */
-const STATUS_BADGE_VARIANT: Record<TaskStatus, string> = {
-  BACKLOG: 'backlog',
-  READY: 'ready',
-  IN_PROGRESS: 'in-progress',
-  DONE: 'done',
-  BLOCKED: 'blocked',
-  FAILED: 'failed',
-  MERGED: 'merged',
-};
-
-/** Human-readable status labels. */
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  BACKLOG: 'Backlog',
-  READY: 'Ready',
-  IN_PROGRESS: 'In Progress',
-  DONE: 'Done',
-  BLOCKED: 'Blocked',
-  FAILED: 'Failed',
-  MERGED: 'Merged',
-};
 
 interface TaskCardProps {
   task: Task;
@@ -204,14 +163,14 @@ export function TaskCard({
                   className="h-5 gap-1 px-1.5 text-[10px]"
                 >
                   <HugeiconsIcon icon={MoneyBag02Icon} className="h-3 w-3" />
-                  <span className="tabular-nums">{formatBadgeCost(costEntry.total_cost_usd)}</span>
+                  <span className="tabular-nums">{badgeCost(costEntry.total_cost_usd)}</span>
                 </Badge>
               </TooltipTrigger>
               <TooltipContent className="max-w-[220px] space-y-0.5 text-xs">
-                <p>Input tokens: {formatTokens(costEntry.input_tokens)}</p>
-                <p>Output tokens: {formatTokens(costEntry.output_tokens)}</p>
+                <p>Input tokens: {formatCount(costEntry.input_tokens)}</p>
+                <p>Output tokens: {formatCount(costEntry.output_tokens)}</p>
                 <p className="font-medium">
-                  Total: {formatBadgeCost(costEntry.total_cost_usd)}
+                  Total: {badgeCost(costEntry.total_cost_usd)}
                 </p>
               </TooltipContent>
             </Tooltip>

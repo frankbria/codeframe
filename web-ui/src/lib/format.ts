@@ -14,3 +14,31 @@ export function formatRelativeTime(isoDate: string): string {
   const diffDays = Math.floor(diffHours / 24);
   return `${diffDays}d ago`;
 }
+
+/**
+ * Format a USD amount. The single currency formatter for the app — cost,
+ * session and task surfaces must agree on the same figure.
+ *
+ * Defaults to exactly 4 fraction digits, the precision per-call LLM costs need.
+ * Pass `maximumFractionDigits: 6` where sub-cent figures would otherwise round
+ * to zero, or a fixed 2 where the amount is known to be dollars.
+ */
+export function formatUsd(
+  value: number,
+  {
+    minimumFractionDigits = 4,
+    maximumFractionDigits = minimumFractionDigits,
+  }: { minimumFractionDigits?: number; maximumFractionDigits?: number } = {}
+): string {
+  return value.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits,
+    maximumFractionDigits,
+  });
+}
+
+/** Format a plain count (tokens, rows) with thousands separators. */
+export function formatCount(n: number): string {
+  return n.toLocaleString('en-US');
+}
