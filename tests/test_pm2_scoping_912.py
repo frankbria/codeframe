@@ -99,9 +99,12 @@ def test_the_scan_actually_reads_the_files():
     """Guards the test above from passing because it found nothing to check."""
     files = _staging_files()
 
-    assert len(files) >= 3, f"expected the staging scripts, found {files}"
-    assert any(f.name == "health-check.sh" for f in files)
-    assert any(f.suffix == ".service" for f in files)
+    assert len(files) >= 3, f"expected the staging paths, found {files}"
+    # #969 retired the PM2-era health-check script and its systemd units, so the
+    # guard now anchors on what actually drives staging: the deploy workflow and
+    # the compose files it runs.
+    assert any(f.name == "deploy.yml" for f in files)
+    assert any(f.name.startswith("docker-compose") for f in files)
 
 
 def test_the_detector_catches_the_original_form(tmp_path):

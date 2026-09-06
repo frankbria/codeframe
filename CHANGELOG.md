@@ -7,6 +7,54 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Removed
+
+- **Scripts that reported success without doing the work, and one operator's
+  laptop, are out of the public repo (#969).** `scripts/deploy.sh` printed
+  "Deployment simulation successful" and exited 0 without deploying — wired into a
+  pipeline it was a green step and no deployment. `seed-staging.sh` faked the same
+  against the v1 `/api/projects` that no longer exists. `install-systemd-service.sh`
+  installed `codeframe-staging.service`, a unit deleted months earlier, so it could
+  only ever abort. All three are gone, along with `fix_workspace_env.py`,
+  `test-websocket.py` (personal LAN host, removed `/ws` route),
+  `start-staging-windows.ps1` and `WINDOWS_AUTOSTART_SETUP.md` (WSL staging that
+  the container rebuild replaced), and `tests/test_issues.md`.
+  `test-results/.last-run.json` was tracked in defiance of its own `.gitignore`
+  entry and permanently reported `"status": "failed"`; it is untracked.
+  `claudedocs/` (38 dated session-scratch files) moved to `legacydocs/claudedocs/`
+  and the root `demo-*.md` walkthroughs to `legacydocs/demos/`.
+
+### Fixed
+
+- **The staging health-check timer is retired, not repaired (#969).** Its unit
+  named the maintainer's account in `User=` and repeated their home directory in
+  four paths, so the plan was to parameterize it. Review of that fix surfaced the
+  real problem: `scripts/health-check.sh` remediates by starting PM2 from
+  `ecosystem.staging.config.js`, and both that file and the `start-staging.sh` it
+  prefers are untracked — staging has deployed with `docker compose` since the
+  container rebuild, and `deploy.yml` touches pm2 only to kill legacy processes.
+  Its `restart_services()` logged `✓ Restart command completed` after `|| true`
+  pm2 calls that did nothing, which is the same defect as `deploy.sh`. Repairing
+  the unit would only have made an ineffective remediation installable on any
+  machine instead of one. `scripts/health-check.sh`,
+  `scripts/install-health-check.sh` and both `systemd/` units are gone; the
+  `systemd/` directory with them. `tests/test_pm2_scoping_912.py` — the
+  production-outage guard from #912/#1121 — is unchanged in substance: it still
+  scans every staging path for host-wide `pm2`/`docker` commands, and its
+  anti-vacuity check now anchors on `deploy.yml` and the compose files rather
+  than on the retired script.
+
+- **The `.env` examples and a captured fixture no longer name one machine
+  (#969).** `.env.staging`/`.env.production` examples point at `/opt/codeframe`,
+  and a captured kilocode `--help` fixture no longer ships the maintainer's cwd
+  as its `--workspace` default — nothing asserts on that path, only on its shape.
+  `tests/test_ops_hygiene_969.py` pins all of it by defect class rather than by
+  filename: no shipped file or captured fixture may carry a personal home path,
+  no script may announce simulated success, no installer may reference a unit
+  file that does not exist, every tracked shell script must be tracked
+  executable, and no workflow may resolve this project's npm dependencies
+  without the lockfile.
+
 ### Added
 
 - **`DESIGN_PARTNERS.md` — the beta design-partner program (#619).** #618 shipped
