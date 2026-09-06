@@ -26,21 +26,34 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
-- **The health-check systemd unit is a template, not one machine (#969).** It
+- **The staging health-check timer is retired, not repaired (#969).** Its unit
   named the maintainer's account in `User=` and repeated their home directory in
-  four paths; `scripts/install-health-check.sh` hardcoded the same project root. The unit now
-  carries `__CF_USER__`/`__CF_ROOT__` placeholders that the installer substitutes,
-  deriving the root from its own location and the account from `$SUDO_USER`. The
-  `.env.staging`/`.env.production` examples point at `/opt/codeframe`, and a
-  captured kilocode `--help` fixture no longer ships the maintainer's cwd.
-  `scripts/health-check.sh` is also tracked executable at last: it was `100644`
-  while every other tracked script was `100755`, so the unit's `ExecStart`
-  failed 203/EXEC on a fresh clone and nothing in the tree chmodded it.
+  four paths, so the plan was to parameterize it. Review of that fix surfaced the
+  real problem: `scripts/health-check.sh` remediates by starting PM2 from
+  `ecosystem.staging.config.js`, and both that file and the `start-staging.sh` it
+  prefers are untracked — staging has deployed with `docker compose` since the
+  container rebuild, and `deploy.yml` touches pm2 only to kill legacy processes.
+  Its `restart_services()` logged `✓ Restart command completed` after `|| true`
+  pm2 calls that did nothing, which is the same defect as `deploy.sh`. Repairing
+  the unit would only have made an ineffective remediation installable on any
+  machine instead of one. `scripts/health-check.sh`,
+  `scripts/install-health-check.sh` and both `systemd/` units are gone; the
+  `systemd/` directory with them. `tests/test_pm2_scoping_912.py` — the
+  production-outage guard from #912/#1121 — is unchanged in substance: it still
+  scans every staging path for host-wide `pm2`/`docker` commands, and its
+  anti-vacuity check now anchors on `deploy.yml` and the compose files rather
+  than on the retired script.
+
+- **The `.env` examples and a captured fixture no longer name one machine
+  (#969).** `.env.staging`/`.env.production` examples point at `/opt/codeframe`,
+  and a captured kilocode `--help` fixture no longer ships the maintainer's cwd
+  as its `--workspace` default — nothing asserts on that path, only on its shape.
   `tests/test_ops_hygiene_969.py` pins all of it by defect class rather than by
-  filename: no shipped file or captured fixture may carry a personal home path, no
-  systemd unit may name a literal account, no script may announce simulated
-  success, no installer may reference a unit file that does not exist, and no
-  workflow may resolve this project's npm dependencies without the lockfile.
+  filename: no shipped file or captured fixture may carry a personal home path,
+  no script may announce simulated success, no installer may reference a unit
+  file that does not exist, every tracked shell script must be tracked
+  executable, and no workflow may resolve this project's npm dependencies
+  without the lockfile.
 
 ### Added
 

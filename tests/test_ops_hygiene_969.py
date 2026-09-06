@@ -4,9 +4,11 @@
 deploying — wired into a pipeline it is a green step and no deployment.
 `seed-staging.sh` faked success against the removed v1 `/api/projects`.
 `install-systemd-service.sh` installed a unit file that had already been deleted.
-The health-check unit named the maintainer's account in `User=` and repeated their
-home directory in four paths, and 38 dated AI session-scratch files sat in
-`claudedocs/` in a repo prospective customers clone.
+The health-check systemd unit named the maintainer's account in `User=` and
+repeated their home directory in four paths — and remediated via PM2 against an
+untracked ecosystem file long after staging moved to compose, so it is retired
+rather than parameterized. 38 dated AI session-scratch files sat in `claudedocs/`
+in a repo prospective customers clone.
 
 These are the checks that keep it purged. They are deliberately about *classes* of
 defect, not a list of filenames: a script that claims success without doing work, a
@@ -91,15 +93,6 @@ class TestNothingIsPinnedToOneOperatorsMachine:
 
         assert not offenders, f"personal home paths in captured fixtures: {offenders}"
 
-    def test_no_systemd_unit_hardcodes_an_account(self):
-        units = sorted(REPO_ROOT.glob("systemd/*.service"))
-        assert units, "no systemd units found — this check would pass vacuously"
-
-        offenders = {u.name: LITERAL_SYSTEMD_USER.findall(u.read_text()) for u in units}
-        offenders = {n: hits for n, hits in offenders.items() if hits}
-
-        assert not offenders, f"systemd units naming a literal account: {offenders}"
-
 
 class TestNoScriptClaimsSuccessItDidNotEarn:
     """AC2. The failure mode is a pipeline step that goes green having done nothing."""
@@ -129,56 +122,26 @@ class TestNoScriptClaimsSuccessItDidNotEarn:
         assert not (REPO_ROOT / path).exists(), f"{path} is still here"
 
 
-class TestUnitsCanActuallyRunWhatTheyName:
+class TestEveryScriptCanActuallyBeRun:
     """`scripts/health-check.sh` was tracked 100644 while every other tracked
-    script was 100755. The generated unit `ExecStart`s it, so a fresh clone
-    installed a timer that fails 203/EXEC on its first fire — and nothing in the
-    tree chmods it."""
+    script was 100755, so anything that exec'd it — its systemd unit did — failed
+    203/EXEC on a fresh clone, and nothing in the tree chmodded it. The script is
+    retired now (it remediated via PM2 against an untracked ecosystem file while
+    staging deploys with compose), but the mode invariant outlives it."""
 
-    def test_every_path_a_systemd_unit_execs_is_tracked_executable(self):
-        units = sorted(REPO_ROOT.glob("systemd/*.service"))
-        assert units, "no systemd units found — this check would pass vacuously"
-
-        execs = re.compile(r"^ExecStart=(?:__CF_ROOT__|[^\s]*?)/(scripts/\S+)", re.M)
-        named = {m for u in units for m in execs.findall(u.read_text())}
-        assert named, "no ExecStart script paths parsed — the regex broke"
-
+    def test_every_tracked_shell_script_is_tracked_executable(self):
         modes = subprocess.run(
-            ["git", "ls-files", "-s", *sorted(named)],
+            ["git", "ls-files", "-s", "*.sh"],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
             check=True,
         ).stdout.splitlines()
-        assert len(modes) == len(named), f"a unit ExecStarts an untracked path: {named}"
+        assert modes, "no shell scripts tracked — this check would pass vacuously"
 
         not_executable = [line for line in modes if not line.startswith("100755")]
-        assert (
-            not not_executable
-        ), f"systemd ExecStart targets are not tracked executable: {not_executable}"
 
-    def test_the_installer_creates_every_directory_a_unit_logs_into(self):
-        """systemd opens the `append:` fds before `ExecStart` and does not create
-        parent directories, so a unit logging into an untracked `logs/` cannot
-        start on a fresh clone. The script's own `mkdir -p` runs far too late."""
-        installer = _text("scripts/install-health-check.sh")
-        assert installer, "the installer is missing — this check would pass vacuously"
-
-        appended = re.compile(r"^(?:StandardOutput|StandardError)=append:(\S+)/[^/]+$", re.M)
-        dirs = {
-            d for u in REPO_ROOT.glob("systemd/*.service") for d in appended.findall(u.read_text())
-        }
-        assert dirs, "no append: log targets parsed — the regex broke"
-
-        uncreated = sorted(
-            d
-            for d in dirs
-            if not re.search(
-                rf"(?:install -d|mkdir -p)[^\n]*{re.escape(d.replace('__CF_ROOT__', '$PROJECT_ROOT'))}",
-                installer,
-            )
-        )
-        assert not uncreated, f"units log into directories nothing creates: {uncreated}"
+        assert not not_executable, f"tracked shell scripts without the exec bit: {not_executable}"
 
 
 class TestInstallersPointAtFilesThatExist:
