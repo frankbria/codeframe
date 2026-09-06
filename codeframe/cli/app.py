@@ -2059,8 +2059,8 @@ def prd_stress_test(
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import prd as prd_module
-    from codeframe.core.llm_resolution import resolve_llm_settings, create_provider
-    from codeframe.cli.validators import require_api_key_for_provider
+    from codeframe.core.llm_resolution import create_provider
+    from codeframe.cli.validators import require_keys_for_engine
     from codeframe.core.prd_stress_test import (
         StressTestError,
         stress_test_prd,
@@ -2091,10 +2091,9 @@ def prd_stress_test(
 
     # Build provider: flag → env → config → anthropic, validating the
     # matching API key (#768)
-    settings = resolve_llm_settings(
+    settings = require_keys_for_engine(
         workspace.repo_path, provider_flag=llm_provider, model_flag=llm_model
     )
-    require_api_key_for_provider(settings.provider_type)
     provider = create_provider(settings)
 
     # Run stress test
@@ -2321,15 +2320,12 @@ def tasks_generate(
         if not no_llm:
             # Validate the key matching the resolved provider
             # (flag → env → config → anthropic), #768
-            from codeframe.cli.validators import require_api_key_for_provider
-            from codeframe.core.llm_resolution import (
-                create_provider,
-                resolve_llm_settings,
-            )
-            settings = resolve_llm_settings(
+            from codeframe.cli.validators import require_keys_for_engine
+            from codeframe.core.llm_resolution import create_provider
+
+            settings = require_keys_for_engine(
                 workspace.repo_path, provider_flag=llm_provider, model_flag=llm_model
             )
-            require_api_key_for_provider(settings.provider_type)
             provider = create_provider(settings)
 
         try:
@@ -3039,10 +3035,7 @@ def work_start(
 
         # Validate API key before creating run record (avoids dangling IN_PROGRESS state)
         if execute:
-            from codeframe.core.engine_registry import (
-                is_external_engine,
-                resolve_engine,
-            )
+            from codeframe.core.engine_registry import resolve_engine
 
             # Same reason: execute_agent resolves the engine, and the gated
             # cloud engine (#966) raises there — after the run record exists.
@@ -3052,23 +3045,11 @@ def work_start(
                 console.print(f"[red]Error:[/red] {exc}")
                 raise typer.Exit(1)
 
-            if engine == "codex":
-                # Not the OpenAI key check: `codex login` is the common way in
-                # and sets no env var at all (#1010).
-                from codeframe.cli.validators import require_codex_auth
-                require_codex_auth()
-            elif engine == "cloud":
-                from codeframe.cli.validators import require_e2b_api_key
-                require_e2b_api_key()
-            elif not is_external_engine(engine):
-                # Builtin engines: validate the key matching the resolved
-                # provider (flag → env → config → anthropic), #768
-                from codeframe.cli.validators import require_api_key_for_provider
-                from codeframe.core.llm_resolution import resolve_llm_settings
-                settings = resolve_llm_settings(
-                    workspace.repo_path, provider_flag=llm_provider
-                )
-                require_api_key_for_provider(settings.provider_type)
+            from codeframe.cli.validators import require_keys_for_engine
+
+            require_keys_for_engine(
+                workspace.repo_path, engine=engine, provider_flag=llm_provider
+            )
 
         # Start the run
         run = runtime.start_task_run(workspace, task.id)
@@ -3658,10 +3639,9 @@ def work_retry(
 
         # Validate the key matching the resolved provider (env → config →
         # anthropic) before any state modifications, #768
-        from codeframe.cli.validators import require_api_key_for_provider
-        from codeframe.core.llm_resolution import resolve_llm_settings
-        settings = resolve_llm_settings(workspace.repo_path)
-        require_api_key_for_provider(settings.provider_type)
+        from codeframe.cli.validators import require_keys_for_engine
+
+        require_keys_for_engine(workspace.repo_path)
 
         # Reset task to READY if it's FAILED or BLOCKED
         if task.status in (TaskStatus.FAILED, TaskStatus.BLOCKED):
@@ -4388,8 +4368,11 @@ def batch_run(
     isolation: str = typer.Option(
         "none",
         "--isolation",
-        help="Task execution isolation: none (default) or worktree",
-        click_type=click.Choice(["none", "worktree"], case_sensitive=False),
+        help=(
+            "Task execution isolation: none (default). Worktree isolation is "
+            "single-task only: `cf work start <task> --execute --isolation worktree`."
+        ),
+        click_type=click.Choice(["none"], case_sensitive=False),
     ),
     cloud_timeout: int = typer.Option(
         30,
@@ -4486,26 +4469,6 @@ def batch_run(
             console.print("[red]Error:[/red] Specify task IDs or use --all-ready/--all-blocked")
             raise typer.Exit(1)
 
-        # Reject unsupported isolation up front — before the API-key check and
-        # before any batch is created. CLOUD is not implemented; WORKTREE is
-        # enabled only for the single-run path (`cf work start`, #787) — the
-        # batch subprocess path can't reach the gitignored .codeframe DB from a
-        # worktree, so it stays rejected here until that's solved.
-        from codeframe.core.sandbox.context import IsolationLevel, validate_isolation
-        if IsolationLevel(isolation) == IsolationLevel.WORKTREE:
-            console.print(
-                "[red]Error:[/red] worktree isolation is not yet supported for "
-                "batch runs (subprocess workers can't reach the workspace state "
-                "DB in a worktree). Use it with a single task: "
-                "`cf work start <task> --execute --isolation worktree`."
-            )
-            raise typer.Exit(1)
-        try:
-            validate_isolation(IsolationLevel(isolation))
-        except (ValueError, NotImplementedError) as exc:
-            console.print(f"[red]Error:[/red] {exc}")
-            raise typer.Exit(1)
-
         # Show execution plan
         console.print("\n[bold]Batch Execution Plan[/bold]")
         console.print(f"  Strategy: {strategy}")
@@ -4532,25 +4495,11 @@ def batch_run(
             return
 
         # Validate API key before batch execution
-        from codeframe.core.engine_registry import is_external_engine
+        from codeframe.cli.validators import require_keys_for_engine
 
-        if engine == "codex":
-            # Not the OpenAI key check: `codex login` is the common way in
-            # and sets no env var at all (#1010).
-            from codeframe.cli.validators import require_codex_auth
-            require_codex_auth()
-        elif engine == "cloud":
-            from codeframe.cli.validators import require_e2b_api_key
-            require_e2b_api_key()
-        elif not is_external_engine(engine):
-            # Builtin engines: validate the key matching the resolved
-            # provider (flag → env → config → anthropic), #768
-            from codeframe.cli.validators import require_api_key_for_provider
-            from codeframe.core.llm_resolution import resolve_llm_settings
-            settings = resolve_llm_settings(
-                workspace.repo_path, provider_flag=llm_provider
-            )
-            require_api_key_for_provider(settings.provider_type)
+        require_keys_for_engine(
+            workspace.repo_path, engine=engine, provider_flag=llm_provider
+        )
 
         # Execute batch
         if max_retries > 0:

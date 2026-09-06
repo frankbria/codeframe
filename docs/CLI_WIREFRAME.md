@@ -89,7 +89,7 @@ Each command:
 **Purpose:** Create/register a workspace.
 
 **CLI module:**
-- `codeframe/cli/commands/workspace.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `codeframe.core.workspace.create_or_load(repo_path) -> Workspace`
@@ -108,7 +108,7 @@ Each command:
 **Purpose:** Show current workspace summary + task counts + latest activity.
 
 **CLI module:**
-- `codeframe/cli/commands/status.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `codeframe.core.workspace.get_current() -> Workspace`
@@ -280,7 +280,7 @@ Each command:
 **Purpose:** AI-driven interactive PRD generation.
 
 **CLI module:**
-- `codeframe/cli/commands/prd.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `codeframe.core.prd.start_discovery_session(workspace_id) -> DiscoverySession`
@@ -304,7 +304,7 @@ Each command:
 **Purpose:** Store PRD text + metadata.
 
 **CLI module:**
-- `codeframe/cli/commands/prd.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `codeframe.core.prd.load_file(path) -> str`
@@ -320,7 +320,7 @@ Each command:
 **Purpose:** Iterative PRD improvement based on feedback.
 
 **CLI module:**
-- `codeframe/cli/commands/prd.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `codeframe.core.prd.get(workspace_id, prd_id) -> PrdRecord`
@@ -463,7 +463,7 @@ Each command:
 **Purpose:** Generate tasks from PRD.
 
 **CLI module:**
-- `codeframe/cli/commands/tasks.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `codeframe.core.prd.get_latest(workspace_id) -> PrdRecord`
@@ -516,7 +516,7 @@ Each command:
 **Purpose:** Begin execution of a task.
 
 **CLI module:**
-- `codeframe/cli/commands/work.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `workspace = codeframe.core.workspace.get_current()`
@@ -562,7 +562,7 @@ Each command:
 **Purpose:** Execute multiple tasks in sequence (or parallel in Phase 2).
 
 **CLI module:**
-- `codeframe/cli/commands/work.py` (batch subcommand group)
+- `codeframe/cli/app.py` (batch subcommand group)
 
 **Core calls:**
 - `batch = codeframe.core.conductor.start_batch(workspace_id, task_ids, strategy, max_parallel)`
@@ -655,7 +655,7 @@ cf work batch resume abc123 --force   # Re-run all tasks
 **Purpose:** List open blockers.
 
 **CLI module:**
-- `codeframe/cli/commands/blockers.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `codeframe.core.blockers.list_open(workspace_id) -> list[Blocker]`
@@ -687,7 +687,7 @@ cf work batch resume abc123 --force   # Re-run all tasks
 **Purpose:** Run verification gates.
 
 **CLI module:**
-- `codeframe/cli/commands/gates.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `result = codeframe.core.gates.run(workspace_id, repo_path) -> GateResult`
@@ -708,7 +708,7 @@ cf work batch resume abc123 --force   # Re-run all tasks
 **Purpose:** Export changes safely.
 
 **CLI module:**
-- `codeframe/cli/commands/artifacts.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `patch_path = codeframe.core.runtime.export_patch(workspace_id, repo_path, out_path=None)`
@@ -737,7 +737,7 @@ cf work batch resume abc123 --force   # Re-run all tasks
 **Purpose:** Begin task execution with automatic branch creation.
 
 **CLI module:**
-- `codeframe/cli/commands/work.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `branch_name = codeframe.core.git.create_feature_branch(workspace_id, task_id)`
@@ -871,7 +871,7 @@ codeframe pr status
 **Purpose:** Show git status summary with CodeFRAME context.
 
 **CLI module:**
-- `codeframe/cli/commands/git.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `status = codeframe.core.git.get_enhanced_status(workspace_id)`
@@ -884,7 +884,7 @@ codeframe pr status
 **Purpose:** Snapshot durable state + optionally repo ref.
 
 **CLI module:**
-- `codeframe/cli/commands/checkpoints.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `checkpoint = codeframe.core.checkpoints.create(workspace_id, name)`
@@ -914,7 +914,7 @@ codeframe pr status
 **Purpose:** Print a short status report of the workspace.
 
 **CLI module:**
-- `codeframe/cli/commands/summary.py`
+- `codeframe/cli/app.py`
 
 **Core calls:**
 - `prd = prd.get_latest(...)`
@@ -981,7 +981,7 @@ cf import ralph /path/to/project --workspace /path/to/workspace
 **Purpose:** Start FastAPI server as a wrapper over core.
 
 **CLI module:**
-- `codeframe/cli/commands/server.py`
+- `codeframe/cli/app.py`
 
 **Server module:**
 - `codeframe/server/app.py`

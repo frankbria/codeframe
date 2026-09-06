@@ -213,7 +213,9 @@ class TestBatchRunExitCodes:
 class TestIsolationRejection:
     """Issue #787: `--isolation worktree` is now accepted for the single-run
     path (`cf work start`) but still rejected for batch runs (the subprocess
-    worker can't reach the workspace state DB in a worktree)."""
+    worker can't reach the workspace state DB in a worktree). Since #970 batch
+    rejects it at parse time — the same shape as `cloud` below — instead of
+    advertising a value it would then refuse."""
 
     def _workspace_with_task(self, tmp_path):
         repo = tmp_path / "repo"
@@ -235,14 +237,18 @@ class TestIsolationRejection:
         # The run was started (task moved to IN_PROGRESS), not rejected.
         assert tasks.get(ws, task.id).status == TaskStatus.IN_PROGRESS
 
-    def test_work_batch_run_rejects_worktree(self, tmp_path):
+    def test_work_batch_run_rejects_worktree_at_parse_time(self, tmp_path):
+        """#970: batch never offered a working worktree mode, so it is no longer
+        a parseable choice — `--help` and the accepted values now agree."""
         repo, ws, task = self._workspace_with_task(tmp_path)
         result = runner.invoke(
             app,
             ["work", "batch", "run", task.id[:8], "--isolation", "worktree", "-w", str(repo)],
         )
-        assert result.exit_code == 1
-        assert "not yet supported for batch" in result.output
+        assert result.exit_code != 0
+        # `none` is batch's only choice since #970, so Click phrases it as
+        # "is not 'none'" rather than "is not one of".
+        assert "worktree" in result.output and "'none'" in result.output
 
     def test_work_start_allows_none(self, tmp_path):
         """--isolation none must NOT hit any rejection path (sanity)."""
@@ -272,5 +278,7 @@ class TestIsolationRejection:
             ["work", "batch", "run", task.id[:8], "--isolation", "cloud", "-w", str(repo)],
         )
         assert result.exit_code != 0
-        assert "cloud" in result.output and "is not one of" in result.output
+        # `none` is batch's only choice since #970, so Click phrases it as
+        # "is not 'none'" rather than "is not one of".
+        assert "cloud" in result.output and "'none'" in result.output
         assert tasks.get(ws, task.id).status != TaskStatus.IN_PROGRESS
