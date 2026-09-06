@@ -12,6 +12,7 @@ import { AgentChatPanel } from '@/components/sessions/AgentChatPanel';
 import { AgentTerminal } from '@/components/sessions/AgentTerminal';
 import { SplitPane } from '@/components/sessions/SplitPane';
 import { sessionsApi } from '@/lib/api';
+import { formatUsd } from '@/lib/format';
 import type { ChatMessage, Session } from '@/types';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -163,7 +164,7 @@ export function SessionDetailClient({ sessionId }: SessionDetailClientProps) {
         </Badge>
 
         <span className="font-mono text-xs text-muted-foreground">
-          ${(session.cost_usd ?? 0).toFixed(4)}
+          {formatUsd(session.cost_usd ?? 0)}
         </span>
 
         <div className="ml-auto flex items-center gap-2">

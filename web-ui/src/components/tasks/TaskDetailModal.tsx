@@ -14,7 +14,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { STATUS_INFO } from '@/lib/taskStatusInfo';
+import { STATUS_INFO, STATUS_BADGE_VARIANT, STATUS_LABEL } from '@/lib/taskStatusInfo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,27 +22,7 @@ import { GitHubIssueBadge } from './GitHubIssueBadge';
 import useSWR from 'swr';
 import { tasksApi } from '@/lib/api';
 import { useRequirementsLookup } from '@/hooks/useRequirementsLookup';
-import type { Task, TaskStatus, ApiError, TaskListResponse } from '@/types';
-
-const STATUS_BADGE_VARIANT: Record<TaskStatus, string> = {
-  BACKLOG: 'backlog',
-  READY: 'ready',
-  IN_PROGRESS: 'in-progress',
-  DONE: 'done',
-  BLOCKED: 'blocked',
-  FAILED: 'failed',
-  MERGED: 'merged',
-};
-
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  BACKLOG: 'Backlog',
-  READY: 'Ready',
-  IN_PROGRESS: 'In Progress',
-  DONE: 'Done',
-  BLOCKED: 'Blocked',
-  FAILED: 'Failed',
-  MERGED: 'Merged',
-};
+import type { Task, ApiError, TaskListResponse } from '@/types';
 
 interface TaskDetailModalProps {
   taskId: string | null;

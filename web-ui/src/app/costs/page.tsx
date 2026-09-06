@@ -10,6 +10,7 @@ import { TopTasksTable } from '@/components/costs/TopTasksTable';
 import { AgentCostBars } from '@/components/costs/AgentCostBars';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
 import { costsApi } from '@/lib/api';
+import { formatUsd } from '@/lib/format';
 import { useWorkspaceSelection } from '@/hooks/useWorkspaceSelection';
 import type {
   CostSummaryResponse,
@@ -23,15 +24,6 @@ const DAY_OPTIONS = [
   { value: 30, label: 'Last 30 days' },
   { value: 90, label: 'Last 90 days' },
 ];
-
-function formatCurrency(value: number, fractionDigits = 4): string {
-  return value.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  });
-}
 
 export default function CostsPage() {
   const {
@@ -130,7 +122,7 @@ export default function CostsPage() {
                     data-testid="total-spend"
                     className="text-2xl font-bold"
                   >
-                    {formatCurrency(data.total_spend_usd)}
+                    {formatUsd(data.total_spend_usd)}
                   </p>
                 </CardContent>
               </Card>
@@ -160,7 +152,7 @@ export default function CostsPage() {
                     data-testid="avg-cost"
                     className="text-2xl font-bold"
                   >
-                    {formatCurrency(data.avg_cost_per_task)}
+                    {formatUsd(data.avg_cost_per_task)}
                   </p>
                 </CardContent>
               </Card>

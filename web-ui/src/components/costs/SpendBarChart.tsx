@@ -2,6 +2,7 @@
 
 import { format, parseISO } from 'date-fns';
 import type { DailyCostPoint } from '@/types';
+import { formatUsd } from '@/lib/format';
 
 interface SpendBarChartProps {
   daily: DailyCostPoint[];
@@ -12,15 +13,6 @@ const CHART_HEIGHT = 220;
 const CHART_PADDING_TOP = 12;
 const Y_AXIS_WIDTH = 56;
 const X_AXIS_HEIGHT = 28;
-
-function formatCurrency(value: number): string {
-  return value.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 4,
-  });
-}
 
 export function SpendBarChart({ daily, days }: SpendBarChartProps) {
   const hasData = daily.length > 0 && daily.some((d) => d.cost_usd > 0);
@@ -55,7 +47,7 @@ export function SpendBarChart({ daily, days }: SpendBarChartProps) {
           style={{ width: Y_AXIS_WIDTH, height: CHART_HEIGHT }}
         >
           {tickValues.map((v) => (
-            <span key={v}>{formatCurrency(v)}</span>
+            <span key={v}>{formatUsd(v)}</span>
           ))}
         </div>
 
@@ -77,7 +69,7 @@ export function SpendBarChart({ daily, days }: SpendBarChartProps) {
                 <div
                   key={point.date}
                   data-testid={`bar-${point.date}`}
-                  title={`${point.date}: ${formatCurrency(point.cost_usd)}`}
+                  title={`${point.date}: ${formatUsd(point.cost_usd)}`}
                   className="flex-1 rounded-t bg-primary/80 transition-colors hover:bg-primary"
                   style={{ height: `${barHeight}px`, minWidth: 4 }}
                 />

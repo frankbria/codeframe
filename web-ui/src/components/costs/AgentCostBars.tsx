@@ -1,23 +1,11 @@
 'use client';
 
 import type { AgentCostsResponse } from '@/types';
+import { formatUsd, formatCount } from '@/lib/format';
 
 interface AgentCostBarsProps {
   data: AgentCostsResponse;
   isLoading?: boolean;
-}
-
-function formatNumber(n: number): string {
-  return n.toLocaleString('en-US');
-}
-
-function formatCost(value: number): string {
-  return value.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 6,
-  });
 }
 
 export function AgentCostBars({ data, isLoading }: AgentCostBarsProps) {
@@ -75,7 +63,7 @@ export function AgentCostBars({ data, isLoading }: AgentCostBarsProps) {
                 />
               </div>
               <span className="whitespace-nowrap text-right font-medium tabular-nums">
-                {formatCost(agent.total_cost_usd)}
+                {formatUsd(agent.total_cost_usd, { maximumFractionDigits: 6 })}
               </span>
             </li>
           );
@@ -89,13 +77,13 @@ export function AgentCostBars({ data, isLoading }: AgentCostBarsProps) {
         <div>
           <span className="text-muted-foreground">Input tokens:</span>{' '}
           <span className="font-medium tabular-nums">
-            {formatNumber(data.total_input_tokens)}
+            {formatCount(data.total_input_tokens)}
           </span>
         </div>
         <div>
           <span className="text-muted-foreground">Output tokens:</span>{' '}
           <span className="font-medium tabular-nums">
-            {formatNumber(data.total_output_tokens)}
+            {formatCount(data.total_output_tokens)}
           </span>
         </div>
         <div>

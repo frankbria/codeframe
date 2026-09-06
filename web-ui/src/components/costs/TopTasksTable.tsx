@@ -2,23 +2,11 @@
 
 import Link from 'next/link';
 import type { TaskCostEntry } from '@/types';
+import { formatUsd, formatCount } from '@/lib/format';
 
 interface TopTasksTableProps {
   tasks: TaskCostEntry[];
   isLoading?: boolean;
-}
-
-function formatNumber(n: number): string {
-  return n.toLocaleString('en-US');
-}
-
-function formatCost(value: number): string {
-  return value.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 6,
-  });
 }
 
 export function TopTasksTable({ tasks, isLoading }: TopTasksTableProps) {
@@ -73,13 +61,13 @@ export function TopTasksTable({ tasks, isLoading }: TopTasksTableProps) {
                 {task.agent_id}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">
-                {formatNumber(task.input_tokens)}
+                {formatCount(task.input_tokens)}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">
-                {formatNumber(task.output_tokens)}
+                {formatCount(task.output_tokens)}
               </td>
               <td className="px-3 py-2 text-right font-medium tabular-nums">
-                {formatCost(task.total_cost_usd)}
+                {formatUsd(task.total_cost_usd, { maximumFractionDigits: 6 })}
               </td>
             </tr>
           ))}

@@ -3,18 +3,8 @@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TaskCard } from './TaskCard';
+import { STATUS_LABEL } from '@/lib/taskStatusInfo';
 import type { Task, TaskStatus, ProofRequirement, TaskCostEntry } from '@/types';
-
-/** Human-readable column headers. */
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  BACKLOG: 'Backlog',
-  READY: 'Ready',
-  IN_PROGRESS: 'In Progress',
-  DONE: 'Done',
-  BLOCKED: 'Blocked',
-  FAILED: 'Failed',
-  MERGED: 'Merged',
-};
 
 interface TaskColumnProps {
   status: TaskStatus;

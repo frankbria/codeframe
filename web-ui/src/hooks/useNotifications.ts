@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
+import { getSelectedWorkspacePath, STORAGE_KEY as WORKSPACE_PATH_KEY } from '@/lib/workspace-storage';
 import type { AppNotification, AppNotificationBatchStatus, AppNotificationType } from '@/types';
 
 export const NOTIFICATIONS_STORAGE_KEY_PREFIX = 'codeframe_notifications';
@@ -113,7 +113,7 @@ export function useNotifications(): UseNotificationsReturn {
         reload(); // localStorage.clear() — refresh defensively
         return;
       }
-      if (key === 'codeframe_workspace_path') {
+      if (key === WORKSPACE_PATH_KEY) {
         reload();
         return;
       }

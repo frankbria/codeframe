@@ -6,7 +6,9 @@
  * explicit workspace selection.
  */
 
-const STORAGE_KEY = 'codeframe_workspace_path';
+/** localStorage key holding the active workspace path. Exported so consumers
+ * that watch for changes to it (e.g. useNotifications) cannot drift. */
+export const STORAGE_KEY = 'codeframe_workspace_path';
 const RECENT_WORKSPACES_KEY = 'codeframe_recent_workspaces';
 const MAX_RECENT_WORKSPACES = 5;
 
