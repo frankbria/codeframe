@@ -230,7 +230,7 @@ The failures are primarily infrastructure/environment issues, not code generatio
 
 ```bash
 # Initialization
-codeframe init /home/frankbria/projects/cf-test
+codeframe init ~/projects/cf-test
 codeframe prd add requirements.md
 codeframe tasks generate
 

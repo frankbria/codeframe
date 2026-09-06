@@ -19,3 +19,7 @@ kilo --help > help-<version>.txt 2>&1
 
 The 7.x file contains ANSI/box-drawing characters from the banner; that is
 deliberate, since the real output does too and the detector must cope with it.
+
+The `-w, --workspace` default in each capture is the cwd it was captured from, and
+is scrubbed to `/home/user/...` (#969) — nothing asserts on it, and a real home
+path does not belong in a public repo.

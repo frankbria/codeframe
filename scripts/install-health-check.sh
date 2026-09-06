@@ -11,12 +11,17 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-PROJECT_ROOT="/home/frankbria/projects/codeframe"
+# Derived, never hardcoded: the repo is the parent of the dir holding this script.
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# sudo runs this as root, but the unit must run as the account that owns the repo.
+CF_USER="${SUDO_USER:-$(stat -c %U "$PROJECT_ROOT")}"
 SERVICE_FILE="$PROJECT_ROOT/systemd/codeframe-health-check.service"
 TIMER_FILE="$PROJECT_ROOT/systemd/codeframe-health-check.timer"
 SYSTEMD_DIR="/etc/systemd/system"
 
 echo -e "${BLUE}=== CodeFRAME Health Check Timer Installation ===${NC}"
+echo "  repo: $PROJECT_ROOT"
+echo "  user: $CF_USER"
 
 # Check if running with sudo
 if [ "$EUID" -ne 0 ]; then
@@ -38,7 +43,8 @@ fi
 
 # Copy service and timer files to systemd directory
 echo -e "${BLUE}Installing systemd files...${NC}"
-cp "$SERVICE_FILE" "$SYSTEMD_DIR/codeframe-health-check.service"
+sed -e "s|__CF_USER__|${CF_USER}|g" -e "s|__CF_ROOT__|${PROJECT_ROOT}|g" \
+    "$SERVICE_FILE" > "$SYSTEMD_DIR/codeframe-health-check.service"
 cp "$TIMER_FILE" "$SYSTEMD_DIR/codeframe-health-check.timer"
 chmod 644 "$SYSTEMD_DIR/codeframe-health-check.service"
 chmod 644 "$SYSTEMD_DIR/codeframe-health-check.timer"

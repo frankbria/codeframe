@@ -10,7 +10,7 @@ Options:
   -m, --mode <mode>                Set the mode of operation (architect, code,
                                    ask, debug, orchestrator)
   -w, --workspace <path>           Path to the workspace directory (default:
-                                   "/home/frankbria/projects/codeframe")
+                                   "/home/user/projects/codeframe")
   -a, --auto                       Run in autonomous mode (non-interactive)
                                    (default: false)
   --yolo                           Auto-approve all tool permissions (default:

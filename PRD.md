@@ -16,5 +16,7 @@ Product requirements now live in:
 | [`CLAUDE.md`](CLAUDE.md) | Current status, architecture rules, working mode |
 
 The v1 requirements this file used to hold remain in git history (`git log -- PRD.md`).
-Other v1-era documents are archived under [`legacydocs/`](legacydocs/). Neither
-describes the current product.
+Other v1-era documents are archived under [`legacydocs/`](legacydocs/) —
+including the dated AI session notes in [`legacydocs/claudedocs/`](legacydocs/claudedocs/)
+and the demo walkthroughs in [`legacydocs/demos/`](legacydocs/demos/) (#969). None of
+them describes the current product.

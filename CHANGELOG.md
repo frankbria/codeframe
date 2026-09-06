@@ -7,6 +7,38 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Removed
+
+- **Scripts that reported success without doing the work, and one operator's
+  laptop, are out of the public repo (#969).** `scripts/deploy.sh` printed
+  "Deployment simulation successful" and exited 0 without deploying — wired into a
+  pipeline it was a green step and no deployment. `seed-staging.sh` faked the same
+  against the v1 `/api/projects` that no longer exists. `install-systemd-service.sh`
+  installed `codeframe-staging.service`, a unit deleted months earlier, so it could
+  only ever abort. All three are gone, along with `fix_workspace_env.py`,
+  `test-websocket.py` (personal LAN host, removed `/ws` route),
+  `start-staging-windows.ps1` and `WINDOWS_AUTOSTART_SETUP.md` (WSL staging that
+  the container rebuild replaced), and `tests/test_issues.md`.
+  `test-results/.last-run.json` was tracked in defiance of its own `.gitignore`
+  entry and permanently reported `"status": "failed"`; it is untracked.
+  `claudedocs/` (38 dated session-scratch files) moved to `legacydocs/claudedocs/`
+  and the root `demo-*.md` walkthroughs to `legacydocs/demos/`.
+
+### Fixed
+
+- **The health-check systemd unit is a template, not one machine (#969).** It
+  named the maintainer's account in `User=` and repeated their home directory in
+  four paths; `scripts/install-health-check.sh` hardcoded the same project root. The unit now
+  carries `__CF_USER__`/`__CF_ROOT__` placeholders that the installer substitutes,
+  deriving the root from its own location and the account from `$SUDO_USER`. The
+  `.env.staging`/`.env.production` examples point at `/opt/codeframe`, and a
+  captured kilocode `--help` fixture no longer ships the maintainer's cwd.
+  `tests/test_ops_hygiene_969.py` pins all of it by defect class rather than by
+  filename: no shipped file or captured fixture may carry a personal home path, no
+  systemd unit may name a literal account, no script may announce simulated
+  success, no installer may reference a unit file that does not exist, and no
+  workflow may resolve this project's npm dependencies without the lockfile.
+
 ### Added
 
 - **`DESIGN_PARTNERS.md` — the beta design-partner program (#619).** #618 shipped
