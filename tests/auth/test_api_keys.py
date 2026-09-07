@@ -5,6 +5,7 @@ Following TDD: tests written first, implementation follows.
 
 import pytest
 import re
+import hashlib
 
 # Import the module under test (will fail until implemented)
 from codeframe.auth.api_keys import (
@@ -62,13 +63,17 @@ class TestGenerateApiKey:
         key2, _, _ = generate_api_key()
         assert key1 != key2
 
-    def test_generate_api_key_hash_uniqueness(self):
-        """Even with same key, hash should differ (bcrypt uses random salt)."""
-        # Generate two keys
-        _, hash1, _ = generate_api_key()
-        _, hash2, _ = generate_api_key()
-        # Different keys should have different hashes
-        assert hash1 != hash2
+    def test_generate_api_key_hash_is_the_unsalted_digest_of_the_key(self):
+        """key_hash is the deterministic SHA256 of the key, with no salt.
+
+        This is the invariant verify_api_key depends on. The previous version
+        hashed two *different* keys and asserted the digests differed, which is
+        test_generate_api_key_uniqueness restated.
+        """
+        full_key, key_hash, _ = generate_api_key()
+
+        assert key_hash == f"$sha256${hashlib.sha256(full_key.encode()).hexdigest()}"
+        assert verify_api_key(full_key, key_hash) is True
 
 
 class TestVerifyApiKey:

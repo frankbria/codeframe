@@ -425,11 +425,6 @@ def pytest_collection_modifyitems(config, items):
         if "integration" in str(item.fspath):
             item.add_marker(pytest.mark.integration)
 
-        # Auto-mark slow tests (tests that take >5 seconds)
-        if hasattr(item, "callspec"):
-            if any("slow" in str(fixture) for fixture in item.callspec.params.values()):
-                item.add_marker(pytest.mark.slow)
-
 
 # Skip tests requiring real API keys in CI
 def pytest_runtest_setup(item):
