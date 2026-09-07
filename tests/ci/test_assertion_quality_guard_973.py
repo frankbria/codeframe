@@ -115,6 +115,10 @@ def test_no_test_asserts_only_that_the_runner_returned_something():
     is carried by the import itself — neither is flagged. What is rejected is a
     test whose sole assertion is that a runner or client handed back an object,
     which it always does, pass or fail.
+
+    ``len(asserts) != 1`` counts asserts anywhere in the body, nested ``with`` /
+    ``for`` / ``try`` blocks included — deliberately. A test making one claim is
+    making one claim regardless of how deeply it is indented.
     """
     offenders = []
     for path in _files(WEAK_ASSERT_DIRS):
