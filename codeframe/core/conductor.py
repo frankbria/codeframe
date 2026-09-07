@@ -1053,7 +1053,10 @@ def find_batch_by_prefix(workspace: Workspace, prefix: str) -> list[BatchRun]:
 def cancel_batch(workspace: Workspace, batch_id: str) -> BatchRun:
     """Cancel a running batch.
 
-    Sends SIGTERM to any running subprocesses and marks the batch as cancelled.
+    Marks the batch CANCELLED and emits ``BATCH_CANCELLED``. It does **not**
+    signal anything already running: in-flight tasks run to completion, and the
+    worker pool notices the terminal status on its next check. Use
+    ``stop_batch(force=True)`` if you need the harder stop.
 
     Args:
         workspace: Target workspace

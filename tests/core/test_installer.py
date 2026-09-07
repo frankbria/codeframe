@@ -186,7 +186,7 @@ class TestPipInstaller:
         # Mock which to return None (not installed) so installation proceeds
         with patch("shutil.which", return_value=None):
             with patch("subprocess.run", return_value=mock_result):
-                result = installer.install_tool("pytest", confirm=False)
+                result = installer.install_tool("pytest")
 
         assert result.status == InstallStatus.SUCCESS
         assert result.success is True
@@ -200,7 +200,7 @@ class TestPipInstaller:
         mock_result.stderr = "ERROR: Could not find package"
 
         with patch("subprocess.run", return_value=mock_result):
-            result = installer.install_tool("nonexistent_package", confirm=False)
+            result = installer.install_tool("nonexistent_package")
 
         assert result.status == InstallStatus.FAILED
         assert result.success is False
@@ -209,7 +209,7 @@ class TestPipInstaller:
         """Test installing tool that's already installed."""
         installer = PipInstaller()
         with patch("shutil.which", return_value="/usr/bin/pytest"):
-            result = installer.install_tool("pytest", confirm=False, force=False)
+            result = installer.install_tool("pytest", force=False)
 
         assert result.status == InstallStatus.SKIPPED
         assert "already installed" in result.message.lower()
@@ -258,7 +258,7 @@ class TestNpmInstaller:
         """Test that global install skips when tool is already installed."""
         installer = NpmInstaller()
         with patch("shutil.which", return_value="/usr/local/bin/eslint"):
-            result = installer.install_tool("eslint", confirm=False, force=False, global_install=True)
+            result = installer.install_tool("eslint", force=False, global_install=True)
 
         assert result.status == InstallStatus.SKIPPED
         assert "already installed" in result.message.lower()
@@ -273,7 +273,7 @@ class TestNpmInstaller:
 
         with patch("subprocess.run", return_value=mock_result):
             with patch("shutil.which", return_value="/usr/local/bin/eslint"):
-                result = installer.install_tool("eslint", confirm=False, force=True, global_install=True)
+                result = installer.install_tool("eslint", force=True, global_install=True)
 
         assert result.status == InstallStatus.SUCCESS
 
@@ -287,7 +287,7 @@ class TestNpmInstaller:
 
         # Even with tool "found", local install should proceed
         with patch("subprocess.run", return_value=mock_result):
-            result = installer.install_tool("eslint", confirm=False, force=False, global_install=False)
+            result = installer.install_tool("eslint", force=False, global_install=False)
 
         assert result.status == InstallStatus.SUCCESS
 
@@ -349,7 +349,7 @@ class TestCargoInstaller:
         installer = CargoInstaller()
         # ripgrep package -> rg binary
         with patch("shutil.which", return_value="/home/user/.cargo/bin/rg"):
-            result = installer.install_tool("ripgrep", confirm=False, force=False)
+            result = installer.install_tool("ripgrep", force=False)
 
         assert result.status == InstallStatus.SKIPPED
         assert "already installed" in result.message.lower()
@@ -364,7 +364,7 @@ class TestCargoInstaller:
 
         with patch("subprocess.run", return_value=mock_result):
             with patch("shutil.which", return_value="/home/user/.cargo/bin/rg"):
-                result = installer.install_tool("ripgrep", confirm=False, force=True)
+                result = installer.install_tool("ripgrep", force=True)
 
         assert result.status == InstallStatus.SUCCESS
 
@@ -378,7 +378,7 @@ class TestCargoInstaller:
 
         # rust-src has no binary, so it should always attempt install
         with patch("subprocess.run", return_value=mock_result):
-            result = installer.install_tool("rust-src", confirm=False, force=False)
+            result = installer.install_tool("rust-src", force=False)
 
         assert result.status == InstallStatus.SUCCESS
 
@@ -518,7 +518,7 @@ class TestInstallerIntegration:
 
         with patch("subprocess.run", return_value=mock_result):
             with patch("shutil.which", side_effect=which_side_effect):
-                result = installer.install_tool("pytest", confirm=False)
+                result = installer.install_tool("pytest")
 
         assert result.success is True
 
@@ -549,7 +549,7 @@ class TestInstallerIntegration:
         with patch("subprocess.run", return_value=mock_result):
             with patch("shutil.which", side_effect=which_side_effect):
                 for tool in tools:
-                    result = installer.install_tool(tool, confirm=False)
+                    result = installer.install_tool(tool)
                     results.append(result)
 
         assert all(r.success for r in results)

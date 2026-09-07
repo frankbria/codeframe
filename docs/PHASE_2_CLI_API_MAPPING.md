@@ -14,8 +14,8 @@ These are the core workflow commands from `docs/GOLDEN_PATH.md`.
 
 | CLI Command | Core Module | Core Function | V2 Route | Method | Status |
 |-------------|-------------|---------------|----------|--------|--------|
-| `cf init <repo>` | `core.workspace` | `create_or_load_workspace()` | `/api/v2/workspaces` | POST | ⚠️ Missing |
-| `cf init --detect` | `core.workspace` | `create_or_load_workspace()` | `/api/v2/workspaces` | POST | ⚠️ Missing |
+| `cf init <repo>` | `core.workspace` | `create_or_load_workspace()` | `/api/v2/workspaces` | POST | ✅ Present |
+| `cf init --detect` | `core.workspace` | `create_or_load_workspace()` | `/api/v2/workspaces` | POST | ✅ Present |
 | `cf status` | `core.project_status` | `get_workspace_status()` | `/api/v2/projects/status` | GET | ✅ Present |
 
 ### PRD Commands
@@ -63,16 +63,16 @@ Both end up with PRD records managed by `core.prd`.
 | `cf work resume <id>` | `core.runtime` | `resume_run()` | `/api/v2/tasks/{id}/resume` | POST | ✅ Present |
 | `cf work status <id>` | `core.runtime` | `get_run()` | `/api/v2/tasks/{id}/run` | GET | ✅ Present |
 | `cf work follow <id>` | `core.streaming` | `tail_run_output()` | `/api/v2/tasks/{id}/stream` | GET (SSE) | ✅ Present |
-| `cf work diagnose <id>` | `core.diagnostic_agent` | `diagnose_task()` | `/api/v2/tasks/{id}/diagnose` | POST | ⚠️ Missing |
+| `cf work diagnose <id>` | `core.diagnostic_agent` | `diagnose_task()` | `/api/v2/tasks/{id}/diagnose` | POST | ✅ Present |
 
 ### Batch Commands
 
 | CLI Command | Core Module | Core Function | V2 Route | Method | Status |
 |-------------|-------------|---------------|----------|--------|--------|
 | `cf work batch run` | `core.conductor` | `start_batch()` | `/api/v2/tasks/execute` | POST | ✅ Present |
-| `cf work batch status` | `core.conductor` | `get_batch_status()` | `/api/v2/batches/{id}` | GET | ⚠️ Missing |
-| `cf work batch stop` | `core.conductor` | `stop_batch()` | `/api/v2/batches/{id}/stop` | POST | ⚠️ Missing |
-| `cf work batch resume` | `core.conductor` | `resume_batch()` | `/api/v2/batches/{id}/resume` | POST | ⚠️ Missing |
+| `cf work batch status` | `core.conductor` | `get_batch_status()` | `/api/v2/batches/{id}` | GET | ✅ Present |
+| `cf work batch stop` | `core.conductor` | `stop_batch()` | `/api/v2/batches/{id}/stop` | POST | ✅ Present |
+| `cf work batch resume` | `core.conductor` | `resume_batch()` | `/api/v2/batches/{id}/resume` | POST | ✅ Present |
 
 ### Blocker Commands
 
@@ -93,7 +93,7 @@ Both end up with PRD records managed by `core.prd`.
 | `cf checkpoint show <id>` | `core.checkpoints` | `get()` | `/api/v2/checkpoints/{id}` | GET | ✅ Present |
 | `cf checkpoint restore <id>` | `core.checkpoints` | `restore()` | `/api/v2/checkpoints/{id}/restore` | POST | ✅ Present |
 | `cf checkpoint delete <id>` | `core.checkpoints` | `delete()` | `/api/v2/checkpoints/{id}` | DELETE | ✅ Present |
-| `cf checkpoint diff` | `core.checkpoints` | `diff()` | `/api/v2/checkpoints/{a}/diff/{b}` | GET | ✅ Present |
+| `cf checkpoint diff` (**NOT IMPLEMENTED**) | `core.checkpoints` | `diff()` | `/api/v2/checkpoints/{a}/diff/{b}` | GET | ✅ Present |
 
 ### Schedule Commands
 
@@ -129,19 +129,19 @@ These support the Golden Path but aren't in the critical path.
 
 | CLI Command | Core Module | Core Function | V2 Route | Method | Status |
 |-------------|-------------|---------------|----------|--------|--------|
-| `cf pr create` | `git.github_integration` | `create_pull_request()` | `/api/v2/pr` | POST | ⚠️ Missing |
-| `cf pr list` | `git.github_integration` | `list_pull_requests()` | `/api/v2/pr` | GET | ⚠️ Missing |
-| `cf pr status` | `git.github_integration` | `get_pull_request()` | `/api/v2/pr/status` | GET | ⚠️ Missing |
-| `cf pr merge` | `git.github_integration` | `merge_pull_request()` | `/api/v2/pr/{number}/merge` | POST | ⚠️ Missing |
-| `cf pr close` | `git.github_integration` | `close_pull_request()` | `/api/v2/pr/{number}/close` | POST | ⚠️ Missing |
+| `cf pr create` | `git.github_integration` | `create_pull_request()` | `/api/v2/pr` | POST | ✅ Present |
+| `cf pr list` | `git.github_integration` | `list_pull_requests()` | `/api/v2/pr` | GET | ✅ Present |
+| `cf pr status` | `git.github_integration` | `get_pull_request()` | `/api/v2/pr/status` | GET | ✅ Present |
+| `cf pr merge` | `git.github_integration` | `merge_pull_request()` | `/api/v2/pr/{number}/merge` | POST | ✅ Present |
+| `cf pr close` | `git.github_integration` | `close_pull_request()` | `/api/v2/pr/{number}/close` | POST | ✅ Present |
 
 ### Environment Commands
 
 | CLI Command | Core Module | Core Function | V2 Route | Method | Status |
 |-------------|-------------|---------------|----------|--------|--------|
-| `cf env check` | `core.environment` | `check_environment()` | `/api/v2/env/check` | GET | ⚠️ Missing |
-| `cf env doctor` | `core.environment` | `run_doctor()` | `/api/v2/env/doctor` | GET | ⚠️ Missing |
-| `cf env install` | `core.installer` | `install_tool()` | `/api/v2/env/install` | POST | ⚠️ Missing |
+| `cf env check` | `core.environment` | `check_environment()` | `/api/v2/env/check` | GET | ✅ Present |
+| `cf env doctor` | `core.environment` | `run_doctor()` | `/api/v2/env/doctor` | GET | ✅ Present |
+| `cf env install-missing` | `core.installer` | `install_tool()` | `/api/v2/env/install` | POST | ✅ Present |
 
 ### Review Commands
 
@@ -153,7 +153,7 @@ These support the Golden Path but aren't in the critical path.
 
 | CLI Command | Core Module | Core Function | V2 Route | Method | Status |
 |-------------|-------------|---------------|----------|--------|--------|
-| `cf gates run` | `core.gates` | `run_gate()` | `/api/v2/gates/run` | POST | ⚠️ Missing |
+| `cf gates run` | `core.gates` | `run_gate()` | `/api/v2/gates/run` | POST | ✅ Present |
 
 ### PROOF9 Commands
 

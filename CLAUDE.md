@@ -134,7 +134,7 @@ codeframe/
 ├── cli/app.py      # Typer CLI entry + subcommands
 ├── ui/             # FastAPI server (thin adapter over core)
 │   ├── server.py, models.py, dependencies.py
-│   └── routers/    # 16 v2 router modules
+│   └── routers/    # 23 router modules (21 v2 REST + 2 WebSocket)
 ├── auth/           # API key service + auth dependencies
 ├── lib/            # rate_limiter.py, audit_logger.py, metrics_tracker.py
 └── platform_store/ # Control-plane store: auth, api keys, audit logs,
@@ -293,7 +293,7 @@ cf checkpoint create|list|restore
 cf summary
 
 # Environment
-cf env check|install|doctor
+cf env check|doctor|install-missing|auto-install
 
 # GitHub PR
 cf pr create|list|get|status|merge|close
@@ -523,8 +523,6 @@ REDIS_URL=redis://localhost:6379
 # With the default in-memory storage each worker keeps its OWN counters, so the
 # effective limit — including auth brute-force protection — multiplies by the
 # worker count. The server logs a WARNING at startup when this is detected.
-
-CODEFRAME_API_KEY_SECRET=<secret>     # API key hashing
 
 # Credential-file confidentiality (#772 — opt-in)
 CODEFRAME_CREDENTIAL_SECRET=<secret>  # Mixed into the PBKDF2 KDF for the

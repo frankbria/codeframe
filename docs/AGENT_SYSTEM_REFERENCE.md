@@ -113,6 +113,6 @@ CLI (typer) ─┬── core.* ─── adapters.*
 Server (fastapi) ─┘
 ```
 
-v2 router modules include: `blockers_v2`, `prd_v2`, `tasks_v2`, `workspace_v2`, `batches_v2`, `api_key_v2`, `discovery_v2`, `checkpoints_v2`, `schedule_v2`, `templates_v2`, `git_v2`, `review_v2`, `pr_v2`, `environment_v2`, `proof_v2`.
+The 21 v2 REST router modules are: `batches_v2`, `blockers_v2`, `checkpoints_v2`, `costs_v2`, `diagnose_v2`, `discovery_v2`, `environment_v2`, `events_v2`, `gates_v2`, `git_v2`, `github_integrations_v2`, `interactive_sessions_v2`, `pr_v2`, `prd_v2`, `proof_v2`, `review_v2`, `schedule_v2`, `settings_v2`, `tasks_v2`, `templates_v2`, `workspace_v2` — plus the two WebSocket routers `session_chat_ws` and `terminal_ws`. (The API-key routes live in `codeframe/auth/api_key_router.py`, not under `routers/`.)
 
 See `docs/PHASE_2_DEVELOPER_GUIDE.md` for full router details.
