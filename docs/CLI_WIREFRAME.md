@@ -1037,7 +1037,7 @@ cf import ralph /path/to/project --workspace /path/to/workspace
 8) `tasks analyze` - dependency graph visualization and analysis
 
 ### Phase 2: Git Integration & PR Workflow (NEW HIGH PRIORITY)
-9) `codeframe git_integration` module implementation
+9) `codeframe/git/github_integration.py` module implementation
 10) Enhanced `work start --create-branch` with automatic branch management
 11) `pr create` with AI-generated comprehensive descriptions
 12) `pr merge` with automated verification and merge strategies

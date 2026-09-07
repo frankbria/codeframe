@@ -33,7 +33,10 @@ DOC_FILES = [REPO_ROOT / "README.md", REPO_ROOT / "CLAUDE.md"] + sorted(
 INVOCATION = re.compile(r"(?<![\w./-])(?:cf|codeframe)((?:\s+[a-z][a-z0-9_|-]*)+)")
 
 # A subcommand name. Anything else (a flag, `<task_id>`, `TASK`) ends the path.
-SUBCOMMAND = re.compile(r"^[a-z][a-z0-9-]*$")
+# Underscores are allowed even though every command today is hyphenated: if this
+# rejected them, an underscored command name would silently end the walk instead
+# of being checked, which is the exact blind spot this test exists to close.
+SUBCOMMAND = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 NOT_IMPLEMENTED_MARKER = "NOT IMPLEMENTED"
 
