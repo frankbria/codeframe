@@ -38,6 +38,13 @@ INVOCATION = re.compile(r"(?<![\w./-])(?:cf|codeframe)((?:\s+[a-z][a-z0-9_|-]*)+
 # of being checked, which is the exact blind spot this test exists to close.
 SUBCOMMAND = re.compile(r"^[a-z][a-z0-9_-]*$")
 
+# The docs also name commands without the binary: checklist and roadmap entries
+# like ``- `work batch cancel` ✓ DONE``. Those went unchecked until GLM review on
+# #1196 pointed out the gap, so a phantom could hide there indefinitely. Only a
+# backticked span whose FIRST word is a real top-level command is considered —
+# without that anchor, any backticked prose would be walked as a command path.
+BACKTICKED = re.compile(r"`([a-z][a-z0-9_ |-]*)`")
+
 NOT_IMPLEMENTED_MARKER = "NOT IMPLEMENTED"
 
 
@@ -66,14 +73,21 @@ def _unresolvable(root, words):
 
 def _documented_commands():
     """Yield (location, command_path, source_line) for every doc invocation."""
+    top_level = set(_command_tree().commands)
     for doc in DOC_FILES:
         rel = doc.relative_to(REPO_ROOT)
         for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
             if NOT_IMPLEMENTED_MARKER in line:
                 continue
-            for match in INVOCATION.finditer(line):
+            spans = [m.group(1) for m in INVOCATION.finditer(line)]
+            spans += [
+                m.group(1)
+                for m in BACKTICKED.finditer(line)
+                if m.group(1).split()[:1] and m.group(1).split()[0] in top_level
+            ]
+            for span in spans:
                 # `pr create|list|merge` documents three commands on one line.
-                alternatives = [word.split("|") for word in match.group(1).split()]
+                alternatives = [word.split("|") for word in span.split()]
                 for words in itertools.product(*alternatives):
                     yield f"{rel}:{lineno}", words, line.strip()
 

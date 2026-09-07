@@ -1026,7 +1026,7 @@ cf import ralph /path/to/project --workspace /path/to/workspace
 
 ### Phase 0: Enhanced PRD & Discovery (NEW HIGH PRIORITY)
 1) `prd generate` - AI-driven interactive PRD generation with follow-up questions
-2) `prd refine` - iterative PRD improvement based on user feedback
+2) `prd refine` - iterative PRD improvement based on user feedback — **NOT IMPLEMENTED**
 3) Enhanced `init` with auto-discovery and environment configuration
 4) PRD versioning and change tracking
 
@@ -1034,7 +1034,7 @@ cf import ralph /path/to/project --workspace /path/to/workspace
 5) Enhanced `tasks generate` with dependency analysis and effort estimation
 6) Task template system for common implementation patterns
 7) Critical path identification and workstream grouping
-8) `tasks analyze` - dependency graph visualization and analysis
+8) `tasks analyze` - dependency graph visualization and analysis — **NOT IMPLEMENTED**
 
 ### Phase 2: Git Integration & PR Workflow (NEW HIGH PRIORITY)
 9) `codeframe/git/github_integration.py` module implementation
@@ -1076,7 +1076,7 @@ cf import ralph /path/to/project --workspace /path/to/workspace
 **Batch Execution (already complete):**
 - `work batch run` ✓ DONE (enhanced with git integration)
 - `work batch status` ✓ DONE
-- `work batch cancel` ✓ DONE
+- `work batch stop` ✓ DONE
 - Parallel execution & retry ✓ DONE
 - Observability ✓ DONE
 
