@@ -43,7 +43,7 @@ SUBCOMMAND = re.compile(r"^[a-z][a-z0-9_-]*$")
 # #1196 pointed out the gap, so a phantom could hide there indefinitely. Only a
 # backticked span whose FIRST word is a real top-level command is considered —
 # without that anchor, any backticked prose would be walked as a command path.
-BACKTICKED = re.compile(r"`([a-z][a-z0-9_ |-]*)`")
+BACKTICKED = re.compile(r"`([a-z][^`]*)`")
 
 NOT_IMPLEMENTED_MARKER = "NOT IMPLEMENTED"
 
