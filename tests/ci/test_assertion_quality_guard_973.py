@@ -49,31 +49,55 @@ def _tests_in(tree: ast.Module):
             yield node
 
 
+def _accepts_success_and_failure(container: ast.expr) -> bool:
+    """True for a literal container holding 0 *and* at least one non-zero code.
+
+    That pair is the defect: the assertion passes whether the command succeeded
+    or failed. ``in (1, 2)`` is two distinct failure modes and a legitimate
+    thing to assert, so it is left alone.
+    """
+    if not isinstance(container, (ast.Tuple, ast.List, ast.Set)):
+        return False
+    codes = [e.value for e in container.elts if isinstance(e, ast.Constant)]
+    if len(codes) != len(container.elts):
+        return False  # not all literal — not something we can judge
+    return 0 in codes and any(c != 0 for c in codes)
+
+
 def test_no_exit_code_accepts_both_success_and_failure():
     """``assert result.exit_code in (0, 1)`` asserts nothing about the command.
 
     Matched on the AST, so ``in [0, 1]``, ``in {0, 1}`` and a tuple wrapped
     across lines are all caught — the substring form of this check would let
     every one of them back in.
+
+    Scoped to ``assert`` statements whose accepted set contains both 0 and a
+    non-zero code. ``assert result.exit_code in (1, 2)`` distinguishes two
+    failure modes and is fine; ``if result.exit_code in (...)`` is control flow,
+    not a claim. A named container (``in EXPECTED_CODES``) is not resolved here
+    — indirection through a constant is a deliberate, reviewable act, unlike an
+    inline ``(0, 1)``.
     """
     offenders = []
     for path in _files(WEAK_ASSERT_DIRS):
         for node in ast.walk(_parse(path)):
-            if not isinstance(node, ast.Compare):
+            if not isinstance(node, ast.Assert):
                 continue
-            if len(node.ops) != 1 or not isinstance(node.ops[0], ast.In):
-                continue
-            left = node.left
-            if not (isinstance(left, ast.Attribute) and left.attr == "exit_code"):
-                continue
-            container = node.comparators[0]
-            if isinstance(container, (ast.Tuple, ast.List, ast.Set)) and len(container.elts) > 1:
-                offenders.append(
-                    f"{path.relative_to(REPO_ROOT)}:{node.lineno}: {ast.unparse(node)}"
-                )
+            for cmp_node in ast.walk(node.test):
+                if not isinstance(cmp_node, ast.Compare):
+                    continue
+                if len(cmp_node.ops) != 1 or not isinstance(cmp_node.ops[0], ast.In):
+                    continue
+                left = cmp_node.left
+                if not (isinstance(left, ast.Attribute) and left.attr == "exit_code"):
+                    continue
+                if _accepts_success_and_failure(cmp_node.comparators[0]):
+                    offenders.append(
+                        f"{path.relative_to(REPO_ROOT)}:{node.lineno}: {ast.unparse(cmp_node)}"
+                    )
 
     assert not offenders, (
-        "exit_code membership assertions accept both outcomes and cannot fail.\n"
+        "exit_code membership assertions accept both success and failure.\n"
         "Assert the exit code the command actually returns:\n  " + "\n  ".join(offenders)
     )
 
