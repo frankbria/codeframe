@@ -224,9 +224,9 @@ async def install_tool(
                 ),
             )
 
-        # Attempt installation (confirm=False for non-interactive server usage)
+        # Attempt installation (never interactive)
         # Offload: subprocess package installs — blocks for minutes (#732).
-        result = await run_in_threadpool(installer.install_tool, body.tool_name, confirm=False)
+        result = await run_in_threadpool(installer.install_tool, body.tool_name)
 
         return InstallResultResponse(
             success=result.success,

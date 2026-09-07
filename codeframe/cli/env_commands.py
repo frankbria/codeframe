@@ -313,7 +313,7 @@ def install_missing(
         transient=True,
     ) as progress:
         progress.add_task(f"Installing {tool}...", total=None)
-        result = installer.install_tool(tool, confirm=False)
+        result = installer.install_tool(tool)
 
     # Report result
     if result.success:
@@ -396,7 +396,7 @@ def auto_install(
             progress.update(task, description=f"Installing {tool}...")
 
             if installer.can_install(tool):
-                result = installer.install_tool(tool, confirm=False)
+                result = installer.install_tool(tool)
                 results.append(result)
             else:
                 results.append(None)

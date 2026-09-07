@@ -4,14 +4,13 @@ This module provides:
 - Platform-specific tool installation
 - Installation verification
 - Installation history tracking
-- Rollback capabilities
 
 Usage:
     from codeframe.core.installer import ToolInstaller
 
     installer = ToolInstaller()
     if installer.can_install("pytest"):
-        result = installer.install_tool("pytest", confirm=True)
+        result = installer.install_tool("pytest")
         if result.success:
             print(f"Installed {result.tool_name}")
 """
@@ -137,14 +136,12 @@ class PipInstaller:
     def install_tool(
         self,
         tool_name: str,
-        confirm: bool = True,
         force: bool = False,
     ) -> InstallResult:
         """Install a Python package.
 
         Args:
             tool_name: Name of the package to install
-            confirm: Whether to prompt for confirmation
             force: Reinstall even if already installed
 
         Returns:
@@ -254,7 +251,6 @@ class NpmInstaller:
     def install_tool(
         self,
         tool_name: str,
-        confirm: bool = True,
         force: bool = False,
         global_install: bool = True,
     ) -> InstallResult:
@@ -262,7 +258,6 @@ class NpmInstaller:
 
         Args:
             tool_name: Name of the package to install
-            confirm: Whether to prompt for confirmation
             force: Reinstall even if already installed
             global_install: Install globally or locally
 
@@ -375,14 +370,12 @@ class CargoInstaller:
     def install_tool(
         self,
         tool_name: str,
-        confirm: bool = True,
         force: bool = False,
     ) -> InstallResult:
         """Install a Rust tool.
 
         Args:
             tool_name: Name of the tool to install
-            confirm: Whether to prompt for confirmation
             force: Reinstall even if already installed
 
         Returns:
@@ -469,7 +462,6 @@ class SystemInstaller:
     def install_tool(
         self,
         tool_name: str,
-        confirm: bool = True,
         force: bool = False,
     ) -> InstallResult:
         """Install a system tool.
@@ -478,7 +470,6 @@ class SystemInstaller:
 
         Args:
             tool_name: Name of the tool to install
-            confirm: Whether to prompt for confirmation
             force: Reinstall even if already installed
 
         Returns:
@@ -577,14 +568,12 @@ class ToolInstaller:
     def install_tool(
         self,
         tool_name: str,
-        confirm: bool = True,
         force: bool = False,
     ) -> InstallResult:
         """Install a tool.
 
         Args:
             tool_name: Name of the tool to install
-            confirm: Whether to prompt for confirmation
             force: Reinstall even if already installed
 
         Returns:
@@ -598,7 +587,7 @@ class ToolInstaller:
                 message=f"No installer available for {tool_name}",
             )
 
-        result = installer.install_tool(tool_name, confirm=confirm, force=force)
+        result = installer.install_tool(tool_name, force=force)
 
         # Record in history
         if result.success:

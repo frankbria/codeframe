@@ -163,7 +163,7 @@ Each command:
 
 **Core calls:**
 - `codeframe.core.installer.ToolInstaller.can_install(tool) -> bool`
-- `codeframe.core.installer.ToolInstaller.install_tool(tool, confirm) -> InstallResult`
+- `codeframe.core.installer.ToolInstaller.install_tool(tool) -> InstallResult`
 
 **Supported installers:**
 - PipInstaller: pytest, ruff, mypy, black, flake8, pylint, isort, bandit, coverage, pre-commit, httpx, requests
@@ -181,7 +181,7 @@ Each command:
 
 **Core calls:**
 - `codeframe.core.environment.EnvironmentValidator.validate_environment(project_path) -> ValidationResult`
-- `codeframe.core.installer.ToolInstaller.install_tool(tool, confirm) -> InstallResult` (for each missing tool)
+- `codeframe.core.installer.ToolInstaller.install_tool(tool) -> InstallResult` (for each missing tool)
 
 **State writes:**
 - Installation history in `.codeframe/environment.json`
@@ -190,7 +190,8 @@ Each command:
 
 ## Configuration: `codeframe config ...`
 
-### `codeframe config init [--detect] [--force]`
+### `codeframe config init [--detect] [--force]` — **NOT IMPLEMENTED**
+> Config is written by `codeframe init` and edited by hand in `.codeframe/config.yaml`.
 **Purpose:** Initialize project environment configuration.
 
 **CLI module:**
@@ -211,7 +212,8 @@ Each command:
 
 ---
 
-### `codeframe config show`
+### `codeframe config show` — **NOT IMPLEMENTED**
+> Use `codeframe status`, or read `.codeframe/config.yaml` directly.
 **Purpose:** Display current project configuration.
 
 **Core calls:**
@@ -222,7 +224,9 @@ Each command:
 
 ---
 
-### `codeframe config set <key> <value>`
+### `codeframe config set <key> <value>` — **NOT IMPLEMENTED**
+> Edit `.codeframe/config.yaml` directly. (`codeframe config telemetry` is the one
+> `config` subcommand that exists.)
 **Purpose:** Set individual configuration values.
 
 **Core calls:**
@@ -316,7 +320,8 @@ Each command:
 
 ---
 
-### `codeframe prd refine <prd-id>`
+### `codeframe prd refine <prd-id>` — **NOT IMPLEMENTED**
+> Use `codeframe prd stress-test`, then `codeframe prd update`.
 **Purpose:** Iterative PRD improvement based on feedback.
 
 **CLI module:**
@@ -497,9 +502,9 @@ Each command:
 
 **Future state:**
 - Allow other task attributes to be set, like `provider`, etc.
-- `codeframe task set <attribute> <task_id> <attribute_value>`
+- `codeframe tasks set <attribute> <task_id> <attribute_value>`
 
-### `codeframe tasks get status <task_id>`
+### `codeframe tasks show <task_id>`
 **Purpose:** Get current state.
 
 **Core calls:**
@@ -602,16 +607,20 @@ Each command:
 
 ---
 
-### `codeframe work batch cancel <batch_id>`
-**Purpose:** Cancel a running batch.
+### `codeframe work batch stop <batch_id> [--force]`
+**Purpose:** Stop a running batch.
 
 **Core calls:**
-- `codeframe.core.conductor.cancel_batch(workspace_id, batch_id)`
+- `codeframe.core.conductor.stop_batch(workspace, batch_id, force)`
 - `codeframe.core.events.emit(workspace_id, "BATCH_CANCELLED", payload)`
 
+**CLI options:**
+- `--force, -f`: Terminate running subprocesses immediately (SIGTERM)
+
 **Behavior:**
-- Sends SIGTERM to running subprocesses
 - Marks batch as CANCELLED
+- Without `--force`: in-flight tasks run to completion; the execution loop exits after them
+- With `--force`: also sends SIGTERM to every running subprocess in the batch
 - Does not affect already-completed tasks
 
 ---
@@ -731,7 +740,9 @@ cf work batch resume abc123 --force   # Re-run all tasks
 
 ---
 
-## Git Integration & PR Management: `codeframe git ...` / `codeframe pr ...`
+## Git Integration & PR Management: `codeframe pr ...`
+> The `codeframe git ...` group is **NOT IMPLEMENTED** — git work is done through `patch`,
+> `commit` and `pr`.
 
 ### `codeframe work start <task_id> --create-branch`
 **Purpose:** Begin task execution with automatic branch creation.
@@ -867,7 +878,8 @@ codeframe pr status
 
 ---
 
-### `codeframe git status` (Enhanced)
+### `codeframe git status` (Enhanced) — **NOT IMPLEMENTED**
+> Use `codeframe status` for the CodeFRAME-aware summary.
 **Purpose:** Show git status summary with CodeFRAME context.
 
 **CLI module:**
