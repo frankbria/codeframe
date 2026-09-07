@@ -196,16 +196,17 @@ class TestPrdCommands:
         assert result.exit_code == 0
 
     def test_prd_delete(self, workspace_with_prd):
-        # Get PRD id from show output
-        show_result = runner.invoke(app, ["prd", "show", "-w", str(workspace_with_prd)])
-        # Extract an ID-like token (8+ hex chars)
-        ids = re.findall(r"[0-9a-f]{8,}", show_result.output)
-        if ids:
-            result = runner.invoke(
-                app, ["prd", "delete", ids[0][:8], "-w", str(workspace_with_prd)]
-            )
-            # Accept either success or "confirm" prompt behaviour
-            assert result.exit_code in (0, 1)
+        ws = create_or_load_workspace(workspace_with_prd)
+        prd_record = prd.get_latest(ws)
+        assert prd_record is not None
+
+        result = runner.invoke(
+            app,
+            ["prd", "delete", prd_record.id, "--force", "-w", str(workspace_with_prd)],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert prd.get_latest(create_or_load_workspace(workspace_with_prd)) is None
 
     def test_prd_delete_nonexistent(self, workspace_path):
         result = runner.invoke(
@@ -222,12 +223,30 @@ class TestPrdCommands:
         assert result.exit_code == 0
 
     def test_prd_update(self, workspace_with_prd, prd_file):
-        # Re-add the same PRD as an update
+        """`prd update` creates a new version of an existing PRD."""
+        ws = create_or_load_workspace(workspace_with_prd)
+        prd_record = prd.get_latest(ws)
+        assert prd_record is not None
+        version_before = prd_record.version
+
         result = runner.invoke(
-            app, ["prd", "update", str(prd_file), "-w", str(workspace_with_prd)]
+            app,
+            [
+                "prd",
+                "update",
+                prd_record.id,
+                str(prd_file),
+                "--message",
+                "integration test update",
+                "-w",
+                str(workspace_with_prd),
+            ],
         )
-        # update may or may not exist; accept 0 or 2 (no such command)
-        assert result.exit_code in (0, 1, 2)
+
+        assert result.exit_code == 0, result.output
+        after = prd.get_latest(create_or_load_workspace(workspace_with_prd))
+        assert after is not None
+        assert after.version == version_before + 1
 
     def test_prd_versions(self, workspace_with_prd):
         # Get PRD id from list output (more reliable than show)
@@ -244,12 +263,16 @@ class TestPrdCommands:
         ws = create_or_load_workspace(workspace_with_prd)
         prd_record = prd.get_latest(ws)
         assert prd_record is not None
+        # The fixture creates exactly one version, so v2 cannot resolve.
+        assert prd_record.version == 1
+
         result = runner.invoke(
             app,
             ["prd", "diff", prd_record.id, "1", "2", "-w", str(workspace_with_prd)],
         )
-        # May fail due to only 1 version existing, that's expected
-        assert result.exit_code in (0, 1)
+
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -465,13 +488,14 @@ class TestBatchCommands:
         assert result.exit_code == 0
 
     def test_batch_no_ready_tasks(self, workspace_with_tasks):
-        """Batch run with no READY tasks should indicate nothing to do."""
+        """Batch run with no READY tasks should say so, not start a batch."""
         result = runner.invoke(
             app,
             ["work", "batch", "run", "--all-ready", "-w", str(workspace_with_tasks)],
         )
-        # May exit 0 with "no ready tasks" message or exit 1
-        assert result.exit_code in (0, 1)
+
+        assert result.exit_code == 0, result.output
+        assert "no ready tasks" in result.output.lower()
 
     def test_batch_status_with_workspace(self, workspace_with_ready_tasks):
         result = runner.invoke(
@@ -681,9 +705,10 @@ class TestTemplatesCommands:
 
 class TestReviewCommand:
     def test_review_basic(self, workspace_path):
+        """`review` on a clean workspace succeeds and reports nothing to review."""
         result = runner.invoke(app, ["review", "-w", str(workspace_path)])
-        # Review may exit 0 or 1 depending on state
-        assert result.exit_code in (0, 1)
+
+        assert result.exit_code == 0, result.output
 
 
 # ---------------------------------------------------------------------------

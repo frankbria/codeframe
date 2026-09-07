@@ -1,170 +1,98 @@
-"""Integration tests for server access and lifecycle.
+"""Integration test: `cf serve` really boots and serves the v2 API.
 
-NOTE: These tests are skipped during v2 refactor. They require a running FastAPI
-server with full functionality (--no-browser option), but the v2 serve command
-is a stub. The server adapter will be implemented post-Golden Path.
+This suite spent the v2 refactor skipped with the reason "serve command is stub
+in v2". That stopped being true a long time ago — `cf serve` runs uvicorn
+against ``codeframe.ui.server:app`` and ``GET /`` answers with the health
+payload asserted below. Nothing else in the suite spawns the server as a real
+subprocess (the API lifecycle tests drive the ASGI app in-process), so this is
+the only thing standing between a broken `cf serve` entrypoint and a green CI
+badge. Un-skipped and rewritten against v2 in #973.
 """
 
 import os
 import signal
+import socket
 import subprocess
 import time
-from typing import Optional
 
 import pytest
 import requests
 
-# Skip all tests - server is stub in v2, doesn't support --no-browser
-pytestmark = pytest.mark.skip(
-    reason="Dashboard integration tests require full server - serve command is stub in v2"
-)
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 
-class TestServerAccess:
-    """Integration tests for server lifecycle and accessibility."""
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
 
-    @pytest.fixture
-    def test_port(self) -> int:
-        """Use a unique test port to avoid conflicts."""
-        import socket
 
-        # Find an available port dynamically
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("", 0))  # Bind to port 0 to get a random available port
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            port = s.getsockname()[1]
-        return port
-
-    @pytest.fixture
-    def server_process(self, test_port: int):
-        """Start server process for testing, clean up after."""
-        process: Optional[subprocess.Popen] = None
+def _wait_until_gone(url: str, timeout: float = 5.0) -> bool:
+    """Poll until the server stops answering, or the timeout expires."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
         try:
-            # Start server in subprocess with new process session
-            process = subprocess.Popen(
-                [
-                    "uv",
-                    "run",
-                    "codeframe",
-                    "serve",
-                    "--port",
-                    str(test_port),
-                    "--no-browser",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                start_new_session=True,  # Create new process session for proper cleanup
-            )
+            requests.get(url, timeout=0.5)
+        except requests.ConnectionError:
+            return True
+        time.sleep(0.1)
+    return False
 
-            # Wait for server to start (max 5 seconds)
-            for _ in range(50):
-                # Check if process crashed during startup
-                if process.poll() is not None:
-                    stdout, stderr = process.communicate()
-                    raise RuntimeError(
-                        f"Server process exited with code {process.returncode}\n"
-                        f"stderr: {stderr.decode() if stderr else 'N/A'}\n"
-                        f"stdout: {stdout.decode() if stdout else 'N/A'}"
-                    )
 
-                try:
-                    response = requests.get(f"http://localhost:{test_port}", timeout=1)
-                    if response.status_code == 200:
-                        break
-                except requests.ConnectionError:
-                    pass
+def test_serve_boots_answers_and_shuts_down(tmp_path):
+    """Start `cf serve`, assert the health contract, then stop it."""
+    port = _free_port()
+    url = f"http://127.0.0.1:{port}/"
+
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+
+    env = os.environ.copy()
+    env["DATABASE_PATH"] = str(tmp_path / "test.db")
+    # The v2 server refuses to start with auth enforced and no workspace
+    # allowlist (#655/#896) — an empty allowlist would let any authenticated
+    # user open a shell in any host directory.
+    env["WORKSPACE_ROOT"] = str(workspace_root)
+
+    process = subprocess.Popen(
+        ["uv", "run", "codeframe", "serve", "--port", str(port)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+        env=env,
+    )
+
+    try:
+        response = None
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                stdout, stderr = process.communicate()
+                pytest.fail(
+                    f"`cf serve` exited with {process.returncode}\n"
+                    f"stderr: {stderr.decode(errors='replace')}\n"
+                    f"stdout: {stdout.decode(errors='replace')}"
+                )
+            try:
+                response = requests.get(url, timeout=1)
+                break
+            except requests.ConnectionError:
                 time.sleep(0.1)
 
-            yield process
-
-        finally:
-            # Clean up: terminate entire process group (parent + all children)
-            if process:
-                try:
-                    # Kill entire process group (parent + all children)
-                    pgid = os.getpgid(process.pid)
-                    os.killpg(pgid, signal.SIGTERM)
-
-                    # Wait for graceful shutdown
-                    try:
-                        process.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        # Force kill if graceful shutdown failed
-                        os.killpg(pgid, signal.SIGKILL)
-                        process.wait()
-
-                except (ProcessLookupError, PermissionError, OSError):
-                    # Process already dead or no permission
-                    pass
-
-                # Fallback: ensure no uvicorn processes remain on test port
-                try:
-                    subprocess.run(
-                        ["pkill", "-9", "-f", f"uvicorn.*{test_port}"],
-                        timeout=1,
-                        capture_output=True,
-                    )
-                except Exception:
-                    pass  # Best effort cleanup
-
-    def test_dashboard_accessible_after_serve(
-        self, server_process: subprocess.Popen, test_port: int
-    ):
-        """Test that server is accessible after serve command starts."""
-        # Server should be running (started by fixture)
-        assert server_process.poll() is None, "Server process should be running"
-
-        # Make HTTP request to root endpoint
-        response = requests.get(f"http://localhost:{test_port}", timeout=5)
-
-        # Should get 200 OK
-        assert response.status_code == 200, "Server should return 200 OK"
-
-        # Response should be JSON (health check endpoint)
-        assert "application/json" in response.headers.get(
-            "content-type", ""
-        ), "Should return JSON content"
-
-        # Verify response contains expected health check fields
-        data = response.json()
-        assert "status" in data, "Response should contain status field"
-        assert data["status"] == "online", "Server status should be online"
-
-    def test_serve_command_lifecycle(self, server_process: subprocess.Popen, test_port: int):
-        """Test complete server lifecycle: start, verify, stop."""
-        # Verify server is running
-        assert server_process.poll() is None, "Server should be running"
-
-        # Verify server responds to requests
-        response = requests.get(f"http://localhost:{test_port}", timeout=5)
+        assert response is not None, "`cf serve` never answered within 30s"
         assert response.status_code == 200
+        assert "application/json" in response.headers.get("content-type", "")
+        assert response.json() == {"status": "online", "service": "CodeFRAME API"}
 
-        # Stop server (kill entire process group)
-        try:
-            pgid = os.getpgid(server_process.pid)
-            os.killpg(pgid, signal.SIGTERM)
-            server_process.wait(timeout=5)
-        except (ProcessLookupError, OSError):
-            pass  # Process already dead
+        # Shutting the process group down must actually stop the listener.
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        assert process.wait(timeout=10) is not None
+        assert _wait_until_gone(url), "server still answering after SIGTERM"
 
-        # Verify server stopped
-        assert server_process.poll() is not None, "Server should have stopped"
-
-        # Fallback cleanup: ensure no uvicorn processes remain
-        subprocess.run(
-            ["pkill", "-9", "-f", f"uvicorn.*{test_port}"], capture_output=True, timeout=1
-        )
-
-        # Verify server no longer responding (exponential backoff)
-        max_attempts = 10
-        backoff = 0.1
-        for attempt in range(max_attempts):
+    finally:
+        if process.poll() is None:
             try:
-                requests.get(f"http://localhost:{test_port}", timeout=0.5)
-                if attempt < max_attempts - 1:
-                    time.sleep(backoff)
-                    backoff *= 2  # Exponential backoff (0.1s → 0.2s → 0.4s → 0.8s → 1.6s)
-                else:
-                    pytest.fail("Server still responding after termination")
-            except requests.ConnectionError:
-                break  # Server is down, test passes
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        process.communicate()

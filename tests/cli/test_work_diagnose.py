@@ -3,9 +3,11 @@
 Tests the diagnostic analysis command for failed runs.
 """
 
-import pytest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from typer.testing import CliRunner
 
@@ -222,18 +224,24 @@ class TestWorkDiagnoseEdgeCases:
         assert "No failed run" in result.stdout or "failed" in result.stdout.lower()
 
     def test_diagnose_multiple_matching_tasks(self, tmp_path, workspace):
-        """Test diagnose with ambiguous task ID."""
-        # Create tasks with similar IDs by using specific prefixes
+        """An ambiguous prefix is rejected and names the candidates.
+
+        Task IDs are random UUIDs, so a short prefix cannot be relied on to
+        collide — the ambiguity is forced here instead of hoped for.
+        """
         task1 = tasks.create(workspace, title="Task 1", description="First")
         task2 = tasks.create(workspace, title="Task 2", description="Second")
 
-        # Use a very short prefix that might match multiple
-        # This depends on UUID generation, so we just test that it handles the case
-        result = runner.invoke(
-            app,
-            ["work", "diagnose", "a", "--workspace", str(workspace.repo_path)],  # Very short prefix
-        )
+        with patch(
+            "codeframe.core.tasks.find_by_prefix",
+            return_value=[task1, task2],
+        ):
+            result = runner.invoke(
+                app,
+                ["work", "diagnose", "abc", "--workspace", str(workspace.repo_path)],
+            )
 
-        # Should either match one, none, or indicate multiple matches
-        # The important thing is it doesn't crash
-        assert result.exit_code is not None
+        assert result.exit_code == 1
+        assert "Multiple tasks match 'abc'" in result.stdout
+        assert task1.id[:8] in result.stdout
+        assert task2.id[:8] in result.stdout

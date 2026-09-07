@@ -6,7 +6,7 @@ These tests cover the `codeframe pr` command group for GitHub PR management.
 
 import json
 from datetime import datetime, UTC
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
@@ -58,13 +58,9 @@ class TestPRCreateCommand:
         """Create PR should call GitHub API and display success."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.create_pull_request = AsyncMock(return_value=mock_pr_details)
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.create_pull_request.return_value = mock_pr_details
 
             with patch(
                 "codeframe.cli.pr_commands.get_current_branch",
@@ -83,21 +79,20 @@ class TestPRCreateCommand:
         """Create PR with explicit branch name."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.create_pull_request = AsyncMock(return_value=mock_pr_details)
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.create_pull_request.return_value = mock_pr_details
 
             result = runner.invoke(
                 pr_app,
                 [
                     "create",
-                    "--branch", "feature/explicit-branch",
-                    "--title", "My PR",
-                    "--base", "develop",
+                    "--branch",
+                    "feature/explicit-branch",
+                    "--title",
+                    "My PR",
+                    "--base",
+                    "develop",
                     "--no-auto-description",
                 ],
             )
@@ -129,13 +124,9 @@ class TestPRCreateCommand:
         """Create PR with explicit body content."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.create_pull_request = AsyncMock(return_value=mock_pr_details)
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.create_pull_request.return_value = mock_pr_details
 
             with patch(
                 "codeframe.cli.pr_commands.get_current_branch",
@@ -145,8 +136,10 @@ class TestPRCreateCommand:
                     pr_app,
                     [
                         "create",
-                        "--title", "My Feature",
-                        "--body", "This is the PR description",
+                        "--title",
+                        "My Feature",
+                        "--body",
+                        "This is the PR description",
                         "--no-auto-description",
                     ],
                 )
@@ -163,13 +156,9 @@ class TestPRListCommand:
         """List PRs should display table of PRs."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.list_pull_requests = AsyncMock(return_value=[mock_pr_details])
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.list_pull_requests.return_value = [mock_pr_details]
 
             result = runner.invoke(pr_app, ["list"])
 
@@ -181,13 +170,9 @@ class TestPRListCommand:
         """List PRs with status filter."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.list_pull_requests = AsyncMock(return_value=[mock_pr_details])
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.list_pull_requests.return_value = [mock_pr_details]
 
             result = runner.invoke(pr_app, ["list", "--status", "closed"])
 
@@ -198,13 +183,9 @@ class TestPRListCommand:
         """List PRs with JSON output format."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.list_pull_requests = AsyncMock(return_value=[mock_pr_details])
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.list_pull_requests.return_value = [mock_pr_details]
 
             result = runner.invoke(pr_app, ["list", "--format", "json"])
 
@@ -220,18 +201,14 @@ class TestPRListCommand:
         """List PRs when none exist."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.list_pull_requests = AsyncMock(return_value=[])
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.list_pull_requests.return_value = []
 
             result = runner.invoke(pr_app, ["list"])
 
         assert result.exit_code == 0
-        assert "no" in result.output.lower() or "empty" in result.output.lower() or "0" in result.output
+        assert "No open pull requests found" in result.output
 
 
 class TestPRGetCommand:
@@ -241,13 +218,9 @@ class TestPRGetCommand:
         """Get PR should display full PR details."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.get_pull_request = AsyncMock(return_value=mock_pr_details)
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.get_pull_request.return_value = mock_pr_details
 
             result = runner.invoke(pr_app, ["get", "42"])
 
@@ -261,15 +234,9 @@ class TestPRGetCommand:
         from codeframe.cli.pr_commands import pr_app
         from codeframe.git.github_integration import GitHubAPIError
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.get_pull_request = AsyncMock(
-                side_effect=GitHubAPIError(404, "Not Found")
-            )
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.get_pull_request.side_effect = GitHubAPIError(404, "Not Found")
 
             result = runner.invoke(pr_app, ["get", "9999"])
 
@@ -280,13 +247,9 @@ class TestPRGetCommand:
         """Get PR with JSON output format."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.get_pull_request = AsyncMock(return_value=mock_pr_details)
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.get_pull_request.return_value = mock_pr_details
 
             result = runner.invoke(pr_app, ["get", "42", "--format", "json"])
 
@@ -313,14 +276,10 @@ class TestPRMergeCommand:
             message="Pull Request successfully merged",
         )
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.get_pull_request = AsyncMock(return_value=mock_pr_details)
-            mock_gh.merge_pull_request = AsyncMock(return_value=merge_result)
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.get_pull_request.return_value = mock_pr_details
+            mock_gh.merge_pull_request.return_value = merge_result
 
             result = runner.invoke(pr_app, ["merge", "42"])
 
@@ -328,7 +287,9 @@ class TestPRMergeCommand:
         assert "merged" in result.output.lower()
         mock_gh.merge_pull_request.assert_called_once()
 
-    def test_merge_pr_with_strategy(self, mock_github_token, mock_pr_details, tmp_path, monkeypatch):
+    def test_merge_pr_with_strategy(
+        self, mock_github_token, mock_pr_details, tmp_path, monkeypatch
+    ):
         """Merge PR with specific strategy."""
         monkeypatch.chdir(tmp_path)  # isolate from any real workspace (merge gate)
         from codeframe.cli.pr_commands import pr_app
@@ -340,14 +301,10 @@ class TestPRMergeCommand:
             message="PR merged via rebase",
         )
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.get_pull_request = AsyncMock(return_value=mock_pr_details)
-            mock_gh.merge_pull_request = AsyncMock(return_value=merge_result)
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.get_pull_request.return_value = mock_pr_details
+            mock_gh.merge_pull_request.return_value = merge_result
 
             result = runner.invoke(pr_app, ["merge", "42", "--strategy", "rebase"])
 
@@ -360,22 +317,18 @@ class TestPRMergeCommand:
         from codeframe.cli.pr_commands import pr_app
         from codeframe.git.github_integration import GitHubAPIError
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.get_pull_request = AsyncMock(
-                side_effect=GitHubAPIError(404, "Not Found")
-            )
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.get_pull_request.side_effect = GitHubAPIError(404, "Not Found")
 
             result = runner.invoke(pr_app, ["merge", "9999"])
 
         assert result.exit_code != 0
         assert "not found" in result.output.lower() or "error" in result.output.lower()
 
-    def test_merge_pr_already_merged(self, mock_github_token, mock_pr_details, tmp_path, monkeypatch):
+    def test_merge_pr_already_merged(
+        self, mock_github_token, mock_pr_details, tmp_path, monkeypatch
+    ):
         """Merge PR that's already merged shows appropriate message."""
         monkeypatch.chdir(tmp_path)  # isolate from any real workspace (merge gate)
         from codeframe.cli.pr_commands import pr_app
@@ -393,18 +346,16 @@ class TestPRMergeCommand:
             base_branch="main",
         )
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.get_pull_request = AsyncMock(return_value=already_merged_pr)
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.get_pull_request.return_value = already_merged_pr
 
             result = runner.invoke(pr_app, ["merge", "42"])
 
-        # Should fail or show message that PR is already merged
-        assert "merged" in result.output.lower() or "closed" in result.output.lower()
+        assert result.exit_code == 0
+        assert "already merged" in result.output.lower()
+        # The whole point of the state check: never re-issue the merge.
+        mock_gh.merge_pull_request.assert_not_called()
 
 
 class TestPRMergeGateCLI:
@@ -447,39 +398,36 @@ class TestPRMergeGateCLI:
         )
         return workspace
 
-    def _mock_gh(self, mock_pr_details):
+    def _mock_gh(self, MockGH, mock_pr_details):
         from codeframe.git.github_integration import MergeResult
 
-        mock_gh = AsyncMock()
-        mock_gh.get_pull_request = AsyncMock(return_value=mock_pr_details)
-        mock_gh.merge_pull_request = AsyncMock(
-            return_value=MergeResult(sha="abc", merged=True, message="ok")
-        )
-        mock_gh.close = AsyncMock()
+        mock_gh = MockGH.return_value
+        mock_gh.get_pull_request.return_value = mock_pr_details
+        mock_gh.merge_pull_request.return_value = MergeResult(sha="abc", merged=True, message="ok")
         return mock_gh
 
-    def test_open_requirements_block_merge(self, mock_github_token, mock_pr_details, gated_workspace):
+    def test_open_requirements_block_merge(
+        self, mock_github_token, mock_pr_details, gated_workspace
+    ):
         from codeframe.cli.pr_commands import pr_app
 
-        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
-            mock_gh = self._mock_gh(mock_pr_details)
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = self._mock_gh(MockGH, mock_pr_details)
             result = runner.invoke(pr_app, ["merge", "42"])
 
         assert result.exit_code != 0
         assert "REQ-CLI-1" in result.output
         mock_gh.merge_pull_request.assert_not_called()
 
-    def test_override_with_reason_merges_and_records(self, mock_github_token, mock_pr_details, gated_workspace):
+    def test_override_with_reason_merges_and_records(
+        self, mock_github_token, mock_pr_details, gated_workspace
+    ):
         from codeframe.cli.pr_commands import pr_app
         from codeframe.core.proof.ledger import get_pr_merge_override
 
-        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
-            mock_gh = self._mock_gh(mock_pr_details)
-            MockGH.return_value = mock_gh
-            result = runner.invoke(
-                pr_app, ["merge", "42", "--override", "--reason", "hotfix"]
-            )
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = self._mock_gh(MockGH, mock_pr_details)
+            result = runner.invoke(pr_app, ["merge", "42", "--override", "--reason", "hotfix"])
 
         assert result.exit_code == 0
         mock_gh.merge_pull_request.assert_called_once()
@@ -488,47 +436,49 @@ class TestPRMergeGateCLI:
         assert record["reason"] == "hotfix"
         assert any(b["id"] == "REQ-CLI-1" for b in record["bypassed"])
 
-    def test_override_without_reason_rejected(self, mock_github_token, mock_pr_details, gated_workspace):
+    def test_override_without_reason_rejected(
+        self, mock_github_token, mock_pr_details, gated_workspace
+    ):
         from codeframe.cli.pr_commands import pr_app
 
-        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
-            mock_gh = self._mock_gh(mock_pr_details)
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = self._mock_gh(MockGH, mock_pr_details)
             result = runner.invoke(pr_app, ["merge", "42", "--override"])
 
         assert result.exit_code != 0
         mock_gh.merge_pull_request.assert_not_called()
 
-    def test_no_workspace_merges_normally(self, mock_github_token, mock_pr_details, tmp_path, monkeypatch):
+    def test_no_workspace_merges_normally(
+        self, mock_github_token, mock_pr_details, tmp_path, monkeypatch
+    ):
         monkeypatch.chdir(tmp_path)
         from codeframe.cli.pr_commands import pr_app
 
-        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
-            mock_gh = self._mock_gh(mock_pr_details)
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = self._mock_gh(MockGH, mock_pr_details)
             result = runner.invoke(pr_app, ["merge", "42"])
 
         assert result.exit_code == 0
         mock_gh.merge_pull_request.assert_called_once()
 
-    def test_failed_merge_writes_no_override_record(self, mock_github_token, mock_pr_details, gated_workspace):
+    def test_failed_merge_writes_no_override_record(
+        self, mock_github_token, mock_pr_details, gated_workspace
+    ):
         """Override audit must only exist for merges that actually happened."""
         from codeframe.cli.pr_commands import pr_app
         from codeframe.core.proof.ledger import get_pr_merge_override
         from codeframe.git.github_integration import MergeResult
 
-        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
-            mock_gh = self._mock_gh(mock_pr_details)
-            mock_gh.merge_pull_request = AsyncMock(
-                return_value=MergeResult(sha=None, merged=False, message="nope")
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = self._mock_gh(MockGH, mock_pr_details)
+            mock_gh.merge_pull_request.return_value = MergeResult(
+                sha=None, merged=False, message="nope"
             )
-            MockGH.return_value = mock_gh
-            result = runner.invoke(
-                pr_app, ["merge", "42", "--override", "--reason", "hotfix"]
-            )
+            result = runner.invoke(pr_app, ["merge", "42", "--override", "--reason", "hotfix"])
 
         assert result.exit_code != 0
         assert get_pr_merge_override(gated_workspace, 42) is None
+
 
 class TestPRCloseCommand:
     """Tests for 'codeframe pr close' command."""
@@ -537,14 +487,10 @@ class TestPRCloseCommand:
         """Close PR should call GitHub API."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.get_pull_request = AsyncMock(return_value=mock_pr_details)
-            mock_gh.close_pull_request = AsyncMock(return_value=True)
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.get_pull_request.return_value = mock_pr_details
+            mock_gh.close_pull_request.return_value = True
 
             result = runner.invoke(pr_app, ["close", "42"])
 
@@ -557,15 +503,9 @@ class TestPRCloseCommand:
         from codeframe.cli.pr_commands import pr_app
         from codeframe.git.github_integration import GitHubAPIError
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.get_pull_request = AsyncMock(
-                side_effect=GitHubAPIError(404, "Not Found")
-            )
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.get_pull_request.side_effect = GitHubAPIError(404, "Not Found")
 
             result = runner.invoke(pr_app, ["close", "9999"])
 
@@ -579,13 +519,9 @@ class TestPRStatusCommand:
         """Status should show PR for current branch if one exists."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.list_pull_requests = AsyncMock(return_value=[mock_pr_details])
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.list_pull_requests.return_value = [mock_pr_details]
 
             with patch(
                 "codeframe.cli.pr_commands.get_current_branch",
@@ -601,13 +537,9 @@ class TestPRStatusCommand:
         """Status when no PR exists for current branch."""
         from codeframe.cli.pr_commands import pr_app
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.list_pull_requests = AsyncMock(return_value=[])
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.list_pull_requests.return_value = []
 
             with patch(
                 "codeframe.cli.pr_commands.get_current_branch",
@@ -692,15 +624,9 @@ class TestErrorHandling:
         from codeframe.cli.pr_commands import pr_app
         from codeframe.git.github_integration import GitHubAPIError
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.list_pull_requests = AsyncMock(
-                side_effect=GitHubAPIError(500, "Internal Server Error")
-            )
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.list_pull_requests.side_effect = GitHubAPIError(500, "Internal Server Error")
 
             result = runner.invoke(pr_app, ["list"])
 
@@ -712,20 +638,16 @@ class TestErrorHandling:
         from codeframe.cli.pr_commands import pr_app
         from codeframe.git.github_integration import GitHubAPIError
 
-        with patch(
-            "codeframe.cli.pr_commands.GitHubIntegration"
-        ) as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.list_pull_requests = AsyncMock(
-                side_effect=GitHubAPIError(403, "rate limit exceeded")
-            )
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.list_pull_requests.side_effect = GitHubAPIError(403, "rate limit exceeded")
 
             result = runner.invoke(pr_app, ["list"])
 
         assert result.exit_code != 0
-        assert "rate" in result.output.lower() or "limit" in result.output.lower() or "error" in result.output.lower()
+        # The rate-limit branch has its own message (pr_commands.py); the
+        # generic "GitHub API Error" fallback must not satisfy this test.
+        assert "rate limit exceeded" in result.output.lower()
 
 
 class TestCliUsesWorkspaceResolution:
@@ -760,11 +682,9 @@ class TestCliUsesWorkspaceResolution:
             },
         )
 
-        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.list_pull_requests = AsyncMock(return_value=[])
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.list_pull_requests.return_value = []
 
             result = runner.invoke(pr_app, ["list"])
 
@@ -779,11 +699,9 @@ class TestCliUsesWorkspaceResolution:
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_env_token_12345")
         monkeypatch.setenv("GITHUB_REPO", "operator/ambient-repo")
 
-        with patch("codeframe.cli.pr_commands.GitHubIntegration") as MockGH:
-            mock_gh = AsyncMock()
-            mock_gh.list_pull_requests = AsyncMock(return_value=[])
-            mock_gh.close = AsyncMock()
-            MockGH.return_value = mock_gh
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            mock_gh = MockGH.return_value
+            mock_gh.list_pull_requests.return_value = []
 
             result = runner.invoke(pr_app, ["list"])
 
