@@ -32,11 +32,17 @@ DOC_FILES = [REPO_ROOT / "README.md", REPO_ROOT / "CLAUDE.md"] + sorted(
 # `codeframe/core/foo.py` and `--codeframe` from reading as invocations.
 INVOCATION = re.compile(r"(?<![\w./-])(?:cf|codeframe)((?:\s+[a-z][a-z0-9_|-]*)+)")
 
-# A subcommand name. Anything else (a flag, `<task_id>`, `TASK`) ends the path.
-# Underscores are allowed even though every command today is hyphenated: if this
-# rejected them, an underscored command name would silently end the walk instead
-# of being checked, which is the exact blind spot this test exists to close.
-SUBCOMMAND = re.compile(r"^[a-z][a-z0-9_-]*$")
+# The leading subcommand name in a word. Underscores are allowed even though
+# every command today is hyphenated: if this rejected them, an underscored
+# command name would silently end the walk instead of being checked, which is
+# the exact blind spot this test exists to close.
+#
+# It matches a PREFIX, not the whole word, so `stop<batch_id>` and `stop(x)`
+# both yield `stop`. INVOCATION gets that truncation for free from its per-word
+# charset; without it here the two extraction paths disagree about the same
+# content, and a phantom glued to a placeholder escapes the bare-command walk.
+# A word with no such prefix at all (`--flag`, `<task_id>`, `TASK`) ends the path.
+SUBCOMMAND = re.compile(r"^[a-z][a-z0-9_-]*")
 
 # The docs also name commands without the binary: checklist and roadmap entries
 # like ``- `work batch cancel` ✓ DONE``. Those went unchecked until GLM review on
@@ -62,12 +68,14 @@ def _unresolvable(root, words):
     node, path = root, []
     for word in words:
         subcommands = getattr(node, "commands", None)
-        if not subcommands or not SUBCOMMAND.match(word):
+        match = SUBCOMMAND.match(word) if subcommands else None
+        if not match:
             return None
-        if word not in subcommands:
-            return " ".join(path + [word])
-        node = subcommands[word]
-        path.append(word)
+        name = match.group(0)
+        if name not in subcommands:
+            return " ".join(path + [name])
+        node = subcommands[name]
+        path.append(name)
     return None
 
 
