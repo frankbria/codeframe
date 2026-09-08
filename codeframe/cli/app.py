@@ -6504,7 +6504,8 @@ def main() -> None:
     except UntrustedBaseURLError as e:
         # A deliberate refusal, not a crash: show the operator what was
         # blocked and how to proceed, without a traceback (#903).
-        print_error(e, prefix="Refusing to run:")
+        # the blank lines set this refusal apart from surrounding output
+        print_error(e, prefix="\nRefusing to run:", suffix="\n")
         # sys.exit, not typer.Exit: main() *is* the console-script entry point,
         # so there is no Click standalone loop above it to turn Exit into a
         # clean status — it would surface as a traceback under the message.
