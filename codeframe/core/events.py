@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Iterator, Optional
 
 from rich.console import Console
+from rich.markup import escape
 
 from codeframe.core.workspace import get_workspace, get_db_connection, Workspace
 
@@ -365,7 +366,9 @@ def print_event(event: Event) -> None:
         items = []
         for key in ["agent_event", "path", "task_id", "status", "name", "title"]:
             if key in event.payload:
-                items.append(f"{key}={event.payload[key]}")
+                # escape: payload values are user text (task titles, checkpoint
+                # names), and this line renders with markup enabled.
+                items.append(f"{key}={escape(str(event.payload[key]))}")
         if items:
             console.print(f" [dim]{' '.join(items)}[/dim]")
         else:

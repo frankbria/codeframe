@@ -50,7 +50,7 @@ from codeframe.cli.api_client import (
     get_api_base_url,
     is_insecure_transport,
 )
-from codeframe.cli.helpers import console
+from codeframe.cli.helpers import console, print_error
 from codeframe.core.credentials import (
     CredentialManager,
     CredentialProvider,
@@ -528,7 +528,7 @@ def whoami():
         raise typer.Exit(1)
 
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -680,7 +680,7 @@ def setup_credential(
     try:
         manager.set_credential(provider_enum, value)
     except CredentialStoreUnreadableError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     console.print(f"[green]Successfully stored credential for {provider_enum.display_name}[/green]")
 
@@ -861,7 +861,7 @@ def rotate_credential(
     try:
         manager.rotate_credential(provider_enum, value)
     except CredentialStoreUnreadableError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     console.print(f"[green]Successfully rotated credential for {provider_enum.display_name}[/green]")
 
@@ -983,7 +983,7 @@ def api_key_create(
         console.print("[yellow]Save this key securely - it will not be shown again.[/yellow]\n")
 
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except Exception as e:
         logger.debug(f"API key creation error: {e}")
@@ -1188,7 +1188,7 @@ def set_password(
     try:
         _set_user_password(get_db_for_cli(), email, password)
     except LookupError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
     console.print(f"[green]✓ Password updated for {email}[/green]")
@@ -1210,7 +1210,7 @@ def deactivate_user(
     try:
         _set_user_active(get_db_for_cli(), email, False)
     except LookupError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
     console.print(f"[green]✓ {email} deactivated; its API keys no longer authenticate[/green]")
@@ -1229,7 +1229,7 @@ def activate_user(
     try:
         _set_user_active(get_db_for_cli(), email, True)
     except LookupError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
     console.print(f"[green]✓ {email} activated[/green]")

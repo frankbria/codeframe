@@ -11,7 +11,10 @@ from typing import Optional
 import click
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
+
+from codeframe.cli.helpers import print_error
 
 console = Console()
 
@@ -63,7 +66,7 @@ def capture(
     try:
         workspace = get_workspace(workspace_path)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
     # Interactive prompts for missing fields
@@ -108,7 +111,7 @@ def capture(
         source_issue=source_issue,
     )
 
-    console.print(f"\n[green]✓[/green] Created [bold]{req.id}[/bold]: {req.title}")
+    console.print(f"\n[green]✓[/green] Created [bold]{req.id}[/bold]: {escape(req.title)}")
     console.print(f"  Glitch type: [cyan]{req.glitch_type.value if req.glitch_type else 'unknown'}[/cyan]")
     console.print(f"  Obligations: {', '.join(o.gate.value for o in req.obligations)}")
     console.print(f"  Scope files: {', '.join(req.scope.files) or 'none'}")
@@ -167,7 +170,7 @@ def run(
     try:
         workspace = get_workspace(workspace_path)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
     gate_filter = None
@@ -319,7 +322,7 @@ def list_reqs(
     try:
         workspace = get_workspace(workspace_path)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
     status_filter = None
@@ -353,7 +356,7 @@ def list_reqs(
 
         table.add_row(
             req.id,
-            req.title[:50],
+            escape(req.title[:50]),
             f"[{sev_color}]{req.severity.value}[/{sev_color}]",
             f"[{status_color}]{req.status.value}[/{status_color}]",
             ", ".join(o.gate.value for o in req.obligations),
@@ -381,15 +384,15 @@ def show(
     try:
         workspace = get_workspace(workspace_path)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
     req = ledger.get_requirement(workspace, req_id)
     if not req:
-        console.print(f"[red]Error:[/red] Requirement {req_id} not found.")
+        console.print(f"[red]Error:[/red] Requirement {escape(req_id)} not found.")
         raise typer.Exit(1)
 
-    console.print(f"\n[bold]{req.id}[/bold]: {req.title}")
+    console.print(f"\n[bold]{req.id}[/bold]: {escape(req.title)}")
     console.print(f"  Status: {req.status.value}")
     console.print(f"  Severity: {req.severity.value}")
     console.print(f"  Source: {req.source.value}")
@@ -454,7 +457,7 @@ def waive(
     try:
         workspace = get_workspace(workspace_path)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
     expiry_date = None
@@ -473,7 +476,7 @@ def waive(
         if expiry_date:
             console.print(f"  Expires: {expiry_date}")
     else:
-        console.print(f"[red]Error:[/red] Requirement {req_id} not found.")
+        console.print(f"[red]Error:[/red] Requirement {escape(req_id)} not found.")
         raise typer.Exit(1)
 
 
@@ -495,7 +498,7 @@ def status_cmd(
     try:
         workspace = get_workspace(workspace_path)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
     # Check for expired waivers first
