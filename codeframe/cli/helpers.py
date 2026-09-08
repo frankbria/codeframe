@@ -18,5 +18,10 @@ def print_error(exc: object, prefix: str = "Error:", suffix: str = "") -> None:
     title, a filename, a provider name. Rendering it raw made the `except`
     handler itself raise ``MarkupError``, so a caught error became an uncaught
     crash (#1054). Escaping here means the 91 call sites cannot get it wrong.
+
+    ``prefix``/``suffix`` are rendered as markup, so they must be static,
+    trusted strings — never user input, an exception message, or anything
+    derived from either. They exist to reproduce a handful of bespoke messages
+    the migration would otherwise have reworded; only ``exc`` is escaped.
     """
     console.print(f"[red]{prefix}[/red] {escape(str(exc))}{suffix}")
