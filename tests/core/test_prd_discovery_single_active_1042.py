@@ -144,7 +144,13 @@ class TestMigrationToleratesExistingDuplicates:
         _ensure_discovery_schema(workspace)
         conn = get_db_connection(workspace)
         conn.execute(f"DROP INDEX IF EXISTS {ACTIVE_INDEX}")
-        for suffix, updated in (("old", "2020-01-01"), ("mid", "2021-01-01"), ("new", "2022-01-01")):
+        # created_at ordering is deliberately the REVERSE of updated_at ordering,
+        # so a backfill that kept the newest by the wrong column would fail here.
+        for suffix, created, updated in (
+            ("old", "2022-01-01", "2020-01-01"),
+            ("mid", "2021-01-01", "2021-01-01"),
+            ("new", "2020-01-01", "2022-01-01"),
+        ):
             conn.execute(
                 """
                 INSERT INTO discovery_sessions
@@ -152,7 +158,7 @@ class TestMigrationToleratesExistingDuplicates:
                      coverage, blocker_id, is_complete, created_at, updated_at)
                 VALUES (?, ?, 'discovering', '[]', 'q?', NULL, NULL, 0, ?, ?)
                 """,
-                (f"session-{suffix}", workspace.id, updated, updated),
+                (f"session-{suffix}", workspace.id, created, updated),
             )
         conn.commit()
         conn.close()
@@ -171,10 +177,10 @@ class TestMigrationToleratesExistingDuplicates:
         assert index is not None, "unique index must exist after reconciliation"
 
     @patch("codeframe.core.prd_discovery.AnthropicProvider")
-    def test_duplicates_in_other_workspaces_are_untouched(
+    def test_reconciliation_keeps_one_active_row_per_workspace(
         self, mock_provider_class, tmp_path: Path, workspace: Workspace
     ):
-        """Reconciliation is per workspace — it keeps one active row for each."""
+        """Reconciliation partitions by workspace rather than reducing to one row."""
         from codeframe.core.prd_discovery import _ensure_discovery_schema
 
         mock_provider_class.return_value = _provider_returning()
@@ -335,3 +341,184 @@ class TestResumeIntoATakenSlot:
             abandoned._save_session()
 
         assert _active_rows(workspace) == [holder.session_id]
+
+
+class TestSubmitAnswerHasTheSameWindow:
+    """`submit_answer` validates against state read before a multi-second LLM
+    call, so a `/reset` can land in between — exactly the `/start` window."""
+
+    def _session_with(self, workspace: Workspace, provider: MagicMock):
+        from codeframe.core.prd_discovery import PrdDiscoverySession
+
+        with patch(
+            "codeframe.core.prd_discovery.AnthropicProvider", return_value=_provider_returning()
+        ):
+            session = PrdDiscoverySession(workspace, api_key="test-key")
+            session.start_discovery()
+        session._llm_provider = provider
+        return session
+
+    def _answer_provider(self, workspace: Workspace, on_first_call) -> MagicMock:
+        """Adequate-answer validation, then a next question; hook the first call."""
+        provider = MagicMock()
+        replies = ['{"adequate": true, "reason": "ok"}', "What else?"]
+        calls = {"n": 0}
+
+        def complete(*_args, **_kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                on_first_call()
+            response = MagicMock()
+            response.content = replies[min(calls["n"] - 1, len(replies) - 1)]
+            response.input_tokens, response.output_tokens = 10, 5
+            return response
+
+        provider.complete.side_effect = complete
+        return provider
+
+    def test_reset_during_answer_is_not_undone(self, workspace: Workspace):
+        from codeframe.core.prd_discovery import (
+            SessionResetError,
+            get_active_session,
+            reset_discovery,
+        )
+
+        session = self._session_with(
+            workspace, self._answer_provider(workspace, lambda: reset_discovery(workspace))
+        )
+
+        with pytest.raises(SessionResetError):
+            session.submit_answer("A todo app for teams, offline-first.")
+
+        assert _active_rows(workspace) == []
+        assert get_active_session(workspace) is None
+
+    def test_a_competing_session_does_not_produce_a_raw_sql_error(
+        self, workspace: Workspace
+    ):
+        """The regression this guards: an unguarded UPDATE moves the reset row
+        back into the index's active set, and the route reports the SQL text."""
+        from codeframe.core.prd_discovery import (
+            PrdDiscoverySession,
+            SessionResetError,
+            reset_discovery,
+        )
+
+        def reset_then_start_a_new_one():
+            reset_discovery(workspace)
+            with patch(
+                "codeframe.core.prd_discovery.AnthropicProvider",
+                return_value=_provider_returning(),
+            ):
+                PrdDiscoverySession(workspace, api_key="test-key").start_discovery()
+
+        session = self._session_with(
+            workspace, self._answer_provider(workspace, reset_then_start_a_new_one)
+        )
+
+        with pytest.raises(SessionResetError):
+            session.submit_answer("A todo app for teams, offline-first.")
+
+        assert len(_active_rows(workspace)) == 1
+
+
+class TestPauseDoesNotOrphanABlocker:
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_a_refused_pause_creates_no_blocker(
+        self, mock_provider_class, workspace: Workspace
+    ):
+        """The state write must come first: a blocker created before a write
+        that gets refused is orphaned, and its resume hint never reaches anyone."""
+        from codeframe.core import blockers
+        from codeframe.core.prd_discovery import (
+            ActiveSessionExistsError,
+            PrdDiscoverySession,
+            reset_discovery,
+        )
+
+        mock_provider_class.return_value = _provider_returning()
+
+        stale = PrdDiscoverySession(workspace, api_key="test-key")
+        stale.start_discovery()
+
+        # The slot changes hands while `stale` is still held in memory.
+        reset_discovery(workspace, session_id=stale.session_id)
+        holder = PrdDiscoverySession(workspace, api_key="test-key")
+        holder.start_discovery()
+
+        before = len(blockers.list_all(workspace))
+        with pytest.raises(ActiveSessionExistsError):
+            stale.pause_discovery("user interrupted")
+
+        assert len(blockers.list_all(workspace)) == before, "orphaned blocker created"
+        assert _active_rows(workspace) == [holder.session_id]
+
+
+class TestMigrationSurvivesLegacyRows:
+    def _seed(self, workspace: Workspace, rows):
+        conn = get_db_connection(workspace)
+        conn.execute(f"DROP INDEX IF EXISTS {ACTIVE_INDEX}")
+        for session_id, is_complete, updated in rows:
+            conn.execute(
+                """
+                INSERT INTO discovery_sessions
+                    (id, workspace_id, state, qa_history, current_question,
+                     coverage, blocker_id, is_complete, created_at, updated_at)
+                VALUES (?, ?, 'discovering', '[]', 'q?', NULL, NULL, ?, ?, ?)
+                """,
+                (session_id, workspace.id, is_complete, updated, updated),
+            )
+        conn.commit()
+        conn.close()
+
+    def test_a_null_is_complete_row_is_reconciled_not_skipped(self, workspace: Workspace):
+        """`is_complete = 0` is *unknown* for NULL, so a bare `= 0` predicate
+        leaves a legacy row outside both the backfill and the index."""
+        from codeframe.core.prd_discovery import _ensure_discovery_schema
+
+        _ensure_discovery_schema(workspace)
+        self._seed(workspace, [("legacy", None, "2020-01-01"), ("live", 0, "2022-01-01")])
+
+        _ensure_discovery_schema(workspace)
+
+        conn = get_db_connection(workspace)
+        active = conn.execute(
+            "SELECT id FROM discovery_sessions "
+            "WHERE state != 'completed' AND COALESCE(is_complete, 0) = 0"
+        ).fetchall()
+        conn.close()
+        assert [row[0] for row in active] == ["live"]
+
+    def test_a_null_id_row_does_not_brick_discovery(
+        self, workspace: Workspace, monkeypatch: pytest.MonkeyPatch
+    ):
+        """SQLite permits NULL in a TEXT PRIMARY KEY, and one NULL makes
+        `id NOT IN (...)` NULL for every row — the backfill would no-op and the
+        index build would then fail on every discovery call, forever."""
+        from codeframe.core.prd_discovery import _ensure_discovery_schema, get_active_session
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")  # get_active_session (#917)
+
+        _ensure_discovery_schema(workspace)
+        conn = get_db_connection(workspace)
+        conn.execute(f"DROP INDEX IF EXISTS {ACTIVE_INDEX}")
+        conn.execute(
+            "INSERT INTO discovery_sessions (id, workspace_id, state, qa_history,"
+            " current_question, coverage, blocker_id, is_complete, created_at, updated_at)"
+            " VALUES (NULL, ?, 'discovering', '[]', 'q?', NULL, NULL, 0,"
+            " '2020-01-01', '2020-01-01')",
+            (workspace.id,),
+        )
+        conn.commit()
+        conn.close()
+        self._seed(workspace, [("live", 0, "2022-01-01")])
+
+        _ensure_discovery_schema(workspace)  # must not raise
+
+        conn = get_db_connection(workspace)
+        index = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?", (ACTIVE_INDEX,)
+        ).fetchone()
+        conn.close()
+        assert index is not None, "index must still build over a NULL-id row"
+        assert get_active_session(workspace) is not None, "discovery must still work"

@@ -31,6 +31,20 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _is_unique_violation(exc: sqlite3.IntegrityError) -> bool:
+    """True only for a UNIQUE-constraint failure.
+
+    Matching on the message would also catch a PRIMARY KEY collision, which is a
+    different bug and must not be reported as "a session is already active".
+    ``sqlite_errorname`` is exact; it exists on the Python floor this project
+    targets (3.11+), so the message check is only a belt-and-braces fallback.
+    """
+    name = getattr(exc, "sqlite_errorname", None)
+    if name is not None:
+        return name == "SQLITE_CONSTRAINT_UNIQUE"
+    return "UNIQUE constraint failed" in str(exc)
+
+
 class DiscoveryError(Exception):
     """Base exception for discovery errors."""
 
@@ -350,7 +364,7 @@ class PrdDiscoverySession:
         except sqlite3.IntegrityError as exc:
             self.session_id = None
             self.state = SessionState.IDLE
-            if "UNIQUE" not in str(exc):
+            if not _is_unique_violation(exc):
                 # A foreign-key or CHECK violation is a different bug; reporting
                 # it as "already active" would send the caller somewhere useless.
                 raise
@@ -498,7 +512,7 @@ Be warm and encouraging. Just output the question, nothing else."""
             if validation.get("follow_up"):
                 # Replace current question with follow-up
                 self._current_question = validation["follow_up"]
-                self._save_session()
+                self._require_still_active()
                 return {
                     "accepted": False,
                     "feedback": validation["reason"],
@@ -528,7 +542,7 @@ Be warm and encouraging. Just output the question, nothing else."""
         else:
             self._current_question = next_question
 
-        self._save_session()
+        self._require_still_active()
 
         return {
             "accepted": True,
@@ -673,6 +687,13 @@ Be warm and encouraging. Just output the question, nothing else."""
             Blocker ID for resume
         """
         self.state = SessionState.PAUSED
+
+        # Write the state change BEFORE creating the blocker. A reset can have
+        # completed this row and a new session claimed the slot while discovery
+        # was running, in which case this write is refused — and a blocker
+        # created first would be left orphaned, with the session row never
+        # recording its id and the user never seeing the resume hint (#1042).
+        self._save_session()
 
         question = (
             f"Discovery session paused: {reason}\n"
@@ -873,6 +894,25 @@ Follow the template structure exactly. This PRD should be sufficient to generate
         conn.commit()
         conn.close()
 
+    def _require_still_active(self) -> None:
+        """Save, but only while this session still holds the workspace's slot.
+
+        ``submit_answer`` validates and generates against state it read *before*
+        a multi-second LLM call, so a ``/reset`` can land in between — the same
+        window ``start_discovery`` has. Writing unconditionally would resurrect
+        the row the reset completed, and if a new session had claimed the slot
+        meanwhile the UPDATE would hit the unique index and surface as a raw
+        SQL 500 (#1042).
+
+        Raises:
+            SessionResetError: If the session was reset while the call ran.
+        """
+        if not self._save_session(require_active=True):
+            self.state = SessionState.COMPLETED
+            raise SessionResetError(
+                "Discovery session was reset while this answer was being processed."
+            )
+
     def _claim_session(self) -> None:
         """INSERT the session row, claiming the workspace's active-session slot.
 
@@ -950,6 +990,16 @@ Follow the template structure exactly. This PRD should be sufficient to generate
             cursor = conn.execute(sql, params)
             conn.commit()
             return cursor.rowcount > 0
+        except sqlite3.IntegrityError as exc:
+            # Reachable from resume_discovery()/pause_discovery(), which move a
+            # row back into the active set: if the workspace claimed the slot in
+            # the meantime, that write is refused. Name the reason rather than
+            # letting a raw "UNIQUE constraint failed" reach the CLI.
+            if not _is_unique_violation(exc):
+                raise
+            raise ActiveSessionExistsError(
+                "Another discovery session is already active for this workspace."
+            ) from exc
         finally:
             conn.close()
 
@@ -1006,27 +1056,49 @@ def _ensure_discovery_schema(workspace: Workspace) -> None:
         ("idx_discovery_sessions_one_active",),
     ).fetchone()
     if not index_exists:
+        # `is_complete` is nullable (INTEGER DEFAULT 0), and `is_complete = 0` is
+        # *unknown* for a NULL, not true — a legacy NULL row would fall outside
+        # both the backfill and the index, leaving two rows the route considers
+        # active with nothing to stop it. COALESCE in both places, identically.
+        #
+        # NOT EXISTS rather than `id NOT IN (...)`: SQLite permits NULL in a TEXT
+        # PRIMARY KEY, and a single NULL id makes `NOT IN` evaluate to NULL for
+        # every row — the backfill would update nothing and the index build would
+        # then fail on the duplicates it was supposed to clear.
         cursor.execute(
             """
             UPDATE discovery_sessions
             SET state = 'completed', updated_at = ?
-            WHERE state != 'completed' AND is_complete = 0
-              AND id NOT IN (
-                  SELECT id FROM (
-                      SELECT id, MAX(updated_at)
+            WHERE state != 'completed' AND COALESCE(is_complete, 0) = 0
+              AND NOT EXISTS (
+                  SELECT 1 FROM (
+                      SELECT id AS keep_id, MAX(updated_at)
                       FROM discovery_sessions
-                      WHERE state != 'completed' AND is_complete = 0
+                      WHERE state != 'completed' AND COALESCE(is_complete, 0) = 0
                       GROUP BY workspace_id
-                  )
+                  ) AS newest
+                  WHERE newest.keep_id IS discovery_sessions.id
               )
             """,
             (_utc_now().isoformat(),),
         )
-        cursor.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_discovery_sessions_one_active "
-            "ON discovery_sessions(workspace_id) "
-            "WHERE state != 'completed' AND is_complete = 0"
-        )
+        try:
+            cursor.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_discovery_sessions_one_active "
+                "ON discovery_sessions(workspace_id) "
+                "WHERE state != 'completed' AND COALESCE(is_complete, 0) = 0"
+            )
+        except sqlite3.DatabaseError:
+            # This function runs on every discovery entry point, so letting the
+            # index build propagate would brick discovery for the workspace
+            # permanently, with no recovery path. Losing the constraint is the
+            # status quo ante; losing discovery is worse. Retried next call.
+            logger.warning(
+                "Could not build the single-active-session index for workspace %s; "
+                "concurrent discovery starts are unguarded until this succeeds.",
+                workspace.id,
+                exc_info=True,
+            )
 
     conn.commit()
     conn.close()

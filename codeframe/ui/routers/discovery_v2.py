@@ -161,7 +161,15 @@ async def start_discovery(
         # The check above is a fast path, not a guarantee: two concurrent starts
         # both pass it and the database decides the winner (#1042). Report the
         # loser exactly as the pre-check would have.
-        winner = await run_in_threadpool(prd_discovery.get_active_session, workspace)
+        try:
+            winner = await run_in_threadpool(prd_discovery.get_active_session, workspace)
+        except Exception:
+            # get_active_session builds an LLM provider, so it can raise
+            # (NoApiKeyError, UntrustedBaseURLError). An exception raised inside
+            # an except block is not caught by its own try, so that would escape
+            # as an unlogged 500 in place of the 400 the caller has earned.
+            logger.warning("Could not identify the winning session", exc_info=True)
+            winner = None
         raise _already_active(
             winner.session_id if winner else None,
             winner.answered_count if winner else 0,

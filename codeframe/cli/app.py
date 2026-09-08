@@ -1801,17 +1801,20 @@ def prd_generate(
                     active
                     and active.answered_count > 0
                     and typer.confirm(
-                        f"Found incomplete session with {active.answered_count} answers. Resume?"
+                        f"Found incomplete session with {active.answered_count} answers. "
+                        "Resume? (declining abandons it)"
                     )
                 ):
                     session = active
                     console.print("[green]✓[/green] Resuming previous session")
                 else:
-                    if active:
+                    if active and not active.is_complete():
                         # Starting fresh abandons the active session. Say so to
                         # the database: a workspace holds at most one active
                         # session, so start_discovery() would otherwise be
-                        # refused outright (#1042).
+                        # refused outright (#1042). A session whose Q&A is
+                        # finished does NOT hold the slot, and resetting it
+                        # would destroy a PRD the user can still generate.
                         reset_discovery(workspace, session_id=active.session_id)
                     session = PrdDiscoverySession(workspace)
                     session.start_discovery()
