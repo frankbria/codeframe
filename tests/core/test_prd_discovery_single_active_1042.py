@@ -302,3 +302,36 @@ class TestUniqueIndexIsEnforcedInTheDatabase:
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(insert, ("second", workspace.id))
         conn.close()
+
+
+class TestResumeIntoATakenSlot:
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_resume_reports_the_conflict_rather_than_a_raw_sqlite_error(
+        self, mock_provider_class, workspace: Workspace
+    ):
+        """resume_discovery flips a session back to `discovering`.
+
+        If the workspace claimed its slot meanwhile, that write is refused —
+        the caller should learn why, not read "UNIQUE constraint failed".
+        """
+        from codeframe.core.prd_discovery import (
+            ActiveSessionExistsError,
+            PrdDiscoverySession,
+            SessionState,
+        )
+
+        mock_provider_class.return_value = _provider_returning()
+
+        abandoned = PrdDiscoverySession(workspace, api_key="test-key")
+        abandoned.start_discovery()
+        abandoned.state = SessionState.COMPLETED
+        abandoned._save_session()
+
+        holder = PrdDiscoverySession(workspace, api_key="test-key")
+        holder.start_discovery()
+
+        abandoned.state = SessionState.DISCOVERING
+        with pytest.raises(ActiveSessionExistsError):
+            abandoned._save_session()
+
+        assert _active_rows(workspace) == [holder.session_id]
