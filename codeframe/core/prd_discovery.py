@@ -688,12 +688,15 @@ Be warm and encouraging. Just output the question, nothing else."""
         """
         self.state = SessionState.PAUSED
 
-        # Write the state change BEFORE creating the blocker. A reset can have
-        # completed this row and a new session claimed the slot while discovery
-        # was running, in which case this write is refused — and a blocker
-        # created first would be left orphaned, with the session row never
-        # recording its id and the user never seeing the resume hint (#1042).
-        self._save_session()
+        # Write the state change BEFORE creating the blocker, and require the row
+        # to still be non-completed. A `/reset` can have landed while discovery
+        # was running, and an unconditional write would flip that row back to
+        # `paused` — resurrecting the session the user just abandoned. The unique
+        # index alone does not catch this: it only fires once a *replacement*
+        # session holds the slot (#1042). Creating the blocker first would also
+        # orphan it here, leaving the session row with no `blocker_id` and the
+        # user with no resume hint.
+        self._require_still_active()
 
         question = (
             f"Discovery session paused: {reason}\n"
@@ -705,7 +708,11 @@ Be warm and encouraging. Just output the question, nothing else."""
             self.workspace, question=question, task_id=None, created_by="system"
         )
         self._blocker_id = blocker.id
-        self._save_session()
+        # Guarded for the same reason. A reset landing between these two writes
+        # leaves the blocker open with nothing pointing at it — but that window
+        # is the microseconds between two local writes, not the minutes of an
+        # LLM call, and there is no blocker-delete to unwind it with.
+        self._require_still_active()
 
         logger.info(f"Session paused with blocker {blocker.id}")
         return blocker.id
@@ -897,8 +904,8 @@ Follow the template structure exactly. This PRD should be sufficient to generate
     def _require_still_active(self) -> None:
         """Save, but only while this session still holds the workspace's slot.
 
-        ``submit_answer`` validates and generates against state it read *before*
-        a multi-second LLM call, so a ``/reset`` can land in between — the same
+        ``submit_answer`` and ``pause_discovery`` act on state read *before* a
+        multi-second LLM call, so a ``/reset`` can land in between — the same
         window ``start_discovery`` has. Writing unconditionally would resurrect
         the row the reset completed, and if a new session had claimed the slot
         meanwhile the UPDATE would hit the unique index and surface as a raw
@@ -910,7 +917,7 @@ Follow the template structure exactly. This PRD should be sufficient to generate
         if not self._save_session(require_active=True):
             self.state = SessionState.COMPLETED
             raise SessionResetError(
-                "Discovery session was reset while this answer was being processed."
+                f"Discovery session {self.session_id} was reset and can no longer be updated."
             )
 
     def _claim_session(self) -> None:

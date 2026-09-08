@@ -431,8 +431,8 @@ class TestPauseDoesNotOrphanABlocker:
         that gets refused is orphaned, and its resume hint never reaches anyone."""
         from codeframe.core import blockers
         from codeframe.core.prd_discovery import (
-            ActiveSessionExistsError,
             PrdDiscoverySession,
+            SessionResetError,
             reset_discovery,
         )
 
@@ -447,7 +447,7 @@ class TestPauseDoesNotOrphanABlocker:
         holder.start_discovery()
 
         before = len(blockers.list_all(workspace))
-        with pytest.raises(ActiveSessionExistsError):
+        with pytest.raises(SessionResetError):
             stale.pause_discovery("user interrupted")
 
         assert len(blockers.list_all(workspace)) == before, "orphaned blocker created"
@@ -522,3 +522,35 @@ class TestMigrationSurvivesLegacyRows:
         conn.close()
         assert index is not None, "index must still build over a NULL-id row"
         assert get_active_session(workspace) is not None, "discovery must still work"
+
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_pause_does_not_resurrect_a_reset_session(
+        self, mock_provider_class, workspace: Workspace
+    ):
+        """The unique index only fires once a *replacement* holds the slot.
+
+        With no replacement, an unconditional pause write matches the completed
+        row and flips it back to `paused` — undoing the reset and leaving the
+        abandoned session active again.
+        """
+        from codeframe.core import blockers
+        from codeframe.core.prd_discovery import (
+            PrdDiscoverySession,
+            SessionResetError,
+            get_active_session,
+            reset_discovery,
+        )
+
+        mock_provider_class.return_value = _provider_returning()
+
+        session = PrdDiscoverySession(workspace, api_key="test-key")
+        session.start_discovery()
+        reset_discovery(workspace, session_id=session.session_id)
+
+        before = len(blockers.list_all(workspace))
+        with pytest.raises(SessionResetError):
+            session.pause_discovery("user interrupted")
+
+        assert _active_rows(workspace) == []
+        assert get_active_session(workspace) is None
+        assert len(blockers.list_all(workspace)) == before
