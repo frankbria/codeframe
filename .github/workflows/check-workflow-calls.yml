@@ -1,0 +1,48 @@
+name: Check workflow calls
+
+# Guards the two ways a reusable-workflow call can be misconfigured so that it
+# never runs and never says so (frankbria/glm-review#9):
+#
+#   1. A calling job granting LESS than the called workflow declares. GitHub
+#      refuses the run before any job exists, so it is a `startup_failure` with
+#      no log and no annotation naming the missing scope. Listing a
+#      `permissions:` block sets every scope you did NOT list to `none`, so the
+#      denial never appears in the caller's own text.
+#
+#   2. A caller `concurrency:` group that can expand to the same string as the
+#      callee's. The callee joins that group while its parent still holds it and
+#      cancels the parent on queue — a sibling repo had a run end in 2 seconds
+#      having started no jobs at all. Those groups were not identical text; they
+#      merely expanded the same, so the checker compares possible expansions.
+#
+# This repo's caller is correct today — the guard is preventive. It cannot live
+# inside review.yml: in both failures that workflow never starts, so a guard
+# inside it would never run either.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+  # Also on direct pushes to main: a workflow edit landing there is otherwise
+  # never checked, and no later PR re-checks it unless that PR happens to touch
+  # .github/workflows/**. Reports after the fact rather than blocking, which is
+  # still the difference between silence and a red mark.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+  # Neither trigger fires when the *upstream callee* changes its declared
+  # permissions, since no push or PR here touches that.
+  workflow_dispatch:
+
+jobs:
+  check:
+    uses: frankbria/glm-review/.github/workflows/check-workflow-calls.yml@21fea324f518b964919709eebbbb9f5b3acde489 # main @ 2026-09-08
+    with:
+      # Same commit as the workflow above: the reusable workflow and the checker
+      # script it runs live in one repo, and leaving the script on main while the
+      # workflow is pinned reintroduces the pin-vs-content drift this guard
+      # exists to catch.
+      guard_ref: 21fea324f518b964919709eebbbb9f5b3acde489
+    permissions:
+      contents: read
