@@ -11,12 +11,14 @@ Four separate problems:
    taught it, exposing keys through /proc/<pid>/cmdline and shell history.
 3. Task titles and blocker text were interpolated into Rich-rendered output with
    markup enabled, so a title containing '[/b]' raised MarkupError and crashed
-   `cf tasks list` and the TUI.
+   `cf tasks list` and the TUI. That half now lives in
+   ``test_rich_hostile_data_1054.py``, which runs the commands against hostile
+   text instead of scanning the source for free-text field names (#1054) — the
+   scanner was too narrow four times in one review cycle.
 4. README.md and CLAUDE.md advertised `cf tasks show <id>`, which did not exist.
 """
 
 import inspect
-import re
 from pathlib import Path
 
 import pytest
@@ -30,16 +32,6 @@ from codeframe.core.workspace import create_or_load_workspace
 pytestmark = pytest.mark.v2
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-
-#: Titles that are valid user input and also valid-looking Rich markup.
-HOSTILE_TITLES = [
-    "Fix the [/b] parser",
-    "Support [bold] tags",
-    "Handle [/] gracefully",
-    "Array indexing a[0] and b[1]",
-    "[red]not actually markup[/red]",
-]
-
 
 @pytest.fixture
 def workspace(tmp_path):
@@ -121,147 +113,6 @@ class TestCredentialsStayOffArgv:
         assert "--value sk-ant-" not in doc
         assert "-v ghp_" not in doc
         assert "--value-stdin" in doc, "the safe alternative must be shown"
-
-
-class TestRichMarkupIsEscaped:
-    """AC3 — a title containing '[/b]' must render, not raise."""
-
-    @pytest.mark.parametrize("title", HOSTILE_TITLES)
-    def test_tasks_list_renders_a_hostile_title(self, workspace, title, tmp_path):
-        tasks.create(workspace, title=title, description="d", status=TaskStatus.READY)
-
-        result = CliRunner().invoke(app, ["tasks", "list", "--workspace", str(tmp_path)])
-
-        assert result.exception is None, f"{title!r} crashed: {result.exception!r}"
-        assert result.exit_code == 0
-
-    @pytest.mark.parametrize("title", HOSTILE_TITLES)
-    def test_tasks_show_renders_a_hostile_title(self, workspace, title, tmp_path):
-        task = tasks.create(
-            workspace, title=title, description=f"see {title}", status=TaskStatus.READY
-        )
-
-        result = CliRunner().invoke(
-            app, ["tasks", "show", task.id[:8], "--workspace", str(tmp_path)]
-        )
-
-        assert result.exception is None, f"{title!r} crashed: {result.exception!r}"
-        assert result.exit_code == 0
-
-    @pytest.mark.parametrize(
-        "module",
-        [
-            "codeframe/cli/app.py",
-            # The TUI renders the same user text through RichLog/DataTable and
-            # was invisible to the first version of this scanner, which read only
-            # cli/app.py — the PR bot found req.title unescaped there.
-            "codeframe/tui/app.py",
-        ],
-    )
-    def test_no_unescaped_user_text_reaches_rich_output(self, module):
-        """Scanner, not a point check: a new render of user data should fail the
-        build rather than wait to be found in review.
-
-        Operates on whole *statements*, not lines. The line-based version missed
-        `log.write(\n    f"... {req.title} ...")` in the TUI because the call and
-        the f-string sit on different lines — which is how the reviewer found two
-        sites the scanner had just declared clean.
-        """
-        source = (REPO_ROOT / module).read_text()
-
-        # Join physical lines into logical ones by tracking paren depth. The
-        # line-based version missed `log.write(\n    f"... {req.title} ...")` in
-        # the TUI because the call and the f-string sit on different lines —
-        # which is how the reviewer found two sites the scanner had just
-        # declared clean. (Simple depth counting, not tokenize: 3.12 splits
-        # f-strings into separate tokens and the brace never survives.)
-        statements, buf, depth = [], "", 0
-        for line in source.splitlines():
-            stripped = line.strip()
-            buf = f"{buf} {stripped}" if buf else stripped
-            depth += line.count("(") - line.count(")")
-            if depth <= 0:
-                statements.append(buf)
-                buf, depth = "", 0
-
-        # A denylist of free-text FIELD names — deliberately, after trying the
-        # alternatives. Enumerating variable names failed (missed 17 sites);
-        # deny-by-default on every attribute over-fires on 89 statements that
-        # interpolate timestamps, counts and enum accessors, which would be
-        # churn rather than safety. This list covers the free-prose fields that
-        # actually exist in this codebase; a real lint rule is the durable
-        # answer and is filed as a follow-up.
-        FREE_TEXT = (
-            "title|description|question|answer|label|recommendation|message|"
-            "output|error|name|summary|content|text|reason|stderr|stdout|"
-            "source_node_title|feedback|detail|hint|notes"
-        )
-        # The field may appear ANYWHERE inside the interpolation, not only as a
-        # bare `{obj.field}` — `{', '.join(amb.questions)}` was the fifth gap
-        # found in this review cycle. Match `{...}` spans, then look inside.
-        interpolation = re.compile(r"\{[^{}]*\}")
-        # `s?`: the attribute is often plural (`amb.questions`), and \b after a
-        # singular name refuses to match it — which is why the reviewer found
-        # `', '.join(amb.questions)` still unescaped.
-        free_field = re.compile(r"\.(?:" + FREE_TEXT + r")s?\b")
-
-        def _has_unescaped_field(statement: str) -> bool:
-            return any(
-                free_field.search(span) and "escape(" not in span
-                for span in interpolation.findall(statement)
-            )
-        renders = ("console.print", "log.write", "add_row")
-
-        # A bare loop variable (`for q in amb.questions: ... {q}`) carries no
-        # field name, so the field regex above cannot see it. Collect the names
-        # bound by a `for` over a free-text collection and treat a bare
-        # interpolation of one as unescaped too. (The PR bot found exactly this
-        # shape after five earlier rounds.)
-        loop_bound = set()
-        for st in statements:
-            m = re.match(
-                # (?:...) — ungrouped, the `\.` prefix would bind only to the
-                # first alternative and the pattern would never match.
-                r"for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+[A-Za-z_][A-Za-z0-9_]*\.(?:"
-                + FREE_TEXT.replace("|", "s?|") + r"s?)\b",
-                st,
-            )
-            if m:
-                loop_bound.add(m.group(1))
-
-        def _bare_loop_var(statement: str) -> bool:
-            return any(
-                span.strip("{}").strip() in loop_bound and "escape(" not in span
-                for span in interpolation.findall(statement)
-            )
-
-        offenders = [
-            st for st in statements
-            if any(r in st for r in renders)
-            and (_has_unescaped_field(st) or _bare_loop_var(st))
-        ]
-
-        assert not offenders, (
-            f"unescaped user text rendered through Rich in {module}:\n"
-            + "\n".join(o[:160] for o in offenders)
-        )
-
-    def test_markup_is_shown_literally_not_interpreted(self, workspace, tmp_path):
-        tasks.create(
-            workspace, title="Fix [/b] now", description="d", status=TaskStatus.READY
-        )
-
-        result = CliRunner().invoke(app, ["tasks", "list", "--workspace", str(tmp_path)])
-
-        assert "[/b]" in result.output, "the literal text should survive escaping"
-
-    def test_rich_would_have_raised_without_escaping(self):
-        """Guard the guard: prove the hostile titles really are hostile."""
-        from rich.console import Console
-
-        console = Console(file=open("/dev/null", "w"))
-        with pytest.raises(Exception):
-            console.print(f"[cyan]Title:[/cyan] {HOSTILE_TITLES[0]}")
 
 
 class TestStdinValueNeverLeaks:

@@ -16,6 +16,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from codeframe.cli.helpers import print_error
 from codeframe.core import engine_stats
 from codeframe.core.workspace import get_workspace
 
@@ -104,7 +105,7 @@ def engines_check(
     try:
         reqs = check_requirements(name, _config_root())
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
     if not reqs:
