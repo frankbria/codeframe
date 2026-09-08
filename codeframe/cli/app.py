@@ -1143,7 +1143,7 @@ def prd_templates_import(
         console.print(f"[dim]Sections: {len(template.sections)}[/dim]")
         console.print(f"[dim]Saved to: .codeframe/templates/prd/{template.id}.yaml[/dim]")
     except Exception as e:
-        print_error(e, prefix="Error: Failed to import template:")
+        print_error(f"Failed to import template: {e}")
         raise typer.Exit(1)
 
 
