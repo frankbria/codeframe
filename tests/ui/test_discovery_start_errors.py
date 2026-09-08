@@ -68,3 +68,46 @@ class TestStartDiscoveryConflict:
 
         assert response.status_code == 500
         assert "db is on fire" in response.json()["detail"]
+
+
+class TestStartDiscoveryLosesTheRace:
+    """The pre-check is a fast path; the database decides the winner (#1042)."""
+
+    def test_losing_claim_returns_the_same_structured_400(self, test_client):
+        from codeframe.core.prd_discovery import ActiveSessionExistsError
+
+        winner = MagicMock()
+        winner.is_complete.return_value = False
+        winner.session_id = "sess-winner"
+        winner.answered_count = 0
+
+        # First call is the pre-check (nothing active yet — both requests got
+        # here); the second is the post-conflict lookup that names the winner.
+        with patch(
+            "codeframe.core.prd_discovery.get_active_session",
+            side_effect=[None, winner],
+        ), patch(
+            "codeframe.core.prd_discovery.start_discovery_session",
+            side_effect=ActiveSessionExistsError("already active"),
+        ):
+            response = test_client.post("/api/v2/discovery/start")
+
+        assert response.status_code == 400, response.text
+        detail = response.json()["detail"]
+        assert isinstance(detail, dict), f"detail was stringified: {detail!r}"
+        assert detail["error"] == "Discovery session already active"
+        assert detail["session_id"] == "sess-winner"
+
+    def test_reset_during_start_returns_409(self, test_client):
+        from codeframe.core.prd_discovery import SessionResetError
+
+        with patch(
+            "codeframe.core.prd_discovery.get_active_session", return_value=None
+        ), patch(
+            "codeframe.core.prd_discovery.start_discovery_session",
+            side_effect=SessionResetError("session was reset"),
+        ):
+            response = test_client.post("/api/v2/discovery/start")
+
+        assert response.status_code == 409, response.text
+        assert "reset" in response.json()["detail"]

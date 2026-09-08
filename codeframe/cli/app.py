@@ -1735,6 +1735,7 @@ def prd_generate(
         ValidationError,
         IncompleteSessionError,
         get_active_session,
+        reset_discovery,
     )
     from codeframe.core.events import emit_for_workspace, EventType
     from codeframe.planning.prd_templates import PrdTemplateManager
@@ -1796,16 +1797,25 @@ def prd_generate(
             # Check for active session
             try:
                 active = get_active_session(workspace)
-                if active and active.answered_count > 0:
-                    if typer.confirm(
-                        f"Found incomplete session with {active.answered_count} answers. Resume?"
-                    ):
-                        session = active
-                        console.print("[green]✓[/green] Resuming previous session")
-                    else:
-                        session = PrdDiscoverySession(workspace)
-                        session.start_discovery()
+                if (
+                    active
+                    and active.answered_count > 0
+                    and typer.confirm(
+                        f"Found incomplete session with {active.answered_count} answers. "
+                        "Resume? (declining abandons it)"
+                    )
+                ):
+                    session = active
+                    console.print("[green]✓[/green] Resuming previous session")
                 else:
+                    if active and not active.is_complete():
+                        # Starting fresh abandons the active session. Say so to
+                        # the database: a workspace holds at most one active
+                        # session, so start_discovery() would otherwise be
+                        # refused outright (#1042). A session whose Q&A is
+                        # finished does NOT hold the slot, and resetting it
+                        # would destroy a PRD the user can still generate.
+                        reset_discovery(workspace, session_id=active.session_id)
                     session = PrdDiscoverySession(workspace)
                     session.start_discovery()
             except NoApiKeyError as e:

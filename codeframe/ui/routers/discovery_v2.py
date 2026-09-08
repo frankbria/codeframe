@@ -21,8 +21,10 @@ from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import prd_discovery, prd, tasks
 from codeframe.core.tasks import TaskGenerationError
 from codeframe.core.prd_discovery import (
+    ActiveSessionExistsError,
     DiscoveryError,
     NoApiKeyError,
+    SessionResetError,
     ValidationError,
     IncompleteSessionError,
 )
@@ -123,21 +125,26 @@ async def start_discovery(
     Raises:
         HTTPException:
             - 400: Discovery session already active
+            - 409: Session was reset while the opening question was generating
             - 500: API key not configured or processing error
     """
+
+    def _already_active(session_id: Optional[str], answered_count: int) -> HTTPException:
+        return HTTPException(
+            status_code=400,
+            detail={
+                "error": "Discovery session already active",
+                "session_id": session_id,
+                "answered_count": answered_count,
+                "hint": "Use POST /api/v2/discovery/{session_id}/answer to continue",
+            },
+        )
+
     try:
         # Check for existing active session
         existing = await run_in_threadpool(prd_discovery.get_active_session, workspace)
         if existing and not existing.is_complete():
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "Discovery session already active",
-                    "session_id": existing.session_id,
-                    "answered_count": existing.answered_count,
-                    "hint": "Use POST /api/v2/discovery/{session_id}/answer to continue",
-                },
-            )
+            raise _already_active(existing.session_id, existing.answered_count)
 
         # Start new session
         # LLM round trip: minutes, not milliseconds (#902).
@@ -150,6 +157,25 @@ async def start_discovery(
             question=question or {},
         )
 
+    except ActiveSessionExistsError:
+        # The check above is a fast path, not a guarantee: two concurrent starts
+        # both pass it and the database decides the winner (#1042). Report the
+        # loser exactly as the pre-check would have.
+        try:
+            winner = await run_in_threadpool(prd_discovery.get_active_session, workspace)
+        except Exception:
+            # get_active_session builds an LLM provider, so it can raise
+            # (NoApiKeyError, UntrustedBaseURLError). An exception raised inside
+            # an except block is not caught by its own try, so that would escape
+            # as an unlogged 500 in place of the 400 the caller has earned.
+            logger.warning("Could not identify the winning session", exc_info=True)
+            winner = None
+        raise _already_active(
+            winner.session_id if winner else None,
+            winner.answered_count if winner else 0,
+        )
+    except SessionResetError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except NoApiKeyError as e:
         raise HTTPException(
             status_code=500,
