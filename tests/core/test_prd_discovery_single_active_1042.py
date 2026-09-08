@@ -554,3 +554,49 @@ class TestMigrationSurvivesLegacyRows:
         assert _active_rows(workspace) == []
         assert get_active_session(workspace) is None
         assert len(blockers.list_all(workspace)) == before
+
+
+class TestGetActiveSessionPicksTheSlotHolder:
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_a_finished_session_does_not_shadow_the_new_one(
+        self, mock_provider_class, workspace: Workspace, monkeypatch: pytest.MonkeyPatch
+    ):
+        """`get_active_session` uses a *looser* predicate than the unique index.
+
+        It filters on `state != 'completed'` only — no `is_complete` — and picks
+        by recency. So when a finished-Q&A row and a freshly-claimed session
+        coexist (exactly what "finished sessions don't hold the slot" allows),
+        the right answer depends entirely on the new row's `updated_at` being
+        strictly later. Nothing else pins that, so pin it here.
+        """
+        from codeframe.core.prd_discovery import PrdDiscoverySession, get_active_session
+
+        mock_provider_class.return_value = _provider_returning()
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")  # get_active_session (#917)
+
+        finished = PrdDiscoverySession(workspace, api_key="test-key")
+        finished.start_discovery()
+        conn = get_db_connection(workspace)
+        conn.execute(
+            "UPDATE discovery_sessions SET is_complete = 1 WHERE id = ?",
+            (finished.session_id,),
+        )
+        conn.commit()
+        conn.close()
+
+        fresh = PrdDiscoverySession(workspace, api_key="test-key")
+        fresh.start_discovery()
+
+        # Both rows are non-completed, so both are in get_active_session's scope.
+        conn = get_db_connection(workspace)
+        in_scope = conn.execute(
+            "SELECT id FROM discovery_sessions WHERE state != 'completed'"
+        ).fetchall()
+        conn.close()
+        assert len(in_scope) == 2, "the premise: two rows the looser predicate admits"
+
+        active = get_active_session(workspace)
+        assert active is not None
+        assert active.session_id == fresh.session_id, (
+            "the finished session must not shadow the one holding the slot"
+        )
