@@ -318,11 +318,23 @@ class TestResetDiscoveryScope:
         try:
             for i in range(count):
                 sid = f"session-{i}"
+                # Only the newest row may be *active*: #1042 added a partial
+                # UNIQUE index on (workspace_id) WHERE state != 'completed' AND
+                # is_complete = 0. The older rows are finished-Q&A sessions
+                # awaiting PRD generation — still `discovering`, still in
+                # reset_discovery's `state != 'completed'` scope, which is the
+                # over-broad reset this test guards against.
                 conn.execute(
                     "INSERT INTO discovery_sessions "
-                    "(id, workspace_id, state, qa_history, created_at, updated_at) "
-                    "VALUES (?, ?, 'discovering', '[]', ?, ?)",
-                    (sid, ws.id, f"2026-01-0{i + 1}T00:00:00", f"2026-01-0{i + 1}T00:00:00"),
+                    "(id, workspace_id, state, qa_history, is_complete, created_at, updated_at) "
+                    "VALUES (?, ?, 'discovering', '[]', ?, ?, ?)",
+                    (
+                        sid,
+                        ws.id,
+                        0 if i == count - 1 else 1,
+                        f"2026-01-0{i + 1}T00:00:00",
+                        f"2026-01-0{i + 1}T00:00:00",
+                    ),
                 )
                 ids.append(sid)
             conn.commit()

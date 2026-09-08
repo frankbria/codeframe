@@ -11,6 +11,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 import json
 import logging
 import os
+import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -50,6 +51,27 @@ class ValidationError(DiscoveryError):
 
 class IncompleteSessionError(DiscoveryError):
     """Raised when trying to generate PRD from incomplete session."""
+
+    pass
+
+
+class ActiveSessionExistsError(DiscoveryError):
+    """Raised when a workspace already holds an active discovery session.
+
+    The workspace's single active-session slot is claimed by a partial UNIQUE
+    index, so this is raised on the losing INSERT of a concurrent ``/start``
+    — the case the route's read-then-write check cannot catch (#1042).
+    """
+
+    pass
+
+
+class SessionResetError(DiscoveryError):
+    """Raised when a session is reset out from under an in-flight operation.
+
+    ``POST /reset`` completes the claim row while the opening-question LLM call
+    is still running; the save that follows must not resurrect it (#1042).
+    """
 
     pass
 
@@ -320,7 +342,22 @@ class PrdDiscoverySession:
 
         # Claim the workspace's single active-session slot before the opening LLM
         # call, which takes minutes (#902) — a concurrent /start must see it.
-        self._save_session()
+        # The claim is a plain INSERT against the partial UNIQUE index, so the
+        # slot is won in the database rather than by the route's read-then-write
+        # check, which two concurrent starts can both pass (#1042).
+        try:
+            self._claim_session()
+        except sqlite3.IntegrityError as exc:
+            self.session_id = None
+            self.state = SessionState.IDLE
+            if "UNIQUE" not in str(exc):
+                # A foreign-key or CHECK violation is a different bug; reporting
+                # it as "already active" would send the caller somewhere useless.
+                raise
+            raise ActiveSessionExistsError(
+                "A discovery session is already active for this workspace."
+            ) from exc
+
         try:
             self._current_question = self._generate_opening_question()
         except BaseException:
@@ -332,7 +369,18 @@ class PrdDiscoverySession:
             self.session_id = None
             self.state = SessionState.IDLE
             raise
-        self._save_session()
+
+        # A /reset that landed during that call already completed the claim row.
+        # require_active makes this an UPDATE that matches nothing in that case,
+        # instead of the INSERT OR REPLACE that used to flip the row back to
+        # `discovering` and undo the reset (#1042).
+        if not self._save_session(require_active=True):
+            self._delete_session()
+            self.session_id = None
+            self.state = SessionState.IDLE
+            raise SessionResetError(
+                "Discovery session was reset while the opening question was being generated."
+            )
 
         logger.info(f"Started discovery session {self.session_id}")
 
@@ -825,40 +873,85 @@ Follow the template structure exactly. This PRD should be sufficient to generate
         conn.commit()
         conn.close()
 
-    def _save_session(self) -> None:
-        """Save session state to database."""
-        conn = get_db_connection(self.workspace)
-        cursor = conn.cursor()
+    def _claim_session(self) -> None:
+        """INSERT the session row, claiming the workspace's active-session slot.
 
+        Raises:
+            sqlite3.IntegrityError: If the workspace already holds an active
+                session (the partial UNIQUE index built by
+                :func:`_ensure_discovery_schema`).
+        """
         now = _utc_now().isoformat()
-        qa_history_json = json.dumps(self._qa_history)
-        coverage_json = json.dumps(self._coverage) if self._coverage else None
+        conn = get_db_connection(self.workspace)
+        try:
+            conn.execute(
+                """
+                INSERT INTO discovery_sessions
+                    (id, workspace_id, state, qa_history, current_question,
+                     coverage, blocker_id, is_complete, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self.session_id,
+                    self.workspace.id,
+                    self.state.value,
+                    json.dumps(self._qa_history),
+                    self._current_question,
+                    json.dumps(self._coverage) if self._coverage else None,
+                    self._blocker_id,
+                    1 if self._is_complete else 0,
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO discovery_sessions
-                (id, workspace_id, state, qa_history, current_question,
-                 coverage, blocker_id, is_complete, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?,
-                    COALESCE((SELECT created_at FROM discovery_sessions WHERE id = ?), ?),
-                    ?)
-            """,
-            (
-                self.session_id,
-                self.workspace.id,
-                self.state.value,
-                qa_history_json,
-                self._current_question,
-                coverage_json,
-                self._blocker_id,
-                1 if self._is_complete else 0,
-                self.session_id,
-                now,
-                now,
-            ),
-        )
-        conn.commit()
-        conn.close()
+    def _save_session(self, require_active: bool = False) -> bool:
+        """Save session state to database.
+
+        UPDATE-only: the row is created once by :meth:`_claim_session`. It used
+        to be an ``INSERT OR REPLACE``, which re-created a row a concurrent
+        ``/reset`` had completed — and, once the partial UNIQUE index exists,
+        would have deleted a competing active row to make room (#1042).
+
+        Args:
+            require_active: Only write if the stored row is still non-completed.
+                Used by the post-LLM save in :meth:`start_discovery` so a
+                ``/reset`` that landed mid-call is not undone.
+
+        Returns:
+            True if a row was written, False if ``require_active`` matched none.
+        """
+        now = _utc_now().isoformat()
+        sql = """
+            UPDATE discovery_sessions
+            SET state = ?, qa_history = ?, current_question = ?, coverage = ?,
+                blocker_id = ?, is_complete = ?, updated_at = ?
+            WHERE id = ? AND workspace_id = ?
+        """
+        params = [
+            self.state.value,
+            json.dumps(self._qa_history),
+            self._current_question,
+            json.dumps(self._coverage) if self._coverage else None,
+            self._blocker_id,
+            1 if self._is_complete else 0,
+            now,
+            self.session_id,
+            self.workspace.id,
+        ]
+        if require_active:
+            sql += " AND state != 'completed'"
+
+        conn = get_db_connection(self.workspace)
+        try:
+            cursor = conn.execute(sql, params)
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
 
 
 def _ensure_discovery_schema(workspace: Workspace) -> None:
@@ -896,6 +989,44 @@ def _ensure_discovery_schema(workspace: Workspace) -> None:
         "CREATE INDEX IF NOT EXISTS idx_discovery_sessions_state "
         "ON discovery_sessions(state)"
     )
+
+    # One active session per workspace, enforced by the database rather than by
+    # a read-then-write check two concurrent /start calls can both pass (#1042).
+    # The predicate matches the route's notion of "active" (`not is_complete()`):
+    # a session whose Q&A is done but whose PRD has not been generated has always
+    # allowed a new start, and must keep doing so.
+    #
+    # Run the backfill only while the index is absent. A workspace created before
+    # #1042 can already hold several non-completed rows, and CREATE UNIQUE INDEX
+    # would fail outright on them — so complete all but the newest per workspace
+    # first. (SQLite returns the bare `id` from the row supplying `MAX`, which is
+    # what picks the newest here.)
+    index_exists = cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?",
+        ("idx_discovery_sessions_one_active",),
+    ).fetchone()
+    if not index_exists:
+        cursor.execute(
+            """
+            UPDATE discovery_sessions
+            SET state = 'completed', updated_at = ?
+            WHERE state != 'completed' AND is_complete = 0
+              AND id NOT IN (
+                  SELECT id FROM (
+                      SELECT id, MAX(updated_at)
+                      FROM discovery_sessions
+                      WHERE state != 'completed' AND is_complete = 0
+                      GROUP BY workspace_id
+                  )
+              )
+            """,
+            (_utc_now().isoformat(),),
+        )
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_discovery_sessions_one_active "
+            "ON discovery_sessions(workspace_id) "
+            "WHERE state != 'completed' AND is_complete = 0"
+        )
 
     conn.commit()
     conn.close()
