@@ -78,6 +78,12 @@ jobs:
         with:
           context: .
           push: true
+          # Stamps the build SHA into the image, which is the only way /health
+          # can name the running build: .dockerignore excludes .git, so the
+          # container has no git metadata to read (#1160). The verify step below
+          # compares what /health reports against this same SHA.
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
           tags: |
             ghcr.io/frankbria/codeframe-backend:${{ github.sha }}
             ghcr.io/frankbria/codeframe-backend:staging
@@ -135,6 +141,12 @@ jobs:
         with:
           context: .
           push: true
+          # Stamps the build SHA into the image, which is the only way /health
+          # can name the running build: .dockerignore excludes .git, so the
+          # container has no git metadata to read (#1160). The verify step below
+          # compares what /health reports against this same SHA.
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
           tags: |
             ghcr.io/frankbria/codeframe-backend:${{ github.sha }}
             ghcr.io/frankbria/codeframe-backend:production
@@ -446,11 +458,22 @@ jobs:
           MAX_ATTEMPTS=12
           SLEEP_SECONDS=5
 
+          # A 200 only proves *a* backend is up. If the pull silently left the
+          # old container running, the old one answers and the deploy passes
+          # having deployed nothing — so the reported commit must match the SHA
+          # this run built (#1160).
+          EXPECTED_COMMIT="${{ github.sha }}"
+
           for i in $(seq 1 "$MAX_ATTEMPTS"); do
             echo "Health check attempt $i/$MAX_ATTEMPTS..."
-            if ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:${{ secrets.API_PORT }}/health"; then
-              echo "✅ Health check passed on attempt $i"
-              exit 0
+            BODY="$(ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:${{ secrets.API_PORT }}/health" || true)"
+            if [ -n "$BODY" ]; then
+              RUNNING_COMMIT="$(printf '%s' "$BODY" | jq -r '.commit // "unknown"')"
+              if [ "$RUNNING_COMMIT" = "$EXPECTED_COMMIT" ]; then
+                echo "✅ Health check passed on attempt $i (commit $RUNNING_COMMIT)"
+                exit 0
+              fi
+              echo "⚠️  Healthy, but running commit is '$RUNNING_COMMIT', expected '$EXPECTED_COMMIT'"
             fi
             if [ "$i" -lt "$MAX_ATTEMPTS" ]; then
               echo "⏳ Waiting ${SLEEP_SECONDS}s before retry..."
@@ -459,6 +482,7 @@ jobs:
           done
 
           echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
+          echo "   (last response: ${BODY:-<no response>})"
           # Surface the cause: a silent `curl -sf` gave no reason. Same
           # diagnostics as before, translated from PM2 to compose (#1121) —
           # container state plus recent logs, so a crash-loop is diagnosable
@@ -877,11 +901,22 @@ jobs:
           MAX_ATTEMPTS=12
           SLEEP_SECONDS=5
 
+          # A 200 only proves *a* backend is up. If the pull silently left the
+          # old container running, the old one answers and the deploy passes
+          # having deployed nothing — so the reported commit must match the SHA
+          # this run built (#1160).
+          EXPECTED_COMMIT="${{ github.sha }}"
+
           for i in $(seq 1 "$MAX_ATTEMPTS"); do
             echo "Health check attempt $i/$MAX_ATTEMPTS..."
-            if ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:${{ secrets.API_PORT }}/health"; then
-              echo "✅ Health check passed on attempt $i"
-              exit 0
+            BODY="$(ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:${{ secrets.API_PORT }}/health" || true)"
+            if [ -n "$BODY" ]; then
+              RUNNING_COMMIT="$(printf '%s' "$BODY" | jq -r '.commit // "unknown"')"
+              if [ "$RUNNING_COMMIT" = "$EXPECTED_COMMIT" ]; then
+                echo "✅ Health check passed on attempt $i (commit $RUNNING_COMMIT)"
+                exit 0
+              fi
+              echo "⚠️  Healthy, but running commit is '$RUNNING_COMMIT', expected '$EXPECTED_COMMIT'"
             fi
             if [ "$i" -lt "$MAX_ATTEMPTS" ]; then
               echo "⏳ Waiting ${SLEEP_SECONDS}s before retry..."
@@ -890,6 +925,7 @@ jobs:
           done
 
           echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
+          echo "   (last response: ${BODY:-<no response>})"
           # Surface the cause: a silent `curl -sf` gave no reason. Same
           # diagnostics as before, translated from PM2 to compose (#1121) —
           # container state plus recent logs, so a crash-loop is diagnosable

@@ -35,6 +35,14 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY codeframe/ ./codeframe/
 RUN uv sync --frozen --no-dev
 
+# What `/health` reports as the running build (#1160). Declared here, after the
+# dependency layers, so a new SHA does not invalidate the slow `uv sync` cache.
+# `.dockerignore` excludes `.git`, so the image cannot work this out for itself
+# — CI passes it in, and the default keeps a plain `docker build` honest rather
+# than having it claim someone else's commit.
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=${GIT_COMMIT}
+
 # Non-root. WORKSPACE_ROOT and the SQLite DB arrive as volumes owned by this
 # uid (compose sets it), so the app can still write where it must and nowhere
 # else.
