@@ -60,10 +60,17 @@ jobs:
     # Not fixed by this bump, and worth knowing: the 35m/40m limits are hardcoded
     # upstream, not inputs, so this caller cannot raise them. Reviews here run
     # long — the last success (run 34262672589) took 28 minutes — so the margin
-    # is thin regardless. If a review still times out after this, set
-    # `debug_full_output: true` below to get incremental per-message logging that
-    # survives the kill, read the failing run, then turn it back off: this repo
-    # is public and that log is too.
+    # is thin regardless. If a review still times out after this, flip the
+    # `debug_full_output` below to true for incremental per-message logging that
+    # survives the kill, read the failing run, then turn it back off.
+    with:
+      # Present and explicitly false so the incident lever above is a one-word
+      # edit rather than a "which input was it, and does this job even take a
+      # `with:` block?" at the time you least want that question. False is also
+      # the upstream default: this log is written to the workflow log, which is
+      # public on this repo, and the action's own input warns it may contain
+      # secrets.
+      debug_full_output: false
     permissions:
       contents: read
       pull-requests: write
