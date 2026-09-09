@@ -8,16 +8,22 @@ on:
 
 jobs:
   review:
-    # Skip bot-authored PRs (Dependabot): the reusable GLM review workflow
-    # rejects non-human actors and hard-fails, which surfaced as a red X on
-    # every Dependabot PR touching 5+ files. Skipping is neutral, not a failure.
-    # Otherwise only review substantial changes (5+ files, or 20+ additions/deletions).
+    # Skip bot-authored PRs: claude-code-action rejects any run whose actor is
+    # not a User and hard-fails, painting a PR red that was never reviewed.
+    # Naming `dependabot[bot]` (the old form) was too narrow in one direction
+    # that matters here: the action resolves `github.actor`, which is the PR
+    # *author* on `opened` but the **pusher** on `synchronize`, so a
+    # human-authored PR that a bot pushed to still went red. Testing
+    # `user.type` and `sender.type` covers every bot and both events, and a
+    # null `sender` compares false, so it fails closed.
+    # Then: only review substantial changes (5+ files, or 20+ additions/deletions).
     if: |
-      github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.user.type == 'User' &&
+      github.event.sender.type == 'User' &&
       (github.event.pull_request.changed_files >= 5 ||
        github.event.pull_request.additions >= 20 ||
        github.event.pull_request.deletions >= 20)
-    uses: frankbria/glm-review/.github/workflows/review.yml@77dfa9c6633712256edab41fd0db42663a9416b7 # main
+    uses: frankbria/glm-review/.github/workflows/review.yml@21fea324f518b964919709eebbbb9f5b3acde489 # main
     # `issues: write` and `id-token: write` are gone (#1167). They were not
     # optional on the old pin: GitHub fails a run when a caller grants less than
     # the called job requests, and b877d15's job declared both. Upstream dropped
@@ -31,17 +37,33 @@ jobs:
     # which are already public here. Set `upload_transcript: false` if that ever
     # stops being true.
     #
-    # This pin (#1167) stops the reviewer coin-flipping between its two limits.
-    # Turns bind first, not the clock — successful reviews finish in 6m44s-17m33s
-    # — so the cap is `--max-turns 60`, sized against measured cost. The
-    # 35-minute timeout now sits on the review *step*, with 40 minutes on the job
-    # as an outer backstop. That placement is the whole fix: a job timeout
-    # cancels every remaining step, `if: always()` included, which is why the old
-    # 20-minute kill uploaded no transcript and left nothing behind. A step
-    # timeout fails only that step, so the run can still replace its own
-    # "Reviewing..." stub with an explicit "GLM review did not complete" notice.
-    # A run that reviewed nothing is now distinguishable from one that found
-    # nothing.
+    # #1167's pin put a 35-minute timeout on the review *step* (40 on the job) so
+    # a failed review could still post its own "did not complete" notice. It did
+    # — but the notice could never say more than "the step was killed", because
+    # the SDK's own per-request timeout was still 50 minutes, i.e. ABOVE both
+    # clocks. A request that never came back could therefore only ever end as a
+    # wall-clock kill, and a kill writes no result message, so no execution file,
+    # so no transcript. Run 34298943458 on #1207 is the clean example: review
+    # step failed at 35m22s, `Upload review transcript` skipped, notice reading
+    # "the step was killed before the agent wrote a result".
+    #
+    # This pin (#1199) drops that per-request timeout to 20 minutes, below both
+    # clocks, leaving ~15 minutes of step budget for the SDK to surface the
+    # error, write its result, and upload the transcript. A stuck call now fails
+    # with evidence instead of silently eating the whole budget.
+    #
+    # It also stops reporting a cancellation as a timeout. This repo cancels
+    # in-progress reviews per PR, so every push during a review produced a notice
+    # blaming a timeout that had not happened — five in a row on #1205's branch,
+    # four on #1201's.
+    #
+    # Not fixed by this bump, and worth knowing: the 35m/40m limits are hardcoded
+    # upstream, not inputs, so this caller cannot raise them. Reviews here run
+    # long — the last success (run 34262672589) took 28 minutes — so the margin
+    # is thin regardless. If a review still times out after this, set
+    # `debug_full_output: true` below to get incremental per-message logging that
+    # survives the kill, read the failing run, then turn it back off: this repo
+    # is public and that log is too.
     permissions:
       contents: read
       pull-requests: write
