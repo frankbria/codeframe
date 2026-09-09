@@ -9,12 +9,15 @@ production's images are sound is that staging builds the identical thing.
 #1210 leaned on exactly that. A high advisory failed the frontend image's
 `npm audit --audit-level=high` and blocked every deploy; the fix was verified
 against staging, and applies to production solely because the two jobs are the
-same build. Nothing enforced that. Edit one job and not the other — bump the
-action pin, add a build-arg, change the context — and the inference silently
-stops holding, with no signal until production's first real deploy.
+same build. Nothing enforced that. Edit one job and not the other — bump a
+pin, add a build-arg, change the context — and the inference silently stops
+holding, with no signal until production's first real deploy.
 
-These compare the whole `with:` block rather than enumerating fields, so a
-field added to one job and not the other fails here too.
+The parity check compares the jobs' entire step lists rather than enumerating
+fields or singling out the build steps. Anything that changes what gets built
+lives in there: the `build-push-action` invocations, but equally the
+`setup-buildx-action` pin above them, and any field or step that does not exist
+yet.
 """
 
 import pytest
@@ -33,39 +36,42 @@ PRODUCTION = "docker-build-production"
 IMAGES = (("backend", "."), ("frontend", "./web-ui"))
 
 
+def _steps(job: str) -> list[dict]:
+    return yaml.safe_load(DEPLOY.read_text())["jobs"][job]["steps"]
+
+
+def _normalised_steps(job: str, environment: str) -> str:
+    """The job's steps, serialised, with its own moving tag neutralised.
+
+    Each side rewrites only its own environment token, which is what keeps a
+    cross-tagged job (production pushing `:staging`) detectable instead of
+    cancelling out.
+    """
+    return yaml.safe_dump(_steps(job), sort_keys=True).replace(f":{environment}", ":<env>")
+
+
 def _build_step(job: str, context: str) -> dict:
-    steps = yaml.safe_load(DEPLOY.read_text())["jobs"][job]["steps"]
-    for step in steps:
+    for step in _steps(job):
         if "build-push-action" in step.get("uses", ""):
             if step.get("with", {}).get("context") == context:
                 return step
     raise AssertionError(f"{job} has no docker build step for context {context!r}")
 
 
-def _normalise(step: dict, environment: str) -> dict:
-    """The step with its environment-specific moving tag neutralised."""
-    with_block = dict(step["with"])
-    with_block["tags"] = with_block["tags"].replace(f":{environment}", ":<env>")
-    return {"uses": step["uses"], "with": with_block}
-
-
-@pytest.mark.parametrize(("label", "context"), IMAGES)
-def test_staging_and_production_build_the_same_image(label: str, context: str) -> None:
-    staging = _build_step(STAGING, context)
-    production = _build_step(PRODUCTION, context)
-
-    assert _normalise(staging, "staging") == _normalise(production, "production"), (
-        f"The {label} image is built differently for staging and production. "
-        "Production has no deploy target, so staging is the only place these "
-        "images are ever exercised — keep the two build steps identical apart "
-        "from the environment tag, or that evidence stops transferring (#1210)."
+def test_staging_and_production_run_the_same_build_steps() -> None:
+    assert _normalised_steps(STAGING, "staging") == _normalised_steps(PRODUCTION, "production"), (
+        "The staging and production image builds have drifted apart. Production "
+        "has no deploy target, so staging is the only place these images are "
+        "ever exercised — keep the two jobs' steps identical apart from the "
+        "environment tag, or that evidence stops transferring (#1210)."
     )
 
 
 @pytest.mark.parametrize(("label", "context"), IMAGES)
 def test_each_job_pushes_its_own_moving_tag(label: str, context: str) -> None:
-    """The failure the parity check alone would miss: a copy-paste that leaves
-    production tagging `:staging`, so a production deploy pulls staging's image.
+    """The failure the parity check alone would report confusingly: a
+    copy-paste that leaves production tagging `:staging`, so a production
+    deploy pulls staging's image.
     """
     for job, environment, wrong in (
         (STAGING, "staging", "production"),
