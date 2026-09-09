@@ -261,7 +261,13 @@ built. There is nothing to rebuild:
 export IMAGE_TAG=<previous-sha>     # e.g. from `git log --oneline main`
 $COMPOSE pull && $COMPOSE up -d
 $COMPOSE ps                          # both services healthy
+curl -s localhost:$API_PORT/health | jq -r .commit   # == the sha you rolled to
 ```
+
+That last line is the confirmation, not `ps`: a pull that failed to replace the
+container leaves the previous one running and healthy. `/health` reports the SHA
+stamped into the image it is actually running (#1160), so it is the only local
+check that distinguishes the two.
 
 Volumes are untouched by a rollback — the database and workspaces are outside
 the image by design.
