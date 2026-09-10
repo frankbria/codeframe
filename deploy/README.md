@@ -282,6 +282,61 @@ $COMPOSE logs --tail 30 frontend
 
 The deploy job prints exactly these when its health check fails.
 
+### The frontend image audit gate failed
+
+Symptom: `Build images (staging)` is red, the `Deploy` workflow never runs, and
+the failing step is `npm audit --audit-level=high` in `web-ui/Dockerfile`. No
+commit caused it — an advisory was published upstream against a transitive
+dependency, so the same commit that built yesterday does not build today. Both
+environments are affected at once, because they build the same image.
+
+This gate is intentional (#1131, #1121) and the fix is to bump the dependency,
+not to loosen the gate. A daily `Web UI Audit` workflow (#1213) runs the same
+check on a schedule so this normally surfaces there first.
+
+**Do not run `npm audit fix`** — nor `npm install`, nor anything else that
+regenerates the lock. Any lockfile npm regenerates in `web-ui` fails `npm ci`
+with a misleading `@emnapi` error (#1194), so the reflexive fix replaces one
+broken build with a differently broken one.
+
+The working recipe:
+
+```bash
+# 1. Dependabot has almost certainly already produced the exact diff you need.
+gh pr list --state open --search "author:app/dependabot" --json number,title
+
+# 2. Take its lockfile change verbatim — it is surgical (no packages added or
+#    removed, no new install scripts, every resolved URL still
+#    registry.npmjs.org), so npm ci still succeeds from it. `gh pr diff` takes
+#    no path arguments, so scope it with git apply instead.
+gh pr diff <N> > /tmp/dep.patch
+git apply --include='web-ui/package*.json' --stat --apply /tmp/dep.patch
+
+# 3. Verify, in this order. npm ci is the #1194 oracle.
+cd web-ui
+npm ci                          # exit 0, or the lock is unusable
+npm audit --audit-level=high    # exit 0, 0 vulnerabilities
+npm test && npm run build
+docker build --target deps .    # the gate step passes in-image; `deps` is
+                                # the only stage that carries it
+```
+
+Merging Dependabot's PR directly is the cheapest path of all when one is open
+and green. If none exists yet, get Dependabot to produce one rather than
+hand-writing the lockfile change: the repo's Dependabot alerts page has a
+*Create security update* button per advisory, and `@dependabot recreate` on a
+stale PR refreshes it. Its diff is the artifact you want — surgical, and already
+proven to survive `npm ci`.
+
+Hand-editing `package-lock.json` is a last resort, and only defensible for a
+patch bump whose own dependency set is unchanged: bumping a package whose
+dependencies, engines, binaries or optional/platform packages moved leaves the
+rest of the lock stale while pointing at a different tarball, so `npm ci`
+installs a tree npm would never resolve. If you do it, change
+`version`/`resolved`/`integrity` for that one package only and verify with all
+three of `npm ci`, `npm ls <package>` (the tree really is what you edited), and
+a re-run of the audit.
+
 ### Two things to know
 
 - **`NEXT_PUBLIC_*` are baked at build time.** Next.js inlines them into the
