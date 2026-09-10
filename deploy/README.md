@@ -294,10 +294,20 @@ This gate is intentional (#1131, #1121) and the fix is to bump the dependency,
 not to loosen the gate. A daily `Web UI Audit` workflow (#1213) runs the same
 check on a schedule so this normally surfaces there first.
 
-**Do not run `npm audit fix`** — nor `npm install`, nor anything else that
-regenerates the lock. Any lockfile npm regenerates in `web-ui` fails `npm ci`
-with a misleading `@emnapi` error (#1194), so the reflexive fix replaces one
-broken build with a differently broken one.
+**Do not run `npm audit fix`** — it rewrites the tree it is checking and
+replaces one broken build with a differently broken one.
+
+`npm install` is a different matter, and #1194 narrowed it: it is safe **unless
+you are on npm 11.6.x**. That npm drops the peer-installed optional
+`@emnapi/core` and `@emnapi/runtime` entries from `package-lock.json`, and
+`npm ci` then correctly demands them back with an `@emnapi` error naming nothing
+you touched. The committed lockfile is not corrupt — npm 10.8.2, 11.0.0, 11.4.0,
+11.5.0, 11.7.0, 11.9.0, 11.10.0 and 11.19.0 all round-trip it cleanly. Check with
+`npm --version` first; if it is 11.6.x, `npm i -g npm@latest` and carry on.
+
+Dependabot's diff is still the cheapest path when one is open, because it is
+surgical and already proven — but it is now a convenience, not a workaround for
+a broken lockfile.
 
 The working recipe:
 
@@ -312,7 +322,7 @@ gh pr list --state open --search "author:app/dependabot" --json number,title
 gh pr diff <N> > /tmp/dep.patch
 git apply --include='web-ui/package*.json' --stat --apply /tmp/dep.patch
 
-# 3. Verify, in this order. npm ci is the #1194 oracle.
+# 3. Verify, in this order. npm ci exit 0 is the oracle (#1194).
 cd web-ui
 npm ci                          # exit 0, or the lock is unusable
 npm audit --audit-level=high    # exit 0, 0 vulnerabilities
@@ -326,7 +336,8 @@ and green. If none exists yet, get Dependabot to produce one rather than
 hand-writing the lockfile change: the repo's Dependabot alerts page has a
 *Create security update* button per advisory, and `@dependabot recreate` on a
 stale PR refreshes it. Its diff is the artifact you want — surgical, and already
-proven to survive `npm ci`.
+proven to survive `npm ci`. Regenerating the lock yourself is also fine on a
+supported npm; verify it the same way.
 
 Hand-editing `package-lock.json` is a last resort, and only defensible for a
 patch bump whose own dependency set is unchanged: bumping a package whose
