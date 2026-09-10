@@ -1,0 +1,93 @@
+name: Web UI Audit
+
+# The frontend image's supply-chain gate, on a schedule (#1213).
+#
+# web-ui/Dockerfile's `deps` stage runs `npm ci` then
+# `npm audit --audit-level=high`. That gate is correct and stays — it is what
+# guarantees no image carrying a high advisory is ever built. What it is bad at is
+# *telling anyone*: its trigger is an upstream publication, not a commit, and its
+# failure takes out `Build images (staging)` and therefore the whole `Deploy`
+# workflow, staging and production together, since both build the same image.
+#
+# #1210 was exactly that. Two transitive advisories (js-yaml, sharp) landed, no
+# code changed, and staging was un-deployable for a day — discovered by a human
+# noticing an unrelated red run. Both fixing Dependabot PRs were already open and
+# green the whole time.
+#
+# So this job separates the signal from the blast radius: the advisory shows up as
+# a red run named for what actually broke, before the next deploy discovers it.
+# The image gate remains the backstop — nothing here stops a build.
+#
+# It builds that Dockerfile stage rather than re-running `npm audit` on the
+# runner. Two reasons, both of which cost a review cycle to learn:
+#   - No second copy of the audit level to drift out of sync with. A scheduled
+#     check set laxer than the gate reports green while the deploy still breaks.
+#   - Same environment. `npm ci` on alpine/musl resolves different optional
+#     platform packages than glibc on ubuntu-latest (sharp is exactly such a
+#     dependency), so an advisory against the musl variant is invisible to an
+#     audit run outside the image.
+#
+# Known limitation, same as Unlocked Resolution (#1169): a red scheduled run
+# notifies through GitHub's normal workflow notifications; it does not open an
+# issue or page anyone. Deliberate — one moving part. The step summary is written
+# to be self-explanatory so the run needs no archaeology.
+
+on:
+  schedule:
+    # Daily, 06:30 UTC — half an hour after Unlocked Resolution, so the two
+    # upstream-drift checks report separately rather than as one pile.
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "web-ui/package.json"
+      - "web-ui/package-lock.json"
+      - "web-ui/Dockerfile"
+      - "tests/ci/test_web_ui_audit_guard_1213.py"
+      - ".github/workflows/web-ui-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    name: web-ui image audit gate
+    runs-on: ubuntu-latest
+    # Around a minute in practice. The cap is for the unattended schedule, so a
+    # stalled registry call does not sit on a runner until the 6h default.
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build the deps stage — npm ci + the audit gate, in-image
+        # No --target of our own invention: `deps` is the stage that carries both
+        # `npm ci` (the #1194 lockfile oracle) and the audit gate, pinned by
+        # tests/ci/test_web_ui_audit_guard_1213.py. Nothing later in the image is
+        # built, so this is the cheapest slice that reproduces the failure.
+        run: |
+          set -o pipefail
+          if docker build --target deps --progress plain ./web-ui \
+              2>&1 | tee "$RUNNER_TEMP/audit.txt"; then
+            echo "### web-ui image audit gate: clean" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### web-ui image audit gate failed"
+            echo
+            echo "This is the same step the frontend image build runs, so **the next"
+            echo "deploy will fail** — staging and production together. If no web-ui"
+            echo "dependency changed, no commit caused this: an advisory was published"
+            echo "upstream, or a fresh install of the pinned tree no longer resolves."
+            echo
+            echo "**Follow the recovery recipe, not your reflex.** The obvious fix"
+            echo "regenerates the lockfile, which fails \`npm ci\` (#1194) and replaces"
+            echo "this break with a worse one. The procedure is in"
+            echo "\`deploy/README.md\` → \"The frontend image audit gate failed\"."
+            echo
+            echo '```'
+            tail -60 "$RUNNER_TEMP/audit.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1

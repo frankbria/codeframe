@@ -193,6 +193,20 @@ class TestDeployWorkflowDoesNotResolveDependenciesFreely:
         assert workflows, "no workflows found — this check would pass vacuously"
 
         project_install = re.compile(r"\bnpm install\b(?!\s+(?:-g\b|--global\b))")
-        offenders = sorted(w.name for w in workflows if project_install.search(w.read_text()))
+
+        def executable_text(workflow: Path) -> str:
+            # Comment-only lines cannot run anything, and a workflow that
+            # *explains* why it uses `npm ci` rather than `npm install` is doing
+            # the right thing — flagging it inverts the check (#1213). Only a
+            # line whose first non-space character is `#` is dropped, so an
+            # inline `#` inside a quoted shell string can never hide a real
+            # install from this scan.
+            return "\n".join(
+                line
+                for line in workflow.read_text().splitlines()
+                if not line.lstrip().startswith("#")
+            )
+
+        offenders = sorted(w.name for w in workflows if project_install.search(executable_text(w)))
 
         assert not offenders, f"workflows using `npm install` instead of `npm ci`: {offenders}"
