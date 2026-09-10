@@ -70,11 +70,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build the deps stage — npm ci + the audit gate, in-image
-        # Deliberately uncached. `deploy.yml` builds this image with
-        # `cache-from: type=gha`, so an unchanged lockfile makes the audit layer
-        # a cache hit and the audit does not re-execute there — a real gap in the
-        # gate, tracked in #1216. A fresh, cacheless build is the
-        # only way this job actually re-runs the audit against today's
+        # Deliberately uncached, and pinned that way by
+        # tests/ci/test_deploy_audit_cache_1216.py. `deploy.yml` reads the GHA
+        # layer cache, which used to make the audit a cache hit there whenever
+        # the lockfile was unchanged — #1216, now closed by excluding the `deps`
+        # stage from that cache. These are the only two places the gate runs, so
+        # if this job ever grows a cache both of them go stale together. A fresh,
+        # cacheless build is what makes this a real re-run against today's
         # advisories, which is the entire point of running it daily.
         #
         # No --target of our own invention: `deps` is the stage that carries both
