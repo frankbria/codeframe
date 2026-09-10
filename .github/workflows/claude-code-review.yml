@@ -12,6 +12,19 @@ on:
 
 jobs:
   claude-review:
+    # Skip bot PRs (#1189). GitHub withholds regular `secrets.*` from
+    # `pull_request` runs on Dependabot PRs — they are only readable from the
+    # separate Dependabot secrets scope — so the credential preflight below
+    # failed on every dependency bump, permanently and unfixably. Making the
+    # token reachable instead would undo #875, which hardened this workflow
+    # against reviewing Dependabot-controlled content with a credential.
+    # The condition is glm-review.yml's, not `github.actor != 'dependabot[bot]'`:
+    # `github.actor` is the PR author on `opened` but the **pusher** on
+    # `synchronize`, so the actor form misses a bot push to a human PR (#1167).
+    # A null `sender` compares false, so it fails closed.
+    if: |
+      github.event.pull_request.user.type == 'User' &&
+      github.event.sender.type == 'User'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -69,9 +82,6 @@ jobs:
         uses: anthropics/claude-code-action@24dcd50c0568f0fc9e9211213a4fd2d9eb15c4e0 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # Allow Dependabot PRs to be reviewed (default policy rejects bot actors
-          # and fails the check on every dependency PR).
-          allowed_bots: "dependabot[bot]"
           # Defense-in-depth: don't feed Dependabot's own comment prose to the
           # reviewer as if it were instructions (the PR body is handled by the
           # untrusted-content clause in the prompt below).
