@@ -46,6 +46,14 @@ on:
       - "tests/ci/test_web_ui_audit_guard_1213.py"
       - ".github/workflows/web-ui-audit.yml"
 
+concurrency:
+  # A PR touching the lockfile can push several times in a minute, and each push
+  # queues a fresh uncached image build. Superseded PR runs are worthless — only
+  # the newest tree matters. Scheduled runs are never cancelled: the group key
+  # includes the ref, and cancel-in-progress is limited to pull_request.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
