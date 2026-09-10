@@ -344,6 +344,14 @@ Note: `codeframe serve` exists but Golden Path does not depend on it.
   weakened. Recovery recipe: `deploy/README.md` → "The frontend image audit gate
   failed" — take Dependabot's surgical lock diff verbatim and treat `npm ci`
   exit 0 as the oracle.
+  **The gate only fires because `deploy.yml` excludes the `deps` stage from the
+  layer cache** (`no-cache-filters: deps`, #1216). A layer's cache key is its
+  parent layers plus the command string, and an upstream advisory changes
+  neither — so without that exclusion an unchanged lockfile makes `npm audit` a
+  cache hit and the deploy ships the advisory silently, the exact inverse of
+  #1210. Don't delete it to save the ~23s it costs; both it and the daily
+  check's cachelessness are pinned by
+  `tests/ci/test_deploy_audit_cache_1216.py`.
 - **Don't leave a CI gate disabled when its feature area becomes active.** Re-enable `DISABLED:` / `# COMMENTED OUT:` jobs before the first PR in that area. Verify `frontend-tests` is wired into `test-summary`.
 - **A CI run that fails with ZERO jobs and no logs means the workflow file will not compile** (#1122). `gh run view --log-failed` returns `log not found`, the jobs API is empty, and the run ignores its own trigger filters — so it looks like an unrelated trigger bug rather than an outage. YAML validity is not enough: `yaml.safe_load()` parses these files fine; it is GitHub's expression pass that rejects them. Run `actionlint .github/workflows/*.yml` first — the `workflow-lint` job in `test.yml` now enforces this on every PR, but it is the first thing to run locally when a workflow misbehaves. This shipped twice undetected: `deploy.yml` (staging down for a week, an empty `${{ }}` inside a `run:` block) and `claude-review` (#1011).
 

@@ -107,6 +107,16 @@ jobs:
             ghcr.io/frankbria/codeframe-frontend:${{ github.sha }}
             ghcr.io/frankbria/codeframe-frontend:staging
           cache-from: type=gha
+          # The `deps` stage carries `npm audit --audit-level=high` (#1131). A
+          # layer's cache key is its parent layers plus the command string, and
+          # an advisory published upstream changes neither — so with an unchanged
+          # lockfile the audit was a cache hit and never ran, and the deploy
+          # pushed an image carrying the advisory while reporting nothing (#1216).
+          # Excluding only this stage keeps the gate's guarantee that the image
+          # itself was audited. Measured cost of doing so: a fully-cached frontend
+          # build goes 1.3s -> 24s. `npm run build` still cache-hits, because
+          # `COPY --from=deps` is content-addressed and node_modules is unchanged.
+          no-cache-filters: deps
           cache-to: type=gha,mode=max
 
   docker-build-production:
@@ -167,6 +177,16 @@ jobs:
             ghcr.io/frankbria/codeframe-frontend:${{ github.sha }}
             ghcr.io/frankbria/codeframe-frontend:production
           cache-from: type=gha
+          # The `deps` stage carries `npm audit --audit-level=high` (#1131). A
+          # layer's cache key is its parent layers plus the command string, and
+          # an advisory published upstream changes neither — so with an unchanged
+          # lockfile the audit was a cache hit and never ran, and the deploy
+          # pushed an image carrying the advisory while reporting nothing (#1216).
+          # Excluding only this stage keeps the gate's guarantee that the image
+          # itself was audited. Measured cost of doing so: a fully-cached frontend
+          # build goes 1.3s -> 24s. `npm run build` still cache-hits, because
+          # `COPY --from=deps` is content-addressed and node_modules is unchanged.
+          no-cache-filters: deps
           cache-to: type=gha,mode=max
 
   # ============================================
