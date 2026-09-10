@@ -321,10 +321,21 @@ docker build --target deps .    # the gate step passes in-image; `deps` is
                                 # the only stage that carries it
 ```
 
-If no Dependabot PR exists yet, `npm audit` names the advisory and its fixed
-version; hand-edit only the `version`/`resolved`/`integrity` fields for that one
-package in `package-lock.json` and re-run the same three checks. Merging
-Dependabot's PR directly is the cheapest path of all when one is open and green.
+Merging Dependabot's PR directly is the cheapest path of all when one is open
+and green. If none exists yet, get Dependabot to produce one rather than
+hand-writing the lockfile change: the repo's Dependabot alerts page has a
+*Create security update* button per advisory, and `@dependabot recreate` on a
+stale PR refreshes it. Its diff is the artifact you want — surgical, and already
+proven to survive `npm ci`.
+
+Hand-editing `package-lock.json` is a last resort, and only defensible for a
+patch bump whose own dependency set is unchanged: bumping a package whose
+dependencies, engines, binaries or optional/platform packages moved leaves the
+rest of the lock stale while pointing at a different tarball, so `npm ci`
+installs a tree npm would never resolve. If you do it, change
+`version`/`resolved`/`integrity` for that one package only and verify with all
+three of `npm ci`, `npm ls <package>` (the tree really is what you edited), and
+a re-run of the audit.
 
 ### Two things to know
 

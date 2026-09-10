@@ -62,6 +62,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build the deps stage — npm ci + the audit gate, in-image
+        # Deliberately uncached. `deploy.yml` builds this image with
+        # `cache-from: type=gha`, so an unchanged lockfile makes the audit layer
+        # a cache hit and the audit does not re-execute there — a real gap in the
+        # gate, tracked in #1216. A fresh, cacheless build is the
+        # only way this job actually re-runs the audit against today's
+        # advisories, which is the entire point of running it daily.
+        #
         # No --target of our own invention: `deps` is the stage that carries both
         # `npm ci` (the #1194 lockfile oracle) and the audit gate, pinned by
         # tests/ci/test_web_ui_audit_guard_1213.py. Nothing later in the image is

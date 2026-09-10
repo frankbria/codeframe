@@ -64,7 +64,12 @@ def _stage_body(stage: str) -> str:
     """
     body: list[str] = []
     inside = False
-    for line in DOCKERFILE.read_text().splitlines():
+    # Backslash continuations are joined first, so a directive split across
+    # physical lines is scanned as the one command it actually is. Without this,
+    # `RUN npm audit --audit-level=high \\` + `    || true` reads as an intact
+    # gate to every check below while building green on a high advisory.
+    source = re.sub(r"\\\n\s*", " ", DOCKERFILE.read_text())
+    for line in source.splitlines():
         stripped = line.strip()
         if stripped.startswith("#"):
             continue
