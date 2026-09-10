@@ -333,17 +333,27 @@ Note: `codeframe serve` exists but Golden Path does not depend on it.
   replaced was too narrow four times in one review cycle — a local bound one
   statement earlier carries no field name at all. Every registered command must
   appear in its `RUN` or `EXEMPT` table; a new command fails CI until classified.
-- **Don't run `npm audit fix` (or plain `npm install`) in `web-ui`.** Any lockfile
-  npm regenerates there fails `npm ci` with a misleading `@emnapi` error (#1194),
-  so the reflexive fix for a red audit gate produces a differently broken build.
+- **Don't run `npm audit fix` in `web-ui` to clear a red audit gate** — a job that
+  rewrites the tree it is checking produces a differently broken build. Plain
+  `npm install` is fine **unless you are on npm 11.6.x**, which is the whole of
+  #1194: that npm's `npm install` drops the peer-installed optional
+  `@emnapi/core` and `@emnapi/runtime` entries from `package-lock.json`, and
+  `npm ci` then correctly demands them back with an `@emnapi` error that names
+  nothing you touched. The committed lockfile is **not** corrupt — it matches the
+  registry, and npm 10.8.2, 11.0.0, 11.4.0, 11.5.0, 11.7.0, 11.9.0, 11.10.0 and
+  11.19.0 all round-trip it cleanly. So the fix is `npm i -g npm@latest`, not
+  hand-pruning the lock. `web-ui/package.json` declares the range in `engines`,
+  which makes npm print `EBADENGINE` naming the version; it is deliberately not
+  enforced with `engine-strict`, because that validates every dependency's
+  engines and `@testing-library/jest-dom` requires node >=22 while CI and the
+  image run Node 20.
   `web-ui/Dockerfile` runs `npm audit --audit-level=high` during the image build,
   which means an advisory published upstream — no commit of ours — fails
   `Build images (staging)` and takes staging *and* production down together
   (#1210 cost a day of that). The daily `Web UI Audit` workflow (#1213) exists to
   surface it first; the in-image gate stays as the backstop and must not be
   weakened. Recovery recipe: `deploy/README.md` → "The frontend image audit gate
-  failed" — take Dependabot's surgical lock diff verbatim and treat `npm ci`
-  exit 0 as the oracle.
+  failed" — and `npm ci` exit 0 is the oracle either way.
   **The gate only fires because `deploy.yml` excludes the `deps` stage from the
   layer cache** (`no-cache-filters: deps`, #1216). A layer's cache key is its
   parent layers plus the command string, and an upstream advisory changes

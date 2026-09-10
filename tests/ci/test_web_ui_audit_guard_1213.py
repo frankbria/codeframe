@@ -151,15 +151,18 @@ def test_the_gate_is_set_at_high_and_is_not_neutralised():
 
 
 def test_nothing_here_regenerates_the_lockfile():
-    """#1194: any regenerated web-ui lock fails `npm ci` with a misleading error.
+    """A job that "fixes" the tree it is checking is not checking anything.
 
-    `npm audit fix` is the reflex and it is wrong — a job that "fixes" the tree it
-    is checking breaks the build it guards.
+    `npm audit fix` is the reflex and it is wrong for that reason alone. (#1194
+    originally recorded a second reason — that *any* regenerated lock fails
+    `npm ci` — which turned out to be false: only npm 11.6.x corrupts it. The
+    assertion stands on the first reason, which is unconditional.)
     """
     haystack = _runs(_load(AUDIT)) + "\n" + _stage_body(GATE_STAGE)
     for forbidden in ("npm audit fix", "npm install", "npm update"):
         assert forbidden not in haystack, (
-            f"{forbidden!r} rewrites web-ui/package-lock.json into a state npm ci rejects (#1194)"
+            f"{forbidden!r} rewrites web-ui/package-lock.json, so this job would be "
+            "auditing a tree it just changed rather than the one that ships"
         )
 
 
@@ -173,6 +176,6 @@ def test_the_recovery_procedure_is_written_down(doc: Path):
     text = doc.read_text()
     assert "npm audit fix" in text, (
         f"{doc.name} does not warn against `npm audit fix`, so the next person "
-        "reaches for it first and lands a lockfile npm ci rejects (#1194)"
+        "reaches for it first and audits a tree it has already rewritten"
     )
     assert "#1194" in text, f"{doc.name} does not name #1194 as the reason"

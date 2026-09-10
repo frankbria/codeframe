@@ -80,7 +80,7 @@ jobs:
         # advisories, which is the entire point of running it daily.
         #
         # No --target of our own invention: `deps` is the stage that carries both
-        # `npm ci` (the #1194 lockfile oracle) and the audit gate, pinned by
+        # `npm ci` (the lockfile oracle, #1194) and the audit gate, pinned by
         # tests/ci/test_web_ui_audit_guard_1213.py. Nothing later in the image is
         # built, so this is the cheapest slice that reproduces the failure.
         run: |
@@ -98,9 +98,9 @@ jobs:
             echo "dependency changed, no commit caused this: an advisory was published"
             echo "upstream, or a fresh install of the pinned tree no longer resolves."
             echo
-            echo "**Follow the recovery recipe, not your reflex.** The obvious fix"
-            echo "regenerates the lockfile, which fails \`npm ci\` (#1194) and replaces"
-            echo "this break with a worse one. The procedure is in"
+            echo "**Follow the recovery recipe, not your reflex.** The reflexive"
+            echo "auto-fix rewrites the very tree this job checks, and replaces this"
+            echo "break with a worse one. The procedure is in"
             echo "\`deploy/README.md\` → \"The frontend image audit gate failed\"."
             echo
             echo '```'
