@@ -57,44 +57,58 @@ def test_the_range_excludes_the_measured_bad_version_and_admits_its_neighbours()
     11.5.0 and 11.7.0 both round-trip cleanly, so excluding them would be
     superstition; 11.6.2 does not, so admitting it would be decoration.
     """
-    from packaging.version import Version
-
     npm_range = _engines()["npm"]
 
-    def allows(version: str) -> bool:
-        # engines syntax here is `>=A <B || >=C` — evaluate each ||-clause.
-        for clause in npm_range.split("||"):
-            if all(
-                _cmp(Version(version), part) for part in clause.split() if part.strip()
-            ):
-                return True
-        return False
-
-    assert not allows(KNOWN_BAD_NPM), (
+    assert not _allows(npm_range, KNOWN_BAD_NPM), (
         f"engines.npm is {npm_range!r}, which still admits npm {KNOWN_BAD_NPM} — "
         "the one version measured to corrupt the lockfile"
     )
     for good in ("10.8.2", "11.5.0", "11.7.0", "11.19.0"):
-        assert allows(good), (
+        assert _allows(npm_range, good), (
             f"engines.npm is {npm_range!r}, which rejects npm {good} — measured "
             "to round-trip the lockfile cleanly, so this over-blocks"
         )
 
 
-def _cmp(version, constraint: str) -> bool:
-    from packaging.version import Version
+def _parts(version: str) -> tuple:
+    """`"11.10.0"` -> `(11, 10, 0)`, so 11.10 sorts above 11.6 rather than below.
 
-    for op in (">=", "<=", "<", ">", "="):
-        if constraint.startswith(op):
-            other = Version(constraint[len(op) :])
-            return {
-                ">=": version >= other,
-                "<=": version <= other,
-                "<": version < other,
-                ">": version > other,
-                "=": version == other,
-            }[op]
-    raise AssertionError(f"unparsed engines constraint {constraint!r}")
+    Every version this compares is a plain npm `X.Y.Z`, so a tuple of ints is the
+    whole of the semantics — no need to reach for a version-parsing library.
+    """
+    return tuple(int(n) for n in version.split("."))
+
+
+def _allows(npm_range: str, version: str) -> bool:
+    """Evaluate an npm engines range of the shape `>=A <B || >=C`."""
+    ops = {
+        ">=": lambda a, b: a >= b,
+        "<=": lambda a, b: a <= b,
+        "<": lambda a, b: a < b,
+        ">": lambda a, b: a > b,
+        "=": lambda a, b: a == b,
+    }
+
+    def satisfies(constraint: str) -> bool:
+        # `>=`/`<=` before `>`/`<`, or the two-character forms mis-parse.
+        for op, compare in ops.items():
+            if constraint.startswith(op):
+                return compare(_parts(version), _parts(constraint[len(op) :]))
+        raise AssertionError(f"unparsed engines constraint {constraint!r}")
+
+    return any(
+        all(satisfies(c) for c in clause.split() if c.strip())
+        for clause in npm_range.split("||")
+    )
+
+
+def test_the_range_evaluator_itself_is_not_lying():
+    """The assertions above are only as good as this parser."""
+    assert _parts("11.10.0") > _parts("11.6.2"), "numeric ordering, not string"
+    assert _allows(">=1.0.0", "1.0.0") and not _allows(">=1.0.1", "1.0.0")
+    assert _allows(">=1.0.0 <2.0.0", "1.5.0") and not _allows(">=1.0.0 <2.0.0", "2.0.0")
+    assert _allows(">=1.0.0 <2.0.0 || >=3.0.0", "3.1.0")
+    assert not _allows(">=1.0.0 <2.0.0 || >=3.0.0", "2.5.0")
 
 
 def test_the_node_range_admits_the_version_ci_and_the_image_run():
