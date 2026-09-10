@@ -46,12 +46,17 @@ def _frontend_build_step(job: str) -> dict:
 @pytest.mark.parametrize("job", BUILD_JOBS)
 def test_the_deploy_build_cannot_serve_the_gate_stage_from_cache(job: str) -> None:
     with_ = _frontend_build_step(job)
-    if "type=gha" not in str(with_.get("cache-from", "")):
-        pytest.skip("frontend build no longer reads the GHA cache; nothing to bust")
+    # Deliberately backend-agnostic: the property is "any layer cache read implies
+    # the gate stage is excluded from it", not "type=gha implies it". Keyed on the
+    # backend, swapping `type=gha` for `type=registry,ref=...` — a normal move for a
+    # bigger cache — would skip this guard while serving the audit layer exactly the
+    # same way, leaving `no-cache-filters` free to be dropped in a later refactor.
+    if not str(with_.get("cache-from", "")).strip():
+        pytest.skip("frontend build reads no layer cache; nothing to bust")
 
     filters = [f.strip() for f in str(with_.get("no-cache-filters", "")).splitlines() if f.strip()]
     assert GATE_STAGE in filters, (
-        f"{job}'s frontend build reads the GHA layer cache but does not exclude the "
+        f"{job}'s frontend build reads a layer cache but does not exclude the "
         f"{GATE_STAGE!r} stage from it. An unchanged lockfile makes `npm audit` a cache "
         "hit, so a high advisory published since the last build ships unreported (#1216)."
     )
