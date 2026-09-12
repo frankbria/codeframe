@@ -741,7 +741,8 @@ Be warm and encouraging. Just output the question, nothing else."""
         Raises:
             ValueError: If blocker not found or not a discovery blocker
             ActiveSessionExistsError: If another session holds the slot and
-                ``evict`` is False
+                ``evict`` is False — or, with ``evict=True``, if a concurrent
+                start wins the slot inside the evict transaction (retry).
         """
         blocker = blockers.get(self.workspace, blocker_id)
         if not blocker:

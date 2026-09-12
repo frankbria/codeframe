@@ -1670,7 +1670,7 @@ def prd_generate(
     ),
     force: bool = typer.Option(
         False,
-        "--force",
+        "--force", "-f",
         help="With --resume: close whichever session currently holds the workspace's active slot",
     ),
     template: str = typer.Option(
