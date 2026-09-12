@@ -111,7 +111,10 @@ describe('#1195 — badge variants are type-checked, not cast', () => {
 });
 
 describe('#1195 — proof status colours come from badge variants', () => {
-  it('has no raw status colour literal in src/components/proof', () => {
+  // Scope: a status *badge or pill* — a `bg-<hue>-N text-<hue>-N` pair, which
+  // is what a copied badge variant looks like. GateRunBanner's live-run dots
+  // and WaiveDialog's warning box are not badges and keep their own colours.
+  it('has no raw status badge colour pair in src/components/proof', () => {
     expect(
       offendingLines(/\bbg-(red|green|gray|amber)-\d+ text-(red|green|gray|amber)-\d+\b/, [], join('components', 'proof'))
     ).toEqual([]);
