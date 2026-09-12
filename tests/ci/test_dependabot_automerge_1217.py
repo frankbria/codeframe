@@ -114,6 +114,12 @@ class TestTheCheckerRefusesEachUnsafeShape:
         assert res.returncode == 1
         assert "downgrade" in res.stdout
 
+    def test_a_prerelease_version_is_refused_cleanly(self, tmp_path):
+        head = _lock({**BASE["packages"], "node_modules/js-yaml": _entry("4.3.2-rc.1")})
+        res = _run(tmp_path, BASE, head)
+        assert res.returncode == 1, res.stderr
+        assert "not a plain release" in res.stdout and "Traceback" not in res.stderr
+
     def test_an_unchanged_lock_is_refused_as_nothing_to_merge(self, tmp_path):
         res = _run(tmp_path, BASE, BASE)
         assert res.returncode == 1
@@ -159,7 +165,8 @@ class TestTheWorkflowGatesBeforeItMerges:
         behind the expected not-armed case. Ask for the state, then disarm
         with no fallback."""
         disarm = next(s for s in _steps() if "--disable-auto" in s.get("run", ""))
-        assert "autoMergeRequest" in disarm["run"]
+        assert "armed=$(gh pr view" in disarm["run"], "query must be a bare assignment (errexit)"
+        assert "set -euo pipefail" in disarm["run"]
         assert "||" not in disarm["run"]
 
     def test_event_values_reach_the_shell_through_env(self):

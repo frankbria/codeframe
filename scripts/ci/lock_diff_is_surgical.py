@@ -33,8 +33,11 @@ def _packages(path: Path) -> dict:
     return {k: v for k, v in data["packages"].items() if k}  # "" is the root project
 
 
-def _version_tuple(version: str) -> tuple:
-    return tuple(int(p) if p.isdigit() else p for p in version.split("."))
+def _version_tuple(version: str) -> tuple[int, ...] | None:
+    """``(4, 3, 2)`` for a plain release; None for anything else (prerelease,
+    build metadata) — a security patch is never one of those, so refuse."""
+    parts = version.split(".")
+    return tuple(int(p) for p in parts) if all(p.isdigit() for p in parts) else None
 
 
 def _major_minor(version: str) -> tuple[str, str] | None:
@@ -76,8 +79,12 @@ def reasons_not_surgical(base: dict, head: dict) -> tuple[list[str], list[str]]:
             reasons.append(
                 f"{key}: {before.get('version')} -> {after.get('version')} is not patch-level"
             )
-        elif _version_tuple(after["version"]) <= _version_tuple(before["version"]):
-            reasons.append(f"{key}: {before['version']} -> {after['version']} is a downgrade")
+        else:
+            old_t, new_t = _version_tuple(before["version"]), _version_tuple(after["version"])
+            if old_t is None or new_t is None:
+                reasons.append(f"{key}: {before['version']} -> {after['version']} is not a plain release")
+            elif new_t <= old_t:
+                reasons.append(f"{key}: {before['version']} -> {after['version']} is a downgrade")
 
     if not changes and not reasons:
         reasons.append("no package changed — nothing to merge")

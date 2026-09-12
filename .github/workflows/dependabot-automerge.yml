@@ -92,7 +92,12 @@ jobs:
         # unarmed PR is an error we expect, but `|| true` would also hide a
         # real API failure and leave a stale arming in place silently.
         run: |
-          if [ "$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
+          set -euo pipefail
+          # A bare assignment keeps the query's exit status under errexit; a
+          # substitution inside `[ ]` would discard it and "not armed" could
+          # mean "could not ask".
+          armed=$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')
+          if [ "$armed" = "true" ]; then
             gh pr merge --disable-auto "$PR_URL"
             echo "auto-merge disarmed"
           else
