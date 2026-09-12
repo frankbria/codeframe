@@ -90,6 +90,14 @@ class SessionResetError(DiscoveryError):
     pass
 
 
+#: The workspace's single active-session slot: what the partial UNIQUE index
+#: guards and what the migration backfill reconciles. Written once here (#1202)
+#: — the two used to be hand-copied, with nothing keeping them identical.
+#: `get_active_session`/`reset_discovery` deliberately use the looser
+#: `state != 'completed'` (reset must still close a finished-Q&A session).
+ACTIVE_SLOT_PREDICATE = "state != 'completed' AND COALESCE(is_complete, 0) = 0"
+
+
 class SessionState(str, Enum):
     """State of a discovery session."""
 
@@ -709,22 +717,31 @@ Be warm and encouraging. Just output the question, nothing else."""
         )
         self._blocker_id = blocker.id
         # Guarded for the same reason. A reset landing between these two writes
-        # leaves the blocker open with nothing pointing at it — but that window
-        # is the microseconds between two local writes, not the minutes of an
-        # LLM call, and there is no blocker-delete to unwind it with.
-        self._require_still_active()
+        # would leave the blocker open with nothing pointing at it, so unwind
+        # it before reporting the reset (#1202).
+        try:
+            self._require_still_active()
+        except SessionResetError:
+            self._blocker_id = None
+            blockers.delete(self.workspace, blocker.id)
+            raise
 
         logger.info(f"Session paused with blocker {blocker.id}")
         return blocker.id
 
-    def resume_discovery(self, blocker_id: str) -> None:
+    def resume_discovery(self, blocker_id: str, evict: bool = False) -> None:
         """Resume discovery from a blocker.
 
         Args:
             blocker_id: Blocker ID to resume from
+            evict: If the workspace's active slot is held by another session,
+                close that session first. Off by default: resuming refuses
+                rather than silently abandoning someone else's session (#1202).
 
         Raises:
             ValueError: If blocker not found or not a discovery blocker
+            ActiveSessionExistsError: If another session holds the slot and
+                ``evict`` is False
         """
         blocker = blockers.get(self.workspace, blocker_id)
         if not blocker:
@@ -747,7 +764,34 @@ Be warm and encouraging. Just output the question, nothing else."""
         # Load the session
         self.load_session(session_id)
         self.state = SessionState.DISCOVERING
-        self._save_session()
+
+        if evict:
+            # Close every *other* row holding the slot. Targeted rather than
+            # `reset_discovery(workspace)`, which picks by recency and could
+            # close this very session when it is the newest non-completed row.
+            conn = get_db_connection(self.workspace)
+            try:
+                conn.execute(
+                    f"""
+                    UPDATE discovery_sessions
+                    SET state = 'completed', updated_at = ?
+                    WHERE workspace_id = ? AND id != ? AND {ACTIVE_SLOT_PREDICATE}
+                    """,
+                    (_utc_now().isoformat(), self.workspace.id, session_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+        try:
+            self._save_session()
+        except ActiveSessionExistsError as exc:
+            self.state = SessionState.PAUSED
+            raise ActiveSessionExistsError(
+                "Another discovery session is already active for this workspace. "
+                "Resume with evict=True (`cf prd generate --resume <id> --force`) "
+                "to close it and continue this one."
+            ) from exc
 
         logger.info(f"Resumed session {session_id} from blocker {blocker_id}")
 
@@ -1058,6 +1102,10 @@ def _ensure_discovery_schema(workspace: Workspace) -> None:
     # would fail outright on them — so complete all but the newest per workspace
     # first. (SQLite returns the bare `id` from the row supplying `MAX`, which is
     # what picks the newest here.)
+    # The backfill and the CREATE UNIQUE INDEX below are atomic only because
+    # sqlite3's implicit transaction spans both; `isolation_level=None` on
+    # `get_db_connection` would split them (pinned by
+    # tests/core/test_prd_discovery_slot_followups_1202.py).
     index_exists = cursor.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?",
         ("idx_discovery_sessions_one_active",),
@@ -1073,15 +1121,15 @@ def _ensure_discovery_schema(workspace: Workspace) -> None:
         # every row — the backfill would update nothing and the index build would
         # then fail on the duplicates it was supposed to clear.
         cursor.execute(
-            """
+            f"""
             UPDATE discovery_sessions
             SET state = 'completed', updated_at = ?
-            WHERE state != 'completed' AND COALESCE(is_complete, 0) = 0
+            WHERE {ACTIVE_SLOT_PREDICATE}
               AND NOT EXISTS (
                   SELECT 1 FROM (
                       SELECT id AS keep_id, MAX(updated_at)
                       FROM discovery_sessions
-                      WHERE state != 'completed' AND COALESCE(is_complete, 0) = 0
+                      WHERE {ACTIVE_SLOT_PREDICATE}
                       GROUP BY workspace_id
                   ) AS newest
                   WHERE newest.keep_id IS discovery_sessions.id
@@ -1093,7 +1141,7 @@ def _ensure_discovery_schema(workspace: Workspace) -> None:
             cursor.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_discovery_sessions_one_active "
                 "ON discovery_sessions(workspace_id) "
-                "WHERE state != 'completed' AND COALESCE(is_complete, 0) = 0"
+                f"WHERE {ACTIVE_SLOT_PREDICATE}"
             )
         except sqlite3.DatabaseError:
             # This function runs on every discovery entry point, so letting the
@@ -1114,6 +1162,10 @@ def _ensure_discovery_schema(workspace: Workspace) -> None:
 def get_active_session(workspace: Workspace) -> Optional[PrdDiscoverySession]:
     """Get the most recent active (non-completed) discovery session.
 
+    A finished-Q&A row (``is_complete=1``) is in scope — its PRD can still be
+    generated — but it does not hold the slot, so a row that does is preferred
+    over it regardless of which was touched last (#1202).
+
     Args:
         workspace: Workspace to query
 
@@ -1132,7 +1184,7 @@ def get_active_session(workspace: Workspace) -> Optional[PrdDiscoverySession]:
         """
         SELECT id FROM discovery_sessions
         WHERE workspace_id = ? AND state != 'completed'
-        ORDER BY updated_at DESC
+        ORDER BY COALESCE(is_complete, 0) ASC, updated_at DESC
         LIMIT 1
         """,
         (workspace.id,),

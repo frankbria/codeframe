@@ -1668,6 +1668,11 @@ def prd_generate(
         "--resume", "-r",
         help="Resume from a paused session (blocker ID)",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="With --resume: close whichever session currently holds the workspace's active slot",
+    ),
     template: str = typer.Option(
         "standard",
         "--template", "-t",
@@ -1732,6 +1737,7 @@ def prd_generate(
     from codeframe.core.prd_discovery import (
         PrdDiscoverySession,
         DiscoveryError,
+        ActiveSessionExistsError,
         NoApiKeyError,
         ValidationError,
         IncompleteSessionError,
@@ -1789,8 +1795,8 @@ def prd_generate(
             console.print("\n[cyan]Resuming discovery session...[/cyan]")
             try:
                 session = PrdDiscoverySession(workspace)
-                session.resume_discovery(resume)
-            except (ValueError, NoApiKeyError) as e:
+                session.resume_discovery(resume, evict=force)
+            except (ValueError, NoApiKeyError, ActiveSessionExistsError) as e:
                 print_error(e)
                 raise typer.Exit(1)
             console.print(f"[green]✓[/green] Loaded {session.answered_count} previous answers")
