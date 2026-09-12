@@ -165,55 +165,49 @@ class ConfigFileWatcher:
             self._check_for_changes()
 
     def _check_for_changes(self) -> None:
-        """Compare current mtimes against snapshots."""
-        changed = False
+        """Compare current mtimes against snapshots.
+
+        Decided as a whole pass: while any previously populated file reads as
+        zero bytes (an editor mid-write), nothing is snapshotted and nothing
+        reloads, so a change to a *second* file in the same pass cannot drive a
+        reload that reads the first one empty (codex on #1230). The pass is
+        simply retried next poll.
+        """
+        updates: dict[Path, tuple[float, int]] = {}
+        unsettled = False
 
         for name in _CONFIG_FILES:
             path = self._workspace_path / name
-            if not path.is_file():
-                # File might have been created since start
-                if path not in self._watched_mtimes:
-                    continue
-                # File was deleted — skip
-                continue
-
             try:
+                if not path.is_file():
+                    continue  # never existed, or deleted — neither is a reload
                 st = path.stat()
             except OSError:
                 continue
             current_mtime, current_size = st.st_mtime, st.st_size
 
-            prev_mtime = self._watched_mtimes.get(path, 0.0)
-            if current_mtime > prev_mtime:
-                if current_size == 0 and self._watched_sizes.get(path, 0) > 0:
-                    streak = self._empty_streak.get(path, 0) + 1
-                    self._empty_streak[path] = streak
-                    if streak < self._empty_settle_polls:
-                        # Mid-write: leave the snapshot alone so the next poll
-                        # re-examines it once the write half has landed.
-                        logger.debug("%s read as empty mid-write; re-polling", path.name)
-                        continue
-                    logger.info("%s has stayed empty; treating as an intentional clear", path.name)
-                self._empty_streak.pop(path, None)
-                self._watched_mtimes[path] = current_mtime
-                self._watched_sizes[path] = current_size
-                changed = True
-
-        # Also detect newly created config files
-        for name in _CONFIG_FILES:
-            path = self._workspace_path / name
-            try:
-                if path.is_file() and path not in self._watched_mtimes:
-                    st = path.stat()
-                    self._watched_mtimes[path] = st.st_mtime
-                    self._watched_sizes[path] = st.st_size
-                    changed = True
-            except OSError:
+            if path not in self._watched_mtimes:
+                updates[path] = (current_mtime, current_size)  # created since start
                 continue
+            if current_mtime <= self._watched_mtimes[path]:
+                continue
+            if current_size == 0 and self._watched_sizes.get(path, 0) > 0:
+                streak = self._empty_streak.get(path, 0) + 1
+                self._empty_streak[path] = streak
+                if streak < self._empty_settle_polls:
+                    logger.debug("%s read as empty mid-write; re-polling", path.name)
+                    unsettled = True
+                    continue
+                logger.info("%s has stayed empty; treating as an intentional clear", path.name)
+            self._empty_streak.pop(path, None)
+            updates[path] = (current_mtime, current_size)
 
-        if changed:
-            self._reload()
-
+        if unsettled or not updates:
+            return
+        for path, (mtime, size) in updates.items():
+            self._watched_mtimes[path] = mtime
+            self._watched_sizes[path] = size
+        self._reload()
     def _reload(self) -> None:
         """Re-parse config files and update shared state."""
         try:

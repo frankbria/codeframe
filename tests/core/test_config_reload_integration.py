@@ -314,3 +314,39 @@ class TestATruncatedWriteDoesNotEmptyATier:
             assert len(state.reload_timestamps) == 1
         finally:
             watcher.stop()
+
+    def test_a_second_file_changing_does_not_reload_around_the_empty_one(self, workspace):
+        """codex on #1230: a change to CLAUDE.md in the same poll as AGENTS.md's
+        truncate must not drive a reload that reads AGENTS.md empty. The whole
+        pass is deferred until every file has settled."""
+        agents_path = workspace.repo_path / "AGENTS.md"
+        claude_path = workspace.repo_path / "CLAUDE.md"
+        agents_path.write_text("# Always Do\n- Run tests after changes\n")
+        claude_path.write_text("# Never Do\n- Delete production data\n")
+        initial_prefs = load_preferences(workspace.repo_path)
+
+        watcher = ConfigFileWatcher(
+            workspace.repo_path, poll_interval_s=0.05, empty_settle_polls=1000
+        )
+        state = watcher.start(initial_prefs)
+        try:
+            time.sleep(0.15)
+            future = time.time() + 1
+            agents_path.write_text("")
+            claude_path.write_text("# Never Do\n- Delete production data\n- Force-push main\n")
+            os.utime(agents_path, (future, future))
+            os.utime(claude_path, (future, future))
+            time.sleep(0.5)
+
+            assert state.last_reload_at is None, "reloaded around a mid-write file"
+            assert "Run tests after changes" in state.get_prefs().always_do
+
+            agents_path.write_text("# Always Do\n- Run tests after changes\n- Log all API calls\n")
+            os.utime(agents_path, (future + 1, future + 1))
+            assert wait_until(lambda: state.last_reload_at is not None)
+            prefs = state.get_prefs()
+            assert "Log all API calls" in prefs.always_do
+            assert "Force-push main" in prefs.never_do, "the deferred CLAUDE.md change lands too"
+            assert len(state.reload_timestamps) == 1
+        finally:
+            watcher.stop()
