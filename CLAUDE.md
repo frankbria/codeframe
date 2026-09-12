@@ -359,6 +359,11 @@ Note: `codeframe serve` exists but Golden Path does not depend on it.
   surface it first; the in-image gate stays as the backstop and must not be
   weakened. Recovery recipe: `deploy/README.md` → "The frontend image audit gate
   failed" — and `npm ci` exit 0 is the oracle either way.
+  Since #1217 a patch-level Dependabot **security** PR to `web-ui` arms
+  `gh pr merge --auto` by itself (`dependabot-automerge.yml`), but only after
+  `scripts/ci/lock_diff_is_surgical.py` confirms the lock diff adds and removes
+  nothing, gains no install script, and stays on `registry.npmjs.org` with
+  integrity hashes; routine bumps and minor/major updates still wait for a human.
   **The gate only fires because `deploy.yml` excludes the `deps` stage from the
   layer cache** (`no-cache-filters: deps`, #1216). A layer's cache key is its
   parent layers plus the command string, and an upstream advisory changes

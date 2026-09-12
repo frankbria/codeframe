@@ -1,0 +1,105 @@
+# Auto-merge patch-level Dependabot *security* updates to web-ui once green (#1217).
+#
+# #1210 cost a day of un-deployable staging while the two lockfile bumps that
+# fixed it sat open and green — nothing was missing but a merge. This closes
+# that gap as narrowly as it can be closed:
+#
+#   npm ecosystem, /web-ui only, a security advisory (not a routine bump),
+#   patch-level, and a lock diff that scripts/ci/lock_diff_is_surgical.py
+#   confirms is surgical: no package added or removed, no new install script,
+#   every resolved URL still registry.npmjs.org with an integrity hash, every
+#   version change patch-level. The semver label alone proves none of that.
+#
+# `gh pr merge --auto` only arms the merge; the branch protection's required
+# checks (strict, up-to-date) are what actually lands it. Runs on
+# `pull_request`, not `pull_request_target`: it needs no secrets, and the
+# `permissions` key grants the Dependabot-run token the two write scopes below.
+#
+# Arming is persistent on the PR, so it is re-decided on EVERY push to a
+# Dependabot PR, whoever pushed: the job runs for any actor, only a push by
+# Dependabot itself can arm, and any run that does not end armed — a human
+# push, a metadata gate that no longer holds, a lock diff the checker refuses
+# — disarms. A metadata-ineligible PR is a skipped step; a lock diff the
+# checker refuses is a red step (that is the case the checker exists for).
+name: Dependabot auto-merge (web-ui security patches)
+
+# No `paths:` filter: a push that touches neither package file must still
+# reach the job, because that is the run that disarms. Runs for the same PR
+# are serialised (latest wins) so an older run's arming cannot land after a
+# newer run's disarm.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  PR_URL: ${{ github.event.pull_request.html_url }}
+  BASE_REF: ${{ github.event.pull_request.base.ref }}
+
+jobs:
+  automerge:
+    name: Arm auto-merge for a surgical security patch
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read Dependabot metadata
+        id: md
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Every gate must hold, including that Dependabot itself made this push.
+      - name: Check out the PR
+        if: >-
+          github.actor == 'dependabot[bot]' &&
+          steps.md.outputs.package-ecosystem == 'npm' &&
+          steps.md.outputs.directory == '/web-ui' &&
+          steps.md.outputs.update-type == 'version-update:semver-patch' &&
+          steps.md.outputs.alert-state != ''
+        id: eligible
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Confirm the lock diff is surgical
+        if: steps.eligible.outcome == 'success'
+        id: surgical
+        run: |
+          git show "origin/${BASE_REF}:web-ui/package-lock.json" > /tmp/base-lock.json
+          python3 scripts/ci/lock_diff_is_surgical.py /tmp/base-lock.json web-ui/package-lock.json
+
+      - name: Arm auto-merge
+        if: steps.surgical.outcome == 'success'
+        id: arm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "$PR_URL"
+
+      - name: Disarm auto-merge
+        # Not armed by THIS run means not armed at all: an earlier run's arming
+        # must not survive a head it never saw.
+        if: always() && steps.arm.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Ask first, then disarm without a fallback: `--disable-auto` on an
+        # unarmed PR is an error we expect, but `|| true` would also hide a
+        # real API failure and leave a stale arming in place silently.
+        run: |
+          set -euo pipefail
+          # A bare assignment keeps the query's exit status under errexit; a
+          # substitution inside `[ ]` would discard it and "not armed" could
+          # mean "could not ask".
+          armed=$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')
+          if [ "$armed" = "true" ]; then
+            gh pr merge --disable-auto "$PR_URL"
+            echo "auto-merge disarmed"
+          else
+            echo "auto-merge was not armed"
+          fi
