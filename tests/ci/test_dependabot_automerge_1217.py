@@ -9,6 +9,7 @@ on the checker plus the Dependabot metadata before it ever calls ``--auto``.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -106,6 +107,13 @@ class TestTheCheckerRefusesEachUnsafeShape:
         assert res.returncode == 1
         assert "without a version change" in res.stdout
 
+    def test_a_same_minor_downgrade_is_refused(self, tmp_path):
+        base = _lock({**BASE["packages"], "node_modules/js-yaml": _entry("4.3.2")})
+        head = _lock({**BASE["packages"], "node_modules/js-yaml": _entry("4.3.1")})
+        res = _run(tmp_path, base, head)
+        assert res.returncode == 1
+        assert "downgrade" in res.stdout
+
     def test_an_unchanged_lock_is_refused_as_nothing_to_merge(self, tmp_path):
         res = _run(tmp_path, BASE, BASE)
         assert res.returncode == 1
@@ -156,6 +164,17 @@ class TestTheWorkflowGatesBeforeItMerges:
         assert "pull_request" in on
         assert "pull_request_target" not in on
 
+    def test_no_paths_filter_so_every_push_can_disarm(self):
+        """A push touching neither package file must still reach the job —
+        it is the run that disarms a stale arming (claude-review on #1229)."""
+        on = _workflow()[True] if True in _workflow() else _workflow()["on"]
+        assert "paths" not in (on["pull_request"] or {})
+
+    def test_runs_for_one_pr_are_serialised_latest_wins(self):
+        conc = _workflow()["concurrency"]
+        assert "github.event.pull_request.number" in conc["group"]
+        assert conc["cancel-in-progress"] is True
+
     def test_permissions_are_exactly_what_auto_merge_needs(self):
         perms = _workflow().get("permissions") or _job().get("permissions")
         assert perms == {"contents": "write", "pull-requests": "write"}
@@ -189,7 +208,8 @@ class TestTheWorkflowGatesBeforeItMerges:
 def test_actionlint_accepts_the_workflow():
     # A workflow that fails GitHub's expression pass runs with zero jobs and no
     # logs (#1122); actionlint is the only local check that catches it.
-    res = subprocess.run(["actionlint", str(WORKFLOW)], capture_output=True, text=True)
-    if res.returncode == 127 or "not found" in res.stderr:
+    if not shutil.which("actionlint"):
+        # test.yml's workflow-lint job runs actionlint on every workflow in CI.
         pytest.skip("actionlint not installed")
+    res = subprocess.run(["actionlint", str(WORKFLOW)], capture_output=True, text=True)
     assert res.returncode == 0, res.stdout + res.stderr

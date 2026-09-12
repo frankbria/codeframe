@@ -9,8 +9,9 @@ only when every property that made #1212's Dependabot lock diff safe holds:
 - every changed entry still resolves to ``https://registry.npmjs.org/`` and
   carries an ``integrity`` hash;
 - every changed entry changes its version, and by a patch level only
-  (same major.minor) — a same-version rewrite of ``resolved``/``integrity``
-  is a different artifact wearing the same number.
+  (same major.minor), upward — a same-version rewrite of ``resolved``/
+  ``integrity`` is a different artifact wearing the same number, and a
+  security patch never downgrades.
 
 Anything else exits 1 and prints why, one reason per line. The semver label on
 the PR is not consulted: this checks the bytes that will be installed.
@@ -30,6 +31,10 @@ def _packages(path: Path) -> dict:
     if data.get("lockfileVersion") != 3:
         sys.exit(f"{path}: expected lockfileVersion 3, got {data.get('lockfileVersion')!r}")
     return {k: v for k, v in data["packages"].items() if k}  # "" is the root project
+
+
+def _version_tuple(version: str) -> tuple:
+    return tuple(int(p) if p.isdigit() else p for p in version.split("."))
 
 
 def _major_minor(version: str) -> tuple[str, str] | None:
@@ -71,6 +76,8 @@ def reasons_not_surgical(base: dict, head: dict) -> tuple[list[str], list[str]]:
             reasons.append(
                 f"{key}: {before.get('version')} -> {after.get('version')} is not patch-level"
             )
+        elif _version_tuple(after["version"]) <= _version_tuple(before["version"]):
+            reasons.append(f"{key}: {before['version']} -> {after['version']} is a downgrade")
 
     if not changes and not reasons:
         reasons.append("no package changed — nothing to merge")

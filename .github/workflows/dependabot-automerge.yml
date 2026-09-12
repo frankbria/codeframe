@@ -23,12 +23,17 @@
 # checker refuses is a red step (that is the case the checker exists for).
 name: Dependabot auto-merge (web-ui security patches)
 
+# No `paths:` filter: a push that touches neither package file must still
+# reach the job, because that is the run that disarms. Runs for the same PR
+# are serialised (latest wins) so an older run's arming cannot land after a
+# newer run's disarm.
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - "web-ui/package.json"
-      - "web-ui/package-lock.json"
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
