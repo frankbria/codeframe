@@ -46,10 +46,10 @@ class TestEnginesCheck:
         # .env put ANTHROPIC_API_KEY straight back and this passed only when
         # run from a directory without one (#1200). Point both at an empty dir.
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("HOME", str(tmp_path))
-        with patch.dict("os.environ", {}, clear=True):
-            import os
-            os.environ.pop("ANTHROPIC_API_KEY", None)
+        # HOME is set *inside* the cleared environ: `clear=True` would wipe a
+        # monkeypatch.setenv, and Path.home() then falls back to the real
+        # home directory (codex review of #1200 caught exactly that).
+        with patch.dict("os.environ", {"HOME": str(tmp_path)}, clear=True):
             result = runner.invoke(app, ["engines", "check", "react"])
             assert result.exit_code == 1
             assert "not set" in result.output
