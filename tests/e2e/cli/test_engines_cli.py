@@ -40,7 +40,13 @@ class TestEnginesCheck:
         assert result.exit_code == 1
         assert "Error" in result.output
 
-    def test_check_missing_requirements(self):
+    def test_check_missing_requirements(self, monkeypatch, tmp_path):
+        # The CLI loads ~/.env and ./.env (env_provenance.load_env_files), so
+        # clearing os.environ is not enough: from the repo root, the repo's own
+        # .env put ANTHROPIC_API_KEY straight back and this passed only when
+        # run from a directory without one (#1200). Point both at an empty dir.
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("HOME", str(tmp_path))
         with patch.dict("os.environ", {}, clear=True):
             import os
             os.environ.pop("ANTHROPIC_API_KEY", None)
