@@ -8,7 +8,9 @@ only when every property that made #1212's Dependabot lock diff safe holds:
 - no entry newly declares an install script (``hasInstallScript``);
 - every changed entry still resolves to ``https://registry.npmjs.org/`` and
   carries an ``integrity`` hash;
-- every version change is patch-level (same major.minor).
+- every changed entry changes its version, and by a patch level only
+  (same major.minor) — a same-version rewrite of ``resolved``/``integrity``
+  is a different artifact wearing the same number.
 
 Anything else exits 1 and prints why, one reason per line. The semver label on
 the PR is not consulted: this checks the bytes that will be installed.
@@ -60,7 +62,12 @@ def reasons_not_surgical(base: dict, head: dict) -> tuple[list[str], list[str]]:
         if not after.get("integrity"):
             reasons.append(f"{key}: no integrity hash")
         old, new = _major_minor(str(before.get("version"))), _major_minor(str(after.get("version")))
-        if before.get("version") != after.get("version") and (old is None or old != new):
+        if before.get("version") == after.get("version"):
+            # Same version but a different entry: a rewritten tarball URL or
+            # integrity hash is a different artifact wearing the same number.
+            # Nothing a security patch needs looks like this (codex on #1229).
+            reasons.append(f"{key}: entry changed without a version change")
+        elif old is None or old != new:
             reasons.append(
                 f"{key}: {before.get('version')} -> {after.get('version')} is not patch-level"
             )

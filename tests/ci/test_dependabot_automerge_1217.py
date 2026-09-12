@@ -96,6 +96,16 @@ class TestTheCheckerRefusesEachUnsafeShape:
         assert res.returncode == 1
         assert "integrity" in res.stdout
 
+    def test_a_same_version_rewrite_is_refused(self, tmp_path):
+        """codex on #1229: a changed `resolved`/`integrity` at the same version
+        is a different tarball wearing the same number, not a patch bump."""
+        swapped = _entry("4.3.1")
+        swapped["integrity"] = "sha512-somethingelse"
+        head = _lock({**BASE["packages"], "node_modules/js-yaml": swapped})
+        res = _run(tmp_path, BASE, head)
+        assert res.returncode == 1
+        assert "without a version change" in res.stdout
+
     def test_an_unchanged_lock_is_refused_as_nothing_to_merge(self, tmp_path):
         res = _run(tmp_path, BASE, BASE)
         assert res.returncode == 1
