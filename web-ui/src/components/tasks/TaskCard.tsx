@@ -91,7 +91,7 @@ export function TaskCard({
             )}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge variant={STATUS_BADGE_VARIANT[task.status] as never}>
+                <Badge variant={STATUS_BADGE_VARIANT[task.status]}>
                   {STATUS_LABEL[task.status]}
                 </Badge>
               </TooltipTrigger>

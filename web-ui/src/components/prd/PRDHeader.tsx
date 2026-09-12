@@ -1,6 +1,7 @@
 'use client';
 
 import { HugeiconsIcon } from '@hugeicons/react';
+import { formatDate } from '@/lib/format';
 import { FileEditIcon, Upload04Icon, MessageSearch01Icon, TaskEdit01Icon, TestTube01Icon, Loading03Icon, Time01Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import type { PrdResponse } from '@/types';
@@ -35,7 +36,7 @@ export function PRDHeader({
           {prd && (
             <p className="text-sm text-muted-foreground">
               Version {prd.version} &middot;{' '}
-              {new Date(prd.created_at).toLocaleDateString()}
+              {formatDate(prd.created_at)}
             </p>
           )}
         </div>

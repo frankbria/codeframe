@@ -128,7 +128,7 @@ describe('ResolvedBlockersSection', () => {
     render(<ResolvedBlockersSection blockers={[blocker]} />);
     await user.click(screen.getByRole('button'));
 
-    expect(screen.getByText('2h ago')).toBeInTheDocument();
+    expect(screen.getByText('about 2 hours ago')).toBeInTheDocument();
   });
 
   it('falls back to created_at when answered_at is null', async () => {
@@ -139,7 +139,7 @@ describe('ResolvedBlockersSection', () => {
     render(<ResolvedBlockersSection blockers={[blocker]} />);
     await user.click(screen.getByRole('button'));
 
-    expect(screen.getByText('5m ago')).toBeInTheDocument();
+    expect(screen.getByText('5 minutes ago')).toBeInTheDocument();
   });
 
   it('renders multiple blockers when expanded', async () => {

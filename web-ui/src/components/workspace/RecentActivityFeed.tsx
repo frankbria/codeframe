@@ -1,6 +1,7 @@
 'use client';
 
 import type { IconSvgElement } from '@hugeicons/react';
+import { formatRelativeTime } from '@/lib/format';
 import { HugeiconsIcon } from '@hugeicons/react';
 import {
   Time01Icon,
@@ -9,7 +10,6 @@ import {
   Alert02Icon,
   Folder01Icon,
 } from '@hugeicons/core-free-icons';
-import { formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { ActivityItem, ActivityType } from '@/types';
 
@@ -74,9 +74,7 @@ export function RecentActivityFeed({ activities }: RecentActivityFeedProps) {
                       data-testid="activity-timestamp"
                       className="mt-1 text-xs text-muted-foreground"
                     >
-                      {formatDistanceToNow(new Date(activity.timestamp), {
-                        addSuffix: true,
-                      })}
+                      {formatRelativeTime(activity.timestamp)}
                     </p>
                   </div>
                 </div>

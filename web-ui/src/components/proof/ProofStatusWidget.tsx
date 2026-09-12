@@ -6,6 +6,7 @@ import { HugeiconsIcon } from '@hugeicons/react';
 import { CheckmarkCircle01Icon } from '@hugeicons/core-free-icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { PROOF_STATUS_VARIANT } from '@/components/proof/ProofStatusBadge';
 import { proofApi } from '@/lib/api';
 import type { ProofStatusResponse } from '@/types';
 
@@ -40,13 +41,13 @@ export function ProofStatusWidget({ workspacePath }: ProofStatusWidgetProps) {
           <>
             <div className="flex flex-wrap gap-2">
               {data.open > 0 && (
-                <Badge className="bg-red-100 text-red-900">{data.open} open</Badge>
+                <Badge variant={PROOF_STATUS_VARIANT.open}>{data.open} open</Badge>
               )}
               {data.satisfied > 0 && (
-                <Badge className="bg-green-100 text-green-900">{data.satisfied} satisfied</Badge>
+                <Badge variant={PROOF_STATUS_VARIANT.satisfied}>{data.satisfied} satisfied</Badge>
               )}
               {data.waived > 0 && (
-                <Badge className="bg-gray-100 text-gray-600">{data.waived} waived</Badge>
+                <Badge variant={PROOF_STATUS_VARIANT.waived}>{data.waived} waived</Badge>
               )}
             </div>
             <Link

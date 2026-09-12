@@ -10,7 +10,7 @@ import { TopTasksTable } from '@/components/costs/TopTasksTable';
 import { AgentCostBars } from '@/components/costs/AgentCostBars';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
 import { costsApi } from '@/lib/api';
-import { formatUsd } from '@/lib/format';
+import { formatUsd, formatCount } from '@/lib/format';
 import { useWorkspaceSelection } from '@/hooks/useWorkspaceSelection';
 import type {
   CostSummaryResponse,
@@ -137,7 +137,7 @@ export default function CostsPage() {
                     data-testid="total-tasks"
                     className="text-2xl font-bold"
                   >
-                    {data.total_tasks.toLocaleString('en-US')}
+                    {formatCount(data.total_tasks)}
                   </p>
                 </CardContent>
               </Card>
