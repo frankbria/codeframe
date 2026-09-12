@@ -117,9 +117,29 @@ def _steps() -> list[dict]:
 
 
 class TestTheWorkflowGatesBeforeItMerges:
-    def test_only_dependabot_reaches_the_job(self):
-        assert "dependabot[bot]" in _job()["if"]
-        assert "github.event.pull_request.user.login" in _job()["if"] or "github.actor" in _job()["if"]
+    def test_the_job_runs_for_every_push_to_a_dependabot_pr(self):
+        """The job must run on a *human* push too — that is when it disarms.
+        Gating the whole job on the actor (claude-review on #1229) left an
+        armed merge in place for a head nobody re-checked."""
+        assert "github.event.pull_request.user.login == 'dependabot[bot]'" in _job()["if"]
+        assert "github.actor" not in _job()["if"]
+
+    def test_only_a_dependabot_push_can_arm(self):
+        text = WORKFLOW.read_text()
+        assert "github.actor == 'dependabot[bot]'" in text
+
+    def test_anything_short_of_armed_disarms(self):
+        """`gh pr merge --auto` is persistent, so every run that does not
+        (re)arm must explicitly disarm, whatever step stopped it."""
+        disarm = [s for s in _steps() if "--disable-auto" in s.get("run", "")]
+        assert len(disarm) == 1
+        assert "always()" in disarm[0]["if"]
+        assert "steps.arm.outcome != 'success'" in disarm[0]["if"]
+
+    def test_event_values_reach_the_shell_through_env(self):
+        # GitHub's hardening guide: never interpolate github.event.* into `run:`.
+        for step in _steps():
+            assert "${{ github.event" not in step.get("run", ""), step.get("name")
 
     def test_it_runs_on_pull_request_not_pull_request_target(self):
         on = _workflow()[True] if True in _workflow() else _workflow()["on"]
@@ -151,10 +171,9 @@ class TestTheWorkflowGatesBeforeItMerges:
         assert any("lock_diff_is_surgical.py" in r and "package-lock.json" in r for r in runs)
 
     def test_merge_is_auto_and_squash(self):
-        runs = [s.get("run", "") for s in _steps()]
-        merge = [r for r in runs if "gh pr merge" in r]
-        assert len(merge) == 1
-        assert "--auto" in merge[0] and "--squash" in merge[0]
+        arm = [s for s in _steps() if s.get("id") == "arm"]
+        assert len(arm) == 1
+        assert "gh pr merge" in arm[0]["run"] and "--auto" in arm[0]["run"] and "--squash" in arm[0]["run"]
 
 
 def test_actionlint_accepts_the_workflow():

@@ -14,8 +14,13 @@
 # checks (strict, up-to-date) are what actually lands it. Runs on
 # `pull_request`, not `pull_request_target`: it needs no secrets, and the
 # `permissions` key grants the Dependabot-run token the two write scopes below.
-# A push by anyone other than Dependabot re-triggers the run and the actor gate
-# refuses, so a human amendment cannot ride the arming.
+#
+# Arming is persistent on the PR, so it is re-decided on EVERY push to a
+# Dependabot PR, whoever pushed: the job runs for any actor, only a push by
+# Dependabot itself can arm, and any run that does not end armed — a human
+# push, a metadata gate that no longer holds, a lock diff the checker refuses
+# — disarms. A metadata-ineligible PR is a skipped step; a lock diff the
+# checker refuses is a red step (that is the case the checker exists for).
 name: Dependabot auto-merge (web-ui security patches)
 
 on:
@@ -29,10 +34,14 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  PR_URL: ${{ github.event.pull_request.html_url }}
+  BASE_REF: ${{ github.event.pull_request.base.ref }}
+
 jobs:
   automerge:
     name: Arm auto-merge for a surgical security patch
-    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Read Dependabot metadata
@@ -41,10 +50,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Every gate must hold; the step is skipped (not failed) otherwise so a
-      # routine bump shows no red check — it is simply not eligible.
+      # Every gate must hold, including that Dependabot itself made this push.
       - name: Check out the PR
         if: >-
+          github.actor == 'dependabot[bot]' &&
           steps.md.outputs.package-ecosystem == 'npm' &&
           steps.md.outputs.directory == '/web-ui' &&
           steps.md.outputs.update-type == 'version-update:semver-patch' &&
@@ -58,11 +67,20 @@ jobs:
         if: steps.eligible.outcome == 'success'
         id: surgical
         run: |
-          git show "origin/${{ github.event.pull_request.base.ref }}:web-ui/package-lock.json" > /tmp/base-lock.json
+          git show "origin/${BASE_REF}:web-ui/package-lock.json" > /tmp/base-lock.json
           python3 scripts/ci/lock_diff_is_surgical.py /tmp/base-lock.json web-ui/package-lock.json
 
       - name: Arm auto-merge
         if: steps.surgical.outcome == 'success'
+        id: arm
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh pr merge --auto --squash "${{ github.event.pull_request.html_url }}"
+        run: gh pr merge --auto --squash "$PR_URL"
+
+      - name: Disarm auto-merge
+        # Not armed by THIS run means not armed at all: an earlier run's arming
+        # must not survive a head it never saw.
+        if: always() && steps.arm.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --disable-auto "$PR_URL" || echo "auto-merge was not armed"
