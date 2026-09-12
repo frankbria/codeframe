@@ -138,3 +138,63 @@ class TestFinishedSessionIsPreserved:
         assert states[seeded] == "discovering", (
             f"a finished-Q&A session must survive; got {states} / {result.output}"
         )
+
+
+@patch("codeframe.core.llm_resolution.create_provider")
+class TestResumeIntoATakenSlot:
+    """#1202: `--resume` into a workspace whose slot is held refuses by
+    default and names `--force`; `--force` evicts the holder and resumes."""
+
+    def _pause_then_take(self, workspace: Workspace) -> tuple[str, str, str]:
+        from codeframe.core.prd_discovery import PrdDiscoverySession
+
+        with patch("codeframe.core.prd_discovery.AnthropicProvider") as cls:
+            cls.return_value = _provider()
+            paused = PrdDiscoverySession(workspace, api_key="test-key")
+            paused.start_discovery()
+            blocker_id = paused.pause_discovery("stepping away")
+            conn = get_db_connection(workspace)
+            conn.execute(
+                "UPDATE discovery_sessions SET state = 'completed' WHERE id = ?",
+                (paused.session_id,),
+            )
+            conn.commit()
+            conn.close()
+            holder = PrdDiscoverySession(workspace, api_key="test-key")
+            holder.start_discovery()
+        return paused.session_id, blocker_id, holder.session_id
+
+    def test_refused_resume_exits_1_and_names_force(
+        self, mock_create_provider, workspace: Workspace, monkeypatch
+    ):
+        mock_create_provider.return_value = _provider()
+        monkeypatch.chdir(workspace.repo_path)
+        _paused, blocker_id, holder = self._pause_then_take(workspace)
+
+        result = runner.invoke(
+            app,
+            ["prd", "generate", "-w", str(workspace.repo_path), "--resume", blocker_id],
+            env={"ANTHROPIC_API_KEY": "test-key"},
+        )
+
+        assert result.exit_code == 1, result.output
+        assert "--force" in result.output, result.output
+        assert _states(workspace)[holder] != "completed"
+
+    def test_force_evicts_the_holder_and_resumes(
+        self, mock_create_provider, workspace: Workspace, monkeypatch
+    ):
+        mock_create_provider.return_value = _provider()
+        monkeypatch.chdir(workspace.repo_path)
+        paused, blocker_id, holder = self._pause_then_take(workspace)
+
+        result = runner.invoke(
+            app,
+            ["prd", "generate", "-w", str(workspace.repo_path), "--resume", blocker_id, "--force"],
+            input="/quit\ny\n",
+            env={"ANTHROPIC_API_KEY": "test-key"},
+        )
+
+        states = _states(workspace)
+        assert states[holder] == "completed", f"{states} / {result.output}"
+        assert "Resuming" in result.output, result.output
