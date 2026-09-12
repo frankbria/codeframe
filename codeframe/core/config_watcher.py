@@ -106,6 +106,11 @@ class ConfigFileWatcher:
         self._thread: Optional[threading.Thread] = None
         self._state: Optional[ConfigReloadState] = None
         self._watched_mtimes: dict[Path, float] = {}
+        #: Last seen size per file. A file that had content and now reads as
+        #: zero bytes is an editor mid-write (truncate, then write), not a
+        #: change: committing a reload there silently empties that tier for
+        #: the rest of the batch (#1219). Such a poll is skipped and retried.
+        self._watched_sizes: dict[Path, int] = {}
         self._workspace_ref: Optional[object] = None  # Cached workspace for event emission
 
     def start(self, initial_prefs: AgentPreferences) -> ConfigReloadState:
@@ -124,10 +129,13 @@ class ConfigFileWatcher:
 
         # Snapshot current mtimes
         self._watched_mtimes = {}
+        self._watched_sizes = {}
         for name in _CONFIG_FILES:
             path = self._workspace_path / name
             if path.is_file():
-                self._watched_mtimes[path] = path.stat().st_mtime
+                st = path.stat()
+                self._watched_mtimes[path] = st.st_mtime
+                self._watched_sizes[path] = st.st_size
 
         self._thread = threading.Thread(
             target=self._poll_loop,
@@ -163,13 +171,20 @@ class ConfigFileWatcher:
                 continue
 
             try:
-                current_mtime = path.stat().st_mtime
+                st = path.stat()
             except OSError:
                 continue
+            current_mtime, current_size = st.st_mtime, st.st_size
 
             prev_mtime = self._watched_mtimes.get(path, 0.0)
             if current_mtime > prev_mtime:
+                if current_size == 0 and self._watched_sizes.get(path, 0) > 0:
+                    # Mid-write: leave the snapshot alone so the next poll
+                    # re-examines it once the write half has landed.
+                    logger.debug("%s read as empty mid-write; re-polling", path.name)
+                    continue
                 self._watched_mtimes[path] = current_mtime
+                self._watched_sizes[path] = current_size
                 changed = True
 
         # Also detect newly created config files
@@ -177,7 +192,9 @@ class ConfigFileWatcher:
             path = self._workspace_path / name
             try:
                 if path.is_file() and path not in self._watched_mtimes:
-                    self._watched_mtimes[path] = path.stat().st_mtime
+                    st = path.stat()
+                    self._watched_mtimes[path] = st.st_mtime
+                    self._watched_sizes[path] = st.st_size
                     changed = True
             except OSError:
                 continue

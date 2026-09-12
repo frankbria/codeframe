@@ -38,11 +38,45 @@ def wait_until(predicate, timeout_s: float = 10.0, poll_s: float = 0.02) -> bool
     return predicate()
 
 
+#: Content of the decoy machine-wide file. Sections merge per tier with the
+#: workspace winning, so the decoy uses a section the workspace never sets:
+#: it must merge in (that is the tier's job) but never be *all* that does.
+DECOY_RULE = "Decoy machine-wide rule"
+
+
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Pin HOME so the machine-wide tier is never the operator's real file.
+
+    load_preferences merges ``~/.codeframe/AGENTS.md``; on a developer machine
+    that file exists and its contents leaked into this module's assertions
+    (#1219). A decoy stands in for it so the merge path is still exercised,
+    deterministically.
+    """
+    home = tmp_path / "home"
+    (home / ".codeframe").mkdir(parents=True)
+    (home / ".codeframe" / "AGENTS.md").write_text(f"# Ask First\n- {DECOY_RULE}\n")
+    monkeypatch.setenv("HOME", str(home))
+    return home
+
+
+def atomic_write(path: Path, text: str) -> None:
+    """Replace ``path`` in one step so no reader ever sees it truncated."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
 @pytest.fixture
 def workspace(tmp_path: Path):
     repo_path = tmp_path / "test_repo"
     repo_path.mkdir()
     return create_or_load_workspace(repo_path)
+
+
+def test_home_is_isolated_from_the_operator(isolated_home: Path):
+    assert Path.home() == isolated_home
+    assert (Path.home() / ".codeframe" / "AGENTS.md").exists()
 
 
 class TestConfigReloadLifecycle:
@@ -75,9 +109,12 @@ class TestConfigReloadLifecycle:
             assert "Run tests after changes" in prefs.always_do
             assert state.last_reload_at is None
 
-            # Step 5: Modify config (simulating operator change during batch)
+            # Step 5: Modify config (simulating operator change during batch).
+            # Atomic: write_text truncates first, and a poll landing in that
+            # window read an empty workspace tier (#1219).
             time.sleep(0.3)
-            agents_path.write_text(
+            atomic_write(
+                agents_path,
                 "# Always Do\n"
                 "- Run tests after changes\n"
                 "- Use type hints\n"
@@ -85,7 +122,7 @@ class TestConfigReloadLifecycle:
                 "\n"
                 "# Never Do\n"
                 "- Delete production data\n"
-                "- Modify database schema directly\n"
+                "- Modify database schema directly\n",
             )
             future_time = time.time() + 1
             os.utime(agents_path, (future_time, future_time))
@@ -97,6 +134,7 @@ class TestConfigReloadLifecycle:
             assert state.last_reload_at is not None
             new_prefs = state.get_prefs()
             assert "Log all API calls" in new_prefs.always_do
+            assert DECOY_RULE in new_prefs.ask_first, "machine-wide tier still merges"
             assert "Modify database schema directly" in new_prefs.never_do
             assert len(state.reload_timestamps) == 1
 
@@ -212,3 +250,38 @@ class TestConfigReloadLifecycle:
         time.sleep(0.2)
         active_after = threading.active_count()
         assert active_after <= active_before
+
+
+class TestATruncatedWriteDoesNotEmptyATier:
+    """#1219, the product half: an editor that truncates before it writes
+    leaves a window in which the workspace file reads as zero bytes. A poll in
+    that window used to commit a reload whose workspace tier was empty — silent
+    for the rest of the batch whenever the machine-wide tier had content."""
+
+    def test_zero_length_read_of_a_populated_file_is_not_a_reload(self, workspace):
+        agents_path = workspace.repo_path / "AGENTS.md"
+        agents_path.write_text("# Always Do\n- Run tests after changes\n")
+        initial_prefs = load_preferences(workspace.repo_path)
+        assert DECOY_RULE in initial_prefs.ask_first, "the premise: the merge is non-empty"
+
+        watcher = ConfigFileWatcher(workspace.repo_path, poll_interval_s=0.05)
+        state = watcher.start(initial_prefs)
+        try:
+            time.sleep(0.15)
+            # The truncate half of a non-atomic write, held open for many polls.
+            agents_path.write_text("")
+            future = time.time() + 1
+            os.utime(agents_path, (future, future))
+            time.sleep(0.5)
+
+            assert state.last_reload_at is None, "a mid-write poll committed a reload"
+            assert "Run tests after changes" in state.get_prefs().always_do
+
+            # The write half lands; now it is a real change.
+            agents_path.write_text("# Always Do\n- Run tests after changes\n- Log all API calls\n")
+            os.utime(agents_path, (future + 1, future + 1))
+            assert wait_until(lambda: state.last_reload_at is not None)
+            assert "Log all API calls" in state.get_prefs().always_do
+            assert len(state.reload_timestamps) == 1
+        finally:
+            watcher.stop()
