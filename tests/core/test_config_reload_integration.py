@@ -264,7 +264,10 @@ class TestATruncatedWriteDoesNotEmptyATier:
         initial_prefs = load_preferences(workspace.repo_path)
         assert DECOY_RULE in initial_prefs.ask_first, "the premise: the merge is non-empty"
 
-        watcher = ConfigFileWatcher(workspace.repo_path, poll_interval_s=0.05)
+        # A huge settle threshold: this test is about the transient window only.
+        watcher = ConfigFileWatcher(
+            workspace.repo_path, poll_interval_s=0.05, empty_settle_polls=1000
+        )
         state = watcher.start(initial_prefs)
         try:
             time.sleep(0.15)
@@ -282,6 +285,32 @@ class TestATruncatedWriteDoesNotEmptyATier:
             os.utime(agents_path, (future + 1, future + 1))
             assert wait_until(lambda: state.last_reload_at is not None)
             assert "Log all API calls" in state.get_prefs().always_do
+            assert len(state.reload_timestamps) == 1
+        finally:
+            watcher.stop()
+
+    def test_a_file_that_stays_empty_is_an_intentional_clear(self, workspace):
+        """codex on #1230: skipping the zero-byte read forever would mean a
+        deliberately emptied AGENTS.md never reloads. Once it has held empty
+        for `empty_settle_polls` polls it is a change like any other."""
+        agents_path = workspace.repo_path / "AGENTS.md"
+        agents_path.write_text("# Always Do\n- Run tests after changes\n")
+        initial_prefs = load_preferences(workspace.repo_path)
+
+        watcher = ConfigFileWatcher(
+            workspace.repo_path, poll_interval_s=0.05, empty_settle_polls=3
+        )
+        state = watcher.start(initial_prefs)
+        try:
+            time.sleep(0.15)
+            agents_path.write_text("")
+            future = time.time() + 1
+            os.utime(agents_path, (future, future))
+
+            assert wait_until(lambda: state.last_reload_at is not None, timeout_s=5)
+            prefs = state.get_prefs()
+            assert prefs.always_do == [], "the cleared workspace tier must win"
+            assert DECOY_RULE in prefs.ask_first, "the machine-wide tier still merges"
             assert len(state.reload_timestamps) == 1
         finally:
             watcher.stop()

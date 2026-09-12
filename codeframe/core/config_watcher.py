@@ -99,9 +99,15 @@ class ConfigFileWatcher:
         self,
         workspace_path: Path,
         poll_interval_s: float = 2.0,
+        empty_settle_polls: int = 3,
     ) -> None:
         self._workspace_path = workspace_path
         self._poll_interval_s = poll_interval_s
+        #: A zero-byte read of a populated file is mid-write until it has held
+        #: for this many consecutive polls; then it is an intentional clear and
+        #: reloads like any other change (codex on #1230).
+        self._empty_settle_polls = empty_settle_polls
+        self._empty_streak: dict[Path, int] = {}
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._state: Optional[ConfigReloadState] = None
@@ -179,10 +185,15 @@ class ConfigFileWatcher:
             prev_mtime = self._watched_mtimes.get(path, 0.0)
             if current_mtime > prev_mtime:
                 if current_size == 0 and self._watched_sizes.get(path, 0) > 0:
-                    # Mid-write: leave the snapshot alone so the next poll
-                    # re-examines it once the write half has landed.
-                    logger.debug("%s read as empty mid-write; re-polling", path.name)
-                    continue
+                    streak = self._empty_streak.get(path, 0) + 1
+                    self._empty_streak[path] = streak
+                    if streak < self._empty_settle_polls:
+                        # Mid-write: leave the snapshot alone so the next poll
+                        # re-examines it once the write half has landed.
+                        logger.debug("%s read as empty mid-write; re-polling", path.name)
+                        continue
+                    logger.info("%s has stayed empty; treating as an intentional clear", path.name)
+                self._empty_streak.pop(path, None)
                 self._watched_mtimes[path] = current_mtime
                 self._watched_sizes[path] = current_size
                 changed = True
