@@ -22,9 +22,19 @@ jobs:
     # `github.actor` is the PR author on `opened` but the **pusher** on
     # `synchronize`, so the actor form misses a bot push to a human PR (#1167).
     # A null `sender` compares false, so it fails closed.
+    #
+    # Same-repo head only (#1221). `secrets.*` are withheld from `pull_request`
+    # runs on fork PRs for the same structural reason as on Dependabot PRs, so
+    # a human fork PR passed the gate above and then failed the preflight with
+    # a misdiagnosis ("unset or rotated"). A fork PR now skips, like a bot PR;
+    # reaching the token instead would mean `pull_request_target`, which #875
+    # hardened against. The day fork contributions matter, the better shape is
+    # a distinct "secrets are not offered to fork runs" annotation so an
+    # unreviewed fork PR is not silent.
     if: |
       github.event.pull_request.user.type == 'User' &&
-      github.event.sender.type == 'User'
+      github.event.sender.type == 'User' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
