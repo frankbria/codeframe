@@ -136,6 +136,7 @@ class ConfigFileWatcher:
         # Snapshot current mtimes
         self._watched_mtimes = {}
         self._watched_sizes = {}
+        self._empty_streak = {}
         for name in _CONFIG_FILES:
             path = self._workspace_path / name
             if path.is_file():
