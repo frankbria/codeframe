@@ -15,6 +15,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.markup import escape
 
 from codeframe.cli.helpers import print_error
 from codeframe.core import engine_stats
@@ -109,7 +110,7 @@ def engines_check(
         raise typer.Exit(1)
 
     if not reqs:
-        console.print(f"[green]Engine '{name}' has no additional requirements.[/green]")
+        console.print(f"[green]Engine '{escape(name)}' has no additional requirements.[/green]")
         return
 
     all_satisfied = True
@@ -121,9 +122,9 @@ def engines_check(
             all_satisfied = False
 
     if all_satisfied:
-        console.print(f"\n[green]Engine '{name}' is ready.[/green]")
+        console.print(f"\n[green]Engine '{escape(name)}' is ready.[/green]")
     else:
-        console.print(f"\n[red]Engine '{name}' has unmet requirements.[/red]")
+        console.print(f"\n[red]Engine '{escape(name)}' has unmet requirements.[/red]")
         raise typer.Exit(1)
 
 

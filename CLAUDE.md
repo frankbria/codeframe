@@ -333,6 +333,11 @@ Note: `codeframe serve` exists but Golden Path does not depend on it.
   replaced was too narrow four times in one review cycle — a local bound one
   statement earlier carries no field name at all. Every registered command must
   appear in its `RUN` or `EXEMPT` table; a new command fails CI until classified.
+  The `EXEMPT` commands it cannot run are covered statically by
+  `tests/cli/test_typer_arg_markup_1206.py`: a Typer command's `str`-annotated
+  parameters are user input by definition, and any `console.print` / `.write` /
+  `.add_row` in that command that interpolates one without `escape()` fails CI.
+  Wrap the argument (`escape(str(x))` if it is Optional); do not add to `ALLOWED`.
 - **Don't run `npm audit fix` in `web-ui` to clear a red audit gate** — a job that
   rewrites the tree it is checking produces a differently broken build. Plain
   `npm install` is fine **unless you are on npm 11.6.x**, which is the whole of

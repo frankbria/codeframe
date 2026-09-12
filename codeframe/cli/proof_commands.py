@@ -92,13 +92,13 @@ def capture(
     try:
         sev = Severity(severity)
     except ValueError:
-        console.print(f"[red]Error:[/red] Invalid severity: {severity}")
+        console.print(f"[red]Error:[/red] Invalid severity: {escape(str(severity))}")
         raise typer.Exit(1)
 
     try:
         src = Source(source)
     except ValueError:
-        console.print(f"[red]Error:[/red] Invalid source: {source}")
+        console.print(f"[red]Error:[/red] Invalid source: {escape(str(source))}")
         raise typer.Exit(1)
 
     req, stubs = capture_requirement(
@@ -178,7 +178,7 @@ def run(
         try:
             gate_filter = Gate(gate.lower())
         except ValueError:
-            console.print(f"[red]Error:[/red] Unknown gate: {gate}")
+            console.print(f"[red]Error:[/red] Unknown gate: {escape(str(gate))}")
             console.print(f"Valid gates: {', '.join(g.value for g in Gate)}")
             raise typer.Exit(1)
 
@@ -330,7 +330,7 @@ def list_reqs(
         try:
             status_filter = ReqStatus(status.lower())
         except ValueError:
-            console.print(f"[red]Error:[/red] Invalid status: {status}")
+            console.print(f"[red]Error:[/red] Invalid status: {escape(str(status))}")
             raise typer.Exit(1)
 
     reqs = ledger.list_requirements(workspace, status=status_filter)
@@ -465,14 +465,14 @@ def waive(
         try:
             expiry_date = date.fromisoformat(expires)
         except ValueError:
-            console.print(f"[red]Error:[/red] Invalid date format: {expires} (use YYYY-MM-DD)")
+            console.print(f"[red]Error:[/red] Invalid date format: {escape(str(expires))} (use YYYY-MM-DD)")
             raise typer.Exit(1)
 
     waiver_obj = Waiver(reason=reason, expires=expiry_date, approved_by="cli-user")
     updated = ledger.waive_requirement(workspace, req_id, waiver_obj)
 
     if updated:
-        console.print(f"[green]✓[/green] {req_id} waived: {reason}")
+        console.print(f"[green]✓[/green] {escape(req_id)} waived: {escape(reason)}")
         if expiry_date:
             console.print(f"  Expires: {expiry_date}")
     else:
