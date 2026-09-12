@@ -766,9 +766,15 @@ Be warm and encouraging. Just output the question, nothing else."""
         self.state = SessionState.DISCOVERING
 
         if evict:
-            # Close every *other* row holding the slot. Targeted rather than
+            # Close every *other* row holding the slot and re-activate this one
+            # in ONE transaction: committing the eviction first would open a
+            # window for a concurrent start to win the vacated slot, leaving
+            # the holder closed for nothing. Targeted rather than
             # `reset_discovery(workspace)`, which picks by recency and could
             # close this very session when it is the newest non-completed row.
+            # load_session() just read the row, so state is the only field
+            # that differs from what is stored.
+            now = _utc_now().isoformat()
             conn = get_db_connection(self.workspace)
             try:
                 conn.execute(
@@ -777,21 +783,35 @@ Be warm and encouraging. Just output the question, nothing else."""
                     SET state = 'completed', updated_at = ?
                     WHERE workspace_id = ? AND id != ? AND {ACTIVE_SLOT_PREDICATE}
                     """,
-                    (_utc_now().isoformat(), self.workspace.id, session_id),
+                    (now, self.workspace.id, session_id),
+                )
+                conn.execute(
+                    "UPDATE discovery_sessions SET state = ?, updated_at = ? "
+                    "WHERE id = ? AND workspace_id = ?",
+                    (SessionState.DISCOVERING.value, now, session_id, self.workspace.id),
                 )
                 conn.commit()
+            except sqlite3.IntegrityError as exc:
+                conn.rollback()
+                self.state = SessionState.PAUSED
+                if not _is_unique_violation(exc):
+                    raise
+                raise ActiveSessionExistsError(
+                    "Another discovery session claimed the workspace's slot while "
+                    "this one was being resumed; retry."
+                ) from exc
             finally:
                 conn.close()
-
-        try:
-            self._save_session()
-        except ActiveSessionExistsError as exc:
-            self.state = SessionState.PAUSED
-            raise ActiveSessionExistsError(
-                "Another discovery session is already active for this workspace. "
-                "Resume with evict=True (`cf prd generate --resume <id> --force`) "
-                "to close it and continue this one."
-            ) from exc
+        else:
+            try:
+                self._save_session()
+            except ActiveSessionExistsError as exc:
+                self.state = SessionState.PAUSED
+                raise ActiveSessionExistsError(
+                    "Another discovery session is already active for this workspace. "
+                    "Resume with evict=True (`cf prd generate --resume <id> --force`) "
+                    "to close it and continue this one."
+                ) from exc
 
         logger.info(f"Resumed session {session_id} from blocker {blocker_id}")
 

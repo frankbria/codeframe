@@ -89,6 +89,42 @@ class TestResumeIntoATakenSlot:
         assert states[paused_id] == "discovering"
         assert states[holder_id] == "completed", "evict must close the holder, not error"
 
+    def test_evict_and_reactivation_are_one_transaction(self, mock_provider_class, workspace):
+        """Committing the eviction before the re-activating write would let a
+        concurrent start win the vacated slot (claude-review on #1227). The
+        evict path must therefore not use `_save_session`, which opens its own
+        connection — both writes go through one connection and one commit."""
+        from codeframe.core import prd_discovery
+        from codeframe.core.prd_discovery import PrdDiscoverySession
+
+        mock_provider_class.return_value = _provider_returning()
+        _paused_id, blocker_id, _holder_id = self._paused_then_taken(workspace)
+
+        resumed = PrdDiscoverySession(workspace, api_key="test-key")
+        commits: list[int] = []
+        real_get = prd_discovery.get_db_connection
+
+        class CountingConn:
+            def __init__(self, conn):
+                self._conn = conn
+
+            def commit(self):
+                commits.append(id(self._conn))
+                return self._conn.commit()
+
+            def __getattr__(self, name):
+                return getattr(self._conn, name)
+
+        def counting_get(ws):
+            return CountingConn(real_get(ws))
+
+        with patch.object(prd_discovery, "get_db_connection", counting_get), patch.object(
+            resumed, "_save_session", side_effect=AssertionError("second transaction")
+        ):
+            resumed.resume_discovery(blocker_id, evict=True)
+
+        assert len(commits) == 1, "evict + re-activate must be a single commit"
+
     def test_evict_without_a_holder_is_a_plain_resume(self, mock_provider_class, workspace):
         from codeframe.core.prd_discovery import PrdDiscoverySession
 
