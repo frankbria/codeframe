@@ -40,10 +40,16 @@ class TestEnginesCheck:
         assert result.exit_code == 1
         assert "Error" in result.output
 
-    def test_check_missing_requirements(self):
-        with patch.dict("os.environ", {}, clear=True):
-            import os
-            os.environ.pop("ANTHROPIC_API_KEY", None)
+    def test_check_missing_requirements(self, monkeypatch, tmp_path):
+        # The CLI loads ~/.env and ./.env (env_provenance.load_env_files), so
+        # clearing os.environ is not enough: from the repo root, the repo's own
+        # .env put ANTHROPIC_API_KEY straight back and this passed only when
+        # run from a directory without one (#1200). Point both at an empty dir.
+        monkeypatch.chdir(tmp_path)
+        # HOME is set *inside* the cleared environ: `clear=True` would wipe a
+        # monkeypatch.setenv, and Path.home() then falls back to the real
+        # home directory (codex review of #1200 caught exactly that).
+        with patch.dict("os.environ", {"HOME": str(tmp_path)}, clear=True):
             result = runner.invoke(app, ["engines", "check", "react"])
             assert result.exit_code == 1
             assert "not set" in result.output
@@ -52,6 +58,11 @@ class TestEnginesCheck:
 class TestEnginesNoArgs:
     def test_no_args_shows_help(self):
         result = runner.invoke(app, ["engines"])
-        # Typer no_args_is_help exits with code 0 or 2 depending on version
-        assert result.exit_code in (0, 2)
-        assert "list" in result.output or "check" in result.output or "Usage" in result.output
+        # no_args_is_help exits 2 on the Typer pinned in uv.lock (0.19.2). If a
+        # bump changes it, update this — don't widen it back to `in (0, 2)`,
+        # which is what tests/ci/test_assertion_quality_guard_973.py rejects.
+        assert result.exit_code == 2
+        assert "Usage" in result.output
+        # Both subcommands must be listed, not just any one of them.
+        assert "list" in result.output
+        assert "check" in result.output
