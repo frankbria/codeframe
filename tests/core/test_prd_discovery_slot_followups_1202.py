@@ -248,6 +248,51 @@ class TestActivePredicateIsWrittenOnce:
         assert active is not None
         assert active.session_id == fresh.session_id
 
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_reset_without_an_id_closes_what_get_active_session_returns(
+        self, mock_provider_class, workspace, monkeypatch
+    ):
+        """codex on #1227: with the holder-first ordering in get_active_session,
+        a reset that still picked by recency would close the finished row the
+        UI is not showing and leave the session it *is* showing untouched."""
+        from codeframe.core.prd_discovery import (
+            PrdDiscoverySession,
+            get_active_session,
+            reset_discovery,
+        )
+
+        mock_provider_class.return_value = _provider_returning()
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+        holder = PrdDiscoverySession(workspace, api_key="test-key")
+        holder.start_discovery()
+        conn = get_db_connection(workspace)
+        conn.execute(
+            "UPDATE discovery_sessions SET state = 'completed' WHERE id = ?", (holder.session_id,)
+        )
+        conn.commit()
+        conn.close()
+        finished = PrdDiscoverySession(workspace, api_key="test-key")
+        finished.start_discovery()
+        conn = get_db_connection(workspace)
+        conn.execute(
+            "UPDATE discovery_sessions SET is_complete = 1, updated_at = '9999-01-01' WHERE id = ?",
+            (finished.session_id,),
+        )
+        conn.execute(
+            "UPDATE discovery_sessions SET state = 'discovering' WHERE id = ?", (holder.session_id,)
+        )
+        conn.commit()
+        conn.close()
+        shown = get_active_session(workspace).session_id
+        assert shown == holder.session_id, "the premise"
+
+        assert reset_discovery(workspace) is True
+
+        states = _states(workspace)
+        assert states[shown] == "completed", "reset must close the session the UI shows"
+        assert states[finished.session_id] != "completed"
+
 
 def test_db_connections_use_implicit_transactions(workspace):
     """`_ensure_discovery_schema`'s backfill and its CREATE UNIQUE INDEX are

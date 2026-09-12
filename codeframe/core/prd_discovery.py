@@ -1479,6 +1479,10 @@ def reset_discovery(
         # the session in front of the user also closed unrelated in-flight
         # sessions belonging to other PRDs — silently destroying that work,
         # and contradicting this function's own docstring.
+        #
+        # Same selection as get_active_session (#1202): the row the UI shows as
+        # active is the one reset must close, so the slot holder comes before a
+        # finished-Q&A row whatever their updated_at order.
         cursor.execute(
             """
             UPDATE discovery_sessions
@@ -1486,7 +1490,7 @@ def reset_discovery(
             WHERE id = (
                 SELECT id FROM discovery_sessions
                 WHERE workspace_id = ? AND state != 'completed'
-                ORDER BY updated_at DESC, created_at DESC
+                ORDER BY COALESCE(is_complete, 0) ASC, updated_at DESC, created_at DESC
                 LIMIT 1
             )
             """,
