@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { formatDistanceToNow } from 'date-fns';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Cancel01Icon } from '@hugeicons/core-free-icons';
 import { Card, CardContent } from '@/components/ui/card';
@@ -17,7 +16,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { formatUsd } from '@/lib/format';
+import { formatUsd, formatRelativeTime } from '@/lib/format';
 import type { Session } from '@/types';
 
 interface SessionCardProps {
@@ -29,7 +28,7 @@ export function SessionCard({ session, onEnd }: SessionCardProps) {
   const shortId = session.id.slice(-8);
   const workspaceName = session.workspace_path.split('/').pop() || session.workspace_path;
   const isActive = session.state === 'active';
-  const relativeTime = formatDistanceToNow(new Date(session.created_at), { addSuffix: true });
+  const relativeTime = formatRelativeTime(session.created_at);
 
   return (
     <Card className="transition-colors hover:border-primary/50">

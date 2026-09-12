@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { formatRelativeTime } from '@/lib/format';
 import type { IconSvgElement } from '@hugeicons/react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import {
@@ -9,7 +10,6 @@ import {
   Alert02Icon,
   CheckmarkCircle01Icon,
 } from '@hugeicons/core-free-icons';
-import { formatDistanceToNow } from 'date-fns';
 import { useNotificationContext } from '@/contexts/NotificationContext';
 import type { AppNotification } from '@/types';
 
@@ -20,14 +20,6 @@ function iconForNotification(n: AppNotification): { icon: IconSvgElement; color:
   if (n.type === 'batch.completed') return { icon: CheckmarkCircle01Icon, color: 'text-green-600' };
   if (n.type === 'blocker.created') return { icon: Alert02Icon, color: 'text-amber-600' };
   return { icon: Alert02Icon, color: 'text-red-600' };
-}
-
-function formatTimestamp(iso: string): string {
-  try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true });
-  } catch {
-    return '';
-  }
 }
 
 export function NotificationCenter() {
@@ -138,7 +130,7 @@ function NotificationRow({
       <HugeiconsIcon icon={icon} className={`mt-0.5 h-4 w-4 shrink-0 ${colorClass}`} aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <p className="break-words">{notification.message}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">{formatTimestamp(notification.timestamp)}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{formatRelativeTime(notification.timestamp)}</p>
       </div>
       {!notification.read && (
         <button

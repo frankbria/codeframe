@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { formatTime } from '@/lib/format';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { ArrowDown01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
@@ -100,7 +101,7 @@ function ReadGroupRow({
           className={`h-3 w-3 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
         />
         <span className="font-mono text-[11px]">
-          {new Date(group.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          {formatTime(group.timestamp)}
         </span>
         <span>
           Read {group.count} file{group.count !== 1 ? 's' : ''}
@@ -122,7 +123,7 @@ function EditGroupRow({ group }: { group: Extract<EventGroup, { type: 'edit_grou
   return (
     <div className="flex items-baseline gap-2 py-1.5">
       <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-        {new Date(group.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        {formatTime(group.timestamp)}
       </span>
       <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none ${editGroupBadgeStyles}`}>
         edit

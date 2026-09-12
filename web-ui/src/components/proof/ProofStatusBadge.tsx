@@ -1,22 +1,19 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import type { ProofReqStatus } from '@/types';
+
+/** Requirement status → shared badge variant, so proof badges restyle with every other status badge. */
+export const PROOF_STATUS_VARIANT: Record<ProofReqStatus, BadgeVariant> = {
+  open: 'blocked',
+  satisfied: 'done',
+  waived: 'backlog',
+};
 
 interface ProofStatusBadgeProps {
   status: ProofReqStatus;
 }
 
 export function ProofStatusBadge({ status }: ProofStatusBadgeProps) {
-  const styles: Record<ProofReqStatus, string> = {
-    open: 'bg-red-100 text-red-900',
-    satisfied: 'bg-green-100 text-green-900',
-    waived: 'bg-gray-100 text-gray-600',
-  };
-
-  return (
-    <Badge className={styles[status]}>
-      {status}
-    </Badge>
-  );
+  return <Badge variant={PROOF_STATUS_VARIANT[status]}>{status}</Badge>;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { formatCount } from '@/lib/format';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Upload04Icon, Loading03Icon } from '@hugeicons/core-free-icons';
 import {
@@ -190,7 +191,7 @@ export function UploadPRDModal({
               </Button>
               {content && (
                 <p className="text-xs text-muted-foreground">
-                  {content.length.toLocaleString()} characters loaded
+                  {formatCount(content.length)} characters loaded
                 </p>
               )}
             </div>

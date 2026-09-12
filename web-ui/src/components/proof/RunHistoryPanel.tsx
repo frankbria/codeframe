@@ -1,6 +1,8 @@
 'use client';
 
 import useSWR from 'swr';
+import { Badge } from '@/components/ui/badge';
+import { formatDateTime } from '@/lib/format';
 import { proofApi } from '@/lib/api';
 import type { ProofRunSummary } from '@/types';
 
@@ -14,14 +16,6 @@ function formatDuration(ms: number | null): string {
   if (ms == null) return '—';
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
-}
-
-function formatTimestamp(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
 }
 
 export function RunHistoryPanel({ workspacePath, onSelectRun, selectedRunId }: RunHistoryPanelProps) {
@@ -82,18 +76,12 @@ export function RunHistoryPanel({ workspacePath, onSelectRun, selectedRunId }: R
                     }`}
                   >
                     <td className="px-4 py-2 text-muted-foreground">
-                      {formatTimestamp(run.started_at)}
+                      {formatDateTime(run.started_at)}
                     </td>
                     <td className="px-4 py-2">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          run.overall_passed
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                        }`}
-                      >
+                      <Badge variant={run.overall_passed ? 'done' : 'failed'}>
                         {run.overall_passed ? 'pass' : 'fail'}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="px-4 py-2 text-muted-foreground">
                       {formatDuration(run.duration_ms)}
