@@ -1,0 +1,68 @@
+# Auto-merge patch-level Dependabot *security* updates to web-ui once green (#1217).
+#
+# #1210 cost a day of un-deployable staging while the two lockfile bumps that
+# fixed it sat open and green — nothing was missing but a merge. This closes
+# that gap as narrowly as it can be closed:
+#
+#   npm ecosystem, /web-ui only, a security advisory (not a routine bump),
+#   patch-level, and a lock diff that scripts/ci/lock_diff_is_surgical.py
+#   confirms is surgical: no package added or removed, no new install script,
+#   every resolved URL still registry.npmjs.org with an integrity hash, every
+#   version change patch-level. The semver label alone proves none of that.
+#
+# `gh pr merge --auto` only arms the merge; the branch protection's required
+# checks (strict, up-to-date) are what actually lands it. Runs on
+# `pull_request`, not `pull_request_target`: it needs no secrets, and the
+# `permissions` key grants the Dependabot-run token the two write scopes below.
+# A push by anyone other than Dependabot re-triggers the run and the actor gate
+# refuses, so a human amendment cannot ride the arming.
+name: Dependabot auto-merge (web-ui security patches)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "web-ui/package.json"
+      - "web-ui/package-lock.json"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    name: Arm auto-merge for a surgical security patch
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read Dependabot metadata
+        id: md
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Every gate must hold; the step is skipped (not failed) otherwise so a
+      # routine bump shows no red check — it is simply not eligible.
+      - name: Check out the PR
+        if: >-
+          steps.md.outputs.package-ecosystem == 'npm' &&
+          steps.md.outputs.directory == '/web-ui' &&
+          steps.md.outputs.update-type == 'version-update:semver-patch' &&
+          steps.md.outputs.alert-state != ''
+        id: eligible
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Confirm the lock diff is surgical
+        if: steps.eligible.outcome == 'success'
+        id: surgical
+        run: |
+          git show "origin/${{ github.event.pull_request.base.ref }}:web-ui/package-lock.json" > /tmp/base-lock.json
+          python3 scripts/ci/lock_diff_is_surgical.py /tmp/base-lock.json web-ui/package-lock.json
+
+      - name: Arm auto-merge
+        if: steps.surgical.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "${{ github.event.pull_request.html_url }}"
