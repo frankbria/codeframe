@@ -154,6 +154,14 @@ class TestTheWorkflowGatesBeforeItMerges:
         assert "always()" in disarm[0]["if"]
         assert "steps.arm.outcome != 'success'" in disarm[0]["if"]
 
+    def test_a_real_disarm_failure_is_not_swallowed(self):
+        """claude-review on #1229: `--disable-auto || echo` hid an API failure
+        behind the expected not-armed case. Ask for the state, then disarm
+        with no fallback."""
+        disarm = next(s for s in _steps() if "--disable-auto" in s.get("run", ""))
+        assert "autoMergeRequest" in disarm["run"]
+        assert "||" not in disarm["run"]
+
     def test_event_values_reach_the_shell_through_env(self):
         # GitHub's hardening guide: never interpolate github.event.* into `run:`.
         for step in _steps():

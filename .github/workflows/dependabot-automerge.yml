@@ -88,4 +88,13 @@ jobs:
         if: always() && steps.arm.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh pr merge --disable-auto "$PR_URL" || echo "auto-merge was not armed"
+        # Ask first, then disarm without a fallback: `--disable-auto` on an
+        # unarmed PR is an error we expect, but `|| true` would also hide a
+        # real API failure and leave a stale arming in place silently.
+        run: |
+          if [ "$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
+            gh pr merge --disable-auto "$PR_URL"
+            echo "auto-merge disarmed"
+          else
+            echo "auto-merge was not armed"
+          fi
