@@ -991,7 +991,7 @@ def serve(
 
     _warn_if_exposed(host)
 
-    console.print(f"Starting CodeFRAME API server on {host}:{port}")
+    console.print(f"Starting CodeFRAME API server on {escape(host)}:{port}")
     console.print(f"  Swagger UI: http://localhost:{port}/docs")
     console.print(f"  ReDoc:      http://localhost:{port}/redoc")
     console.print("  Press Ctrl+C to stop\n")
@@ -1066,7 +1066,7 @@ def prd_templates_show(
     template = manager.get_template(template_id)
 
     if not template:
-        console.print(f"[red]Error:[/red] Template '{template_id}' not found.")
+        console.print(f"[red]Error:[/red] Template '{escape(template_id)}' not found.")
         console.print("\nAvailable templates:")
         for t in manager.list_templates():
             console.print(f"  {t.id}")
@@ -1104,7 +1104,7 @@ def prd_templates_export(
 
     try:
         manager.export_template(template_id, output_path)
-        console.print(f"[green]✓[/green] Exported template '{template_id}' to {output_path}")
+        console.print(f"[green]✓[/green] Exported template '{escape(template_id)}' to {output_path}")
     except ValueError as e:
         print_error(e)
         console.print("\nAvailable templates:")
@@ -1546,7 +1546,7 @@ def prd_diff(
         diff = prd.diff_versions(workspace, prd_id, version1, version2)
 
         if diff is None:
-            console.print(f"[red]Error:[/red] Version not found for PRD {prd_id}")
+            console.print(f"[red]Error:[/red] Version not found for PRD {escape(prd_id)}")
             raise typer.Exit(1)
 
         if not diff:
@@ -1644,7 +1644,7 @@ def prd_update(
 
         console.print(f"[green]PRD updated to version {new_version.version}[/green]")
         console.print(f"  New ID: {new_version.id}")
-        console.print(f"  Changes: {message}")
+        console.print(f"  Changes: {escape(message)}")
 
     except FileNotFoundError as e:
         print_error(e)
@@ -1755,7 +1755,7 @@ def prd_generate(
     template_manager = PrdTemplateManager(workspace_path=workspace_path)
     template_obj = template_manager.get_template(template)
     if template_obj is None:
-        console.print(f"[red]Error:[/red] Template '{template}' not found.")
+        console.print(f"[red]Error:[/red] Template '{escape(template)}' not found.")
         console.print("\nAvailable templates:")
         for t in template_manager.list_templates():
             console.print(f"  {t.id} - {escape(t.name)}")
@@ -1936,7 +1936,7 @@ def prd_generate(
                     # Loud and specific, rather than an EOF traceback out of
                     # Prompt.ask that says nothing about where it stopped (#1114).
                     console.print(
-                        f"\n[red]Error:[/red] --answers-file {e}.\n"
+                        f"\n[red]Error:[/red] --answers-file {escape(str(e))}.\n"
                         f"Discovery was still on question "
                         f"{question.get('question_number', '?')} at "
                         f"{progress.get('percentage', 0)}% coverage.\n"
@@ -1964,7 +1964,7 @@ def prd_generate(
 
         # Generate PRD
         console.print("\n[bold green]Discovery complete![/bold green]")
-        console.print(f"\nGenerating PRD using '{template}' template...")
+        console.print(f"\nGenerating PRD using '{escape(template)}' template...")
 
         try:
             prd_record = session.generate_prd(template_id=template)
@@ -2172,7 +2172,7 @@ def prd_stress_test(
             # (#961). Failing here must not lose the answers silently, nor
             # print a traceback.
             console.print(
-                f"[red]Error:[/red] Could not apply your answers to the PRD: {e}"
+                f"[red]Error:[/red] Could not apply your answers to the PRD: {escape(str(e))}"
             )
             console.print(
                 "[dim]Your answers were not saved and no new version was "
@@ -3358,7 +3358,7 @@ def work_status(
                 console.print(f"  Status: {run.status.value}")
                 console.print(f"  Started: {run.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
             else:
-                console.print(f"[dim]No active run for task {task_id}[/dim]")
+                console.print(f"[dim]No active run for task {escape(str(task_id))}[/dim]")
         else:
             # Show all active runs
             running = runtime.list_runs(workspace, status=RunStatus.RUNNING)
@@ -3411,7 +3411,7 @@ def work_show(
             console.print(f"[dim]No run found for task {escape(task_id)}[/dim]")
             raise typer.Exit(0)
 
-        console.print(f"\n[bold]Run Details[/bold] — {task_id[:8]}")
+        console.print(f"\n[bold]Run Details[/bold] — {escape(task_id[:8])}")
         console.print(f"  Run ID:    [dim]{run.id}[/dim]")
         console.print(f"  Status:    {run.status.value}")
         console.print(f"  Started:   {run.started_at.strftime('%Y-%m-%d %H:%M:%S') if run.started_at else '—'}")
@@ -4024,7 +4024,7 @@ def work_replay(
         trace = load_execution_trace(workspace, run_id)
 
         if not trace:
-            console.print(f"[red]Error:[/red] No trace found for run '{run_id}'")
+            console.print(f"[red]Error:[/red] No trace found for run '{escape(run_id)}'")
             raise typer.Exit(1)
 
         # Header
@@ -4130,7 +4130,7 @@ def work_diff(
         trace = load_execution_trace(workspace, run_id)
 
         if not trace:
-            console.print(f"[red]Error:[/red] No trace found for run '{run_id}'")
+            console.print(f"[red]Error:[/red] No trace found for run '{escape(run_id)}'")
             raise typer.Exit(1)
 
         step_a = from_step if from_step is not None else 0
@@ -4228,7 +4228,7 @@ def work_export_trace(
         trace = load_execution_trace(workspace, run_id)
 
         if not trace:
-            console.print(f"[red]Error:[/red] No trace found for run '{run_id}'")
+            console.print(f"[red]Error:[/red] No trace found for run '{escape(run_id)}'")
             raise typer.Exit(1)
 
         if output_format == "json":
@@ -4280,7 +4280,7 @@ def work_rerun(
         workspace = get_workspace(path)
         rerun_info = prepare_rerun(workspace, run_id, from_step)
 
-        console.print(f"[bold]Re-run preparation for run {run_id}[/bold]\n")
+        console.print(f"[bold]Re-run preparation for run {escape(run_id)}[/bold]\n")
         console.print(f"[bold]Resume from:[/bold] Step {from_step}")
         console.print(f"[bold]Task:[/bold] {rerun_info['task_id']}")
 
@@ -4495,9 +4495,9 @@ def batch_run(
 
         # Show execution plan
         console.print("\n[bold]Batch Execution Plan[/bold]")
-        console.print(f"  Strategy: {strategy}")
+        console.print(f"  Strategy: {escape(strategy)}")
         console.print(f"  Tasks: {len(ids_to_execute)}")
-        console.print(f"  On failure: {on_failure}")
+        console.print(f"  On failure: {escape(on_failure)}")
 
         # Ahead of the dry-run return: a preview of an engine that would be
         # refused is misleading, and this is also the pre-run guard that keeps
@@ -4636,11 +4636,11 @@ def batch_status(
             matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
             if not matching:
-                console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+                console.print(f"[red]Error:[/red] No batch found matching '{escape(str(batch_id))}'")
                 raise typer.Exit(1)
 
             if len(matching) > 1:
-                console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+                console.print(f"[red]Error:[/red] Multiple batches match '{escape(str(batch_id))}':")
                 for b in matching[:5]:
                     console.print(f"  {b.id[:8]} ({b.status.value})")
                 raise typer.Exit(1)
@@ -4786,11 +4786,11 @@ def batch_stop(
         matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            console.print(f"[red]Error:[/red] No batch found matching '{escape(batch_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+            console.print(f"[red]Error:[/red] Multiple batches match '{escape(batch_id)}':")
             for b in matching[:5]:
                 console.print(f"  {b.id[:8]} ({b.status.value})")
             raise typer.Exit(1)
@@ -4860,11 +4860,11 @@ def batch_resume(
         matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            console.print(f"[red]Error:[/red] No batch found matching '{escape(batch_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+            console.print(f"[red]Error:[/red] Multiple batches match '{escape(batch_id)}':")
             for b in matching[:5]:
                 console.print(f"  {b.id[:8]} ({b.status.value})")
             raise typer.Exit(1)
@@ -5058,11 +5058,11 @@ ETA: {eta} | Elapsed: {elapsed}"""
         matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            console.print(f"[red]Error:[/red] No batch found matching '{escape(batch_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+            console.print(f"[red]Error:[/red] Multiple batches match '{escape(batch_id)}':")
             for b in matching[:5]:
                 console.print(f"  {b.id[:8]} ({b.status.value})")
             raise typer.Exit(1)
@@ -5421,7 +5421,7 @@ def blocker_create(
 
         console.print("\n[bold green]Blocker created[/bold green]")
         console.print(f"  ID: {blocker.id[:8]}")
-        console.print(f"  Question: {question[:60]}{'...' if len(question) > 60 else ''}")
+        console.print(f"  Question: {escape(question[:60])}{'...' if len(question) > 60 else ''}")
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")
@@ -5854,7 +5854,7 @@ def checkpoint_show(
         checkpoint = checkpoints.get(workspace, name_or_id)
 
         if not checkpoint:
-            console.print(f"[red]Error:[/red] Checkpoint not found: {name_or_id}")
+            console.print(f"[red]Error:[/red] Checkpoint not found: {escape(name_or_id)}")
             raise typer.Exit(1)
 
         summary = checkpoint.snapshot.get("summary", {})
@@ -5952,7 +5952,7 @@ def checkpoint_delete(
         if deleted:
             console.print("[green]Checkpoint deleted[/green]")
         else:
-            console.print(f"[red]Error:[/red] Checkpoint not found: {name_or_id}")
+            console.print(f"[red]Error:[/red] Checkpoint not found: {escape(name_or_id)}")
             raise typer.Exit(1)
 
     except FileNotFoundError:
@@ -6347,7 +6347,7 @@ def templates_show(
     template = manager.get_template(template_id)
 
     if not template:
-        console.print(f"[red]Error:[/red] Template '{template_id}' not found.")
+        console.print(f"[red]Error:[/red] Template '{escape(template_id)}' not found.")
         console.print("\nAvailable templates:")
         for t in manager.list_templates():
             console.print(f"  {t.id}")
@@ -6418,7 +6418,7 @@ def templates_apply(
 
         console.print(
             f"\n[green]Created {result.tasks_created} tasks from template "
-            f"'{template_id}'[/green]\n"
+            f"'{escape(template_id)}'[/green]\n"
         )
         for i, task_id in enumerate(result.task_ids, 1):
             created = tasks.get(workspace, task_id)

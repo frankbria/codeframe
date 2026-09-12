@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
 import typer
 from rich.table import Table
+from rich.markup import escape
 
 from codeframe.cli.helpers import console, print_error
 from codeframe.git.github_integration import GitHubAPIError, GitHubIntegration
@@ -228,7 +229,7 @@ def create_pr(
 
         # Validate not on base branch
         if branch == base:
-            console.print(f"[red]Error:[/red] Cannot create PR from '{branch}' to itself.")
+            console.print(f"[red]Error:[/red] Cannot create PR from '{escape(str(branch))}' to itself.")
             console.print("Please checkout a feature branch first.")
             raise typer.Exit(1)
 
@@ -326,7 +327,7 @@ def list_prs(
 
         # Table format
         if not prs:
-            console.print(f"[yellow]No {status} pull requests found.[/yellow]")
+            console.print(f"[yellow]No {escape(status)} pull requests found.[/yellow]")
             return
 
         table = Table(title=f"Pull Requests ({status})")
@@ -582,7 +583,7 @@ def merge_pr(
             console.print(f"[green]✓ PR #{pr_number} merged successfully[/green]")
             if result.sha:
                 console.print(f"[bold]Merge commit:[/bold] {result.sha[:7]}")
-            console.print(f"[bold]Strategy:[/bold] {strategy}")
+            console.print(f"[bold]Strategy:[/bold] {escape(strategy)}")
         else:
             console.print(f"[red]Error:[/red] Merge failed: {result.message}")
             raise typer.Exit(1)

@@ -14,6 +14,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.markup import escape
 
 console = Console()
 
@@ -99,7 +100,7 @@ def hooks_run(
     from codeframe.core.hooks import HookContext, execute_hook
 
     if hook_name not in VALID_HOOK_NAMES:
-        console.print(f"[red]Error:[/red] Invalid hook name '{hook_name}'")
+        console.print(f"[red]Error:[/red] Invalid hook name '{escape(hook_name)}'")
         console.print(f"Valid hooks: {', '.join(VALID_HOOK_NAMES)}")
         raise typer.Exit(1)
 
@@ -126,13 +127,13 @@ def hooks_run(
     result = execute_hook(hook_name, config, path, ctx, abort_on_failure=False)
 
     if result is None:
-        console.print(f"[yellow]Hook '{hook_name}' is not configured.[/yellow]")
+        console.print(f"[yellow]Hook '{escape(hook_name)}' is not configured.[/yellow]")
         return
 
     if result.success:
-        console.print(f"[green]Hook '{hook_name}' succeeded[/green] ({result.duration_ms}ms)")
+        console.print(f"[green]Hook '{escape(hook_name)}' succeeded[/green] ({result.duration_ms}ms)")
     else:
-        console.print(f"[red]Hook '{hook_name}' failed[/red] ({result.duration_ms}ms)")
+        console.print(f"[red]Hook '{escape(hook_name)}' failed[/red] ({result.duration_ms}ms)")
         if result.timed_out:
             console.print("  [yellow]Timed out[/yellow]")
 
@@ -162,7 +163,7 @@ def hooks_set(
     )
 
     if hook_name not in VALID_HOOK_NAMES:
-        console.print(f"[red]Error:[/red] Invalid hook name '{hook_name}'")
+        console.print(f"[red]Error:[/red] Invalid hook name '{escape(hook_name)}'")
         console.print(f"Valid hooks: {', '.join(VALID_HOOK_NAMES)}")
         raise typer.Exit(1)
 
@@ -179,7 +180,7 @@ def hooks_set(
     save_environment_config(path, config)
     _record_trust(path, config)
 
-    console.print(f"[green]Hook '{hook_name}' set to:[/green] {command}")
+    console.print(f"[green]Hook '{escape(hook_name)}' set to:[/green] {escape(command)}")
 
 
 @hooks_app.command("clear")
@@ -197,7 +198,7 @@ def hooks_clear(
     )
 
     if hook_name not in VALID_HOOK_NAMES:
-        console.print(f"[red]Error:[/red] Invalid hook name '{hook_name}'")
+        console.print(f"[red]Error:[/red] Invalid hook name '{escape(hook_name)}'")
         console.print(f"Valid hooks: {', '.join(VALID_HOOK_NAMES)}")
         raise typer.Exit(1)
 
@@ -218,7 +219,7 @@ def hooks_clear(
     save_environment_config(path, config)
     _record_trust(path, config)
 
-    console.print(f"[green]Hook '{hook_name}' cleared.[/green]")
+    console.print(f"[green]Hook '{escape(hook_name)}' cleared.[/green]")
 
 
 def _record_trust(path: Path, config: "object") -> None:

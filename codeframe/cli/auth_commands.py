@@ -42,6 +42,7 @@ from typing import Optional, Tuple
 import requests
 import typer
 from rich.table import Table
+from rich.markup import escape
 
 from codeframe.cli.auth import store_token, clear_token, is_authenticated
 from codeframe.cli.api_client import (
@@ -315,7 +316,7 @@ def login(
 
             if token:
                 store_token(token)
-                console.print(f"[green]✓ Successfully logged in as {email}[/green]")
+                console.print(f"[green]✓ Successfully logged in as {escape(str(email))}[/green]")
             else:
                 console.print("[red]Error:[/red] No token received from server")
                 raise typer.Exit(1)
@@ -430,7 +431,7 @@ def register(
         )
 
         if response.status_code == 201:
-            console.print(f"[green]✓ Account registered successfully for {email}[/green]")
+            console.print(f"[green]✓ Account registered successfully for {escape(str(email))}[/green]")
 
             # Auto-login after registration
             console.print("Logging in...")
@@ -1073,7 +1074,7 @@ def api_key_revoke(
     success = service.revoke_api_key(key_id, user_id=user_id)
 
     if success:
-        console.print(f"[green]API key {key_id} revoked successfully.[/green]")
+        console.print(f"[green]API key {escape(key_id)} revoked successfully.[/green]")
     else:
         console.print("[red]Error:[/red] API key not found or not owned by user")
         raise typer.Exit(1)
@@ -1191,7 +1192,7 @@ def set_password(
         print_error(e)
         raise typer.Exit(1)
 
-    console.print(f"[green]✓ Password updated for {email}[/green]")
+    console.print(f"[green]✓ Password updated for {escape(email)}[/green]")
 
 
 @auth_app.command("deactivate")
@@ -1213,7 +1214,7 @@ def deactivate_user(
         print_error(e)
         raise typer.Exit(1)
 
-    console.print(f"[green]✓ {email} deactivated; its API keys no longer authenticate[/green]")
+    console.print(f"[green]✓ {escape(email)} deactivated; its API keys no longer authenticate[/green]")
 
 
 @auth_app.command("activate")
@@ -1232,7 +1233,7 @@ def activate_user(
         print_error(e)
         raise typer.Exit(1)
 
-    console.print(f"[green]✓ {email} activated[/green]")
+    console.print(f"[green]✓ {escape(email)} activated[/green]")
 
 
 @auth_app.command("user-list")
