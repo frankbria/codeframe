@@ -352,6 +352,13 @@ Note: `codeframe serve` exists but Golden Path does not depend on it.
   enforced with `engine-strict`, because that validates every dependency's
   engines and `@testing-library/jest-dom` requires node >=22 while CI and the
   image run Node 20.
+  **Regenerate the lock with npm >= 11.19** (#1223): that is what generated it,
+  and it is a fixed point only there. Every other supported npm — CI's 10.8.2
+  included — rewrites 108 lines on any install: the 36 `libc` fields
+  (`["glibc"]`/`["musl"]`) that 11.19 records on platform-specific optional
+  packages such as `@img/sharp-libvips-*`. Nothing is added, removed or
+  re-versioned and `npm ci` passes either way, so if you see exactly that diff
+  after touching nothing, it is your npm, not the lock; do not commit it.
   `web-ui/Dockerfile` runs `npm audit --audit-level=high` during the image build,
   which means an advisory published upstream — no commit of ours — fails
   `Build images (staging)` and takes staging *and* production down together

@@ -6,6 +6,7 @@
     "node": ">=20",
     "npm": ">=10.8.2 <11.6.0 || >=11.7.0"
   },
+  "//": "package-lock.json was generated with npm >= 11.19 and is a fixed point only there (#1223). Older npm, including CI's 10.8.2, rewrites 108 lines on any install: the 36 `libc` fields on platform-specific optional packages. Benign — nothing added, removed or re-versioned, and `npm ci` passes — but regenerate with npm >= 11.19 or that churn lands in your diff.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

@@ -151,3 +151,23 @@ def test_the_docs_name_the_npm_version_not_the_lockfile(doc: Path):
         f"{doc.name} does not name npm {KNOWN_BAD_NPM_LINE}.x as the actual cause, so "
         "it still reads as though the committed lockfile were the problem"
     )
+
+
+# #1223 — the lock is a fixed point only under the npm that generated it.
+# Measured: npm 11.19.0 rewrites 0 lines; 10.8.2 and every 11.x below it
+# rewrite 108 — the 36 `libc` fields 11.19 records on platform-specific
+# optional packages. Benign, but shaped exactly like the #1194 bug, so the
+# generating npm has to be written down where a contributor will look.
+LOCK_NPM_LINE = "11.19"
+
+
+def test_the_lock_generation_npm_is_stated_beside_engines():
+    pkg = json.loads(PACKAGE_JSON.read_text())
+    note = pkg.get("//", "")
+    assert LOCK_NPM_LINE in note and "libc" in note, note
+
+
+def test_the_lock_generation_npm_is_stated_in_claude_md():
+    text = (REPO / "CLAUDE.md").read_text()
+    assert f"npm >= {LOCK_NPM_LINE}" in text and "#1223" in text
+    assert "libc" in text, "the churn must be characterised, not just named"
