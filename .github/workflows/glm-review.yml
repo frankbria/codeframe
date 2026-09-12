@@ -17,9 +17,12 @@ jobs:
     # `user.type` and `sender.type` covers every bot and both events, and a
     # null `sender` compares false, so it fails closed.
     # Then: only review substantial changes (5+ files, or 20+ additions/deletions).
+    # Same-repo head only (#1221): fork PRs are not offered `secrets.*` either,
+    # so ZHIPU_API_KEY would be empty; skip rather than misreport it.
     if: |
       github.event.pull_request.user.type == 'User' &&
       github.event.sender.type == 'User' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
       (github.event.pull_request.changed_files >= 5 ||
        github.event.pull_request.additions >= 20 ||
        github.event.pull_request.deletions >= 20)

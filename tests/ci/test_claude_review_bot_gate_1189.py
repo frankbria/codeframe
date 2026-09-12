@@ -51,3 +51,18 @@ def test_the_credential_preflight_still_fails_loudly():
     )
     assert "CLAUDE_CODE_OAUTH_TOKEN" in preflight["env"]["OAUTH_TOKEN"]
     assert "exit 1" in preflight["run"]
+
+
+def test_fork_prs_are_gated_out():
+    """#1221: `secrets.*` are withheld from `pull_request` runs on fork PRs for
+    the same structural reason as on Dependabot PRs, so a human fork PR passed
+    the #1189 gate and then failed the preflight with a misdiagnosis ("unset
+    or rotated"). Same-repo head only; a fork PR skips, like a bot PR does.
+    """
+    condition = _review_job()["if"]
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in condition
+
+
+def test_the_fork_rationale_is_recorded_next_to_the_bot_one():
+    text = WORKFLOW.read_text()
+    assert "#1221" in text and "fork" in text.lower()
