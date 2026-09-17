@@ -654,3 +654,16 @@ jobs:
               echo "✅ All checks passed!"
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # A red scheduled run has no PR to be red on (#1239): open or update one
+  # issue instead. `failure()` looks at everything in `needs`, so the list is
+  # every job that ends a scheduled run — test-summary aggregates the gated
+  # ones, and the two nightly-only jobs are listed alongside it because it
+  # deliberately does not need them.
+  report-scheduled-failure:
+    name: Report scheduled failure
+    needs: [test-summary, e2e-browser-full, e2e-backend-tests]
+    if: failure() && github.event_name == 'schedule'
+    uses: ./.github/workflows/scheduled-failure-issue.yml
+    permissions:
+      issues: write

@@ -292,7 +292,9 @@ environments are affected at once, because they build the same image.
 
 This gate is intentional (#1131, #1121) and the fix is to bump the dependency,
 not to loosen the gate. A daily `Web UI Audit` workflow (#1213) runs the same
-check on a schedule so this normally surfaces there first.
+check on a schedule so this normally surfaces there first, and a red scheduled
+run opens (or comments on) a `[P1.0] Scheduled \`Web UI Audit\` run is failing`
+issue (#1239). Close that issue once the run is green.
 
 **Do not run `npm audit fix`** — it rewrites the tree it is checking and
 replaces one broken build with a differently broken one.
