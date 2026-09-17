@@ -45,9 +45,11 @@ jobs:
           runner image) or what the last merge to main broke without a PR gate
           covering it. Close this issue once the run is green; the next red night
           opens a new one."
-          # Exact-title match: the search is fuzzy, the jq filter is not.
+          # Plain list + exact title match, not `--search`: the search index lags
+          # and tokenises `[P1.0]`/backticks unpredictably, and a miss here means
+          # a second issue for the same workflow — the one thing this must not do.
           # shellcheck disable=SC2016  # $t is a jq variable, not a shell one
-          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number,title \
+          existing=$(gh issue list --state open --limit 500 --json number,title \
             | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -1)
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "Still failing: $RUN_URL"

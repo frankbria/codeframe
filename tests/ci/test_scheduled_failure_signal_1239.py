@@ -13,6 +13,9 @@ shared workflow with the scope that workflow needs, and the shared workflow
 looks before it creates.
 """
 
+import os
+import subprocess
+
 import pytest
 import yaml
 
@@ -86,3 +89,50 @@ def test_the_shared_workflow_updates_before_it_creates():
     assert run.index("gh issue list") < run.index(
         "gh issue create"
     ), f"{SHARED} creates before it looks for an existing issue (not idempotent)"
+
+
+# The shape checks above are a proxy; this runs the real step script with `gh`
+# stubbed, which is the only thing that actually fails if the idempotency logic
+# breaks (a wrong flag, a search that misses, create-before-list).
+_STUB_GH = """#!/bin/bash
+echo "gh $1 $2" >> "$GH_CALLS"
+case "$1 $2" in
+  "issue list") cat "$GH_OPEN" ;;
+  "issue create") echo "https://example.test/issues/999" ;;
+esac
+"""
+
+
+def _run_step(tmp_path: Path, open_issues: str) -> str:
+    shared = yaml.safe_load((WORKFLOWS / SHARED).read_text())
+    (step,) = [s for j in shared["jobs"].values() for s in j["steps"] if "run" in s]
+    (tmp_path / "bin").mkdir(exist_ok=True)
+    (tmp_path / "bin" / "gh").write_text(_STUB_GH)
+    (tmp_path / "bin" / "gh").chmod(0o755)
+    (tmp_path / "open.json").write_text(open_issues)
+    calls = tmp_path / "calls.txt"
+    calls.write_text("")
+    env = {
+        **os.environ,
+        "PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}",
+        "GH_CALLS": str(calls),
+        "GH_OPEN": str(tmp_path / "open.json"),
+        "GITHUB_STEP_SUMMARY": str(tmp_path / "summary.md"),
+        "WORKFLOW": "Test Suite",
+        "RUN_URL": "https://example.test/run/1",
+    }
+    subprocess.run(["bash", "-c", step["run"]], env=env, check=True, capture_output=True)
+    return calls.read_text()
+
+
+def test_the_first_red_night_opens_an_issue(tmp_path: Path):
+    calls = _run_step(tmp_path, "[]")
+    assert "gh issue create" in calls and "gh issue comment" not in calls, calls
+
+
+def test_the_next_red_night_updates_it_instead(tmp_path: Path):
+    title = "[P1.0] Scheduled `Test Suite` run is failing"
+    other = "[P1.0] Scheduled `Web UI Audit` run is failing"
+    open_issues = f'[{{"number": 7, "title": "{other}"}}, {{"number": 42, "title": "{title}"}}]'
+    calls = _run_step(tmp_path, open_issues)
+    assert "gh issue comment" in calls and "gh issue create" not in calls, calls
