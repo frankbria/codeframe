@@ -125,7 +125,8 @@ class TestTheJobStillTriggersOnCodeChanges:
     it — this PR carries this test file precisely so the fix is exercised."""
 
     @pytest.fixture(scope="class")
-    def workflow(self) -> dict:
+    @staticmethod
+    def workflow() -> dict:
         # `on:` parses as the boolean True under YAML 1.1.
         parsed = yaml.safe_load(WORKFLOW.read_text())
         return parsed.get("on", parsed.get(True))
