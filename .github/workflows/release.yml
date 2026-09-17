@@ -25,6 +25,14 @@ jobs:
   unlocked-resolution:
     name: Unlocked resolution
     uses: ./.github/workflows/unlocked-resolution.yml
+    # unlocked-resolution.yml's `report-scheduled-failure` job declares
+    # `issues: write` (#1242). It never fires here — it is gated on the schedule
+    # event — but a reusable call must grant every scope the callee declares or
+    # GitHub refuses the run as a `startup_failure` with no log
+    # (check-workflow-calls.yml; same as deploy.yml's call of test.yml, #1241).
+    permissions:
+      contents: read
+      issues: write
 
   build:
     name: Build sdist + wheel

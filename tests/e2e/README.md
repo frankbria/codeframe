@@ -57,6 +57,12 @@ browser and exercise the real `/login` flow.
 ## CI
 
 - `e2e-browser-smoke` — chromium `@smoke`, every PR/push, gated via `test-summary`.
-- `e2e-browser-full` — all browsers, all specs, nightly `schedule:` cron.
+- `e2e-browser-full` — all browsers, all specs, nightly `schedule:` cron — or on
+  demand against any branch: `gh workflow run test.yml --ref <branch>` (#1236).
+  Nothing gates a merge on it, so check it before merging a spec change.
 
 Both live in `.github/workflows/test.yml`.
+
+The seed is created once per `playwright test` run and shared by every project,
+so a spec that consumes it (the review commit flow) must restore it in
+`beforeAll` — see `review.spec.ts`.

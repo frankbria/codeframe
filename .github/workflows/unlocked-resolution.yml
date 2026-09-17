@@ -16,8 +16,9 @@ name: Unlocked Resolution
 # The schedule is the point: this break arrives from upstream, not from a commit
 # of ours, so it can appear on a day nobody pushed anything.
 #
-# Known limitation: a red scheduled run notifies via GitHub's normal workflow
-# notifications; it does not open an issue. Deliberate — one moving part.
+# A red scheduled run opens or updates an issue (#1239, #1242) via the shared
+# scheduled-failure-issue.yml job below — the Actions tab alone is not a signal
+# anyone reads on a day nobody pushed.
 
 on:
   schedule:
@@ -80,3 +81,15 @@ jobs:
             tests/adapters/test_sdk_kwargs_guard_614.py \
             tests/adapters/test_model_defaults_guard_1112.py \
             -q
+
+  # Same signal test.yml and web-ui-audit.yml use (#1239): a red scheduled run
+  # has no PR to be red on, so open or update the one issue for this workflow.
+  # `failure()` only, as in the other two callers: a cancelled run is usually a
+  # deliberate cancel, and the next morning's run reports on its own.
+  report-scheduled-failure:
+    name: Report scheduled failure
+    needs: [unlocked-install]
+    if: failure() && github.event_name == 'schedule'
+    uses: ./.github/workflows/scheduled-failure-issue.yml
+    permissions:
+      issues: write

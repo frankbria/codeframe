@@ -24,6 +24,12 @@ def _make_agent_result(status="completed", tokens=1200, duration_ms=5000):
     )
 
 
+def _clock(start, later):
+    """Fake ``time.monotonic``: ``start`` on the first call, ``later`` after."""
+    calls = iter([start])
+    return lambda: next(calls, later)
+
+
 def _make_workspace_and_run(tmp_path):
     """Create a real workspace and a mock Run for testing."""
     from codeframe.core.workspace import create_or_load_workspace
@@ -62,6 +68,10 @@ class TestExecuteAgentRecordsEngineStats:
             patch("codeframe.core.runtime.fail_run"),
             patch("codeframe.core.runtime.block_run"),
             patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-test"}),
+            # #1237: a mocked agent can finish inside one millisecond, so a
+            # real clock may measure 0. Pin the clock: the first read is the
+            # span start, every later read is 5 ms after it.
+            patch("time.monotonic", side_effect=_clock(start=100.0, later=100.005)),
         ):
             mock_adapter = MagicMock()
             mock_adapter.run.return_value = result
@@ -80,7 +90,9 @@ class TestExecuteAgentRecordsEngineStats:
         assert call_kwargs["status"] == "COMPLETED"
         assert call_kwargs["tokens_used"] == 1200
         assert isinstance(call_kwargs["duration_ms"], int)
-        assert call_kwargs["duration_ms"] > 0
+        # Measured from the runtime's own span (5 ms via the pinned clock),
+        # not copied from the result's duration_ms=5000.
+        assert call_kwargs["duration_ms"] == 5
 
     @patch("codeframe.core.engine_stats.record_run")
     def test_execute_agent_records_stats_on_failure(self, mock_record_run, tmp_path):
