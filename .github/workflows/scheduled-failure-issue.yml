@@ -47,8 +47,8 @@ jobs:
           opens a new one."
           # Exact-title match: the search is fuzzy, the jq filter is not.
           # shellcheck disable=SC2016  # $t is a jq variable, not a shell one
-          existing=$(gh issue list --state open --search "\"$title\" in:title" \
-            --json number,title --jq --arg t "$title" '.[] | select(.title == $t) | .number' | head -1)
+          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number,title \
+            | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -1)
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "Still failing: $RUN_URL"
             echo "Updated #$existing" >> "$GITHUB_STEP_SUMMARY"
