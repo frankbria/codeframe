@@ -27,10 +27,9 @@ name: Web UI Audit
 #     dependency), so an advisory against the musl variant is invisible to an
 #     audit run outside the image.
 #
-# Known limitation, same as Unlocked Resolution (#1169): a red scheduled run
-# notifies through GitHub's normal workflow notifications; it does not open an
-# issue or page anyone. Deliberate — one moving part. The step summary is written
-# to be self-explanatory so the run needs no archaeology.
+# A red scheduled run opens or updates an issue (#1239) via the shared
+# scheduled-failure-issue.yml job below; the step summary is written to be
+# self-explanatory so the issue needs no archaeology.
 
 on:
   schedule:
@@ -108,3 +107,13 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
+
+  # Same signal test.yml uses (#1239): a red scheduled run has no PR to be red
+  # on, so open or update the one issue for this workflow.
+  report-scheduled-failure:
+    name: Report scheduled failure
+    needs: [npm-audit]
+    if: failure() && github.event_name == 'schedule'
+    uses: ./.github/workflows/scheduled-failure-issue.yml
+    permissions:
+      issues: write

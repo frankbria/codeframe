@@ -1,0 +1,58 @@
+name: Scheduled failure → issue
+
+# A red *scheduled* run is invisible (#1239). Nothing gates a merge on it and
+# nobody is on the PR that triggered it, because there is none — it shows up
+# only as a red row in the Actions tab. `E2E Browser Full` in test.yml failed
+# 40 nights in a row that way before anyone looked (#1236).
+#
+# This reusable job turns that into something durable: one open issue per
+# workflow, titled after the workflow, created on the first red night and
+# commented on every night after. It is idempotent on the *title*, so a
+# workflow never accumulates one issue per night, and closing the issue is how
+# you acknowledge the fix — the next red run reopens the conversation by
+# creating a fresh one.
+#
+# Callers gate the calling job on `failure() && github.event_name ==
+# 'schedule'`; this workflow trusts that and does not re-check. It needs no
+# checkout: `gh` is on the runner and the `github` context here is the caller's,
+# so the workflow name, run id and repository all describe the run that failed.
+
+on:
+  workflow_call:
+
+permissions:
+  issues: write
+
+jobs:
+  open-or-update-issue:
+    name: Open or update the failure issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open or update the failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="[P1.0] Scheduled \`$WORKFLOW\` run is failing"
+          body="The scheduled run of **$WORKFLOW** failed: $RUN_URL
+
+          This fires only on \`schedule\`, never on a push or PR, so no commit is on
+          the hook — look at what changed upstream (dependencies, browsers, the
+          runner image) or what the last merge to main broke without a PR gate
+          covering it. Close this issue once the run is green; the next red night
+          opens a new one."
+          # Exact-title match: the search is fuzzy, the jq filter is not.
+          # shellcheck disable=SC2016  # $t is a jq variable, not a shell one
+          existing=$(gh issue list --state open --search "\"$title\" in:title" \
+            --json number,title --jq --arg t "$title" '.[] | select(.title == $t) | .number' | head -1)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still failing: $RUN_URL"
+            echo "Updated #$existing" >> "$GITHUB_STEP_SUMMARY"
+          else
+            url=$(gh issue create --title "$title" --body "$body")
+            echo "Opened $url" >> "$GITHUB_STEP_SUMMARY"
+          fi
