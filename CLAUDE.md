@@ -363,8 +363,11 @@ Note: `codeframe serve` exists but Golden Path does not depend on it.
   which means an advisory published upstream — no commit of ours — fails
   `Build images (staging)` and takes staging *and* production down together
   (#1210 cost a day of that). The daily `Web UI Audit` workflow (#1213) exists to
-  surface it first; the in-image gate stays as the backstop and must not be
-  weakened. Recovery recipe: `deploy/README.md` → "The frontend image audit gate
+  surface it first, and a red *scheduled* run of it — or of the nightly full
+  sweep in `test.yml` — opens or updates one issue per workflow via the shared
+  `scheduled-failure-issue.yml` (#1239), because a scheduled run has no PR to be
+  red on and went unseen for 40 nights that way (#1236). The in-image gate stays
+  as the backstop and must not be weakened. Recovery recipe: `deploy/README.md` → "The frontend image audit gate
   failed" — and `npm ci` exit 0 is the oracle either way.
   Since #1217 a patch-level Dependabot **security** PR to `web-ui` arms
   `gh pr merge --auto` by itself (`dependabot-automerge.yml`), but only after
