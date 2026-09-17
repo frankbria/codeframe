@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { ProofEvidenceWithContent } from '@/types';
 
@@ -40,23 +41,13 @@ function GateEvidenceRow({ ev }: GateEvidenceRowProps) {
       >
         <span className="font-mono text-xs text-muted-foreground w-16 shrink-0 capitalize">{ev.gate}</span>
         {ev.verified === false ? (
-          <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-            tampered
-          </span>
+          <Badge variant="failed">tampered</Badge>
         ) : ev.status === 'unverifiable' ? (
-          <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-            cannot verify
-          </span>
+          <Badge variant="unverifiable">cannot verify</Badge>
         ) : (
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-              ev.satisfied
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-            }`}
-          >
+          <Badge variant={ev.satisfied ? 'done' : 'failed'}>
             {ev.satisfied ? 'pass' : 'fail'}
-          </span>
+          </Badge>
         )}
         <span className="ml-auto text-xs text-muted-foreground">{expanded ? '▲' : '▼'}</span>
       </button>

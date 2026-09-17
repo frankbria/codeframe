@@ -205,7 +205,9 @@ the lock. Before that, the **Unlocked Resolution** workflow
 throwaway env, and runs `cf --help` plus both SDK guards against *that* env. It
 runs daily on a schedule — this break arrives from upstream, so it can appear on
 a day nobody pushed — on PRs touching `pyproject.toml` or the guards, and as a
-required gate on `release.yml`. `tests/ci/test_unlocked_resolution_guard_1169.py`
+required gate on `release.yml`. A red *scheduled* run opens or updates an issue
+via `scheduled-failure-issue.yml` (#1239, #1242), like the other two daily
+checks. `tests/ci/test_unlocked_resolution_guard_1169.py`
 pins those properties.
 
 #1170 moved where the risk lives, so the #614 guard now carries two halves. The
@@ -323,6 +325,65 @@ Note: `codeframe serve` exists but Golden Path does not depend on it.
   and an unconditional write resurrects the session the user just abandoned.
   `submit_answer` and `pause_discovery` learned this the hard way.
 - Don't skip web UI testing when verifying features that have a web surface
+- **Don't render user text through Rich without escaping it**, and don't write
+  a new `except Exception as e: console.print(f"...{e}")` — use
+  `codeframe.cli.helpers.print_error`, which escapes once (#1054). An exception
+  message quotes user input, so rendering it raw made the handler itself raise
+  `MarkupError` and turned a caught error into an uncaught crash. The guard is
+  `tests/cli/test_rich_hostile_data_1054.py`: it seeds hostile markup into every
+  user-supplied field and *runs the commands*, because the field-name scanner it
+  replaced was too narrow four times in one review cycle — a local bound one
+  statement earlier carries no field name at all. Every registered command must
+  appear in its `RUN` or `EXEMPT` table; a new command fails CI until classified.
+  The `EXEMPT` commands it cannot run are covered statically by
+  `tests/cli/test_typer_arg_markup_1206.py`: a Typer command's `str`-annotated
+  parameters are user input by definition, and any `console.print` / `.write` /
+  `.add_row` in that command that interpolates one without `escape()` fails CI.
+  Wrap the argument (`escape(str(x))` if it is Optional); do not add to `ALLOWED`.
+- **Don't run `npm audit fix` in `web-ui` to clear a red audit gate** — a job that
+  rewrites the tree it is checking produces a differently broken build. Plain
+  `npm install` is fine **unless you are on npm 11.6.x**, which is the whole of
+  #1194: that npm's `npm install` drops the peer-installed optional
+  `@emnapi/core` and `@emnapi/runtime` entries from `package-lock.json`, and
+  `npm ci` then correctly demands them back with an `@emnapi` error that names
+  nothing you touched. The committed lockfile is **not** corrupt — it matches the
+  registry, and npm 10.8.2, 11.0.0, 11.4.0, 11.5.0, 11.7.0, 11.9.0, 11.10.0 and
+  11.19.0 all round-trip it cleanly. So the fix is `npm i -g npm@latest`, not
+  hand-pruning the lock. `web-ui/package.json` declares the range in `engines`,
+  which makes npm print `EBADENGINE` naming the version; it is deliberately not
+  enforced with `engine-strict`, because that validates every dependency's
+  engines and `@testing-library/jest-dom` requires node >=22 while CI and the
+  image run Node 20.
+  **Regenerate the lock with npm >= 11.19** (#1223): that is what generated it,
+  and it is a fixed point only there. Every other supported npm — CI's 10.8.2
+  included — rewrites 108 lines on any install: the 36 `libc` fields
+  (`["glibc"]`/`["musl"]`) that 11.19 records on platform-specific optional
+  packages such as `@img/sharp-libvips-*`. Nothing is added, removed or
+  re-versioned and `npm ci` passes either way, so if you see exactly that diff
+  after touching nothing, it is your npm, not the lock; do not commit it.
+  `web-ui/Dockerfile` runs `npm audit --audit-level=high` during the image build,
+  which means an advisory published upstream — no commit of ours — fails
+  `Build images (staging)` and takes staging *and* production down together
+  (#1210 cost a day of that). The daily `Web UI Audit` workflow (#1213) exists to
+  surface it first, and a red *scheduled* run of it — or of the nightly full
+  sweep in `test.yml` — opens or updates one issue per workflow via the shared
+  `scheduled-failure-issue.yml` (#1239), because a scheduled run has no PR to be
+  red on and went unseen for 40 nights that way (#1236). The in-image gate stays
+  as the backstop and must not be weakened. Recovery recipe: `deploy/README.md` → "The frontend image audit gate
+  failed" — and `npm ci` exit 0 is the oracle either way.
+  Since #1217 a patch-level Dependabot **security** PR to `web-ui` arms
+  `gh pr merge --auto` by itself (`dependabot-automerge.yml`), but only after
+  `scripts/ci/lock_diff_is_surgical.py` confirms the lock diff adds and removes
+  nothing, gains no install script, and stays on `registry.npmjs.org` with
+  integrity hashes; routine bumps and minor/major updates still wait for a human.
+  **The gate only fires because `deploy.yml` excludes the `deps` stage from the
+  layer cache** (`no-cache-filters: deps`, #1216). A layer's cache key is its
+  parent layers plus the command string, and an upstream advisory changes
+  neither — so without that exclusion an unchanged lockfile makes `npm audit` a
+  cache hit and the deploy ships the advisory silently, the exact inverse of
+  #1210. Don't delete it to save the ~23s it costs; both it and the daily
+  check's cachelessness are pinned by
+  `tests/ci/test_deploy_audit_cache_1216.py`.
 - **Don't leave a CI gate disabled when its feature area becomes active.** Re-enable `DISABLED:` / `# COMMENTED OUT:` jobs before the first PR in that area. Verify `frontend-tests` is wired into `test-summary`.
 - **A CI run that fails with ZERO jobs and no logs means the workflow file will not compile** (#1122). `gh run view --log-failed` returns `log not found`, the jobs API is empty, and the run ignores its own trigger filters — so it looks like an unrelated trigger bug rather than an outage. YAML validity is not enough: `yaml.safe_load()` parses these files fine; it is GitHub's expression pass that rejects them. Run `actionlint .github/workflows/*.yml` first — the `workflow-lint` job in `test.yml` now enforces this on every PR, but it is the first thing to run locally when a workflow misbehaves. This shipped twice undetected: `deploy.yml` (staging down for a week, an empty `${{ }}` inside a `run:` block) and `claude-review` (#1011).
 

@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, develop]
   workflow_call:  # Allow this workflow to be called by other workflows
+  # On-demand full sweep (#1236): the nightly-only jobs below also honour a
+  # manual dispatch, so a cross-browser failure can be reproduced on a branch
+  # before merge instead of waiting for the 02:00 UTC cron.
+  workflow_dispatch:
   # Nightly browser-E2E schedule: runs the full Playwright suite (all browsers,
   # all specs) against the current Phase-3+ UI. Rewritten in #684.
   schedule:
@@ -376,7 +380,7 @@ jobs:
     name: E2E Backend Tests
     runs-on: ubuntu-latest
     # Only run on main branch or scheduled runs (not every PR)
-    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout code
@@ -540,8 +544,8 @@ jobs:
   e2e-browser-full:
     name: E2E Browser Full (All Browsers)
     runs-on: ubuntu-latest
-    # Nightly only — the full cross-browser sweep is too heavy for every PR.
-    if: github.event_name == 'schedule'
+    # Nightly or on demand — the full cross-browser sweep is too heavy for every PR.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
 
@@ -650,3 +654,16 @@ jobs:
               echo "✅ All checks passed!"
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # A red scheduled run has no PR to be red on (#1239): open or update one
+  # issue instead. `failure()` looks at everything in `needs`, so the list is
+  # every job that ends a scheduled run — test-summary aggregates the gated
+  # ones, and the two nightly-only jobs are listed alongside it because it
+  # deliberately does not need them.
+  report-scheduled-failure:
+    name: Report scheduled failure
+    needs: [test-summary, e2e-browser-full, e2e-backend-tests]
+    if: failure() && github.event_name == 'schedule'
+    uses: ./.github/workflows/scheduled-failure-issue.yml
+    permissions:
+      issues: write

@@ -9,6 +9,8 @@ from typing import Optional
 import typer
 from rich.console import Console
 
+from codeframe.cli.helpers import print_error
+
 console = Console()
 
 dashboard_app = typer.Typer(
@@ -56,7 +58,7 @@ def dashboard(
     try:
         workspace = get_workspace(workspace_path)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         console.print("[dim]Run 'codeframe init' to create a workspace first.[/dim]")
         raise typer.Exit(1)
 

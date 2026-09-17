@@ -32,8 +32,9 @@ if TYPE_CHECKING:
 
 import typer
 from rich.table import Table
+from rich.markup import escape
 
-from codeframe.cli.helpers import console
+from codeframe.cli.helpers import console, print_error
 from codeframe.git.github_integration import GitHubAPIError, GitHubIntegration
 
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ def _get_github_config() -> tuple[str, str]:
     try:
         return resolve_github_credentials(workspace, user_id=None)
     except GitHubResolutionError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         console.print(
             "From the CLI you can also: export GITHUB_TOKEN=ghp_yourtoken "
             "and export GITHUB_REPO=owner/repo"
@@ -223,12 +224,12 @@ def create_pr(
             try:
                 branch = get_current_branch()
             except RuntimeError as e:
-                console.print(f"[red]Error:[/red] {e}")
+                print_error(e)
                 raise typer.Exit(1)
 
         # Validate not on base branch
         if branch == base:
-            console.print(f"[red]Error:[/red] Cannot create PR from '{branch}' to itself.")
+            console.print(f"[red]Error:[/red] Cannot create PR from '{escape(str(branch))}' to itself.")
             console.print("Please checkout a feature branch first.")
             raise typer.Exit(1)
 
@@ -326,7 +327,7 @@ def list_prs(
 
         # Table format
         if not prs:
-            console.print(f"[yellow]No {status} pull requests found.[/yellow]")
+            console.print(f"[yellow]No {escape(status)} pull requests found.[/yellow]")
             return
 
         table = Table(title=f"Pull Requests ({status})")
@@ -460,7 +461,7 @@ def _check_merge_gate(
         blocking_reqs = list_blocking_requirements(workspace)
     except Exception as e:
         # Fail closed, like the API path: a broken ledger blocks the merge.
-        console.print(f"[red]PROOF9 gate check failed:[/red] {e} — merge blocked")
+        print_error(e, prefix="PROOF9 gate check failed:", suffix=" — merge blocked")
         raise typer.Exit(1)
     if not blocking_reqs:
         # Consistent with `cf proof run` (#1118): say so when the ledger is
@@ -582,7 +583,7 @@ def merge_pr(
             console.print(f"[green]✓ PR #{pr_number} merged successfully[/green]")
             if result.sha:
                 console.print(f"[bold]Merge commit:[/bold] {result.sha[:7]}")
-            console.print(f"[bold]Strategy:[/bold] {strategy}")
+            console.print(f"[bold]Strategy:[/bold] {escape(strategy)}")
         else:
             console.print(f"[red]Error:[/red] Merge failed: {result.message}")
             raise typer.Exit(1)
@@ -662,7 +663,7 @@ def pr_status():
         try:
             current_branch = get_current_branch()
         except RuntimeError as e:
-            console.print(f"[red]Error:[/red] {e}")
+            print_error(e)
             raise typer.Exit(1)
 
         async def _status():

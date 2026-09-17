@@ -154,14 +154,14 @@ class TestBatchStopResumeCancelErrorMapping:
 
         `resume_batch` re-runs a task when its result is FAILED/BLOCKED/RUNNING
         **or when it is absent from `results` entirely**. Neither create_batch
-        nor cancel_batch populates `results`, so a freshly-cancelled batch
+        nor stop_batch populates `results`, so a freshly-cancelled batch
         re-runs everything through the real `cf work start --execute`. Recording
         a COMPLETED result first is what makes `tasks_to_run` empty and the
         early return the path taken.
         """
         task = tasks.create(workspace, title="t", description="")
         b = conductor.create_batch(workspace, [task.id])
-        conductor.cancel_batch(workspace, b.id)
+        conductor.stop_batch(workspace, b.id)
         resolved = conductor.get_batch(workspace, b.id)
         resolved.results = {task.id: "COMPLETED"}
         conductor._save_batch(workspace, resolved, preserve_terminal_cancel=False)
@@ -185,11 +185,39 @@ class TestBatchStopResumeCancelErrorMapping:
         spawning an agent inside the suite."""
         task = tasks.create(workspace, title="t", description="")
         b = conductor.create_batch(workspace, [task.id])
-        conductor.cancel_batch(workspace, b.id)
+        conductor.stop_batch(workspace, b.id)
 
         assert conductor.get_batch(workspace, b.id).results == {}, (
-            "cancel_batch now records results; the happy-path setup needs review"
+            "stop_batch now records results; the happy-path setup needs review"
         )
+
+
+class TestCancelIsGracefulStop:
+    """#1197: `cancel_batch` duplicated `stop_batch(force=False)` in core — same
+    status flip, same save, same event. Core keeps one function; the
+    `/cancel` route stays as a documented alias because the web UI calls it."""
+
+    def test_core_has_no_cancel_batch(self):
+        assert not hasattr(conductor, "cancel_batch")
+
+    def test_cancel_route_is_stop_batch_without_force(self, client, workspace):
+        from codeframe.core import events
+
+        task = tasks.create(workspace, title="t", description="")
+        b = conductor.create_batch(workspace, [task.id])
+
+        res = client.post(f"/api/v2/batches/{b.id}/cancel")
+
+        assert res.status_code == 200, res.text
+        assert res.json()["status"] == "CANCELLED"
+        assert conductor.get_batch(workspace, b.id).completed_at is not None
+        # stop_batch's payload carries `force`; the deleted cancel_batch's did
+        # not — so this is what proves the route now delegates.
+        cancelled = [
+            e for e in events.list_recent(workspace, limit=20)
+            if e.event_type == events.EventType.BATCH_CANCELLED
+        ]
+        assert cancelled and cancelled[0].payload == {"batch_id": b.id, "force": False}
 
 
 # ===========================================================================

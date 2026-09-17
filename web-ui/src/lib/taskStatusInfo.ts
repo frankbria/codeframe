@@ -1,3 +1,4 @@
+import type { BadgeVariant } from '@/components/ui/badge';
 import type { TaskStatus } from '@/types';
 
 export interface StatusInfo {
@@ -48,7 +49,7 @@ export const STATUS_INFO: Record<TaskStatus, StatusInfo> = {
 };
 
 /** Map backend TaskStatus to badge variant name. */
-export const STATUS_BADGE_VARIANT: Record<TaskStatus, string> = {
+export const STATUS_BADGE_VARIANT: Record<TaskStatus, BadgeVariant> = {
   BACKLOG: 'backlog',
   READY: 'ready',
   IN_PROGRESS: 'in-progress',

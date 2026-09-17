@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { formatCompactAge } from '@/lib/format';
 import useSWR from 'swr';
-import { formatDistanceToNowStrict } from 'date-fns';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Search01Icon, ArrowLeft01Icon, ArrowRight01Icon, Cancel01Icon, Loading03Icon, Alert02Icon } from '@hugeicons/core-free-icons';
 import {
@@ -259,7 +259,7 @@ export function GitHubIssueImportModal({
                     {issue.assignee ? `@${issue.assignee}` : '—'}
                   </span>
                   <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
-                    {formatAge(issue.created_at)}
+                    {formatCompactAge(issue.created_at)}
                   </span>
                 </label>
               );
@@ -322,31 +322,4 @@ export function GitHubIssueImportModal({
       </DialogContent>
     </Dialog>
   );
-}
-
-const AGE_UNIT_ABBR: Record<string, string> = {
-  second: 's',
-  minute: 'm',
-  hour: 'h',
-  day: 'd',
-  week: 'w',
-  month: 'mo',
-  year: 'y',
-};
-
-/** Render an ISO timestamp as a compact relative age (e.g. "3d", "2mo").
- *
- * Uses the *strict* formatter so there are no "about "/"almost "/"less than a
- * minute" prefixes to mangle; output is always "<n> <unit>" which we then
- * abbreviate. Tolerates empty/invalid input by returning "".
- */
-function formatAge(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const strict = formatDistanceToNowStrict(d); // e.g. "3 days", "1 minute"
-  const match = strict.match(/^(\d+)\s+(\w+?)s?$/);
-  if (!match) return strict;
-  const [, count, unit] = match;
-  return `${count}${AGE_UNIT_ABBR[unit] ?? unit}`;
 }

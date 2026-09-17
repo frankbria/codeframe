@@ -4,11 +4,11 @@ import { useRef, useEffect, useState } from 'react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Search01Icon } from '@hugeicons/core-free-icons';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { TaskStatus } from '@/types';
 
-const FILTERABLE_STATUSES: { value: TaskStatus; label: string; variant: string }[] = [
+const FILTERABLE_STATUSES: { value: TaskStatus; label: string; variant: BadgeVariant }[] = [
   { value: 'BACKLOG', label: 'Backlog', variant: 'backlog' },
   { value: 'READY', label: 'Ready', variant: 'ready' },
   { value: 'IN_PROGRESS', label: 'In Progress', variant: 'in-progress' },
@@ -70,7 +70,7 @@ export function TaskFilters({
               className="focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring rounded-md"
             >
               <Badge
-                variant={variant as never}
+                variant={variant}
                 className={cn(
                   'cursor-pointer transition-opacity',
                   !isActive && statusFilter !== null && 'opacity-40'

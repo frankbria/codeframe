@@ -1050,47 +1050,6 @@ def find_batch_by_prefix(workspace: Workspace, prefix: str) -> list[BatchRun]:
     return [_row_to_batch(row) for row in rows]
 
 
-def cancel_batch(workspace: Workspace, batch_id: str) -> BatchRun:
-    """Cancel a running batch.
-
-    Marks the batch CANCELLED and emits ``BATCH_CANCELLED``. It does **not**
-    signal anything already running: in-flight tasks run to completion, and the
-    worker pool notices the terminal status on its next check. Use
-    ``stop_batch(force=True)`` if you need the harder stop.
-
-    Args:
-        workspace: Target workspace
-        batch_id: Batch to cancel
-
-    Returns:
-        Updated BatchRun
-
-    Raises:
-        ValueError: If batch not found or not in a cancellable state
-    """
-    batch = get_batch(workspace, batch_id)
-    if not batch:
-        raise ValueError(f"Batch not found: {batch_id}")
-
-    if batch.status not in (BatchStatus.PENDING, BatchStatus.RUNNING):
-        raise ValueError(f"Batch cannot be cancelled: {batch.status}")
-
-    # Update status
-    batch.status = BatchStatus.CANCELLED
-    batch.completed_at = _utc_now()
-    _save_batch(workspace, batch)
-
-    # Emit event
-    events.emit_for_workspace(
-        workspace,
-        events.EventType.BATCH_CANCELLED,
-        {"batch_id": batch_id},
-        print_event=True,
-    )
-
-    return batch
-
-
 def stop_batch(workspace: Workspace, batch_id: str, force: bool = False) -> BatchRun:
     """Stop a running batch.
 
@@ -2704,7 +2663,7 @@ def _save_batch(
 
             # Cancellation is authoritative (#726): don't let a whole-row write
             # from a still-running worker resurrect a batch a concurrent
-            # cancel_batch/stop_batch already marked CANCELLED.
+            # stop_batch already marked CANCELLED.
             if preserve_terminal_cancel and batch.status != BatchStatus.CANCELLED:
                 cursor.execute(
                     "SELECT status FROM batch_runs WHERE id = ?", (batch.id,)

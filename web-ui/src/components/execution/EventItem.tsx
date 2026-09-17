@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { formatTime } from '@/lib/format';
 import {
   deriveAgentState,
   agentStateBadgeStyles,
@@ -24,16 +25,6 @@ interface EventItemProps {
   event: ExecutionEvent;
   workspacePath: string;
   onBlockerAnswered?: () => void;
-}
-
-/** Format ISO timestamp to HH:mm:ss for display. */
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  } catch {
-    return '';
-  }
 }
 
 /**

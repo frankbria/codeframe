@@ -70,7 +70,7 @@ describe('BlockerCard', () => {
       <BlockerCard blocker={makeBlocker()} workspacePath={workspacePath} onAnswered={onAnswered} />
     );
 
-    expect(screen.getByText('30m ago')).toBeInTheDocument();
+    expect(screen.getByText('30 minutes ago')).toBeInTheDocument();
   });
 
   it('shows the answer form for OPEN blockers', () => {

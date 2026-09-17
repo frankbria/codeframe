@@ -9,11 +9,30 @@
  * re-run against an already-committed repo and could never pass. `.serial`
  * makes the dependency enforced rather than commented, and skips the rest of
  * the file on a failure instead of reporting cascading phantom failures.
+ *
+ * The seed is also shared ACROSS PROJECTS (#1236): global-setup runs once per
+ * `playwright test` invocation, and chromium → firefox → webkit run in turn
+ * against that one workspace. Once chromium has committed app.py there is no
+ * diff left for the next browser — which is how the nightly sweep stayed red
+ * for 40 nights while the chromium-only smoke job stayed green. So the group
+ * re-dirties app.py in `beforeAll`: every project (and every serial retry)
+ * starts from an uncommitted change, whatever the previous one committed.
  */
 import { test, expect } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
+import { WORKSPACE_DIR } from './e2e-env';
 import { gotoPage, trackConsoleErrors } from './helpers';
 
 test.describe.serial('Review page', () => {
+  test.beforeAll(({ browserName }) => {
+    // Content must differ from whatever HEAD holds, or there is no diff.
+    fs.writeFileSync(
+      path.join(WORKSPACE_DIR, 'app.py'),
+      `def hello():\n    return 'hello, e2e'  # reseeded for ${browserName} at ${Date.now()}\n`,
+    );
+  });
+
   test('renders the working-tree diff for the seeded change', async ({ page }) => {
     const errors = trackConsoleErrors(page);
     await gotoPage(page, '/review');

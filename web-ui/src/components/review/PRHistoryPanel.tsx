@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { formatDate } from '@/lib/format';
 import useSWR from 'swr';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { ArrowDown01Icon, ArrowUp01Icon, ArrowUpRight01Icon, CheckmarkCircle01Icon, Cancel01Icon, Alert02Icon } from '@hugeicons/core-free-icons';
@@ -115,7 +116,7 @@ export function PRHistoryPanel({ workspacePath }: PRHistoryPanelProps) {
                       {pr.title}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(pr.merged_at).toLocaleDateString()}
+                      {formatDate(pr.merged_at)}
                       {pr.author && ` by ${pr.author}`}
                     </span>
                   </div>

@@ -12,7 +12,6 @@ from codeframe.core.conductor import (
     start_batch,
     get_batch,
     list_batches,
-    cancel_batch,
     stop_batch,
     resume_batch,
     _save_batch,
@@ -258,53 +257,6 @@ class TestListBatches:
         assert len(result) == 2
 
 
-class TestCancelBatch:
-    """Tests for cancel_batch function."""
-
-    def test_cancel_nonexistent_batch_raises(self, temp_workspace):
-        """Should raise ValueError for non-existent batch."""
-        with pytest.raises(ValueError, match="Batch not found"):
-            cancel_batch(temp_workspace, "non-existent-id")
-
-    def test_cancel_completed_batch_raises(self, workspace_with_tasks):
-        """Should raise ValueError for completed batch."""
-        workspace, task_list = workspace_with_tasks
-        task_ids = [t.id for t in task_list]
-
-        batch = start_batch(workspace, task_ids, dry_run=True)
-        # Batch is COMPLETED after dry run
-
-        with pytest.raises(ValueError, match="cannot be cancelled"):
-            cancel_batch(workspace, batch.id)
-
-    def test_cancel_pending_batch(self, workspace_with_tasks):
-        """Should cancel a pending batch."""
-        workspace, task_list = workspace_with_tasks
-
-        # Create a batch and manually set it to PENDING
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-
-        batch = BatchRun(
-            id="test-cancel-batch",
-            workspace_id=workspace.id,
-            task_ids=[task_list[0].id],
-            status=BatchStatus.PENDING,
-            strategy="serial",
-            max_parallel=4,
-            on_failure=OnFailure.CONTINUE,
-            started_at=now,
-            completed_at=None,
-            results={},
-        )
-        _save_batch(workspace, batch)
-
-        cancelled = cancel_batch(workspace, batch.id)
-
-        assert cancelled.status == BatchStatus.CANCELLED
-        assert cancelled.completed_at is not None
-
-
 class TestCancellationIsAuthoritative:
     """#726 / P0.15: a concurrent cancel must not be resurrected by a
     still-running worker's whole-row save."""
@@ -332,7 +284,7 @@ class TestCancellationIsAuthoritative:
         worker_view = self._running_batch(workspace, [task_list[0].id])
 
         # A concurrent cancel marks the persisted batch CANCELLED.
-        cancel_batch(workspace, worker_view.id)
+        stop_batch(workspace, worker_view.id)
 
         # The still-running worker finishes a task and saves the whole row with
         # its stale RUNNING in-memory status.
@@ -348,7 +300,7 @@ class TestCancellationIsAuthoritative:
     def test_resume_can_still_transition_cancelled_to_running(self, workspace_with_tasks):
         workspace, task_list = workspace_with_tasks
         batch = self._running_batch(workspace, [task_list[0].id])
-        cancel_batch(workspace, batch.id)
+        stop_batch(workspace, batch.id)
 
         # resume_batch bypasses the guard (preserve_terminal_cancel=False).
         batch.status = BatchStatus.RUNNING

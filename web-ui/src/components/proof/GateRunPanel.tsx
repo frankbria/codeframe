@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
+import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import type { GateRunEntry, GateRunStatus } from '@/types';
 
 interface GateRunPanelProps {
@@ -8,7 +8,7 @@ interface GateRunPanelProps {
 }
 
 // Map GateRunStatus to Badge variant names from the shared design system
-const STATUS_VARIANT: Record<GateRunStatus, 'backlog' | 'in-progress' | 'done' | 'failed' | 'unverifiable'> = {
+const STATUS_VARIANT: Record<GateRunStatus, BadgeVariant> = {
   pending: 'backlog',
   running: 'in-progress',
   passed: 'done',

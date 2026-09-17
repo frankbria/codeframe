@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { formatDateTime } from '@/lib/format';
 import useSWR from 'swr';
 import { toast } from 'sonner';
 import { HugeiconsIcon } from '@hugeicons/react';
@@ -191,7 +192,7 @@ function VersionList({ versions, currentVersion, isLoading, error, onViewVersion
                   )}
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {new Date(v.created_at).toLocaleString()}
+                  {formatDateTime(v.created_at)}
                 </p>
                 <p className="mt-0.5 text-xs italic text-muted-foreground">
                   {v.change_summary ?? 'No summary'}

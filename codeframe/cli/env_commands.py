@@ -21,6 +21,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.markup import escape
 
 from codeframe.core.environment import (
     EnvironmentValidator,
@@ -58,7 +59,7 @@ def check(
     if project:
         project_path = Path(project)
         if not project_path.exists():
-            console.print(f"[red]Error:[/red] Project path not found: {project}")
+            console.print(f"[red]Error:[/red] Project path not found: {escape(str(project))}")
             raise typer.Exit(1)
     else:
         project_path = Path.cwd()
@@ -139,7 +140,7 @@ def doctor(
     if project:
         project_path = Path(project)
         if not project_path.exists():
-            console.print(f"[red]Error:[/red] Project path not found: {project}")
+            console.print(f"[red]Error:[/red] Project path not found: {escape(str(project))}")
             raise typer.Exit(1)
     else:
         project_path = Path.cwd()
@@ -286,15 +287,15 @@ def install_missing(
 
     # Check if we can install this tool
     if not installer.can_install(tool):
-        console.print(f"[red]Error:[/red] Cannot install '{tool}' - no installer available")
+        console.print(f"[red]Error:[/red] Cannot install '{escape(tool)}' - no installer available")
         console.print()
         console.print("This tool may need manual installation.")
-        console.print(f"Try: [dim]{installer.get_install_command(tool) or f'Install {tool} manually'}[/dim]")
+        console.print(f"Try: [dim]{escape(str(installer.get_install_command(tool) or f'Install {tool} manually'))}[/dim]")
         raise typer.Exit(1)
 
     # Show install command
     install_cmd = installer.get_install_command(tool)
-    console.print(f"[bold]Tool:[/bold] {tool}")
+    console.print(f"[bold]Tool:[/bold] {escape(tool)}")
     console.print(f"[bold]Command:[/bold] {install_cmd}")
     console.print()
 
@@ -353,7 +354,7 @@ def auto_install(
     if project:
         project_path = Path(project)
         if not project_path.exists():
-            console.print(f"[red]Error:[/red] Project path not found: {project}")
+            console.print(f"[red]Error:[/red] Project path not found: {escape(str(project))}")
             raise typer.Exit(1)
     else:
         project_path = Path.cwd()

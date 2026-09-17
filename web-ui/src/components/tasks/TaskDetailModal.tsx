@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { formatDate } from '@/lib/format';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { HugeiconsIcon } from '@hugeicons/react';
@@ -145,7 +146,7 @@ export function TaskDetailModal({
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Badge variant={STATUS_BADGE_VARIANT[task.status] as never}>
+                      <Badge variant={STATUS_BADGE_VARIANT[task.status]}>
                         {STATUS_LABEL[task.status]}
                       </Badge>
                     </TooltipTrigger>
@@ -191,7 +192,7 @@ export function TaskDetailModal({
               {task.updated_at && (
                 <span className="flex items-center gap-1">
                   <HugeiconsIcon icon={Time01Icon} className="h-3.5 w-3.5" />
-                  Last changed: {new Date(task.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  Last changed: {formatDate(task.updated_at)}
                 </span>
               )}
             </div>
@@ -228,7 +229,7 @@ export function TaskDetailModal({
                     return (
                       <li key={depId} className="flex items-center gap-2 text-xs">
                         {dep && (
-                          <Badge variant={STATUS_BADGE_VARIANT[dep.status] as never} className="shrink-0 text-[10px]">
+                          <Badge variant={STATUS_BADGE_VARIANT[dep.status]} className="shrink-0 text-[10px]">
                             {dep.status}
                           </Badge>
                         )}

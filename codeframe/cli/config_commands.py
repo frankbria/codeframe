@@ -4,6 +4,7 @@ import os
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 
 from codeframe.core import telemetry as telemetry_core
 
@@ -27,7 +28,7 @@ def telemetry(
     """
     action = action.strip().lower()
     if action not in ("on", "off", "status"):
-        console.print(f"[red]Error:[/red] unknown action '{action}' (expected on|off|status)")
+        console.print(f"[red]Error:[/red] unknown action '{escape(action)}' (expected on|off|status)")
         raise typer.Exit(1)
 
     if action == "status":

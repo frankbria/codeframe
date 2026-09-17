@@ -21,14 +21,13 @@ pytestmark = pytest.mark.v2
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-#: Weak-assertion checks are scoped to the CliRunner/TestClient suites #973
-#: named. The e2e suites run outside the CI gate and are not in scope.
-WEAK_ASSERT_DIRS = ("tests/cli", "tests/ui")
-
-#: The retired-skip check covers the whole tree. Two of the suites #973 retired
-#: lived in tests/blockers and tests/integration, so scoping this to cli+ui
-#: would leave the exact directories the issue emptied unguarded.
-SKIP_SCAN_DIRS = ("tests",)
+#: Every check covers the whole tree (#1200). #973 scoped the weak-assertion
+#: checks to the CliRunner/TestClient suites it named; the retired-skip check
+#: was widened first because two of the suites #973 retired lived in
+#: tests/blockers and tests/integration. tests/e2e runs outside the CI gate
+#: (``--ignore=tests/e2e``), which is exactly where weak assertions accumulate
+#: unnoticed — so it is scanned too, and this file is what catches them.
+SCAN_DIRS = ("tests",)
 
 
 def _files(dirs: tuple[str, ...]) -> list[Path]:
@@ -79,7 +78,7 @@ def test_no_exit_code_accepts_both_success_and_failure():
     inline ``(0, 1)``.
     """
     offenders = []
-    for path in _files(WEAK_ASSERT_DIRS):
+    for path in _files(SCAN_DIRS):
         for node in ast.walk(_parse(path)):
             if not isinstance(node, ast.Assert):
                 continue
@@ -121,7 +120,7 @@ def test_no_test_asserts_only_that_the_runner_returned_something():
     making one claim regardless of how deeply it is indented.
     """
     offenders = []
-    for path in _files(WEAK_ASSERT_DIRS):
+    for path in _files(SCAN_DIRS):
         for node in _tests_in(_parse(path)):
             asserts = [n for n in ast.walk(node) if isinstance(n, ast.Assert)]
             if len(asserts) != 1:
@@ -167,7 +166,7 @@ def test_no_module_level_skip_anywhere_in_the_suite():
     long after its stated reason stopped being true.
     """
     offenders = []
-    for path in _files(SKIP_SCAN_DIRS):
+    for path in _files(SCAN_DIRS):
         for node in _parse(path).body:
             if not isinstance(node, ast.Assign):
                 continue

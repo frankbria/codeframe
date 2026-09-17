@@ -42,6 +42,7 @@ from typing import Optional, Tuple
 import requests
 import typer
 from rich.table import Table
+from rich.markup import escape
 
 from codeframe.cli.auth import store_token, clear_token, is_authenticated
 from codeframe.cli.api_client import (
@@ -50,7 +51,7 @@ from codeframe.cli.api_client import (
     get_api_base_url,
     is_insecure_transport,
 )
-from codeframe.cli.helpers import console
+from codeframe.cli.helpers import console, print_error
 from codeframe.core.credentials import (
     CredentialManager,
     CredentialProvider,
@@ -315,7 +316,7 @@ def login(
 
             if token:
                 store_token(token)
-                console.print(f"[green]✓ Successfully logged in as {email}[/green]")
+                console.print(f"[green]✓ Successfully logged in as {escape(str(email))}[/green]")
             else:
                 console.print("[red]Error:[/red] No token received from server")
                 raise typer.Exit(1)
@@ -430,7 +431,7 @@ def register(
         )
 
         if response.status_code == 201:
-            console.print(f"[green]✓ Account registered successfully for {email}[/green]")
+            console.print(f"[green]✓ Account registered successfully for {escape(str(email))}[/green]")
 
             # Auto-login after registration
             console.print("Logging in...")
@@ -528,7 +529,7 @@ def whoami():
         raise typer.Exit(1)
 
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -680,7 +681,7 @@ def setup_credential(
     try:
         manager.set_credential(provider_enum, value)
     except CredentialStoreUnreadableError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     console.print(f"[green]Successfully stored credential for {provider_enum.display_name}[/green]")
 
@@ -861,7 +862,7 @@ def rotate_credential(
     try:
         manager.rotate_credential(provider_enum, value)
     except CredentialStoreUnreadableError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     console.print(f"[green]Successfully rotated credential for {provider_enum.display_name}[/green]")
 
@@ -983,7 +984,7 @@ def api_key_create(
         console.print("[yellow]Save this key securely - it will not be shown again.[/yellow]\n")
 
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except Exception as e:
         logger.debug(f"API key creation error: {e}")
@@ -1073,7 +1074,7 @@ def api_key_revoke(
     success = service.revoke_api_key(key_id, user_id=user_id)
 
     if success:
-        console.print(f"[green]API key {key_id} revoked successfully.[/green]")
+        console.print(f"[green]API key {escape(key_id)} revoked successfully.[/green]")
     else:
         console.print("[red]Error:[/red] API key not found or not owned by user")
         raise typer.Exit(1)
@@ -1188,10 +1189,10 @@ def set_password(
     try:
         _set_user_password(get_db_for_cli(), email, password)
     except LookupError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
-    console.print(f"[green]✓ Password updated for {email}[/green]")
+    console.print(f"[green]✓ Password updated for {escape(email)}[/green]")
 
 
 @auth_app.command("deactivate")
@@ -1210,10 +1211,10 @@ def deactivate_user(
     try:
         _set_user_active(get_db_for_cli(), email, False)
     except LookupError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
-    console.print(f"[green]✓ {email} deactivated; its API keys no longer authenticate[/green]")
+    console.print(f"[green]✓ {escape(email)} deactivated; its API keys no longer authenticate[/green]")
 
 
 @auth_app.command("activate")
@@ -1229,10 +1230,10 @@ def activate_user(
     try:
         _set_user_active(get_db_for_cli(), email, True)
     except LookupError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
-    console.print(f"[green]✓ {email} activated[/green]")
+    console.print(f"[green]✓ {escape(email)} activated[/green]")
 
 
 @auth_app.command("user-list")

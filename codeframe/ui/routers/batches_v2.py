@@ -288,9 +288,12 @@ async def cancel_batch(
     batch_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> BatchResponse:
-    """Cancel a running batch.
+    """Cancel a running batch — the graceful stop, kept as its own route.
 
-    Similar to stop but with explicit cancel semantics.
+    Identical to ``POST /{batch_id}/stop`` with ``force=false`` (#1197): the
+    batch is marked CANCELLED, in-flight tasks finish naturally, and
+    ``BATCH_CANCELLED`` is emitted. The route survives only for API
+    compatibility — the web UI's batch monitor calls it.
 
     Args:
         batch_id: Batch to cancel
@@ -305,7 +308,9 @@ async def cancel_batch(
             - 400: Batch not in cancellable state
     """
     try:
-        batch = await run_in_threadpool(conductor.cancel_batch, workspace, batch_id)
+        batch = await run_in_threadpool(
+            conductor.stop_batch, workspace, batch_id, force=False
+        )
         return _batch_to_response(batch)
 
     except ValueError as e:

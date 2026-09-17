@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { formatDate, formatDateTime } from '@/lib/format';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
@@ -274,7 +275,7 @@ export default function ProofDetailPage() {
                 </div>
               )}
               <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
-                {req.created_at && <span>Created {new Date(req.created_at).toLocaleDateString()}</span>}
+                {req.created_at && <span>Created {formatDate(req.created_at)}</span>}
                 {req.source && <span>Source: {req.source}</span>}
                 {req.source_issue && (() => {
                   let isGitHubPr = false;
@@ -516,7 +517,7 @@ export default function ProofDetailPage() {
                           </td>
                           <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{ev.run_id}</td>
                           <td className="px-4 py-2 text-muted-foreground">
-                            {new Date(ev.timestamp).toLocaleString()}
+                            {formatDateTime(ev.timestamp)}
                           </td>
                           <td className="max-w-xs px-4 py-2 font-mono text-xs text-muted-foreground">
                             <span className="line-clamp-1">{ev.artifact_path || '—'}</span>
@@ -540,7 +541,7 @@ export default function ProofDetailPage() {
                     <p className="mt-1 text-sm text-muted-foreground">Approved by: {req.waiver.approved_by}</p>
                   )}
                   {req.waiver.waived_at && (
-                    <p className="mt-1 text-sm text-muted-foreground">Waived: {new Date(req.waiver.waived_at).toLocaleString()}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Waived: {formatDateTime(req.waiver.waived_at)}</p>
                   )}
                   {req.waiver.expires && (
                     <p className="mt-1 text-sm text-muted-foreground">Expires: {req.waiver.expires}</p>

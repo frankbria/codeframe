@@ -423,6 +423,25 @@ def resolve(workspace: Workspace, blocker_id: str) -> Blocker:
     return blocker
 
 
+def delete(workspace: Workspace, blocker_id: str) -> None:
+    """Delete a blocker outright, whatever its status.
+
+    Exists to unwind a blocker that must not be seen: `pause_discovery` creates
+    one and then finds its session was reset out from under it (#1202).
+    `resolve()` cannot do that — it refuses an OPEN blocker.
+
+    Raises:
+        ValueError: If blocker not found
+    """
+    blocker = get(workspace, blocker_id)
+    if not blocker:
+        raise ValueError(f"Blocker not found: {blocker_id}")
+
+    with closing(get_db_connection(workspace)) as conn:
+        conn.execute("DELETE FROM blockers WHERE id = ?", (blocker.id,))
+        conn.commit()
+
+
 def count_by_status(workspace: Workspace) -> dict[str, int]:
     """Count blockers by status.
 

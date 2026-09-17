@@ -36,3 +36,14 @@ def test_the_reusable_workflow_is_pinned_to_a_full_sha():
     assert len(ref) == 40 and all(
         c in "0123456789abcdef" for c in ref
     ), f"glm-review is pinned to {ref!r}; pin a full commit SHA"
+
+
+def test_fork_prs_are_gated_out_here_too():
+    """#1221: the same secret-withholding applies to ZHIPU_API_KEY on a fork
+    PR; the two reviewers keep the same gate so they cannot drift apart."""
+    import yaml
+    from pathlib import Path
+
+    wf = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "glm-review.yml"
+    job = next(iter(yaml.safe_load(wf.read_text())["jobs"].values()))
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in job["if"]

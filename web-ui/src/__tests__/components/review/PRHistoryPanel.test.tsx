@@ -153,9 +153,7 @@ describe('PRHistoryPanel', () => {
       withData(SAMPLE_HISTORY);
       render(<PRHistoryPanel workspacePath={WORKSPACE} />);
 
-      // Check that date text is present (formatted by toLocaleDateString)
-      const dateText = new Date('2026-04-10T12:00:00Z').toLocaleDateString();
-      expect(screen.getByText(new RegExp(dateText))).toBeInTheDocument();
+      expect(screen.getByText(/Apr 10, 2026/)).toBeInTheDocument();
       expect(screen.getByText(/by alice/)).toBeInTheDocument();
     });
 

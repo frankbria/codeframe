@@ -23,6 +23,7 @@ from typing import Optional
 
 import typer
 from rich.table import Table
+from rich.markup import escape
 
 from codeframe.cli.helpers import console
 
@@ -121,7 +122,7 @@ def tokens(
             # Per-task summary
             summary = tracker.get_task_token_summary(task)
 
-            console.print(f"\n[bold]Token Usage for Task {task}[/bold]\n")
+            console.print(f"\n[bold]Token Usage for Task {escape(str(task))}[/bold]\n")
 
             table = Table(show_header=True, title=None)
             table.add_column("Metric", style="cyan")
@@ -215,7 +216,7 @@ def costs(
             start_date = now - timedelta(days=30)
         elif period is not None:
             console.print(
-                f"[red]Error:[/red] Unknown period '{period}'. Use 'day', 'week', or 'month'."
+                f"[red]Error:[/red] Unknown period '{escape(str(period))}'. Use 'day', 'week', or 'month'."
             )
             raise typer.Exit(1)
 
@@ -288,7 +289,7 @@ def export_data(
     db = _get_db()
     try:
         if format not in ("csv", "json"):
-            console.print(f"[red]Error:[/red] Unknown format '{format}'. Use 'csv' or 'json'.")
+            console.print(f"[red]Error:[/red] Unknown format '{escape(format)}'. Use 'csv' or 'json'.")
             raise typer.Exit(1)
 
         if task is not None:
@@ -302,6 +303,6 @@ def export_data(
         else:
             n = MetricsTracker.export_to_json(records, output)
 
-        console.print(f"Exported {n} records to {output}")
+        console.print(f"Exported {n} records to {escape(output)}")
     finally:
         db.close()

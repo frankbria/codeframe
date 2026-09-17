@@ -3,7 +3,6 @@
 # Standard library imports
 import logging
 import os
-import subprocess
 from contextlib import asynccontextmanager
 from datetime import datetime, UTC
 from enum import Enum
@@ -806,6 +805,12 @@ async def root():
     return {"status": "online", "service": "CodeFRAME API"}
 
 
+# Captured once, at import. A deploy replaces the container, so process start is
+# deploy time — and unlike a per-request clock read it goes stale when the deploy
+# does, which is the whole point of the field (#1160).
+_PROCESS_STARTED_AT = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
 @app.get(
     "/health",
     summary="Detailed health check",
@@ -819,30 +824,26 @@ async def health_check():
     Returns:
         - status: Service health status
         - version: API version from FastAPI app
-        - commit: Git commit hash (short)
-        - deployed_at: Server startup timestamp
+        - commit: Build SHA stamped into the image, or "unknown" outside Docker
+        - deployed_at: Process start timestamp — constant for this container
         - database: Database connection status
-    """
-    # Get git commit hash
-    try:
-        git_commit = (
-            subprocess.check_output(
-                ["git", "rev-parse", "--short", "HEAD"],
-                cwd=Path(__file__).parent.parent.parent,
-                stderr=subprocess.DEVNULL,
-            )
-            .decode()
-            .strip()
-        )
-    except Exception:
-        git_commit = "unknown"
 
+    Both deployment fields used to be derived at request time and both were
+    wrong in every container (#1160). ``deployed_at`` was ``datetime.now()``,
+    so it always read "deployed seconds ago" and could never surface the stale
+    deploy it exists to surface; ``commit`` shelled out to git against a source
+    tree the image does not carry (``.dockerignore`` excludes ``.git``), and the
+    ``except`` branch turned that into a permanent "unknown". Both are known at
+    image build time, so they are read from the environment instead of probed.
+    """
     return {
         "status": "healthy",
         "service": "CodeFRAME Status Server",
         "version": app.version,
-        "commit": git_commit,
-        "deployed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        # Read per request, not at import: the env arrives at container start,
+        # which is after this module is imported in some entrypoints (#963).
+        "commit": os.getenv("GIT_COMMIT", "unknown"),
+        "deployed_at": _PROCESS_STARTED_AT,
     }
 
 

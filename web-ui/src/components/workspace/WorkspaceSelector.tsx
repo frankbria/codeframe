@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { formatRelativeTime } from '@/lib/format';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Folder01Icon, Time01Icon, Cancel01Icon, Loading03Icon, Alert02Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useWorkspaces } from '@/hooks/useWorkspaces';
-import { formatDistanceToNow } from 'date-fns';
 
 interface WorkspaceSelectorProps {
   onSelectWorkspace: (path: string) => Promise<void>;
@@ -184,9 +184,7 @@ export function WorkspaceSelector({
                       <div className="flex items-center gap-2 flex-shrink-0 ml-4">
                         {workspace.last_opened_at && (
                           <span className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(workspace.last_opened_at), {
-                              addSuffix: true,
-                            })}
+                            {formatRelativeTime(workspace.last_opened_at)}
                           </span>
                         )}
                         <button

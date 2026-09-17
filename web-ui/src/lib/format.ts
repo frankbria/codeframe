@@ -1,18 +1,76 @@
+import { formatDistanceToNow, formatDistanceToNowStrict } from 'date-fns';
+
 /**
- * Format an ISO date string as a human-readable relative time.
- * Returns strings like "just now", "5m ago", "2h ago", or "3d ago".
+ * The single set of display formatters for the app. Two surfaces showing the
+ * same value must agree on it (#971, #1195), so every displayed timestamp,
+ * count and USD amount goes through here — the guard test in
+ * `__tests__/lib/sharedConstants.guard.test.ts` enforces it.
  */
-export function formatRelativeTime(isoDate: string): string {
-  const now = new Date();
-  const date = new Date(isoDate);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
+
+const LOCALE = 'en-US';
+
+function parse(iso: string): Date | null {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** "Apr 10, 2026" — or "" when `iso` does not parse. */
+export function formatDate(iso: string): string {
+  return (
+    parse(iso)?.toLocaleDateString(LOCALE, { month: 'short', day: 'numeric', year: 'numeric' }) ?? ''
+  );
+}
+
+/** "Apr 10, 2026, 12:00 PM" — or "" when `iso` does not parse. */
+export function formatDateTime(iso: string): string {
+  return (
+    parse(iso)?.toLocaleString(LOCALE, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }) ?? ''
+  );
+}
+
+/** "12:00:05 PM" — time of day with seconds, for event streams. "" when unparseable. */
+export function formatTime(iso: string): string {
+  return (
+    parse(iso)?.toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) ??
+    ''
+  );
+}
+
+/** "30 minutes ago", "about 2 hours ago", "3 days ago". "" when unparseable. */
+export function formatRelativeTime(iso: string): string {
+  const d = parse(iso);
+  return d ? formatDistanceToNow(d, { addSuffix: true }) : '';
+}
+
+const AGE_UNIT_ABBR: Record<string, string> = {
+  second: 's',
+  minute: 'm',
+  hour: 'h',
+  day: 'd',
+  week: 'w',
+  month: 'mo',
+  year: 'y',
+};
+
+/**
+ * "3d", "1m", "2mo" — compact age for dense list columns. The strict variant
+ * never emits "about"/"almost" qualifiers, so the output is always
+ * "<n> <unit>" which is then abbreviated. "" when unparseable.
+ */
+export function formatCompactAge(iso: string): string {
+  const d = parse(iso);
+  if (!d) return '';
+  const strict = formatDistanceToNowStrict(d); // e.g. "3 days", "1 minute"
+  const match = strict.match(/^(\d+)\s+(\w+?)s?$/);
+  if (!match) return strict;
+  const [, count, unit] = match;
+  return `${count}${AGE_UNIT_ABBR[unit] ?? unit}`;
 }
 
 /**
@@ -30,7 +88,7 @@ export function formatUsd(
     maximumFractionDigits = minimumFractionDigits,
   }: { minimumFractionDigits?: number; maximumFractionDigits?: number } = {}
 ): string {
-  return value.toLocaleString('en-US', {
+  return value.toLocaleString(LOCALE, {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits,
@@ -40,5 +98,5 @@ export function formatUsd(
 
 /** Format a plain count (tokens, rows) with thousands separators. */
 export function formatCount(n: number): string {
-  return n.toLocaleString('en-US');
+  return n.toLocaleString(LOCALE);
 }

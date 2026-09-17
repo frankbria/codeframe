@@ -26,6 +26,7 @@ from rich.console import Console
 from rich.markup import escape
 
 # Import auth subapp for credential management
+from codeframe.cli.helpers import print_error
 from codeframe.cli.auth_commands import auth_app
 from codeframe.cli.pr_commands import pr_app
 from codeframe.cli.env_commands import env_app
@@ -462,7 +463,7 @@ def init(
         console.print("  cf status                    View workspace status")
 
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -772,7 +773,7 @@ def status(
         console.print("Run 'codeframe init <path>' to initialize.")
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -990,7 +991,7 @@ def serve(
 
     _warn_if_exposed(host)
 
-    console.print(f"Starting CodeFRAME API server on {host}:{port}")
+    console.print(f"Starting CodeFRAME API server on {escape(host)}:{port}")
     console.print(f"  Swagger UI: http://localhost:{port}/docs")
     console.print(f"  ReDoc:      http://localhost:{port}/redoc")
     console.print("  Press Ctrl+C to stop\n")
@@ -1065,7 +1066,7 @@ def prd_templates_show(
     template = manager.get_template(template_id)
 
     if not template:
-        console.print(f"[red]Error:[/red] Template '{template_id}' not found.")
+        console.print(f"[red]Error:[/red] Template '{escape(template_id)}' not found.")
         console.print("\nAvailable templates:")
         for t in manager.list_templates():
             console.print(f"  {t.id}")
@@ -1103,9 +1104,9 @@ def prd_templates_export(
 
     try:
         manager.export_template(template_id, output_path)
-        console.print(f"[green]✓[/green] Exported template '{template_id}' to {output_path}")
+        console.print(f"[green]✓[/green] Exported template '{escape(template_id)}' to {output_path}")
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         console.print("\nAvailable templates:")
         for t in manager.list_templates():
             console.print(f"  {t.id}")
@@ -1142,7 +1143,7 @@ def prd_templates_import(
         console.print(f"[dim]Sections: {len(template.sections)}[/dim]")
         console.print(f"[dim]Saved to: .codeframe/templates/prd/{template.id}.yaml[/dim]")
     except Exception as e:
-        console.print(f"[red]Error:[/red] Failed to import template: {e}")
+        print_error(f"Failed to import template: {e}")
         raise typer.Exit(1)
 
 
@@ -1200,10 +1201,10 @@ def prd_add(
         console.print("Next: codeframe tasks generate")
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -1239,7 +1240,7 @@ def prd_show(
         if prd_id:
             record = prd.get_by_id(workspace, prd_id)
             if not record:
-                console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+                console.print(f"[red]Error:[/red] PRD not found: {escape(prd_id)}")
                 raise typer.Exit(1)
         else:
             record = prd.get_latest(workspace)
@@ -1255,21 +1256,21 @@ def prd_show(
 
         if full:
             console.print("\n" + "-" * 40 + "\n")
-            console.print(record.content)
+            console.print(escape(record.content))
         else:
             # Show first 500 chars as preview
-            preview = record.content[:500]
+            preview = escape(record.content[:500])
             if len(record.content) > 500:
                 preview += "\n\n[dim]... (use --full to see complete PRD)[/dim]"
             console.print("\n" + preview)
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except typer.Exit:
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -1308,10 +1309,10 @@ def prd_list(
             console.print()
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -1350,7 +1351,7 @@ def prd_delete(
         # Get the PRD first to show title
         record = prd.get_by_id(workspace, prd_id)
         if not record:
-            console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+            console.print(f"[red]Error:[/red] PRD not found: {escape(prd_id)}")
             raise typer.Exit(1)
 
         # Confirm unless --force
@@ -1363,7 +1364,7 @@ def prd_delete(
         # Delete
         deleted = prd.delete(workspace, prd_id)
         if not deleted:
-            console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+            console.print(f"[red]Error:[/red] PRD not found: {escape(prd_id)}")
             raise typer.Exit(1)
 
         # Emit event
@@ -1377,12 +1378,12 @@ def prd_delete(
         console.print(f"[green]PRD deleted:[/green] {escape(record.title)}")
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except typer.Exit:
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -1444,18 +1445,18 @@ def prd_export(
         success = prd.export_to_file(workspace, actual_id, file_path, force=force)
 
         if not success:
-            console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+            console.print(f"[red]Error:[/red] PRD not found: {escape(prd_id)}")
             raise typer.Exit(1)
 
         console.print(f"[green]PRD exported:[/green] {file_path}")
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except typer.Exit:
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -1486,7 +1487,7 @@ def prd_versions(
         versions = prd.get_versions(workspace, prd_id)
 
         if not versions:
-            console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+            console.print(f"[red]Error:[/red] PRD not found: {escape(prd_id)}")
             raise typer.Exit(1)
 
         console.print(f"\n[bold]Version History ({len(versions)} versions):[/bold]\n")
@@ -1501,12 +1502,12 @@ def prd_versions(
             console.print()
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except typer.Exit:
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -1545,7 +1546,7 @@ def prd_diff(
         diff = prd.diff_versions(workspace, prd_id, version1, version2)
 
         if diff is None:
-            console.print(f"[red]Error:[/red] Version not found for PRD {prd_id}")
+            console.print(f"[red]Error:[/red] Version not found for PRD {escape(prd_id)}")
             raise typer.Exit(1)
 
         if not diff:
@@ -1565,12 +1566,12 @@ def prd_diff(
                 console.print(line)
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except typer.Exit:
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -1615,7 +1616,7 @@ def prd_update(
         # Check if PRD exists
         existing = prd.get_by_id(workspace, prd_id)
         if not existing:
-            console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+            console.print(f"[red]Error:[/red] PRD not found: {escape(prd_id)}")
             raise typer.Exit(1)
 
         # Load new content
@@ -1643,15 +1644,15 @@ def prd_update(
 
         console.print(f"[green]PRD updated to version {new_version.version}[/green]")
         console.print(f"  New ID: {new_version.id}")
-        console.print(f"  Changes: {message}")
+        console.print(f"  Changes: {escape(message)}")
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except typer.Exit:
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -1666,6 +1667,11 @@ def prd_generate(
         None,
         "--resume", "-r",
         help="Resume from a paused session (blocker ID)",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force", "-f",
+        help="With --resume: close whichever session currently holds the workspace's active slot",
     ),
     template: str = typer.Option(
         "standard",
@@ -1731,6 +1737,7 @@ def prd_generate(
     from codeframe.core.prd_discovery import (
         PrdDiscoverySession,
         DiscoveryError,
+        ActiveSessionExistsError,
         NoApiKeyError,
         ValidationError,
         IncompleteSessionError,
@@ -1748,7 +1755,7 @@ def prd_generate(
     template_manager = PrdTemplateManager(workspace_path=workspace_path)
     template_obj = template_manager.get_template(template)
     if template_obj is None:
-        console.print(f"[red]Error:[/red] Template '{template}' not found.")
+        console.print(f"[red]Error:[/red] Template '{escape(template)}' not found.")
         console.print("\nAvailable templates:")
         for t in template_manager.list_templates():
             console.print(f"  {t.id} - {escape(t.name)}")
@@ -1788,9 +1795,9 @@ def prd_generate(
             console.print("\n[cyan]Resuming discovery session...[/cyan]")
             try:
                 session = PrdDiscoverySession(workspace)
-                session.resume_discovery(resume)
-            except (ValueError, NoApiKeyError) as e:
-                console.print(f"[red]Error:[/red] {e}")
+                session.resume_discovery(resume, evict=force)
+            except (ValueError, NoApiKeyError, ActiveSessionExistsError) as e:
+                print_error(e)
                 raise typer.Exit(1)
             console.print(f"[green]✓[/green] Loaded {session.answered_count} previous answers")
         else:
@@ -1819,7 +1826,7 @@ def prd_generate(
                     session = PrdDiscoverySession(workspace)
                     session.start_discovery()
             except NoApiKeyError as e:
-                console.print(f"[red]Error:[/red] {e}")
+                print_error(e)
                 # The NoApiKeyError text already names the resolved provider's
                 # key; a hardcoded ANTHROPIC_API_KEY hint contradicts it (#917).
                 console.print("\n[dim]Set the API key named above to use AI discovery.[/dim]")
@@ -1929,7 +1936,7 @@ def prd_generate(
                     # Loud and specific, rather than an EOF traceback out of
                     # Prompt.ask that says nothing about where it stopped (#1114).
                     console.print(
-                        f"\n[red]Error:[/red] --answers-file {e}.\n"
+                        f"\n[red]Error:[/red] --answers-file {escape(str(e))}.\n"
                         f"Discovery was still on question "
                         f"{question.get('question_number', '?')} at "
                         f"{progress.get('percentage', 0)}% coverage.\n"
@@ -1945,7 +1952,7 @@ def prd_generate(
                     # (#961). Re-prompting cannot help, so leave the loop
                     # rather than spinning — and never show a traceback. Must
                     # follow ValidationError, which subclasses this.
-                    console.print(f"[red]Error:[/red] {e}")
+                    print_error(e)
                     raise typer.Exit(1)
                 except KeyboardInterrupt:
                     console.print("\n")
@@ -1957,12 +1964,12 @@ def prd_generate(
 
         # Generate PRD
         console.print("\n[bold green]Discovery complete![/bold green]")
-        console.print(f"\nGenerating PRD using '{template}' template...")
+        console.print(f"\nGenerating PRD using '{escape(template)}' template...")
 
         try:
             prd_record = session.generate_prd(template_id=template)
         except IncompleteSessionError as e:
-            console.print(f"[red]Error:[/red] {e}")
+            print_error(e)
             raise typer.Exit(1)
 
         # Emit event
@@ -1996,12 +2003,12 @@ def prd_generate(
         console.print("[red]Error:[/red] No workspace found. Run 'codeframe init' first.")
         raise typer.Exit(1)
     except NoApiKeyError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except typer.Exit:
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -2084,7 +2091,7 @@ def prd_stress_test(
     try:
         workspace = get_workspace(workspace_path)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
     # Load PRD
@@ -2113,7 +2120,7 @@ def prd_stress_test(
     except StressTestError as e:
         # extract_goals now raises rather than returning [] (#927). Without this
         # the CLI shows a traceback where every other failure here is a red line.
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except Exception as e:
         # A provider failure (auth, network, rate limit) is not a StressTestError
@@ -2165,7 +2172,7 @@ def prd_stress_test(
             # (#961). Failing here must not lose the answers silently, nor
             # print a traceback.
             console.print(
-                f"[red]Error:[/red] Could not apply your answers to the PRD: {e}"
+                f"[red]Error:[/red] Could not apply your answers to the PRD: {escape(str(e))}"
             )
             console.print(
                 "[dim]Your answers were not saved and no new version was "
@@ -2201,7 +2208,7 @@ def prd_stress_test(
             try:
                 result = stress_test_prd(new_record.content, provider, max_depth=max_depth)
             except StressTestError as e:
-                console.print(f"[red]Error:[/red] {e}")
+                print_error(e)
                 raise typer.Exit(1)
         else:
             console.print("[yellow]Warning:[/yellow] Failed to create new PRD version.")
@@ -2409,12 +2416,12 @@ def tasks_generate(
         console.print("  codeframe tasks set status READY --all  Mark all tasks ready")
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except tasks.TaskGenerationError as e:
         # The core message is surface-neutral because the web UI toasts it too
         # (#1115 review); the CLI-specific remedy belongs here.
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         console.print(
             "  Retry with [bold]cf tasks generate[/bold], or "
             "[bold]cf tasks generate --no-llm[/bold] to extract bullets directly."
@@ -2426,7 +2433,7 @@ def tasks_generate(
         # its exit code as a second message: "Error: 1" (#1113).
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -2452,10 +2459,10 @@ def tasks_tree(
         else:
             typer.echo("No tasks found.")
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -2539,13 +2546,13 @@ def tasks_list(
         console.print(f"\n[dim]Total: {len(task_list)} | {' | '.join(count_parts)}[/dim]")
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -2666,7 +2673,7 @@ def tasks_set(
         workspace = get_workspace(workspace_path)
 
         if attribute.lower() != "status":
-            console.print(f"[red]Error:[/red] Unknown attribute '{attribute}'")
+            console.print(f"[red]Error:[/red] Unknown attribute '{escape(attribute)}'")
             console.print("Supported attributes: status")
             raise typer.Exit(1)
 
@@ -2691,7 +2698,10 @@ def tasks_set(
                 console.print("Or use --all to update all tasks.")
                 raise typer.Exit(1)
             if not value:
-                console.print(f"[red]Error:[/red] Missing value. Usage: tasks set status {task_id} READY")
+                console.print(
+                    "[red]Error:[/red] Missing value. Usage: "
+                    f"tasks set status {escape(task_id)} READY"
+                )
                 raise typer.Exit(1)
             actual_value = value
             actual_task_id = task_id
@@ -2718,10 +2728,14 @@ def tasks_set(
             # Single task mode
             matching = tasks.find_by_prefix(workspace, actual_task_id)
             if not matching:
-                console.print(f"[red]Error:[/red] No task found matching '{actual_task_id}'")
+                console.print(
+                    f"[red]Error:[/red] No task found matching '{escape(actual_task_id)}'"
+                )
                 raise typer.Exit(1)
             if len(matching) > 1:
-                console.print(f"[red]Error:[/red] Multiple tasks match '{actual_task_id}':")
+                console.print(
+                    f"[red]Error:[/red] Multiple tasks match '{escape(actual_task_id)}':"
+                )
                 for t in matching:
                     console.print(f"  {t.id}: {escape(t.title[:40])}")
                 console.print("Please provide a more specific ID.")
@@ -2787,13 +2801,13 @@ def tasks_set(
     except typer.Exit:
         raise  # Re-raise typer.Exit to preserve exit code
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -2855,11 +2869,11 @@ def tasks_delete(
             matching = tasks.find_by_prefix(workspace, task_id)
 
             if not matching:
-                console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+                console.print(f"[red]Error:[/red] No task found matching '{escape(task_id)}'")
                 raise typer.Exit(1)
 
             if len(matching) > 1:
-                console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+                console.print(f"[red]Error:[/red] Multiple tasks match '{escape(task_id)}':")
                 for t in matching:
                     console.print(f"  {t.id}: {escape(t.title[:40])}")
                 console.print("Please provide a more specific ID.")
@@ -2898,10 +2912,10 @@ def tasks_delete(
     except typer.Exit:
         raise
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -3023,11 +3037,11 @@ def work_start(
         matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            console.print(f"[red]Error:[/red] No task found matching '{escape(task_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            console.print(f"[red]Error:[/red] Multiple tasks match '{escape(task_id)}':")
             for t in matching[:5]:
                 console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
@@ -3114,7 +3128,7 @@ def work_start(
                     raise typer.Exit(1)
 
             except ValueError as e:
-                console.print(f"[red]Error:[/red] {e}")
+                print_error(e)
                 raise typer.Exit(1)
 
         elif stub:
@@ -3129,10 +3143,10 @@ def work_start(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except InvalidTransitionError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -3175,11 +3189,11 @@ def work_resume(
         matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            console.print(f"[red]Error:[/red] No task found matching '{escape(task_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            console.print(f"[red]Error:[/red] Multiple tasks match '{escape(task_id)}':")
             for t in matching[:5]:
                 console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
@@ -3247,7 +3261,7 @@ def work_resume(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -3280,11 +3294,11 @@ def work_stop(
         matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            console.print(f"[red]Error:[/red] No task found matching '{escape(task_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            console.print(f"[red]Error:[/red] Multiple tasks match '{escape(task_id)}':")
             for t in matching[:5]:
                 console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
@@ -3303,7 +3317,7 @@ def work_stop(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -3344,7 +3358,7 @@ def work_status(
                 console.print(f"  Status: {run.status.value}")
                 console.print(f"  Started: {run.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
             else:
-                console.print(f"[dim]No active run for task {task_id}[/dim]")
+                console.print(f"[dim]No active run for task {escape(str(task_id))}[/dim]")
         else:
             # Show all active runs
             running = runtime.list_runs(workspace, status=RunStatus.RUNNING)
@@ -3394,10 +3408,10 @@ def work_show(
 
         run = runtime.get_latest_run(workspace, task_id)
         if not run:
-            console.print(f"[dim]No run found for task {task_id}[/dim]")
+            console.print(f"[dim]No run found for task {escape(task_id)}[/dim]")
             raise typer.Exit(0)
 
-        console.print(f"\n[bold]Run Details[/bold] — {task_id[:8]}")
+        console.print(f"\n[bold]Run Details[/bold] — {escape(task_id[:8])}")
         console.print(f"  Run ID:    [dim]{run.id}[/dim]")
         console.print(f"  Status:    {run.status.value}")
         console.print(f"  Started:   {run.started_at.strftime('%Y-%m-%d %H:%M:%S') if run.started_at else '—'}")
@@ -3488,11 +3502,11 @@ def work_diagnose(
         matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            console.print(f"[red]Error:[/red] No task found matching '{escape(task_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            console.print(f"[red]Error:[/red] Multiple tasks match '{escape(task_id)}':")
             for t in matching[:5]:
                 console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
@@ -3529,7 +3543,7 @@ def work_diagnose(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -3636,11 +3650,11 @@ def work_retry(
         matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            console.print(f"[red]Error:[/red] No task found matching '{escape(task_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            console.print(f"[red]Error:[/red] Multiple tasks match '{escape(task_id)}':")
             for t in matching[:5]:
                 console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
@@ -3707,10 +3721,10 @@ def work_retry(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except InvalidTransitionError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -3745,11 +3759,11 @@ def work_update_description(
         matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            console.print(f"[red]Error:[/red] No task found matching '{escape(task_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            console.print(f"[red]Error:[/red] Multiple tasks match '{escape(task_id)}':")
             for t in matching[:5]:
                 console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
@@ -3774,7 +3788,7 @@ def work_update_description(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -3828,11 +3842,11 @@ def work_follow(
         matching = tasks_module.find_by_prefix(workspace, task_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            console.print(f"[red]Error:[/red] No task found matching '{escape(task_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            console.print(f"[red]Error:[/red] Multiple tasks match '{escape(task_id)}':")
             for t in matching[:5]:
                 console.print(f"  {t.id[:8]} - {escape(t.title)}")
             raise typer.Exit(1)
@@ -3951,7 +3965,7 @@ def work_follow(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -4010,7 +4024,7 @@ def work_replay(
         trace = load_execution_trace(workspace, run_id)
 
         if not trace:
-            console.print(f"[red]Error:[/red] No trace found for run '{run_id}'")
+            console.print(f"[red]Error:[/red] No trace found for run '{escape(run_id)}'")
             raise typer.Exit(1)
 
         # Header
@@ -4116,7 +4130,7 @@ def work_diff(
         trace = load_execution_trace(workspace, run_id)
 
         if not trace:
-            console.print(f"[red]Error:[/red] No trace found for run '{run_id}'")
+            console.print(f"[red]Error:[/red] No trace found for run '{escape(run_id)}'")
             raise typer.Exit(1)
 
         step_a = from_step if from_step is not None else 0
@@ -4214,7 +4228,7 @@ def work_export_trace(
         trace = load_execution_trace(workspace, run_id)
 
         if not trace:
-            console.print(f"[red]Error:[/red] No trace found for run '{run_id}'")
+            console.print(f"[red]Error:[/red] No trace found for run '{escape(run_id)}'")
             raise typer.Exit(1)
 
         if output_format == "json":
@@ -4266,7 +4280,7 @@ def work_rerun(
         workspace = get_workspace(path)
         rerun_info = prepare_rerun(workspace, run_id, from_step)
 
-        console.print(f"[bold]Re-run preparation for run {run_id}[/bold]\n")
+        console.print(f"[bold]Re-run preparation for run {escape(run_id)}[/bold]\n")
         console.print(f"[bold]Resume from:[/bold] Step {from_step}")
         console.print(f"[bold]Task:[/bold] {rerun_info['task_id']}")
 
@@ -4290,7 +4304,7 @@ def work_rerun(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -4481,9 +4495,9 @@ def batch_run(
 
         # Show execution plan
         console.print("\n[bold]Batch Execution Plan[/bold]")
-        console.print(f"  Strategy: {strategy}")
+        console.print(f"  Strategy: {escape(strategy)}")
         console.print(f"  Tasks: {len(ids_to_execute)}")
-        console.print(f"  On failure: {on_failure}")
+        console.print(f"  On failure: {escape(on_failure)}")
 
         # Ahead of the dry-run return: a preview of an engine that would be
         # refused is misleading, and this is also the pre-run guard that keeps
@@ -4585,7 +4599,7 @@ def batch_run(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -4622,11 +4636,11 @@ def batch_status(
             matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
             if not matching:
-                console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+                console.print(f"[red]Error:[/red] No batch found matching '{escape(str(batch_id))}'")
                 raise typer.Exit(1)
 
             if len(matching) > 1:
-                console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+                console.print(f"[red]Error:[/red] Multiple batches match '{escape(str(batch_id))}':")
                 for b in matching[:5]:
                     console.print(f"  {b.id[:8]} ({b.status.value})")
                 raise typer.Exit(1)
@@ -4772,11 +4786,11 @@ def batch_stop(
         matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            console.print(f"[red]Error:[/red] No batch found matching '{escape(batch_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+            console.print(f"[red]Error:[/red] Multiple batches match '{escape(batch_id)}':")
             for b in matching[:5]:
                 console.print(f"  {b.id[:8]} ({b.status.value})")
             raise typer.Exit(1)
@@ -4798,7 +4812,7 @@ def batch_stop(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -4846,11 +4860,11 @@ def batch_resume(
         matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            console.print(f"[red]Error:[/red] No batch found matching '{escape(batch_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+            console.print(f"[red]Error:[/red] Multiple batches match '{escape(batch_id)}':")
             for b in matching[:5]:
                 console.print(f"  {b.id[:8]} ({b.status.value})")
             raise typer.Exit(1)
@@ -4903,7 +4917,7 @@ def batch_resume(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -5044,11 +5058,11 @@ ETA: {eta} | Elapsed: {elapsed}"""
         matching = conductor.find_batch_by_prefix(workspace, batch_id)
 
         if not matching:
-            console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            console.print(f"[red]Error:[/red] No batch found matching '{escape(batch_id)}'")
             raise typer.Exit(1)
 
         if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple batches match '{batch_id}':")
+            console.print(f"[red]Error:[/red] Multiple batches match '{escape(batch_id)}':")
             for b in matching[:5]:
                 console.print(f"  {b.id[:8]} ({b.status.value})")
             raise typer.Exit(1)
@@ -5299,7 +5313,9 @@ def blocker_list(
                 status_str = "[green]RESOLVED[/green]"
 
             task_str = b.task_id[:8] if b.task_id else "-"
-            question_str = b.question[:50] + "..." if len(b.question) > 50 else b.question
+            question_str = escape(
+                b.question[:50] + "..." if len(b.question) > 50 else b.question
+            )
 
             table.add_row(b.id[:8], status_str, task_str, question_str)
 
@@ -5336,7 +5352,7 @@ def blocker_show(
         blocker = blockers.get(workspace, blocker_id)
 
         if not blocker:
-            console.print(f"[red]Error:[/red] Blocker not found: {blocker_id}")
+            console.print(f"[red]Error:[/red] Blocker not found: {escape(blocker_id)}")
             raise typer.Exit(1)
 
         # Status color
@@ -5365,7 +5381,7 @@ def blocker_show(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -5405,7 +5421,7 @@ def blocker_create(
 
         console.print("\n[bold green]Blocker created[/bold green]")
         console.print(f"  ID: {blocker.id[:8]}")
-        console.print(f"  Question: {question[:60]}{'...' if len(question) > 60 else ''}")
+        console.print(f"  Question: {escape(question[:60])}{'...' if len(question) > 60 else ''}")
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")
@@ -5446,7 +5462,7 @@ def blocker_answer(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -5484,7 +5500,7 @@ def blocker_resolve(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -5548,7 +5564,7 @@ def patch_export(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -5704,7 +5720,7 @@ def commit_create(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -5800,7 +5816,7 @@ def checkpoint_list(
 
             table.add_row(
                 cp.id[:8],
-                cp.name,
+                escape(cp.name),
                 str(summary.get("total_tasks", 0)),
                 git_ref,
                 cp.created_at.strftime("%Y-%m-%d %H:%M"),
@@ -5838,7 +5854,7 @@ def checkpoint_show(
         checkpoint = checkpoints.get(workspace, name_or_id)
 
         if not checkpoint:
-            console.print(f"[red]Error:[/red] Checkpoint not found: {name_or_id}")
+            console.print(f"[red]Error:[/red] Checkpoint not found: {escape(name_or_id)}")
             raise typer.Exit(1)
 
         summary = checkpoint.snapshot.get("summary", {})
@@ -5853,7 +5869,8 @@ def checkpoint_show(
             console.print(f"  Git ref: {git_ref}")
 
         if checkpoint.snapshot.get("prd"):
-            console.print(f"  PRD: {checkpoint.snapshot['prd'].get('title', 'Unknown')}")
+            prd_title = checkpoint.snapshot["prd"].get("title", "Unknown")
+            console.print(f"  PRD: {escape(str(prd_title))}")
 
         console.print("\n[bold]Task Summary:[/bold]")
         for status, count in tasks_by_status.items():
@@ -5904,7 +5921,7 @@ def checkpoint_restore(
         console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -5935,7 +5952,7 @@ def checkpoint_delete(
         if deleted:
             console.print("[green]Checkpoint deleted[/green]")
         else:
-            console.print(f"[red]Error:[/red] Checkpoint not found: {name_or_id}")
+            console.print(f"[red]Error:[/red] Checkpoint not found: {escape(name_or_id)}")
             raise typer.Exit(1)
 
     except FileNotFoundError:
@@ -6061,7 +6078,7 @@ def schedule_show(
         console.print("[bold]Task Assignments:[/bold]")
         for task_id, assignment in sorted(schedule.task_assignments.items(), key=lambda x: x[1].start_time):
             task = task_lookup.get(task_id)
-            title = task.title if task else f"Task {task_id}"
+            title = escape(task.title) if task else f"Task {escape(task_id)}"
             agent_str = f"Agent {assignment.assigned_agent}" if assignment.assigned_agent is not None else ""
             console.print(
                 f"  [{assignment.start_time:5.1f}h - {assignment.end_time:5.1f}h] "
@@ -6071,7 +6088,7 @@ def schedule_show(
         console.print()
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except typer.Exit:
         # A deliberate exit is not an error. typer.Exit subclasses
@@ -6079,7 +6096,7 @@ def schedule_show(
         # its exit code as a second message: "Error: 1" (#1113).
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -6169,7 +6186,7 @@ def schedule_predict(
         console.print()
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except typer.Exit:
         # A deliberate exit is not an error. typer.Exit subclasses
@@ -6177,7 +6194,7 @@ def schedule_predict(
         # its exit code as a second message: "Error: 1" (#1113).
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -6251,7 +6268,7 @@ def schedule_bottlenecks(
                 console.print()
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except typer.Exit:
         # A deliberate exit is not an error. typer.Exit subclasses
@@ -6259,7 +6276,7 @@ def schedule_bottlenecks(
         # its exit code as a second message: "Error: 1" (#1113).
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -6330,7 +6347,7 @@ def templates_show(
     template = manager.get_template(template_id)
 
     if not template:
-        console.print(f"[red]Error:[/red] Template '{template_id}' not found.")
+        console.print(f"[red]Error:[/red] Template '{escape(template_id)}' not found.")
         console.print("\nAvailable templates:")
         for t in manager.list_templates():
             console.print(f"  {t.id}")
@@ -6401,7 +6418,7 @@ def templates_apply(
 
         console.print(
             f"\n[green]Created {result.tasks_created} tasks from template "
-            f"'{template_id}'[/green]\n"
+            f"'{escape(template_id)}'[/green]\n"
         )
         for i, task_id in enumerate(result.task_ids, 1):
             created = tasks.get(workspace, task_id)
@@ -6412,10 +6429,10 @@ def templates_apply(
         console.print("  codeframe tasks set status READY --all  Mark all tasks ready")
 
     except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
     except typer.Exit:
         # A deliberate exit is not an error. typer.Exit subclasses
@@ -6423,7 +6440,7 @@ def templates_apply(
         # its exit code as a second message: "Error: 1" (#1113).
         raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        print_error(e)
         raise typer.Exit(1)
 
 
@@ -6493,7 +6510,8 @@ def main() -> None:
     except UntrustedBaseURLError as e:
         # A deliberate refusal, not a crash: show the operator what was
         # blocked and how to proceed, without a traceback (#903).
-        console.print(f"\n[red]Refusing to run:[/red] {e}\n")
+        # the blank lines set this refusal apart from surrounding output
+        print_error(e, prefix="\nRefusing to run:", suffix="\n")
         # sys.exit, not typer.Exit: main() *is* the console-script entry point,
         # so there is no Click standalone loop above it to turn Exit into a
         # clean status — it would surface as a traceback under the message.

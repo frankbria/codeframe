@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
+import { formatDate } from '@/lib/format';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
@@ -510,7 +511,7 @@ function ProofPageContent() {
                         <ProofStatusBadge status={req.status} />
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {req.created_at ? new Date(req.created_at).toLocaleDateString() : '—'}
+                        {req.created_at ? formatDate(req.created_at) : '—'}
                       </td>
                       <td className="px-4 py-3">
                         {req.status !== 'waived' && (
