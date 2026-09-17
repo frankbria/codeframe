@@ -111,7 +111,8 @@ class TestNoRefNameInterpolationInRunScripts:
 
 class TestCaddySecurityHeaders:
     @pytest.fixture(scope="class")
-    def caddyfile(self) -> str:
+    @staticmethod
+    def caddyfile() -> str:
         return CADDYFILE.read_text()
 
     @pytest.mark.parametrize(
