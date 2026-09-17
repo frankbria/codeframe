@@ -205,7 +205,9 @@ the lock. Before that, the **Unlocked Resolution** workflow
 throwaway env, and runs `cf --help` plus both SDK guards against *that* env. It
 runs daily on a schedule — this break arrives from upstream, so it can appear on
 a day nobody pushed — on PRs touching `pyproject.toml` or the guards, and as a
-required gate on `release.yml`. `tests/ci/test_unlocked_resolution_guard_1169.py`
+required gate on `release.yml`. A red *scheduled* run opens or updates an issue
+via `scheduled-failure-issue.yml` (#1239, #1242), like the other two daily
+checks. `tests/ci/test_unlocked_resolution_guard_1169.py`
 pins those properties.
 
 #1170 moved where the risk lives, so the #614 guard now carries two halves. The
