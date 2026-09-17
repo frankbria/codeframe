@@ -29,6 +29,7 @@ JOB = "report-scheduled-failure"
 CALLERS = {
     "test.yml": ["test-summary", "e2e-browser-full", "e2e-backend-tests"],
     "web-ui-audit.yml": ["npm-audit"],
+    "unlocked-resolution.yml": ["unlocked-install"],
 }
 
 
