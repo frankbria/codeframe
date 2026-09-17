@@ -31,6 +31,13 @@ jobs:
   test:
     name: Run Test Suite
     uses: ./.github/workflows/test.yml
+    # test.yml's `report-scheduled-failure` job declares `issues: write` (#1239).
+    # It never fires here — it is gated on the schedule event — but a reusable
+    # call must grant every scope the callee declares or GitHub refuses the run
+    # as a `startup_failure` with no log (check-workflow-calls.yml).
+    permissions:
+      contents: read
+      issues: write
 
 
   # ============================================
