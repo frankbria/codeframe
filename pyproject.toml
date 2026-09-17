@@ -62,9 +62,13 @@ dependencies = [
     "tree-sitter-typescript>=0.20.3",
     "tiktoken>=0.12.0",
     "radon>=6.0.1",
-    "pytest>=8.4.2",
+    # pytest is a RUNTIME dependency on purpose: `cf` shells out to it for the
+    # PROOF9 test gate (core/gates.py, core/tools.py) and the generated PROOF9
+    # stubs `import pytest`. Floor >= 9.0.3 is GHSA-6w46-j5rx-g56g (#1244); the
+    # major is capped per the #1168/#1170 lesson (floor-only = latent DOA release).
+    "pytest>=9.0.3,<10",
     "ruff>=0.14.0",
-    "pytest-asyncio>=1.2.0",
+    "pytest-asyncio>=1.4.0",
     "pytest-json-report>=1.5.0",
     "hypothesis>=6.148.0",
     "fastapi-users[sqlalchemy]>=15.0.2",
@@ -94,8 +98,8 @@ cloud = [
     "e2b>=2.0.0",
 ]
 dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
+    "pytest>=9.0.3,<10",
+    "pytest-asyncio>=1.4.0",
     "pytest-cov>=4.1.0",
     "pytest-json-report>=1.5.0",
     "pytest-timeout>=2.3.0",
