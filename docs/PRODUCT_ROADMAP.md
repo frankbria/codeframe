@@ -1,6 +1,6 @@
 # CodeFRAME Product Roadmap
 
-**Updated**: 2026-04-06
+**Updated**: 2026-09-17
 **Vision**: *CodeFRAME is the project delivery system that turns ideas into verified, deployed code — AI agents write the code, CodeFRAME owns everything before and after.*
 
 This is the **single source of truth** for CodeFRAME's product roadmap. All prior planning documents (V2_STRATEGIC_ROADMAP, FEATURE_ROADMAP, IMPLEMENTATION_ROADMAP, etc.) are archived in `docs/archive/`.
@@ -14,29 +14,31 @@ This document focuses on gaps in the web product that block the end-to-end visio
 
 ---
 
-## Current State (verified 2026-04-06)
+## Current State
+
+Per-phase status lives in the **Summary** table at the end of this document — the one place that says what shipped. Section headers carry no status markers, so they cannot drift from it.
 
 The golden path works end-to-end in the browser for a single developer on a single project. All core screens exist. What is missing is not *breadth* — it is *depth* in the places the vision depends on most.
 
 ---
 
-## Phase 3.5 — Close the Interaction Gap ✅ PARTIAL (A+B complete, C pending)
+## Phase 3.5 — Close the Interaction Gap
 
 **The issue**: The web UI is read-heavy. Users watch agents run, view requirements, inspect diffs. But they cannot run quality gates from the browser or capture a glitch and watch it become a permanent proof obligation.
 
-### Milestone A: Bidirectional Agent Chat ✅ COMPLETE (#500–509)
+### Milestone A: Bidirectional Agent Chat (#500–509)
 
 Fully shipped: `/sessions` page, `/sessions/[id]` detail with `SplitPane`, `AgentChatPanel`, `AgentTerminal`, `useAgentChat` WebSocket hook, `session_chat_ws.py` router, `terminal_ws.py` router, `session_manager.py` core module, `interactive_sessions_v2.py` REST API.
 
 ---
 
-### Milestone B: Run Quality Gates from the Web UI ✅ COMPLETE (#566, #567, #574, #575)
+### Milestone B: Run Quality Gates from the Web UI (#566, #567, #574, #575)
 
 Fully shipped: `[Run Gates]` button on the PROOF9 page, live gate progress view (pending → running → passed/failed), per-gate evidence display (`GateEvidencePanel`), and run history panel (`RunHistoryPanel`) showing the last 5 gate runs. Backend endpoints `GET /api/v2/proof/runs` and `GET /api/v2/proof/runs/{run_id}/evidence` added. Core: `proof_runs` table in `ledger.py`, `ProofRun` dataclass in `models.py`, `runner.py` populates runs on every execution.
 
 ---
 
-### Milestone C: Glitch Capture UI ✅ COMPLETE (#568, #569)
+### Milestone C: Glitch Capture UI (#568, #569)
 
 Fully shipped: `CaptureGlitchModal` form reachable from the PROOF9 page header and the sidebar "Capture Glitch" button. Form collects description (markdown), source (production/QA/dogfooding/monitoring), scope (files/routes/components, stored as `ScopeOut` on the backend and `ProofScope` in the frontend types), gate obligations (multi-select), severity, and optional expiry. On submit, creates a new REQ in the requirements ledger immediately.
 
@@ -44,13 +46,15 @@ REQ detail view (`/proof/[req_id]`): markdown-rendered description, scope metada
 
 ---
 
-## Phase 4 — Complete the SHIP Phase ❌ NOT STARTED
+## Phase 4 — Complete the SHIP Phase
 
 **The issue**: The Review page creates a PR. After that, the user has no feedback from CodeFRAME. They must go to GitHub to check CI, check reviews, and merge. The SHIP phase currently ends at PR creation.
 
-### Milestone A: PR Status Tracking ❌ NOT STARTED
+### Milestone A: PR Status Tracking (#583, #731)
 
-After a PR is created from the Review page, show its live status in the web UI.
+**Current state**: Shipped. `PRStatusPanel` on `/review` polls CI checks, review state, and merge state, and its **[Merge]** button is gated on PROOF9 (#583). The gate is also enforced server-side: `POST /api/v2/pr/{n}/merge` and `cf pr merge` refuse while open (non-waived) requirements exist unless an explicit override + reason is supplied, which is persisted to `pr_merge_overrides` and surfaced in PR history (#731). Non-blocking follow-ups — per-branch scope filtering, the `vacuous_pass` distinction, a frontend override UI — are tracked in #1247.
+
+**Original gap**: After a PR is created from the Review page, show its live status in the web UI.
 
 **What to build**:
 
@@ -65,13 +69,13 @@ After a PR is created from the Review page, show its live status in the web UI.
   2. PROOF9 has no open (non-waived) requirements for the changed scope
 - If PROOF9 has open requirements: show a gating message listing which requirements are blocking merge and linking to the PROOF9 page
 
-**Known follow-up** (from #556): `RunProofResponse` does not distinguish "all gates passed" from "vacuous pass because all gates were disabled in `proof_config.json`". The runner already emits a server-side warning and the Settings page shows a UI banner; the merge gate in this milestone should surface that distinction (e.g., a `vacuous_pass` flag on `RunProofResponse` or `ProofRun`) so a workspace with zero enabled gates can't auto-merge.
+**Known follow-up** (from #556, tracked in #1247): `RunProofResponse` does not distinguish "all gates passed" from "vacuous pass because all gates were disabled in `proof_config.json`". The runner already emits a server-side warning and the Settings page shows a UI banner; the merge gate in this milestone should surface that distinction (e.g., a `vacuous_pass` flag on `RunProofResponse` or `ProofRun`) so a workspace with zero enabled gates can't auto-merge.
 
 **Why it matters for the vision**: "Merge is gated on PROOF9 pass." That sentence is in the vision doc. Without CI tracking and a merge gate in the UI, this is a CLI-only guarantee. The SHIP phase is only complete when the user can go from "PR opened" to "merged" without leaving CodeFRAME.
 
 ---
 
-### Milestone B: Post-Merge Glitch Capture Loop ❌ NOT STARTED
+### Milestone B: Post-Merge Glitch Capture Loop
 
 When a merged PR leads to a production glitch, the system should make it easy to feed that back into PROOF9 as a permanent requirement.
 
@@ -85,7 +89,7 @@ When a merged PR leads to a production glitch, the system should make it easy to
 
 ---
 
-## Phase 5 — Platform Completeness ❌ NOT STARTED
+## Phase 5 — Platform Completeness
 
 Issues created: #554–#565 (2026-04-06)
 
@@ -93,7 +97,9 @@ These items are not part of a specific pipeline stage but are prerequisites for 
 
 ### 1. Settings Page
 
-**Current state**: API keys, model selection, quality gate thresholds, and agent preferences are configured via environment variables or CLI config. There is no web UI for any of this.
+**Current state**: Shipped (#554–556). The Settings page has Agent, API Keys, PROOF9 Defaults + Workspace Config, Integrations, and Notifications tabs.
+
+**Original gap**: API keys, model selection, quality gate thresholds, and agent preferences were configured via environment variables or CLI config, with no web UI for any of it.
 
 **What to build**:
 
@@ -108,7 +114,9 @@ Without a settings page, a new user who cannot find the env vars cannot use the 
 
 ### 2. Cost and Token Analytics
 
-**Current state**: Token usage is recorded in the DB (`token_usage` table) per task. It is not surfaced anywhere in the web UI.
+**Current state**: Shipped (#557–558). The Costs page shows the spend summary plus per-task and per-agent breakdowns, and task board cards carry a cost badge.
+
+**Original gap**: Token usage was recorded in the DB (`token_usage` table) per task but not surfaced anywhere in the web UI.
 
 **What to build**:
 
@@ -162,7 +170,9 @@ Without a settings page, a new user who cannot find the env vars cannot use the 
 
 ### 5. External Issue Import (GitHub Issues → Tasks)
 
-**Current state**: The THINK phase starts from "I have an idea" (PRD generation). The vision acknowledges that some users start from an existing issue tracker: "If you already have issues in a tracker, CodeFRAME can potentially consume them (future integration)."
+**Current state**: Shipped (#563–565). Settings → Integrations connects a repo with a PAT, the Tasks page's **Import from GitHub** modal browses and multi-selects open issues, and imported tasks link back to their issue with optional auto-close on DONE.
+
+**Original gap**: The THINK phase starts from "I have an idea" (PRD generation). The vision acknowledges that some users start from an existing issue tracker: "If you already have issues in a tracker, CodeFRAME can potentially consume them (future integration)."
 
 **What to build**:
 
@@ -199,14 +209,14 @@ These are items that were considered and excluded because they do not serve the 
 | 3.5A | Bidirectional agent chat | ✅ Complete | #500–509 |
 | 3.5B | Run gates from the web UI | ✅ Complete | #566, #567, #574, #575 |
 | 3.5C | Glitch capture UI | ✅ Complete | #568, #569 |
-| 4A | PR status + PROOF9 merge gate | 🚧 In progress (PR status panel + gated merge button #583; server-side merge gate with audited override #731) | #571, #731 |
+| 4A | PR status + PROOF9 merge gate | ✅ Complete (PR status panel + gated merge button #583; server-side merge gate with audited override #731; follow-ups #1247) | #571, #731 |
 | 4B | Post-merge glitch capture loop | ❌ Not started | — |
 | 5.1 | Settings page (skeleton + agent config + PROOF9/workspace tabs) | ✅ Complete | #554–556 |
 | 5.2 | Cost analytics | ✅ Complete | #557–558 |
 | 5.3 | Async notifications | ✅ Complete (browser + in-app center #559, webhook #560) | #559–560 |
 | 5.4 | PRD stress-test web UI | ✅ Complete (trigger + streaming #561; results view + refinement #562) | #561–562 |
-| 5.5 | GitHub Issues import | 🚧 In progress (repo connection via PAT #563) | #563–565 |
+| 5.5 | GitHub Issues import | ✅ Complete (PAT connection #563; issue browser #564; import + traceability #565) | #563–565 |
 
-**Current focus**: Phase 4A — PR status tracking + PROOF9 merge gate. The merge gate is now enforced (#731): open (non-waived) requirements block `POST /api/v2/pr/{n}/merge` and `cf pr merge` unless an explicit override + reason is supplied, which is persisted as an audit record and surfaced in PR history. Remaining 4A follow-ups (not blockers): per-branch scope filtering of requirements, and the `vacuous_pass` distinction from #556.
+**Current focus**: Phase 4B — post-merge glitch capture loop. Phase 4A is complete: the merge gate is enforced (#731) — open (non-waived) requirements block `POST /api/v2/pr/{n}/merge` and `cf pr merge` unless an explicit override + reason is supplied, persisted as an audit record and surfaced in PR history. Its non-blocking follow-ups (per-branch scope filtering, the `vacuous_pass` distinction from #556, a frontend override UI) are tracked in #1247.
 
 The ordering within Phase 5 is by onboarding impact. Settings (5.1) and cost (5.2) block new users earliest.
