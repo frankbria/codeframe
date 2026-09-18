@@ -26,6 +26,7 @@ pytestmark = pytest.mark.v2
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ROADMAP = REPO_ROOT / "docs" / "PRODUCT_ROADMAP.md"
 README = REPO_ROOT / "README.md"
+CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 
 COMPLETE = "✅"
 
@@ -39,6 +40,7 @@ TABLE_ROW = re.compile(r"^\|\s*(\d+(?:\.\d+)?[A-Z]?)\s*\|[^|]*\|\s*(✅|🚧|❌
 HEADER = re.compile(r"^#{2,3} (.+)$", re.MULTILINE)
 CHECKBOX = re.compile(r"^\s*- \[([ x])\] (.+)$", re.MULTILINE)
 CURRENT_FOCUS = re.compile(r"\*\*Current focus\*\*:\s*Phase\s+(\d+(?:\.\d+)?[A-Z]?)")
+CLAUDE_FOCUS = re.compile(r"^### Current Focus: Phase (\d+(?:\.\d+)?[A-Z]?)\s*$", re.MULTILINE)
 
 #: README roadmap checkbox → roadmap phase, keyed on a stable fragment of the
 #: checkbox text. A reworded README line fails the "found it" assertion below
@@ -98,6 +100,20 @@ class TestTheSummaryTableIsTheOnlyStatusAuthority:
         assert (
             table[phase] != COMPLETE
         ), f"Current focus is Phase {phase}, which the table marks ✅ Complete"
+
+    def test_claude_md_current_focus_is_the_roadmap_current_focus(self, roadmap: str):
+        """CLAUDE.md restates the focus for agents; it must be the roadmap's, not a stale copy."""
+        claude = CLAUDE_FOCUS.search(CLAUDE_MD.read_text(encoding="utf-8"))
+        assert (
+            claude
+        ), "no `### Current Focus: Phase X` header in CLAUDE.md — this check would pass vacuously"
+        roadmap_focus = CURRENT_FOCUS.search(_section(roadmap, "Summary"))
+        assert (
+            roadmap_focus
+        ), "no `**Current focus**: Phase X` line — this check would pass vacuously"
+        assert claude.group(1) == roadmap_focus.group(
+            1
+        ), f"CLAUDE.md says Phase {claude.group(1)}, the roadmap says Phase {roadmap_focus.group(1)}"
 
 
 class TestTheReadmeAgreesWithTheRoadmap:
