@@ -10,7 +10,7 @@ This document focuses on gaps in the web product that block the end-to-end visio
 ### Completed foundation (prior phases)
 - **Phases 1–2.5**: CLI foundation, FastAPI server layer, ReAct agent — all complete
 - **Phase 3**: Web UI core screens — PRD editor, task board, execution monitor, blocker resolution, diff reviewer, PROOF9 requirements table, interactive agent sessions (`/sessions`) — all complete
-- **Phase 4.A–4.D**: Agent adapter protocol (ClaudeCode/Codex/OpenCode/Kilocode), execution environment (worktree isolation), multi-provider LLM (OpenAI-compatible adapter) — all complete. E2B cloud execution is **not** complete: it is EXPERIMENTAL and gated behind `CODEFRAME_ENABLE_CLOUD_ENGINE` (#966)
+- **Phase 4.A–4.D** (the earlier agent-adapter milestones — not the 4A/4B web-product rows in the Summary table below): Agent adapter protocol (ClaudeCode/Codex/OpenCode/Kilocode), execution environment (worktree isolation), multi-provider LLM (OpenAI-compatible adapter) — all complete. E2B cloud execution is **not** complete: it is EXPERIMENTAL and gated behind `CODEFRAME_ENABLE_CLOUD_ENGINE` (#966)
 
 ---
 
@@ -170,7 +170,7 @@ Without a settings page, a new user who cannot find the env vars cannot use the 
 
 ### 5. External Issue Import (GitHub Issues → Tasks)
 
-**Current state**: Shipped (#563–565). Settings → Integrations connects a repo with a PAT, the Tasks page's **Import from GitHub** modal browses and multi-selects open issues, and imported tasks link back to their issue with optional auto-close on DONE.
+**Current state**: Shipped (#563–565). Settings → Integrations connects a repo with a PAT, the Tasks page's **Import from GitHub** modal browses and multi-selects open issues, and imported tasks link back to their issue with optional auto-close on DONE. Known limitation: auto-close uses the single machine-wide GitHub PAT, so closing an issue in a repo imported before reconnecting to a different repo can fail if that PAT lacks access.
 
 **Original gap**: The THINK phase starts from "I have an idea" (PRD generation). The vision acknowledges that some users start from an existing issue tracker: "If you already have issues in a tracker, CodeFRAME can potentially consume them (future integration)."
 
