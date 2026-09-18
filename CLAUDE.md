@@ -1,6 +1,6 @@
 # CodeFRAME Development Guidelines
 
-Last updated: 2026-05-11
+Last updated: 2026-09-17
 
 ## Product Vision
 
@@ -18,7 +18,7 @@ SHIP:   cf pr create → cf pr merge
 LOOP:   Glitch → cf proof capture → New REQ → Enforced forever
 ```
 
-**Status: CLI ✅ | Server ✅ | ReAct agent ✅ | Web UI ✅ | Agent adapters ✅ | Multi-provider LLM ✅ | Next: Phase 4A** — See `docs/PRODUCT_ROADMAP.md`.
+**Status: CLI ✅ | Server ✅ | ReAct agent ✅ | Web UI ✅ | Agent adapters ✅ | Multi-provider LLM ✅ | Next: Phase 4B** — See `docs/PRODUCT_ROADMAP.md`.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -34,7 +34,7 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 **Rule 0:** If a change does not directly support the Think → Build → Prove → Ship pipeline, do not implement it.
 
-### Current Focus: Phase 4A
+### Current Focus: Phase 4B
 
 **Phase 5.5 is complete** — GitHub Issues import. Repo connection via PAT (#563) is **complete**: Settings → **Integrations** tab connects a GitHub repo with a Personal Access Token. Backend `POST/DELETE/GET /api/v2/integrations/github/{connect,disconnect,status}` (`ui/routers/github_integrations_v2.py`). Validation is headless in `core/github_connect_service.py` (httpx; verifies token, repo visibility, and issues-read access; typed errors → 400/404/403 — a bad PAT is 400 `UPSTREAM_AUTH_FAILED`, never 401, so the web UI doesn't treat it as session expiry, #734). The PAT is stored machine-wide via `CredentialManager` (`CredentialProvider.GIT_GITHUB`, the #555 pattern) and **never returned in any response**; non-secret repo metadata persists per-workspace in `.codeframe/github_integration.json` (`core/github_integration_config.py`). Frontend: `GitHubIntegrationCard` + `integrationsApi`.
 
@@ -58,12 +58,11 @@ Issue **import + traceability** (#565) is **complete**: `POST /api/v2/integratio
 
 **Scopes are real, not decorative (#898)** — a JWT principal's scopes now derive from its user row: `[read, write]` always, plus `admin` only when `is_superuser`. So `require_scope(SCOPE_ADMIN)` (credential storage, GitHub PAT storage, PR merge) genuinely refuses a non-superuser browser session. Corollaries: only a superuser may mint an `admin`-scoped API key (`api_key_router.create_api_key`, else any user could self-escalate); the API-key router carries a router-level `require_method_scope` so a read-scope key can no longer DELETE keys; `SchemaManager._ensure_bootstrap_superuser` backfills admin to the earliest login-capable account when an upgraded instance has none (otherwise the change silently strips the operator's admin). The auth-disabled synthetic principal is unchanged — it still carries all scopes, being the single-operator local opt-out. Workspace registry ownership is write-once in the same change: `upsert` never reassigns a non-NULL `owner_user_id`, so user B cannot take over user A's `repo_path` by re-registering it. Web UI: `/login` page (sign-in + create-first-account), proactive client-side auth guard in `AppLayout` (token-present → allow; no token → `checkAuthAccess` probe → allow only on explicit 2xx, else fail closed to `/login`; #651, #783), axios Bearer interceptor for reactive 401→`/login` redirect, SSE/WS hooks probe the `require_auth`-gated `/api/v2/settings/keys` (which respects `CODEFRAME_AUTH_REQUIRED`) on stream failure to catch token expiry (#651), SSE hooks append a fresh stream ticket, sidebar logout; `/auth/*` proxied in `next.config.js`. Backend tests run auth-off via root `tests/conftest.py` `setdefault`; `tests/ui/test_v2_auth_enforcement.py` opts back in.
 
-**PROOF9 merge gate is enforced (#731)** — `POST /api/v2/pr/{n}/merge` blocks while open (non-waived) requirements exist (409 with a blocking-requirement summary; ledger failure → explicit 500, never a silent pass-through). Explicit bypass: `override: true` + `override_reason` in `MergePRRequest`; the override is persisted to the `pr_merge_overrides` ledger table (actor from `require_auth`, reason, bypassed requirements, timestamp) and surfaced as `merge_override` on `GET /api/v2/pr/history` items. `cf pr merge` enforces the same gate on the cwd workspace (`--override --reason "..."` to bypass, same audit record; no workspace in cwd → no gate). Scope is workspace-global open requirements — the same condition as the frontend `canMerge` in `PRStatusPanel`. Known follow-ups (not blockers): per-branch scope filtering, `vacuous_pass` distinction (#556), and no frontend override UI yet (API/CLI-only).
+**PROOF9 merge gate is enforced (#731)** — `POST /api/v2/pr/{n}/merge` blocks while open (non-waived) requirements exist (409 with a blocking-requirement summary; ledger failure → explicit 500, never a silent pass-through). Explicit bypass: `override: true` + `override_reason` in `MergePRRequest`; the override is persisted to the `pr_merge_overrides` ledger table (actor from `require_auth`, reason, bypassed requirements, timestamp) and surfaced as `merge_override` on `GET /api/v2/pr/history` items. `cf pr merge` enforces the same gate on the cwd workspace (`--override --reason "..."` to bypass, same audit record; no workspace in cwd → no gate). Scope is workspace-global open requirements — the same condition as the frontend `canMerge` in `PRStatusPanel`. Known follow-ups (not blockers, tracked in #1247): per-branch scope filtering, `vacuous_pass` distinction (#556), and no frontend override UI yet (API/CLI-only). Phase 4A is ✅ Complete in the roadmap's Summary table, which is the single status authority (#1246).
 
 Next, in order:
-- **4A (remainder)**: PR status tracking polish + merge-gate follow-ups above
 - **4B**: Post-merge glitch capture loop
-- **5.2–5.5**: Platform completeness (#557–#565)
+- **4A follow-ups** (#1247, not blockers): per-branch scope filtering, `vacuous_pass`, frontend override UI
 
 See `docs/PRODUCT_ROADMAP.md` for full specs and issue links.
 
