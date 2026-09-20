@@ -9,6 +9,7 @@ import { prApi, proofApi } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { MergeOverrideModal } from '@/components/review/MergeOverrideModal';
 import {
   Tooltip,
   TooltipContent,
@@ -77,6 +78,8 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
   const [isMerging, setIsMerging] = useState(false);
   const [merged, setMerged] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
 
   const swrKey = `/api/v2/pr/status?workspace_path=${encodeURIComponent(workspacePath)}&pr_number=${prNumber}`;
   const proofKey = `/api/v2/proof/status?workspace_path=${encodeURIComponent(workspacePath)}`;
@@ -135,10 +138,38 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
       setMerged(true);
       mutatePRStatus((prev) => prev ? { ...prev, merge_state: 'merged' } : prev, false);
     } catch (err: unknown) {
-      const apiErr = err as { detail?: string };
-      setMergeError(apiErr?.detail ?? 'Merge failed. Please try again.');
+      const apiErr = err as { detail?: string; status_code?: number };
+      // 409 is the gate, not a failure: the panel's view went stale between
+      // render and click and the server found a requirement we did not show.
+      // Offer the same override path rather than dead-ending on a red banner.
+      if (apiErr?.status_code === 409) {
+        setOverrideError(null);
+        setOverrideOpen(true);
+      } else {
+        setMergeError(apiErr?.detail ?? 'Merge failed. Please try again.');
+      }
     } finally {
       setIsMerging(false);
+    }
+  };
+
+  const handleOverrideMerge = async (reason: string) => {
+    setOverrideError(null);
+    try {
+      await prApi.merge(workspacePath, prNumber, {
+        method: 'squash',
+        override: true,
+        override_reason: reason,
+      });
+      setOverrideOpen(false);
+      setMerged(true);
+      mutatePRStatus((prev) => prev ? { ...prev, merge_state: 'merged' } : prev, false);
+    } catch (err: unknown) {
+      const apiErr = err as { detail?: string };
+      // Kept in the dialog, not the page banner: the reason the user just
+      // wrote is still on screen, and a 403 here (non-superuser hitting
+      // require_scope(SCOPE_ADMIN)) needs to be readable next to it.
+      setOverrideError(apiErr?.detail ?? 'Override failed. Please try again.');
     }
   };
 
@@ -293,6 +324,32 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
           </Tooltip>
         </TooltipProvider>
       )}
+
+      {/* Audited bypass (#1247). Offered only for a PROOF9 block: the override
+          bypasses that gate alone, and GitHub still refuses a merge whose
+          required checks are failing, so showing it for CI would be a lie. */}
+      {!alreadyMerged && openRequirements.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setOverrideError(null);
+            setOverrideOpen(true);
+          }}
+          className="w-full text-xs text-muted-foreground"
+        >
+          Override gate with a reason
+        </Button>
+      )}
+
+      <MergeOverrideModal
+        open={overrideOpen}
+        onClose={() => setOverrideOpen(false)}
+        onConfirm={handleOverrideMerge}
+        prNumber={prNumber}
+        blockingRequirements={openRequirements}
+        error={overrideError}
+      />
     </Card>
   );
 }
