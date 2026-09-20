@@ -229,3 +229,85 @@ class TestMergeGate:
 
         assert resp.status_code == 200
         assert get_pr_merge_override(test_workspace, 42) is None
+
+
+class TestMergeGateScope:
+    """The gate narrows to the PR's own changed files (#1247 AC1).
+
+    ``_req`` scopes every fixture requirement to ``x.py``, so the PR's file
+    list is what decides whether it applies.
+    """
+
+    @staticmethod
+    def _client_with_files(files: list[str]) -> MagicMock:
+        client = _make_mock_client()
+        client.get_pr_files = AsyncMock(return_value=files)
+        return client
+
+    def test_out_of_scope_requirement_does_not_block(self, test_client, test_workspace):
+        """AC1: REQ-1 is scoped to x.py; this PR only touches README.md."""
+        save_requirement(test_workspace, _req("REQ-1"))
+
+        mock = self._client_with_files(["README.md"])
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(test_client)
+
+        assert resp.status_code == 200
+        assert resp.json()["merged"] is True
+        mock.merge_pull_request.assert_called_once()
+        # Stepping aside is not an override — nothing was bypassed.
+        assert get_pr_merge_override(test_workspace, 42) is None
+
+    def test_in_scope_requirement_still_blocks(self, test_client, test_workspace):
+        save_requirement(test_workspace, _req("REQ-1"))
+
+        mock = self._client_with_files(["x.py"])
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(test_client)
+
+        assert resp.status_code == 409
+        assert "REQ-1" in str(resp.json()["detail"])
+        mock.merge_pull_request.assert_not_called()
+
+    def test_file_fetch_failure_fails_closed(self, test_client, test_workspace):
+        """A PR whose file list cannot be fetched must block exactly as before.
+
+        Failing open here would silently disable the gate for every PR the
+        moment GitHub rate-limits us.
+        """
+        save_requirement(test_workspace, _req("REQ-1"))
+
+        mock = _make_mock_client()
+        mock.get_pr_files = AsyncMock(side_effect=RuntimeError("GitHub 502"))
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(test_client)
+
+        assert resp.status_code == 409
+        assert "REQ-1" in str(resp.json()["detail"])
+        mock.merge_pull_request.assert_not_called()
+
+    def test_empty_pr_file_list_fails_closed(self, test_client, test_workspace):
+        """An empty file list is not evidence that nothing applies."""
+        save_requirement(test_workspace, _req("REQ-1"))
+
+        mock = self._client_with_files([])
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(test_client)
+
+        assert resp.status_code == 409
+        mock.merge_pull_request.assert_not_called()
+
+    def test_override_still_merges_an_in_scope_block(self, test_client, test_workspace):
+        """Scope filtering must not disturb the audited override path."""
+        save_requirement(test_workspace, _req("REQ-1"))
+
+        mock = self._client_with_files(["x.py"])
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(
+                test_client,
+                {"method": "squash", "override": True, "override_reason": "hotfix"},
+            )
+
+        assert resp.status_code == 200
+        mock.merge_pull_request.assert_called_once()
+        assert get_pr_merge_override(test_workspace, 42) is not None

@@ -755,9 +755,38 @@ async def merge_pull_request(
     # evidence no longer verifies must stop the merge too (#952).
     from codeframe.core.proof import ledger as proof_ledger
     from codeframe.core.proof.evidence import list_blocking_requirements
+    from codeframe.core.proof.models import RequirementScope
+
+    # Narrow the gate to the requirements this PR can actually affect (#1247).
+    #
+    # Best-effort by design: every failure path leaves changed_scope None,
+    # which means match-everything — the workspace-global behavior this gate
+    # had before — so a GitHub outage, a rate limit or a missing credential can
+    # never quietly widen what is allowed to merge. An empty file list is
+    # treated the same way: it is not evidence that no requirement applies.
+    #
+    # This deliberately uses its own short-lived client rather than hoisting
+    # the one built below. Hoisting would make a missing credential surface as
+    # 400 before the gate's 409, changing which error a blocked merge reports.
+    changed_scope: RequirementScope | None = None
+    try:
+        scope_client = _get_github_client(workspace, auth)
+        try:
+            changed_files = await scope_client.get_pr_files(pr_number)
+        finally:
+            await scope_client.close()
+        if changed_files:
+            changed_scope = RequirementScope(files=list(set(changed_files)))
+    except Exception as scope_err:
+        logger.warning(
+            "PR #%s: could not resolve changed files (%s) — PROOF9 gate falls "
+            "back to workspace-global scope",
+            pr_number,
+            scope_err,
+        )
 
     try:
-        blocking_reqs = list_blocking_requirements(workspace)
+        blocking_reqs = list_blocking_requirements(workspace, changed_scope=changed_scope)
     except Exception as e:
         logger.error(f"PROOF9 gate check failed for PR #{pr_number}: {e}", exc_info=True)
         raise HTTPException(
