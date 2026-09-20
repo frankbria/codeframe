@@ -469,6 +469,11 @@ export interface ProofRunSummary {
   triggered_by: string;
   overall_passed: boolean;
   duration_ms: number | null;
+  /**
+   * Passed having executed nothing (#1247) — e.g. every gate disabled in
+   * proof_config.json. Only meaningful when overall_passed is true.
+   */
+  vacuous_pass: boolean;
 }
 
 export interface ProofEvidenceWithContent extends ProofEvidence {

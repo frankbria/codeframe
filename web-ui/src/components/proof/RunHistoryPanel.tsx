@@ -79,9 +79,21 @@ export function RunHistoryPanel({ workspacePath, onSelectRun, selectedRunId }: R
                       {formatDateTime(run.started_at)}
                     </td>
                     <td className="px-4 py-2">
-                      <Badge variant={run.overall_passed ? 'done' : 'failed'}>
-                        {run.overall_passed ? 'pass' : 'fail'}
-                      </Badge>
+                      {/* A run that passed having executed nothing is not a
+                          pass (#1247). Rendering it green next to real passes
+                          is what let `enabled_gates: []` read as verified. */}
+                      {run.overall_passed && run.vacuous_pass ? (
+                        <Badge
+                          variant="unverifiable"
+                          title="Vacuous pass: no gates ran, so nothing was verified. Check enabled_gates in proof_config.json."
+                        >
+                          vacuous
+                        </Badge>
+                      ) : (
+                        <Badge variant={run.overall_passed ? 'done' : 'failed'}>
+                          {run.overall_passed ? 'pass' : 'fail'}
+                        </Badge>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-muted-foreground">
                       {formatDuration(run.duration_ms)}

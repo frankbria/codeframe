@@ -205,6 +205,10 @@ class RunProofResponse(BaseModel):
     run_id: str
     results: dict[str, list[dict[str, Any]]]
     message: str
+    # True when the run passed having executed nothing (#1247) — e.g.
+    # every gate disabled in proof_config.json. Defaults False so older
+    # clients and ledger rows read as an ordinary pass.
+    vacuous_pass: bool = False
 
 
 class RunStatusResponse(BaseModel):
@@ -220,6 +224,10 @@ class RunStatusResponse(BaseModel):
     results: dict[str, list[dict[str, Any]]]
     passed: bool
     message: str
+    # True when the run passed having executed nothing (#1247) — e.g.
+    # every gate disabled in proof_config.json. Defaults False so older
+    # clients and ledger rows read as an ordinary pass.
+    vacuous_pass: bool = False
 
 
 class ProofStatusResponse(BaseModel):
@@ -266,6 +274,10 @@ class ProofRunSummaryResponse(BaseModel):
     triggered_by: str
     overall_passed: bool
     duration_ms: Optional[int]
+    # True when the run passed having executed nothing (#1247) — e.g.
+    # every gate disabled in proof_config.json. Defaults False so older
+    # clients and ledger rows read as an ordinary pass.
+    vacuous_pass: bool = False
 
 
 class ProofRunDetailResponse(ProofRunSummaryResponse):
@@ -481,16 +493,29 @@ async def run_proof_endpoint(
                 if outcome != GateOutcome.UNVERIFIABLE
             ]
             passed = all(executed) if executed else True
+        # Same fallback reasoning as `passed` above: prefer what run_proof
+        # persisted, and only recompute if the row is missing.
+        if persisted_run is not None:
+            vacuous = persisted_run.vacuous_pass
+        else:
+            executed_any = any(
+                outcome != GateOutcome.UNVERIFIABLE
+                for gate_results in results.values()
+                for _, outcome in gate_results
+            )
+            vacuous = passed and not executed_any
         response = RunProofResponse(
             success=True,
             run_id=run_id,
             results=serialized,
             message=f"Proof run complete: {len(results)} requirement(s) evaluated.",
+            vacuous_pass=vacuous,
         )
         _evict_run_cache()
         _run_cache[(str(workspace.repo_path), run_id)] = {
             "results": serialized,
             "passed": passed,
+            "vacuous_pass": vacuous,
             "message": response.message,
             "_ts": time.time(),
         }
@@ -522,6 +547,7 @@ async def get_run_status_endpoint(
             status="complete",
             results=cached["results"],
             passed=cached["passed"],
+            vacuous_pass=cached.get("vacuous_pass", False),
             message=cached["message"],
         )
 
@@ -545,6 +571,7 @@ async def get_run_status_endpoint(
         status="complete",
         results={},
         passed=persisted.overall_passed,
+        vacuous_pass=persisted.vacuous_pass,
         message=(
             "Run recovered from the ledger; per-gate results are no longer "
             "cached. Use GET /proof/runs/{run_id}/evidence for the detail."
@@ -619,6 +646,7 @@ async def list_runs_endpoint(
             triggered_by=r.triggered_by,
             overall_passed=r.overall_passed,
             duration_ms=r.duration_ms,
+            vacuous_pass=r.vacuous_pass,
         )
         for r in runs
     ]
@@ -727,6 +755,7 @@ async def get_run_evidence_endpoint(
             triggered_by="human",
             overall_passed=cached["passed"],
             duration_ms=None,
+            vacuous_pass=cached.get("vacuous_pass", False),
             evidence=evidence_list,
         )
 
@@ -760,6 +789,7 @@ async def get_run_evidence_endpoint(
         triggered_by=run.triggered_by,
         overall_passed=run.overall_passed,
         duration_ms=run.duration_ms,
+        vacuous_pass=run.vacuous_pass,
         evidence=evidence_out,
     )
 
