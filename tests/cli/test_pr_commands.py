@@ -361,6 +361,19 @@ class TestPRMergeCommand:
 class TestPRMergeGateCLI:
     """PROOF9 merge gate on 'codeframe pr merge' (#731)."""
 
+    @pytest.fixture(autouse=True)
+    def _workspace_global_scope(self):
+        """Pin these to workspace-global scope (#1254).
+
+        ``_resolve_pr_scope`` returning None *is* the fail-closed
+        "gate the whole workspace" answer these cases were written against.
+        Without the stub they still pass, but only because ``autospec`` makes
+        ``get_pr_files`` return a non-iterable that the helper catches — an
+        accident, not a decision.
+        """
+        with patch("codeframe.cli.pr_commands._resolve_pr_scope", return_value=None):
+            yield
+
     @pytest.fixture
     def gated_workspace(self, tmp_path, monkeypatch):
         """A workspace in cwd with one open requirement."""
