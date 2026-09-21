@@ -779,7 +779,13 @@ async def merge_pull_request(
             try:
                 scope_client = _get_github_client(workspace, auth)
                 try:
-                    changed_files = await scope_client.get_pr_files(pr_number)
+                    # include_previous: a renamed file is reported under
+                    # its new path only, so without the old one a rename would
+                    # stop intersecting the requirement scoped to it and drop
+                    # that requirement from the gate (#1247).
+                    changed_files = await scope_client.get_pr_files(
+                        pr_number, include_previous=True
+                    )
                 finally:
                     await scope_client.close()
                 if changed_files:

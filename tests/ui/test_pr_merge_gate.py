@@ -353,6 +353,28 @@ class TestMergeGateScope:
         mock.get_pr_files.assert_not_called()
         mock.merge_pull_request.assert_called_once()
 
+    def test_a_rename_does_not_escape_its_requirement(self, test_client, test_workspace):
+        """REQ-1 is scoped to x.py; this PR renames x.py away.
+
+        The gate must still block: reporting only the post-rename path would
+        make renaming a file a way out of its own requirement.
+        """
+        save_requirement(test_workspace, _req("REQ-1"))
+
+        mock = _make_mock_client()
+
+        async def _files(pr_number, include_previous=False):
+            assert include_previous, "the gate must ask for pre-rename paths"
+            return ["renamed.py", "x.py"] if include_previous else ["renamed.py"]
+
+        mock.get_pr_files = AsyncMock(side_effect=_files)
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(test_client)
+
+        assert resp.status_code == 409
+        assert "REQ-1" in str(resp.json()["detail"])
+        mock.merge_pull_request.assert_not_called()
+
     def test_pr_files_looked_up_only_once_when_blocking(self, test_client, test_workspace):
         save_requirement(test_workspace, _req("REQ-1"))
 
@@ -361,7 +383,7 @@ class TestMergeGateScope:
             resp = _merge(test_client)
 
         assert resp.status_code == 409
-        mock.get_pr_files.assert_called_once_with(42)
+        mock.get_pr_files.assert_called_once_with(42, include_previous=True)
 
     def test_override_still_merges_an_in_scope_block(self, test_client, test_workspace):
         """Scope filtering must not disturb the audited override path."""
