@@ -14,9 +14,24 @@ them.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 pytestmark = pytest.mark.v2
+
+
+@pytest.fixture(autouse=True)
+def _workspace_global_scope():
+    """These cases are about which workspace the gate finds, not PR scope.
+
+    ``_resolve_pr_scope`` returning None is its own fail-closed answer —
+    "gate against the whole workspace" — so stubbing it keeps the behaviour
+    these tests were written for (#926) while keeping them off the credential
+    store and off GitHub (#1254).
+    """
+    with patch("codeframe.cli.pr_commands._resolve_pr_scope", return_value=None) as m:
+        yield m
 
 
 @pytest.fixture
@@ -116,7 +131,7 @@ class TestMergeGateFromSubdirectory:
         monkeypatch.chdir(nested)
 
         with pytest.raises(typer.Exit):
-            _check_merge_gate(override=False, override_reason=None)
+            _check_merge_gate(42, override=False, override_reason=None)
 
     def test_the_gate_still_blocks_from_the_root(self, workspace, monkeypatch):
         import typer
@@ -127,7 +142,7 @@ class TestMergeGateFromSubdirectory:
         monkeypatch.chdir(workspace.repo_path)
 
         with pytest.raises(typer.Exit):
-            _check_merge_gate(override=False, override_reason=None)
+            _check_merge_gate(42, override=False, override_reason=None)
 
     def test_a_workspaceless_directory_still_merges(self, tmp_path, monkeypatch):
         """AC3. The genuine no-workspace case must stay ungated."""
@@ -137,7 +152,7 @@ class TestMergeGateFromSubdirectory:
         elsewhere.mkdir()
         monkeypatch.chdir(elsewhere)
 
-        assert _check_merge_gate(override=False, override_reason=None) is None
+        assert _check_merge_gate(42, override=False, override_reason=None) is None
 
     def test_an_override_from_a_subdirectory_is_audited(self, workspace, monkeypatch):
         """The bypass must record against the workspace it actually found."""
@@ -148,7 +163,7 @@ class TestMergeGateFromSubdirectory:
         nested.mkdir()
         monkeypatch.chdir(nested)
 
-        result = _check_merge_gate(override=True, override_reason="shipping anyway")
+        result = _check_merge_gate(42, override=True, override_reason="shipping anyway")
 
         assert result is not None
         found_workspace, bypassed = result

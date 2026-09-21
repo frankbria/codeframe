@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
+    from codeframe.core.proof.models import RequirementScope
     from codeframe.core.workspace import Workspace
 
 import typer
@@ -423,8 +424,59 @@ def get_pr(
         raise typer.Exit(1)
 
 
+def _resolve_pr_scope(
+    workspace: "Workspace", pr_number: int
+) -> "Optional[RequirementScope]":
+    """The PR's changed files as a scope, or None meaning "match everything".
+
+    ``None`` is the fail-closed answer: it is what ``list_blocking_requirements``
+    documents as match-everything and exactly the workspace-global behaviour the
+    gate had before #1254, so an outage, a rate limit or a missing credential can
+    never quietly *loosen* the gate. An empty file list is treated the same way —
+    it is not evidence that no requirement applies.
+
+    Credentials are resolved through the headless
+    ``resolve_github_credentials`` rather than ``_get_github_config``: the latter
+    prints and raises ``typer.Exit``, which would report a credential problem
+    before the gate's own refusal, for a merge that was going to be blocked on
+    requirements anyway.
+    """
+    from codeframe.core.proof.models import RequirementScope
+
+    try:
+        from codeframe.core.github_integration_config import resolve_github_credentials
+
+        token, repo = resolve_github_credentials(workspace, user_id=None)
+
+        async def _fetch() -> list[str]:
+            gh = GitHubIntegration(token=token, repo=repo)
+            try:
+                # include_previous: GitHub reports a renamed file under its new
+                # path only, so without the old one a rename stops intersecting
+                # the requirement scoped to it and drops that requirement from
+                # the gate entirely (#1247).
+                return await gh.get_pr_files(pr_number, include_previous=True)
+            finally:
+                await gh.close()
+
+        changed_files = _run_async(_fetch())
+    except Exception as exc:
+        # Deliberately bare: every failure mode here — outage, rate limit,
+        # missing credential, bad repo — means "gate against the whole
+        # workspace", which is what the CLI did before #1254.
+        console.print(
+            f"[yellow]PROOF9:[/yellow] could not resolve PR #{pr_number}'s changed "
+            f"files ({escape(str(exc))}) — gating against the whole workspace."
+        )
+        return None
+
+    if not changed_files:
+        return None
+    return RequirementScope(files=list(set(changed_files)))
+
+
 def _check_merge_gate(
-    override: bool, override_reason: Optional[str]
+    pr_number: int, override: bool, override_reason: Optional[str]
 ) -> Optional[tuple["Workspace", list[dict]]]:
     """PROOF9 merge gate (#731): block on open requirements in the cwd workspace.
 
@@ -432,6 +484,10 @@ def _check_merge_gate(
     --override with a --reason is given. Returns (workspace, bypassed) when an
     override is pending so the caller can persist the audit record after the
     merge actually succeeds, or None when nothing was bypassed.
+
+    Narrowed to the requirements this PR can actually affect (#1254), the way
+    ``POST /api/v2/pr/{n}/merge`` has been since #1247 — otherwise the CLI and
+    the web UI disagree about whether the same PR is mergeable.
     """
     from codeframe.core.workspace import find_workspace_root, get_workspace
 
@@ -459,6 +515,16 @@ def _check_merge_gate(
         from codeframe.core.proof.evidence import list_blocking_requirements
 
         blocking_reqs = list_blocking_requirements(workspace)
+
+        # Only when something would otherwise block: scoping cannot change an
+        # already-clear ledger, and a clean merge should not start depending on
+        # a GitHub call that can rate-limit.
+        if blocking_reqs:
+            changed_scope = _resolve_pr_scope(workspace, pr_number)
+            if changed_scope is not None:
+                blocking_reqs = list_blocking_requirements(
+                    workspace, changed_scope=changed_scope
+                )
     except Exception as e:
         # Fail closed, like the API path: a broken ledger blocks the merge.
         print_error(e, prefix="PROOF9 gate check failed:", suffix=" — merge blocked")
@@ -533,7 +599,7 @@ def merge_pr(
 
         codeframe pr merge 42 --strategy rebase
     """
-    pending_override = _check_merge_gate(override, override_reason)
+    pending_override = _check_merge_gate(pr_number, override, override_reason)
 
     try:
         token, repo = _get_github_config()

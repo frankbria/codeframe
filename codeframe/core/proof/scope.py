@@ -5,6 +5,7 @@ by matching requirement scopes against changed files/routes.
 """
 
 import logging
+import posixpath
 import re
 
 from codeframe.core.proof.models import RequirementScope
@@ -99,12 +100,40 @@ def intersects(req_scope: RequirementScope, changed_scope: RequirementScope) -> 
     return not compared_any
 
 
+def _normalize(path: str) -> str:
+    """Collapse a path to the spelling git and GitHub both report.
+
+    The *changed* side always arrives clean — ``git status`` and the GitHub
+    files API both give repo-relative paths. The *requirement* side is whatever
+    a human typed at ``cf proof capture --where``, and
+    ``build_scope_from_capture`` stores it verbatim: ``./x.py`` was kept as
+    ``./x.py`` and then matched nothing, ever, so the requirement silently
+    dropped out of every scoped run and out of both merge gates (#1254).
+
+    Only spelling is normalized. An *absolute* path stays absolute and still
+    matches nothing — there is no workspace root here to make it relative
+    against, and that is unchanged, pre-existing behaviour.
+
+    Returns ``"."`` for anything naming the repository root (``./``, ``src/..``,
+    the empty string). That is a real answer, not a failure: the root covers
+    every file. Collapsing it to ``""`` and skipping it instead made such a
+    requirement match nothing at all, which is the same fail-open in a
+    different spelling (#1254 review, second pass).
+    """
+    return posixpath.normpath(path.strip().rstrip("/"))
+
+
 def _files_intersect(req_files: set[str], changed_files: set[str]) -> bool:
     """Exact or directory-prefix match between two file sets."""
+    changed_files = {_normalize(f) for f in changed_files}
     for req_file in req_files:
-        prefix = req_file.rstrip("/")
+        prefix = _normalize(req_file)
+        if prefix == ".":
+            # Scoped to the repository root: every changed file is inside it.
+            # `intersects` only calls this with a non-empty changed set.
+            return True
         for changed_file in changed_files:
-            if changed_file == req_file or changed_file == prefix:
+            if changed_file == prefix:
                 return True
             # Path-boundary aware: "src/auth" covers "src/auth/login.py" but
             # not "src/authentication/x.py".
