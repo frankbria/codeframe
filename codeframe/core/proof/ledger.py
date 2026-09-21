@@ -149,12 +149,15 @@ def _ensure_tables(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='pr_merge_overrides'"
         )
         missing = not cursor.fetchone()
+    # Run on the connection already open here. When proof_runs is absent
+    # entirely, PRAGMA reports no columns, this no-ops, and init_proof_tables
+    # below creates the table with the column already in place.
+    _migrate_proof_runs_vacuous_pass_column(workspace, conn=conn)
     if own_conn:
         conn.close()
     if missing:
         init_proof_tables(workspace)
     _migrate_evidence_status_column(workspace)
-    _migrate_proof_runs_vacuous_pass_column(workspace)
 
 
 # Workspaces already checked for the #728 status column this process —
@@ -191,7 +194,9 @@ def _migrate_evidence_status_column(workspace: Workspace) -> None:
 _vacuous_migrated_workspaces: set[str] = set()
 
 
-def _migrate_proof_runs_vacuous_pass_column(workspace: Workspace) -> None:
+def _migrate_proof_runs_vacuous_pass_column(
+    workspace: Workspace, conn: "sqlite3.Connection | None" = None
+) -> None:
     """Add proof_runs.vacuous_pass to DBs that predate #1247.
 
     ALTER TABLE cannot add a NOT NULL column without a default, and the
@@ -200,10 +205,17 @@ def _migrate_proof_runs_vacuous_pass_column(workspace: Workspace) -> None:
     for readers to coerce. Existing rows are backfilled to 0 — a run recorded
     before the distinction existed is reported as an ordinary pass, which is
     what it was taken to be. No-op once present.
+
+    Reuses ``conn`` when the caller already holds one. ``_ensure_tables`` does,
+    and the TUI dashboard refreshes every 2s against a pinned connection budget
+    (``tests/core/test_tui_dashboard.py``), so opening our own here cost a
+    fourth connection on every cold load.
     """
     if workspace.id in _vacuous_migrated_workspaces:
         return
-    conn = get_db_connection(workspace)
+    own_conn = conn is None
+    if own_conn:
+        conn = get_db_connection(workspace)
     try:
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(proof_runs)")
@@ -222,7 +234,8 @@ def _migrate_proof_runs_vacuous_pass_column(workspace: Workspace) -> None:
                     raise
         _vacuous_migrated_workspaces.add(workspace.id)
     finally:
-        conn.close()
+        if own_conn:
+            conn.close()
 
 
 # --- Serialization helpers ---
