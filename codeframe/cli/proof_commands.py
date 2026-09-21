@@ -153,9 +153,12 @@ def run(
     runs their obligations, and collects evidence.
 
     Exit codes:
-        0  obligations ran and none failed
+        0  obligations ran and none failed — or nothing applied because the
+           caller narrowed the run (out of scope, --gate, waived)
         1  an obligation failed
-        2  nothing was verified — no applicable obligations (see --allow-empty)
+        2  nothing was verified and verification was impossible: an empty
+           ledger, every gate disabled in proof_config.json, or requirements
+           with no obligations (see --allow-empty)
 
     Example:
         codeframe proof run
@@ -189,6 +192,22 @@ def run(
         workspace, full=full, gate_filter=gate_filter
     )
 
+    def _stop_nothing_verified() -> None:
+        """End the run for an empty result: exit 2, or 0 under --allow-empty.
+
+        Single-sourced deliberately. #1253 exists *because* this policy was
+        applied to one empty reason and not the others, so having two copies of
+        it — which must agree on both the exit code and the message — would
+        rebuild the same hazard one level down. A new EmptyReason that needs to
+        stop the run calls this and cannot get it wrong.
+
+        Always terminal, so callers need no follow-up `return`.
+        """
+        if allow_empty:
+            console.print("\n[dim]--allow-empty: exiting 0 anyway.[/dim]")
+            raise typer.Exit(0)
+        raise typer.Exit(2)
+
     if not results:
         # The runner now reports WHY (#1138). Before that, this block inferred
         # the cause from the mode and the ledger, and four consecutive review
@@ -216,10 +235,7 @@ def run(
                 "\nCapture your first requirement with:\n"
                 "  [bold]cf proof capture[/bold]"
             )
-            if allow_empty:
-                console.print("\n[dim]--allow-empty: exiting 0 anyway.[/dim]")
-                return
-            raise typer.Exit(2)
+            _stop_nothing_verified()
 
         console.print(
             f"[yellow]Nothing was verified.[/yellow] {diagnostics.describe()}."
@@ -254,6 +270,29 @@ def run(
         if reason in hints:
             console.print(hints[reason])
         console.print("See [bold]cf proof status[/bold] for the ledger.")
+
+        # Two of these reasons mean verification was *impossible*, not merely
+        # narrowed, and exiting 0 on them reported success for a run that
+        # checked nothing (#1253) — the same lie #1118 fixed for an empty
+        # ledger, and the CLI-side twin of #1247's `vacuous_pass`:
+        #
+        #   config_filtered  the operator disabled the gates in
+        #                    proof_config.json, so obligations that exist and
+        #                    apply were never run
+        #   no_obligations   the requirement defines nothing to run, so it can
+        #                    never be satisfied
+        #
+        # The other reasons keep exiting 0 deliberately: a scope filter on a
+        # doc-only change, an explicit --gate, and a waiver are all the caller
+        # getting what they asked for. Failing CI on those would be a new bug
+        # in the name of fixing this one (#1118).
+        #
+        # Keyed on the buckets, not on `reason`. `reason` collapses to MIXED as
+        # soon as two causes apply, so a reason-based test would let "one out of
+        # scope + one excluded by disabled gates" exit 0 — letting an operator
+        # hide disabled gates behind a single out-of-scope requirement.
+        if diagnostics.config_filtered or diagnostics.no_obligations:
+            _stop_nothing_verified()
         return
 
     # Display results

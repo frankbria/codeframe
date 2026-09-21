@@ -7,6 +7,28 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- **`cf proof run` no longer exits 0 when verification was impossible (#1253).**
+  **This is a behavior change that can turn a currently-green CI step red.** Two
+  cases that previously exited 0 now exit **2**: every gate disabled in
+  `.codeframe/proof_config.json` (`enabled_gates` excluded every obligation), and
+  requirements that define no obligations at all. Both mean the command checked
+  nothing while reporting success — the CLI-side twin of the `vacuous_pass` flag
+  #1247 added to the API, and the same lie #1118 fixed for an empty ledger.
+
+  Exit 2, not 1: "nothing was verified" stays distinguishable from "an obligation
+  failed", so a script that retries on failure does not retry forever on a
+  configuration problem. `--allow-empty` forces 0 in both new cases, as it
+  already did for an empty ledger.
+
+  **Deliberately unchanged**, because emptiness the caller asked for is not a
+  vacuous pass: a scope filter that matches nothing on a doc-only change, an
+  explicit `--gate` with no matching obligation, and a waived-or-satisfied
+  ledger all still exit 0. If your pipeline went red on this change, the run
+  found requirements it could not verify — check `enabled_gates` and that your
+  requirements carry obligations.
+
 ### Removed
 
 - **Scripts that reported success without doing the work, and one operator's
