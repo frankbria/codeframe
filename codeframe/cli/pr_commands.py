@@ -460,7 +460,10 @@ def _resolve_pr_scope(
                 await gh.close()
 
         changed_files = _run_async(_fetch())
-    except Exception as exc:  # noqa: BLE001 — any failure means "gate globally"
+    except Exception as exc:
+        # Deliberately bare: every failure mode here — outage, rate limit,
+        # missing credential, bad repo — means "gate against the whole
+        # workspace", which is what the CLI did before #1254.
         console.print(
             f"[yellow]PROOF9:[/yellow] could not resolve PR #{pr_number}'s changed "
             f"files ({escape(str(exc))}) — gating against the whole workspace."
