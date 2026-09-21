@@ -113,18 +113,25 @@ def _normalize(path: str) -> str:
     Only spelling is normalized. An *absolute* path stays absolute and still
     matches nothing — there is no workspace root here to make it relative
     against, and that is unchanged, pre-existing behaviour.
+
+    Returns ``"."`` for anything naming the repository root (``./``, ``src/..``,
+    the empty string). That is a real answer, not a failure: the root covers
+    every file. Collapsing it to ``""`` and skipping it instead made such a
+    requirement match nothing at all, which is the same fail-open in a
+    different spelling (#1254 review, second pass).
     """
-    collapsed = posixpath.normpath(path.strip().rstrip("/"))
-    return "" if collapsed == "." else collapsed
+    return posixpath.normpath(path.strip().rstrip("/"))
 
 
 def _files_intersect(req_files: set[str], changed_files: set[str]) -> bool:
     """Exact or directory-prefix match between two file sets."""
-    changed_files = {n for n in (_normalize(f) for f in changed_files) if n}
+    changed_files = {_normalize(f) for f in changed_files}
     for req_file in req_files:
         prefix = _normalize(req_file)
-        if not prefix:
-            continue
+        if prefix == ".":
+            # Scoped to the repository root: every changed file is inside it.
+            # `intersects` only calls this with a non-empty changed set.
+            return True
         for changed_file in changed_files:
             if changed_file == prefix:
                 return True

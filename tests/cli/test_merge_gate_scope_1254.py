@@ -339,3 +339,17 @@ class TestRequirementPathSpelling:
 
         with pytest.raises(typer.Exit):
             _gate(_github(["x.py"]))
+
+    @pytest.mark.parametrize("where", ["./", "./.", "src/..", "x.py/.."])
+    def test_a_root_scoped_requirement_blocks_every_file(self, workspace, where):
+        """The repo root covers everything — it is not "no scope" (review pass 2).
+
+        The first normalization fix collapsed these to the empty string and
+        then *skipped* them, so the requirement matched nothing at all: the
+        same fail-open in a different spelling, and one the ``./x.py`` cases
+        could not catch.
+        """
+        save_requirement(workspace, _req(files=[where]))
+
+        with pytest.raises(typer.Exit):
+            _gate(_github(["anything/at/all.py"]))
