@@ -88,53 +88,67 @@ const setupSWRMock = (prStatus: object | undefined, proofStatus: object | undefi
 
 const defaultProps = { prNumber: 42, workspacePath: '/test/workspace' };
 
-const openOverrideDialog = () => {
-  fireEvent.click(screen.getByRole('button', { name: /override/i }));
+const BLOCKERS = [{ id: 'REQ-001', title: 'Fix critical bug' }];
+
+/** The only way to reach the dialog: attempt the merge and let the server refuse. */
+const triggerGate409 = async (blocking = BLOCKERS) => {
+  mockMerge.mockRejectedValueOnce({
+    detail: 'PROOF9 merge gate: 1 requirement(s) block this merge',
+    status_code: 409,
+    blocking_requirements: blocking,
+  });
+  fireEvent.click(screen.getByRole('button', { name: /^merge$/i }));
+  await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 };
 
 describe('PRStatusPanel — merge gate override', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('offers an override affordance when PROOF9 blocks the merge', () => {
+  it('lets the merge be attempted even with workspace-wide open requirements', () => {
+    // The server scopes the gate to the PR's files; this panel cannot.
+    // Disabling here blocked PRs the server would have merged and pushed the
+    // user into an audited override for a bypass that never happened (#1247).
     setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
-    render(<PRStatusPanel {...defaultProps} />);
-
-    expect(screen.getByRole('button', { name: /^merge$/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /override/i })).toBeEnabled();
-  });
-
-  it('offers no override when nothing is blocking', () => {
-    setupSWRMock(basePRStatus, cleanProofStatus);
     render(<PRStatusPanel {...defaultProps} />);
 
     expect(screen.getByRole('button', { name: /^merge$/i })).toBeEnabled();
-    expect(screen.queryByRole('button', { name: /override/i })).not.toBeInTheDocument();
   });
 
-  it('lists the requirements being bypassed in the dialog', () => {
+  it('offers no override until the server actually refuses', () => {
     setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
     render(<PRStatusPanel {...defaultProps} />);
 
-    openOverrideDialog();
-
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('REQ-001')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /override and merge/i })).not.toBeInTheDocument();
   });
 
-  it('will not submit without a reason', () => {
+  it('lists the requirements the SERVER named, not the panel\'s own list', async () => {
+    // The gate also blocks tamper-detected SATISFIED requirements, which
+    // /proof/status never reports as open. Rendering the panel's list would
+    // show the wrong set — or nothing at all.
+    setupSWRMock(basePRStatus, cleanProofStatus);
+    render(<PRStatusPanel {...defaultProps} />);
+
+    await triggerGate409([{ id: 'REQ-TAMPER', title: 'evidence no longer verifies' }]);
+
+    expect(screen.getByText('REQ-TAMPER')).toBeInTheDocument();
+    expect(screen.getByText(/evidence no longer verifies/)).toBeInTheDocument();
+  });
+
+  it('will not submit without a reason', async () => {
     setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
     render(<PRStatusPanel {...defaultProps} />);
-    openOverrideDialog();
+    await triggerGate409();
 
     expect(screen.getByRole('button', { name: /override and merge/i })).toBeDisabled();
-    expect(mockMerge).not.toHaveBeenCalled();
+    expect(mockMerge).toHaveBeenCalledTimes(1); // the blocked attempt only
   });
 
   it('sends override and reason once a reason is given', async () => {
-    mockMerge.mockResolvedValueOnce({ merged: true } as never);
     setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
     render(<PRStatusPanel {...defaultProps} />);
-    openOverrideDialog();
+    await triggerGate409();
+    mockMerge.mockResolvedValueOnce({ merged: true } as never);
 
     fireEvent.change(screen.getByLabelText(/reason/i), {
       target: { value: 'hotfix; gate is stale' },
@@ -150,23 +164,23 @@ describe('PRStatusPanel — merge gate override', () => {
     );
   });
 
-  it('rejects a whitespace-only reason', () => {
+  it('rejects a whitespace-only reason', async () => {
     setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
     render(<PRStatusPanel {...defaultProps} />);
-    openOverrideDialog();
+    await triggerGate409();
 
     fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: '   ' } });
 
     expect(screen.getByRole('button', { name: /override and merge/i })).toBeDisabled();
-    expect(mockMerge).not.toHaveBeenCalled();
+    expect(mockMerge).toHaveBeenCalledTimes(1); // the blocked attempt only
   });
 
   it('keeps a failed override visible in the dialog', async () => {
     // A non-superuser reaches this point: require_scope(SCOPE_ADMIN) 403s.
-    mockMerge.mockRejectedValueOnce({ detail: 'Forbidden: admin scope required', status_code: 403 });
     setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
     render(<PRStatusPanel {...defaultProps} />);
-    openOverrideDialog();
+    await triggerGate409();
+    mockMerge.mockRejectedValueOnce({ detail: 'Forbidden: admin scope required', status_code: 403 });
 
     fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'because' } });
     fireEvent.click(screen.getByRole('button', { name: /override and merge/i }));
@@ -177,9 +191,9 @@ describe('PRStatusPanel — merge gate override', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
-  it('opens the dialog when a merge races a newly-opened requirement (409)', async () => {
-    // The panel's view can go stale between render and click; the server is
-    // the authority, and its 409 must not dead-end either.
+  it('survives a 409 that carries no structured blockers', async () => {
+    // An older server, or a truncated body: the dialog must still open rather
+    // than crash on an undefined list.
     mockMerge.mockRejectedValueOnce({
       detail: 'PROOF9 merge gate: 1 requirement(s) block this merge',
       status_code: 409,

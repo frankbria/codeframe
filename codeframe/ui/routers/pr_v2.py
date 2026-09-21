@@ -757,36 +757,44 @@ async def merge_pull_request(
     from codeframe.core.proof.evidence import list_blocking_requirements
     from codeframe.core.proof.models import RequirementScope
 
-    # Narrow the gate to the requirements this PR can actually affect (#1247).
-    #
-    # Best-effort by design: every failure path leaves changed_scope None,
-    # which means match-everything — the workspace-global behavior this gate
-    # had before — so a GitHub outage, a rate limit or a missing credential can
-    # never quietly widen what is allowed to merge. An empty file list is
-    # treated the same way: it is not evidence that no requirement applies.
-    #
-    # This deliberately uses its own short-lived client rather than hoisting
-    # the one built below. Hoisting would make a missing credential surface as
-    # 400 before the gate's 409, changing which error a blocked merge reports.
-    changed_scope: RequirementScope | None = None
     try:
-        scope_client = _get_github_client(workspace, auth)
-        try:
-            changed_files = await scope_client.get_pr_files(pr_number)
-        finally:
-            await scope_client.close()
-        if changed_files:
-            changed_scope = RequirementScope(files=list(set(changed_files)))
-    except Exception as scope_err:
-        logger.warning(
-            "PR #%s: could not resolve changed files (%s) — PROOF9 gate falls "
-            "back to workspace-global scope",
-            pr_number,
-            scope_err,
-        )
+        blocking_reqs = list_blocking_requirements(workspace)
 
-    try:
-        blocking_reqs = list_blocking_requirements(workspace, changed_scope=changed_scope)
+        # Narrow to the requirements this PR can actually affect (#1247), but
+        # only when something would otherwise block: if the ledger is already
+        # clear, scoping cannot change the outcome, and a clean merge should
+        # not start depending on a GitHub call that can rate-limit.
+        #
+        # Best-effort within that. Every failure path leaves changed_scope
+        # None, which means match-everything — the workspace-global behavior
+        # from before — so an outage can never quietly widen what merges. An
+        # empty file list is treated the same way: it is not evidence that no
+        # requirement applies.
+        #
+        # This uses its own short-lived client rather than hoisting the one
+        # built below. Hoisting would make a missing credential surface as 400
+        # before the gate's 409, changing which error a blocked merge reports.
+        if blocking_reqs:
+            changed_scope: RequirementScope | None = None
+            try:
+                scope_client = _get_github_client(workspace, auth)
+                try:
+                    changed_files = await scope_client.get_pr_files(pr_number)
+                finally:
+                    await scope_client.close()
+                if changed_files:
+                    changed_scope = RequirementScope(files=list(set(changed_files)))
+            except Exception as scope_err:
+                logger.warning(
+                    "PR #%s: could not resolve changed files (%s) — PROOF9 gate "
+                    "falls back to workspace-global scope",
+                    pr_number,
+                    scope_err,
+                )
+            if changed_scope is not None:
+                blocking_reqs = list_blocking_requirements(
+                    workspace, changed_scope=changed_scope
+                )
     except Exception as e:
         logger.error(f"PROOF9 gate check failed for PR #{pr_number}: {e}", exc_info=True)
         raise HTTPException(
@@ -803,14 +811,20 @@ async def merge_pull_request(
         bypassed = [{"id": r.id, "title": r.title} for r in blocking_reqs]
         if not override:
             summary = ", ".join(f"{b['id']}: {b['title']}" for b in bypassed[:10])
-            raise HTTPException(
-                status_code=409,
-                detail=api_error(
-                    f"PROOF9 merge gate: {len(blocking_reqs)} requirement(s) block this merge",
-                    ErrorCodes.INVALID_STATE,
-                    f"{summary}. Each is either unproven, or recorded satisfied with evidence that no longer matches its checksum. Satisfy, waive or re-prove them, or pass override=true with a reason.",
-                ),
+            detail = api_error(
+                f"PROOF9 merge gate: {len(blocking_reqs)} requirement(s) block this merge",
+                ErrorCodes.INVALID_STATE,
+                f"{summary}. Each is either unproven, or recorded satisfied with evidence that no longer matches its checksum. Satisfy, waive or re-prove them, or pass override=true with a reason.",
             )
+            # The blocking set as data, not only as prose (#1247). A client
+            # cannot re-derive it: /proof/status reports OPEN requirements,
+            # while this gate also blocks SATISFIED ones whose evidence fails
+            # checksum verification (#952), and it is scoped to this PR's
+            # files. Anyone being asked to sign an audited override needs to
+            # see exactly what they are bypassing — so unlike `summary` above,
+            # this is never truncated.
+            detail["blocking_requirements"] = bypassed
+            raise HTTPException(status_code=409, detail=detail)
 
     client = _get_github_client(workspace, auth)
     try:

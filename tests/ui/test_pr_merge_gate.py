@@ -231,6 +231,47 @@ class TestMergeGate:
         assert get_pr_merge_override(test_workspace, 42) is None
 
 
+class TestBlockingRequirementsArePublished:
+    """The 409 names what it is blocking, as data (#1247).
+
+    The UI cannot re-derive this: it reads /proof/status, which reports only
+    OPEN requirements, while the gate also blocks SATISFIED ones whose evidence
+    fails checksum verification (#952). Asking someone to sign an audited
+    override means telling them exactly what they are bypassing.
+    """
+
+    def test_409_carries_the_blocking_requirements_structurally(
+        self, test_client, test_workspace
+    ):
+        save_requirement(test_workspace, _req("REQ-1"))
+        save_requirement(test_workspace, _req("REQ-2"))
+
+        mock = _make_mock_client()
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(test_client)
+
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        blocking = detail["blocking_requirements"]
+        assert {b["id"] for b in blocking} == {"REQ-1", "REQ-2"}
+        assert all(b["title"] for b in blocking)
+
+    def test_blocking_list_is_not_truncated_like_the_summary(
+        self, test_client, test_workspace
+    ):
+        """The prose summary caps at 10; the data must not, or an override
+        dialog would under-report what it is bypassing."""
+        for i in range(12):
+            save_requirement(test_workspace, _req(f"REQ-{i:02d}"))
+
+        mock = _make_mock_client()
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(test_client)
+
+        assert resp.status_code == 409
+        assert len(resp.json()["detail"]["blocking_requirements"]) == 12
+
+
 class TestMergeGateScope:
     """The gate narrows to the PR's own changed files (#1247 AC1).
 
@@ -296,6 +337,31 @@ class TestMergeGateScope:
 
         assert resp.status_code == 409
         mock.merge_pull_request.assert_not_called()
+
+    def test_no_pr_file_lookup_when_nothing_blocks(self, test_client):
+        """A clean ledger must not pay for — or depend on — a GitHub call.
+
+        Scoping cannot change an already-empty result, and fetching anyway
+        would make an otherwise-clean merge fail closed the moment GitHub
+        rate-limits the file listing.
+        """
+        mock = self._client_with_files(["x.py"])
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(test_client)
+
+        assert resp.status_code == 200
+        mock.get_pr_files.assert_not_called()
+        mock.merge_pull_request.assert_called_once()
+
+    def test_pr_files_looked_up_only_once_when_blocking(self, test_client, test_workspace):
+        save_requirement(test_workspace, _req("REQ-1"))
+
+        mock = self._client_with_files(["x.py"])
+        with patch("codeframe.ui.routers.pr_v2._get_github_client", return_value=mock):
+            resp = _merge(test_client)
+
+        assert resp.status_code == 409
+        mock.get_pr_files.assert_called_once_with(42)
 
     def test_override_still_merges_an_in_scope_block(self, test_client, test_workspace):
         """Scope filtering must not disturb the audited override path."""

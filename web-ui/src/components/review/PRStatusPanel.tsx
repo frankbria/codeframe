@@ -16,7 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { CICheck, PRStatusResponse, ProofRequirement, ProofStatusResponse } from '@/types';
+import type { ApiError, CICheck, MergeBlockingRequirement, PRStatusResponse, ProofRequirement, ProofStatusResponse } from '@/types';
 
 // ── Badge variant mappings ────────────────────────────────────────────────
 
@@ -80,6 +80,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideError, setOverrideError] = useState<string | null>(null);
+  const [serverBlockers, setServerBlockers] = useState<MergeBlockingRequirement[]>([]);
 
   const swrKey = `/api/v2/pr/status?workspace_path=${encodeURIComponent(workspacePath)}&pr_number=${prNumber}`;
   const proofKey = `/api/v2/proof/status?workspace_path=${encodeURIComponent(workspacePath)}`;
@@ -126,7 +127,17 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
 
   const ciPassing = !ciFailing && !ciPending;
   const alreadyMerged = merged || data?.merge_state === 'merged';
-  const canMerge = !!data && !!proofData && openRequirements.length === 0 && ciPassing;
+  // The PROOF9 gate is deliberately NOT predicted here (#1247). This panel
+  // reads /proof/status, which is workspace-global and lists only OPEN
+  // requirements; the server scopes the gate to the PR's changed files and
+  // also blocks tamper-detected SATISFIED ones. Predicting from the wrong set
+  // disabled Merge on PRs the server would have merged, pushing users into an
+  // audited override for a bypass that never happened — a false entry in
+  // pr_merge_overrides. CI is still predicted: that data is authoritative here.
+  // `!!proofData` is retained: it means "the panel has loaded", not a
+  // prediction of the outcome, and keeps Merge from flickering enabled
+  // mid-load. Only the open-requirement count is gone.
+  const canMerge = !!data && !!proofData && ciPassing;
 
   // ── Merge handler ─────────────────────────────────────────────────────────
 
@@ -138,12 +149,13 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
       setMerged(true);
       mutatePRStatus((prev) => prev ? { ...prev, merge_state: 'merged' } : prev, false);
     } catch (err: unknown) {
-      const apiErr = err as { detail?: string; status_code?: number };
+      const apiErr = err as ApiError;
       // 409 is the gate, not a failure: the panel's view went stale between
       // render and click and the server found a requirement we did not show.
       // Offer the same override path rather than dead-ending on a red banner.
       if (apiErr?.status_code === 409) {
         setOverrideError(null);
+        setServerBlockers(apiErr.blocking_requirements ?? []);
         setOverrideOpen(true);
       } else {
         setMergeError(apiErr?.detail ?? 'Merge failed. Please try again.');
@@ -325,29 +337,13 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
         </TooltipProvider>
       )}
 
-      {/* Audited bypass (#1247). Offered only for a PROOF9 block: the override
-          bypasses that gate alone, and GitHub still refuses a merge whose
-          required checks are failing, so showing it for CI would be a lie. */}
-      {!alreadyMerged && openRequirements.length > 0 && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setOverrideError(null);
-            setOverrideOpen(true);
-          }}
-          className="w-full text-xs text-muted-foreground"
-        >
-          Override gate with a reason
-        </Button>
-      )}
 
       <MergeOverrideModal
         open={overrideOpen}
         onClose={() => setOverrideOpen(false)}
         onConfirm={handleOverrideMerge}
         prNumber={prNumber}
-        blockingRequirements={openRequirements}
+        blockingRequirements={serverBlockers}
         error={overrideError}
       />
     </Card>

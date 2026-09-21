@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import type { ProofRequirement } from '@/types';
+import type { MergeBlockingRequirement } from '@/types';
 
 interface MergeOverrideModalProps {
   open: boolean;
@@ -21,8 +21,13 @@ interface MergeOverrideModalProps {
   /** Called with the reason once the user confirms. Resolves when the merge settles. */
   onConfirm: (reason: string) => Promise<void>;
   prNumber: number;
-  /** The requirements being bypassed — rendered so the reason is written with them in view. */
-  blockingRequirements: ProofRequirement[];
+  /**
+   * The requirements being bypassed, exactly as the server named them in its
+   * 409 — rendered so the reason is written with them in view. Only id and
+   * title are needed, and asking for no more keeps this decoupled from the
+   * full ProofRequirement shape.
+   */
+  blockingRequirements: MergeBlockingRequirement[];
   /** Surfaced in-modal so a failed override (e.g. a 403 for a non-admin) stays visible. */
   error?: string | null;
 }
