@@ -192,6 +192,22 @@ def run(
         workspace, full=full, gate_filter=gate_filter
     )
 
+    def _stop_nothing_verified() -> None:
+        """End the run for an empty result: exit 2, or 0 under --allow-empty.
+
+        Single-sourced deliberately. #1253 exists *because* this policy was
+        applied to one empty reason and not the others, so having two copies of
+        it — which must agree on both the exit code and the message — would
+        rebuild the same hazard one level down. A new EmptyReason that needs to
+        stop the run calls this and cannot get it wrong.
+
+        Always terminal, so callers need no follow-up `return`.
+        """
+        if allow_empty:
+            console.print("\n[dim]--allow-empty: exiting 0 anyway.[/dim]")
+            raise typer.Exit(0)
+        raise typer.Exit(2)
+
     if not results:
         # The runner now reports WHY (#1138). Before that, this block inferred
         # the cause from the mode and the ledger, and four consecutive review
@@ -219,10 +235,7 @@ def run(
                 "\nCapture your first requirement with:\n"
                 "  [bold]cf proof capture[/bold]"
             )
-            if allow_empty:
-                console.print("\n[dim]--allow-empty: exiting 0 anyway.[/dim]")
-                return
-            raise typer.Exit(2)
+            _stop_nothing_verified()
 
         console.print(
             f"[yellow]Nothing was verified.[/yellow] {diagnostics.describe()}."
@@ -279,10 +292,7 @@ def run(
         # scope + one excluded by disabled gates" exit 0 — letting an operator
         # hide disabled gates behind a single out-of-scope requirement.
         if diagnostics.config_filtered or diagnostics.no_obligations:
-            if allow_empty:
-                console.print("\n[dim]--allow-empty: exiting 0 anyway.[/dim]")
-                return
-            raise typer.Exit(2)
+            _stop_nothing_verified()
         return
 
     # Display results
