@@ -191,11 +191,14 @@ describe('PRStatusPanel — merge gate override', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
-  it('survives a 409 that carries no structured blockers', async () => {
-    // An older server, or a truncated body: the dialog must still open rather
-    // than crash on an undefined list.
+  it('treats a GitHub 409 as a merge error, not a gate block', async () => {
+    // GitHub returns 409 for its own conflicts (head branch modified, merge
+    // conflict) and pr_v2 propagates upstream statuses verbatim. Keying the
+    // override on the status code alone offered a bypass for a conflict no
+    // override can clear, with an empty blocker list, hiding the real error.
+    // The PROOF9 409 is the one that names what it blocks.
     mockMerge.mockRejectedValueOnce({
-      detail: 'PROOF9 merge gate: 1 requirement(s) block this merge',
+      detail: 'GitHub API error: Head branch was modified. Review and try the merge again.',
       status_code: 409,
     });
     setupSWRMock(basePRStatus, cleanProofStatus);
@@ -203,7 +206,25 @@ describe('PRStatusPanel — merge gate override', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^merge$/i }));
 
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/head branch was modified/i)).toBeInTheDocument()
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('treats a 409 with an empty blocker list as a merge error too', async () => {
+    mockMerge.mockRejectedValueOnce({
+      detail: 'Some other conflict',
+      status_code: 409,
+      blocking_requirements: [],
+    });
+    setupSWRMock(basePRStatus, cleanProofStatus);
+    render(<PRStatusPanel {...defaultProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^merge$/i }));
+
+    await waitFor(() => expect(screen.getByText(/some other conflict/i)).toBeInTheDocument());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('does not open the dialog for an unrelated merge failure', async () => {

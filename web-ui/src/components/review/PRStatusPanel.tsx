@@ -150,12 +150,20 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
       mutatePRStatus((prev) => prev ? { ...prev, merge_state: 'merged' } : prev, false);
     } catch (err: unknown) {
       const apiErr = err as ApiError;
-      // 409 is the gate, not a failure: the panel's view went stale between
-      // render and click and the server found a requirement we did not show.
-      // Offer the same override path rather than dead-ending on a red banner.
-      if (apiErr?.status_code === 409) {
+      // A PROOF9 block is the 409 that names what it blocks. The status code
+      // alone is not enough: pr_v2 propagates upstream statuses verbatim, and
+      // GitHub returns 409 for its own conflicts (head branch modified, merge
+      // conflict). Offering an override for those promised a bypass no
+      // override can deliver, with an empty blocker list, and buried the real
+      // error behind the dialog.
+      //
+      // Reaching here at all means the panel's view went stale between render
+      // and click — the gate is the server's to enforce, and this is how its
+      // refusal becomes an override prompt instead of a dead end.
+      const gateBlockers = apiErr?.blocking_requirements ?? [];
+      if (apiErr?.status_code === 409 && gateBlockers.length > 0) {
         setOverrideError(null);
-        setServerBlockers(apiErr.blocking_requirements ?? []);
+        setServerBlockers(gateBlockers);
         setOverrideOpen(true);
       } else {
         setMergeError(apiErr?.detail ?? 'Merge failed. Please try again.');
