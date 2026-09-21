@@ -471,6 +471,10 @@ def run_proof_with_diagnostics(
                 triggered_by="human",
                 overall_passed=True,
                 duration_ms=int((completed_at - started_at).total_seconds() * 1000),
+                # Not vacuous: an empty ledger makes no claim, so it cannot
+                # make a false one. Flagging every fresh workspace would be
+                # noise and would train people to ignore the badge (#1247).
+                vacuous_pass=False,
             ),
         )
         return {}, diagnostics
@@ -607,6 +611,15 @@ def run_proof_with_diagnostics(
         overall_passed = True
     else:
         overall_passed = all_passed
+
+    # A pass that executed nothing is not the same claim as a pass (#1247).
+    # Computed from the tally rather than from the config, so it also catches
+    # the runs that reach the same state by another route: an enabled_gates
+    # list that excludes every obligation, and a run whose gates were all
+    # UNVERIFIABLE (those are filtered out of `executed`, so the tally is
+    # empty and `all_passed` lands True). A warn-mode run that masked a real
+    # failure is deliberately *not* vacuous — its gates ran.
+    vacuous_pass = overall_passed and not executed
     ledger.save_run(
         workspace,
         ProofRun(
@@ -617,6 +630,7 @@ def run_proof_with_diagnostics(
             triggered_by="human",
             overall_passed=overall_passed,
             duration_ms=duration_ms,
+            vacuous_pass=vacuous_pass,
         ),
     )
 

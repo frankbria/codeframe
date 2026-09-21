@@ -85,6 +85,7 @@ def init_proof_tables(workspace: Workspace) -> None:
             triggered_by TEXT NOT NULL DEFAULT 'human',
             overall_passed INTEGER NOT NULL DEFAULT 0,
             duration_ms INTEGER,
+            vacuous_pass INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (run_id, workspace_id)
         )
     """)
@@ -148,6 +149,10 @@ def _ensure_tables(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='pr_merge_overrides'"
         )
         missing = not cursor.fetchone()
+    # Run on the connection already open here. When proof_runs is absent
+    # entirely, PRAGMA reports no columns, this no-ops, and init_proof_tables
+    # below creates the table with the column already in place.
+    _migrate_proof_runs_vacuous_pass_column(workspace, conn=conn)
     if own_conn:
         conn.close()
     if missing:
@@ -184,6 +189,53 @@ def _migrate_evidence_status_column(workspace: Workspace) -> None:
         _status_migrated_workspaces.add(workspace.id)
     finally:
         conn.close()
+
+
+_vacuous_migrated_workspaces: set[str] = set()
+
+
+def _migrate_proof_runs_vacuous_pass_column(
+    workspace: Workspace, conn: "sqlite3.Connection | None" = None
+) -> None:
+    """Add proof_runs.vacuous_pass to DBs that predate #1247.
+
+    ALTER TABLE cannot add a NOT NULL column without a default, and the
+    CREATE TABLE above carries ``DEFAULT 0``; matching it here keeps a
+    migrated DB and a fresh one identical rather than leaving old rows NULL
+    for readers to coerce. Existing rows are backfilled to 0 — a run recorded
+    before the distinction existed is reported as an ordinary pass, which is
+    what it was taken to be. No-op once present.
+
+    Reuses ``conn`` when the caller already holds one. ``_ensure_tables`` does,
+    and the TUI dashboard refreshes every 2s against a pinned connection budget
+    (``tests/core/test_tui_dashboard.py``), so opening our own here cost a
+    fourth connection on every cold load.
+    """
+    if workspace.id in _vacuous_migrated_workspaces:
+        return
+    own_conn = conn is None
+    if own_conn:
+        conn = get_db_connection(workspace)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(proof_runs)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if columns and "vacuous_pass" not in columns:
+            try:
+                cursor.execute(
+                    "ALTER TABLE proof_runs "
+                    "ADD COLUMN vacuous_pass INTEGER NOT NULL DEFAULT 0"
+                )
+                conn.commit()
+            except sqlite3.OperationalError as exc:
+                # Concurrent first-run: another worker added the column
+                # between our check and the ALTER.
+                if "duplicate column" not in str(exc).lower():
+                    raise
+        _vacuous_migrated_workspaces.add(workspace.id)
+    finally:
+        if own_conn:
+            conn.close()
 
 
 # --- Serialization helpers ---
@@ -606,8 +658,8 @@ def save_run(workspace: Workspace, run: ProofRun) -> None:
     cursor.execute(
         """INSERT OR REPLACE INTO proof_runs
            (run_id, workspace_id, started_at, completed_at, triggered_by,
-            overall_passed, duration_ms)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            overall_passed, duration_ms, vacuous_pass)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             run.run_id, workspace.id,
             run.started_at.isoformat(),
@@ -615,6 +667,7 @@ def save_run(workspace: Workspace, run: ProofRun) -> None:
             run.triggered_by,
             int(run.overall_passed),
             run.duration_ms,
+            int(run.vacuous_pass),
         ),
     )
     conn.commit()
@@ -628,7 +681,7 @@ def get_run(workspace: Workspace, run_id: str) -> Optional[ProofRun]:
     cursor = conn.cursor()
     cursor.execute(
         """SELECT run_id, workspace_id, started_at, completed_at, triggered_by,
-                  overall_passed, duration_ms
+                  overall_passed, duration_ms, vacuous_pass
            FROM proof_runs WHERE run_id = ? AND workspace_id = ?""",
         (run_id, workspace.id),
     )
@@ -644,6 +697,7 @@ def get_run(workspace: Workspace, run_id: str) -> Optional[ProofRun]:
         triggered_by=row[4],
         overall_passed=bool(row[5]),
         duration_ms=row[6],
+        vacuous_pass=bool(row[7]),
     )
 
 
@@ -654,7 +708,7 @@ def list_runs(workspace: Workspace, limit: int = 5) -> list[ProofRun]:
     cursor = conn.cursor()
     cursor.execute(
         """SELECT run_id, workspace_id, started_at, completed_at, triggered_by,
-                  overall_passed, duration_ms
+                  overall_passed, duration_ms, vacuous_pass
            FROM proof_runs WHERE workspace_id = ?
            ORDER BY started_at DESC LIMIT ?""",
         (workspace.id, limit),
@@ -670,6 +724,7 @@ def list_runs(workspace: Workspace, limit: int = 5) -> list[ProofRun]:
             triggered_by=r[4],
             overall_passed=bool(r[5]),
             duration_ms=r[6],
+            vacuous_pass=bool(r[7]),
         )
         for r in rows
     ]

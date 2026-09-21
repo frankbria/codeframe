@@ -216,6 +216,19 @@ export interface EventListResponse {
 export interface ApiError {
   detail: string;
   status_code?: number;
+  /**
+   * Structured blockers from a 409 on the PROOF9 merge gate (#1247). The
+   * client cannot re-derive this set: /proof/status reports only OPEN
+   * requirements, while the gate also blocks SATISFIED ones whose evidence
+   * fails checksum verification, and it is scoped to the PR's own files.
+   */
+  blocking_requirements?: MergeBlockingRequirement[];
+}
+
+/** Identity of one requirement blocking a merge, as reported by the server. */
+export interface MergeBlockingRequirement {
+  id: string;
+  title: string;
 }
 
 // Review & Commit View types
@@ -469,6 +482,11 @@ export interface ProofRunSummary {
   triggered_by: string;
   overall_passed: boolean;
   duration_ms: number | null;
+  /**
+   * Passed having executed nothing (#1247) — e.g. every gate disabled in
+   * proof_config.json. Only meaningful when overall_passed is true.
+   */
+  vacuous_pass: boolean;
 }
 
 export interface ProofEvidenceWithContent extends ProofEvidence {

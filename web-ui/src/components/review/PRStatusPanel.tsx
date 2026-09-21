@@ -9,13 +9,14 @@ import { prApi, proofApi } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { MergeOverrideModal } from '@/components/review/MergeOverrideModal';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { CICheck, PRStatusResponse, ProofRequirement, ProofStatusResponse } from '@/types';
+import type { ApiError, CICheck, MergeBlockingRequirement, PRStatusResponse, ProofRequirement, ProofStatusResponse } from '@/types';
 
 // ── Badge variant mappings ────────────────────────────────────────────────
 
@@ -77,6 +78,9 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
   const [isMerging, setIsMerging] = useState(false);
   const [merged, setMerged] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
+  const [serverBlockers, setServerBlockers] = useState<MergeBlockingRequirement[]>([]);
 
   const swrKey = `/api/v2/pr/status?workspace_path=${encodeURIComponent(workspacePath)}&pr_number=${prNumber}`;
   const proofKey = `/api/v2/proof/status?workspace_path=${encodeURIComponent(workspacePath)}`;
@@ -123,7 +127,17 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
 
   const ciPassing = !ciFailing && !ciPending;
   const alreadyMerged = merged || data?.merge_state === 'merged';
-  const canMerge = !!data && !!proofData && openRequirements.length === 0 && ciPassing;
+  // The PROOF9 gate is deliberately NOT predicted here (#1247). This panel
+  // reads /proof/status, which is workspace-global and lists only OPEN
+  // requirements; the server scopes the gate to the PR's changed files and
+  // also blocks tamper-detected SATISFIED ones. Predicting from the wrong set
+  // disabled Merge on PRs the server would have merged, pushing users into an
+  // audited override for a bypass that never happened — a false entry in
+  // pr_merge_overrides. CI is still predicted: that data is authoritative here.
+  // `!!proofData` is retained: it means "the panel has loaded", not a
+  // prediction of the outcome, and keeps Merge from flickering enabled
+  // mid-load. Only the open-requirement count is gone.
+  const canMerge = !!data && !!proofData && ciPassing;
 
   // ── Merge handler ─────────────────────────────────────────────────────────
 
@@ -135,10 +149,47 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
       setMerged(true);
       mutatePRStatus((prev) => prev ? { ...prev, merge_state: 'merged' } : prev, false);
     } catch (err: unknown) {
-      const apiErr = err as { detail?: string };
-      setMergeError(apiErr?.detail ?? 'Merge failed. Please try again.');
+      const apiErr = err as ApiError;
+      // A PROOF9 block is the 409 that names what it blocks. The status code
+      // alone is not enough: pr_v2 propagates upstream statuses verbatim, and
+      // GitHub returns 409 for its own conflicts (head branch modified, merge
+      // conflict). Offering an override for those promised a bypass no
+      // override can deliver, with an empty blocker list, and buried the real
+      // error behind the dialog.
+      //
+      // Reaching here at all means the panel's view went stale between render
+      // and click — the gate is the server's to enforce, and this is how its
+      // refusal becomes an override prompt instead of a dead end.
+      const gateBlockers = apiErr?.blocking_requirements ?? [];
+      if (apiErr?.status_code === 409 && gateBlockers.length > 0) {
+        setOverrideError(null);
+        setServerBlockers(gateBlockers);
+        setOverrideOpen(true);
+      } else {
+        setMergeError(apiErr?.detail ?? 'Merge failed. Please try again.');
+      }
     } finally {
       setIsMerging(false);
+    }
+  };
+
+  const handleOverrideMerge = async (reason: string) => {
+    setOverrideError(null);
+    try {
+      await prApi.merge(workspacePath, prNumber, {
+        method: 'squash',
+        override: true,
+        override_reason: reason,
+      });
+      setOverrideOpen(false);
+      setMerged(true);
+      mutatePRStatus((prev) => prev ? { ...prev, merge_state: 'merged' } : prev, false);
+    } catch (err: unknown) {
+      const apiErr = err as { detail?: string };
+      // Kept in the dialog, not the page banner: the reason the user just
+      // wrote is still on screen, and a 403 here (non-superuser hitting
+      // require_scope(SCOPE_ADMIN)) needs to be readable next to it.
+      setOverrideError(apiErr?.detail ?? 'Override failed. Please try again.');
     }
   };
 
@@ -293,6 +344,16 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
           </Tooltip>
         </TooltipProvider>
       )}
+
+
+      <MergeOverrideModal
+        open={overrideOpen}
+        onClose={() => setOverrideOpen(false)}
+        onConfirm={handleOverrideMerge}
+        prNumber={prNumber}
+        blockingRequirements={serverBlockers}
+        error={overrideError}
+      />
     </Card>
   );
 }

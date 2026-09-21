@@ -52,7 +52,7 @@ REQ detail view (`/proof/[req_id]`): markdown-rendered description, scope metada
 
 ### Milestone A: PR Status Tracking (#583, #731)
 
-**Current state**: Shipped. `PRStatusPanel` on `/review` polls CI checks, review state, and merge state, and its **[Merge]** button is gated on PROOF9 (#583). The gate is also enforced server-side: `POST /api/v2/pr/{n}/merge` and `cf pr merge` refuse while open (non-waived) requirements exist unless an explicit override + reason is supplied, which is persisted to `pr_merge_overrides` and surfaced in PR history (#731). Non-blocking follow-ups — per-branch scope filtering, the `vacuous_pass` distinction, a frontend override UI — are tracked in #1247.
+**Current state**: Shipped. `PRStatusPanel` on `/review` polls CI checks, review state, and merge state, and its **[Merge]** button is gated on PROOF9 (#583). The gate is also enforced server-side: `POST /api/v2/pr/{n}/merge` and `cf pr merge` refuse while open (non-waived) requirements exist unless an explicit override + reason is supplied, which is persisted to `pr_merge_overrides` and surfaced in PR history (#731). The #1247 follow-ups are **shipped**: the gate is scoped to the PR's changed files (including pre-rename paths, so a rename cannot escape its requirement), `ProofRun.vacuous_pass` distinguishes a pass from a pass that verified nothing, and `PRStatusPanel` offers the audited override with a required reason. Note the panel no longer *predicts* the gate — it attempts the merge and renders the server's 409, which carries the blocking set as data; predicting from the workspace-global `/proof/status` blocked out-of-scope PRs and recorded overrides for bypasses that never happened.
 
 **Original gap**: After a PR is created from the Review page, show its live status in the web UI.
 
@@ -69,7 +69,9 @@ REQ detail view (`/proof/[req_id]`): markdown-rendered description, scope metada
   2. PROOF9 has no open (non-waived) requirements for the changed scope
 - If PROOF9 has open requirements: show a gating message listing which requirements are blocking merge and linking to the PROOF9 page
 
-**Known follow-up** (from #556, tracked in #1247): `RunProofResponse` does not distinguish "all gates passed" from "vacuous pass because all gates were disabled in `proof_config.json`". The runner already emits a server-side warning and the Settings page shows a UI banner; the merge gate in this milestone should surface that distinction (e.g., a `vacuous_pass` flag on `RunProofResponse` or `ProofRun`) so a workspace with zero enabled gates can't auto-merge.
+**Resolved** (#556, shipped in #1247): `ProofRun.vacuous_pass` now distinguishes "all gates passed" from "passed having executed nothing", is carried on every API path that reports a run, and renders as a distinct badge in the run history. It is computed as *passed with an empty tally* rather than by reading the config, so it also catches an `enabled_gates` list that excludes every obligation and a run whose gates were all UNVERIFIABLE; a warn-mode run that masked a real failure is deliberately not vacuous, since its gates ran.
+
+The merge gate was **not** coupled to it. A vacuous run leaves its requirements OPEN — `mark_satisfied` never fires on an empty result — so the gate already blocked such a workspace via requirement status. Adding a merge → run-history dependency would have blocked workspaces that legitimately run with gates disabled, with a confusing failure mode.
 
 **Why it matters for the vision**: "Merge is gated on PROOF9 pass." That sentence is in the vision doc. Without CI tracking and a merge gate in the UI, this is a CLI-only guarantee. The SHIP phase is only complete when the user can go from "PR opened" to "merged" without leaving CodeFRAME.
 
@@ -209,7 +211,7 @@ These are items that were considered and excluded because they do not serve the 
 | 3.5A | Bidirectional agent chat | ✅ Complete | #500–509 |
 | 3.5B | Run gates from the web UI | ✅ Complete | #566, #567, #574, #575 |
 | 3.5C | Glitch capture UI | ✅ Complete | #568, #569 |
-| 4A | PR status + PROOF9 merge gate | ✅ Complete (PR status panel + gated merge button #583; server-side merge gate with audited override #731; follow-ups #1247) | #571, #731 |
+| 4A | PR status + PROOF9 merge gate | ✅ Complete (PR status panel #583; server-side merge gate with audited override #731; per-PR scope + `vacuous_pass` + frontend override UI #1247) | #571, #731, #1247 |
 | 4B | Post-merge glitch capture loop | ❌ Not started | — |
 | 5.1 | Settings page (skeleton + agent config + PROOF9/workspace tabs) | ✅ Complete | #554–556 |
 | 5.2 | Cost analytics | ✅ Complete | #557–558 |
@@ -217,6 +219,6 @@ These are items that were considered and excluded because they do not serve the 
 | 5.4 | PRD stress-test web UI | ✅ Complete (trigger + streaming #561; results view + refinement #562) | #561–562 |
 | 5.5 | GitHub Issues import | ✅ Complete (PAT connection #563; issue browser #564; import + traceability #565) | #563–565 |
 
-**Current focus**: Phase 4B — post-merge glitch capture loop. Phase 4A is complete: the merge gate is enforced (#731) — open (non-waived) requirements block `POST /api/v2/pr/{n}/merge` and `cf pr merge` unless an explicit override + reason is supplied, persisted as an audit record and surfaced in PR history. Its non-blocking follow-ups (per-branch scope filtering, the `vacuous_pass` distinction from #556, a frontend override UI) are tracked in #1247.
+**Current focus**: Phase 4B — post-merge glitch capture loop. Phase 4A is complete: the merge gate is enforced (#731) — open (non-waived) requirements block `POST /api/v2/pr/{n}/merge` and `cf pr merge` unless an explicit override + reason is supplied, persisted as an audit record and surfaced in PR history. Its follow-ups are shipped in #1247: per-PR scope filtering, the `vacuous_pass` distinction from #556, and the frontend override UI.
 
 The ordering within Phase 5 is by onboarding impact. Settings (5.1) and cost (5.2) block new users earliest.

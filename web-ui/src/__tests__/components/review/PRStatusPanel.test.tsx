@@ -114,10 +114,16 @@ describe('PRStatusPanel — PROOF9-gated merge button', () => {
     jest.clearAllMocks();
   });
 
-  it('disables merge button when PROOF9 has open requirements', () => {
+  it('leaves merge enabled with open requirements — the server owns that gate (#1247)', () => {
+    // Was: disabled here. This panel reads the workspace-global /proof/status,
+    // but the server scopes the gate to the PR's changed files, so predicting
+    // from this list blocked PRs the server would have merged and pushed users
+    // into an audited override for a bypass that never happened. The gate is
+    // still enforced — server-side, on the merge request — and its 409 opens
+    // the override dialog. See PRStatusPanel.override.test.tsx.
     setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
     render(<PRStatusPanel {...defaultProps} />);
-    expect(screen.getByRole('button', { name: /^merge$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^merge$/i })).toBeEnabled();
   });
 
   it('shows blocking REQ titles inline when PROOF9 has open requirements', () => {

@@ -178,13 +178,25 @@ const createApiClient = (): AxiosInstance => {
       }
 
       // Transform error for consistent handling
+      const rawDetail = extractDetail(error.response?.data);
       const apiError: ApiError = {
-        detail: normalizeErrorDetail(
-          extractDetail(error.response?.data),
-          error.message
-        ),
+        detail: normalizeErrorDetail(rawDetail, error.message),
         status_code: error.response?.status,
       };
+      // normalizeErrorDetail flattens the structured body to one string, which
+      // is right for display but loses machine-readable fields. Carry the
+      // merge gate's blocking set through intact (#1247) — an override dialog
+      // has to name what it is bypassing.
+      if (
+        rawDetail &&
+        typeof rawDetail === 'object' &&
+        !Array.isArray(rawDetail) &&
+        Array.isArray((rawDetail as { blocking_requirements?: unknown }).blocking_requirements)
+      ) {
+        apiError.blocking_requirements = (
+          rawDetail as unknown as { blocking_requirements: ApiError['blocking_requirements'] }
+        ).blocking_requirements;
+      }
       return Promise.reject(apiError);
     }
   );

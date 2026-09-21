@@ -420,13 +420,24 @@ class GitHubIntegration:
             page += 1
         return items
 
-    async def get_pr_files(self, pr_number: int) -> List[str]:
+    async def get_pr_files(
+        self, pr_number: int, include_previous: bool = False
+    ) -> List[str]:
         """Get the list of files changed in a pull request.
 
         Paginates through all pages (100 per page) to ensure completeness.
 
         Args:
             pr_number: PR number
+            include_previous: also return the pre-rename path of any renamed
+                file. GitHub reports a rename under its new ``filename`` and
+                puts the old path in ``previous_filename``, so the default
+                answer describes what the PR *now* contains — right for
+                listing its files, wrong for asking what it touched. The
+                PROOF9 merge gate scopes requirements by path (#1247), and
+                without the old path a rename stopped intersecting a
+                requirement scoped to it, dropping that requirement from the
+                gate entirely.
 
         Returns:
             List of filenames changed in the PR
@@ -444,7 +455,12 @@ class GitHubIntegration:
             data = await self._make_request(method="GET", endpoint=endpoint)
             if not isinstance(data, list) or not data:
                 break
-            files.extend(f["filename"] for f in data)
+            for f in data:
+                files.append(f["filename"])
+                if include_previous and f.get("previous_filename"):
+                    files.append(f["previous_filename"])
+            # Paginate on the entry count, never on len(files): a page of
+            # renames emits more names than it had entries.
             if len(data) < 100:
                 break
             page += 1

@@ -149,6 +149,12 @@ class ProofRun:
     triggered_by: str  # 'human' | 'auto'
     overall_passed: bool
     duration_ms: Optional[int]
+    # Passed having executed nothing (#1247). Distinguishes "every gate ran and
+    # passed" from "no gate ran, so there was nothing to fail" — the state
+    # `enabled_gates: []` produces, which otherwise renders as an ordinary
+    # green pass. Defaults False so rows from before the column read as
+    # non-vacuous rather than as a silent accusation.
+    vacuous_pass: bool = False
 
 
 @dataclass

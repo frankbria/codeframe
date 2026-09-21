@@ -21,6 +21,7 @@ function makeRun(overrides: Partial<ProofRunSummary> = {}): ProofRunSummary {
     triggered_by: 'human',
     overall_passed: true,
     duration_ms: 5000,
+    vacuous_pass: false,
     ...overrides,
   };
 }
@@ -72,6 +73,40 @@ describe('RunHistoryPanel', () => {
     render(<RunHistoryPanel workspacePath={WORKSPACE} onSelectRun={jest.fn()} selectedRunId="abc12345" />);
     const rows = screen.getAllByRole('button');
     expect(rows[0].className).toContain('bg-muted');
+  });
+
+  it('labels a vacuous pass distinctly instead of showing it as a pass (#1247)', () => {
+    const run = makeRun({ run_id: 'vac1', overall_passed: true, vacuous_pass: true });
+    mockUseSWR.mockReturnValue({ data: [run], error: undefined, isLoading: false } as ReturnType<typeof useSWR>);
+    render(<RunHistoryPanel workspacePath={WORKSPACE} onSelectRun={jest.fn()} selectedRunId={null} />);
+    expect(screen.getByText('vacuous')).toBeInTheDocument();
+    expect(screen.queryByText('pass')).not.toBeInTheDocument();
+  });
+
+  it('still shows an ordinary pass as pass', () => {
+    const run = makeRun({ run_id: 'ok1', overall_passed: true, vacuous_pass: false });
+    mockUseSWR.mockReturnValue({ data: [run], error: undefined, isLoading: false } as ReturnType<typeof useSWR>);
+    render(<RunHistoryPanel workspacePath={WORKSPACE} onSelectRun={jest.fn()} selectedRunId={null} />);
+    expect(screen.getByText('pass')).toBeInTheDocument();
+    expect(screen.queryByText('vacuous')).not.toBeInTheDocument();
+  });
+
+  it('a failing run is never labelled vacuous', () => {
+    const run = makeRun({ run_id: 'bad1', overall_passed: false, vacuous_pass: true });
+    mockUseSWR.mockReturnValue({ data: [run], error: undefined, isLoading: false } as ReturnType<typeof useSWR>);
+    render(<RunHistoryPanel workspacePath={WORKSPACE} onSelectRun={jest.fn()} selectedRunId={null} />);
+    expect(screen.getByText('fail')).toBeInTheDocument();
+    expect(screen.queryByText('vacuous')).not.toBeInTheDocument();
+  });
+
+  it('explains what a vacuous pass means on hover', () => {
+    const run = makeRun({ run_id: 'vac2', overall_passed: true, vacuous_pass: true });
+    mockUseSWR.mockReturnValue({ data: [run], error: undefined, isLoading: false } as ReturnType<typeof useSWR>);
+    render(<RunHistoryPanel workspacePath={WORKSPACE} onSelectRun={jest.fn()} selectedRunId={null} />);
+    expect(screen.getByText('vacuous')).toHaveAttribute(
+      'title',
+      expect.stringContaining('no gates ran') as unknown as string,
+    );
   });
 
   it('shows "Recent Runs" heading', () => {

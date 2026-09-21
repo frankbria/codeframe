@@ -10,7 +10,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from codeframe.core.proof import ledger
-from codeframe.core.proof.models import Evidence, Gate, GateOutcome, Requirement
+from codeframe.core.proof.models import (
+    Evidence,
+    Gate,
+    GateOutcome,
+    Requirement,
+    RequirementScope,
+)
 from codeframe.core.workspace import Workspace
 
 logger = logging.getLogger(__name__)
@@ -154,8 +160,25 @@ def check_obligation_satisfied(
     return False
 
 
-def list_blocking_requirements(workspace: Workspace) -> list[Requirement]:
+def list_blocking_requirements(
+    workspace: Workspace,
+    changed_scope: RequirementScope | None = None,
+) -> list[Requirement]:
     """Requirements that must stop a merge (#731 gate, #952 verification).
+
+    ``changed_scope`` narrows the result to requirements that actually apply to
+    the change under review (#1247). It is optional and defaults to ``None``,
+    which means "match everything" — the workspace-global behavior every caller
+    had before, so an omitted argument can never loosen the gate.
+
+    Scope matching reuses :func:`~codeframe.core.proof.scope.intersects`, the
+    same predicate ``run_proof`` has used since #922, rather than a second
+    merge-specific rule that could drift from it. Its fail-closed convention
+    carries over intact: a requirement with no dimension comparable to the
+    changed scope stays in scope. That matters most for the requirements a
+    file-based scope can never describe — one captured as ``GET /api/tasks``
+    has no file dimension at all, and #922 exists because excluding those made
+    runs pass while the gate still blocked on them.
 
     Two reasons a requirement blocks:
 
@@ -199,5 +222,13 @@ def list_blocking_requirements(workspace: Workspace) -> list[Requirement]:
                 )
                 blocking.append(req)
                 break
+
+    if changed_scope is not None:
+        # Filtered once, at the end, so both reasons a requirement blocks are
+        # narrowed the same way. An out-of-scope requirement is irrelevant to
+        # this change whether it is unproven or has tampered evidence.
+        from codeframe.core.proof.scope import intersects
+
+        blocking = [req for req in blocking if intersects(req.scope, changed_scope)]
 
     return blocking
