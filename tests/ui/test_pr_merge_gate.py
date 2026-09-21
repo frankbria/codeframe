@@ -358,13 +358,17 @@ class TestMergeGateScope:
 
         The gate must still block: reporting only the post-rename path would
         make renaming a file a way out of its own requirement.
+
+        The mock *behaves* like GitHub rather than asserting on its own
+        arguments: an in-band assert would raise inside the gate's fail-closed
+        ``except Exception``, which blocks the merge anyway — so the test would
+        pass with the defect present (found by mutation check, #1254).
         """
         save_requirement(test_workspace, _req("REQ-1"))
 
         mock = _make_mock_client()
 
         async def _files(pr_number, include_previous=False):
-            assert include_previous, "the gate must ask for pre-rename paths"
             return ["renamed.py", "x.py"] if include_previous else ["renamed.py"]
 
         mock.get_pr_files = AsyncMock(side_effect=_files)

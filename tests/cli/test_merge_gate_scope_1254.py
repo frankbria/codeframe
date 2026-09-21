@@ -132,13 +132,17 @@ class TestMergeGateScope:
 
         GitHub reports a rename under its new path only, so without asking for
         the pre-rename path a rename becomes a way out of its own requirement.
+
+        The mock therefore *behaves* like GitHub rather than asserting on its
+        own arguments: an in-band assert would raise inside the helper's
+        fail-closed ``except Exception``, which blocks the merge anyway — so
+        the test would pass with the defect present.
         """
         save_requirement(workspace, _req())
 
         factory = _github()
 
         async def _files(pr_number, include_previous=False):
-            assert include_previous, "the gate must ask for pre-rename paths"
             return ["renamed.py", "x.py"] if include_previous else ["renamed.py"]
 
         factory.instance.get_pr_files = AsyncMock(side_effect=_files)
@@ -283,8 +287,55 @@ class TestCommandWiring:
         )
         client_patch, cred_patch = _patched(factory)
         with client_patch, cred_patch:
-            CliRunner().invoke(pr_app, ["merge", str(PR_NUMBER)])
+            result = CliRunner().invoke(pr_app, ["merge", str(PR_NUMBER)])
 
         factory.instance.get_pr_files.assert_called_once_with(
             PR_NUMBER, include_previous=True
         )
+        # The command must have got *past* the gate to the merge it then fails
+        # on — otherwise this passes on a lookup made by a command that died
+        # somewhere else entirely.
+        assert result.exit_code != 0
+        assert isinstance(result.exception, RuntimeError)
+        assert "stop after the gate" in str(result.exception)
+
+
+class TestRequirementPathSpelling:
+    """A requirement's ``where`` is whatever a human typed (#1254 review, P1).
+
+    ``build_scope_from_capture`` stores it verbatim, so ``cf proof capture
+    --where "./x.py"`` produced a requirement that matched nothing, ever. Under
+    workspace-global scope that was invisible — the gate blocked on it anyway.
+    Scoping the CLI gate made it a fail-open: the requirement is silently
+    dropped and the merge proceeds. Both gates share ``scope._files_intersect``,
+    so the fix lives there and this pins the consequence at the CLI.
+    """
+
+    @pytest.mark.parametrize("where", ["./x.py", "x.py", "src/../x.py"])
+    def test_a_dot_slash_requirement_still_blocks_its_own_file(self, workspace, where):
+        save_requirement(workspace, _req(files=[where]))
+
+        with pytest.raises(typer.Exit):
+            _gate(_github(["x.py"]))
+
+    def test_a_dot_slash_directory_requirement_still_blocks(self, workspace):
+        save_requirement(workspace, _req(files=["./src/auth"]))
+
+        with pytest.raises(typer.Exit):
+            _gate(_github(["src/auth/login.py"]))
+
+    def test_normalizing_does_not_widen_the_prefix_rule(self, workspace):
+        """"src/auth" must still not swallow "src/authentication/x.py"."""
+        save_requirement(workspace, _req(files=["./src/auth"]))
+
+        assert _gate(_github(["src/authentication/x.py"])) is None
+
+    def test_capture_produces_a_scope_the_gate_can_match(self, workspace):
+        """End to end from the string a user actually types."""
+        from codeframe.core.proof.scope import build_scope_from_capture
+
+        scope = build_scope_from_capture("./x.py")
+        save_requirement(workspace, _req(files=scope.files))
+
+        with pytest.raises(typer.Exit):
+            _gate(_github(["x.py"]))
