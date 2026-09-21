@@ -135,6 +135,25 @@ describe('PRStatusPanel — merge gate override', () => {
     expect(screen.getByText(/evidence no longer verifies/)).toBeInTheDocument();
   });
 
+  it('agrees with itself about number', async () => {
+    setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
+    render(<PRStatusPanel {...defaultProps} />);
+    await triggerGate409();
+
+    expect(screen.getByText(/1 requirement remains unproven/i)).toBeInTheDocument();
+  });
+
+  it('pluralises for more than one blocker', async () => {
+    setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
+    render(<PRStatusPanel {...defaultProps} />);
+    await triggerGate409([
+      { id: 'REQ-001', title: 'first' },
+      { id: 'REQ-002', title: 'second' },
+    ]);
+
+    expect(screen.getByText(/2 requirements remain unproven/i)).toBeInTheDocument();
+  });
+
   it('will not submit without a reason', async () => {
     setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
     render(<PRStatusPanel {...defaultProps} />);

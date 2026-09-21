@@ -80,9 +80,12 @@ export function MergeOverrideModal({
             Override the PROOF9 merge gate
           </DialogTitle>
           <DialogDescription>
-            Merging PR #{prNumber} while {blockingRequirements.length} requirement
-            {blockingRequirements.length === 1 ? '' : 's'} remain unproven. This is
-            recorded against your account and shown in the PR history.
+            Merging PR #{prNumber} while {blockingRequirements.length}{' '}
+            {blockingRequirements.length === 1
+              ? 'requirement remains'
+              : 'requirements remain'}{' '}
+            unproven. This is recorded against your account and shown in the PR
+            history.
           </DialogDescription>
         </DialogHeader>
 
