@@ -438,3 +438,41 @@ class TestTheWarningCannotForgeLogLines:
                                  on_warning=warnings.append)
 
         assert r"C:\repo\x.py" in warnings[0]
+
+
+class TestColonPrefixedSpellings:
+    """`scheme:` / `X:` without a following slash (#1259 review r2).
+
+    `file:/repo/x.py` and `C:x/y.py` (drive-relative) were rejected by the
+    first version of `_NOT_REPO_RELATIVE`, which required `//` or a separator,
+    so they kept landing in `files` and matching nothing. Pre-existing rather
+    than introduced here, but the same class this issue exists to close.
+    """
+
+    SPELLINGS = [
+        pytest.param("file:/repo/x.py", id="single-slash-uri"),
+        pytest.param("C:x/y.py", id="drive-relative"),
+        pytest.param("feature:auth/login.py", id="colon-prefixed"),
+    ]
+
+    @pytest.mark.parametrize("where", SPELLINGS)
+    def test_it_is_not_stored_as_an_unmatchable_file(self, where, workspace):
+        scope = build_scope_from_capture(where, workspace=workspace)
+
+        assert where not in scope.files
+
+    @pytest.mark.parametrize("where", SPELLINGS)
+    def test_it_fails_closed(self, where, workspace):
+        scope = build_scope_from_capture(where, workspace=workspace)
+
+        assert _matches(scope, "src/auth/login.py")
+
+    @pytest.mark.parametrize(
+        "where", ["src/auth/login.py", "/login", "/api/v2/tasks", "authentication",
+                  "POST /auth/login", "./x.py", "src/my file.py"]
+    )
+    def test_widening_the_pattern_did_not_catch_ordinary_input(self, where, workspace):
+        """The colon rule must not swallow anything that classified fine."""
+        scope = build_scope_from_capture(where, workspace=workspace)
+
+        assert where not in scope.tags or where == "authentication"

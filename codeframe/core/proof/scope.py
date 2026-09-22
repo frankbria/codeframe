@@ -21,7 +21,12 @@ logger = logging.getLogger(__name__)
 # reference, or a URI scheme. Each of these used to land in `files` and match
 # nothing for every change, forever (#1258).
 _NOT_REPO_RELATIVE = re.compile(
-    r"^(?:[A-Za-z]:[\\/]|[\\~]|[A-Za-z][A-Za-z0-9+.\-]*://)"
+    # A leading `scheme:` or `X:` covers URIs (`file:/…`, `https://…`) *and*
+    # Windows drives, drive-relative (`C:x/y.py`) included. The separator is
+    # deliberately not required: `file:/repo/x.py` and `C:x/y.py` were the two
+    # spellings that slipped past the first version of this pattern and kept
+    # landing in `files`, matching nothing (#1259 review r2).
+    r"^(?:[A-Za-z][A-Za-z0-9+.\-]*:|[\\~])"
 )
 
 
