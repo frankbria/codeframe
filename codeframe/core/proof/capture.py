@@ -6,7 +6,7 @@ classify → obligations → scope → save → generate stubs → write stubs t
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from codeframe.core.proof import ledger
 from codeframe.core.proof.models import (
@@ -35,6 +35,7 @@ def capture_requirement(
     source: Source,
     created_by: str = "human",
     source_issue: Optional[str] = None,
+    on_warning: Optional[Callable[[str], None]] = None,
 ) -> tuple[Requirement, dict[Gate, Path]]:
     """Create a new requirement from a glitch report.
 
@@ -47,8 +48,10 @@ def capture_requirement(
     # 2. Get obligation set
     obligations = get_obligations(glitch_type)
 
-    # 3. Build scope from user-provided location
-    scope = build_scope_from_capture(where)
+    # 3. Build scope from user-provided location. The workspace is what
+    # lets an absolute path be recognised as one of ours rather than
+    # guessed at (#1258).
+    scope = build_scope_from_capture(where, workspace=workspace, on_warning=on_warning)
 
     # 4. Generate evidence rules for each obligation
     evidence_rules = []

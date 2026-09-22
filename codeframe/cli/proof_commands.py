@@ -101,6 +101,9 @@ def capture(
         console.print(f"[red]Error:[/red] Invalid source: {escape(str(source))}")
         raise typer.Exit(1)
 
+    def _scope_warning(message: str) -> None:
+        console.print(f"[yellow]⚠[/yellow] {escape(message)}")
+
     req, stubs = capture_requirement(
         workspace,
         title=title,
@@ -109,6 +112,7 @@ def capture(
         severity=sev,
         source=src,
         source_issue=source_issue,
+        on_warning=_scope_warning,
     )
 
     console.print(f"\n[green]✓[/green] Created [bold]{req.id}[/bold]: {escape(req.title)}")

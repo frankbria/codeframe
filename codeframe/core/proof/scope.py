@@ -7,6 +7,8 @@ by matching requirement scopes against changed files/routes.
 import logging
 import posixpath
 import re
+from pathlib import Path
+from typing import Callable
 
 from codeframe.core.proof.models import RequirementScope
 from codeframe.core.workspace import Workspace
@@ -14,15 +16,76 @@ from codeframe.core.workspace import Workspace
 logger = logging.getLogger(__name__)
 
 
-def build_scope_from_capture(where: str) -> RequirementScope:
+_WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def _is_absolute_path(part: str) -> bool:
+    """POSIX absolute, or a Windows drive-letter path."""
+    return part.startswith("/") or bool(_WINDOWS_DRIVE.match(part))
+
+
+def _relativize(part: str, workspace: Workspace) -> "str | None":
+    """``part`` as a repo-relative path, or None if it is not inside the repo.
+
+    Both sides are resolved, so a path that reaches the repo through a symlink
+    still relativizes. Only POSIX-absolute input is attempted: resolving a
+    ``C:/...`` string on POSIX would silently anchor it to the cwd.
+    """
+    if not part.startswith("/"):
+        return None
+    try:
+        resolved = Path(part).resolve()
+        root = Path(workspace.repo_path).resolve()
+        if resolved == root:
+            return "."
+        return resolved.relative_to(root).as_posix()
+    except (ValueError, OSError):
+        return None
+
+
+def build_scope_from_capture(
+    where: str,
+    workspace: "Workspace | None" = None,
+    on_warning: "Callable[[str], None] | None" = None,
+) -> RequirementScope:
     """Parse a user-provided location string into a RequirementScope.
 
-    Heuristics:
+    Heuristics, in order:
+    - Contains an HTTP method (GET, POST, …) → api
+    - An absolute path **inside** ``workspace`` → file, relativized (#1258)
     - Starts with / and contains path segments → route
-    - Contains file extension → file
-    - Contains HTTP method (GET, POST, etc.) → api
+    - Any other absolute path → tag, so it fails closed (#1258)
+    - Contains a file extension → file
     - Otherwise → tag
+
+    The workspace is what makes the third and fourth rules possible. Without it
+    an absolute path could only be guessed at, and the guess was wrong twice:
+    ``/repo/src/x.py`` was classified as a *route* (harmless by luck — routes
+    never appear in a changed scope, so #922's uncomparable rule made it match
+    everything), while ``/repo/my file.py`` and ``C:/repo/x.py`` fell through to
+    ``files`` and could never match git's repo-relative paths at all. Once
+    #1247/#1254 taught both merge gates to narrow by scope, that second case
+    became a silent merge.
+
+    An absolute path that is not inside the workspace is deliberately **not**
+    rejected: ``/login`` is a legitimate route and is also "outside the
+    workspace", so refusing those would break route capture. It is demoted to an
+    uncomparable dimension instead, which fails closed, and ``on_warning`` is
+    told — a scope that matches everything is recoverable, one that matches
+    nothing is silent.
+
+    Args:
+        where: the raw ``--where`` string, comma-separated.
+        workspace: used to decide whether an absolute path is one of ours.
+        on_warning: called with a human-readable message when a path is demoted.
+            Defaults to a module-level log; core never writes to a console.
     """
+    def warn(message: str) -> None:
+        if on_warning is not None:
+            on_warning(message)
+        else:
+            logger.warning(message)
+
     scope = RequirementScope()
     parts = [p.strip() for p in where.split(",")]
 
@@ -31,8 +94,26 @@ def build_scope_from_capture(where: str) -> RequirementScope:
             continue
         if re.match(r"^(GET|POST|PUT|DELETE|PATCH)\s+", part, re.IGNORECASE):
             scope.apis.append(part)
-        elif re.match(r"^/[\w/\-.*]+$", part):
+            continue
+
+        if workspace is not None and _is_absolute_path(part):
+            relative = _relativize(part, workspace)
+            if relative is not None:
+                scope.files.append(relative)
+                continue
+
+        if re.match(r"^/[\w/\-.*]+$", part):
             scope.routes.append(part)
+        elif _is_absolute_path(part):
+            # Absolute, not inside the workspace, and not route-shaped. In
+            # `files` it would match no changed path ever; as a tag it is
+            # uncomparable, which `intersects` treats as in scope.
+            scope.tags.append(part)
+            warn(
+                f"PROOF9: '{part}' is not a path inside this workspace. Storing "
+                "it as a match-everything scope — this requirement will apply to "
+                "every change until it is re-scoped to a repo-relative path."
+            )
         elif "." in part and "/" in part:
             scope.files.append(part)
         elif re.match(r"^[\w/]+\.\w+$", part):
