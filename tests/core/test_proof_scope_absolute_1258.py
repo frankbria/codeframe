@@ -81,13 +81,22 @@ class TestAbsoluteInsideWorkspace:
         assert _matches(scope, "anything/at/all.py")
 
     def test_a_symlinked_workspace_root_still_relativizes(self, tmp_path, workspace):
-        """The path a user pastes may reach the repo through a symlink."""
+        """The path a user pastes may reach the repo through a symlink.
+
+        Asserts the *dimension*, not just that it matches. Without `.resolve()`
+        the path fails to relativize and falls through to the route regex —
+        which makes it match everything via #922's uncomparable rule, so an
+        `assert _matches(...)` here passes with the defect present. (Caught by
+        mutation check; same shape as the #1254 rename test.)
+        """
         link = tmp_path / "via-link"
         link.symlink_to(workspace.repo_path)
 
         scope = build_scope_from_capture(str(link / "src" / "auth" / "login.py"),
                                          workspace=workspace)
 
+        assert scope.files == ["src/auth/login.py"]
+        assert not scope.routes, "a symlinked repo path is still a file, not a route"
         assert _matches(scope, "src/auth/login.py")
 
 
