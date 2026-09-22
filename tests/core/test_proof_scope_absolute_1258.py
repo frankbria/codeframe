@@ -367,3 +367,41 @@ class TestWarningDeliveryIsNotLoadBearing:
                                          on_warning=boom)
 
         assert _matches(scope, "src/auth/login.py"), "the scope must still be built"
+
+
+class TestTheWarningCannotForgeLogLines:
+    """`where` is user input and the warning reaches `logger.warning` (#1259 review).
+
+    On the API path a raw newline in the captured location produced a second,
+    attacker-controlled log line. Escaped rather than stripped, so the real
+    value stays visible to whoever reads the log.
+    """
+
+    def test_a_newline_is_escaped(self, workspace):
+        warnings: list[str] = []
+
+        build_scope_from_capture(
+            "/abs/real.py\nWARNING evil", workspace=workspace, on_warning=warnings.append
+        )
+
+        assert warnings, "the demoted path must still warn"
+        assert "\n" not in warnings[0]
+        assert "\\n" in warnings[0], "the newline is shown, not silently dropped"
+
+    def test_a_carriage_return_is_escaped(self, workspace):
+        warnings: list[str] = []
+
+        build_scope_from_capture(
+            "/abs/real.py\rWARNING evil", workspace=workspace, on_warning=warnings.append
+        )
+
+        assert warnings and "\r" not in warnings[0]
+
+    def test_an_ordinary_path_is_unchanged(self, workspace):
+        """Escaping must not mangle the path the user actually typed."""
+        warnings: list[str] = []
+
+        build_scope_from_capture(r"C:\repo\x.py", workspace=workspace,
+                                 on_warning=warnings.append)
+
+        assert r"C:\repo\x.py" in warnings[0]

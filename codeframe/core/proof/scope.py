@@ -29,6 +29,11 @@ def _is_absolute_path(part: str) -> bool:
     return part.startswith("/") or bool(_NOT_REPO_RELATIVE.match(part))
 
 
+def _one_line(text: str) -> str:
+    """Render CR/LF visibly so a path cannot forge a log line."""
+    return text.replace("\r", "\\r").replace("\n", "\\n")
+
+
 def _looks_like_a_file(part: str, resolved: "Path | None" = None) -> bool:
     """Whether an inside-the-workspace path should beat route classification.
 
@@ -137,9 +142,13 @@ def build_scope_from_capture(
             # uncomparable, which `intersects` treats as in scope.
             scope.tags.append(part)
             warn(
-                f"PROOF9: '{part}' is not a path inside this workspace. Storing "
-                "it as a match-everything scope — this requirement will apply to "
-                "every change until it is re-scoped to a repo-relative path."
+                # Newlines are escaped, not stripped: `where` is user input and
+                # this message reaches `logger.warning` on the API path, where a
+                # raw newline lets the caller forge a second log line.
+                f"PROOF9: '{_one_line(part)}' cannot be matched against this "
+                "workspace's changed files. Storing it as a match-everything "
+                "scope — this requirement will apply to every change until it "
+                "is re-scoped to a repo-relative path."
             )
         elif "." in part and "/" in part:
             scope.files.append(part)
