@@ -534,3 +534,65 @@ class TestFileSymlinks:
         scope = build_scope_from_capture(str(link), workspace=workspace)
 
         assert scope.files == ["."]
+
+
+class TestIntermediateSymlinks:
+    """Every link the capture passes through is recorded (#1259 review r5).
+
+    git stores a symlink as a blob at its own path and never descends into a
+    symlinked directory, so retargeting an *intermediate* link is reported under
+    that link's path. Resolving the whole path (or only its parent) discarded
+    those spellings. The fix is the general rule — record each hop — rather than
+    another special case, because each review round had found one more shape.
+    """
+
+    @pytest.fixture
+    def repo(self, workspace):
+        return workspace.repo_path
+
+    def test_a_mid_path_directory_link_is_recorded(self, workspace, repo):
+        import os
+
+        (repo / "realdir").mkdir()
+        (repo / "realdir" / "x.py").write_text("x = 1\n")
+        os.symlink("realdir", repo / "linkdir")
+
+        scope = build_scope_from_capture(str(repo / "linkdir" / "x.py"), workspace=workspace)
+
+        assert sorted(scope.files) == ["linkdir", "realdir/x.py"]
+        assert _matches(scope, "linkdir"), "retargeting the directory link"
+        assert _matches(scope, "realdir/x.py"), "editing the file"
+
+    def test_every_link_in_a_chain_is_recorded(self, workspace, repo):
+        import os
+
+        (repo / "real.py").write_text("x = 1\n")
+        os.symlink("real.py", repo / "link2")
+        os.symlink("link2", repo / "link1.py")
+
+        scope = build_scope_from_capture(str(repo / "link1.py"), workspace=workspace)
+
+        assert sorted(scope.files) == ["link1.py", "link2", "real.py"]
+        assert _matches(scope, "link2"), "retargeting the middle link"
+
+    def test_a_parent_relative_target_is_followed(self, workspace, repo):
+        import os
+
+        (repo / "real.py").write_text("x = 1\n")
+        (repo / "sub").mkdir()
+        os.symlink("../real.py", repo / "sub" / "up.py")
+
+        scope = build_scope_from_capture(str(repo / "sub" / "up.py"), workspace=workspace)
+
+        assert sorted(scope.files) == ["real.py", "sub/up.py"]
+
+    def test_a_symlink_loop_fails_closed_instead_of_hanging(self, workspace, repo):
+        import os
+
+        os.symlink("loopb.py", repo / "loopa.py")
+        os.symlink("loopa.py", repo / "loopb.py")
+
+        scope = build_scope_from_capture(str(repo / "loopa.py"), workspace=workspace)
+
+        assert not scope.files, "an unresolvable path must not become a file scope"
+        assert _matches(scope, "anything.py"), "fails closed"

@@ -4,7 +4,9 @@ Determines which requirements apply to the current set of changes
 by matching requirement scopes against changed files/routes.
 """
 
+import errno
 import logging
+import os
 import posixpath
 import re
 from pathlib import Path
@@ -73,8 +75,57 @@ def _relative_to_root(path: Path, root: Path) -> "str | None":
         return None
 
 
+# The kernel's own ELOOP limit; beyond it a capture fails closed.
+_MAX_SYMLINK_HOPS = 40
+
+
+def _traversed_paths(candidate: Path) -> list[Path]:
+    """Every location git could report a change under for ``candidate``.
+
+    A ``realpath`` that keeps a record: it walks one component at a time,
+    follows each symlink hop by hop, and records every link's own location plus
+    the final target. git stores a symlink as a blob at its own path and never
+    descends into a symlinked directory, so each recorded location is exactly a
+    spelling that retargeting that link is reported under — a mid-path
+    directory link (``linkdir/x.py``) and each link in a chain
+    (``link1 -> link2 -> real.py``) included (#1259 review r5). Resolving the
+    whole path, or only its parent, drops those intermediate spellings and lets
+    the retarget escape the scope.
+
+    ``current`` is always fully resolved, so a ``..`` from a link target can be
+    applied lexically. Raises ``OSError`` past ``_MAX_SYMLINK_HOPS``.
+    """
+    found: list[Path] = []
+    current = Path(candidate.anchor)
+    pending = list(candidate.parts[1:])
+    hops = 0
+    while pending:
+        component = pending.pop(0)
+        if component in ("", "."):
+            continue
+        if component == "..":
+            current = current.parent
+            continue
+        step = current / component
+        if step.is_symlink():
+            hops += 1
+            if hops > _MAX_SYMLINK_HOPS:
+                raise OSError(errno.ELOOP, "too many levels of symbolic links", str(step))
+            found.append(step)
+            target = Path(os.readlink(step))
+            if target.is_absolute():
+                current = Path(target.anchor)
+                pending = list(target.parts[1:]) + pending
+            else:
+                pending = list(target.parts) + pending
+            continue
+        current = step
+    found.append(current)
+    return found
+
+
 def _relativize(part: str, workspace: Workspace) -> "tuple[list[str], Path] | None":
-    """``(spellings, literal)``, or None if ``part`` is not inside the repo.
+    """``(spellings, final_target)``, or None if ``part`` is not inside the repo.
 
     Both sides are resolved, so a path that reaches the repo through a symlink
     still relativizes. Only POSIX-absolute input is attempted: resolving a
@@ -87,19 +138,18 @@ def _relativize(part: str, workspace: Workspace) -> "tuple[list[str], Path] | No
             # nothing here can say where in the repo it points.
             return None
         root = Path(workspace.repo_path).resolve()
-        # Resolve the directories but keep the final component as captured,
-        # then ALSO record where it points. git reports a symlink under its own
-        # path (retargeting `link.py` shows as `link.py`) but an edit to its
-        # target under the target's (`real.py`). Either spelling alone lets one
-        # of those changes escape the scope, so a file symlink stores both —
-        # the fail-closed answer (#1259 review r3).
-        literal = candidate.parent.resolve() / candidate.name
+        # Every link the capture passes through, plus the final target. git
+        # reports a retargeted symlink under the link's own path but an edit to
+        # the target under the target's, so any one spelling lets the other
+        # change escape (#1259 review r3, r5). A link located outside the repo
+        # is simply not ours and is skipped.
+        traversed = _traversed_paths(candidate)
         spellings: list[str] = []
-        for path in (literal, literal.resolve()):
+        for path in traversed:
             relative = _relative_to_root(path, root)
             if relative is not None and relative not in spellings:
                 spellings.append(relative)
-        return (spellings, literal) if spellings else None
+        return (spellings, traversed[-1]) if spellings else None
     except (ValueError, OSError, RuntimeError):
         # ValueError is not only relative_to's: Path.resolve() raises it for an
         # embedded NUL, and a user-typed --where must never crash capture.
