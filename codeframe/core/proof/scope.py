@@ -4,9 +4,13 @@ Determines which requirements apply to the current set of changes
 by matching requirement scopes against changed files/routes.
 """
 
+import errno
 import logging
+import os
 import posixpath
 import re
+from pathlib import Path
+from typing import Callable
 
 from codeframe.core.proof.models import RequirementScope
 from codeframe.core.workspace import Workspace
@@ -14,15 +18,192 @@ from codeframe.core.workspace import Workspace
 logger = logging.getLogger(__name__)
 
 
-def build_scope_from_capture(where: str) -> RequirementScope:
+# Anything that cannot possibly equal a repo-relative path from git: POSIX
+# absolute, a Windows drive, a leading backslash or UNC share, a `~` home
+# reference, or a URI scheme. Each of these used to land in `files` and match
+# nothing for every change, forever (#1258).
+_NOT_REPO_RELATIVE = re.compile(
+    # A leading `scheme:` or `X:` covers URIs (`file:/…`, `https://…`) *and*
+    # Windows drives, drive-relative (`C:x/y.py`) included. The separator is
+    # deliberately not required: `file:/repo/x.py` and `C:x/y.py` were the two
+    # spellings that slipped past the first version of this pattern and kept
+    # landing in `files`, matching nothing (#1259 review r2).
+    r"^(?:[A-Za-z][A-Za-z0-9+.\-]*:|[\\~])"
+)
+
+
+def _is_absolute_path(part: str) -> bool:
+    return part.startswith("/") or bool(_NOT_REPO_RELATIVE.match(part))
+
+
+def _one_line(text: str) -> str:
+    """Render every non-printable character visibly.
+
+    The warning reaches ``logger.warning`` on the API capture path, so a
+    control character in a user-supplied ``--where`` can rewrite the log. CR/LF
+    forge a whole line; ESC forges content in any ANSI-rendering viewer
+    (``tail -f``, ``docker logs``, a CI log pane). Escaping the *class* rather
+    than the two characters that were reported — the rest of this module is
+    about not fixing the reported spelling only (#1259 review).
+    """
+    return "".join(
+        ch if ch == " " or ch.isprintable() else ch.encode("unicode_escape").decode("ascii")
+        for ch in text
+    )
+
+
+def _looks_like_a_file(part: str, resolved: "Path | None" = None) -> bool:
+    """Whether an inside-the-workspace path should beat route classification.
+
+    ``/app/settings`` with the repo at ``/app`` is syntactically inside the
+    workspace but is far more likely a route. Requiring that the path either
+    exist or carry a file extension keeps it a route — which matches everything
+    and so fails closed — instead of turning it into a file scope that matches
+    almost nothing (#1258 review).
+    """
+    if posixpath.splitext(part)[1]:
+        return True
+    return resolved is not None and resolved.exists()
+
+
+def _relative_to_root(path: Path, root: Path) -> "str | None":
+    if path == root:
+        return "."
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return None
+
+
+# The kernel's own ELOOP limit; beyond it a capture fails closed.
+_MAX_SYMLINK_HOPS = 40
+
+
+def _traversed_paths(candidate: Path) -> list[Path]:
+    """Every location git could report a change under for ``candidate``.
+
+    A ``realpath`` that keeps a record: it walks one component at a time,
+    follows each symlink hop by hop, and records every link's own location plus
+    the final target. git stores a symlink as a blob at its own path and never
+    descends into a symlinked directory, so each recorded location is exactly a
+    spelling that retargeting that link is reported under — a mid-path
+    directory link (``linkdir/x.py``) and each link in a chain
+    (``link1 -> link2 -> real.py``) included (#1259 review r5). Resolving the
+    whole path, or only its parent, drops those intermediate spellings and lets
+    the retarget escape the scope.
+
+    ``current`` is always fully resolved, so a ``..`` from a link target can be
+    applied lexically. Raises ``OSError`` past ``_MAX_SYMLINK_HOPS``.
+    """
+    found: list[Path] = []
+    current = Path(candidate.anchor)
+    pending = list(candidate.parts[1:])
+    hops = 0
+    while pending:
+        component = pending.pop(0)
+        if component in ("", "."):
+            continue
+        if component == "..":
+            current = current.parent
+            continue
+        step = current / component
+        if step.is_symlink():
+            hops += 1
+            if hops > _MAX_SYMLINK_HOPS:
+                raise OSError(errno.ELOOP, "too many levels of symbolic links", str(step))
+            found.append(step)
+            target = Path(os.readlink(step))
+            if target.is_absolute():
+                current = Path(target.anchor)
+                pending = list(target.parts[1:]) + pending
+            else:
+                pending = list(target.parts) + pending
+            continue
+        current = step
+    found.append(current)
+    return found
+
+
+def _relativize(part: str, workspace: Workspace) -> "tuple[list[str], Path] | None":
+    """``(spellings, final_target)``, or None if ``part`` is not inside the repo.
+
+    Both sides are resolved, so a path that reaches the repo through a symlink
+    still relativizes. Only POSIX-absolute input is attempted: resolving a
+    ``C:/...`` string on POSIX would silently anchor it to the cwd.
+    """
+    try:
+        candidate = Path(part).expanduser()
+        if not candidate.is_absolute():
+            # A Windows drive path on POSIX, a UNC share, an unexpandable `~`:
+            # nothing here can say where in the repo it points.
+            return None
+        root = Path(workspace.repo_path).resolve()
+        # Every link the capture passes through, plus the final target. git
+        # reports a retargeted symlink under the link's own path but an edit to
+        # the target under the target's, so any one spelling lets the other
+        # change escape (#1259 review r3, r5). A link located outside the repo
+        # is simply not ours and is skipped.
+        traversed = _traversed_paths(candidate)
+        spellings: list[str] = []
+        for path in traversed:
+            relative = _relative_to_root(path, root)
+            if relative is not None and relative not in spellings:
+                spellings.append(relative)
+        return (spellings, traversed[-1]) if spellings else None
+    except (ValueError, OSError, RuntimeError):
+        # ValueError is not only relative_to's: Path.resolve() raises it for an
+        # embedded NUL, and a user-typed --where must never crash capture.
+        return None
+
+
+def build_scope_from_capture(
+    where: str,
+    workspace: "Workspace | None" = None,
+    on_warning: "Callable[[str], None] | None" = None,
+) -> RequirementScope:
     """Parse a user-provided location string into a RequirementScope.
 
-    Heuristics:
+    Heuristics, in order:
+    - Contains an HTTP method (GET, POST, …) → api
+    - An absolute path **inside** ``workspace`` → file, relativized (#1258)
     - Starts with / and contains path segments → route
-    - Contains file extension → file
-    - Contains HTTP method (GET, POST, etc.) → api
+    - Any other absolute path → tag, so it fails closed (#1258)
+    - Contains a file extension → file
     - Otherwise → tag
+
+    The workspace is what makes the third and fourth rules possible. Without it
+    an absolute path could only be guessed at, and the guess was wrong twice:
+    ``/repo/src/x.py`` was classified as a *route* (harmless by luck — routes
+    never appear in a changed scope, so #922's uncomparable rule made it match
+    everything), while ``/repo/my file.py`` and ``C:/repo/x.py`` fell through to
+    ``files`` and could never match git's repo-relative paths at all. Once
+    #1247/#1254 taught both merge gates to narrow by scope, that second case
+    became a silent merge.
+
+    An absolute path that is not inside the workspace is deliberately **not**
+    rejected: ``/login`` is a legitimate route and is also "outside the
+    workspace", so refusing those would break route capture. It is demoted to an
+    uncomparable dimension instead, which fails closed, and ``on_warning`` is
+    told — a scope that matches everything is recoverable, one that matches
+    nothing is silent.
+
+    Args:
+        where: the raw ``--where`` string, comma-separated.
+        workspace: used to decide whether an absolute path is one of ours.
+        on_warning: called with a human-readable message when a path is demoted.
+            Defaults to a module-level log; core never writes to a console.
     """
+    def warn(message: str) -> None:
+        try:
+            if on_warning is not None:
+                on_warning(message)
+            else:
+                logger.warning(message)
+        except Exception:
+            # A failed warning must never cost the user the capture it was
+            # warning about.
+            logger.warning("scope warning could not be delivered: %s", message)
+
     scope = RequirementScope()
     parts = [p.strip() for p in where.split(",")]
 
@@ -31,8 +212,30 @@ def build_scope_from_capture(where: str) -> RequirementScope:
             continue
         if re.match(r"^(GET|POST|PUT|DELETE|PATCH)\s+", part, re.IGNORECASE):
             scope.apis.append(part)
-        elif re.match(r"^/[\w/\-.*]+$", part):
+            continue
+
+        if workspace is not None and _is_absolute_path(part):
+            located = _relativize(part, workspace)
+            if located is not None and _looks_like_a_file(part, located[1]):
+                scope.files.extend(located[0])
+                continue
+
+        if re.match(r"^/[\w/\-.*]+$", part):
             scope.routes.append(part)
+        elif _is_absolute_path(part):
+            # Absolute, not inside the workspace, and not route-shaped. In
+            # `files` it would match no changed path ever; as a tag it is
+            # uncomparable, which `intersects` treats as in scope.
+            scope.tags.append(part)
+            warn(
+                # Newlines are escaped, not stripped: `where` is user input and
+                # this message reaches `logger.warning` on the API path, where a
+                # raw newline lets the caller forge a second log line.
+                f"PROOF9: '{_one_line(part)}' cannot be matched against this "
+                "workspace's changed files. Storing it as a match-everything "
+                "scope — this requirement will apply to every change until it "
+                "is re-scoped to a repo-relative path."
+            )
         elif "." in part and "/" in part:
             scope.files.append(part)
         elif re.match(r"^[\w/]+\.\w+$", part):
