@@ -66,6 +66,11 @@ class TestAbsoluteInsideWorkspace:
         assert not _matches(scope, "README.md")
 
     def test_a_directory_inside_the_workspace_keeps_prefix_matching(self, workspace):
+        # It must exist: an extensionless path that is not on disk is treated
+        # as route-shaped, which is what keeps `/app/settings` a route when the
+        # repo lives at `/app` (#1258 review).
+        (workspace.repo_path / "src" / "auth").mkdir(parents=True)
+
         scope = build_scope_from_capture(
             str(workspace.repo_path / "src" / "auth"), workspace=workspace
         )
@@ -248,3 +253,117 @@ class TestCaptureEndToEnd:
 
         assert [r.id for r in touching] == ["REQ-0001"]
         assert untouching == []
+
+
+class TestRouteCollision:
+    """A route-shaped path under the repo root must stay a route (#1258 review).
+
+    A repo at `/app` is ordinary in a container, and `/app/settings` is then
+    syntactically "inside the workspace". Classifying it as a *file* would make
+    a route requirement match only a file that will never change — turning a
+    fail-closed scope into a fail-open one. That is a regression the
+    workspace-aware classifier introduced and this pins it shut.
+    """
+
+    @pytest.fixture
+    def app_workspace(self, tmp_path):
+        from codeframe.core.workspace import create_or_load_workspace
+
+        repo = tmp_path / "app"
+        repo.mkdir()
+        return create_or_load_workspace(repo)
+
+    @pytest.mark.parametrize("suffix", ["/settings", "/v2/tasks", "/login"])
+    def test_an_extensionless_path_under_the_root_stays_a_route(self, app_workspace, suffix):
+        where = str(app_workspace.repo_path) + suffix
+
+        scope = build_scope_from_capture(where, workspace=app_workspace)
+
+        assert scope.routes == [where]
+        assert not scope.files
+        assert _matches(scope, "README.md"), "a route scope fails closed"
+
+    def test_an_existing_extensionless_path_is_still_a_file(self, app_workspace):
+        """Existence is the tiebreaker: a real directory is a real file scope."""
+        (app_workspace.repo_path / "settings").mkdir()
+
+        scope = build_scope_from_capture(
+            str(app_workspace.repo_path / "settings"), workspace=app_workspace
+        )
+
+        assert scope.files == ["settings"]
+
+    def test_a_file_with_an_extension_under_the_root_is_a_file(self, app_workspace):
+        """It need not exist yet — a capture can name a file about to be added."""
+        scope = build_scope_from_capture(
+            str(app_workspace.repo_path / "src" / "new_thing.py"), workspace=app_workspace
+        )
+
+        assert scope.files == ["src/new_thing.py"]
+
+
+class TestOtherUnmatchableSpellings:
+    """Every spelling that cannot equal a repo-relative path must fail closed.
+
+    All of these reached `files` before and matched nothing for every change
+    (#1258 review named them as an untested gap).
+    """
+
+    SPELLINGS = [
+        pytest.param("~/elsewhere/x.py", id="home-tilde"),
+        pytest.param("file:///repo/x.py", id="file-uri"),
+        pytest.param("https://example.com/x.py", id="http-uri"),
+        pytest.param(r"\\server/share/x.py", id="unc-share"),
+        pytest.param(r"\repo/src/x.py", id="leading-backslash"),
+    ]
+
+    @pytest.mark.parametrize("where", SPELLINGS)
+    def test_it_is_not_stored_as_an_unmatchable_file(self, where, workspace):
+        scope = build_scope_from_capture(where, workspace=workspace)
+
+        assert where not in scope.files
+
+    @pytest.mark.parametrize("where", SPELLINGS)
+    def test_it_fails_closed(self, where, workspace):
+        scope = build_scope_from_capture(where, workspace=workspace)
+
+        assert _matches(scope, "src/auth/login.py")
+
+    def test_a_tilde_path_inside_the_workspace_relativizes(self, workspace, monkeypatch):
+        """`~` is expanded, so a home-relative path into the repo still works."""
+        monkeypatch.setenv("HOME", str(workspace.repo_path.parent))
+
+        scope = build_scope_from_capture(
+            f"~/{workspace.repo_path.name}/src/auth/login.py", workspace=workspace
+        )
+
+        assert scope.files == ["src/auth/login.py"]
+
+
+class TestRelativePathsWithAwkwardCharacters:
+    """Relative paths that the route regex also rejects must stay files.
+
+    The fix targets *absolute* unmatchable paths; a relative path containing a
+    space or a `+` is perfectly matchable and must not be swept up with them
+    (#1258 review named this as an untested gap).
+    """
+
+    @pytest.mark.parametrize("where", ["src/my file.py", "src/a+b.py", "src/(x).py"])
+    def test_it_stays_a_file_scope(self, where, workspace):
+        scope = build_scope_from_capture(where, workspace=workspace)
+
+        assert scope.files == [where]
+        assert _matches(scope, where)
+        assert not _matches(scope, "unrelated.py")
+
+
+class TestWarningDeliveryIsNotLoadBearing:
+    def test_a_raising_callback_does_not_lose_the_capture(self, workspace):
+        """The warning is advisory; losing the requirement over it would be worse."""
+        def boom(_message: str) -> None:
+            raise RuntimeError("no console here")
+
+        scope = build_scope_from_capture("/abs/my file.py", workspace=workspace,
+                                         on_warning=boom)
+
+        assert _matches(scope, "src/auth/login.py"), "the scope must still be built"

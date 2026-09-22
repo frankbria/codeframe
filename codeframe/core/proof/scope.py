@@ -16,30 +16,52 @@ from codeframe.core.workspace import Workspace
 logger = logging.getLogger(__name__)
 
 
-_WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
+# Anything that cannot possibly equal a repo-relative path from git: POSIX
+# absolute, a Windows drive, a leading backslash or UNC share, a `~` home
+# reference, or a URI scheme. Each of these used to land in `files` and match
+# nothing for every change, forever (#1258).
+_NOT_REPO_RELATIVE = re.compile(
+    r"^(?:[A-Za-z]:[\\/]|[\\~]|[A-Za-z][A-Za-z0-9+.\-]*://)"
+)
 
 
 def _is_absolute_path(part: str) -> bool:
-    """POSIX absolute, or a Windows drive-letter path."""
-    return part.startswith("/") or bool(_WINDOWS_DRIVE.match(part))
+    return part.startswith("/") or bool(_NOT_REPO_RELATIVE.match(part))
 
 
-def _relativize(part: str, workspace: Workspace) -> "str | None":
-    """``part`` as a repo-relative path, or None if it is not inside the repo.
+def _looks_like_a_file(part: str, resolved: "Path | None" = None) -> bool:
+    """Whether an inside-the-workspace path should beat route classification.
+
+    ``/app/settings`` with the repo at ``/app`` is syntactically inside the
+    workspace but is far more likely a route. Requiring that the path either
+    exist or carry a file extension keeps it a route — which matches everything
+    and so fails closed — instead of turning it into a file scope that matches
+    almost nothing (#1258 review).
+    """
+    if posixpath.splitext(part)[1]:
+        return True
+    return resolved is not None and resolved.exists()
+
+
+def _relativize(part: str, workspace: Workspace) -> "tuple[str, Path] | None":
+    """``(relative_path, resolved)``, or None if ``part`` is not inside the repo.
 
     Both sides are resolved, so a path that reaches the repo through a symlink
     still relativizes. Only POSIX-absolute input is attempted: resolving a
     ``C:/...`` string on POSIX would silently anchor it to the cwd.
     """
-    if not part.startswith("/"):
-        return None
     try:
-        resolved = Path(part).resolve()
+        candidate = Path(part).expanduser()
+        if not candidate.is_absolute():
+            # A Windows drive path on POSIX, a UNC share, an unexpandable `~`:
+            # nothing here can say where in the repo it points.
+            return None
+        resolved = candidate.resolve()
         root = Path(workspace.repo_path).resolve()
         if resolved == root:
-            return "."
-        return resolved.relative_to(root).as_posix()
-    except (ValueError, OSError):
+            return ".", resolved
+        return resolved.relative_to(root).as_posix(), resolved
+    except (ValueError, OSError, RuntimeError):
         return None
 
 
@@ -81,10 +103,15 @@ def build_scope_from_capture(
             Defaults to a module-level log; core never writes to a console.
     """
     def warn(message: str) -> None:
-        if on_warning is not None:
-            on_warning(message)
-        else:
-            logger.warning(message)
+        try:
+            if on_warning is not None:
+                on_warning(message)
+            else:
+                logger.warning(message)
+        except Exception:
+            # A failed warning must never cost the user the capture it was
+            # warning about.
+            logger.warning("scope warning could not be delivered: %s", message)
 
     scope = RequirementScope()
     parts = [p.strip() for p in where.split(",")]
@@ -97,9 +124,9 @@ def build_scope_from_capture(
             continue
 
         if workspace is not None and _is_absolute_path(part):
-            relative = _relativize(part, workspace)
-            if relative is not None:
-                scope.files.append(relative)
+            located = _relativize(part, workspace)
+            if located is not None and _looks_like_a_file(part, located[1]):
+                scope.files.append(located[0])
                 continue
 
         if re.match(r"^/[\w/\-.*]+$", part):
