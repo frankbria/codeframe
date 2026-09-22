@@ -64,8 +64,17 @@ def _looks_like_a_file(part: str, resolved: "Path | None" = None) -> bool:
     return resolved is not None and resolved.exists()
 
 
-def _relativize(part: str, workspace: Workspace) -> "tuple[str, Path] | None":
-    """``(relative_path, resolved)``, or None if ``part`` is not inside the repo.
+def _relative_to_root(path: Path, root: Path) -> "str | None":
+    if path == root:
+        return "."
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return None
+
+
+def _relativize(part: str, workspace: Workspace) -> "tuple[list[str], Path] | None":
+    """``(spellings, literal)``, or None if ``part`` is not inside the repo.
 
     Both sides are resolved, so a path that reaches the repo through a symlink
     still relativizes. Only POSIX-absolute input is attempted: resolving a
@@ -77,12 +86,23 @@ def _relativize(part: str, workspace: Workspace) -> "tuple[str, Path] | None":
             # A Windows drive path on POSIX, a UNC share, an unexpandable `~`:
             # nothing here can say where in the repo it points.
             return None
-        resolved = candidate.resolve()
         root = Path(workspace.repo_path).resolve()
-        if resolved == root:
-            return ".", resolved
-        return resolved.relative_to(root).as_posix(), resolved
+        # Resolve the directories but keep the final component as captured,
+        # then ALSO record where it points. git reports a symlink under its own
+        # path (retargeting `link.py` shows as `link.py`) but an edit to its
+        # target under the target's (`real.py`). Either spelling alone lets one
+        # of those changes escape the scope, so a file symlink stores both —
+        # the fail-closed answer (#1259 review r3).
+        literal = candidate.parent.resolve() / candidate.name
+        spellings: list[str] = []
+        for path in (literal, literal.resolve()):
+            relative = _relative_to_root(path, root)
+            if relative is not None and relative not in spellings:
+                spellings.append(relative)
+        return (spellings, literal) if spellings else None
     except (ValueError, OSError, RuntimeError):
+        # ValueError is not only relative_to's: Path.resolve() raises it for an
+        # embedded NUL, and a user-typed --where must never crash capture.
         return None
 
 
@@ -147,7 +167,7 @@ def build_scope_from_capture(
         if workspace is not None and _is_absolute_path(part):
             located = _relativize(part, workspace)
             if located is not None and _looks_like_a_file(part, located[1]):
-                scope.files.append(located[0])
+                scope.files.extend(located[0])
                 continue
 
         if re.match(r"^/[\w/\-.*]+$", part):

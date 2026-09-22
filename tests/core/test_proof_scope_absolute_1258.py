@@ -476,3 +476,61 @@ class TestColonPrefixedSpellings:
         scope = build_scope_from_capture(where, workspace=workspace)
 
         assert where not in scope.tags or where == "authentication"
+
+
+class TestFileSymlinks:
+    """A file symlink stores both spellings (#1259 review r3).
+
+    git reports a symlink under its own path — retargeting `link.py` shows as
+    `link.py` — but an edit to its target under the target's path. Following the
+    link stored only `real.py`, so retargeting escaped the scope; storing only
+    `link.py` would let an edit to `real.py` escape instead. Neither alone is
+    fail-closed, so both are stored.
+
+    These assert the stored spellings, not merely that something matched: the
+    two events are exactly the cases where one spelling passes and the other
+    silently does not.
+    """
+
+    @pytest.fixture
+    def linked(self, workspace):
+        import os
+
+        (workspace.repo_path / "real.py").write_text("x = 1\n")
+        os.symlink("real.py", workspace.repo_path / "link.py")
+        return workspace
+
+    def test_both_spellings_are_stored(self, linked):
+        scope = build_scope_from_capture(str(linked.repo_path / "link.py"), workspace=linked)
+
+        assert sorted(scope.files) == ["link.py", "real.py"]
+
+    def test_retargeting_the_link_is_caught(self, linked):
+        scope = build_scope_from_capture(str(linked.repo_path / "link.py"), workspace=linked)
+
+        assert _matches(scope, "link.py")
+
+    def test_editing_the_target_is_caught(self, linked):
+        scope = build_scope_from_capture(str(linked.repo_path / "link.py"), workspace=linked)
+
+        assert _matches(scope, "real.py")
+
+    def test_a_link_pointing_outside_the_repo_keeps_its_own_path(self, workspace):
+        """The target is not ours; the link is, and git tracks the link."""
+        import os
+
+        os.symlink("/etc/hostname", workspace.repo_path / "out.py")
+
+        scope = build_scope_from_capture(str(workspace.repo_path / "out.py"),
+                                         workspace=workspace)
+
+        assert scope.files == ["out.py"]
+
+    def test_the_root_reached_through_a_final_component_link(self, tmp_path, workspace):
+        """Resolving only the parent would miss this; the second spelling covers it."""
+        link = tmp_path / "via"
+        link.symlink_to(workspace.repo_path)
+
+        scope = build_scope_from_capture(str(link), workspace=workspace)
+
+        assert scope.files == ["."]
