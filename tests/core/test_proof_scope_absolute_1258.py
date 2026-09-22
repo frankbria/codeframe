@@ -397,6 +397,39 @@ class TestTheWarningCannotForgeLogLines:
 
         assert warnings and "\r" not in warnings[0]
 
+    @pytest.mark.parametrize(
+        "control,name",
+        [("\x1b[2K\x1b[G", "ansi-escape"), ("\x07", "bell"), ("\x00", "nul"),
+         ("\t", "tab"), ("\x08", "backspace")],
+    )
+    def test_every_control_character_is_escaped(self, workspace, control, name):
+        """Escape the class, not the two characters that were reported.
+
+        CR/LF forge a whole log line; ESC rewrites one in any ANSI-rendering
+        viewer (`tail -f`, `docker logs`, a CI log pane). Fixing only the
+        reported spelling is what left this open after the first round.
+        """
+        warnings: list[str] = []
+
+        build_scope_from_capture(f"/abs/real{control}evil.py", workspace=workspace,
+                                 on_warning=warnings.append)
+
+        assert warnings
+        # The invariant is that the *message* carries no control character at
+        # all — not that the input's characters are absent, since an escaped
+        # ESC legitimately renders as the printable text "\x1b[2K".
+        surviving = [ch for ch in warnings[0] if not ch.isprintable() and ch != " "]
+        assert not surviving, f"{name} survived as {surviving!r}"
+
+    def test_non_ascii_paths_are_not_mangled(self, workspace):
+        """Escaping targets control characters, not everything unfamiliar."""
+        warnings: list[str] = []
+
+        build_scope_from_capture("/abs/héllo wörld.py", workspace=workspace,
+                                 on_warning=warnings.append)
+
+        assert "/abs/héllo wörld.py" in warnings[0]
+
     def test_an_ordinary_path_is_unchanged(self, workspace):
         """Escaping must not mangle the path the user actually typed."""
         warnings: list[str] = []

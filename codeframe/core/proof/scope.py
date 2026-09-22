@@ -30,8 +30,19 @@ def _is_absolute_path(part: str) -> bool:
 
 
 def _one_line(text: str) -> str:
-    """Render CR/LF visibly so a path cannot forge a log line."""
-    return text.replace("\r", "\\r").replace("\n", "\\n")
+    """Render every non-printable character visibly.
+
+    The warning reaches ``logger.warning`` on the API capture path, so a
+    control character in a user-supplied ``--where`` can rewrite the log. CR/LF
+    forge a whole line; ESC forges content in any ANSI-rendering viewer
+    (``tail -f``, ``docker logs``, a CI log pane). Escaping the *class* rather
+    than the two characters that were reported — the rest of this module is
+    about not fixing the reported spelling only (#1259 review).
+    """
+    return "".join(
+        ch if ch == " " or ch.isprintable() else ch.encode("unicode_escape").decode("ascii")
+        for ch in text
+    )
 
 
 def _looks_like_a_file(part: str, resolved: "Path | None" = None) -> bool:
