@@ -345,10 +345,15 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
             </TooltipTrigger>
             {!canMerge && (
               <TooltipContent>
-                {openRequirements.length > 0 && 'Resolve all open PROOF9 requirements. '}
-                {ciFailing && 'Fix failing CI checks. '}
-                {ciPending && 'Wait for CI checks to complete.'}
-                {adminDenied && 'Merging requires an admin account.'}
+                {adminDenied
+                  ? 'Merging requires an admin account.'
+                  : [
+                      openRequirements.length > 0 && 'Resolve all open PROOF9 requirements.',
+                      ciFailing && 'Fix failing CI checks.',
+                      ciPending && 'Wait for CI checks to complete.',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
               </TooltipContent>
             )}
           </Tooltip>
