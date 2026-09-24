@@ -162,7 +162,7 @@ export function GitHubIntegrationCard({
           placeholder="ghp_… or github_pat_…"
           value={pat}
           onChange={(e) => setPat(e.target.value)}
-          disabled={working}
+          disabled={working || adminDenied}
           aria-label="Personal Access Token"
         />
       </div>
@@ -180,7 +180,7 @@ export function GitHubIntegrationCard({
           placeholder="acme-corp/my-app"
           value={repo}
           onChange={(e) => setRepo(e.target.value)}
-          disabled={working}
+          disabled={working || adminDenied}
           aria-label="Repository"
         />
       </div>

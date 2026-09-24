@@ -189,17 +189,14 @@ describe('GitHubIntegrationCard', () => {
 });
 
 describe('GitHubIntegrationCard — admin gating (#1255)', () => {
-  it('disables Connect for a non-admin and says why', () => {
+  it('disables the PAT form for a non-admin and says why', () => {
     mockAdminDenied.mockReturnValue(true);
     mockSWR(DISCONNECTED);
     render(<GitHubIntegrationCard workspacePath="/ws" />);
 
-    fireEvent.change(screen.getByLabelText(/personal access token/i), {
-      target: { value: 'ghp_token' },
-    });
-    fireEvent.change(screen.getByLabelText(/repository/i), {
-      target: { value: 'acme/app' },
-    });
+    // Not even typed: a PAT is a credential, and this form cannot save it.
+    expect(screen.getByLabelText(/personal access token/i)).toBeDisabled();
+    expect(screen.getByLabelText(/repository/i)).toBeDisabled();
     expect(screen.getByRole('button', { name: /^connect$/i })).toBeDisabled();
     expect(screen.getByText(/requires an admin account/i)).toBeInTheDocument();
   });
