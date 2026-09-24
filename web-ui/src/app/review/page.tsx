@@ -338,7 +338,7 @@ export default function ReviewPage() {
         />
 
         {/* Right sidebar: commit panel + PR status (when a PR has been created) */}
-        <div className="flex flex-col">
+        <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
           <CommitPanel
             commitMessage={commitMessage}
             onCommitMessageChange={setCommitMessage}
