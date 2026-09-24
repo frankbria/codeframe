@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { useAdminDenied } from '@/hooks/useAdminDenied';
 import { settingsApi } from '@/lib/api';
 import type { ApiError, KeyProvider, KeyStatusResponse } from '@/types';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +28,7 @@ export function KeySlot({
   const [value, setValue] = useState('');
   const [verifyResult, setVerifyResult] = useState<VerifyResult>(null);
   const [working, setWorking] = useState(false);
+  const adminDenied = useAdminDenied();
 
   const handleSave = async () => {
     if (!value) return;
@@ -127,7 +129,7 @@ export function KeySlot({
           Verify
         </Button>
         {value && (
-          <Button type="button" onClick={handleSave} disabled={working || fromEnv}>
+          <Button type="button" onClick={handleSave} disabled={working || fromEnv || adminDenied}>
             Save
           </Button>
         )}
@@ -136,12 +138,16 @@ export function KeySlot({
             type="button"
             variant="destructive"
             onClick={handleRemove}
-            disabled={working}
+            disabled={working || adminDenied}
           >
             Remove
           </Button>
         )}
       </div>
+
+      {adminDenied && !fromEnv && (
+        <p className="mt-2 text-xs text-muted-foreground">Storing or removing keys requires an admin account.</p>
+      )}
 
       {fromEnv && (
         <p className="mt-2 text-xs text-muted-foreground">

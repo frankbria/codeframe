@@ -25,10 +25,15 @@ jest.mock('@/lib/workspace-storage', () => ({
   getSelectedWorkspacePath: jest.fn(() => '/test/workspace'),
 }));
 
+jest.mock('@/hooks/useAdminDenied', () => ({ useAdminDenied: jest.fn(() => false) }));
+
 jest.mock('swr', () => ({ __esModule: true, default: jest.fn() }));
 
 import useSWR from 'swr';
 import { prApi } from '@/lib/api';
+import { useAdminDenied } from '@/hooks/useAdminDenied';
+const mockAdminDenied = useAdminDenied as jest.MockedFunction<typeof useAdminDenied>;
+beforeEach(() => mockAdminDenied.mockReturnValue(false));
 
 const mockUseSWR = useSWR as jest.MockedFunction<typeof useSWR>;
 const mockMerge = prApi.merge as jest.MockedFunction<typeof prApi.merge>;
@@ -255,5 +260,27 @@ describe('PRStatusPanel — merge gate override', () => {
 
     await waitFor(() => expect(screen.getByText(/GitHub is down/i)).toBeInTheDocument());
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('PRStatusPanel — admin gating (#1255)', () => {
+  it('tells a non-admin they cannot merge before any override dialog opens', () => {
+    mockAdminDenied.mockReturnValue(true);
+    setupSWRMock(basePRStatus, proofStatusWithOpenReqs);
+    render(<PRStatusPanel {...defaultProps} />);
+
+    // Disabled and explained, not hidden: the override dialog (where the
+    // reason is written) is only reachable through this button.
+    expect(screen.getByRole('button', { name: /^merge$/i })).toBeDisabled();
+    expect(screen.getByText(/merging requires an admin account/i)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('leaves Merge enabled for an admin', () => {
+    setupSWRMock(basePRStatus, cleanProofStatus);
+    render(<PRStatusPanel {...defaultProps} />);
+
+    expect(screen.getByRole('button', { name: /^merge$/i })).toBeEnabled();
+    expect(screen.queryByText(/requires an admin account/i)).not.toBeInTheDocument();
   });
 });

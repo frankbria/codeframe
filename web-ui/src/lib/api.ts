@@ -302,6 +302,19 @@ export async function checkAuthAccess(): Promise<'allowed' | 'denied' | 'error'>
   }
 }
 
+/** The caller's resolved scopes, from `GET /auth/me` (#1255). */
+export interface Principal {
+  scopes: string[];
+  is_admin: boolean;
+}
+
+export const authApi = {
+  getMe: async (): Promise<Principal> => {
+    const response = await api.get<Principal>('/auth/me');
+    return response.data;
+  },
+};
+
 // Workspace API methods
 export const workspaceApi = {
   /**
