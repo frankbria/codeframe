@@ -12,6 +12,11 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CommitPanel } from '@/components/review/CommitPanel';
 
+jest.mock('@/hooks/useAdminDenied', () => ({ useAdminDenied: jest.fn(() => false) }));
+import { useAdminDenied } from '@/hooks/useAdminDenied';
+const mockAdminDenied = useAdminDenied as jest.MockedFunction<typeof useAdminDenied>;
+beforeEach(() => mockAdminDenied.mockReturnValue(false));
+
 function setup(overrides: Partial<React.ComponentProps<typeof CommitPanel>> = {}) {
   const props: React.ComponentProps<typeof CommitPanel> = {
     commitMessage: 'feat: add thing',
@@ -131,5 +136,17 @@ describe('CommitPanel — pull request flow', () => {
     expect(button).toBeDisabled();
     fireEvent.click(button);
     expect(props.onCreatePR).not.toHaveBeenCalled();
+  });
+});
+
+describe('CommitPanel — admin gating (#1255)', () => {
+  it('stops a non-admin before they write a PR title', async () => {
+    mockAdminDenied.mockReturnValue(true);
+    setup();
+
+    expect(screen.getByLabelText(/create pull request/i)).toBeDisabled();
+    expect(screen.getByText(/opening a pr requires an admin account/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText(/create pull request/i));
+    expect(screen.queryByLabelText(/pr title/i)).not.toBeInTheDocument();
   });
 });

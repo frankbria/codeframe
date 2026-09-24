@@ -4,7 +4,7 @@ import hmac
 import ipaddress
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -38,6 +38,13 @@ class StreamTicketResponse(BaseModel):
 
     ticket: str
     expires_in: int
+
+
+class PrincipalResponse(BaseModel):
+    """Response body for GET /auth/me."""
+
+    scopes: List[str]
+    is_admin: bool
 
 
 # ``DISABLED_PASSWORD`` (imported from auth.manager) is the placeholder password
@@ -322,3 +329,24 @@ async def create_stream_ticket(
         )
     ticket = mint_ticket(auth.get("user_id"))
     return StreamTicketResponse(ticket=ticket, expires_in=TICKET_TTL_SECONDS)
+
+
+@router.get("/auth/me", response_model=PrincipalResponse)
+async def get_principal(
+    auth: Dict[str, Any] = Depends(require_auth),
+) -> PrincipalResponse:
+    """Report the caller's resolved scopes so the web UI can gate admin-only
+    actions up front instead of failing on submit (#1255).
+
+    This is the principal every ``require_scope(SCOPE_ADMIN)`` guard sees:
+    admin only for a superuser session or a key clamped to one (#898), and
+    always admin with auth disabled — that principal is the local operator.
+    The server stays the authority; this only stops the UI promising an
+    action it would refuse.
+    """
+    from codeframe.auth.api_keys import SCOPE_ADMIN
+    from codeframe.auth.scopes import has_scope
+
+    return PrincipalResponse(
+        scopes=list(auth.get("scopes", [])), is_admin=has_scope(auth, SCOPE_ADMIN)
+    )

@@ -14,6 +14,7 @@ jest.mock('@/lib/api', () => ({
     disconnect: jest.fn(),
   },
 }));
+jest.mock('@/hooks/useAdminDenied', () => ({ useAdminDenied: jest.fn(() => false) }));
 jest.mock('sonner', () => ({
   toast: {
     success: jest.fn(),
@@ -23,6 +24,9 @@ jest.mock('sonner', () => ({
 }));
 
 import { toast } from 'sonner';
+import { useAdminDenied } from '@/hooks/useAdminDenied';
+const mockAdminDenied = useAdminDenied as jest.MockedFunction<typeof useAdminDenied>;
+beforeEach(() => mockAdminDenied.mockReturnValue(false));
 
 const mockUseSWR = useSWR as jest.MockedFunction<typeof useSWR>;
 const mockConnect = integrationsApi.connect as jest.MockedFunction<
@@ -181,5 +185,31 @@ describe('GitHubIntegrationCard', () => {
       { revalidate: false }
     );
     expect(toast.success).toHaveBeenCalled();
+  });
+});
+
+describe('GitHubIntegrationCard — admin gating (#1255)', () => {
+  it('disables Connect for a non-admin and says why', () => {
+    mockAdminDenied.mockReturnValue(true);
+    mockSWR(DISCONNECTED);
+    render(<GitHubIntegrationCard workspacePath="/ws" />);
+
+    fireEvent.change(screen.getByLabelText(/personal access token/i), {
+      target: { value: 'ghp_token' },
+    });
+    fireEvent.change(screen.getByLabelText(/repository/i), {
+      target: { value: 'acme/app' },
+    });
+    expect(screen.getByRole('button', { name: /^connect$/i })).toBeDisabled();
+    expect(screen.getByText(/requires an admin account/i)).toBeInTheDocument();
+  });
+
+  it('disables Disconnect for a non-admin and says why', () => {
+    mockAdminDenied.mockReturnValue(true);
+    mockSWR(CONNECTED);
+    render(<GitHubIntegrationCard workspacePath="/ws" />);
+
+    expect(screen.getByRole('button', { name: /disconnect/i })).toBeDisabled();
+    expect(screen.getByText(/requires an admin account/i)).toBeInTheDocument();
   });
 });

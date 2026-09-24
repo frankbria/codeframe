@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { useAdminDenied } from '@/hooks/useAdminDenied';
 
 export interface CommitPanelProps {
   commitMessage: string;
@@ -34,6 +35,7 @@ export function CommitPanel({
   onCreatePR,
 }: CommitPanelProps) {
   const [showPRForm, setShowPRForm] = useState(false);
+  const adminDenied = useAdminDenied();
   const [prTitle, setPrTitle] = useState('');
   const [prBody, setPrBody] = useState('');
 
@@ -116,7 +118,8 @@ export function CommitPanel({
         <div className="flex items-center gap-2">
           <Checkbox
             id="create-pr"
-            checked={showPRForm}
+            checked={showPRForm && !adminDenied}
+            disabled={adminDenied}
             onCheckedChange={(checked) => setShowPRForm(checked === true)}
           />
           <label
@@ -127,7 +130,13 @@ export function CommitPanel({
           </label>
         </div>
 
-        {showPRForm && (
+        {adminDenied && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Opening a PR requires an admin account.
+          </p>
+        )}
+
+        {showPRForm && !adminDenied && (
           <div className="mt-3 flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <label htmlFor="pr-title" className="text-sm font-medium">

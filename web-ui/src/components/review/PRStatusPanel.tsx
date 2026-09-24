@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MergeOverrideModal } from '@/components/review/MergeOverrideModal';
+import { useAdminDenied } from '@/hooks/useAdminDenied';
 import {
   Tooltip,
   TooltipContent,
@@ -108,6 +109,8 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
     { refreshInterval: merged ? 0 : 15_000 }
   );
 
+  const adminDenied = useAdminDenied();
+
   // ── Gate logic ────────────────────────────────────────────────────────────
 
   const openRequirements: ProofRequirement[] = (proofData?.requirements ?? []).filter(
@@ -137,7 +140,10 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
   // `!!proofData` is retained: it means "the panel has loaded", not a
   // prediction of the outcome, and keeps Merge from flickering enabled
   // mid-load. Only the open-requirement count is gone.
-  const canMerge = !!data && !!proofData && ciPassing;
+  // Merge is admin-only on the server (#717), and the override dialog is only
+  // reachable through it — so a non-admin is stopped here, before writing an
+  // override reason, rather than by a 403 inside the dialog (#1255).
+  const canMerge = !!data && !!proofData && ciPassing && !adminDenied;
 
   // ── Merge handler ─────────────────────────────────────────────────────────
 
@@ -292,6 +298,9 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
       )}
 
       {/* Blocking messages */}
+      {adminDenied && !alreadyMerged && (
+        <p className="text-xs text-muted-foreground">Merging requires an admin account.</p>
+      )}
       {data && (ciFailing || ciPending) && !alreadyMerged && (
         <p className="text-xs text-amber-600">
           {ciFailing ? 'CI checks failing' : 'Waiting for CI checks'}
@@ -339,6 +348,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
                 {openRequirements.length > 0 && 'Resolve all open PROOF9 requirements. '}
                 {ciFailing && 'Fix failing CI checks. '}
                 {ciPending && 'Wait for CI checks to complete.'}
+                {adminDenied && 'Merging requires an admin account.'}
               </TooltipContent>
             )}
           </Tooltip>

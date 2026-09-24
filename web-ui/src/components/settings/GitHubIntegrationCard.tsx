@@ -4,10 +4,17 @@ import { useState } from 'react';
 import useSWR from 'swr';
 import { toast } from 'sonner';
 
+import { useAdminDenied } from '@/hooks/useAdminDenied';
 import { integrationsApi } from '@/lib/api';
 import type { ApiError, GitHubIntegrationStatus } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+
+const ADMIN_NOTE = (
+  <p className="text-xs text-muted-foreground">
+    Connecting or disconnecting GitHub requires an admin account.
+  </p>
+);
 
 interface GitHubIntegrationCardProps {
   workspacePath: string | null;
@@ -28,6 +35,7 @@ export function GitHubIntegrationCard({
   const [repo, setRepo] = useState('');
   const [working, setWorking] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const adminDenied = useAdminDenied();
 
   if (!workspacePath) {
     return (
@@ -120,15 +128,16 @@ export function GitHubIntegrationCard({
           type="button"
           variant="destructive"
           onClick={handleDisconnect}
-          disabled={working}
+          disabled={working || adminDenied}
         >
           {working ? 'Disconnecting…' : 'Disconnect'}
         </Button>
+        {adminDenied && ADMIN_NOTE}
       </div>
     );
   }
 
-  const canConnect = !!pat && !!repo && !working;
+  const canConnect = !!pat && !!repo && !working && !adminDenied;
 
   return (
     <div className="space-y-4" data-state="disconnected">
@@ -179,6 +188,8 @@ export function GitHubIntegrationCard({
       <Button type="button" onClick={handleConnect} disabled={!canConnect}>
         {working ? 'Connecting…' : 'Connect'}
       </Button>
+
+      {adminDenied && ADMIN_NOTE}
 
       {formError && (
         <p className="text-sm text-destructive" role="alert">

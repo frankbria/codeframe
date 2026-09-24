@@ -36,6 +36,7 @@ import api, {
   notificationsApi,
   integrationsApi,
   costsApi,
+  authApi,
 } from '@/lib/api';
 import * as apiModule from '@/lib/api';
 import { setToken } from '@/lib/auth';
@@ -763,6 +764,14 @@ describe('api.ts request contract', () => {
     });
   });
 
+  describe('authApi', () => {
+    it('getMe → GET /auth/me', async () => {
+      await authApi.getMe();
+      expect(captured.method).toBe('get');
+      expect(captured.url).toBe('/auth/me');
+    });
+  });
+
   describe('costsApi', () => {
     it('getSummary → GET /api/v2/costs/summary?days=', async () => {
       await costsApi.getSummary('/ws', 7);
@@ -812,6 +821,7 @@ describe('api.ts request contract', () => {
       'notificationsApi',
       'integrationsApi',
       'costsApi',
+      'authApi',
     ]);
 
     it('every exported *Api namespace has contract cases in this file', () => {
