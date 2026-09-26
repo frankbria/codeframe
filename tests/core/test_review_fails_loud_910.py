@@ -49,6 +49,13 @@ def bandit_missing(monkeypatch):
         "which",
         lambda name, *a, **k: None if name == "bandit" else real_which(name, *a, **k),
     )
+    # CodeFRAME's own bandit is the fallback when none is on PATH (#1262).
+    real_find_spec = scanner_module.importlib.util.find_spec
+    monkeypatch.setattr(
+        scanner_module.importlib.util,
+        "find_spec",
+        lambda name, *a, **k: None if name == "bandit" else real_find_spec(name, *a, **k),
+    )
 
 
 # ---------------------------------------------------------------------------

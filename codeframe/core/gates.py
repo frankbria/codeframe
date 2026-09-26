@@ -32,13 +32,19 @@ def _utc_now() -> datetime:
 
 
 _RUFF_ERROR_PATTERN = re.compile(r'^(.+?):(\d+):(\d+): ([A-Z]+\d+) (.+)$')
+# ruff >= 0.9's default ("full") format puts the location on the next line.
+_RUFF_FULL_HEADER = re.compile(r'^([A-Z]+\d+) (.+)$')
+_RUFF_FULL_LOCATION = re.compile(r'^--> (.+?):(\d+):(\d+)$')
 _TSC_ERROR_PATTERN = re.compile(r'^(.+?)\((\d+),(\d+)\): error (TS\d+): (.+)$')
 
 
 def _parse_ruff_errors(output: str) -> list[dict[str, Any]]:
     """Parse ruff output into structured error dicts.
 
-    Parses lines matching the pattern: path/file.py:10:5: E501 Line too long
+    Reads both the concise shape (``path/file.py:10:5: E501 Line too long``)
+    and the full shape, where ``E501 Line too long`` is followed by
+    `` --> path/file.py:10:5``. The gate runs whatever ruff the project pins,
+    and no one flag selects the concise shape on every version (#1262).
 
     Args:
         output: Raw ruff stdout/stderr output.
@@ -47,8 +53,10 @@ def _parse_ruff_errors(output: str) -> list[dict[str, Any]]:
         List of dicts with keys: file, line, col, code, message.
     """
     errors = []
+    header = None
     for line in output.splitlines():
-        match = _RUFF_ERROR_PATTERN.match(line.strip())
+        line = line.strip()
+        match = _RUFF_ERROR_PATTERN.match(line)
         if match:
             errors.append({
                 "file": match.group(1),
@@ -57,6 +65,17 @@ def _parse_ruff_errors(output: str) -> list[dict[str, Any]]:
                 "code": match.group(4),
                 "message": match.group(5),
             })
+            continue
+        location = _RUFF_FULL_LOCATION.match(line)
+        if location and header:
+            errors.append({
+                "file": location.group(1),
+                "line": int(location.group(2)),
+                "col": int(location.group(3)),
+                "code": header.group(1),
+                "message": header.group(2),
+            })
+        header = _RUFF_FULL_HEADER.match(line)
     return errors
 
 
@@ -550,7 +569,7 @@ def _detect_available_gates(repo_path: Path) -> list[str]:
         gates.append("pytest")
 
     # Python: ruff (available via direct command or via uv)
-    if (shutil.which("ruff") or shutil.which("uv")) and (
+    if (shutil.which("ruff") or shutil.which("uv") or importlib.util.find_spec("ruff")) and (
         (repo_path / "pyproject.toml").exists() or
         (repo_path / "ruff.toml").exists() or
         any(repo_path.glob("*.py"))
@@ -621,19 +640,31 @@ def _tool_is_missing(returncode: int, stderr: Optional[str], tool_names: set[str
     )
 
 
-def _run_python_tool(
+def _tool_prefix(tool: str, use_uv: bool = True) -> Optional[list[str]]:
+    """How the project runs ``tool``: via ``uv run`` (its own environment), else PATH."""
+    if use_uv and shutil.which("uv"):
+        return ["uv", "run", tool]
+    if shutil.which(tool):
+        return [tool]
+    return None
+
+
+def _run_tool(
     tool: str, prefix: Optional[list[str]], args: list[str], repo_path: Path, timeout: int
 ) -> Optional[subprocess.CompletedProcess]:
-    """Run a Python tool CodeFRAME ships, preferring the project's own copy.
+    """Run ``tool``, preferring the project's copy, else the one CodeFRAME ships.
 
-    ``prefix`` is how the project would run it (``uv run <tool>`` or ``<tool>``
-    on PATH), so its pinned version wins. If that copy is missing, fall back to
-    CodeFRAME's own: ruff and bandit are runtime dependencies, but after ``uv
-    tool install codeframe-ai`` they live in the tool venv, off PATH, and the
-    user's project rarely depends on them — so ``uv run`` failed to spawn and
-    a clean project was reported broken (#1262).
+    ``prefix`` is how the project would run it (see ``_tool_prefix``), so its
+    pinned version and config win. If that copy cannot even be spawned, fall
+    back to CodeFRAME's own: ruff and bandit are runtime dependencies, but
+    after ``uv tool install codeframe-ai`` they live in the tool venv, off
+    PATH, and the user's project rarely depends on them — so ``uv run`` failed
+    to spawn and a clean project was reported broken (#1262).
 
-    Returns None when neither copy can run.
+    Only a spawn failure falls through. A tool that ran and failed (a broken
+    config, say) is the answer, even when its stderr says "No such file".
+
+    Returns None when no copy can be spawned.
     """
     prefixes = [prefix] if prefix else []
     if importlib.util.find_spec(tool) is not None:
@@ -652,7 +683,7 @@ def _run_python_tool(
             )
         except FileNotFoundError:
             continue
-        if not _tool_is_missing(result.returncode, result.stderr, {tool}):
+        if "failed to spawn" not in (result.stderr or "").lower():
             return result
     return None
 
@@ -798,8 +829,14 @@ def _run_bandit(repo_path: Path, verbose: bool = False) -> GateCheck:
         prefix = None
 
     try:
-        result = _run_python_tool(
-            "bandit", prefix, ["-r", ".", "-q", "-f", "txt"], repo_path, timeout=300
+        # -x replaces bandit's defaults. `uv run` syncs the project into .venv
+        # before it finds no bandit, and the fallback must not scan that (#1262).
+        result = _run_tool(
+            "bandit",
+            prefix,
+            ["-r", ".", "-q", "-f", "txt", "-x", "./.venv,./venv,./.codeframe"],
+            repo_path,
+            timeout=300,
         )
     except subprocess.TimeoutExpired:
         return GateCheck(
@@ -841,20 +878,15 @@ def _run_ruff(repo_path: Path, verbose: bool = False) -> GateCheck:
 
     start = time.time()
 
-    # uv run ruff runs in the target project's environment, so its pinned
-    # version and config apply. Concise output is the one-line-per-finding
-    # shape _parse_ruff_errors reads; the default format left detailed_errors
-    # empty, so self-correction was told only "Found 1 error." (#1262).
-    if shutil.which("uv"):
-        prefix = ["uv", "run", "ruff"]
-    elif shutil.which("ruff"):
-        prefix = ["ruff"]
-    else:
-        prefix = None
-
     try:
-        result = _run_python_tool(
-            "ruff", prefix, ["check", "--output-format=concise", "."], repo_path, timeout=60
+        # .codeframe holds the agent's sandboxed HOME, uv cache included; ruff
+        # skips it via its .gitignore only inside a git repo.
+        result = _run_tool(
+            "ruff",
+            _tool_prefix("ruff"),
+            ["check", "--extend-exclude", ".codeframe", "."],
+            repo_path,
+            timeout=60,
         )
         if result is None:
             return GateCheck(
@@ -1398,29 +1430,15 @@ def run_lint_on_file(
         return GateCheck(name="lint", status=GateStatus.SKIPPED,
                          output=f"No linter configured for {file_path.suffix}")
 
-    # Check binary availability — when use_uv is set, uv can provide the tool
-    if cfg.check_available and not shutil.which(cfg.check_available):
-        if not (cfg.use_uv and shutil.which("uv")):
-            return GateCheck(name=cfg.name, status=GateStatus.SKIPPED,
-                             output=f"{cfg.check_available} not found")
-
-    # Build command – replace {file} placeholder
-    cmd = [part.replace("{file}", str(file_path)) for part in cfg.cmd]
-    if cfg.use_uv and shutil.which("uv"):
-        cmd = ["uv", "run"] + cmd
+    tool, *args = [part.replace("{file}", str(file_path)) for part in cfg.cmd]
+    prefix = _tool_prefix(tool, cfg.use_uv) if cfg.check_available else [tool]
 
     start = time.time()
     try:
-        result = subprocess.run(
-            cmd,
-            cwd=repo_path,
-            env=build_agent_env(repo_path),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-        )
+        result = _run_tool(tool, prefix, args, repo_path, timeout)
+        if result is None:
+            return GateCheck(name=cfg.name, status=GateStatus.SKIPPED,
+                             output=f"{cfg.check_available} not found")
 
         duration_ms = int((time.time() - start) * 1000)
         output = result.stdout
@@ -1484,29 +1502,15 @@ def run_autofix_on_file(
         return GateCheck(name="autofix", status=GateStatus.SKIPPED,
                          output=f"{cfg.name} has no autofix command")
 
-    # Check binary availability — when use_uv is set, uv can provide the tool
-    if cfg.check_available and not shutil.which(cfg.check_available):
-        if not (cfg.use_uv and shutil.which("uv")):
-            return GateCheck(name=f"autofix-{cfg.name}", status=GateStatus.SKIPPED,
-                             output=f"{cfg.check_available} not found")
-
-    # Build command – replace {file} placeholder
-    cmd = [part.replace("{file}", str(file_path)) for part in cfg.autofix_cmd]
-    if cfg.use_uv and shutil.which("uv"):
-        cmd = ["uv", "run"] + cmd
+    tool, *args = [part.replace("{file}", str(file_path)) for part in cfg.autofix_cmd]
+    prefix = _tool_prefix(tool, cfg.use_uv) if cfg.check_available else [tool]
 
     start = time.time()
     try:
-        result = subprocess.run(
-            cmd,
-            cwd=repo_path,
-            env=build_agent_env(repo_path),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-        )
+        result = _run_tool(tool, prefix, args, repo_path, timeout)
+        if result is None:
+            return GateCheck(name=f"autofix-{cfg.name}", status=GateStatus.SKIPPED,
+                             output=f"{cfg.check_available} not found")
 
         duration_ms = int((time.time() - start) * 1000)
         output = result.stdout

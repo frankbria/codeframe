@@ -18,6 +18,8 @@ from __future__ import annotations
 import importlib.util
 import os
 import shutil
+import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -53,11 +55,23 @@ def repo(tmp_path) -> Path:
     """A user project that, like the cleanroom's, has no ruff dependency."""
     repo = tmp_path / "todo-api"
     repo.mkdir()
+    # A low floor: build_agent_env sandboxes HOME, so uv can see only the
+    # system interpreter, and it must not try to download one.
     (repo / "pyproject.toml").write_text(
-        '[project]\nname = "todo-api"\nversion = "0.1.0"\nrequires-python = ">=3.11"\n'
+        '[project]\nname = "todo-api"\nversion = "0.1.0"\nrequires-python = ">=3.8"\n'
     )
     (repo / "app.py").write_text("VALUE = 1\n")
     return repo
+
+
+_INSECURE = textwrap.dedent(
+    """
+    import os
+
+    def run_it(user_input):
+        os.system("echo " + user_input)
+    """
+).lstrip()
 
 
 def _hide_bundled_copy(monkeypatch):
@@ -89,21 +103,93 @@ class TestRuffOffPath:
 
         assert check.status == GateStatus.SKIPPED
 
+    def test_a_broken_config_fails_rather_than_skipping(self, readme_install_path, repo):
+        """ruff's own error says "No such file or directory" and names ruff, which
+        _tool_is_missing reads as a missing tool. Only a spawn failure may fall
+        back; a ruff that ran and failed is the answer."""
+        (repo / "ruff.toml").write_text('extend = "missing.toml"\n')
+
+        check = core_gates._run_ruff(repo)
+
+        assert check.status == GateStatus.FAILED, check.output
+
+    def test_the_agent_sandbox_is_not_linted(self, readme_install_path, repo):
+        """Outside git, ruff does not honour .codeframe's own .gitignore."""
+        sandbox = repo / ".codeframe" / "agent-home"
+        sandbox.mkdir(parents=True)
+        (sandbox / "cached.py").write_text("import os\n")
+
+        check = core_gates._run_ruff(repo)
+
+        assert check.status == GateStatus.PASSED, check.output
+
+    def test_the_gate_is_detected_without_uv_or_ruff_on_path(self, repo, monkeypatch, tmp_path):
+        """A pipx install has neither on PATH, but CodeFRAME ships ruff."""
+        empty = tmp_path / "empty-bin"
+        empty.mkdir()
+        monkeypatch.setenv("PATH", str(empty))
+
+        assert "ruff" in core_gates._detect_available_gates(repo)
+
+
+class TestPerFileLintOffPath:
+    """The ReactAgent lints and autofixes each edit; off PATH both went SKIPPED."""
+
+    def test_lint_reports_the_finding(self, readme_install_path, repo):
+        target = repo / "app.py"
+        target.write_text("import os\n")
+
+        check = core_gates.run_lint_on_file(target, repo)
+
+        assert check.status == GateStatus.FAILED, check.output
+        assert [e["code"] for e in check.detailed_errors] == ["F401"]
+
+    def test_autofix_fixes_the_file(self, readme_install_path, repo):
+        target = repo / "app.py"
+        target.write_text("import os\nVALUE = 1\n")
+
+        check = core_gates.run_autofix_on_file(target, repo)
+
+        assert check.status == GateStatus.PASSED, check.output
+        assert target.read_text() == "VALUE = 1\n"
+
+
+class TestRuffOutputParsing:
+    def test_the_full_format_is_parsed(self):
+        """ruff >= 0.9's default. Without this a project pinning ruff and the
+        gate got no detailed_errors, so self-correction saw only "Found 1 error."."""
+        output = textwrap.dedent(
+            """
+            F401 [*] `os` imported but unused
+             --> src/app.py:1:8
+              |
+            1 | import os
+              |        ^^
+              |
+            help: Remove unused import: `os`
+
+            E501 Line too long (100 > 88)
+             --> src/app.py:3:89
+
+            Found 2 errors.
+            """
+        )
+
+        errors = core_gates._parse_ruff_errors(output)
+
+        assert errors == [
+            {"file": "src/app.py", "line": 1, "col": 8, "code": "F401",
+             "message": "[*] `os` imported but unused"},
+            {"file": "src/app.py", "line": 3, "col": 89, "code": "E501",
+             "message": "Line too long (100 > 88)"},
+        ]
+
 
 class TestBanditOffPath:
     def test_the_scanner_still_runs(self, readme_install_path, repo):
         """bandit is a runtime dep (#910) so that SEC always has a scanner; off
         PATH it used to report ERROR on every README install."""
-        (repo / "insecure.py").write_text(
-            textwrap.dedent(
-                """
-                import os
-
-                def run_it(user_input):
-                    os.system("echo " + user_input)
-                """
-            ).lstrip()
-        )
+        (repo / "insecure.py").write_text(_INSECURE)
 
         check = core_gates._run_bandit(repo)
 
@@ -116,3 +202,28 @@ class TestBanditOffPath:
         check = core_gates._run_bandit(repo)
 
         assert check.status == GateStatus.SKIPPED
+
+    def test_installed_dependencies_are_not_scanned(self, readme_install_path, repo):
+        """`uv run bandit` syncs the project into .venv before failing to spawn,
+        so the fallback scanned third-party code and failed a clean project."""
+        subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(repo / ".venv")], check=True)
+        for vendored in (".venv/lib", ".codeframe/agent-home"):
+            (repo / vendored).mkdir(parents=True, exist_ok=True)
+            (repo / vendored / "dep.py").write_text(_INSECURE)
+
+        check = core_gates._run_bandit(repo)
+
+        assert check.status == GateStatus.PASSED, check.output
+
+
+class TestReviewScannerOffPath:
+    def test_cf_review_still_scans(self, readme_install_path, repo):
+        """`cf review` checked shutil.which("bandit") and gave up on every README install."""
+        from codeframe.lib.quality.security_scanner import SecurityScanner
+
+        target = repo / "insecure.py"
+        target.write_text(_INSECURE)
+
+        findings = SecurityScanner(repo).analyze_file(target)
+
+        assert findings, "bandit found nothing in a known-insecure file"

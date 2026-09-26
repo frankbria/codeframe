@@ -3,10 +3,12 @@
 Scans code for security vulnerabilities using bandit and maps severity levels.
 """
 
+import importlib.util
 import json
 import logging
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import List
 
@@ -67,7 +69,13 @@ class SecurityScanner:
         # review of, say, a newly added empty __init__.py came back
         # "approved"/100 on an install with no bandit — the original bug,
         # surviving in the empty-file subset.
-        if shutil.which("bandit") is None:
+        if shutil.which("bandit"):
+            bandit_cmd = ["bandit"]
+        elif importlib.util.find_spec("bandit") is not None:
+            # CodeFRAME's own copy: after `uv tool install codeframe-ai` it is
+            # installed but off PATH (#1262).
+            bandit_cmd = [sys.executable, "-m", "bandit"]
+        else:
             raise ScannerUnavailableError(
                 "bandit is not installed, so no security analysis was performed. "
                 "Reinstall codeframe, or: pip install bandit"
@@ -88,7 +96,7 @@ class SecurityScanner:
         try:
             # Run bandit on the file
             result = subprocess.run(
-                ["bandit", "-f", "json", str(file_path)],
+                bandit_cmd + ["-f", "json", str(file_path)],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
