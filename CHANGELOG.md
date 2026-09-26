@@ -58,6 +58,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Telemetry no longer defaults to a domain the project does not own (#1269).**
+  The default collector was `telemetry.codeframe.dev`. That domain lapsed and is
+  listed for sale, so whoever bought it would have received every opted-in
+  install's usage and crash events. The default is now
+  `https://telemetry.codeframe.sh/v1/events`, on the domain every other project
+  address already uses. Telemetry is still off unless you opt in, and an
+  endpoint you set yourself (`CODEFRAME_TELEMETRY_ENDPOINT` or `endpoint` in
+  `~/.codeframe/telemetry.json`) still wins. If you copied the old URL into
+  either of those by hand, change it.
+
 - **`cf hooks set` / `cf hooks clear` no longer approve a cloned repo's hooks
   (#1263).** Both commands used to re-record trust for *every* configured hook
   after the edit, so `cf hooks clear after_init`, run to disarm hooks, approved a

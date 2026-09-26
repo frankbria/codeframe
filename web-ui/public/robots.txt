@@ -1,6 +1,3 @@
 # Allow all crawlers
 User-agent: *
 Allow: /
-
-# Sitemap location (uncomment when sitemap is available)
-# Sitemap: https://codeframe.dev/sitemap.xml
