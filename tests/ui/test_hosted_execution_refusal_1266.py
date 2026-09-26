@@ -284,3 +284,14 @@ def test_hosted_approve_with_execution_persists_nothing(monkeypatch, tmp_path):
     assert resp.status_code == 403
     assert tasks.get(ws, task.id).status == TaskStatus.BACKLOG
 
+
+
+@pytest.mark.asyncio
+async def test_admin_ticket_of_a_since_demoted_account_is_refused(auth_db):
+    """A ticket minted while admin must not outlive a demotion within its TTL."""
+    ws = _ws(mint_ticket(2, admin=True))
+
+    ok, _ = await authenticate_websocket(ws, close_code=4001, require_admin=True)
+
+    assert ok is False
+    assert ws.closed_with["code"] == 4403

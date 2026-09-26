@@ -874,7 +874,7 @@ async def authenticate_websocket(
         return False, None
 
     try:
-        await _load_active_user(user_id)
+        user = await _load_active_user(user_id)
     except HTTPException:
         await websocket.close(code=close_code, reason="Authentication failed")
         return False, None
@@ -883,7 +883,9 @@ async def authenticate_websocket(
         await websocket.close(code=close_code, reason="Authentication failed")
         return False, None
 
-    if require_admin and not entry.admin:
+    # Both: the minting principal had admin (a write key cannot escalate),
+    # and the account still has it (a demotion inside the TTL takes effect).
+    if require_admin and not (entry.admin and user.is_superuser):
         await websocket.close(code=4403, reason="Forbidden: admin scope required")
         return False, None
 
