@@ -9,6 +9,7 @@ import json
 import threading
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -124,8 +125,6 @@ class TestEndpoint:
         # #1269: codeframe.dev lapsed and is for sale; whoever buys it would
         # receive every opted-in install's events. Every project address lives
         # on codeframe.sh, so the default must too.
-        from urllib.parse import urlparse
-
         parsed = urlparse(telemetry.DEFAULT_ENDPOINT)
         assert parsed.scheme == "https"
         assert parsed.hostname == "codeframe.sh" or parsed.hostname.endswith(".codeframe.sh")
