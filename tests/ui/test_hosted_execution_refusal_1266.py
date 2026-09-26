@@ -55,6 +55,13 @@ def _terminal_app(workspace: str, user_id=None) -> FastAPI:
     return app
 
 
+def _prove_no_shell(ws) -> None:
+    """Reached only if the socket was accepted. A live shell answers, so a
+    broken gate fails with DID NOT RAISE instead of hanging on a silent bash."""
+    ws.send_text("echo SPAWNED\n")
+    _read_until(ws, b"SPAWNED")
+
+
 def _read_until(ws, marker: bytes, limit: int = 50) -> bytes:
     seen = b""
     for _ in range(limit):
@@ -97,7 +104,7 @@ def test_hosted_terminal_refuses_before_spawning_a_shell(workspace, monkeypatch)
 
     with pytest.raises(WebSocketDisconnect) as exc:
         with client.websocket_connect("/ws/sessions/s1/terminal") as ws:
-            ws.receive_bytes()
+            _prove_no_shell(ws)
 
     assert exc.value.code == 4403
     assert spawned == []
@@ -200,7 +207,7 @@ def test_terminal_route_requires_admin(tmp_path, auth_db, monkeypatch):
         with client.websocket_connect(
             f"/ws/sessions/s1/terminal?ticket={mint_ticket(2, admin=False)}"
         ) as ws:
-            ws.receive_bytes()
+            _prove_no_shell(ws)
 
     assert exc.value.code == 4403
 

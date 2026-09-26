@@ -92,7 +92,10 @@ CodeFRAME has two deployment modes (`CODEFRAME_DEPLOYMENT_MODE`):
   `/tasks/approve` with `start_execution`), `POST /api/v2/batches/{id}/resume`,
   `POST /api/v2/gates/run` and `POST /api/v2/proof/run` return `403` (#1266).
   Everything else (PRDs, task planning, reviews, the read-only session chat)
-  works. Hosted mode is not yet a supported deployment.
+  works. Two routes still start a fixed host binary rather than tenant code:
+  git operations (`/api/v2/git/*`) and the admin-only tool installer
+  (`POST /api/v2/env/install`, restricted to an allowlist of tools).
+  Hosted mode is not yet a supported deployment.
 
 ### Credentials
 
