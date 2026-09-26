@@ -1584,6 +1584,9 @@ def _summarize_ruff_output(output: str) -> str:
 
     lines = output.strip().split("\n")
 
+    if lines[0].startswith("All checks passed"):
+        return lines[0]
+
     # Count issues
     issue_count = len([line for line in lines if line.strip() and not line.startswith("Found")])
 

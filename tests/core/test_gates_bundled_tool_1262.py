@@ -227,3 +227,9 @@ class TestReviewScannerOffPath:
         findings = SecurityScanner(repo).analyze_file(target)
 
         assert findings, "bandit found nothing in a known-insecure file"
+
+
+def test_a_clean_run_is_not_summarized_as_an_issue():
+    """"All checks passed!" was counted as one issue line, so a PASSED gate's
+    output read "1 issues found" — a contradiction on the success path."""
+    assert core_gates._summarize_ruff_output("All checks passed!\n") == "All checks passed!"
