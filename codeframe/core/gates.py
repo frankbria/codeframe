@@ -1449,14 +1449,6 @@ def run_lint_on_file(
             output += "\n" + result.stderr
         output = output.strip()
 
-        if _tool_is_missing(result.returncode, result.stderr, {cfg.cmd[0], cfg.name}):
-            return GateCheck(
-                name=cfg.name,
-                status=GateStatus.SKIPPED,
-                output=f"{cfg.name} not found in project dependencies",
-                duration_ms=duration_ms,
-            )
-
         passed = result.returncode == 0
         check = GateCheck(
             name=cfg.name,
@@ -1520,25 +1512,6 @@ def run_autofix_on_file(
         if result.stderr:
             output += "\n" + result.stderr
         output = output.strip()
-
-        # Detect tool-not-found (same pattern as run_lint_on_file)
-        if result.returncode != 0 and result.stderr:
-            stderr_lower = result.stderr.lower()
-            tool_names = {cfg.autofix_cmd[0].lower(), cfg.name.lower()}
-            if (
-                "failed to spawn" in stderr_lower
-                or "command not found" in stderr_lower
-                or (
-                    "no such file or directory" in stderr_lower
-                    and any(name in stderr_lower for name in tool_names)
-                )
-            ):
-                return GateCheck(
-                    name=f"autofix-{cfg.name}",
-                    status=GateStatus.SKIPPED,
-                    output=f"{cfg.name} not found in project dependencies",
-                    duration_ms=duration_ms,
-                )
 
         return GateCheck(
             name=f"autofix-{cfg.name}",

@@ -144,6 +144,21 @@ class TestPerFileLintOffPath:
         assert check.status == GateStatus.FAILED, check.output
         assert [e["code"] for e in check.detailed_errors] == ["F401"]
 
+    def test_a_broken_config_fails_rather_than_skipping(self, readme_install_path, repo):
+        """Same rule as the gate: a ruff that ran and failed is not "missing"."""
+        (repo / "ruff.toml").write_text('extend = "missing.toml"\n')
+
+        check = core_gates.run_lint_on_file(repo / "app.py", repo)
+
+        assert check.status == GateStatus.FAILED, check.output
+
+    def test_autofix_with_a_broken_config_is_not_skipped(self, readme_install_path, repo):
+        (repo / "ruff.toml").write_text('extend = "missing.toml"\n')
+
+        check = core_gates.run_autofix_on_file(repo / "app.py", repo)
+
+        assert check.status == GateStatus.ERROR, check.output
+
     def test_autofix_fixes_the_file(self, readme_install_path, repo):
         target = repo / "app.py"
         target.write_text("import os\nVALUE = 1\n")
