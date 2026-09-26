@@ -662,7 +662,8 @@ def _run_tool(
     to spawn and a clean project was reported broken (#1262).
 
     Only a spawn failure falls through. A tool that ran and failed (a broken
-    config, say) is the answer, even when its stderr says "No such file".
+    config, say) is the answer, even when its stderr says "No such file" —
+    which is why this does not use ``_tool_is_missing``.
 
     Returns None when no copy can be spawned.
     """
@@ -681,9 +682,11 @@ def _run_tool(
                 errors="replace",
                 timeout=timeout,
             )
-        except FileNotFoundError:
+        except OSError:  # not found, not executable
             continue
-        if "failed to spawn" not in (result.stderr or "").lower():
+        stderr = (result.stderr or "").lower()
+        # uv's spawn failure, or a version-manager shim with no such version.
+        if "failed to spawn" not in stderr and "command not found" not in stderr:
             return result
     return None
 
@@ -834,7 +837,7 @@ def _run_bandit(repo_path: Path, verbose: bool = False) -> GateCheck:
         result = _run_tool(
             "bandit",
             prefix,
-            ["-r", ".", "-q", "-f", "txt", "-x", "./.venv,./venv,./.codeframe"],
+            ["-r", ".", "-q", "-f", "txt", "-x", "./.venv,./venv,./.tox,./.nox,./.codeframe"],
             repo_path,
             timeout=300,
         )
@@ -1431,7 +1434,7 @@ def run_lint_on_file(
                          output=f"No linter configured for {file_path.suffix}")
 
     tool, *args = [part.replace("{file}", str(file_path)) for part in cfg.cmd]
-    prefix = _tool_prefix(tool, cfg.use_uv) if cfg.check_available else [tool]
+    prefix = _tool_prefix(tool, cfg.use_uv)
 
     start = time.time()
     try:
@@ -1503,7 +1506,7 @@ def run_autofix_on_file(
                          output=f"{cfg.name} has no autofix command")
 
     tool, *args = [part.replace("{file}", str(file_path)) for part in cfg.autofix_cmd]
-    prefix = _tool_prefix(tool, cfg.use_uv) if cfg.check_available else [tool]
+    prefix = _tool_prefix(tool, cfg.use_uv)
 
     start = time.time()
     try:

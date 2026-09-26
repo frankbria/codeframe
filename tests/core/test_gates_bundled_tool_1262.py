@@ -207,7 +207,7 @@ class TestBanditOffPath:
         """`uv run bandit` syncs the project into .venv before failing to spawn,
         so the fallback scanned third-party code and failed a clean project."""
         subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(repo / ".venv")], check=True)
-        for vendored in (".venv/lib", ".codeframe/agent-home"):
+        for vendored in (".venv/lib", ".tox/py/lib", ".codeframe/agent-home"):
             (repo / vendored).mkdir(parents=True, exist_ok=True)
             (repo / vendored / "dep.py").write_text(_INSECURE)
 
