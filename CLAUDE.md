@@ -688,7 +688,7 @@ CODEFRAME_ALLOW_PRIVATE_WEBHOOKS=1    # Allow webhook URLs whose host resolves t
 
 # Telemetry (default: off — must be explicitly opted in)
 CODEFRAME_TELEMETRY=on|off            # Force telemetry on or off; overrides ~/.codeframe/telemetry.json
-CODEFRAME_TELEMETRY_ENDPOINT=<url>    # Override collector URL (default: https://telemetry.codeframe.dev/v1/events)
+CODEFRAME_TELEMETRY_ENDPOINT=<url>    # Override collector URL (default: https://telemetry.codeframe.sh/v1/events)
 DO_NOT_TRACK=1                        # Standard convention; disables telemetry when set (and not 0/false)
 ```
 

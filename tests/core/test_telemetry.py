@@ -8,6 +8,7 @@ traceback sanitization, and silent network failure.
 import json
 import threading
 import uuid
+from pathlib import Path
 
 import httpx
 import pytest
@@ -118,6 +119,20 @@ class TestIsEnabled:
 class TestEndpoint:
     def test_default_endpoint(self, storage_dir, clean_env):
         assert telemetry.resolve_endpoint(storage_dir) == telemetry.DEFAULT_ENDPOINT
+
+    def test_default_endpoint_is_on_the_project_domain(self):
+        # #1269: codeframe.dev lapsed and is for sale; whoever buys it would
+        # receive every opted-in install's events. Every project address lives
+        # on codeframe.sh, so the default must too.
+        from urllib.parse import urlparse
+
+        parsed = urlparse(telemetry.DEFAULT_ENDPOINT)
+        assert parsed.scheme == "https"
+        assert parsed.hostname == "codeframe.sh" or parsed.hostname.endswith(".codeframe.sh")
+
+    def test_privacy_policy_names_the_default_endpoint(self):
+        privacy = Path(__file__).resolve().parents[2] / "PRIVACY.md"
+        assert telemetry.DEFAULT_ENDPOINT in privacy.read_text(encoding="utf-8")
 
     def test_env_var_wins(self, storage_dir, clean_env, monkeypatch):
         monkeypatch.setenv("CODEFRAME_TELEMETRY_ENDPOINT", "http://localhost:9999/v1/events")

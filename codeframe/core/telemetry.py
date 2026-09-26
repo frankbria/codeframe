@@ -35,7 +35,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ENDPOINT = "https://telemetry.codeframe.dev/v1/events"
+DEFAULT_ENDPOINT = "https://telemetry.codeframe.sh/v1/events"
 CONFIG_FILENAME = "telemetry.json"
 SCHEMA_VERSION = 1
 SEND_TIMEOUT_SECONDS = 3.0

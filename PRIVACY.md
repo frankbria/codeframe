@@ -71,7 +71,7 @@ You can audit the full client implementation in
 ## Where it goes
 
 Events are POSTed over HTTPS to the CodeFRAME beta collector
-(`https://telemetry.codeframe.dev/v1/events` by default). The collector is the
+(`https://telemetry.codeframe.sh/v1/events` by default). The collector is the
 ~50-line FastAPI app in
 [`scripts/telemetry_collector.py`](scripts/telemetry_collector.py) — it
 appends events to a flat file; there is no third-party analytics service
