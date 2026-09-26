@@ -19,7 +19,7 @@ from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import gates
 from codeframe.core.gates import GateResult, GateCheck
-from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.dependencies import get_v2_workspace, refuse_execution_in_hosted_mode
 from codeframe.ui.response_models import api_error, ErrorCodes
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ def _result_to_response(result: GateResult) -> GateResultResponse:
 # ============================================================================
 
 
-@router.post("/run", response_model=GateResultResponse)
+@router.post("/run", response_model=GateResultResponse, dependencies=[Depends(refuse_execution_in_hosted_mode)])
 @rate_limit_standard()
 async def run_gates(
     request: Request,

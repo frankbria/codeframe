@@ -29,7 +29,7 @@ from codeframe.core.state_machine import (
     TaskStatus,
     can_transition,
 )
-from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.dependencies import get_v2_workspace, refuse_execution_in_hosted_mode
 from codeframe.ui.response_models import api_error, ErrorCodes
 
 logger = logging.getLogger(__name__)
@@ -668,7 +668,18 @@ def _start_batch_detached(workspace: Workspace, batch_id: str, max_retries: int 
     ).start()
 
 
-@router.post("/approve", response_model=ApproveTasksResponse)
+def _refuse_hosted_start_execution(body: ApproveTasksRequest) -> None:
+    """Approving runs nothing; ``start_execution`` does (#1266). Resolved as a
+    route dependency so the refusal lands before any approval is persisted."""
+    if body.start_execution:
+        refuse_execution_in_hosted_mode()
+
+
+@router.post(
+    "/approve",
+    response_model=ApproveTasksResponse,
+    dependencies=[Depends(_refuse_hosted_start_execution)],
+)
 @rate_limit_standard()
 async def approve_tasks_endpoint(
     request: Request,
@@ -791,7 +802,7 @@ def get_assignment_status(
 # ============================================================================
 
 
-@router.post("/execute", response_model=StartExecutionResponse)
+@router.post("/execute", response_model=StartExecutionResponse, dependencies=[Depends(refuse_execution_in_hosted_mode)])
 @rate_limit_ai()
 async def start_execution(
     request: Request,
@@ -933,7 +944,7 @@ def _spawn_agent_worker(
     threading.Thread(target=_run_agent, daemon=True).start()
 
 
-@router.post("/{task_id}/start")
+@router.post("/{task_id}/start", dependencies=[Depends(refuse_execution_in_hosted_mode)])
 @rate_limit_ai()
 async def start_single_task(
     request: Request,
@@ -1054,7 +1065,7 @@ async def stop_task(
         )
 
 
-@router.post("/{task_id}/resume")
+@router.post("/{task_id}/resume", dependencies=[Depends(refuse_execution_in_hosted_mode)])
 @rate_limit_ai()
 async def resume_task(
     request: Request,

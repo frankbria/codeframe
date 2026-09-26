@@ -48,7 +48,7 @@ from codeframe.core.proof.runner import _new_run_id, run_proof
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.auth.dependencies import require_auth
-from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.dependencies import get_v2_workspace, refuse_execution_in_hosted_mode
 from codeframe.ui.response_models import ErrorCodes, api_error
 from codeframe.ui.routers._helpers import atomic_write_json
 
@@ -436,7 +436,7 @@ async def get_requirement_endpoint(
     return _req_to_response(req)
 
 
-@router.post("/run", response_model=RunProofResponse)
+@router.post("/run", response_model=RunProofResponse, dependencies=[Depends(refuse_execution_in_hosted_mode)])
 @rate_limit_ai()
 async def run_proof_endpoint(
     request: Request,

@@ -13,6 +13,7 @@ import { AgentTerminal } from '@/components/sessions/AgentTerminal';
 import { SplitPane } from '@/components/sessions/SplitPane';
 import { sessionsApi } from '@/lib/api';
 import { formatUsd } from '@/lib/format';
+import { useAdminDenied } from '@/hooks/useAdminDenied';
 import type { ChatMessage, Session } from '@/types';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -62,6 +63,8 @@ export function SessionDetailClient({ sessionId }: SessionDetailClientProps) {
     () => sessionsApi.getOne(sessionId),
     { refreshInterval: (data) => (data?.state === 'active' ? 5000 : 0) }
   );
+
+  const adminDenied = useAdminDenied();
 
   const [endingSession, setEndingSession] = useState(false);
   const [endError, setEndError] = useState<string | null>(null);
@@ -197,7 +200,18 @@ export function SessionDetailClient({ sessionId }: SessionDetailClientProps) {
         {isActive ? (
           <SplitPane
             left={<AgentChatPanel sessionId={session.id} className="h-full" />}
-            right={<AgentTerminal sessionId={session.id} className="h-full" />}
+            right={
+              adminDenied ? (
+                <div
+                  role="status"
+                  className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground"
+                >
+                  The terminal requires an admin account.
+                </div>
+              ) : (
+                <AgentTerminal sessionId={session.id} className="h-full" />
+              )
+            }
             defaultSplit={45}
             storageKey={`session-split-${session.id}`}
             className="h-full"

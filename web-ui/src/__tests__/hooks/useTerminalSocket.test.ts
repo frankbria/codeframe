@@ -327,6 +327,28 @@ describe('useTerminalSocket', () => {
     expect(result.current.status).toBe('error');
   });
 
+  it('does not retry on 4403 admin-required close (#1266)', async () => {
+    const onData = jest.fn();
+    const { result } = renderHook(() =>
+      useTerminalSocket({
+        enabled: true,
+        buildUrl: staticUrl('ws://localhost/ws/sessions/s1/terminal?ticket=t'),
+        onData,
+        maxRetries: 3,
+        retryDelay: 100,
+      })
+    );
+    await flushConnect();
+    const ws = MockWebSocket.instances[0];
+    act(() => ws.simulateOpen());
+    act(() => ws.simulateClose(4403));
+
+    // Should go straight to 'error' — no retry timers
+    act(() => jest.advanceTimersByTime(1000));
+    expect(MockWebSocket.instances).toHaveLength(1); // no new connection
+    expect(result.current.status).toBe('error');
+  });
+
   // The backend denies WS auth before accepting the handshake, so a real
   // browser reports an expired token as 1006 (abnormal), not 4001. The probe
   // must fire on any non-normal close; it self-filters (only a genuine 401

@@ -319,7 +319,7 @@ async def create_stream_ticket(
     review P1). Read-only keys don't need tickets — header-capable clients
     authenticate the SSE routes with ``X-API-Key`` directly.
     """
-    from codeframe.auth.api_keys import SCOPE_WRITE
+    from codeframe.auth.api_keys import SCOPE_ADMIN, SCOPE_WRITE
     from codeframe.auth.scopes import has_scope
 
     if not has_scope(auth, SCOPE_WRITE):
@@ -327,7 +327,7 @@ async def create_stream_ticket(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Stream tickets require write scope",
         )
-    ticket = mint_ticket(auth.get("user_id"))
+    ticket = mint_ticket(auth.get("user_id"), admin=has_scope(auth, SCOPE_ADMIN))
     return StreamTicketResponse(ticket=ticket, expires_in=TICKET_TTL_SECONDS)
 
 

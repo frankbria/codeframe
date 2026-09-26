@@ -65,26 +65,55 @@ your behalf; sandbox-escape findings, however, are in scope.
 CodeFRAME has two deployment modes (`CODEFRAME_DEPLOYMENT_MODE`):
 
 - **`self_hosted` (default) — a single trust domain.** One operator or team runs
-  the instance and shares its **machine-wide** credential store (one LLM key set,
-  one GitHub PAT). Do **not** expose a self-hosted instance to mutually
-  distrusting users: any authenticated user can act within the configured
-  workspace(s), and credentials are shared by design. Multiple untrusting users
-  require separate instances (or hosted mode).
+  the instance. Do **not** expose a self-hosted instance to mutually distrusting
+  users: every process it starts (agent runs, gate and PROOF9 runs, the web
+  terminal) runs as the server's OS user, so an authenticated user can act
+  anywhere that user can.
 - **`WORKSPACE_ROOT` is required in both modes whenever auth is enforced**, and
   the server refuses to start without it (#896). An unset allowlist is not a
   mild default — a session's `workspace_path` becomes a terminal shell's `cwd`,
   so it grants every authenticated principal a shell in any directory on the
   host. A single-operator local machine may opt out explicitly with
   `CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES=1`, which logs a loud warning and is
-  never honored in hosted mode.
-- **`hosted` — multi-tenant.** Each user is confined to `<WORKSPACE_ROOT>/<user_id>`, so
-  tenants cannot reach each other's workspaces. Because the credential store is
-  machine-wide and cannot yet be safely shared across tenants, the shared
-  credential and GitHub-PAT **mutation** endpoints (`PUT`/`DELETE
-  /api/v2/settings/keys/*`, `POST /connect`, `DELETE /disconnect`) are **disabled
-  (HTTP 403)** in hosted mode — provide provider keys via per-instance
-  environment variables instead. Per-user credential scoping is tracked as a
-  follow-up.
+  never honored in hosted mode. The allowlist confines the *starting path* of
+  a workspace; it is not a sandbox.
+- **The web terminal is admin-only.** `WS /ws/sessions/{id}/terminal` requires
+  a stream ticket minted by an `admin`-scoped principal (a superuser session, or
+  an admin-scoped API key owned by one), and closes with `4403` otherwise
+  (#1266). A shell runs as the server user, so it is the operator's power, not
+  an ordinary user's.
+- **`hosted` — multi-tenant, with execution disabled.** Each user's workspace
+  paths are confined to `<WORKSPACE_ROOT>/<user_id>`, but that only checks where
+  a path starts. Processes would still run as the server's uid, able to read
+  other tenants' directories and the server's own environment. Until per-tenant
+  OS isolation (a container or a uid per tenant) exists, hosted mode **refuses
+  execution**: the terminal closes with `4403`, and task execution
+  (`POST /api/v2/tasks/execute`, `/tasks/{id}/start`, `/tasks/{id}/resume`,
+  `/tasks/approve` with `start_execution`), `POST /api/v2/batches/{id}/resume`,
+  `POST /api/v2/gates/run` and `POST /api/v2/proof/run` return `403` (#1266).
+  Everything else (PRDs, task planning, reviews, the read-only session chat)
+  works. A few routes still start a fixed host binary rather than tenant code:
+  git operations (`/api/v2/git/*`), the environment probes
+  (`GET /api/v2/env/check` and `/env/doctor` run `<tool> --version` for tools
+  found on the server's `PATH`), and the admin-only tool installer
+  (`POST /api/v2/env/install`, restricted to an allowlist of tools).
+  Hosted mode is not yet a supported deployment.
+
+### Credentials
+
+- **With auth enabled, credentials are per user** (#790). API keys stored under
+  Settings → API Keys and the GitHub PAT stored under Settings → Integrations
+  live in a store keyed to the authenticated account, and are never returned in
+  a response. With auth disabled the store is machine-wide: there is only the
+  local operator.
+- **The server's own environment belongs to the operator.** A GitHub request
+  falls back to the process's `GITHUB_TOKEN` only for the operator (auth
+  disabled, or an `admin`-scoped principal) and **never** in hosted mode, where
+  every tenant would otherwise act with it (#900). Everyone else must connect
+  their own PAT.
+- Credential and PAT storage (`PUT`/`DELETE /api/v2/settings/keys/*`,
+  `POST /api/v2/integrations/github/connect`, `DELETE .../disconnect`) require
+  `admin` scope (#898).
 
 ## Handling secrets
 

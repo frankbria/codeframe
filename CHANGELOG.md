@@ -9,6 +9,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **The web terminal is admin-only, and hosted mode refuses execution (#1266).**
+  **Behavior change:** `WS /ws/sessions/{id}/terminal` now needs a stream ticket
+  minted by an `admin`-scoped principal and closes with `4403` otherwise. The
+  web UI explains this instead of opening the terminal. With
+  `CODEFRAME_DEPLOYMENT_MODE=hosted`, the terminal closes `4403` and task
+  execute/start/resume, approve-with-`start_execution`, batch resume, gates run
+  and proof run return `403`, because every process still runs as the server's
+  OS user, so the per-tenant path check was never a boundary. SECURITY.md's
+  trust model now says so.
+
 - **`cf proof run` no longer exits 0 when verification was impossible (#1253).**
   **This is a behavior change that can turn a currently-green CI step red.** Two
   cases that previously exited 0 now exit **2**: every gate disabled in

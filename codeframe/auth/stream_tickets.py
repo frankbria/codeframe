@@ -40,6 +40,10 @@ _lock = threading.Lock()
 class _TicketEntry:
     user_id: Optional[int]
     expires_at: float
+    #: Whether the principal that minted it had ``admin`` scope (#1266). Taken
+    #: from the minting request, not re-derived from the account, so a
+    #: write-scoped key owned by a superuser cannot mint an admin ticket.
+    admin: bool = False
 
 
 class TicketRedemptionError(Exception):
@@ -58,12 +62,13 @@ def _sweep_expired_locked(now: float) -> None:
         del _tickets[ticket]
 
 
-def mint_ticket(user_id: Optional[int]) -> str:
+def mint_ticket(user_id: Optional[int], *, admin: bool = False) -> str:
     """Mint a new single-use ticket good for ``TICKET_TTL_SECONDS``.
 
     Args:
         user_id: The authenticated user's id, or ``None`` when minted while
             ``CODEFRAME_AUTH_REQUIRED`` is disabled (synthetic principal).
+        admin: Whether the minting principal had ``admin`` scope.
 
     Returns:
         An opaque, URL-safe ticket string.
@@ -72,18 +77,26 @@ def mint_ticket(user_id: Optional[int]) -> str:
     now = _now()
     with _lock:
         _sweep_expired_locked(now)
-        _tickets[ticket] = _TicketEntry(user_id=user_id, expires_at=now + TICKET_TTL_SECONDS)
+        _tickets[ticket] = _TicketEntry(
+            user_id=user_id, expires_at=now + TICKET_TTL_SECONDS, admin=admin
+        )
     return ticket
 
 
 def redeem_ticket(ticket: str) -> Optional[int]:
+    """Redeem a ticket exactly once and return the ``user_id`` it names."""
+    return redeem_ticket_entry(ticket).user_id
+
+
+def redeem_ticket_entry(ticket: str) -> _TicketEntry:
     """Redeem a ticket exactly once.
 
     Args:
         ticket: The ticket string to redeem.
 
     Returns:
-        The ``user_id`` the ticket was minted for (may be ``None``).
+        The entry: the ``user_id`` it was minted for (may be ``None``) and
+        whether its minting principal had ``admin`` scope.
 
     Raises:
         TicketRedemptionError: if the ticket is unknown, expired, or has
@@ -97,7 +110,7 @@ def redeem_ticket(ticket: str) -> Optional[int]:
     if entry is None:
         raise TicketRedemptionError("Invalid or expired ticket")
 
-    return entry.user_id
+    return entry
 
 
 def reset_stream_tickets() -> None:

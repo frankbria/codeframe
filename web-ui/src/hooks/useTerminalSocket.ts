@@ -140,11 +140,13 @@ export function useTerminalSocket({
         if (event.code !== WS_NORMAL_CLOSURE_CODE) {
           void verifyAuthAfterStreamFailure();
         }
-        // Auth/authz rejections (4001, 4003, 4004, 4008) are permanent — retrying
-        // would loop endlessly with the same credentials. Go straight to error.
+        // Auth/authz rejections (4001, 4003, 4004, 4008, 4403) are permanent —
+        // retrying would loop endlessly with the same credentials. Go straight
+        // to error. 4403 is the admin-required / hosted-mode refusal (#1266).
         const isPermanentFailure =
           event.code === 4001 || event.code === 4003 ||
-          event.code === 4004 || event.code === 4008;
+          event.code === 4004 || event.code === 4008 ||
+          event.code === 4403;
         if (!isPermanentFailure && retriesRef.current < maxRetries) {
           const delay = retryDelay * 2 ** retriesRef.current;
           retriesRef.current += 1;
