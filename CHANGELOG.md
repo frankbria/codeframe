@@ -48,6 +48,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **`cf hooks set` / `cf hooks clear` no longer approve a cloned repo's hooks
+  (#1263).** Both commands used to re-record trust for *every* configured hook
+  after the edit, so `cf hooks clear after_init`, run to disarm hooks, approved a
+  committed `before_task` payload, and the next `cf work start` ran it. Trust now
+  carries forward only when the hooks were already trusted (or none existed);
+  otherwise the edit is saved untrusted and the command points to
+  `cf hooks trust`. `cf hooks trust`, `show` and `run` also print hook commands
+  and output verbatim, so a `[conceal]` tag can no longer hide part of the
+  command being approved.
 - **`cf work start --execute` no longer ends in a blocker on the README install
   path (#1262).** After `uv tool install codeframe-ai`, ruff and bandit (both
   runtime dependencies) live in the tool's own venv, off PATH, and a user's
