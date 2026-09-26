@@ -162,9 +162,8 @@ else
 
   # Every archived run recorded `6-work-start FAIL` with an empty findings.tsv,
   # so the BUILD step was broken for months without anyone reading it (#1262).
-  if ! step "6-work-start" yes 1200 -- bash -c "cf work start '$TASK_ID' --execute"; then
+  step "6-work-start" yes 1200 -- bash -c "cf work start '$TASK_ID' --execute" ||
     note P-WORK-START-FAILED critical "cf work start --execute did not complete the task (Golden Path BUILD). See the 6-work-start transcript and run-logs/ for what stopped it."
-  fi
 fi
 
 ########################################
