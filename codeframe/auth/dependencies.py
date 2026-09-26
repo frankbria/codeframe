@@ -886,6 +886,10 @@ async def authenticate_websocket(
     # Both: the minting principal had admin (a write key cannot escalate),
     # and the account still has it (a demotion inside the TTL takes effect).
     if require_admin and not (entry.admin and user.is_superuser):
+        # Accept first: a close before the handshake completes reaches a
+        # browser as 1006, and the client could not tell it apart from a
+        # dropped connection.
+        await websocket.accept()
         await websocket.close(code=4403, reason="Forbidden: admin scope required")
         return False, None
 

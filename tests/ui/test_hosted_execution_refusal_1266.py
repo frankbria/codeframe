@@ -62,6 +62,18 @@ def _prove_no_shell(ws) -> None:
     _read_until(ws, b"SPAWNED")
 
 
+def _refusal_code(client, url: str) -> int:
+    """The close code of a refused terminal, asserting it was accepted first.
+
+    A close before the handshake completes makes ``websocket_connect`` itself
+    raise here, and reaches a browser as 1006 rather than the code sent.
+    """
+    with client.websocket_connect(url) as ws:
+        with pytest.raises(WebSocketDisconnect) as exc:
+            _prove_no_shell(ws)
+    return exc.value.code
+
+
 def _read_until(ws, marker: bytes, limit: int = 50) -> bytes:
     seen = b""
     for _ in range(limit):
@@ -102,11 +114,7 @@ def test_hosted_terminal_refuses_before_spawning_a_shell(workspace, monkeypatch)
     monkeypatch.setattr(asyncio, "create_subprocess_exec", recording_exec)
     client = TestClient(_terminal_app(str(workspace)))
 
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect("/ws/sessions/s1/terminal") as ws:
-            _prove_no_shell(ws)
-
-    assert exc.value.code == 4403
+    assert _refusal_code(client, "/ws/sessions/s1/terminal") == 4403
     assert spawned == []
 
 
@@ -150,6 +158,11 @@ def _ws(ticket):
     async def close(**kwargs):
         ws.closed_with = kwargs
 
+    async def accept():
+        ws.accepted = True
+
+    ws.accepted = False
+    ws.accept = accept
     ws.close = close
     return ws
 
@@ -170,7 +183,7 @@ async def test_non_admin_ticket_is_refused_with_4403(auth_db):
     ok, _ = await authenticate_websocket(ws, close_code=4001, require_admin=True)
 
     assert ok is False
-    assert ws.closed_with["code"] == 4403
+    assert ws.accepted and ws.closed_with["code"] == 4403
 
 
 @pytest.mark.asyncio
@@ -182,7 +195,7 @@ async def test_superusers_write_scoped_ticket_is_refused(auth_db):
     ok, _ = await authenticate_websocket(ws, close_code=4001, require_admin=True)
 
     assert ok is False
-    assert ws.closed_with["code"] == 4403
+    assert ws.accepted and ws.closed_with["code"] == 4403
 
 
 @pytest.mark.asyncio
@@ -202,14 +215,9 @@ def test_terminal_route_requires_admin(tmp_path, auth_db, monkeypatch):
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "root"))
     monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "self_hosted")
     client = TestClient(_terminal_app(str(ws_dir), user_id=2))
+    url = f"/ws/sessions/s1/terminal?ticket={mint_ticket(2, admin=False)}"
 
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with client.websocket_connect(
-            f"/ws/sessions/s1/terminal?ticket={mint_ticket(2, admin=False)}"
-        ) as ws:
-            _prove_no_shell(ws)
-
-    assert exc.value.code == 4403
+    assert _refusal_code(client, url) == 4403
 
 
 # ---------------------------------------------------------------------------
@@ -294,4 +302,4 @@ async def test_admin_ticket_of_a_since_demoted_account_is_refused(auth_db):
     ok, _ = await authenticate_websocket(ws, close_code=4001, require_admin=True)
 
     assert ok is False
-    assert ws.closed_with["code"] == 4403
+    assert ws.accepted and ws.closed_with["code"] == 4403

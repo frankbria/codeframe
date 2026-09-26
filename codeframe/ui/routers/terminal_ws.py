@@ -72,6 +72,7 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
     from codeframe.ui.server import is_hosted_mode
 
     if is_hosted_mode():
+        await websocket.accept()  # so a browser sees 4403, not 1006
         await websocket.close(
             code=4403,
             reason="Terminal is disabled in hosted mode until per-tenant OS isolation exists",
