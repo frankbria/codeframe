@@ -160,7 +160,11 @@ else
   printf '\n### READY tasks after promotion:\n'
   cf tasks list --status READY 2>&1 | tail -30
 
-  step "6-work-start" yes 1200 -- bash -c "cf work start '$TASK_ID' --execute"
+  # Every archived run recorded `6-work-start FAIL` with an empty findings.tsv,
+  # so the BUILD step was broken for months without anyone reading it (#1262).
+  if ! step "6-work-start" yes 1200 -- bash -c "cf work start '$TASK_ID' --execute"; then
+    note P-WORK-START-FAILED critical "cf work start --execute did not complete the task — the Golden Path BUILD step fails on the README install path. See the 6-work-start transcript and run-logs/ for the gate or blocker that stopped it."
+  fi
 fi
 
 ########################################

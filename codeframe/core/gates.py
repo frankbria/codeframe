@@ -6,6 +6,7 @@ MVP gates: pytest, ruff/lint.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import importlib.util
 import re
 import logging
 import os
@@ -620,6 +621,42 @@ def _tool_is_missing(returncode: int, stderr: Optional[str], tool_names: set[str
     )
 
 
+def _run_python_tool(
+    tool: str, prefix: Optional[list[str]], args: list[str], repo_path: Path, timeout: int
+) -> Optional[subprocess.CompletedProcess]:
+    """Run a Python tool CodeFRAME ships, preferring the project's own copy.
+
+    ``prefix`` is how the project would run it (``uv run <tool>`` or ``<tool>``
+    on PATH), so its pinned version wins. If that copy is missing, fall back to
+    CodeFRAME's own: ruff and bandit are runtime dependencies, but after ``uv
+    tool install codeframe-ai`` they live in the tool venv, off PATH, and the
+    user's project rarely depends on them — so ``uv run`` failed to spawn and
+    a clean project was reported broken (#1262).
+
+    Returns None when neither copy can run.
+    """
+    prefixes = [prefix] if prefix else []
+    if importlib.util.find_spec(tool) is not None:
+        prefixes.append([sys.executable, "-m", tool])
+    for cmd in prefixes:
+        try:
+            result = subprocess.run(
+                cmd + args,
+                cwd=repo_path,
+                env=build_agent_env(repo_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+            )
+        except FileNotFoundError:
+            continue
+        if not _tool_is_missing(result.returncode, result.stderr, {tool}):
+            return result
+    return None
+
+
 def _run_pytest(
     repo_path: Path, verbose: bool = False, test_selector: Optional[str] = None
 ) -> GateCheck:
@@ -753,40 +790,28 @@ def _run_bandit(repo_path: Path, verbose: bool = False) -> GateCheck:
 
     start = time.time()
 
-    if not shutil.which("bandit") and not shutil.which("uv"):
-        return GateCheck(
-            name="bandit",
-            status=GateStatus.SKIPPED,
-            output="bandit not found — no security analysis was performed",
-        )
-
     if shutil.which("bandit"):
-        cmd = ["bandit", "-r", ".", "-q", "-f", "txt"]
+        prefix = ["bandit"]
+    elif shutil.which("uv"):
+        prefix = ["uv", "run", "bandit"]
     else:
-        cmd = ["uv", "run", "bandit", "-r", ".", "-q", "-f", "txt"]
+        prefix = None
 
     try:
-        result = subprocess.run(
-            cmd,
-            cwd=repo_path,
-            env=build_agent_env(repo_path),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=300,
-        )
-    except FileNotFoundError:
-        return GateCheck(
-            name="bandit",
-            status=GateStatus.SKIPPED,
-            output="bandit could not be executed — no security analysis was performed",
+        result = _run_python_tool(
+            "bandit", prefix, ["-r", ".", "-q", "-f", "txt"], repo_path, timeout=300
         )
     except subprocess.TimeoutExpired:
         return GateCheck(
             name="bandit",
             status=GateStatus.ERROR,
             output="bandit timed out after 300s",
+        )
+    if result is None:
+        return GateCheck(
+            name="bandit",
+            status=GateStatus.SKIPPED,
+            output="bandit not found — no security analysis was performed",
         )
 
     duration_ms = int((time.time() - start) * 1000)
@@ -816,32 +841,27 @@ def _run_ruff(repo_path: Path, verbose: bool = False) -> GateCheck:
 
     start = time.time()
 
-    # Check if ruff is available (either directly or via uv)
-    if not shutil.which("ruff") and not shutil.which("uv"):
-        return GateCheck(
-            name="ruff",
-            status=GateStatus.SKIPPED,
-            output="ruff not found",
-        )
+    # uv run ruff runs in the target project's environment, so its pinned
+    # version and config apply. Concise output is the one-line-per-finding
+    # shape _parse_ruff_errors reads; the default format left detailed_errors
+    # empty, so self-correction was told only "Found 1 error." (#1262).
+    if shutil.which("uv"):
+        prefix = ["uv", "run", "ruff"]
+    elif shutil.which("ruff"):
+        prefix = ["ruff"]
+    else:
+        prefix = None
 
     try:
-        # Use uv run ruff if uv is available (runs in target project's environment)
-        # This ensures ruff runs with the target project's dependencies
-        if shutil.which("uv"):
-            cmd = ["uv", "run", "ruff", "check", "."]
-        else:
-            cmd = ["ruff", "check", "."]
-
-        result = subprocess.run(
-            cmd,
-            cwd=repo_path,
-            env=build_agent_env(repo_path),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=60,
+        result = _run_python_tool(
+            "ruff", prefix, ["check", "--output-format=concise", "."], repo_path, timeout=60
         )
+        if result is None:
+            return GateCheck(
+                name="ruff",
+                status=GateStatus.SKIPPED,
+                output="ruff not found",
+            )
 
         duration_ms = int((time.time() - start) * 1000)
 
