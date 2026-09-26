@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { SessionDetailClient } from '@/app/sessions/[id]/SessionDetailClient';
 import { sessionsApi } from '@/lib/api';
+import { useAdminDenied } from '@/hooks/useAdminDenied';
 import type { Session } from '@/types';
 
 // ── Mocks ────────────────────────────────────────────────────────────────
@@ -12,6 +13,10 @@ jest.mock('next/navigation', () => ({
 }));
 
 jest.mock('swr');
+
+jest.mock('@/hooks/useAdminDenied', () => ({
+  useAdminDenied: jest.fn(),
+}));
 
 jest.mock('@/lib/api', () => ({
   sessionsApi: {
@@ -64,6 +69,7 @@ jest.mock('@/components/sessions/SplitPane', () => ({
 
 const mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
 const mockUseSWR = useSWR as jest.MockedFunction<typeof useSWR>;
+const mockUseAdminDenied = useAdminDenied as jest.MockedFunction<typeof useAdminDenied>;
 const mockSessApiEnd = sessionsApi.end as jest.MockedFunction<typeof sessionsApi.end>;
 const mockSessApiGetMessages = sessionsApi.getMessages as jest.MockedFunction<
   typeof sessionsApi.getMessages
@@ -119,6 +125,7 @@ describe('SessionDetailClient', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setupRouter();
+    mockUseAdminDenied.mockReturnValue(false);
   });
 
   // ── Loading state ────────────────────────────────────────────────────
@@ -159,6 +166,26 @@ describe('SessionDetailClient', () => {
     expect(screen.getByTestId('split-pane')).toBeInTheDocument();
     expect(screen.getByTestId('agent-chat-panel')).toBeInTheDocument();
     expect(screen.getByTestId('agent-terminal')).toBeInTheDocument();
+  });
+
+  it('renders AgentTerminal (not the admin-denied panel) when admin is allowed', () => {
+    mockUseAdminDenied.mockReturnValue(false);
+    const session = makeSession({ state: 'active' });
+    mockUseSWR.mockReturnValue(swrResult({ data: session }));
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
+    expect(screen.getByTestId('agent-terminal')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('shows an admin-required panel instead of AgentTerminal when admin is denied (#1266)', () => {
+    mockUseAdminDenied.mockReturnValue(true);
+    const session = makeSession({ state: 'active' });
+    mockUseSWR.mockReturnValue(swrResult({ data: session }));
+    render(<SessionDetailClient sessionId={SESSION_ID} />);
+    expect(screen.queryByTestId('agent-terminal')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/terminal requires an admin account/i);
+    // Chat still works
+    expect(screen.getByTestId('agent-chat-panel')).toBeInTheDocument();
   });
 
   it('passes session-specific storageKey to SplitPane', () => {

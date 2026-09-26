@@ -812,6 +812,7 @@ async def authenticate_websocket(
     websocket: WebSocket,
     *,
     close_code: int,
+    require_admin: bool = False,
 ) -> Tuple[bool, Optional[int]]:
     """Authenticate a WebSocket connection, honoring the no-auth opt-out.
 
@@ -839,6 +840,9 @@ async def authenticate_websocket(
         websocket: The incoming WebSocket connection (not yet accepted).
         close_code: Close code to use when rejecting (callers pass their existing
             code, e.g. ``4001`` for terminal, ``1008`` for session chat).
+        require_admin: Refuse, with ``4403``, a ticket whose minting principal
+            lacked ``admin`` scope (#1266). The no-auth principal is the local
+            operator and always passes, as it does for ``require_scope``.
 
     Returns:
         ``(authenticated, user_id)``. ``user_id`` is ``None`` both in no-auth
@@ -853,15 +857,16 @@ async def authenticate_websocket(
         await websocket.close(code=close_code, reason="Authentication required: missing ticket")
         return False, None
 
-    from codeframe.auth.stream_tickets import TicketRedemptionError, redeem_ticket
+    from codeframe.auth.stream_tickets import TicketRedemptionError, redeem_ticket_entry
 
     try:
-        user_id = redeem_ticket(ticket)
+        entry = redeem_ticket_entry(ticket)
     except TicketRedemptionError as exc:
         logger.debug("WebSocket ticket redemption failed: %s", exc)
         await websocket.close(code=close_code, reason="Invalid or expired ticket")
         return False, None
 
+    user_id = entry.user_id
     if user_id is None:
         # Only mintable while auth was disabled at mint time; auth is required
         # here, so there is no real user to admit.
@@ -876,6 +881,10 @@ async def authenticate_websocket(
     except Exception as exc:
         logger.error("WebSocket user lookup error: %s", exc)
         await websocket.close(code=close_code, reason="Authentication failed")
+        return False, None
+
+    if require_admin and not entry.admin:
+        await websocket.close(code=4403, reason="Forbidden: admin scope required")
         return False, None
 
     return True, user_id

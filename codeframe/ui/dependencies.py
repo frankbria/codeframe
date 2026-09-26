@@ -207,6 +207,27 @@ def github_env_fallback_allowed(auth: Dict[str, Any]) -> bool:
     return has_scope(auth, SCOPE_ADMIN)
 
 
+def refuse_execution_in_hosted_mode() -> None:
+    """403 for anything that runs tenant-controlled code, in hosted mode (#1266).
+
+    Every process a route starts runs as the server's uid with the server's
+    filesystem view, so a tenant could read ``../<other_user>/`` or the parent's
+    ``/proc/$PPID/environ``. The ``<WORKSPACE_ROOT>/<user_id>`` check only
+    confines the *starting path*, which is not a boundary. Until per-tenant OS
+    isolation (a container or a uid per tenant) exists, hosted mode refuses.
+    """
+    from codeframe.ui.server import is_hosted_mode
+
+    if is_hosted_mode():
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Execution is disabled in hosted mode until per-tenant OS "
+                "isolation exists: processes would run as the server user."
+            ),
+        )
+
+
 def resolve_github_pat(credential_manager, auth: Dict[str, Any]) -> Optional[str]:
     """The GitHub PAT this caller may act with (#900).
 
@@ -229,5 +250,6 @@ __all__ = [
     "get_v2_workspace",
     "enforce_workspace_allowlist",
     "github_env_fallback_allowed",
+    "refuse_execution_in_hosted_mode",
     "resolve_github_pat",
 ]

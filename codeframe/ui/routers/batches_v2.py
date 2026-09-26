@@ -21,7 +21,7 @@ from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import conductor
 from codeframe.core.conductor import BatchStatus
-from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.dependencies import get_v2_workspace, refuse_execution_in_hosted_mode
 from codeframe.ui.response_models import api_error, ErrorCodes
 
 logger = logging.getLogger(__name__)
@@ -229,7 +229,7 @@ async def stop_batch(
         )
 
 
-@router.post("/{batch_id}/resume", response_model=BatchResponse)
+@router.post("/{batch_id}/resume", response_model=BatchResponse, dependencies=[Depends(refuse_execution_in_hosted_mode)])
 @rate_limit_standard()
 async def resume_batch(
     request: Request,

@@ -12,7 +12,11 @@ from fastapi.testclient import TestClient
 
 from codeframe.auth import router as auth_router
 from codeframe.auth.manager import reset_auth_engine
-from codeframe.auth.stream_tickets import redeem_ticket, reset_stream_tickets
+from codeframe.auth.stream_tickets import (
+    redeem_ticket,
+    redeem_ticket_entry,
+    reset_stream_tickets,
+)
 from codeframe.platform_store.database import Database
 from tests.conftest import create_test_jwt_token, setup_test_user
 
@@ -151,3 +155,16 @@ class TestStreamTicketScopeEnforcement:
         )
         assert resp.status_code == 200, resp.text
         assert redeem_ticket(resp.json()["ticket"]) == 1
+
+    @pytest.mark.parametrize("key, admin", [("write", False), ("admin", True)])
+    def test_ticket_records_the_minting_principals_admin_scope(
+        self, auth_client, api_keys, monkeypatch, key, admin
+    ):
+        """#1266: the terminal needs admin, and admin must come from the key.
+        Both keys belong to the same superuser, so re-deriving it from the
+        account would let the write key open an admin terminal."""
+        monkeypatch.setenv("CODEFRAME_AUTH_REQUIRED", "true")
+        resp = auth_client.post("/auth/stream-ticket", headers={"X-API-Key": api_keys[key]})
+
+        assert resp.status_code == 200, resp.text
+        assert redeem_ticket_entry(resp.json()["ticket"]).admin is admin

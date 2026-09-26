@@ -4,7 +4,11 @@ Endpoint:
     WS /ws/sessions/{session_id}/terminal?ticket=<ticket>
 
 Auth: a single-use, 60s ticket from ``POST /auth/stream-ticket`` (#745). A JWT
-in the query string is not accepted.
+in the query string is not accepted. The ticket must have been minted by an
+``admin``-scoped principal: a shell is the operator's power, not a user's (#1266).
+
+Closes 4403 in hosted mode, before authenticating: the shell would run as the
+server's uid, so ``<WORKSPACE_ROOT>/<user_id>`` would not contain it (#1266).
 
 Client → Server message types:
     Raw bytes / text: forwarded verbatim to subprocess stdin.
@@ -51,9 +55,10 @@ async def _authenticate_websocket(websocket: WebSocket) -> Tuple[bool, Optional[
     """Authenticate the terminal WebSocket via the shared helper.
 
     Returns ``(authenticated, user_id)``; closes the socket with ``4001`` on
-    failure. ``user_id`` is ``None`` in no-auth mode — matching REST.
+    failure, and ``4403`` when the ticket lacks admin scope. ``user_id`` is
+    ``None`` in no-auth mode — matching REST.
     """
-    return await authenticate_websocket(websocket, close_code=4001)
+    return await authenticate_websocket(websocket, close_code=4001, require_admin=True)
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +69,15 @@ async def _authenticate_websocket(websocket: WebSocket) -> Tuple[bool, Optional[
 @router.websocket("/ws/sessions/{session_id}/terminal")
 async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
     """Bidirectional WebSocket that shells bash in the session's workspace."""
+    from codeframe.ui.server import is_hosted_mode
+
+    if is_hosted_mode():
+        await websocket.close(
+            code=4403,
+            reason="Terminal is disabled in hosted mode until per-tenant OS isolation exists",
+        )
+        return
+
     # --- Auth ---
     authenticated, user_id = await _authenticate_websocket(websocket)
     if not authenticated:
