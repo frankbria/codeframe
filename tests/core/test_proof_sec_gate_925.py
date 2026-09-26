@@ -126,6 +126,8 @@ class TestFailsClosed:
         from codeframe.core import gates as core_gates
 
         monkeypatch.setattr(core_gates.shutil, "which", lambda name: None)
+        # CodeFRAME's own bandit is the fallback when none is on PATH (#1262).
+        monkeypatch.setattr(core_gates.importlib.util, "find_spec", lambda *a, **kw: None)
         _write_clean(workspace)
 
         check = core_gates._run_bandit(workspace.repo_path)
@@ -144,6 +146,8 @@ class TestFailsClosed:
         from codeframe.core.proof.runner import _run_gate
 
         monkeypatch.setattr(core_gates.shutil, "which", lambda name: None)
+        # CodeFRAME's own bandit is the fallback when none is on PATH (#1262).
+        monkeypatch.setattr(core_gates.importlib.util, "find_spec", lambda *a, **kw: None)
 
         outcome, _ = _run_gate(workspace, Gate.SEC, rules=[])
 

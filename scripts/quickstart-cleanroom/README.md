@@ -34,7 +34,7 @@ Artifacts land in `artifacts/` (gitignored) or the directory you name:
 |---|---|
 | `transcript.txt` | Full session output, every command and its result |
 | `timings.tsv` | Per-step status, duration, exit code, and whether the step is documented |
-| `findings.tsv` | Papercuts the run flagged explicitly |
+| `findings.tsv` | Papercuts the run flagged explicitly — including a failed `6-work-start` (`P-WORK-START-FAILED`) |
 | `total.txt` | Wall clock, the number the 15-minute budget is measured against |
 | `run-logs/` | Per-run agent logs (iteration counts, tool calls) |
 | `final-tree.txt` | What the agent actually left in the workspace |

@@ -48,6 +48,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **`cf work start --execute` no longer ends in a blocker on the README install
+  path (#1262).** After `uv tool install codeframe-ai`, ruff and bandit (both
+  runtime dependencies) live in the tool's own venv, off PATH, and a user's
+  project normally does not depend on them. The ruff gate ran `uv run ruff`,
+  uv failed to spawn it, and the gate reported FAILED on clean code, which the
+  agent could not fix. The ruff and bandit (PROOF9 SEC) gates, the agent's
+  per-edit lint and autofix, and `cf review`'s security scanner now use the
+  project's own copy when it has one and CodeFRAME's bundled copy otherwise.
+  They report SKIPPED only when no copy can be started, and a tool that ran and
+  failed still reports FAILED. The ruff gate also now hands its findings (file,
+  line, rule) to self-correction; before, the agent saw only "Found 1 error.".
+  The cleanroom harness records a finding whenever `6-work-start` fails. Every
+  archived run had failed that step with an empty `findings.tsv`.
+
 - **The staging health-check timer is retired, not repaired (#969).** Its unit
   named the maintainer's account in `User=` and repeated their home directory in
   four paths, so the plan was to parameterize it. Review of that fix surfaced the

@@ -217,8 +217,11 @@ class TestNoCallSiteCanReintroduceIt:
     """
 
     def test_there_are_call_sites_to_check(self):
-        """An empty sweep satisfies "all of them are safe"."""
-        assert len(list(_text_true_calls())) > 50
+        """An empty sweep satisfies "all of them are safe".
+
+        A floor, not a census: consolidating call sites (#1262 folded four
+        gate subprocess calls into one) legitimately lowers the count."""
+        assert len(list(_text_true_calls())) > 40
         assert len(list(_read_text_calls())) > 25
 
     def test_every_text_true_call_pins_utf8_and_replaces(self):

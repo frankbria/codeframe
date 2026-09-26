@@ -250,8 +250,10 @@ class TestRunLintOnFile:
         assert _find_linter_for_file(Path("data.csv")) is None
         assert _find_linter_for_file(Path("image.png")) is None
 
+    # CodeFRAME's own ruff is the fallback when none is on PATH (#1262).
+    @patch("codeframe.core.gates.importlib.util.find_spec", return_value=None)
     @patch("codeframe.core.gates.shutil.which", return_value=None)
-    def test_missing_linter_binary_skips(self, mock_which, tmp_path):
+    def test_missing_linter_binary_skips(self, mock_which, mock_find_spec, tmp_path):
         """If the linter binary is not installed, return SKIPPED."""
         py_file = tmp_path / "test.py"
         py_file.write_text("x = 1\n")
@@ -880,8 +882,10 @@ class TestBuildVerificationGates:
         cmd_list = call_args[0][0] if call_args[0] else call_args[1].get("args", [])
         assert "--fix" in cmd_list
 
+    # CodeFRAME's own ruff is the fallback when none is on PATH (#1262).
+    @patch("codeframe.core.gates.importlib.util.find_spec", return_value=None)
     @patch("codeframe.core.gates.shutil.which", return_value=None)
-    def test_run_autofix_missing_binary_skips(self, mock_which, tmp_path):
+    def test_run_autofix_missing_binary_skips(self, mock_which, mock_find_spec, tmp_path):
         """run_autofix_on_file returns SKIPPED when binary is not installed."""
         py_file = tmp_path / "test.py"
         py_file.write_text("x = 1\n")
