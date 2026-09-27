@@ -163,6 +163,10 @@ function normalizeAuthError(error: unknown, flow: 'login' | 'register'): Error {
       );
     }
     if (flow === 'register' && status === 400) {
+      // A 400 is also the password policy (#1285), whose reason is for humans.
+      if (typeof detail?.reason === 'string' && detail.reason.trim()) {
+        return new Error(detail.reason);
+      }
       return new Error('An account with that email already exists.');
     }
     if (typeof detail === 'string') return new Error(detail);

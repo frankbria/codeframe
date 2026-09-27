@@ -469,7 +469,9 @@ def register(
             if "ALREADY_EXISTS" in str(error_detail).upper():
                 console.print("[red]Error:[/red] An account with this email already exists")
             else:
-                console.print(f"[red]Error:[/red] Registration failed: {error_detail}")
+                if isinstance(error_detail, dict):  # e.g. the password policy (#1285)
+                    error_detail = error_detail.get("reason") or error_detail
+                console.print(f"[red]Error:[/red] Registration failed: {escape(str(error_detail))}")
             raise typer.Exit(1)
 
         elif response.status_code == 422:
@@ -1185,6 +1187,14 @@ def set_password(
     """
     if not password:
         password = typer.prompt("New password", hide_input=True, confirmation_prompt=True)
+
+    # Same policy as the API (#1285) — otherwise this is the way around it.
+    from codeframe.auth.manager import password_policy_error
+
+    reason = password_policy_error(password, email)
+    if reason:
+        print_error(reason)
+        raise typer.Exit(1)
 
     try:
         _set_user_password(get_db_for_cli(), email, password)

@@ -13,3 +13,6 @@ class UserCreate(schemas.BaseUserCreate):
 class UserUpdate(schemas.BaseUserUpdate):
     """Schema for updating users."""
     name: Optional[str] = None
+    #: Required to change password or email (#1285). Not a column, so the
+    #: update only sets it as a plain attribute; UserRead never returns it.
+    current_password: Optional[str] = None
