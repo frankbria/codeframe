@@ -9,6 +9,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **The admin account now has a password policy (#1285).** **Behavior change:**
+  a password must be at least 12 characters and must not be the email. This
+  applies at registration, on `PATCH /users/me` and `PATCH /users/{id}`, in
+  `codeframe auth set-password`, and on the web sign-up form. Changing the
+  password or email now requires `current_password`. Before this, the
+  bootstrap superuser could be registered with `a`, its password could be
+  emptied, and anyone holding its JWT could take the account permanently by
+  changing the password or email. Logout does not revoke a JWT. Existing
+  shorter passwords still log in; the rule applies only when a password is set.
+
 - **First-account registration refuses every proxied request, and rate limiting
   reads the real client IP behind a proxy (#1274).** **Behavior change:** with
   no `CODEFRAME_BOOTSTRAP_TOKEN` set, `POST /auth/register` now accepts only a

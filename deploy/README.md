@@ -133,6 +133,11 @@ CODEFRAME_API_URL="http://127.0.0.1:${BACKEND_PORT:-8000}" \
 the first account"*: fill in email, password, and paste the token into
 **Bootstrap token**.
 
+The password must be at least 12 characters and must not be the email address
+(#1285). `codeframe auth set-password` applies the same rule. To change the
+password or email later through `PATCH /users/me`, send the current one in
+`current_password`. A token alone is not enough.
+
 After the account exists, remove `CODEFRAME_BOOTSTRAP_TOKEN` from the
 environment if you like — the route is closed either way, and a token left in
 place has no further use.
