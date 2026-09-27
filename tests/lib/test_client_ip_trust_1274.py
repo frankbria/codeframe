@@ -124,3 +124,24 @@ class TestXRealIp:
             [("X-Real-IP", "1.2.3.4"), ("X-Forwarded-For", "198.51.100.3")],
         )
         assert get_client_ip(req) == "198.51.100.3"
+
+
+class TestMappedProxyConfig:
+    """Codex review: an operator-configured mapped address must still match."""
+
+    @pytest.mark.parametrize(
+        "configured, peer",
+        [
+            ("::ffff:127.0.0.1", "::ffff:127.0.0.1"),
+            ("::ffff:172.18.0.0/112", "::ffff:172.18.0.1"),
+            ("127.0.0.1", "::ffff:127.0.0.1"),
+            ("172.16.0.0/12", "172.18.0.1"),
+        ],
+    )
+    def test_either_spelling_matches(self, configured, peer):
+        assert RateLimitConfig(trusted_proxies=[configured]).is_trusted_proxy(peer)
+
+    def test_unrelated_address_does_not_match(self):
+        config = RateLimitConfig(trusted_proxies=["::ffff:127.0.0.1", "127.0.0.0/8"])
+        assert not config.is_trusted_proxy("::ffff:203.0.113.9")
+        assert not config.is_trusted_proxy("::1")

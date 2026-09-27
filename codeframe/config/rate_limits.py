@@ -59,24 +59,22 @@ class RateLimitConfig:
             return False
 
         try:
-            client_ip = ipaddress.ip_address(ip.strip())
+            address = ipaddress.ip_address(ip.strip())
             # A dual-stack listener reports an IPv4 peer as ::ffff:a.b.c.d,
-            # which is not "in" an IPv4 network (#1274).
-            client_ip = getattr(client_ip, "ipv4_mapped", None) or client_ip
+            # which is not "in" an IPv4 network, so try both spellings — an
+            # operator may have configured either one (#1274).
+            candidates = [address]
+            mapped = getattr(address, "ipv4_mapped", None)
+            if mapped is not None:
+                candidates.append(mapped)
             for proxy in self.trusted_proxies:
                 try:
-                    # Check if it's a network (CIDR notation)
-                    if "/" in proxy:
-                        network = ipaddress.ip_network(proxy, strict=False)
-                        if client_ip in network:
-                            return True
-                    else:
-                        # Check exact IP match
-                        if client_ip == ipaddress.ip_address(proxy):
-                            return True
+                    network = ipaddress.ip_network(proxy, strict=False)
                 except ValueError:
                     # Invalid proxy entry, skip it
                     continue
+                if any(c in network for c in candidates):
+                    return True
             return False
         except ValueError:
             # Invalid IP address
