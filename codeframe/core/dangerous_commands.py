@@ -38,8 +38,10 @@ DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     # Recursive delete of root or home
     (rf"\brm\s+(-[rf]+\s+)*(?:/|{_HOME})", "recursive deletion of root or home"),
     (r"\brm\s+--no-preserve-root", "rm with --no-preserve-root"),
-    # Writing to /dev/ devices
-    (r">\s*/dev/", "redirect to /dev device"),
+    # Writing to /dev/ devices. Discarding output (`2>/dev/null`) is not one:
+    # flagging it declined the most common shell idiom there is once codex's
+    # commands started reaching this guard (#1278).
+    (r">\s*/dev/(?!(?:null|stdout|stderr)(?![\w./-]))", "redirect to /dev device"),
     (r"\bdd\s+.*of=/dev/", "dd writing to device"),
     # Filesystem destruction
     (r"\bmkfs\b", "filesystem format command"),

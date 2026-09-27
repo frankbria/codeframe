@@ -133,3 +133,32 @@ class TestSudoCarriesItsOwnFlags:
     def test_sudo_without_an_interpreter_is_not_caught(self, command):
         dangerous, _ = is_dangerous_command(command)
         assert dangerous is False, command
+
+
+class TestDevRedirects:
+    """Discarding output is not writing to a device (#1278).
+
+    ``>\\s*/dev/`` flagged every ``2>/dev/null``. Harmless while codex ran under
+    ``approvalPolicy: never`` and never asked; once its commands reach this
+    guard, the most common shell idiom there is would be declined.
+    """
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "ls 2>/dev/null",
+            "rg foo src 2>/dev/null | head",
+            "make >/dev/null 2>&1",
+            "echo hi > /dev/stderr",
+            "echo hi >/dev/stdout",
+        ],
+    )
+    def test_discarding_output_is_not_caught(self, command):
+        assert is_dangerous_command(command) == (False, "")
+
+    @pytest.mark.parametrize(
+        "command",
+        ["echo x > /dev/sda", "cat img >/dev/nvme0n1", "echo x > /dev/nullx"],
+    )
+    def test_writing_to_a_device_is_still_caught(self, command):
+        assert is_dangerous_command(command)[0] is True
