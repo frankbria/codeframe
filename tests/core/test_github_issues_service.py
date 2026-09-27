@@ -305,6 +305,25 @@ class TestSearchQualifierInjection:
         # phrase to the search API, just list.
         assert seen["path"] == "/repos/acme/app/issues"
 
+    @pytest.mark.asyncio
+    async def test_search_backslash_cannot_escape_closing_quote(self):
+        """A trailing ``\\`` on a word must not un-scope the search (#1275)."""
+        seen, handler = self._capture_q("x\\ repo:victim/private")
+
+        async with _client(handler) as client:
+            await list_issues(
+                VALID_PAT,
+                "acme/app",
+                page=1,
+                per_page=25,
+                search="x\\ repo:victim/private",
+                client=client,
+            )
+
+        q = seen["q"]
+        assert "\\" not in q
+        assert '"x" "repo:victim/private" repo:acme/app' in q
+
     @staticmethod
     async def _q_for_label(label: str) -> str:
         seen = {}

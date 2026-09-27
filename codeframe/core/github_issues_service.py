@@ -491,12 +491,14 @@ def _sanitize_search(search: str) -> str:
 
     Embedded quotes are *removed*, not escaped — escaping semantics inside
     GitHub's query language are version-dependent, and dropping them is the one
-    behaviour that cannot be talked into opening a second phrase.
+    behaviour that cannot be talked into opening a second phrase. Backslashes
+    go too: ``x\\`` would become ``"x\\"``, and if GitHub reads that as an
+    escaped quote the phrase swallows the ``repo:`` pin that follows (#1275).
 
     Returns ``""`` when nothing searchable survives, so the caller falls back to
     the plain list endpoint rather than sending an empty phrase.
     """
-    words = search.replace('"', " ").split()
+    words = search.replace('"', " ").replace("\\", " ").split()
     return " ".join(f'"{w}"' for w in words)
 
 
