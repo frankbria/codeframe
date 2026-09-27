@@ -71,6 +71,12 @@ def get_client_ip(request: Request) -> str:
         return "unknown"
 
     if not config.is_trusted_proxy(direct_ip):
+        if request.headers.get("X-Forwarded-For") or request.headers.get("X-Real-IP"):
+            logger.warning(
+                f"Proxy headers present from non-trusted IP {direct_ip}. "
+                f"Headers ignored. Configure RATE_LIMIT_TRUSTED_PROXIES if "
+                f"running behind a reverse proxy."
+            )
         return direct_ip
 
     # getlist: a spoofed first header must not mask the one a proxy appended.
