@@ -101,9 +101,23 @@ class TestRightmostUntrustedHop:
         )
         assert get_client_ip(req) == "198.51.100.7"
 
-    def test_all_hops_trusted_returns_leftmost(self):
+    def test_all_hops_trusted_returns_the_peer_appended_hop(self):
         req = _request("127.0.0.1", [("X-Forwarded-For", "127.0.0.1")])
         assert get_client_ip(req) == "127.0.0.1"
+
+    def test_client_inside_trusted_range_cannot_pick_its_bucket(self, monkeypatch):
+        """GLM review: a client whose real address is inside a trusted CIDR
+        (the compose deploy trusts 172.16.0.0/12) prepends in-range hops. The
+        whole chain is then "trusted", and the leftmost hop is the client's
+        choice. The rightmost was appended by the trusted peer itself."""
+        _set_trusted(monkeypatch, "127.0.0.0/8,172.16.0.0/12")
+        keys = {
+            get_rate_limit_key(
+                _request("172.18.0.1", [("X-Forwarded-For", f"172.20.0.{i}, 172.16.5.5")])
+            )
+            for i in range(5)
+        }
+        assert keys == {"ip:172.16.5.5"}
 
     def test_untrusted_peer_ignores_headers(self):
         req = _request(

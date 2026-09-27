@@ -93,8 +93,10 @@ def get_client_ip(request: Request) -> str:
     for hop in reversed(hops):
         if not config.is_trusted_proxy(hop):
             return hop
-    # Every hop is a trusted proxy: the leftmost is the closest to the client.
-    return hops[0]
+    # Every hop is "trusted", which a client inside a trusted CIDR can arrange
+    # by prepending in-range hops, so the leftmost is its choice. The
+    # rightmost was appended by the trusted peer itself (#1274 review).
+    return hops[-1]
 
 
 def _principal_id(principal: object) -> Any:
