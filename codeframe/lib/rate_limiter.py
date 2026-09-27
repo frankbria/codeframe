@@ -14,9 +14,10 @@ Key extraction:
 - Unauthenticated requests: Client IP address
 
 Security:
-- X-Forwarded-For is only trusted when request comes from a configured trusted proxy
+- X-Forwarded-For is only trusted when request comes from a trusted proxy, and
+  the client is its rightmost untrusted hop (#1274)
 - "unknown" IPs are logged and tracked for security monitoring
-- Configure RATE_LIMIT_TRUSTED_PROXIES to define trusted proxy networks
+- RATE_LIMIT_TRUSTED_PROXIES defines trusted proxy networks (default: loopback)
 """
 
 import asyncio
@@ -42,63 +43,52 @@ _logged_disabled: bool = False
 
 
 def get_client_ip(request: Request) -> str:
-    """Extract client IP address from request with trusted proxy validation.
+    """Extract the client IP, trusting proxy headers only from trusted proxies.
 
-    Only trusts X-Forwarded-For and X-Real-IP headers when the direct
-    connection is from a configured trusted proxy. This prevents header
-    spoofing attacks.
+    Walks the address chain right to left — every ``X-Forwarded-For`` hop, in
+    header order, then the direct peer — and returns the first address that is
+    not a trusted proxy (#1274). Each trusted proxy appends the address it saw,
+    so the rightmost untrusted hop is the last one a trusted party vouched for;
+    anything to its left was written by the client. (The leftmost hop, which
+    this used to return, is whatever the client typed.)
 
-    Security Note:
-    - If RATE_LIMIT_TRUSTED_PROXIES is not configured, proxy headers are ignored
-    - Configure trusted proxies when running behind a reverse proxy (nginx, ALB, etc.)
-
-    Args:
-        request: FastAPI request object
+    ``X-Real-IP`` is used only when the peer is trusted and no
+    ``X-Forwarded-For`` is present. Trusted proxies come from
+    ``RATE_LIMIT_TRUSTED_PROXIES`` and default to loopback.
 
     Returns:
         Client IP address string, or "unknown" if not determinable
     """
     config = get_rate_limit_config()
 
-    # Get the direct connection IP
-    direct_ip = None
-    if request.client and request.client.host:
-        direct_ip = request.client.host
+    direct_ip = request.client.host if request.client and request.client.host else None
+    if direct_ip is None:
+        logger.warning(
+            "Unable to determine client IP address. "
+            "This may indicate proxy misconfiguration. "
+            f"Path: {request.url.path}"
+        )
+        return "unknown"
 
-    # Only trust proxy headers if direct connection is from a trusted proxy
-    if direct_ip and config.is_trusted_proxy(direct_ip):
-        # Check X-Forwarded-For header (may contain multiple IPs)
-        forwarded_for = request.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            # Return first IP in the chain (real client)
-            client_ip = forwarded_for.split(",")[0].strip()
-            if client_ip:
-                return client_ip
-
-        # Check X-Real-IP header
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            return real_ip.strip()
-    elif direct_ip:
-        # Not from trusted proxy - check if headers were spoofed
-        if request.headers.get("X-Forwarded-For") or request.headers.get("X-Real-IP"):
-            logger.warning(
-                f"Proxy headers present from non-trusted IP {direct_ip}. "
-                f"Headers ignored. Configure RATE_LIMIT_TRUSTED_PROXIES if "
-                f"running behind a reverse proxy."
-            )
-
-    # Use direct connection IP
-    if direct_ip:
+    if not config.is_trusted_proxy(direct_ip):
         return direct_ip
 
-    # Unable to determine IP - log for security monitoring
-    logger.warning(
-        "Unable to determine client IP address. "
-        "This may indicate proxy misconfiguration. "
-        f"Path: {request.url.path}"
-    )
-    return "unknown"
+    # getlist: a spoofed first header must not mask the one a proxy appended.
+    hops = [
+        hop.strip()
+        for value in request.headers.getlist("X-Forwarded-For")
+        for hop in value.split(",")
+        if hop.strip()
+    ]
+    if not hops:
+        real_ip = request.headers.get("X-Real-IP", "").strip()
+        return real_ip or direct_ip
+
+    for hop in reversed(hops):
+        if not config.is_trusted_proxy(hop):
+            return hop
+    # Every hop is a trusted proxy: the leftmost is the closest to the client.
+    return hops[0]
 
 
 def _principal_id(principal: object) -> Any:

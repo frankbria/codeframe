@@ -147,6 +147,24 @@ if you later split the API onto a separate subdomain.
 
 WebSocket upgrades are handled transparently by Caddy's `reverse_proxy`.
 
+Keep `/api/*` and `/auth/*` routed to the **backend**. The Next.js rewrites for
+those paths refuse (404) any request that already carries `X-Forwarded-For`,
+`X-Real-IP` or `Forwarded` (#1274): Next keeps a client-sent header instead of
+appending to it, so proxying through it would let a client choose its own
+address. A proxy that sends everything to the frontend breaks the API.
+
+### Client IP and rate limiting
+
+The rate limiter keys anonymous requests by client IP. It reads
+`X-Forwarded-For` only when the direct peer is in `RATE_LIMIT_TRUSTED_PROXIES`,
+and takes the **rightmost hop that is not itself trusted** — the leftmost hop is
+whatever the client typed. The default is loopback (`127.0.0.0/8,::1`), which
+covers Caddy on the same host. `docker-compose.yml` adds `172.16.0.0/12`,
+because inside the container the peer is the Docker gateway rather than
+loopback. Set the variable to an empty value to trust no proxy at all. Without
+a correct setting every client shares one bucket, and ten bad logins a minute
+lock the operator out.
+
 ## No public domain?
 
 For an IP-only or internal host, use the IP as the site address and add

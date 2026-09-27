@@ -20,11 +20,24 @@ const nextConfig = {
     // reason and with the same consequence: one image per environment.
     // Default unchanged for local dev.
     const backendOrigin = process.env.BACKEND_ORIGIN || 'http://localhost:8000';
+    // Refuse to proxy a request that already names a client address (#1274).
+    // Next only fills X-Forwarded-For when it is absent, so a client-sent
+    // `X-Forwarded-For: 127.0.0.1` reached the backend from a loopback peer —
+    // passing the /auth/register local-only gate and choosing its own
+    // rate-limit bucket. Middleware cannot see the socket address to repair
+    // the header, so the rewrite does not match (404) instead. The documented
+    // Caddy config routes /api and /auth straight to the backend, never
+    // through here.
+    const missing = ['x-forwarded-for', 'x-real-ip', 'forwarded'].map((key) => ({
+      type: 'header',
+      key,
+    }));
     return {
       beforeFiles: [
         {
           source: '/api/:path*',
           destination: `${backendOrigin}/api/:path*`,
+          missing,
         },
         // Auth endpoints (/auth/jwt/login, /auth/register) live outside the
         // /api prefix on the FastAPI server; proxy them too so the login flow
@@ -32,6 +45,7 @@ const nextConfig = {
         {
           source: '/auth/:path*',
           destination: `${backendOrigin}/auth/:path*`,
+          missing,
         },
       ],
     };

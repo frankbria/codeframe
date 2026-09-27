@@ -8,6 +8,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from starlette.datastructures import Headers
 
 
 class TestRateLimiterKeyFunctions:
@@ -45,15 +46,14 @@ class TestRateLimiterKeyFunctions:
         """get_client_ip should ignore X-Forwarded-For from non-trusted source."""
         from codeframe.lib.rate_limiter import get_client_ip
 
-        # No trusted proxies configured - should ignore X-Forwarded-For
+        # Only loopback is trusted by default (#1274) - a LAN peer is not
         mock_request = MagicMock(spec=Request)
-        mock_request.client.host = "127.0.0.1"
-        mock_request.headers = {"X-Forwarded-For": "203.0.113.195, 70.41.3.18"}
+        mock_request.client.host = "192.168.1.1"
+        mock_request.headers = Headers({"X-Forwarded-For": "203.0.113.195, 70.41.3.18"})
         mock_request.url.path = "/test"
 
         ip = get_client_ip(mock_request)
-        # Should use direct connection IP since 127.0.0.1 isn't trusted
-        assert ip == "127.0.0.1"
+        assert ip == "192.168.1.1"
 
     def test_get_client_ip_from_x_forwarded_for_trusted_proxy(self):
         """get_client_ip should trust X-Forwarded-For from configured trusted proxy."""
@@ -68,12 +68,14 @@ class TestRateLimiterKeyFunctions:
 
             mock_request = MagicMock(spec=Request)
             mock_request.client.host = "127.0.0.1"
-            mock_request.headers = {"X-Forwarded-For": "203.0.113.195, 70.41.3.18, 150.172.238.178"}
+            mock_request.headers = Headers(
+                {"X-Forwarded-For": "203.0.113.195, 70.41.3.18, 150.172.238.178"}
+            )
             mock_request.url.path = "/test"
 
             ip = get_client_ip(mock_request)
-            # Should return first IP in the chain (real client)
-            assert ip == "203.0.113.195"
+            # Rightmost untrusted hop (#1274): the leftmost is client-written
+            assert ip == "150.172.238.178"
 
     def test_get_client_ip_ignores_x_real_ip_from_untrusted(self):
         """get_client_ip should ignore X-Real-IP from non-trusted source."""
@@ -100,7 +102,7 @@ class TestRateLimiterKeyFunctions:
 
             mock_request = MagicMock(spec=Request)
             mock_request.client.host = "10.0.0.1"
-            mock_request.headers = {"X-Real-IP": "203.0.113.50"}
+            mock_request.headers = Headers({"X-Real-IP": "203.0.113.50"})
             mock_request.url.path = "/test"
 
             ip = get_client_ip(mock_request)

@@ -11,6 +11,7 @@ Environment Variables (via GlobalConfig):
     RATE_LIMIT_AI: Rate limit for AI/expensive operations (default: 20/minute)
     RATE_LIMIT_STORAGE: Storage backend - memory or redis (default: memory)
     RATE_LIMIT_TRUSTED_PROXIES: Comma-separated trusted proxy IPs/CIDRs
+        (default: loopback; an empty value trusts nothing)
     REDIS_URL: Redis connection URL for distributed rate limiting (optional)
 """
 
@@ -58,7 +59,10 @@ class RateLimitConfig:
             return False
 
         try:
-            client_ip = ipaddress.ip_address(ip)
+            client_ip = ipaddress.ip_address(ip.strip())
+            # A dual-stack listener reports an IPv4 peer as ::ffff:a.b.c.d,
+            # which is not "in" an IPv4 network (#1274).
+            client_ip = getattr(client_ip, "ipv4_mapped", None) or client_ip
             for proxy in self.trusted_proxies:
                 try:
                     # Check if it's a network (CIDR notation)

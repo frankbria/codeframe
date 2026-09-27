@@ -34,6 +34,11 @@ services:
       # env file would put the DB inside the container and lose it on restart.
       DATABASE_PATH: /data/codeframe.db
       WORKSPACE_ROOT: /workspaces
+      # The backend's peer here is the Docker gateway (Caddy on the host
+      # reaches it through the published port), not loopback, so trust the
+      # Docker bridge range too — otherwise every client shares one rate-limit
+      # bucket and ten bad logins lock the operator out (#1274).
+      RATE_LIMIT_TRUSTED_PROXIES: "127.0.0.0/8,::1,172.16.0.0/12"
     volumes:
       # Both survive a deploy. Anything written inside the image is gone the
       # moment a new tag is pulled, which is exactly the point of the image.

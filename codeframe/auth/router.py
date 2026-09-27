@@ -111,19 +111,22 @@ def _is_local_request(request: Request) -> bool:
     """Whether the request genuinely originated on this host (issue #897).
 
     Deliberately does NOT reuse ``lib.rate_limiter.get_client_ip``: that helper
-    only honors ``X-Forwarded-For`` when ``RATE_LIMIT_TRUSTED_PROXIES`` is
-    configured, and that setting is optional. Behind the documented Caddy deploy
+    honors ``X-Forwarded-For`` only from ``RATE_LIMIT_TRUSTED_PROXIES``, which an
+    operator can set to empty. Behind the documented Caddy deploy
     (``deploy/Caddyfile.example`` proxies ``/auth/*`` from the public Internet to
-    ``127.0.0.1``) with that setting unset, it reports every Internet client as
+    ``127.0.0.1``) with that setting emptied, it reports every Internet client as
     ``127.0.0.1`` — which would leave this gate wide open. A security gate must
-    not depend on an optional performance/telemetry setting being present.
+    not depend on a rate-limiting setting.
 
     So the rule here is strict and self-contained: the peer must be loopback,
     every hop in the forwarded chain must be loopback, and no RFC 7239
     ``Forwarded`` header may be present. Caddy *appends* the real client IP to
     ``X-Forwarded-For``, so a spoofed ``X-Forwarded-For: 127.0.0.1`` from the
-    Internet still leaves a non-loopback hop behind it. A local dev proxy (the
-    Next.js ``/auth/*`` rewrite) forwards loopback→loopback and still passes.
+    Internet still leaves a non-loopback hop behind it. The Next.js ``/auth/*``
+    rewrite does NOT append: it keeps a client-sent ``X-Forwarded-For`` as is,
+    so that rewrite refuses any request carrying a client-address header
+    (``web-ui/next.config.js``, #1274). A genuine local browser sends none, Next
+    fills in its loopback peer, and the request still passes.
     """
     client = request.client
     if client is None or not _is_loopback_ip(client.host):
