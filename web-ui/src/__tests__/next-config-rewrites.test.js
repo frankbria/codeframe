@@ -43,3 +43,25 @@ describe('backend rewrites refuse client-address headers (#1274)', () => {
     }
   });
 });
+
+// Only the static matcher config is under test; next/server needs a global
+// Request that jsdom lacks.
+jest.mock('next/server', () => ({ NextResponse: {} }));
+
+describe('the CSP proxy stays off backend routes (#1274)', () => {
+  // Running proxy.ts adds x-forwarded-* to the request, which the rewrites
+  // above then refuse — so if the proxy matched /auth, every login would 404.
+  // Found by the live demo; matchHas alone cannot see it.
+  test.each(['/auth/jwt/login', '/auth/register', '/api/v2/tasks'])('%s is not matched', (path) => {
+    const { config } = require('../proxy');
+    const source = config.matcher[0].source;
+    expect(new RegExp(`^${source}$`).test(path)).toBe(false);
+  });
+
+  test('pages are still matched', () => {
+    const { config } = require('../proxy');
+    const source = config.matcher[0].source;
+    expect(new RegExp(`^${source}$`).test('/login')).toBe(true);
+    expect(new RegExp(`^${source}$`).test('/tasks')).toBe(true);
+  });
+});
