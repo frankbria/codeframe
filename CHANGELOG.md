@@ -74,6 +74,21 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **The codex engine no longer reports a task done when it wrote nothing, and
+  its dangerous-command guard now runs (#1278).** A codex turn that finished
+  without changing a file, or making a commit, used to go to the gates as
+  `completed`. The gates then checked an unchanged tree. It now fails, or
+  becomes a blocker when the agent was asking a question, the same way
+  claude-code, opencode and kilocode already behave. Codex also ran with
+  `approvalPolicy: never`, so it never sent the approval requests that the
+  #916 guard vets. It now sends `on-request`. Work still runs inside the
+  `workspace-write` sandbox without prompting. A request to go outside the
+  sandbox is **declined**, and it is named when it matches a dangerous pattern.
+  Auto-accepting was not an option: when codex gets an approval, it runs the
+  command outside the sandbox. `2>/dev/null` and other redirects to
+  `/dev/null`, `/dev/stdout` or `/dev/stderr` no longer count as writes to a
+  device.
+
 - **Telemetry no longer defaults to a domain the project does not own (#1269).**
   The default collector was `telemetry.codeframe.dev`. That domain lapsed and is
   listed for sale, so whoever bought it would have received every opted-in
