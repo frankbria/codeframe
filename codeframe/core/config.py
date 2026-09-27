@@ -661,8 +661,12 @@ class GlobalConfig(BaseSettings):
     rate_limit_auth: str = Field("10/minute", alias="RATE_LIMIT_AUTH")
     rate_limit_standard: str = Field("100/minute", alias="RATE_LIMIT_STANDARD")
     rate_limit_ai: str = Field("20/minute", alias="RATE_LIMIT_AI")
-    # Comma-separated list of trusted proxy IPs/CIDRs (e.g., "10.0.0.0/8,172.16.0.0/12")
-    rate_limit_trusted_proxies: str = Field("", alias="RATE_LIMIT_TRUSTED_PROXIES")
+    # Comma-separated list of trusted proxy IPs/CIDRs (e.g., "10.0.0.0/8,172.16.0.0/12").
+    # Defaults to loopback, where the documented Caddy proxy connects from
+    # (#1274); set it to an empty value to trust nothing.
+    rate_limit_trusted_proxies: str = Field(
+        "127.0.0.0/8,::1", alias="RATE_LIMIT_TRUSTED_PROXIES"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"

@@ -79,11 +79,14 @@ The route is therefore gated two ways, and **at least one must hold**:
 | `X-Bootstrap-Token` header matching `CODEFRAME_BOOTSTRAP_TOKEN` | Whenever the variable is set — including for loopback callers |
 | Request originates on the server host itself | Only when `CODEFRAME_BOOTSTRAP_TOKEN` is unset |
 
-"Originates on the host" means a loopback peer **with no proxy in the path** —
-a request arriving through Caddy carries the real client IP in
-`X-Forwarded-For`, so public traffic never qualifies. `X-Real-IP` and RFC 7239
-`Forwarded` are inspected too, and this does not depend on
-`RATE_LIMIT_TRUSTED_PROXIES` being configured.
+"Originates on the host" means a loopback peer **with no proxy in the path**:
+no `X-Forwarded-*`, `X-Real-IP` or `Forwarded` header at all, not even an
+empty one. A proxy on the same host cannot prove its client is local. The
+Next.js rewrite forwards a LAN request with only `X-Forwarded-Host`, and it
+passes a client-sent `X-Forwarded-For: 127.0.0.1` through unchanged (#1274). So
+through Caddy *or* the web UI, the token is required, and without it the host
+path is `codeframe auth register` talking to the backend directly. This does
+not depend on `RATE_LIMIT_TRUSTED_PROXIES`.
 
 > **Set the token if you front the app with anything other than the Caddy
 > config shipped here.** The loopback fallback identifies public callers by the
@@ -146,6 +149,26 @@ if you later split the API onto a separate subdomain.
 - everything else → Next.js frontend `127.0.0.1:14100`
 
 WebSocket upgrades are handled transparently by Caddy's `reverse_proxy`.
+
+Keep `/api/*` and `/auth/*` routed to the **backend**. The Next.js rewrites for
+those paths refuse (404) any request that already carries `X-Forwarded-For`,
+`X-Real-IP` or `Forwarded` (#1274): Next keeps a client-sent header instead of
+appending to it, so proxying through it would let a client choose its own
+address. A proxy that sends everything to the frontend breaks the API.
+
+### Client IP and rate limiting
+
+The rate limiter keys anonymous requests by client IP. It reads
+`X-Forwarded-For` only when the direct peer is in `RATE_LIMIT_TRUSTED_PROXIES`,
+and takes the **rightmost hop**, the address that proxy appended; the leftmost
+hop is whatever the client typed. It does not walk further left: a client whose
+own address is in a trusted range would look like a proxy there. Behind a chain
+of several proxies, clients are therefore keyed by the nearest one. The default is loopback (`127.0.0.0/8,::1`), which
+covers Caddy on the same host. `docker-compose.yml` adds `172.16.0.0/12`,
+because inside the container the peer is the Docker gateway rather than
+loopback. Set the variable to an empty value to trust no proxy at all. Without
+a correct setting every client shares one bucket, and ten bad logins a minute
+lock the operator out.
 
 ## No public domain?
 

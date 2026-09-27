@@ -9,6 +9,22 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **First-account registration refuses every proxied request, and rate limiting
+  reads the real client IP behind a proxy (#1274).** **Behavior change:** with
+  no `CODEFRAME_BOOTSTRAP_TOKEN` set, `POST /auth/register` now accepts only a
+  loopback peer carrying no `X-Forwarded-*`, `X-Real-IP` or `Forwarded` header,
+  not even an empty one. The web UI's sign-up goes through Next, so it now
+  always needs the token; the tokenless path is `codeframe auth register` on
+  the server host. Previously, a LAN client could claim a fresh instance as
+  admin through `next dev`, either by sending `X-Forwarded-For: 127.0.0.1` or by
+  sending nothing, because Next's rewrite forwards no client address. Rate
+  limiting now takes the rightmost `X-Forwarded-For` hop, the one the trusted
+  proxy appended, and
+  `RATE_LIMIT_TRUSTED_PROXIES` defaults to loopback; set it to an empty value to
+  trust nothing. The container deploy also trusts the Docker bridge. Behind
+  Caddy, every client used to share one bucket, so ten bad logins locked the
+  operator out.
+
 - **The web terminal is admin-only, and hosted mode refuses execution (#1266).**
   **Behavior change:** `WS /ws/sessions/{id}/terminal` now needs a stream ticket
   minted by an `admin`-scoped principal and closes with `4403` otherwise. The

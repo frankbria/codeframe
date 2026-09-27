@@ -68,8 +68,8 @@ BOOTSTRAP_TOKEN_HEADER = "X-Bootstrap-Token"
 _BOOTSTRAP_DENIED_DETAIL = (
     "Bootstrap registration is not permitted from this client. Set "
     "CODEFRAME_BOOTSTRAP_TOKEN on the server and send it as the "
-    f"{BOOTSTRAP_TOKEN_HEADER} header, or register from the server host itself "
-    "(e.g. `codeframe auth register` over loopback)."
+    f"{BOOTSTRAP_TOKEN_HEADER} header (the web UI's sign-up form has a field for "
+    "it), or run `codeframe auth register` on the server host itself."
 )
 
 
@@ -83,12 +83,10 @@ def _bootstrap_token() -> str:
     return os.getenv("CODEFRAME_BOOTSTRAP_TOKEN", "").strip()
 
 
-# Headers that name a *client* address. Any of them means something upstream is
-# speaking for someone else, so every address they carry must also be loopback
-# before the request counts as host-local. Deliberately excludes
-# X-Forwarded-Host/Proto: those describe the request, not who made it, and the
-# local Next.js `/auth/*` rewrite sets them in ordinary development.
-_CLIENT_ADDRESS_HEADERS = ("x-forwarded-for", "x-real-ip")
+# Headers a proxy adds. Their mere presence — any value, even empty — means a
+# proxy is in the path, and a proxy cannot prove its client is local (#1274).
+_PROXY_HEADERS = ("forwarded", "x-real-ip")
+_PROXY_HEADER_PREFIX = "x-forwarded-"
 
 
 def _is_loopback_ip(value: str) -> bool:
@@ -111,43 +109,32 @@ def _is_local_request(request: Request) -> bool:
     """Whether the request genuinely originated on this host (issue #897).
 
     Deliberately does NOT reuse ``lib.rate_limiter.get_client_ip``: that helper
-    only honors ``X-Forwarded-For`` when ``RATE_LIMIT_TRUSTED_PROXIES`` is
-    configured, and that setting is optional. Behind the documented Caddy deploy
+    honors ``X-Forwarded-For`` only from ``RATE_LIMIT_TRUSTED_PROXIES``, which an
+    operator can set to empty. Behind the documented Caddy deploy
     (``deploy/Caddyfile.example`` proxies ``/auth/*`` from the public Internet to
-    ``127.0.0.1``) with that setting unset, it reports every Internet client as
+    ``127.0.0.1``) with that setting emptied, it reports every Internet client as
     ``127.0.0.1`` — which would leave this gate wide open. A security gate must
-    not depend on an optional performance/telemetry setting being present.
+    not depend on a rate-limiting setting.
 
-    So the rule here is strict and self-contained: the peer must be loopback,
-    every hop in the forwarded chain must be loopback, and no RFC 7239
-    ``Forwarded`` header may be present. Caddy *appends* the real client IP to
-    ``X-Forwarded-For``, so a spoofed ``X-Forwarded-For: 127.0.0.1`` from the
-    Internet still leaves a non-loopback hop behind it. A local dev proxy (the
-    Next.js ``/auth/*`` rewrite) forwards loopback→loopback and still passes.
+    So the rule is strict and self-contained: the peer must be loopback and no
+    proxy header may be present at all (#1274). Inspecting the forwarded chain
+    is not enough, because a proxy on this host can hand over a loopback peer
+    with nothing that proves its client is local. The Next.js ``/auth/*``
+    rewrite keeps a client-sent ``X-Forwarded-For: 127.0.0.1`` as is, and sends
+    a header-less LAN request with no ``X-Forwarded-For`` at all — only
+    ``X-Forwarded-Host``. So every request through a proxy, the web UI
+    included, needs ``CODEFRAME_BOOTSTRAP_TOKEN``; the host-local path is
+    ``codeframe auth register`` talking to the backend directly.
     """
     client = request.client
     if client is None or not _is_loopback_ip(client.host):
         return False
 
-    # Any RFC 7239 header means a proxy is in the path. Its `for=` grammar
-    # (quoted strings, ports, obfuscated identifiers) is fiddly enough that
-    # parsing it is more risk than it is worth here — reject and let the
-    # operator use a token instead.
-    if request.headers.get("forwarded"):
-        return False
-
-    # getlist, not get: a request can carry the header more than once, and
-    # `.get()` would return only the first — letting an attacker-supplied
-    # `X-Forwarded-For: 127.0.0.1` mask the real address a proxy appended in a
-    # second header. Reading every instance removes the dependence on which
-    # style of proxy is in front.
-    for header in _CLIENT_ADDRESS_HEADERS:
-        for value in request.headers.getlist(header):
-            hops = [hop for hop in value.split(",") if hop.strip()]
-            if not all(_is_loopback_ip(hop) for hop in hops):
-                return False
-
-    return True
+    # Presence, not value: an empty header is still a proxy's (Next keeps one).
+    return not any(
+        name in _PROXY_HEADERS or name.startswith(_PROXY_HEADER_PREFIX)
+        for name in request.headers.keys()
+    )
 
 
 def _check_bootstrap_credential(request: Request) -> None:

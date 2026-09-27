@@ -484,11 +484,18 @@ CODEFRAME_BOOTSTRAP_TOKEN=<secret>    # Out-of-band secret gating the
                                       # must send it as the X-Bootstrap-Token
                                       # header — loopback does NOT bypass it.
                                       # When unset, only host-local requests may
-                                      # register: loopback peer, every
-                                      # X-Forwarded-For hop loopback, and no
-                                      # RFC 7239 Forwarded header (the gate does
-                                      # not rely on RATE_LIMIT_TRUSTED_PROXIES,
-                                      # which is optional — behind the Caddy
+                                      # register: loopback peer and NO proxy
+                                      # header at all — any X-Forwarded-*,
+                                      # X-Real-IP or Forwarded, even empty
+                                      # (#1274: Next's rewrite forwards a LAN
+                                      # request with only X-Forwarded-Host and
+                                      # keeps a client-sent XFF, so a proxy on
+                                      # this host proves nothing). The web UI
+                                      # sign-up therefore always needs the
+                                      # token; `cf auth register` on the host
+                                      # is the tokenless path (the gate does
+                                      # not rely on RATE_LIMIT_TRUSTED_PROXIES
+                                      # — behind the Caddy
                                       # deploy every public request has a
                                       # loopback peer). REQUIRED for any deploy
                                       # reachable over a network; without it a

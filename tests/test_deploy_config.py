@@ -158,6 +158,19 @@ def test_state_lives_on_volumes_not_in_the_image():
     assert env["WORKSPACE_ROOT"] == "/workspaces"
 
 
+def test_the_backend_trusts_the_docker_gateway_as_a_proxy():
+    """#1274: in the container the peer is the Docker gateway, not loopback.
+    Without trusting it, every client shares one rate-limit bucket."""
+    from codeframe.config.rate_limits import RateLimitConfig
+
+    env = _compose(COMPOSE)["backend"]["environment"]
+    proxies = env["RATE_LIMIT_TRUSTED_PROXIES"].split(",")
+    config = RateLimitConfig(trusted_proxies=proxies)
+    assert config.is_trusted_proxy("172.18.0.1")
+    assert config.is_trusted_proxy("127.0.0.1")
+    assert not config.is_trusted_proxy("203.0.113.9")
+
+
 def test_the_backend_image_carries_git():
     """core/workspace and the sandbox create repos and worktrees. A slim base
     without git turns that into a runtime failure nothing here would catch."""

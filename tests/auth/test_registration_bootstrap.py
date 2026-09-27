@@ -294,11 +294,12 @@ class TestLoopbackGate:
         )
         assert resp.status_code == 403, resp.text
 
-    def test_loopback_forwarded_chain_allowed(self, auth_client):
-        """A local dev proxy (Next.js rewrite) forwards from loopback to
-        loopback — that is still a host-local request."""
+    def test_loopback_forwarded_chain_forbidden(self, auth_client):
+        """#1274: a proxy on this host cannot prove its client is local. The
+        Next.js rewrite keeps a client-sent ``X-Forwarded-For: 127.0.0.1`` as
+        is, so a loopback chain is exactly what a LAN attacker sends."""
         resp = _register(auth_client, headers={"X-Forwarded-For": "127.0.0.1"})
-        assert resp.status_code in (200, 201), resp.text
+        assert resp.status_code == 403, resp.text
 
     def test_repeated_forwarded_for_headers_all_inspected(self, auth_client):
         """``Headers.get`` returns only the FIRST match. A proxy that emits its
@@ -321,9 +322,10 @@ class TestLoopbackGate:
         resp = _register(auth_client, headers={"X-Real-IP": "203.0.113.5"})
         assert resp.status_code == 403, resp.text
 
-    def test_x_real_ip_loopback_allowed(self, auth_client):
+    def test_x_real_ip_loopback_forbidden(self, auth_client):
+        """#1274: same as a loopback ``X-Forwarded-For`` — forgeable."""
         resp = _register(auth_client, headers={"X-Real-IP": "127.0.0.1"})
-        assert resp.status_code in (200, 201), resp.text
+        assert resp.status_code == 403, resp.text
 
     def test_header_casing_is_ignored(self, auth_client):
         """HTTP headers are case-insensitive — the gate must not be evadable by
@@ -331,14 +333,25 @@ class TestLoopbackGate:
         resp = _register(auth_client, headers={"x-FoRwArDeD-fOr": "203.0.113.5"})
         assert resp.status_code == 403, resp.text
 
-    def test_forwarded_proto_and_host_do_not_block(self, auth_client):
-        """These describe the request, not who made it, and the local Next.js
-        `/auth/*` rewrite sets them in ordinary development."""
-        resp = _register(
-            auth_client,
-            headers={"X-Forwarded-Proto": "http", "X-Forwarded-Host": "localhost:3000"},
-        )
-        assert resp.status_code in (200, 201), resp.text
+    def test_forwarded_host_alone_forbidden(self, auth_client):
+        """#1274: Next's rewrite proxy sets only ``X-Forwarded-Host`` — no
+        ``X-Forwarded-For`` — so a LAN request with no headers of its own
+        arrived as a bare loopback request and claimed the instance. Any
+        ``X-Forwarded-*`` header means a proxy is in the path."""
+        resp = _register(auth_client, headers={"X-Forwarded-Host": "192.168.1.5:3000"})
+        assert resp.status_code == 403, resp.text
+
+    def test_forwarded_proto_alone_forbidden(self, auth_client):
+        resp = _register(auth_client, headers={"X-Forwarded-Proto": "http"})
+        assert resp.status_code == 403, resp.text
+
+    @pytest.mark.parametrize("header", ["X-Forwarded-For", "X-Real-IP", "Forwarded"])
+    def test_empty_proxy_header_forbidden(self, auth_client, header):
+        """#1274 review: Next's ``missing`` treats an empty header as absent and
+        its ``??=`` keeps it, so an empty value reached the gate, where no hops
+        made the loopback check vacuously true."""
+        resp = _register(auth_client, headers={header: ""})
+        assert resp.status_code == 403, resp.text
 
     def test_rfc7239_forwarded_header_forbidden(self, auth_client):
         """Any RFC 7239 `Forwarded` header means a proxy is in the path."""

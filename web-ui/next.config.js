@@ -20,11 +20,22 @@ const nextConfig = {
     // reason and with the same consequence: one image per environment.
     // Default unchanged for local dev.
     const backendOrigin = process.env.BACKEND_ORIGIN || 'http://localhost:8000';
+    // Refuse to proxy a request that already names a client address (#1274).
+    // Next's rewrite proxy keeps a client-sent X-Forwarded-For as is, so the
+    // backend (which trusts loopback as a proxy) would let the client pick its
+    // own rate-limit bucket. The /auth/register bootstrap gate does not rely on
+    // this: it refuses every proxied request. The documented Caddy config
+    // routes /api and /auth straight to the backend, never through here.
+    const missing = ['x-forwarded-for', 'x-real-ip', 'forwarded'].map((key) => ({
+      type: 'header',
+      key,
+    }));
     return {
       beforeFiles: [
         {
           source: '/api/:path*',
           destination: `${backendOrigin}/api/:path*`,
+          missing,
         },
         // Auth endpoints (/auth/jwt/login, /auth/register) live outside the
         // /api prefix on the FastAPI server; proxy them too so the login flow
@@ -32,6 +43,7 @@ const nextConfig = {
         {
           source: '/auth/:path*',
           destination: `${backendOrigin}/auth/:path*`,
+          missing,
         },
       ],
     };

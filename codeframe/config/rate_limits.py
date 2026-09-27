@@ -11,6 +11,7 @@ Environment Variables (via GlobalConfig):
     RATE_LIMIT_AI: Rate limit for AI/expensive operations (default: 20/minute)
     RATE_LIMIT_STORAGE: Storage backend - memory or redis (default: memory)
     RATE_LIMIT_TRUSTED_PROXIES: Comma-separated trusted proxy IPs/CIDRs
+        (default: loopback; an empty value trusts nothing)
     REDIS_URL: Redis connection URL for distributed rate limiting (optional)
 """
 
@@ -58,21 +59,24 @@ class RateLimitConfig:
             return False
 
         try:
-            client_ip = ipaddress.ip_address(ip)
+            address = ipaddress.ip_address(ip.strip())
+            # A dual-stack listener reports an IPv4 peer as ::ffff:a.b.c.d,
+            # which is not "in" an IPv4 network, so try both spellings — the
+            # peer and the operator's config may each use either one (#1274).
+            candidates = [address]
+            mapped = getattr(address, "ipv4_mapped", None)
+            if mapped is not None:
+                candidates.append(mapped)
+            elif address.version == 4:
+                candidates.append(ipaddress.IPv6Address(f"::ffff:{address}"))
             for proxy in self.trusted_proxies:
                 try:
-                    # Check if it's a network (CIDR notation)
-                    if "/" in proxy:
-                        network = ipaddress.ip_network(proxy, strict=False)
-                        if client_ip in network:
-                            return True
-                    else:
-                        # Check exact IP match
-                        if client_ip == ipaddress.ip_address(proxy):
-                            return True
+                    network = ipaddress.ip_network(proxy, strict=False)
                 except ValueError:
                     # Invalid proxy entry, skip it
                     continue
+                if any(c in network for c in candidates):
+                    return True
             return False
         except ValueError:
             # Invalid IP address

@@ -31,9 +31,10 @@ export default function LoginPage() {
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  // The server's CODEFRAME_BOOTSTRAP_TOKEN (#897). Required for the first
-  // account on any deploy the browser reaches over a network; blank is correct
-  // for a purely local install, where the loopback path applies.
+  // The server's CODEFRAME_BOOTSTRAP_TOKEN (#897). Always required to create
+  // the first account from here: the browser reaches the backend through a
+  // proxy, and the backend never treats a proxied request as host-local
+  // (#1274). Without one, `codeframe auth register` on the server host works.
   const [bootstrapToken, setBootstrapToken] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -175,8 +176,8 @@ export default function LoginPage() {
                   aria-describedby="bootstrap-token-help"
                 />
                 <p id="bootstrap-token-help" className="text-xs text-muted-foreground">
-                  Set on the server as <code>CODEFRAME_BOOTSTRAP_TOKEN</code>. Leave
-                  blank when running CodeFRAME locally on this machine.
+                  Set on the server as <code>CODEFRAME_BOOTSTRAP_TOKEN</code>. No token?
+                  Run <code>codeframe auth register</code> on the server host instead.
                 </p>
               </div>
             )}

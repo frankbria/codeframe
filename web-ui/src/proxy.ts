@@ -46,10 +46,13 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      // Everything except API routes, static assets and the favicon. Those are
-      // not HTML documents, so they need no nonce; next.config.js still applies
-      // the non-CSP hardening headers to them.
-      source: '/((?!api|_next/static|_next/image|favicon.ico).*)',
+      // Everything except backend routes (/api, /auth), static assets and the
+      // favicon. Those are not HTML documents, so they need no nonce;
+      // next.config.js still applies the non-CSP hardening headers to them.
+      // /auth must stay excluded: running this proxy adds x-forwarded-* to the
+      // request, and the /auth rewrite refuses any request carrying one
+      // (#1274), so every login would 404.
+      source: '/((?!api|auth/|_next/static|_next/image|favicon.ico).*)',
       // Prefetches are not rendered, so nonce-ing them only costs work.
       missing: [
         { type: 'header', key: 'next-router-prefetch' },

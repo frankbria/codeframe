@@ -46,9 +46,12 @@ equivalent executables, `cf` and `codeframe`. This guide spells out `codeframe`;
 4. **`CODEFRAME_BOOTSTRAP_TOKEN` (only once the server is reachable over a
    network)** — creating the very first account uses an unauthenticated route,
    so on a fresh deploy whoever reaches it first claims the instance as admin.
-   Locally you need nothing: requests from this machine are allowed as-is. The
-   moment the server sits behind a proxy or a public address, set this and pass
-   it as the `X-Bootstrap-Token` header (or use the field on the sign-up form):
+   Without it, the first account can only be created by running
+   `codeframe auth register` on the server host itself. Any request through a
+   proxy is refused, and that includes the web UI's sign-up form, because Next
+   proxies it (#1274). To sign up from the browser, or from anywhere else, set
+   this and pass it as the `X-Bootstrap-Token` header (or use the field on the
+   sign-up form):
    ```bash
    export CODEFRAME_BOOTSTRAP_TOKEN=$(openssl rand -hex 32)
    ```
