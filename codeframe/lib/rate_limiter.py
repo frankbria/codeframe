@@ -15,7 +15,7 @@ Key extraction:
 
 Security:
 - X-Forwarded-For is only trusted when request comes from a trusted proxy, and
-  the client is its rightmost untrusted hop (#1274)
+  the client is the rightmost hop, the one that proxy appended (#1274)
 - "unknown" IPs are logged and tracked for security monitoring
 - RATE_LIMIT_TRUSTED_PROXIES defines trusted proxy networks (default: loopback)
 """
@@ -45,12 +45,11 @@ _logged_disabled: bool = False
 def get_client_ip(request: Request) -> str:
     """Extract the client IP, trusting proxy headers only from trusted proxies.
 
-    Walks the address chain right to left — every ``X-Forwarded-For`` hop, in
-    header order, then the direct peer — and returns the first address that is
-    not a trusted proxy (#1274). Each trusted proxy appends the address it saw,
-    so the rightmost untrusted hop is the last one a trusted party vouched for;
-    anything to its left was written by the client. (The leftmost hop, which
-    this used to return, is whatever the client typed.)
+    An untrusted peer is the client. Behind a trusted peer, the client is the
+    rightmost ``X-Forwarded-For`` hop (across every instance of the header):
+    the address that proxy saw and appended (#1274). Anything to its left was
+    written by the client. (The leftmost hop, which this used to return, is
+    whatever the client typed.)
 
     ``X-Real-IP`` is used only when the peer is trusted and no
     ``X-Forwarded-For`` is present. Trusted proxies come from
@@ -90,12 +89,12 @@ def get_client_ip(request: Request) -> str:
         real_ip = request.headers.get("X-Real-IP", "").strip()
         return real_ip or direct_ip
 
-    for hop in reversed(hops):
-        if not config.is_trusted_proxy(hop):
-            return hop
-    # Every hop is "trusted", which a client inside a trusted CIDR can arrange
-    # by prepending in-range hops, so the leftmost is its choice. The
-    # rightmost was appended by the trusted peer itself (#1274 review).
+    # Non-recursive: the rightmost hop is the one the trusted peer appended;
+    # everything to its left is client-writable. Walking further left past
+    # "trusted" hops cannot work, because a client inside a trusted range looks
+    # exactly like a proxy (#1274 review).
+    # ponytail: a multi-proxy chain (CDN → Caddy) is keyed by the proxy nearest
+    # the backend; add a separate trusted-hop list if that topology appears.
     return hops[-1]
 
 

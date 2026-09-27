@@ -88,10 +88,14 @@ class TestRightmostUntrustedHop:
         }
         assert keys == {"ip:198.51.100.7"}
 
-    def test_trusted_hops_are_skipped(self, monkeypatch):
+    def test_multi_proxy_chain_is_keyed_by_the_nearest_proxy(self, monkeypatch):
+        """Non-recursive by design (GLM review): an inner hop inside a trusted
+        range is indistinguishable from a client in that range, so only the
+        hop the peer appended is used. A multi-proxy chain fails closed onto
+        the nearest proxy's bucket rather than a client-steerable one."""
         _set_trusted(monkeypatch, "127.0.0.0/8,10.0.0.0/8")
         req = _request("127.0.0.1", [("X-Forwarded-For", "1.2.3.4, 198.51.100.7, 10.0.0.2")])
-        assert get_client_ip(req) == "198.51.100.7"
+        assert get_client_ip(req) == "10.0.0.2"
 
     def test_repeated_headers_are_read_in_order(self):
         # A spoofed first header must not mask the one the proxy appended.
@@ -100,6 +104,19 @@ class TestRightmostUntrustedHop:
             [("X-Forwarded-For", "1.2.3.4"), ("X-Forwarded-For", "198.51.100.7")],
         )
         assert get_client_ip(req) == "198.51.100.7"
+
+    def test_client_inside_trusted_range_cannot_type_an_outside_hop(self, monkeypatch):
+        """GLM review, second pass: the same LAN client prepends an OUT-of-range
+        hop. A recursive walk skipped its real (in-range) address as if it
+        were a proxy and returned the hop it typed."""
+        _set_trusted(monkeypatch, "127.0.0.0/8,172.16.0.0/12")
+        keys = {
+            get_rate_limit_key(
+                _request("172.18.0.1", [("X-Forwarded-For", f"203.0.113.{i}, 172.16.5.5")])
+            )
+            for i in range(5)
+        }
+        assert keys == {"ip:172.16.5.5"}
 
     def test_all_hops_trusted_returns_the_peer_appended_hop(self):
         req = _request("127.0.0.1", [("X-Forwarded-For", "127.0.0.1")])

@@ -160,8 +160,10 @@ address. A proxy that sends everything to the frontend breaks the API.
 
 The rate limiter keys anonymous requests by client IP. It reads
 `X-Forwarded-For` only when the direct peer is in `RATE_LIMIT_TRUSTED_PROXIES`,
-and takes the **rightmost hop that is not itself trusted** — the leftmost hop is
-whatever the client typed. The default is loopback (`127.0.0.0/8,::1`), which
+and takes the **rightmost hop**, the address that proxy appended; the leftmost
+hop is whatever the client typed. It does not walk further left: a client whose
+own address is in a trusted range would look like a proxy there. Behind a chain
+of several proxies, clients are therefore keyed by the nearest one. The default is loopback (`127.0.0.0/8,::1`), which
 covers Caddy on the same host. `docker-compose.yml` adds `172.16.0.0/12`,
 because inside the container the peer is the Docker gateway rather than
 loopback. Set the variable to an empty value to trust no proxy at all. Without
