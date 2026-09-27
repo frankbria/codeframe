@@ -12,7 +12,7 @@ from typing import Callable
 
 from codeframe.core.adapters.agent_adapter import AgentEvent, AgentResult
 from codeframe.core.agent_env import build_delegated_agent_env
-from codeframe.core.adapters.git_utils import detect_modified_files
+from codeframe.core.adapters.git_utils import detect_modified_files, git_head
 from codeframe.core.blocker_detection import classify_error_for_blocker
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,61 @@ def _joined(lines: "deque[str]", total: int) -> str:
     if dropped > 0:
         return f"...[{dropped} earlier line(s) truncated]...\n{text}"
     return text
+
+
+def extract_blocker_question(output: str) -> str:
+    """Extract a meaningful blocker question from output."""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if lines:
+        return lines[-1]
+    return "Agent encountered a blocker but no details were provided."
+
+
+def enforce_file_changes(
+    result: AgentResult,
+    *,
+    binary: str,
+    head_before: str | None,
+    head_after: str | None,
+) -> None:
+    """Downgrade a 'completed' run that changed nothing, in place.
+
+    A coding task that "succeeds" without touching any file is a false
+    completion: edits were likely denied or the agent only analyzed. Fail hard
+    so downstream gates don't pass on the unchanged tree. (#739) Shared by
+    every coding engine — codex speaks its own protocol rather than going
+    through ``SubprocessAdapter.run``, and shipped without it (#1278).
+
+    Call only for a completed run with no modified files. Fires only when we
+    can *positively* confirm no work: a resolvable git repo whose HEAD didn't
+    advance (self-committed work). A non-git workspace can't be judged.
+    """
+    if head_after is None:
+        return
+    # Require a known baseline to credit a commit: if the pre-run HEAD read
+    # failed (head_before is None) we must not let `None != sha` masquerade as
+    # "committed" and silently pass a real zero-file run. Bias toward failing
+    # loudly. (ponytail: a rare `git init` mid-run false-fails here —
+    # acceptable; a false COMPLETED is worse.)
+    if head_before is not None and head_after != head_before:
+        return
+    # A zero-file clean run may be the agent *asking* rather than failing: a
+    # non-interactive CLI has no way to prompt, so a genuine ambiguity gets
+    # printed and the run ends clean. Route those to the blocker flow a human
+    # can answer instead of hard-failing with a misleading "lacked write
+    # permission". Tactical questions classify as None by design — those are
+    # the agent's own job, so they keep failing. (#819)
+    if classify_error_for_blocker(result.output or "") is not None:
+        result.status = "blocked"
+        result.error = None
+        result.blocker_question = extract_blocker_question(result.output or "")
+    else:
+        result.status = "failed"
+        result.error = (
+            f"'{binary}' exited successfully but modified no files. A coding "
+            "task must change at least one file; the agent likely lacked write "
+            "permission or produced no edits."
+        )
 
 
 class SubprocessAdapter:
@@ -329,51 +384,17 @@ class SubprocessAdapter:
         )
         result.modified_files = modified_files
 
-        # A coding task that "succeeds" without touching any file is a false
-        # completion: edits were likely denied or the agent only analyzed. Fail
-        # hard so downstream gates don't pass on the unchanged tree. (#739)
-        # Only fire when we can *positively* confirm no work: a resolvable git
-        # repo whose HEAD didn't advance (self-committed work) and whose tree has
-        # no changes. A non-git workspace can't be judged, so we don't fail it.
         if (
             self._require_file_changes
             and result.status == "completed"
             and not modified_files
         ):
-            head_after = self._git_head(workspace_path)
-            in_git_repo = head_after is not None
-            # Require a known baseline to credit a commit: if the pre-run HEAD
-            # read failed (head_before is None) we must not let `None != sha`
-            # masquerade as "committed" and silently pass a real zero-file run.
-            # Bias toward failing loudly. (ponytail: a rare `git init` mid-run
-            # false-fails here — acceptable; a false COMPLETED is worse.)
-            committed = (
-                head_before is not None
-                and head_after is not None
-                and head_after != head_before
+            enforce_file_changes(
+                result,
+                binary=self._binary,
+                head_before=head_before,
+                head_after=self._git_head(workspace_path),
             )
-            if in_git_repo and not committed:
-                # A zero-file exit-0 run may be the agent *asking* rather than
-                # failing: `--print` has no way to prompt, so a genuine ambiguity
-                # gets printed and the process exits clean. Route those to the
-                # blocker flow a human can answer instead of hard-failing with a
-                # misleading "lacked write permission". Tactical questions
-                # classify as None by design — those are the agent's own job, so
-                # they keep failing. (#819)
-                category = classify_error_for_blocker(result.output or "")
-                if category is not None:
-                    result.status = "blocked"
-                    result.error = None
-                    result.blocker_question = self._extract_blocker_question(
-                        result.output or ""
-                    )
-                else:
-                    result.status = "failed"
-                    result.error = (
-                        f"'{self._binary}' exited successfully but modified no "
-                        "files. A coding task must change at least one file; the "
-                        "agent likely lacked write permission or produced no edits."
-                    )
 
         return result
 
@@ -404,7 +425,7 @@ class SubprocessAdapter:
                 status="blocked",
                 output=stdout,
                 error=stderr or None,
-                blocker_question=self._extract_blocker_question(combined_output),
+                blocker_question=extract_blocker_question(combined_output),
             )
 
         return AgentResult(
@@ -418,42 +439,5 @@ class SubprocessAdapter:
         return detect_modified_files(workspace_path)
 
     def _git_head(self, workspace_path: Path) -> str | None:
-        """Return the current HEAD commit sha, or None if HEAD is unresolvable.
-
-        None means "not a git repo, git unavailable, or an unborn HEAD" — i.e.
-        a state where modified-file detection can't judge whether work happened.
-        Errors are logged: since empty now means failed for require_file_changes
-        adapters, a git hiccup would otherwise be indistinguishable from "the
-        agent changed nothing" in the logs. (#819)
-        """
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=str(workspace_path),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=10,
-            )
-            if result.returncode != 0:
-                logger.warning(
-                    "git rev-parse HEAD failed in %s (exit %d): %s",
-                    workspace_path,
-                    result.returncode,
-                    (result.stderr or "").strip() or "<no stderr>",
-                )
-                return None
-            return result.stdout.strip() or None
-        except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as e:
-            logger.warning(
-                "git rev-parse HEAD could not run in %s: %s", workspace_path, e
-            )
-            return None
-
-    def _extract_blocker_question(self, output: str) -> str:
-        """Extract a meaningful blocker question from output."""
-        lines = [line.strip() for line in output.splitlines() if line.strip()]
-        if lines:
-            return lines[-1]
-        return "Agent encountered a blocker but no details were provided."
+        """HEAD sha, or None when it cannot be judged. See ``git_utils.git_head``."""
+        return git_head(workspace_path)

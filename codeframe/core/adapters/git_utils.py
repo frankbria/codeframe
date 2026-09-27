@@ -66,3 +66,36 @@ def detect_modified_files(workspace_path: Path) -> list[str]:
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as e:
         logger.warning("git could not run in %s: %s", workspace_path, e)
         return []
+
+
+def git_head(workspace_path: Path) -> str | None:
+    """Return the current HEAD commit sha, or None if HEAD is unresolvable.
+
+    None means "not a git repo, git unavailable, or an unborn HEAD" — i.e.
+    a state where modified-file detection can't judge whether work happened.
+    Errors are logged: since empty now means failed for require_file_changes
+    adapters, a git hiccup would otherwise be indistinguishable from "the
+    agent changed nothing" in the logs. (#819)
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(workspace_path),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        if result.returncode != 0:
+            logger.warning(
+                "git rev-parse HEAD failed in %s (exit %d): %s",
+                workspace_path,
+                result.returncode,
+                (result.stderr or "").strip() or "<no stderr>",
+            )
+            return None
+        return result.stdout.strip() or None
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as e:
+        logger.warning("git rev-parse HEAD could not run in %s: %s", workspace_path, e)
+        return None

@@ -309,3 +309,40 @@ def test_the_adapter_drives_a_trivial_task_to_a_terminal_state(
         f"(error={result.error!r})"
     )
     assert "smoke.txt" in result.modified_files
+
+
+@pytest.mark.skipif(
+    not _SMOKE_OPT_IN,
+    reason="engine task smoke is opt-in: set CODEFRAME_ENGINE_SMOKE=1",
+)
+@pytest.mark.parametrize("engine", ENGINES, ids=str)
+def test_a_run_that_writes_nothing_is_not_reported_completed(
+    engine: Engine, repo: Path
+) -> None:
+    """A clean-looking run that changed nothing must not reach the gates as DONE.
+
+    Every engine, not just the ones that inherit SubprocessAdapter's guard:
+    codex speaks its own protocol and shipped without it (#1278).
+    """
+    _require_binary(engine)
+    result = engine.adapter().run(
+        "task-smoke",
+        "Reply with the single word ACKNOWLEDGED. Do not create, edit or "
+        "delete any files.",
+        repo,
+    )
+
+    environmental = _environmental_reason(result.error)
+    if environmental:
+        pytest.skip(f"{engine.name}: NO COVERAGE — {environmental}")
+
+    changed = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True
+    ).stdout.strip()
+    if changed:
+        pytest.skip(f"{engine.name}: the model wrote files anyway: {changed!r}")
+
+    assert result.status != "completed", (
+        f"{engine.name}: a run that wrote nothing was reported completed — gates "
+        f"would then pass on an unchanged tree"
+    )

@@ -8,7 +8,10 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from codeframe.core.adapters.subprocess_adapter import SubprocessAdapter
+from codeframe.core.adapters.subprocess_adapter import (
+    SubprocessAdapter,
+    extract_blocker_question,
+)
 from codeframe.core.adapters.agent_adapter import AgentAdapter, AgentEvent
 
 
@@ -607,21 +610,15 @@ class TestSubprocessAdapterBlockerExtraction:
     """Tests for blocker question extraction."""
 
     def test_extracts_last_line(self):
-        with patch("shutil.which", return_value="/usr/bin/agent"):
-            adapter = SubprocessAdapter("agent")
-            question = adapter._extract_blocker_question(
-                "Starting...\nChecking...\nPermission denied for /secret/file"
-            )
-            assert question == "Permission denied for /secret/file"
+        question = extract_blocker_question(
+            "Starting...\nChecking...\nPermission denied for /secret/file"
+        )
+        assert question == "Permission denied for /secret/file"
 
     def test_handles_empty_output(self):
-        with patch("shutil.which", return_value="/usr/bin/agent"):
-            adapter = SubprocessAdapter("agent")
-            question = adapter._extract_blocker_question("")
-            assert "no details" in question.lower()
+        question = extract_blocker_question("")
+        assert "no details" in question.lower()
 
     def test_handles_blank_lines_only(self):
-        with patch("shutil.which", return_value="/usr/bin/agent"):
-            adapter = SubprocessAdapter("agent")
-            question = adapter._extract_blocker_question("\n\n  \n")
-            assert "no details" in question.lower()
+        question = extract_blocker_question("\n\n  \n")
+        assert "no details" in question.lower()
