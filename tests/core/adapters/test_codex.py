@@ -95,8 +95,21 @@ def _make_adapter(**kwargs):
         return CodexAdapter(**kwargs)
 
 
-def _run_with_script(adapter, lines: list[str], *, close_stdout: bool = True, **run_kwargs):
-    """Run the adapter against a scripted stdout, returning (result, sent_messages)."""
+def _run_with_script(
+    adapter,
+    lines: list[str],
+    *,
+    close_stdout: bool = True,
+    modified_files: list[str] | None = None,
+    heads: tuple[str | None, str | None] = (None, None),
+    **run_kwargs,
+):
+    """Run the adapter against a scripted stdout, returning (result, sent_messages).
+
+    ``heads`` is HEAD before/after the run. The default ``(None, None)`` reads as
+    "not a git repo", so the zero-file guard (#1278) stays out of tests that are
+    about the protocol — independent of whatever ``/tmp/repo`` is on the host.
+    """
     pipe = _PipeStdout()
     pipe.write_lines(lines)
     if close_stdout:
@@ -115,7 +128,9 @@ def _run_with_script(adapter, lines: list[str], *, close_stdout: bool = True, **
 
     try:
         with patch("subprocess.Popen", return_value=process):
-            with patch.object(adapter, "_detect_modified_files", return_value=[]):
+            with patch.object(
+                adapter, "_detect_modified_files", return_value=modified_files or []
+            ), patch.object(adapter, "_git_head", side_effect=list(heads)):
                 result = adapter.run(
                     run_kwargs.pop("task_id", "task-1"),
                     run_kwargs.pop("prompt", "fix the bug"),
@@ -389,7 +404,8 @@ class TestCodexTransport:
         started = time.monotonic()
         try:
             with patch("subprocess.Popen", return_value=process):
-                with patch.object(adapter, "_detect_modified_files", return_value=[]):
+                with patch.object(adapter, "_detect_modified_files", return_value=[]), \
+                        patch.object(adapter, "_git_head", return_value=None):
                     result = adapter.run("task-1", "prompt", Path("/tmp/repo"))
         finally:
             pipe.close()
@@ -544,6 +560,14 @@ class TestCodexApproval:
         assert thread_start["params"]["sandbox"] == "workspace-write"
         assert thread_start["params"]["sandbox"] != "danger-full-access"
 
+    def test_auto_policy_asks_codex_to_route_commands_through_approval(self) -> None:
+        """Under "never" codex sends no approval requests at all, so the #916
+        guard above was unreachable in the default mode (#1278). "untrusted"
+        makes codex ask for everything outside its own read-only safelist."""
+        _, sent = _run_with_script(_make_adapter(), _handshake_lines() + [_turn_completed()])
+        thread_start = next(m for m in sent if m.get("method") == "thread/start")
+        assert thread_start["params"]["approvalPolicy"] == "untrusted"
+
     def test_unsupported_server_request_gets_error_reply(self) -> None:
         """Never leave a server request unanswered — that hangs the turn."""
         result, sent = self._approval_run("attestation/generate", {"nonce": "x"})
@@ -639,7 +663,54 @@ class TestCodexProcessErrors:
         process.poll.return_value = None
 
         with patch("subprocess.Popen", return_value=process):
-            with patch.object(adapter, "_detect_modified_files", return_value=["src/a.py"]):
+            with patch.object(adapter, "_detect_modified_files", return_value=["src/a.py"]), \
+                    patch.object(adapter, "_git_head", return_value=None):
                 result = adapter.run("task-1", "prompt", Path("/tmp/repo"))
 
         assert result.modified_files == ["src/a.py"]
+
+
+# ----------------------------------------------------------------------
+# Zero-file false completion (#1278, the #739/#819 guard)
+# ----------------------------------------------------------------------
+
+
+class TestCodexZeroFileGuard:
+    """A 'completed' turn that changed nothing must not reach the gates as DONE."""
+
+    def _run(self, *, agent_text: str = "Done.", **kwargs):
+        lines = _handshake_lines() + [
+            _notification(
+                "item/completed", {"item": {"type": "agentMessage", "text": agent_text}}
+            ),
+            _turn_completed(),
+        ]
+        result, _ = _run_with_script(_make_adapter(), lines, **kwargs)
+        return result
+
+    def test_completed_turn_with_no_changes_fails(self) -> None:
+        result = self._run(heads=("sha1", "sha1"))
+        assert result.status == "failed"
+        assert "modified no files" in (result.error or "")
+
+    def test_completed_turn_asking_a_question_becomes_a_blocker(self) -> None:
+        result = self._run(
+            agent_text="There are conflicting requirements: should I keep the old API?",
+            heads=("sha1", "sha1"),
+        )
+        assert result.status == "blocked"
+        assert result.error is None
+        assert "conflicting requirements" in (result.blocker_question or "")
+
+    def test_a_self_committed_run_still_counts_as_work(self) -> None:
+        assert self._run(heads=("sha1", "sha2")).status == "completed"
+
+    def test_modified_files_count_as_work(self) -> None:
+        result = self._run(modified_files=["src/a.py"], heads=("sha1", "sha1"))
+        assert result.status == "completed"
+
+    def test_an_unreadable_baseline_does_not_credit_a_commit(self) -> None:
+        assert self._run(heads=(None, "sha2")).status == "failed"
+
+    def test_a_non_git_workspace_is_not_judged(self) -> None:
+        assert self._run(heads=(None, None)).status == "completed"

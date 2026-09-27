@@ -39,7 +39,8 @@ from codeframe.core.adapters.agent_adapter import (
     AgentEvent,
     AgentResult,
 )
-from codeframe.core.adapters.git_utils import detect_modified_files
+from codeframe.core.adapters.git_utils import detect_modified_files, git_head
+from codeframe.core.adapters.subprocess_adapter import enforce_file_changes
 from codeframe.core.agent_env import build_delegated_agent_env
 from codeframe.core.dangerous_commands import is_dangerous_command
 
@@ -229,6 +230,8 @@ class CodexAdapter:
         """Execute a task via the Codex app-server protocol."""
         start = time.monotonic()
         self._next_id = 0
+        # Baseline so a run that commits its own work still counts (#739).
+        head_before = self._git_head(workspace_path)
 
         try:
             process = subprocess.Popen(
@@ -285,6 +288,13 @@ class CodexAdapter:
             result.error = f"{result.error}\nstderr: {stderr_chunks[0].strip()[-2000:]}"
 
         result.modified_files = self._detect_modified_files(workspace_path)
+        if result.status == "completed" and not result.modified_files:
+            enforce_file_changes(
+                result,
+                binary=self._binary,
+                head_before=head_before,
+                head_after=self._git_head(workspace_path),
+            )
         result.duration_ms = int((time.monotonic() - start) * 1000)
         return result
 
@@ -356,9 +366,12 @@ class CodexAdapter:
 
         params: dict[str, Any] = {
             "cwd": str(workspace_path),
-            # "never" = don't interrupt an unattended run for approval. Any
-            # approval that still arrives is answered in _answer_server_request.
-            "approvalPolicy": "never" if self._approval_policy == "auto" else "on-request",
+            # Not "never": under it codex sends no approval requests at all, so
+            # the dangerous-command vetting in _answer_server_request never ran
+            # (#1278). "untrusted" asks for everything outside codex's own
+            # read-only safelist, and auto mode accepts whatever isn't dangerous
+            # — still unattended, but no longer unvetted.
+            "approvalPolicy": "untrusted" if self._approval_policy == "auto" else "on-request",
         }
         if self._sandbox_mode:
             params["sandbox"] = self._sandbox_mode
@@ -591,3 +604,8 @@ class CodexAdapter:
     def _detect_modified_files(workspace_path: Path) -> list[str]:
         """Detect files modified by the subprocess via git diff."""
         return detect_modified_files(workspace_path)
+
+    @staticmethod
+    def _git_head(workspace_path: Path) -> str | None:
+        """HEAD sha, or None when it cannot be judged."""
+        return git_head(workspace_path)
