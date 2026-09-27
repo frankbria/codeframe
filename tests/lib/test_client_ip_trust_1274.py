@@ -136,6 +136,9 @@ class TestMappedProxyConfig:
             ("::ffff:172.18.0.0/112", "::ffff:172.18.0.1"),
             ("127.0.0.1", "::ffff:127.0.0.1"),
             ("172.16.0.0/12", "172.18.0.1"),
+            # claude-review: mapped config, plain peer (an IPv4-only socket)
+            ("::ffff:172.18.0.0/112", "172.18.0.1"),
+            ("::ffff:127.0.0.1", "127.0.0.1"),
         ],
     )
     def test_either_spelling_matches(self, configured, peer):

@@ -61,12 +61,14 @@ class RateLimitConfig:
         try:
             address = ipaddress.ip_address(ip.strip())
             # A dual-stack listener reports an IPv4 peer as ::ffff:a.b.c.d,
-            # which is not "in" an IPv4 network, so try both spellings — an
-            # operator may have configured either one (#1274).
+            # which is not "in" an IPv4 network, so try both spellings — the
+            # peer and the operator's config may each use either one (#1274).
             candidates = [address]
             mapped = getattr(address, "ipv4_mapped", None)
             if mapped is not None:
                 candidates.append(mapped)
+            elif address.version == 4:
+                candidates.append(ipaddress.IPv6Address(f"::ffff:{address}"))
             for proxy in self.trusted_proxies:
                 try:
                     network = ipaddress.ip_network(proxy, strict=False)
