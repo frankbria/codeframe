@@ -356,6 +356,14 @@ class TestSearchQualifierInjection:
 
         assert "label:" not in q
 
+    @pytest.mark.asyncio
+    async def test_label_backslash_cannot_escape_closing_quote(self):
+        """Safety must not depend on the label being the last qualifier."""
+        q = await self._q_for_label("x\\")
+
+        assert "\\" not in q
+        assert 'label:"x"' in q
+
 
 class TestErrorMapping:
     @pytest.mark.asyncio
