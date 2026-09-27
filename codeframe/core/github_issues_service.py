@@ -491,12 +491,14 @@ def _sanitize_search(search: str) -> str:
 
     Embedded quotes are *removed*, not escaped — escaping semantics inside
     GitHub's query language are version-dependent, and dropping them is the one
-    behaviour that cannot be talked into opening a second phrase.
+    behaviour that cannot be talked into opening a second phrase. Backslashes
+    go too: ``x\\`` would become ``"x\\"``, and if GitHub reads that as an
+    escaped quote the phrase swallows the ``repo:`` pin that follows (#1275).
 
     Returns ``""`` when nothing searchable survives, so the caller falls back to
     the plain list endpoint rather than sending an empty phrase.
     """
-    words = search.replace('"', " ").split()
+    words = search.replace('"', " ").replace("\\", " ").split()
     return " ".join(f'"{w}"' for w in words)
 
 
@@ -517,8 +519,13 @@ async def _search_issues(
         "is:issue",
         "is:open",
     ]
-    if label.strip():
-        qualifiers.append(f'label:"{label.strip()}"')
+    # Quotes removed for the same reason as in _sanitize_search: a `"` in the
+    # label closed the phrase and let `repo:`/`is:` escape the connected repo
+    # (#1275). `\` goes too, so a trailing one can't escape the closing quote
+    # wherever this qualifier sits. The list endpoint takes labels as a param.
+    label = label.replace('"', "").replace("\\", "").strip()
+    if label:
+        qualifiers.append(f'label:"{label}"')
     q = " ".join(qualifiers)
     try:
         resp = await client.get(

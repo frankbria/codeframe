@@ -305,6 +305,84 @@ class TestSearchQualifierInjection:
         # phrase to the search API, just list.
         assert seen["path"] == "/repos/acme/app/issues"
 
+    @pytest.mark.asyncio
+    async def test_search_backslash_cannot_escape_closing_quote(self):
+        """A trailing ``\\`` on a word must not un-scope the search (#1275)."""
+        seen, handler = self._capture_q("x\\ repo:victim/private")
+
+        async with _client(handler) as client:
+            await list_issues(
+                VALID_PAT,
+                "acme/app",
+                page=1,
+                per_page=25,
+                search="x\\ repo:victim/private",
+                client=client,
+            )
+
+        q = seen["q"]
+        assert "\\" not in q
+        assert '"x" "repo:victim/private" repo:acme/app' in q
+
+    @staticmethod
+    async def _q_for_label(label: str) -> str:
+        seen = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["q"] = request.url.params.get("q")
+            return httpx.Response(200, json={"total_count": 0, "items": []})
+
+        async with _client(handler) as client:
+            await list_issues(
+                VALID_PAT,
+                "acme/app",
+                page=1,
+                per_page=25,
+                search="bug",
+                label=label,
+                client=client,
+            )
+        return seen["q"]
+
+    @staticmethod
+    def _unquoted(q: str) -> list[str]:
+        """Tokens GitHub reads as qualifiers: whatever sits outside a phrase."""
+        assert q.count('"') % 2 == 0, f"unbalanced quotes in {q!r}"
+        return q.split('"')[0::2]
+
+    @pytest.mark.asyncio
+    async def test_label_quotes_cannot_add_repo_qualifier(self):
+        """The #956 hole again, through the label field (#1275)."""
+        q = await self._q_for_label('x" repo:victim/private "')
+
+        outside = " ".join(self._unquoted(q)).split()
+        assert [t for t in outside if t.startswith("repo:")] == ["repo:acme/app"]
+        assert "victim/private" not in " ".join(outside)
+
+    @pytest.mark.asyncio
+    async def test_label_quotes_cannot_add_is_qualifier(self):
+        q = await self._q_for_label('x" is:closed "')
+
+        outside = " ".join(self._unquoted(q)).split()
+        assert sorted(t for t in outside if t.startswith("is:")) == [
+            "is:issue",
+            "is:open",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_label_of_only_quotes_drops_the_qualifier(self):
+        q = await self._q_for_label('""')
+
+        assert "label:" not in q
+
+    @pytest.mark.asyncio
+    async def test_label_backslash_cannot_escape_closing_quote(self):
+        """Safety must not depend on the label being the last qualifier."""
+        q = await self._q_for_label("x\\")
+
+        assert "\\" not in q
+        assert 'label:"x"' in q
+
 
 class TestErrorMapping:
     @pytest.mark.asyncio
