@@ -13,16 +13,6 @@ class UserCreate(schemas.BaseUserCreate):
 class UserUpdate(schemas.BaseUserUpdate):
     """Schema for updating users."""
     name: Optional[str] = None
-    #: Required to change password or email (#1285); never written to the row.
+    #: Required to change password or email (#1285). Not a column, so the
+    #: update only sets it as a plain attribute; UserRead never returns it.
     current_password: Optional[str] = None
-
-    def create_update_dict(self):
-        return _without_current_password(super().create_update_dict())
-
-    def create_update_dict_superuser(self):
-        return _without_current_password(super().create_update_dict_superuser())
-
-
-def _without_current_password(update: dict) -> dict:
-    update.pop("current_password", None)
-    return update
