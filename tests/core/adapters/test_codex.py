@@ -456,7 +456,7 @@ class TestCodexApproval:
         )
         assert result.status == "completed"
         reply = next(m for m in sent if m.get("id") == 77 and "method" not in m)
-        assert reply["result"]["decision"] == "accept"
+        assert reply["result"]["decision"] == "decline"
 
     def test_file_change_approval_answered_by_request_id(self) -> None:
         _, sent = self._approval_run(
@@ -464,19 +464,10 @@ class TestCodexApproval:
             {"threadId": "th-1", "turnId": "turn-1", "itemId": "i2", "startedAtMs": 1},
         )
         reply = next(m for m in sent if m.get("id") == 77 and "method" not in m)
-        assert reply["result"]["decision"] == "accept"
-
-    def test_non_auto_policy_declines(self) -> None:
-        _, sent = self._approval_run(
-            "item/fileChange/requestApproval",
-            {"threadId": "th-1", "turnId": "turn-1", "itemId": "i2", "startedAtMs": 1},
-            approval_policy="require",
-        )
-        reply = next(m for m in sent if m.get("id") == 77 and "method" not in m)
         assert reply["result"]["decision"] == "decline"
 
-    def test_a_dangerous_command_is_declined_even_under_auto_approval(self) -> None:
-        """Auto-approval must not mean "approve anything" (#916).
+    def test_a_dangerous_command_is_declined(self) -> None:
+        """An unattended run must not approve anything (#916, #1278).
 
         Task prompts are assembled from PRD and GitHub issue bodies (#565) —
         externally authored text — so an injected destructive command would
@@ -510,15 +501,30 @@ class TestCodexApproval:
         reply = next(m for m in sent if m.get("id") == 77 and "method" not in m)
         assert reply["result"]["decision"] == "decline", f"{command!r} was approved"
 
-    def test_an_ordinary_command_is_still_approved(self) -> None:
-        """The guard must not break the engine — normal work still runs."""
-        _, sent = self._approval_run(
-            "item/commandExecution/requestApproval",
-            {"threadId": "th-1", "turnId": "turn-1", "itemId": "i1",
-             "startedAtMs": 1, "command": "pytest tests/ -q"},
+    def test_a_harmless_escalation_is_still_declined(self) -> None:
+        """An accepted approval runs the command outside the sandbox — there is
+        no decision that approves and keeps it (#1278). Normal work does not
+        ask: it runs inside the sandbox under "on-request"."""
+        events: list[AgentEvent] = []
+        _, sent = _run_with_script(
+            _make_adapter(),
+            _handshake_lines()
+            + [
+                _server_request(
+                    77,
+                    "item/commandExecution/requestApproval",
+                    {"threadId": "th-1", "turnId": "turn-1", "itemId": "i1",
+                     "startedAtMs": 1, "command": "touch /home/u/outside"},
+                ),
+                _turn_completed(),
+            ],
+            on_event=events.append,
         )
         reply = next(m for m in sent if m.get("id") == 77 and "method" not in m)
-        assert reply["result"]["decision"] == "accept"
+        assert reply["result"]["decision"] == "decline"
+        assert any(
+            e.type == "tool_call" and "touch /home/u/outside" in e.message for e in events
+        ), [e.message for e in events]
 
     def test_blocking_a_command_emits_an_error_event(self) -> None:
         """A silent block looks like the model choosing not to act."""
@@ -541,14 +547,15 @@ class TestCodexApproval:
         blocked = [e for e in events if e.type == "error" and "Blocked" in e.message]
         assert blocked, f"no block event emitted; got {[e.message for e in events]}"
 
-    def test_a_file_change_approval_has_no_command_to_vet(self) -> None:
-        """File-change approvals carry no command — the sandbox bounds those."""
+    def test_a_file_change_approval_is_declined(self) -> None:
+        """In-workspace edits apply without asking under workspace-write, so a
+        file change that asks is one writing outside the workspace."""
         _, sent = self._approval_run(
             "item/fileChange/requestApproval",
             {"threadId": "th-1", "turnId": "turn-1", "itemId": "i2", "startedAtMs": 1},
         )
         reply = next(m for m in sent if m.get("id") == 77 and "method" not in m)
-        assert reply["result"]["decision"] == "accept"
+        assert reply["result"]["decision"] == "decline"
 
     def test_the_sandbox_default_is_restrictive(self) -> None:
         """The engine must not inherit whatever ~/.codex/config.toml allows (#916)."""
@@ -560,13 +567,14 @@ class TestCodexApproval:
         assert thread_start["params"]["sandbox"] == "workspace-write"
         assert thread_start["params"]["sandbox"] != "danger-full-access"
 
-    def test_auto_policy_asks_codex_to_route_commands_through_approval(self) -> None:
+    def test_escalations_are_routed_to_the_guard(self) -> None:
         """Under "never" codex sends no approval requests at all, so the #916
-        guard above was unreachable in the default mode (#1278). "untrusted"
-        makes codex ask for everything outside its own read-only safelist."""
+        guard above was unreachable (#1278). "on-request" sends one exactly
+        when the model wants to leave the sandbox. "untrusted" would ask before
+        ordinary commands too, and approving those runs them unsandboxed."""
         _, sent = _run_with_script(_make_adapter(), _handshake_lines() + [_turn_completed()])
         thread_start = next(m for m in sent if m.get("method") == "thread/start")
-        assert thread_start["params"]["approvalPolicy"] == "untrusted"
+        assert thread_start["params"]["approvalPolicy"] == "on-request"
 
     def test_unsupported_server_request_gets_error_reply(self) -> None:
         """Never leave a server request unanswered — that hangs the turn."""

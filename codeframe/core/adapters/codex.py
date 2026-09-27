@@ -119,7 +119,6 @@ class CodexAdapter:
         self,
         *,
         codex_command: str = "codex",
-        approval_policy: str = "auto",
         # The adapter exists to write code into the workspace, so ask for a
         # workspace-writable sandbox rather than inheriting whatever the
         # operator's ~/.codex/config.toml defaults to.
@@ -129,7 +128,6 @@ class CodexAdapter:
         stall_timeout_ms: int = DEFAULT_STALL_TIMEOUT_MS,
     ) -> None:
         self._binary = codex_command
-        self._approval_policy = approval_policy
         self._sandbox_mode = sandbox_mode
         self._turn_timeout_ms = turn_timeout_ms
         self._read_timeout_ms = read_timeout_ms
@@ -366,12 +364,14 @@ class CodexAdapter:
 
         params: dict[str, Any] = {
             "cwd": str(workspace_path),
-            # Not "never": under it codex sends no approval requests at all, so
-            # the dangerous-command vetting in _answer_server_request never ran
-            # (#1278). "untrusted" asks for everything outside codex's own
-            # read-only safelist, and auto mode accepts whatever isn't dangerous
-            # — still unattended, but no longer unvetted.
-            "approvalPolicy": "untrusted" if self._approval_policy == "auto" else "on-request",
+            # Work runs inside the sandbox without asking; codex asks only to
+            # step *outside* it, and _answer_server_request declines that.
+            # Not "never": under it those requests were never sent, so the
+            # #916 vetting was unreachable. Not "untrusted": it asks before
+            # ordinary commands too, and an accepted approval runs the command
+            # unsandboxed — auto-accepting there let `touch ~/x` escape the
+            # workspace (#1278).
+            "approvalPolicy": "on-request",
         }
         if self._sandbox_mode:
             params["sandbox"] = self._sandbox_mode
@@ -548,33 +548,31 @@ class CodexAdapter:
             return
 
         params = request.get("params") or {}
-        decision = "accept" if self._approval_policy == "auto" else "decline"
-        blocked_reason = ""
+        # Every approval is a request to leave the workspace-write sandbox: an
+        # accepted one runs unsandboxed, and no decision exists that approves
+        # yet keeps the sandbox. An unattended run cannot vouch for that, so
+        # all are declined and the model carries on inside the sandbox — the
+        # same outcome "never" gave, but now visible. Task prompts are built
+        # from PRD and GitHub issue bodies (#565), so an escape may well be
+        # injected; dangerous ones are named with the patterns every engine
+        # shares (#916).
+        command = params.get("command") if method == _COMMAND_APPROVAL else None
+        dangerous, description = (
+            is_dangerous_command(command)
+            if isinstance(command, str) and command.strip()
+            else (False, "")
+        )
 
-        # Auto-approval must not mean "approve anything". Task prompts are
-        # assembled from PRD and GitHub issue bodies (#565) — externally
-        # authored text — so an injected `rm -rf /` would otherwise be approved
-        # sight-unseen. Same patterns the built-in ReAct engine applies to every
-        # command it runs, and the same guard claude-code got in #819. (#916)
-        if decision == "accept" and method == _COMMAND_APPROVAL:
-            command = params.get("command")
-            if isinstance(command, str) and command.strip():
-                dangerous, description = is_dangerous_command(command)
-                if dangerous:
-                    decision = "decline"
-                    blocked_reason = description
-
-        self._send(stdin, {"id": msg_id, "result": {"decision": decision}})
+        self._send(stdin, {"id": msg_id, "result": {"decision": "decline"}})
         if on_event:
-            message = (
-                f"Blocked dangerous command ({blocked_reason}): {params.get('command')}"
-                if blocked_reason
-                else f"{decision}ed approval request: {method}"
-            )
             on_event(
                 AgentEvent(
-                    type="error" if blocked_reason else "tool_call",
-                    message=message,
+                    type="error" if dangerous else "tool_call",
+                    message=(
+                        f"Blocked dangerous command ({description}): {command}"
+                        if dangerous
+                        else f"Declined sandbox escalation: {command or method}"
+                    ),
                     data=params,
                 )
             )
