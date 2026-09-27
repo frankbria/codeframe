@@ -296,6 +296,12 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
             raise exceptions.InvalidPasswordException(
                 reason="The current password is required to change the password or email."
             )
+        # fastapi-users validates a new password against the *old* row, so a
+        # PATCH setting both fields to the same value would pass the email rule.
+        if changes.get("password") is not None and changes.get("email"):
+            reason = password_policy_error(changes["password"], changes["email"])
+            if reason:
+                raise exceptions.InvalidPasswordException(reason=reason)
         return await super().update(user_update, user, safe=safe, request=request)
 
     async def _current_password_matches(self, password: Optional[str], user: User) -> bool:

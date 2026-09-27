@@ -141,6 +141,22 @@ class TestPatchEmail:
         assert resp.status_code == 200, resp.text
         assert _login(client, email="moved@example.com").status_code == 200
 
+    def test_the_new_password_cannot_be_the_new_email(self, session):
+        """fastapi-users validates against the *old* row, so setting both to the
+        same value in one PATCH slipped past the email rule (codex review)."""
+        client, headers, _ = session
+        resp = client.patch(
+            "/users/me",
+            json={
+                "email": "brand-new@example.com",
+                "password": "brand-new@example.com",
+                "current_password": PASSWORD,
+            },
+            headers=headers,
+        )
+        assert resp.status_code == 400, resp.text
+        assert _login(client).status_code == 200
+
     def test_resending_the_same_email_is_not_a_change(self, session):
         client, headers, _ = session
         resp = client.patch("/users/me", json={"email": EMAIL}, headers=headers)
