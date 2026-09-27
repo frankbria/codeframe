@@ -160,6 +160,36 @@ describe('register', () => {
       /registration is closed/i
     );
   });
+
+  it('shows the password-policy reason, not "email taken", on that 400 (#1285)', async () => {
+    mockedAxios.post.mockRejectedValueOnce({
+      response: {
+        status: 400,
+        data: {
+          detail: {
+            code: 'REGISTER_INVALID_PASSWORD',
+            reason: "Password must not be the account's email address.",
+          },
+        },
+      },
+    });
+    mockedAxios.isAxiosError.mockReturnValue(true);
+
+    await expect(register('a@example.com', 'a@example.com')).rejects.toThrow(
+      /must not be the account's email/
+    );
+  });
+
+  it('still reports a duplicate email on REGISTER_USER_ALREADY_EXISTS', async () => {
+    mockedAxios.post.mockRejectedValueOnce({
+      response: { status: 400, data: { detail: 'REGISTER_USER_ALREADY_EXISTS' } },
+    });
+    mockedAxios.isAxiosError.mockReturnValue(true);
+
+    await expect(register('a@example.com', 'a-long-passphrase')).rejects.toThrow(
+      /already exists/
+    );
+  });
 });
 
 describe('logout', () => {

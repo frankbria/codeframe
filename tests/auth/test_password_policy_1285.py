@@ -121,6 +121,15 @@ class TestPatchPasswordPolicy:
         assert _login(client).status_code == 400
 
 
+    def test_an_explicit_null_password_changes_nothing(self, session):
+        """``null`` is "no change" in fastapi-users, not a way past the check —
+        and must not 500 on ``len(None)`` (claude-review)."""
+        client, headers, _ = session
+        resp = client.patch("/users/me", json={"password": None}, headers=headers)
+        assert resp.status_code == 200, resp.text
+        assert _login(client).status_code == 200
+
+
 class TestPatchEmail:
     @pytest.mark.parametrize("route_index", [0, 1], ids=["me", "by-id"])
     def test_an_email_change_needs_the_current_password(self, session, route_index):
