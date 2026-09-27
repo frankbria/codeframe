@@ -79,11 +79,14 @@ The route is therefore gated two ways, and **at least one must hold**:
 | `X-Bootstrap-Token` header matching `CODEFRAME_BOOTSTRAP_TOKEN` | Whenever the variable is set — including for loopback callers |
 | Request originates on the server host itself | Only when `CODEFRAME_BOOTSTRAP_TOKEN` is unset |
 
-"Originates on the host" means a loopback peer **with no proxy in the path** —
-a request arriving through Caddy carries the real client IP in
-`X-Forwarded-For`, so public traffic never qualifies. `X-Real-IP` and RFC 7239
-`Forwarded` are inspected too, and this does not depend on
-`RATE_LIMIT_TRUSTED_PROXIES` being configured.
+"Originates on the host" means a loopback peer **with no proxy in the path**:
+no `X-Forwarded-*`, `X-Real-IP` or `Forwarded` header at all, not even an
+empty one. A proxy on the same host cannot prove its client is local. The
+Next.js rewrite forwards a LAN request with only `X-Forwarded-Host`, and it
+passes a client-sent `X-Forwarded-For: 127.0.0.1` through unchanged (#1274). So
+through Caddy *or* the web UI, the token is required, and without it the host
+path is `codeframe auth register` talking to the backend directly. This does
+not depend on `RATE_LIMIT_TRUSTED_PROXIES`.
 
 > **Set the token if you front the app with anything other than the Caddy
 > config shipped here.** The loopback fallback identifies public callers by the

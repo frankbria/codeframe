@@ -2,11 +2,10 @@
  * Backend rewrites must refuse a request that already carries client-address
  * headers (#1274).
  *
- * Next's proxy fills in X-Forwarded-For only when it is absent (`??=`), so a
- * client-sent `X-Forwarded-For: 127.0.0.1` used to reach the backend verbatim
- * from a loopback peer — exactly what the /auth/register bootstrap gate and the
- * rate limiter read as "this host". The rewrite now does not match such a
- * request (a 404), so everything it does forward carries the real peer address.
+ * Next's rewrite proxy keeps a client-sent `X-Forwarded-For` as is, and the
+ * backend trusts loopback as a proxy, so a client could pick its own rate-limit
+ * bucket. (The /auth/register gate does not rely on this — it refuses every
+ * proxied request.)
  *
  * Evaluated with Next's own `matchHas`, the function its router runs on
  * `has`/`missing`, rather than re-implementing the semantics here.

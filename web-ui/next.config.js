@@ -21,13 +21,11 @@ const nextConfig = {
     // Default unchanged for local dev.
     const backendOrigin = process.env.BACKEND_ORIGIN || 'http://localhost:8000';
     // Refuse to proxy a request that already names a client address (#1274).
-    // Next only fills X-Forwarded-For when it is absent, so a client-sent
-    // `X-Forwarded-For: 127.0.0.1` reached the backend from a loopback peer —
-    // passing the /auth/register local-only gate and choosing its own
-    // rate-limit bucket. Middleware cannot see the socket address to repair
-    // the header, so the rewrite does not match (404) instead. The documented
-    // Caddy config routes /api and /auth straight to the backend, never
-    // through here.
+    // Next's rewrite proxy keeps a client-sent X-Forwarded-For as is, so the
+    // backend (which trusts loopback as a proxy) would let the client pick its
+    // own rate-limit bucket. The /auth/register bootstrap gate does not rely on
+    // this: it refuses every proxied request. The documented Caddy config
+    // routes /api and /auth straight to the backend, never through here.
     const missing = ['x-forwarded-for', 'x-real-ip', 'forwarded'].map((key) => ({
       type: 'header',
       key,
