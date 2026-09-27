@@ -517,8 +517,12 @@ async def _search_issues(
         "is:issue",
         "is:open",
     ]
-    if label.strip():
-        qualifiers.append(f'label:"{label.strip()}"')
+    # Quotes removed for the same reason as in _sanitize_search: a `"` in the
+    # label closed the phrase and let `repo:`/`is:` escape the connected repo
+    # (#1275). The plain list endpoint takes labels as a param, so it is safe.
+    label = label.replace('"', "").strip()
+    if label:
+        qualifiers.append(f'label:"{label}"')
     q = " ".join(qualifiers)
     try:
         resp = await client.get(

@@ -305,6 +305,57 @@ class TestSearchQualifierInjection:
         # phrase to the search API, just list.
         assert seen["path"] == "/repos/acme/app/issues"
 
+    @staticmethod
+    async def _q_for_label(label: str) -> str:
+        seen = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["q"] = request.url.params.get("q")
+            return httpx.Response(200, json={"total_count": 0, "items": []})
+
+        async with _client(handler) as client:
+            await list_issues(
+                VALID_PAT,
+                "acme/app",
+                page=1,
+                per_page=25,
+                search="bug",
+                label=label,
+                client=client,
+            )
+        return seen["q"]
+
+    @staticmethod
+    def _unquoted(q: str) -> list[str]:
+        """Tokens GitHub reads as qualifiers: whatever sits outside a phrase."""
+        assert q.count('"') % 2 == 0, f"unbalanced quotes in {q!r}"
+        return q.split('"')[0::2]
+
+    @pytest.mark.asyncio
+    async def test_label_quotes_cannot_add_repo_qualifier(self):
+        """The #956 hole again, through the label field (#1275)."""
+        q = await self._q_for_label('x" repo:victim/private "')
+
+        outside = " ".join(self._unquoted(q)).split()
+        assert [t for t in outside if t.startswith("repo:")] == ["repo:acme/app"]
+        assert "victim/private" not in " ".join(outside)
+
+    @pytest.mark.asyncio
+    async def test_label_quotes_cannot_add_is_qualifier(self):
+        q = await self._q_for_label('x" is:closed "')
+
+        outside = " ".join(self._unquoted(q)).split()
+        assert sorted(t for t in outside if t.startswith("is:")) == [
+            "is:issue",
+            "is:open",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_label_of_only_quotes_drops_the_qualifier(self):
+        q = await self._q_for_label('""')
+
+        assert "label:" not in q
+
 
 class TestErrorMapping:
     @pytest.mark.asyncio
