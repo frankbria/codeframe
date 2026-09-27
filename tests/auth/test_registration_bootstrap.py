@@ -70,7 +70,7 @@ def _register(client, email="first@example.com", token=None, headers=None):
         request_headers["X-Bootstrap-Token"] = token
     return client.post(
         "/auth/register",
-        json={"email": email, "password": "secret123"},
+        json={"email": email, "password": "secret123-long-enough"},
         headers=request_headers,
     )
 
@@ -121,7 +121,7 @@ class TestRegistrationBootstrap:
         async def _register_async(client, email):
             resp = await client.post(
                 "/auth/register",
-                json={"email": email, "password": "secret123"},
+                json={"email": email, "password": "secret123-long-enough"},
             )
             statuses.append(resp.status_code)
 
@@ -221,7 +221,7 @@ class TestBootstrapTokenGate:
         request must not sidestep it."""
         monkeypatch.setenv("CODEFRAME_BOOTSTRAP_TOKEN", BOOTSTRAP_TOKEN)
         assert auth_client.post(
-            "/auth/register", json={"email": "a@example.com", "password": "secret123"}
+            "/auth/register", json={"email": "a@example.com", "password": "secret123-long-enough"}
         ).status_code == 403
 
     def test_second_registration_forbidden_even_with_correct_token(
@@ -308,7 +308,7 @@ class TestLoopbackGate:
         address sitting in the second header."""
         resp = auth_client.post(
             "/auth/register",
-            json={"email": "a@example.com", "password": "secret123"},
+            json={"email": "a@example.com", "password": "secret123-long-enough"},
             headers=[
                 ("X-Forwarded-For", "127.0.0.1"),
                 ("X-Forwarded-For", "203.0.113.5"),

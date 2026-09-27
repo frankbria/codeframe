@@ -4,7 +4,7 @@ import os
 from typing import AsyncGenerator, Optional
 
 from fastapi import Depends, Request
-from fastapi_users import BaseUserManager, IntegerIDMixin, FastAPIUsers
+from fastapi_users import BaseUserManager, IntegerIDMixin, FastAPIUsers, exceptions
 from fastapi_users.authentication import (
     AuthenticationBackend,
     BearerTransport,
@@ -208,6 +208,19 @@ def get_async_session_maker():
     return _async_session_maker
 
 
+#: The bootstrap account is a superuser with terminal access (#1285).
+MIN_PASSWORD_LENGTH = 12
+
+
+def password_policy_error(password: str, email: str | None) -> str | None:
+    """Why ``password`` is unacceptable, or None. Shared with the offline CLI."""
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
+    if email and password.strip().lower() == email.strip().lower():
+        return "Password must not be the account's email address."
+    return None
+
+
 class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
     """User manager for CodeFRAME."""
 
@@ -257,6 +270,44 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
                 ),
             )
         return user
+
+    async def validate_password(self, password: str, user) -> None:
+        """Runs on register and on every password PATCH, including ``""`` (#1285)."""
+        reason = password_policy_error(password, getattr(user, "email", None))
+        if reason:
+            raise exceptions.InvalidPasswordException(reason=reason)
+
+    async def update(self, user_update, user, safe=False, request=None):
+        """Changing the password or email requires the current password (#1285).
+
+        Otherwise a leaked JWT — valid for its whole lifetime, logout does not
+        revoke — becomes a permanent takeover of the one admin account. Checked
+        against the *target* user on both ``/users/me`` and ``/users/{id}``:
+        exempting the superuser route would let the sole superuser skip the
+        check by addressing its own id.
+        """
+        changes = user_update.model_dump(exclude_unset=True)
+        sensitive = changes.get("password") is not None or (
+            changes.get("email") is not None and changes["email"] != user.email
+        )
+        if sensitive and not await self._current_password_matches(
+            changes.get("current_password"), user
+        ):
+            raise exceptions.InvalidPasswordException(
+                reason="The current password is required to change the password or email."
+            )
+        return await super().update(user_update, user, safe=safe, request=request)
+
+    async def _current_password_matches(self, password: Optional[str], user: User) -> bool:
+        if not password:
+            return False
+        try:
+            verified, _ = self.password_helper.verify_and_update(
+                password, user.hashed_password
+            )
+        except UnknownHashError:  # the seeded '!DISABLED!' row (#938)
+            return False
+        return verified
 
     async def on_after_register(self, user: User, request: Optional[Request] = None):
         """Called after successful registration."""

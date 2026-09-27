@@ -231,6 +231,6 @@ class TestPublicEndpointsStayOpen:
         client = TestClient(auth_app, raise_server_exceptions=False)
         resp = client.post(
             "/auth/register",
-            json={"email": "x@example.com", "password": "secret123"},
+            json={"email": "x@example.com", "password": "secret123-long-enough"},
         )
         assert resp.status_code != 401

@@ -58,12 +58,12 @@ describe('LoginPage', () => {
       target: { value: 'user@example.com' },
     });
     fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'pw123' },
+      target: { value: 'a-long-passphrase' },
     });
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(loginMock).toHaveBeenCalledWith('user@example.com', 'pw123');
+      expect(loginMock).toHaveBeenCalledWith('user@example.com', 'a-long-passphrase');
     });
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith('/');
@@ -98,15 +98,15 @@ describe('LoginPage', () => {
       target: { value: 'first@example.com' },
     });
     fireEvent.change(screen.getByLabelText(/password/i), {
-      target: { value: 'pw123' },
+      target: { value: 'a-long-passphrase' },
     });
     fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {
-      expect(registerMock).toHaveBeenCalledWith('first@example.com', 'pw123', '');
+      expect(registerMock).toHaveBeenCalledWith('first@example.com', 'a-long-passphrase', '');
     });
     await waitFor(() => {
-      expect(loginMock).toHaveBeenCalledWith('first@example.com', 'pw123');
+      expect(loginMock).toHaveBeenCalledWith('first@example.com', 'a-long-passphrase');
     });
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith('/');
@@ -124,7 +124,7 @@ describe('LoginPage', () => {
       target: { value: 'first@example.com' },
     });
     fireEvent.change(screen.getByLabelText(/^password/i), {
-      target: { value: 'pw123' },
+      target: { value: 'a-long-passphrase' },
     });
     fireEvent.change(screen.getByLabelText(/bootstrap token/i), {
       target: { value: 'tok-abc' },
@@ -134,10 +134,19 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(registerMock).toHaveBeenCalledWith(
         'first@example.com',
-        'pw123',
+        'a-long-passphrase',
         'tok-abc'
       );
     });
+  });
+
+  it('register enforces the server password floor; sign-in does not (#1285)', () => {
+    render(<LoginPage />);
+    // An existing account may predate the policy, so sign-in stays unrestricted.
+    expect(screen.getByLabelText(/^password/i)).not.toHaveAttribute('minLength');
+
+    fireEvent.click(screen.getByRole('button', { name: /create the first account/i }));
+    expect(screen.getByLabelText(/^password/i)).toHaveAttribute('minLength', '12');
   });
 
   it('the bootstrap token field is register-only', () => {

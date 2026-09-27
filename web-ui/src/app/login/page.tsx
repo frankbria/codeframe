@@ -148,6 +148,9 @@ export default function LoginPage() {
                 type="password"
                 autoComplete={isRegister ? 'new-password' : 'current-password'}
                 required
+                // Same floor as the server's password policy (#1285). Register
+                // only: an existing account may predate the policy.
+                minLength={isRegister ? 12 : undefined}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
