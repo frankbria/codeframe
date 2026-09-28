@@ -13,6 +13,7 @@ control that proves the leak is observable when the call is skipped.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import textwrap
@@ -62,6 +63,10 @@ def _run_parent(mode: str, tmp_path, monkeypatch) -> str:
 
 @pytest.mark.skipif(sys.platform != "linux", reason="/proc/<pid>/environ is Linux-only")
 class TestParentEnvironIsUnreadable:
+    @pytest.mark.skipif(
+        hasattr(os, "geteuid") and os.geteuid() == 0,
+        reason="root keeps CAP_SYS_PTRACE, which overrides non-dumpable",
+    )
     def test_child_cannot_read_hardened_parent(self, tmp_path, monkeypatch):
         out = _run_parent("harden", tmp_path, monkeypatch)
         assert SENTINEL not in out
