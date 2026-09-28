@@ -9,6 +9,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **The web UI image and CI run Node 24 (#1301).** Node 20 reached end of
+  life on 2026-04-30 and has had no security release since, yet it still ran
+  the internet-facing web server. `npm audit` checks packages, not the
+  runtime, so nothing flagged it. All three `web-ui/Dockerfile` stages and CI
+  now use Node 24. **Behavior change:** `web-ui` declares `engines.node >=24`,
+  so a local Node 20 or 22 prints an `EBADENGINE` warning.
+
 - **Agent commands can no longer read CodeFRAME's own secrets from
   `/proc/$PPID/environ` (#1286).** The environment allowlist (#721/#996)
   filtered what a child inherited, but the parent (`cf`, the batch worker or

@@ -366,11 +366,20 @@ Note: `codeframe serve` exists but Golden Path does not depend on it.
   hand-pruning the lock. `web-ui/package.json` declares the range in `engines`,
   which makes npm print `EBADENGINE` naming the version; it is deliberately not
   enforced with `engine-strict`, because that validates every dependency's
-  engines and `@testing-library/jest-dom` requires node >=22 while CI and the
-  image run Node 20.
+  engines — `@testing-library/jest-dom` requiring node >=22 broke `npm ci` that
+  way while CI and the image ran Node 20, and the next dependency to raise its
+  floor would do it again.
+  **Node 24 everywhere (#1301).** The three `web-ui/Dockerfile` stages, every
+  workflow's `NODE_VERSION` and `engines.node` name one major; Node 20 went EOL
+  2026-04-30 and missed two security releases on the internet-facing image
+  while `npm audit` (which checks packages, not the runtime) stayed green.
+  `tests/ci/test_web_ui_lockfile_guard_1194.py` fails if they drift or name an
+  EOL major. 24 over 22 because `node:24-alpine` bundles npm 11.19. Beware a
+  local Node 24.8–24.13: those bundle npm 11.6.x, the one bad npm above —
+  the `engines.npm` `EBADENGINE` warning is what tells you.
   **Regenerate the lock with npm >= 11.19** (#1223): that is what generated it,
-  and it is a fixed point only there. Every other supported npm — CI's 10.8.2
-  included — rewrites 108 lines on any install: the 36 `libc` fields
+  and it is a fixed point only there. Every other supported npm — Node 22's
+  bundled 10.9 included — rewrites 108 lines on any install: the 36 `libc` fields
   (`["glibc"]`/`["musl"]`) that 11.19 records on platform-specific optional
   packages such as `@img/sharp-libvips-*`. Nothing is added, removed or
   re-versioned and `npm ci` passes either way, so if you see exactly that diff
