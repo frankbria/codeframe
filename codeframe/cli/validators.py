@@ -17,67 +17,48 @@ if TYPE_CHECKING:  # pragma: no cover - import-time cost the CLI does not pay
 console = Console()
 
 
-def require_anthropic_api_key() -> str:
-    """Ensure ANTHROPIC_API_KEY is available, loading from .env if needed.
+def _require_llm_key(provider_type: str) -> str:
+    """Ensure the LLM key for ``provider_type`` is available.
 
-    Checks os.environ first. If not found, attempts to load from .env files
-    (~/.env as base, then cwd/.env with override). If found after loading,
-    sets in os.environ so subprocesses inherit it.
-
-    Returns:
-        The API key string.
+    Checks os.environ, then .env files (~/.env as base, then cwd/.env with
+    override; a key found there is set in os.environ so subprocesses inherit
+    it), then the key stored by ``cf auth setup`` (#1264).
 
     Raises:
         typer.Exit: If the key cannot be found anywhere.
     """
-    key = os.getenv("ANTHROPIC_API_KEY")
+    from codeframe.core.llm_resolution import REQUIRED_KEY_ENV, resolve_api_key
+
+    env_var = REQUIRED_KEY_ENV[provider_type]
+    key = os.getenv(env_var)
     if key:
         return key
 
-    # Try loading from .env files (same priority as app.py)
     load_env_files()
-
-    key = os.getenv("ANTHROPIC_API_KEY")
+    key = os.getenv(env_var)
     if key:
-        os.environ["ANTHROPIC_API_KEY"] = key
+        os.environ[env_var] = key
+        return key
+
+    key = resolve_api_key(provider_type)
+    if key:
         return key
 
     console.print(
-        "[red]Error:[/red] ANTHROPIC_API_KEY is not set. "
-        "Set it in your environment or add it to a .env file."
+        f"[red]Error:[/red] {env_var} is not set. Set it in your environment or "
+        f"a .env file, or store it with `cf auth setup --provider {provider_type}`."
     )
     raise typer.Exit(1)
+
+
+def require_anthropic_api_key() -> str:
+    """Ensure an Anthropic key is available (env, .env, or stored)."""
+    return _require_llm_key("anthropic")
 
 
 def require_openai_api_key() -> str:
-    """Ensure OPENAI_API_KEY is available, loading from .env if needed.
-
-    Checks os.environ first. If not found, attempts to load from .env files
-    (~/.env as base, then cwd/.env with override). If found after loading,
-    sets in os.environ so subprocesses inherit it.
-
-    Returns:
-        The API key string.
-
-    Raises:
-        typer.Exit: If the key cannot be found anywhere.
-    """
-    key = os.getenv("OPENAI_API_KEY")
-    if key:
-        return key
-
-    load_env_files()
-
-    key = os.getenv("OPENAI_API_KEY")
-    if key:
-        os.environ["OPENAI_API_KEY"] = key
-        return key
-
-    console.print(
-        "[red]Error:[/red] OPENAI_API_KEY is not set. "
-        "Set it in your environment or add it to a .env file."
-    )
-    raise typer.Exit(1)
+    """Ensure an OpenAI key is available (env, .env, or stored)."""
+    return _require_llm_key("openai")
 
 
 def require_api_key_for_provider(provider_type: str) -> str | None:

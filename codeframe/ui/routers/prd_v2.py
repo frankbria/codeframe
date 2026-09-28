@@ -17,13 +17,13 @@ Routes:
 import asyncio
 import json
 import logging
-import os
 from typing import Annotated, AsyncGenerator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+from codeframe.auth.dependencies import require_auth
 from codeframe.core.workspace import Workspace
 from codeframe.core.llm_resolution import UntrustedBaseURLError
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
@@ -280,12 +280,14 @@ def _sse(event: dict) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
-def _resolve_llm_provider(workspace: Workspace):
+def _resolve_llm_provider(workspace: Workspace, user_id: Optional[int] = None):
     """Resolve the LLM provider for PRD stress-test web operations.
 
     Follows the documented chain: env var → workspace config
     (``.codeframe/config.yaml``) → default ``anthropic``. (No CLI flag here —
     this is the web surface.) Mirrors ``runtime.py`` and the stress-test stream.
+    The key comes from the environment or the principal's stored credential
+    (#1264).
 
     Raises:
         ValueError: with a user-facing message when the required API key is
@@ -293,18 +295,14 @@ def _resolve_llm_provider(workspace: Workspace):
     """
     from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
 
-    settings = resolve_llm_settings(workspace.repo_path)
-    key_env = settings.required_key_env
-    if key_env and not os.getenv(key_env):
-        raise ValueError(f"{key_env} environment variable required.")
-
-    return create_provider(settings)
+    return create_provider(resolve_llm_settings(workspace.repo_path), user_id=user_id)
 
 
 async def _stress_test_event_stream(
     workspace: Workspace,
     max_depth: int,
     request: Optional[Request] = None,
+    user_id: Optional[int] = None,
 ) -> AsyncGenerator[str, None]:
     """Yield SSE frames for a PRD stress-test.
 
@@ -329,7 +327,8 @@ async def _stress_test_event_stream(
     # refine endpoint). Recoverable problems become in-stream error events so a
     # browser EventSource can display them.
     try:
-        provider = _resolve_llm_provider(workspace)
+        # Off the loop: a stored-key lookup can wait on the keyring (#1181).
+        provider = await asyncio.to_thread(_resolve_llm_provider, workspace, user_id)
     except (ValueError, UntrustedBaseURLError) as exc:
         # UntrustedBaseURLError included deliberately (#903): the StreamingResponse
         # has already sent 200 OK by the time this generator runs, so the app-level
@@ -412,6 +411,7 @@ async def stress_test_prd_stream_endpoint(
     request: Request,
     max_depth: int = Query(3, ge=1, le=10, description="Maximum recursion depth"),
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> StreamingResponse:
     """Stream a PRD stress-test (recursive decomposition) via SSE.
 
@@ -432,7 +432,7 @@ async def stress_test_prd_stream_endpoint(
         - ``error``: no PRD, missing API key, or decomposition failure
     """
     return StreamingResponse(
-        _stress_test_event_stream(workspace, max_depth, request),
+        _stress_test_event_stream(workspace, max_depth, request, auth.get("user_id")),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -451,6 +451,7 @@ async def refine_prd_from_stress_test(
     request: Request,
     body: StressTestRefineRequest,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> PrdResponse:
     """Refine a PRD by folding in answered stress-test ambiguities (#562).
 
@@ -473,7 +474,9 @@ async def refine_prd_from_stress_test(
         )
 
     try:
-        provider = _resolve_llm_provider(workspace)
+        provider = await asyncio.to_thread(
+            _resolve_llm_provider, workspace, auth.get("user_id")
+        )
     except ValueError as exc:
         # The request is well-formed; the server lacks LLM configuration
         # (missing API key or unknown provider) → 503, not 400.

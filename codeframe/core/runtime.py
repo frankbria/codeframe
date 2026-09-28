@@ -721,6 +721,7 @@ def execute_agent(
     cloud_timeout_minutes: int = 30,
     llm_provider: Optional[str] = None,
     llm_model: Optional[str] = None,
+    user_id: Optional[int] = None,
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -739,15 +740,17 @@ def execute_agent(
         stall_timeout_s: Seconds without tool activity before stall detection (0 = disabled)
         stall_action: Recovery action on stall ("blocker", "retry", or "fail")
         cloud_timeout_minutes: Sandbox timeout for cloud engine (1-60 minutes, default: 30)
+        user_id: Server principal whose stored key to use; None (CLI) uses the
+            machine-wide store (#1264)
 
     Returns:
         Final AgentState after execution
 
     Raises:
-        ValueError: If the API key matching the resolved LLM provider is not
-            set (for builtin engines) or engine is invalid
+        ValueError: If the API key matching the resolved LLM provider is
+            neither in the environment nor stored (for builtin engines), or
+            engine is invalid
     """
-    import os
     from codeframe.core.agent import AgentState, AgentStatus
     from codeframe.core.diagnostics import RunLogger, LogCategory
     from codeframe.core.engine_registry import (
@@ -768,13 +771,9 @@ def execute_agent(
     # Only create LLM provider for builtin engines (external engines manage
     # their own authentication)
     if not is_external_engine(engine):
-        key_env = llm_settings.required_key_env
-        if key_env and not os.getenv(key_env):
-            raise ValueError(
-                f"{key_env} environment variable is required for agent execution. "
-                f"Set it with: export {key_env}=your-key"
-            )
-        provider = create_provider(llm_settings)
+        # Raises MissingApiKeyError (a ValueError) when neither the env nor the
+        # credential store has the key (#1264).
+        provider = create_provider(llm_settings, user_id=user_id)
     else:
         provider = None
 

@@ -92,8 +92,9 @@ class OpenAIProvider(LLMProvider):
         if not self.api_key:
             raise ValueError(
                 "OPENAI_API_KEY not set. "
-                "Set the environment variable, pass api_key parameter, "
-                "or configure via 'codeframe auth setup --provider openai'."
+                # Not "run cf auth setup": without a credential_manager this
+                # never reads the store. create_provider() does (#1264).
+                "Set the environment variable or pass the api_key parameter."
             )
 
         self._client = None

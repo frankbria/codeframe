@@ -114,7 +114,11 @@ def map_provider_error(
     if status == 401 or "authentication" in str(exc).lower():
         lines = [f"The {provider} API rejected the API key."]
         if key_env:
-            lines.append(f"  Key read from: ${key_env}")
+            # The env wins; when it is unset the key is the stored one (#1264).
+            lines.append(
+                f"  Key read from: ${key_env}, or when unset the key stored "
+                "with `cf auth setup`"
+            )
         elif provider in _LOCAL_PROVIDERS:
             # get_provider hands OPENAI_API_KEY to these too when it is set, and
             # only substitutes "not-required" when it is not. So the advice has

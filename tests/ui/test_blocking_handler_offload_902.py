@@ -192,7 +192,7 @@ class TestDiscoveryOffload:
         from codeframe.ui.routers import discovery_v2
 
         monkeypatch.setattr(
-            discovery_v2.prd_discovery, "get_active_session", lambda ws: None
+            discovery_v2.prd_discovery, "get_active_session", lambda ws, *a, **kw: None
         )
         monkeypatch.setattr(
             discovery_v2.prd_discovery, "start_discovery_session", blocker["fn"]

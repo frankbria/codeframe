@@ -85,6 +85,7 @@ async def _run_streaming_adapter(
     workspace_path: Path,
     agent_type: Optional[str] = None,
     model: Optional[str] = None,
+    user_id: Optional[int] = None,
 ) -> None:
     """Drive the StreamingChatAdapter and forward ChatEvents into the token queue.
 
@@ -98,6 +99,7 @@ async def _run_streaming_adapter(
         agent_type: Session's stored agent type; resolves the LLM provider
             (#764). Defaults to ``"claude"`` when unset (legacy rows).
         model: Session's stored model; honored instead of the adapter default.
+        user_id: Authenticated principal whose stored key to use (#1264).
     """
     try:
         provider_type = _AGENT_TYPE_TO_PROVIDER.get((agent_type or "claude").lower())
@@ -129,7 +131,8 @@ async def _run_streaming_adapter(
             else None
         )
         settings = resolve_llm_settings(repo_path, provider_flag=provider_type)
-        provider = create_provider(settings)
+        # Off the loop: a stored-key lookup can wait on the keyring (#1181).
+        provider = await asyncio.to_thread(create_provider, settings, user_id=user_id)
         # Honor the session's stored model; fall back to the adapter default only
         # when unset, instead of always using the hardcoded default (#764).
         adapter_kwargs = {"model": model} if model else {}
@@ -373,6 +376,7 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             workspace_path,
                             session.get("agent_type"),
                             session.get("model"),
+                            user_id,
                         )
                     )
 

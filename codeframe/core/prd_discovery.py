@@ -10,7 +10,6 @@ This module is headless - no FastAPI or HTTP dependencies.
 
 import json
 import logging
-import os
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
@@ -300,12 +299,15 @@ class PrdDiscoverySession:
             with this key (legacy contract). When unset, the provider is
             resolved via the ``llm_resolution`` chain (#861):
             ``CODEFRAME_LLM_PROVIDER`` → ``.codeframe/config.yaml`` → anthropic.
+        user_id: Server principal whose stored key to use; None (CLI) uses
+            the machine-wide store (#1264)
         session_id: Unique session identifier
         state: Current session state
     """
 
     workspace: Workspace
     api_key: Optional[str] = None
+    user_id: Optional[int] = None
     session_id: Optional[str] = field(default=None, init=False)
     state: SessionState = field(default=SessionState.IDLE, init=False)
     _llm_provider: Any = field(default=None, init=False)
@@ -324,25 +326,24 @@ class PrdDiscoverySession:
         2. Otherwise → shared ``llm_resolution`` chain
            (``CODEFRAME_LLM_PROVIDER`` → ``.codeframe/config.yaml`` → anthropic).
            When the resolved provider requires an API key (see
-           ``LLMSettings.required_key_env``) and it is missing from the
-           environment, ``NoApiKeyError`` is raised — generalizes the previous
-           Anthropic-only check to all keyed providers.
+           ``LLMSettings.required_key_env``) and neither the environment nor
+           the credential store has it (#1264), ``NoApiKeyError`` is raised.
         """
         if self.api_key:
             self._llm_provider = AnthropicProvider(api_key=self.api_key)
             return
 
-        from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+        from codeframe.core.llm_resolution import (
+            MissingApiKeyError,
+            create_provider,
+            resolve_llm_settings,
+        )
 
         settings = resolve_llm_settings(self.workspace.repo_path)
-        required_env = settings.required_key_env
-        if required_env and not os.getenv(required_env, ""):
-            raise NoApiKeyError(
-                f"{required_env} is required for AI-driven discovery "
-                f"(resolved provider: {settings.provider_type}). "
-                "Set the environment variable or pass api_key parameter."
-            )
-        self._llm_provider = create_provider(settings)
+        try:
+            self._llm_provider = create_provider(settings, user_id=self.user_id)
+        except MissingApiKeyError as exc:
+            raise NoApiKeyError(f"AI-driven discovery needs an API key. {exc}") from exc
 
     @property
     def answered_count(self) -> int:
@@ -1180,7 +1181,9 @@ def _ensure_discovery_schema(workspace: Workspace) -> None:
     conn.close()
 
 
-def get_active_session(workspace: Workspace) -> Optional[PrdDiscoverySession]:
+def get_active_session(
+    workspace: Workspace, user_id: Optional[int] = None
+) -> Optional[PrdDiscoverySession]:
     """Get the most recent active (non-completed) discovery session.
 
     A finished-Q&A row (``is_complete=1``) is in scope — its PRD can still be
@@ -1189,6 +1192,7 @@ def get_active_session(workspace: Workspace) -> Optional[PrdDiscoverySession]:
 
     Args:
         workspace: Workspace to query
+        user_id: Server principal whose stored key to use (#1264)
 
     Returns:
         PrdDiscoverySession if found, None if no active session exists
@@ -1224,7 +1228,7 @@ def get_active_session(workspace: Workspace) -> Optional[PrdDiscoverySession]:
     # Anthropic key merely happened to be present, resuming silently switched
     # provider mid-session. NoApiKeyError from __post_init__ already names the
     # resolved provider's key. (#917)
-    session = PrdDiscoverySession(workspace)
+    session = PrdDiscoverySession(workspace, user_id=user_id)
     session.load_session(row[0])
     return session
 
@@ -1237,6 +1241,7 @@ def get_active_session(workspace: Workspace) -> Optional[PrdDiscoverySession]:
 def start_discovery_session(
     workspace: Workspace,
     api_key: Optional[str] = None,
+    user_id: Optional[int] = None,
 ) -> PrdDiscoverySession:
     """Start a new PRD discovery session.
 
@@ -1246,6 +1251,7 @@ def start_discovery_session(
     Args:
         workspace: Target workspace
         api_key: Optional API key (defaults to ANTHROPIC_API_KEY env var)
+        user_id: Server principal whose stored key to use (#1264)
 
     Returns:
         PrdDiscoverySession with first question ready
@@ -1257,7 +1263,7 @@ def start_discovery_session(
         session = start_discovery_session(workspace)
         question = session.get_current_question()
     """
-    session = PrdDiscoverySession(workspace, api_key=api_key)
+    session = PrdDiscoverySession(workspace, api_key=api_key, user_id=user_id)
     session.start_discovery()
     return session
 
@@ -1266,6 +1272,7 @@ def get_session(
     workspace: Workspace,
     session_id: str,
     api_key: Optional[str] = None,
+    user_id: Optional[int] = None,
 ) -> PrdDiscoverySession:
     """Load an existing discovery session by ID.
 
@@ -1273,6 +1280,7 @@ def get_session(
         workspace: Target workspace
         session_id: Session ID to load
         api_key: Optional API key (defaults to ANTHROPIC_API_KEY env var)
+        user_id: Server principal whose stored key to use (#1264)
 
     Returns:
         Loaded PrdDiscoverySession
@@ -1281,7 +1289,7 @@ def get_session(
         ValueError: If session not found
         NoApiKeyError: If no API key available
     """
-    session = PrdDiscoverySession(workspace, api_key=api_key)
+    session = PrdDiscoverySession(workspace, api_key=api_key, user_id=user_id)
     session.load_session(session_id)
     return session
 
@@ -1291,6 +1299,7 @@ def process_discovery_answer(
     session_id: str,
     answer: str,
     api_key: Optional[str] = None,
+    user_id: Optional[int] = None,
 ) -> dict[str, Any]:
     """Process an answer for a discovery session.
 
@@ -1302,6 +1311,7 @@ def process_discovery_answer(
         session_id: Session ID
         answer: Answer text
         api_key: Optional API key (defaults to ANTHROPIC_API_KEY env var)
+        user_id: Server principal whose stored key to use (#1264)
 
     Returns:
         Dict with keys:
@@ -1322,7 +1332,7 @@ def process_discovery_answer(
         if result["is_complete"]:
             prd = generate_prd_from_discovery(workspace, session_id)
     """
-    session = get_session(workspace, session_id, api_key=api_key)
+    session = get_session(workspace, session_id, api_key=api_key, user_id=user_id)
     result = session.submit_answer(answer)
 
     # Add convenience fields
@@ -1340,6 +1350,7 @@ def generate_prd_from_discovery(
     session_id: str,
     template_id: Optional[str] = None,
     api_key: Optional[str] = None,
+    user_id: Optional[int] = None,
 ) -> "prd.PrdRecord":
     """Generate a PRD from a completed discovery session.
 
@@ -1351,6 +1362,7 @@ def generate_prd_from_discovery(
         session_id: Session ID (must be complete)
         template_id: Optional PRD template to use
         api_key: Optional API key (defaults to ANTHROPIC_API_KEY env var)
+        user_id: Server principal whose stored key to use (#1264)
 
     Returns:
         Created PrdRecord
@@ -1364,7 +1376,7 @@ def generate_prd_from_discovery(
         prd = generate_prd_from_discovery(workspace, session_id)
         print(f"Created PRD: {prd.title}")
     """
-    session = get_session(workspace, session_id, api_key=api_key)
+    session = get_session(workspace, session_id, api_key=api_key, user_id=user_id)
     return session.generate_prd(template_id=template_id)
 
 
@@ -1372,6 +1384,7 @@ def get_discovery_status(
     workspace: Workspace,
     session_id: Optional[str] = None,
     api_key: Optional[str] = None,
+    user_id: Optional[int] = None,
 ) -> dict[str, Any]:
     """Get discovery status for a workspace.
 
@@ -1383,6 +1396,7 @@ def get_discovery_status(
         workspace: Target workspace
         session_id: Optional specific session ID
         api_key: Optional API key (only needed if session exists)
+        user_id: Server principal whose stored key to use (#1264)
 
     Returns:
         Dict with keys:
@@ -1398,7 +1412,7 @@ def get_discovery_status(
     """
     if session_id:
         try:
-            session = get_session(workspace, session_id, api_key=api_key)
+            session = get_session(workspace, session_id, api_key=api_key, user_id=user_id)
         except (ValueError, NoApiKeyError):
             return {
                 "state": "idle",
@@ -1408,7 +1422,7 @@ def get_discovery_status(
             }
     else:
         try:
-            session = get_active_session(workspace)
+            session = get_active_session(workspace, user_id=user_id)
         except NoApiKeyError as e:
             # Session exists but can't load without an API key. Surface the
             # resolved provider's key from the exception rather than naming

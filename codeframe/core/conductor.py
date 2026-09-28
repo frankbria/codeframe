@@ -9,6 +9,7 @@ This module is headless - no FastAPI or HTTP dependencies.
 import hashlib
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -98,6 +99,28 @@ _decision_cache: dict[str, str] = {}
 _active_processes: dict[str, dict[str, subprocess.Popen]] = {}
 # Lock for thread-safe access to _active_processes
 _active_processes_lock = threading.Lock()
+
+# LLM keys resolved for the server principal that started a batch, forwarded
+# into that batch's `cf work start` children (#1264). A child is the CLI and
+# sees only the env and the machine-wide store, so a key saved per user in
+# Settings → API Keys would never reach it. Keyed by batch id, like above.
+_batch_credential_env: dict[str, dict[str, str]] = {}
+
+
+def _principal_credential_env(user_id: Optional[int]) -> dict[str, str]:
+    """``{ENV_VAR: key}`` for every LLM key this principal can resolve."""
+    if user_id is None:
+        return {}  # the child resolves the env and machine-wide store itself
+    from codeframe.core.llm_resolution import REQUIRED_KEY_ENV, resolve_api_key
+
+    env = {}
+    for provider_type, var in REQUIRED_KEY_ENV.items():
+        key = resolve_api_key(provider_type, user_id)
+        if key:
+            env[var] = key
+    return env
+
+
 # Lock for thread-safe batch database writes
 _batch_db_lock = threading.Lock()
 
@@ -773,6 +796,7 @@ def execute_batch(
     batch: BatchRun,
     max_retries: int = 0,
     on_event: Optional[Callable[[str, dict], None]] = None,
+    user_id: Optional[int] = None,
 ) -> BatchRun:
     """Run an already-created batch to completion. **Blocks.**
 
@@ -789,10 +813,25 @@ def execute_batch(
         batch: A batch already persisted by ``create_batch``
         max_retries: Max retry attempts for failed tasks (0 = no retries)
         on_event: Optional callback for batch events
+        user_id: Server principal whose stored LLM keys the tasks use (#1264)
 
     Returns:
         The same BatchRun, with results populated.
     """
+    _batch_credential_env[batch.id] = _principal_credential_env(user_id)
+    try:
+        return _execute_batch(workspace, batch, max_retries, on_event, user_id)
+    finally:
+        _batch_credential_env.pop(batch.id, None)
+
+
+def _execute_batch(
+    workspace: Workspace,
+    batch: BatchRun,
+    max_retries: int,
+    on_event: Optional[Callable[[str, dict], None]],
+    user_id: Optional[int],
+) -> BatchRun:
     strategy = batch.strategy
     max_parallel = batch.max_parallel
     task_ids = batch.task_ids
@@ -806,7 +845,15 @@ def execute_batch(
         # Use LLM to infer dependencies, then execute in parallel
         try:
             logger.info("Analyzing task dependencies with LLM...")
-            dependencies = analyze_dependencies(workspace, task_ids)
+            from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+
+            dependencies = analyze_dependencies(
+                workspace,
+                task_ids,
+                provider=create_provider(
+                    resolve_llm_settings(workspace.repo_path), user_id=user_id
+                ),
+            )
 
             # Show inferred dependencies
             deps_with_values = {k: v for k, v in dependencies.items() if v}
@@ -1122,6 +1169,7 @@ def resume_batch(
     batch_id: str,
     force: bool = False,
     on_event: Optional[Callable[[str, dict], None]] = None,
+    user_id: Optional[int] = None,
 ) -> BatchRun:
     """Resume a batch by re-running failed/blocked tasks.
 
@@ -1130,6 +1178,7 @@ def resume_batch(
         batch_id: Batch to resume
         force: If True, re-run all tasks including completed ones
         on_event: Optional callback for batch events
+        user_id: Server principal whose stored LLM keys the tasks use (#1264)
 
     Returns:
         Updated BatchRun with new results
@@ -1222,7 +1271,11 @@ def resume_batch(
     _save_batch(workspace, batch, preserve_terminal_cancel=False)
 
     # Execute the tasks
-    _execute_serial_resume(workspace, batch, tasks_to_run, on_event)
+    _batch_credential_env[batch.id] = _principal_credential_env(user_id)
+    try:
+        _execute_serial_resume(workspace, batch, tasks_to_run, on_event)
+    finally:
+        _batch_credential_env.pop(batch.id, None)
 
     return batch
 
@@ -2544,11 +2597,14 @@ def _execute_task_subprocess(
     if llm_model:
         cmd += ["--llm-model", llm_model]
 
+    credential_env = _batch_credential_env.get(batch_id) if batch_id else None
+
     process = None
     try:
         # Use Popen instead of run for process tracking
         process = subprocess.Popen(
             cmd,
+            env={**os.environ, **credential_env} if credential_env else None,
             cwd=str(worktree_path) if worktree_path else workspace.repo_path,
             stdout=None,  # Let output flow to terminal
             stderr=None,

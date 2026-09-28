@@ -29,6 +29,7 @@ from codeframe.core.state_machine import (
     TaskStatus,
     can_transition,
 )
+from codeframe.auth.dependencies import require_auth
 from codeframe.ui.dependencies import get_v2_workspace, refuse_execution_in_hosted_mode
 from codeframe.ui.response_models import api_error, ErrorCodes
 
@@ -628,7 +629,12 @@ def _finalize_wedged_batch(workspace: Workspace, batch_id: str, reason: str) -> 
         logger.error("Could not finalize wedged batch %s", batch_id, exc_info=True)
 
 
-def _run_batch_in_background(workspace: Workspace, batch_id: str, max_retries: int = 0) -> None:
+def _run_batch_in_background(
+    workspace: Workspace,
+    batch_id: str,
+    max_retries: int = 0,
+    user_id: Optional[int] = None,
+) -> None:
     """Execute an already-created batch on a worker thread (issue #901).
 
     ``conductor.execute_batch`` drives every task through a subprocess
@@ -646,13 +652,18 @@ def _run_batch_in_background(workspace: Workspace, batch_id: str, max_retries: i
         if batch is None:  # pragma: no cover - the caller just persisted it
             logger.error("Batch %s vanished before execution", batch_id)
             return
-        conductor.execute_batch(workspace, batch, max_retries=max_retries)
+        conductor.execute_batch(workspace, batch, max_retries=max_retries, user_id=user_id)
     except Exception as exc:
         logger.error("Background batch %s failed: %s", batch_id, exc, exc_info=True)
         _finalize_wedged_batch(workspace, batch_id, reason=str(exc))
 
 
-def _start_batch_detached(workspace: Workspace, batch_id: str, max_retries: int = 0) -> None:
+def _start_batch_detached(
+    workspace: Workspace,
+    batch_id: str,
+    max_retries: int = 0,
+    user_id: Optional[int] = None,
+) -> None:
     """Hand a persisted batch to a daemon thread and return immediately.
 
     A dedicated thread rather than ``BackgroundTasks``: Starlette would run it
@@ -662,7 +673,7 @@ def _start_batch_detached(workspace: Workspace, batch_id: str, max_retries: int 
     """
     threading.Thread(
         target=_run_batch_in_background,
-        args=(workspace, batch_id, max_retries),
+        args=(workspace, batch_id, max_retries, user_id),
         daemon=True,
         name=f"batch-{batch_id[:8]}",
     ).start()
@@ -685,6 +696,7 @@ async def approve_tasks_endpoint(
     request: Request,
     body: ApproveTasksRequest,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> ApproveTasksResponse:
     """Approve tasks and optionally start execution.
 
@@ -745,7 +757,7 @@ async def approve_tasks_endpoint(
                 )
             )
             batch_id = batch.id
-            _start_batch_detached(workspace, batch_id)
+            _start_batch_detached(workspace, batch_id, user_id=auth.get("user_id"))
             message = f"Approved {result.approved_count} task(s) and started execution (batch {batch_id[:8]})."
 
         return ApproveTasksResponse(
@@ -808,6 +820,7 @@ async def start_execution(
     request: Request,
     body: StartExecutionRequest,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> StartExecutionResponse:
     """Start task execution.
 
@@ -863,7 +876,9 @@ async def start_execution(
                 engine=body.engine,
             )
         )
-        _start_batch_detached(workspace, batch.id, max_retries=body.retry_count)
+        _start_batch_detached(
+            workspace, batch.id, max_retries=body.retry_count, user_id=auth.get("user_id")
+        )
 
         return StartExecutionResponse(
             success=True,
@@ -892,6 +907,7 @@ def _spawn_agent_worker(
     dry_run: bool = False,
     verbose: bool = False,
     engine: str = "react",
+    user_id: Optional[int] = None,
 ) -> None:
     """Run the agent for ``run`` on a background thread.
 
@@ -915,6 +931,7 @@ def _spawn_agent_worker(
                 verbose=verbose,
                 event_publisher=publisher,
                 engine=engine,
+                user_id=user_id,
             )
         except Exception as exc:
             logger.error(f"Background agent failed for task {task_id}: {exc}", exc_info=True)
@@ -954,6 +971,7 @@ async def start_single_task(
     verbose: bool = Query(False, description="Show detailed progress output"),
     engine: Literal["plan", "react"] = Query("react", description="Execution engine: 'react' (default, ReAct loop) or 'plan' (legacy step-based)"),
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> dict[str, Any]:
     """Start a single task run.
 
@@ -991,7 +1009,8 @@ async def start_single_task(
 
         if execute:
             _spawn_agent_worker(
-                workspace, run, task_id, dry_run=dry_run, verbose=verbose, engine=engine
+                workspace, run, task_id, dry_run=dry_run, verbose=verbose, engine=engine,
+                user_id=auth.get("user_id"),
             )
 
             result["status"] = "executing"
@@ -1075,6 +1094,7 @@ async def resume_task(
     verbose: bool = Query(False, description="Show detailed progress output"),
     engine: Literal["plan", "react"] = Query("react", description="Execution engine: 'react' (default, ReAct loop) or 'plan' (legacy step-based)"),
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> dict[str, Any]:
     """Resume a blocked task.
 
@@ -1105,7 +1125,8 @@ async def resume_task(
         message = f"Resumed run {run.id[:8]} for task {task_id[:8]}."
         if execute:
             _spawn_agent_worker(
-                workspace, run, task_id, dry_run=dry_run, verbose=verbose, engine=engine
+                workspace, run, task_id, dry_run=dry_run, verbose=verbose, engine=engine,
+                user_id=auth.get("user_id"),
             )
             message += f" Connect to GET /{task_id}/stream for events."
 
