@@ -105,6 +105,38 @@ class TestEntryPointsHarden:
         assert calls == [1]
 
 
+class _FakeLibc:
+    def __init__(self, rc):
+        self.rc, self.calls = rc, []
+
+    def prctl(self, *args):
+        self.calls.append(args)
+        return self.rc
+
+
+@pytest.mark.parametrize("rc, expected", [(0, True), (-1, False)])
+def test_prctl_result_is_reported(monkeypatch, rc, expected):
+    # A fake libc: calling the real prctl here would harden pytest itself.
+    from codeframe.core import agent_env
+
+    libc = _FakeLibc(rc)
+    monkeypatch.setattr(agent_env.sys, "platform", "linux")
+    monkeypatch.setattr(agent_env.ctypes, "CDLL", lambda *a, **k: libc)
+    assert agent_env.make_process_nondumpable() is expected
+    assert libc.calls == [(4, 0, 0, 0, 0)]  # PR_SET_DUMPABLE, SUID_DUMP_DISABLE
+
+
+def test_missing_libc_never_raises(monkeypatch):
+    from codeframe.core import agent_env
+
+    def no_libc(*a, **k):
+        raise OSError("no libc")
+
+    monkeypatch.setattr(agent_env.sys, "platform", "linux")
+    monkeypatch.setattr(agent_env.ctypes, "CDLL", no_libc)
+    assert agent_env.make_process_nondumpable() is False
+
+
 def test_off_linux_is_a_noop(monkeypatch):
     from codeframe.core import agent_env
 
