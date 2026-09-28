@@ -20,9 +20,11 @@ hostile command; this closes the paths a prompt-injected agent actually takes.
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
 import re
+import sys
 import threading
 from collections.abc import Iterable
 from pathlib import Path
@@ -65,6 +67,36 @@ INHERIT_HOME_ENV = "CODEFRAME_AGENT_INHERIT_HOME"
 _AGENT_HOMES = "agent-homes"
 
 logger = logging.getLogger(__name__)
+
+_PR_SET_DUMPABLE = 4
+
+
+def make_process_nondumpable() -> bool:
+    """Stop same-uid processes reading this one's ``/proc/<pid>/environ`` (#1286).
+
+    The allowlist above filters what a child *inherits*, but the parent still
+    holds every secret and was dumpable, so ``cat /proc/$PPID/environ`` read
+    them back. A non-dumpable process's ``environ``/``mem``/``fd`` need
+    CAP_SYS_PTRACE. The flag resets to 1 on ``execve``, so children are
+    unaffected; ``cmdline`` and ``status`` stay world-readable. Side effect:
+    no core dumps, and attaching py-spy/gdb needs root.
+
+    It protects only the process tree CodeFRAME owns: a key exported in the
+    operator's shell is still in that shell's (dumpable) environ, one level up.
+    Only OS-level isolation closes that.
+
+    Returns True if the flag was set; off Linux, or on failure, False. Never raises.
+    """
+    if sys.platform != "linux":
+        return False
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        if libc.prctl(_PR_SET_DUMPABLE, 0, 0, 0, 0) == 0:
+            return True
+        logger.warning("prctl(PR_SET_DUMPABLE, 0) failed: errno %d", ctypes.get_errno())
+    except (OSError, AttributeError) as e:
+        logger.warning("prctl unavailable; /proc/<pid>/environ stays readable: %s", e)
+    return False
 
 
 def build_agent_env(workspace_path: Path | str) -> dict[str, str]:

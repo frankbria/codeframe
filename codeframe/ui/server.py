@@ -428,6 +428,11 @@ def _per_worker_rate_limit_warning(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown."""
+    # Before .env loads secrets into this process: agent commands and the
+    # terminal run as our uid and could read /proc/$PPID/environ (#1286).
+    from codeframe.core import agent_env
+    agent_env.make_process_nondumpable()
+
     # Load environment variables from .env file
     from codeframe.core.config import load_environment
     load_environment()

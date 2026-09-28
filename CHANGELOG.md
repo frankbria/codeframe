@@ -9,6 +9,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **Agent commands can no longer read CodeFRAME's own secrets from
+  `/proc/$PPID/environ` (#1286).** The environment allowlist (#721/#996)
+  filtered what a child inherited, but the parent (`cf`, the batch worker or
+  the server) still held every key and was readable by any process running as
+  the same user. So a prompt-injected `cat /proc/$PPID/environ | curl …` leaked
+  the API keys, `AUTH_SECRET` and `CODEFRAME_CREDENTIAL_SECRET`. On Linux,
+  those processes now call `prctl(PR_SET_DUMPABLE, 0)` at startup, and
+  `/proc/*/environ` joins the command denylist. **Behavior change:** they no
+  longer write core dumps, and attaching `py-spy` or `gdb` to a running `cf` or
+  server now needs root. Only CodeFRAME's own processes are covered. A key
+  exported in the shell that launched `cf` is still readable in that shell's
+  environ, and only OS-level isolation closes that.
+
 - **The admin account now has a password policy (#1285).** **Behavior change:**
   a password must be at least 12 characters and must not be the email. This
   applies at registration, on `PATCH /users/me` and `PATCH /users/{id}`, in
