@@ -10,7 +10,7 @@
 # before its first API call) is a bigger change to the web UI than the deploy
 # migration itself.
 
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # npm ci, not install: the lockfile is the contract. #1131 is a fresh reminder
@@ -28,7 +28,7 @@ RUN npm ci
 # its job; the fix is to bump the dependency.
 RUN npm audit --audit-level=high
 
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -49,7 +49,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
 
 RUN npm run build
 
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production \

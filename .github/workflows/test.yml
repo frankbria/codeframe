@@ -17,9 +17,9 @@ on:
 
 env:
   PYTHON_VERSION: '3.11'
-  # ESLint 10's deps require Node ^20.19 || ^22.13 || >=24; pin the minimum
-  # explicitly so a floating '20' tag can't resolve to an older 20.x patch.
-  NODE_VERSION: '20.19'
+  # Same major as web-ui/Dockerfile and engines.node (#1301 — Node 20 is EOL).
+  # tests/ci/test_web_ui_lockfile_guard_1194.py fails if they drift apart.
+  NODE_VERSION: '24'
 
 jobs:
   # ============================================

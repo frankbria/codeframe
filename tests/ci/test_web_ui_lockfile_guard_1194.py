@@ -20,6 +20,7 @@ stays *written down*, in the two places someone lands when this next goes wrong.
 """
 
 import json
+import re
 
 import pytest
 
@@ -111,30 +112,53 @@ def test_the_range_evaluator_itself_is_not_lying():
     assert not _allows(">=1.0.0 <2.0.0 || >=3.0.0", "2.5.0")
 
 
-def test_the_node_range_admits_the_version_ci_and_the_image_run():
-    """CI's NODE_VERSION and web-ui/Dockerfile are both on Node 20."""
+# Majors past end of life (#1301: 20 went EOL 2026-04-30 and then missed two
+# security releases while the internet-facing web image still ran it).
+EOL_NODE_MAJORS = {18, 20}
+
+
+def _node_majors() -> dict[str, int]:
+    """Every place that picks the Node runtime, mapped to the major it picks."""
+    majors = {}
+    dockerfile = (REPO / "web-ui" / "Dockerfile").read_text()
+    for i, m in enumerate(re.findall(r"^FROM node:(\d+)", dockerfile, re.M)):
+        majors[f"Dockerfile stage {i}"] = int(m)
+    for wf in ("test.yml", "deploy.yml", "lifecycle.yml"):
+        text = (REPO / ".github" / "workflows" / wf).read_text()
+        m = re.search(r"^\s*NODE_VERSION:\s*'(\d+)", text, re.M)
+        assert m, f"{wf} no longer sets NODE_VERSION — update this guard"
+        majors[wf] = int(m.group(1))
+    return majors
+
+
+def test_ci_the_image_and_engines_agree_on_a_supported_node():
+    """One Node major everywhere, it is not EOL, and engines.node declares it."""
+    majors = _node_majors()
+    assert sum(k.startswith("Dockerfile") for k in majors) == 3, majors
+    assert len(set(majors.values())) == 1, f"Node majors disagree: {majors}"
+    major = next(iter(majors.values()))
+    assert major not in EOL_NODE_MAJORS, f"Node {major} is end of life: {majors}"
     node_range = _engines().get("node", "")
-    assert "20" in node_range, (
-        f"engines.node is {node_range!r}; CI and web-ui/Dockerfile both run Node 20, "
-        "so this would declare the project's own build environment unsupported"
+    assert node_range == f">={major}", (
+        f"engines.node is {node_range!r}; CI and web-ui/Dockerfile run Node {major}"
     )
 
 
 def test_engine_strict_is_not_reintroduced():
     """It is the obvious next step, and it breaks the build (verified, #1194).
 
-    `engine-strict=true` validates *every* package's engines, not just the root's,
-    and `@testing-library/jest-dom@7.0.1` already requires node >=22 while CI and
-    web-ui/Dockerfile run Node 20 — so it turns `npm ci` into `npm error notsup`
-    on the environment the project actually builds in. `engines` stays advisory
-    here on purpose: an `EBADENGINE` warning naming the npm version is the signal,
-    and the docs carry the rest.
+    `engine-strict=true` validates *every* package's engines, not just the root's:
+    `@testing-library/jest-dom@7.0.1` requiring node >=22 broke `npm ci` on the
+    Node 20 CI and image of the time with `npm error notsup`. Node 24 (#1301)
+    clears that one, but any future dependency that raises its floor would do it
+    again. `engines` stays advisory here on purpose: an `EBADENGINE` warning
+    naming the npm version is the signal, and the docs carry the rest.
     """
     if not NPMRC.exists():
         return
     assert "engine-strict=true" not in NPMRC.read_text(), (
-        "web-ui/.npmrc sets engine-strict=true, which fails `npm ci` on Node 20 via "
-        "@testing-library/jest-dom's node>=22 requirement — see #1194"
+        "web-ui/.npmrc sets engine-strict=true, which fails `npm ci` whenever any "
+        "dependency's engines floor outruns our Node — see #1194"
     )
 
 
