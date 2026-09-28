@@ -100,11 +100,12 @@ _active_processes: dict[str, dict[str, subprocess.Popen]] = {}
 # Lock for thread-safe access to _active_processes
 _active_processes_lock = threading.Lock()
 
-# LLM keys resolved for the server principal that started a batch, forwarded
-# into that batch's `cf work start` children (#1264). A child is the CLI and
-# sees only the env and the machine-wide store, so a key saved per user in
-# Settings → API Keys would never reach it. Keyed by batch id, like above.
-_batch_credential_env: dict[str, dict[str, str]] = {}
+# The server principal that started a running batch, keyed by batch id like
+# above (#1264). Its stored LLM keys go to the batch's supervisor and into its
+# `cf work start` children: a child is the CLI and sees only the env and the
+# machine-wide store, so a key saved per user in Settings → API Keys would
+# otherwise never reach it.
+_batch_principal: dict[str, Optional[int]] = {}
 
 
 def _principal_credential_env(user_id: Optional[int]) -> dict[str, str]:
@@ -136,8 +137,9 @@ class SupervisorResolver:
     4. Only surface true human-required decisions
     """
 
-    def __init__(self, workspace: Workspace):
+    def __init__(self, workspace: Workspace, user_id: Optional[int] = None):
         self.workspace = workspace
+        self.user_id = user_id
         self._llm = None  # Lazy initialization
 
     @property
@@ -150,7 +152,9 @@ class SupervisorResolver:
         if self._llm is None:
             from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
 
-            self._llm = create_provider(resolve_llm_settings(self.workspace.repo_path))
+            self._llm = create_provider(
+                resolve_llm_settings(self.workspace.repo_path), user_id=self.user_id
+            )
         return self._llm
 
     def try_resolve_blocked_task(self, task_id: str) -> bool:
@@ -295,14 +299,15 @@ Respond with exactly one word: TACTICAL or HUMAN"""
 
 
 # Global supervisor instance per workspace (created lazily)
-_supervisors: dict[str, SupervisorResolver] = {}
+_supervisors: dict[tuple[str, Optional[int]], SupervisorResolver] = {}
 
 
-def get_supervisor(workspace: Workspace) -> SupervisorResolver:
+def get_supervisor(workspace: Workspace, user_id: Optional[int] = None) -> SupervisorResolver:
     """Get or create a supervisor resolver for a workspace."""
-    if workspace.id not in _supervisors:
-        _supervisors[workspace.id] = SupervisorResolver(workspace)
-    return _supervisors[workspace.id]
+    key = (workspace.id, user_id)  # per principal: its provider holds its key (#1264)
+    if key not in _supervisors:
+        _supervisors[key] = SupervisorResolver(workspace, user_id)
+    return _supervisors[key]
 
 
 @dataclass
@@ -818,11 +823,11 @@ def execute_batch(
     Returns:
         The same BatchRun, with results populated.
     """
-    _batch_credential_env[batch.id] = _principal_credential_env(user_id)
+    _batch_principal[batch.id] = user_id
     try:
         return _execute_batch(workspace, batch, max_retries, on_event, user_id)
     finally:
-        _batch_credential_env.pop(batch.id, None)
+        _batch_principal.pop(batch.id, None)
 
 
 def _execute_batch(
@@ -1271,11 +1276,11 @@ def resume_batch(
     _save_batch(workspace, batch, preserve_terminal_cancel=False)
 
     # Execute the tasks
-    _batch_credential_env[batch.id] = _principal_credential_env(user_id)
+    _batch_principal[batch.id] = user_id
     try:
         _execute_serial_resume(workspace, batch, tasks_to_run, on_event)
     finally:
-        _batch_credential_env.pop(batch.id, None)
+        _batch_principal.pop(batch.id, None)
 
     return batch
 
@@ -1830,7 +1835,7 @@ def _execute_serial(
 
                 # If task is BLOCKED, try supervisor resolution
                 if result_status == RunStatus.BLOCKED.value:
-                    supervisor = get_supervisor(workspace)
+                    supervisor = get_supervisor(workspace, _batch_principal.get(batch.id))
                     if supervisor.try_resolve_blocked_task(task_id):
                         # Supervisor resolved the blocker - retry the task
                         logger.info("[Supervisor] Retrying task after auto-resolution...")
@@ -2372,7 +2377,7 @@ def _execute_single_task(
 
         # If task is BLOCKED, try supervisor resolution
         if result_status == RunStatus.BLOCKED.value:
-            supervisor = get_supervisor(workspace)
+            supervisor = get_supervisor(workspace, _batch_principal.get(batch.id))
             if supervisor.try_resolve_blocked_task(task_id):
                 # Supervisor resolved the blocker - retry the task
                 logger.info("[Supervisor] Retrying task after auto-resolution...")
@@ -2597,7 +2602,7 @@ def _execute_task_subprocess(
     if llm_model:
         cmd += ["--llm-model", llm_model]
 
-    credential_env = _batch_credential_env.get(batch_id) if batch_id else None
+    credential_env = _principal_credential_env(_batch_principal.get(batch_id)) if batch_id else None
 
     process = None
     try:

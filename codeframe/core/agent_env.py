@@ -205,11 +205,16 @@ def build_delegated_agent_env(
     real_home = Path(os.path.expanduser("~"))
 
     for var in credential_vars:
-        if var in os.environ:
+        if os.environ.get(var):
             env[var] = os.environ[var]
-        elif (key := _stored_llm_key(var)) is not None:
+        elif key := _stored_llm_key(var):
             # `cf auth setup` stores the key; the CLI never exports it (#1264).
+            # An empty env value counts as unset, as it does for the resolver
+            # that gates the run — otherwise the check passes on the stored key
+            # and the child gets the blank.
             env[var] = key
+        elif var in os.environ:
+            env[var] = os.environ[var]
 
     if _inherit_home():
         logger.warning(

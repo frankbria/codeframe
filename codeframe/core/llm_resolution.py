@@ -238,9 +238,12 @@ def require_api_key(settings: LLMSettings, user_id: Optional[int] = None) -> Opt
     if key:
         return key
     if user_id is not None and _is_hosted():
+        # Not "add one in Settings": storing a key needs the admin scope, which
+        # an ordinary tenant does not hold (#898).
         raise MissingApiKeyError(
-            f"No {settings.provider_type} API key is stored for your account. "
-            "Add one in Settings → API Keys."
+            f"No {settings.provider_type} API key is stored for your account, and "
+            "this hosted server does not lend its own. Storing a key requires an "
+            "administrator account (Settings → API Keys)."
         )
     raise MissingApiKeyError(
         f"No {settings.provider_type} API key found. Set {env_var}, or store one "
@@ -256,10 +259,15 @@ def create_provider(settings: LLMSettings, user_id: Optional[int] = None):
     used (#1264) and a hosted tenant without one is refused before the adapter
     can fall back to reading the operator's environment itself.
     """
-    from codeframe.adapters.llm import get_provider
+    from codeframe.adapters.llm import OPENAI_COMPATIBLE_PROVIDERS, get_provider
 
     kwargs = settings.provider_kwargs()
     key = require_api_key(settings, user_id)
+    if not key and settings.provider_type in OPENAI_COMPATIBLE_PROVIDERS:
+        if user_id is not None and _is_hosted():
+            # get_provider hands a keyless local provider OPENAI_API_KEY from
+            # the env when it is set — the operator's key, to a tenant's endpoint.
+            key = resolve_api_key("openai", user_id) or "not-required"
     if key:
         kwargs["api_key"] = key
     return get_provider(settings.provider_type, **kwargs)

@@ -244,7 +244,7 @@ class TestAgentSubprocesses:
 
         monkeypatch.setattr(conductor.subprocess, "Popen", _popen)
         conductor.execute_batch(ws, batch, **kwargs)
-        assert batch.id not in conductor._batch_credential_env  # cleaned up
+        assert batch.id not in conductor._batch_principal  # cleaned up
         return seen["env"]
 
     def test_batch_child_gets_the_principals_key(self, store_dir, tmp_path, monkeypatch):
@@ -348,3 +348,32 @@ def test_codex_counts_a_stored_openai_key_as_authenticated(store_dir, tmp_path, 
     assert CodexAdapter.is_authenticated() is False
     _store("sk-openai-stored-000000000000", provider=CredentialProvider.LLM_OPENAI)
     assert CodexAdapter.is_authenticated() is True
+
+
+def test_empty_env_key_falls_back_to_the_stored_one(store_dir, tmp_path, monkeypatch):
+    # A blank `.env` entry: the resolver treats it as unset, so must the child env.
+    from codeframe.core.agent_env import build_delegated_agent_env
+
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    _store("sk-openai-stored-000000000000", provider=CredentialProvider.LLM_OPENAI)
+    env = build_delegated_agent_env(tmp_path, adapter_name="codex", credential_vars=("OPENAI_API_KEY",))
+    assert env["OPENAI_API_KEY"] == "sk-openai-stored-000000000000"
+
+
+def test_hosted_tenant_keyless_provider_never_gets_operator_openai_key(store_dir, monkeypatch):
+    monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "hosted")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-operator-0000000000000000")
+    settings = LLMSettings(provider_type="compatible", base_url="http://localhost:11434/v1")
+    assert create_provider(settings, user_id=7).api_key == "not-required"
+    # The operator's own CLI (no principal) keeps the existing behaviour.
+    assert create_provider(settings).api_key == "sk-operator-0000000000000000"
+
+
+def test_batch_supervisor_uses_the_principals_key(store_dir, tmp_path):
+    from codeframe.core import conductor
+
+    ws = _workspace(tmp_path)
+    _store(USER, user_id=4)
+    assert conductor.get_supervisor(ws, 4).llm.api_key == USER
+    assert conductor.get_supervisor(ws, 4) is conductor.get_supervisor(ws, 4)
+    assert conductor.get_supervisor(ws) is not conductor.get_supervisor(ws, 4)
