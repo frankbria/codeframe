@@ -145,7 +145,7 @@ class TestDisconnectLatchFiresDuringAGoal:
         workspace = create_or_load_workspace(repo, tech_stack="python")
         prd_module.store(workspace, "# Demo PRD\nSome goals.", title="Demo PRD")
 
-        monkeypatch.setattr(prd_v2, "_resolve_llm_provider", lambda ws: object())
+        monkeypatch.setattr(prd_v2, "_resolve_llm_provider", lambda ws, user_id=None: object())
 
         observed = {"cancelled_at_node": None}
 

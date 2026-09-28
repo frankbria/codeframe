@@ -376,7 +376,7 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             workspace_path,
                             session.get("agent_type"),
                             session.get("model"),
-                            user_id,
+                            user_id=user_id,
                         )
                     )
 
