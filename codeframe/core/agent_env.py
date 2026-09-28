@@ -81,6 +81,10 @@ def make_process_nondumpable() -> bool:
     unaffected; ``cmdline`` and ``status`` stay world-readable. Side effect:
     no core dumps, and attaching py-spy/gdb needs root.
 
+    It protects only the process tree CodeFRAME owns: a key exported in the
+    operator's shell is still in that shell's (dumpable) environ, one level up.
+    Only OS-level isolation closes that.
+
     Returns True if the flag was set; off Linux, or on failure, False. Never raises.
     """
     if sys.platform != "linux":

@@ -130,3 +130,5 @@ def test_denylist_catches_proc_environ(command):
 
 def test_denylist_leaves_other_proc_reads_alone():
     assert is_dangerous_command("cat /proc/cpuinfo") == (False, "")
+    # A repo path that merely contains `/proc/.../environ` is not /proc.
+    assert is_dangerous_command("cat web/proc/config/environ.ts") == (False, "")

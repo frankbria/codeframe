@@ -6507,7 +6507,7 @@ def main() -> None:
     from codeframe.core.llm_resolution import UntrustedBaseURLError
 
     # Here, not in the Typer callback: this is also the `python -m` entry batch
-    # workers run through, and CliRunner tests must not harden pytest (#1286).
+    # workers run through, and CliRunner tests need not harden pytest (#1286).
     agent_env.make_process_nondumpable()
     try:
         run(app)

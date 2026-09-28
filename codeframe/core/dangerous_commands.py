@@ -76,7 +76,7 @@ DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     # The parent cf/worker/server holds every secret the allowlist withheld
     # (#1286). It is made non-dumpable, which is the real fix; this is the same
     # defense-in-depth tier as the line above.
-    (r"/proc/[^\s]*/environ", "reading a process environment"),
+    (r"(?<![\w.\-])/proc/[^\s]*/environ", "reading a process environment"),
 ]
 
 
