@@ -377,3 +377,40 @@ def test_batch_supervisor_uses_the_principals_key(store_dir, tmp_path):
     assert conductor.get_supervisor(ws, 4).llm.api_key == USER
     assert conductor.get_supervisor(ws, 4) is conductor.get_supervisor(ws, 4)
     assert conductor.get_supervisor(ws) is not conductor.get_supervisor(ws, 4)
+
+
+def test_self_hosted_keyless_provider_uses_a_stored_openai_key(store_dir):
+    # Same as the env tier: get_provider sends OPENAI_API_KEY to these when set.
+    _store("sk-openai-stored-000000000000", provider=CredentialProvider.LLM_OPENAI)
+    settings = LLMSettings(provider_type="compatible", base_url="http://localhost:11434/v1")
+    assert create_provider(settings).api_key == "sk-openai-stored-000000000000"
+
+
+def test_auto_strategy_dependency_analysis_uses_the_principals_key(store_dir, tmp_path, monkeypatch):
+    # Behind a broad except → serial fallback, so a lost key would never raise.
+    from codeframe.core import conductor, tasks
+    from codeframe.core.state_machine import TaskStatus
+
+    ws = _workspace(tmp_path)
+    ids = [tasks.create(ws, title=f"t{i}", description="d", status=TaskStatus.READY).id for i in range(2)]
+    batch = conductor.create_batch(ws, ids, strategy="auto")
+    _store(USER, user_id=6)
+    seen = {}
+
+    def _analyze(workspace, task_ids, provider=None):
+        seen["api_key"] = provider.api_key
+        raise RuntimeError("stop: fall back to serial")
+
+    class _Proc:
+        returncode = pid = 1
+
+        def wait(self, timeout=None):
+            return 1
+
+        def poll(self):
+            return 1
+
+    monkeypatch.setattr(conductor, "analyze_dependencies", _analyze)
+    monkeypatch.setattr(conductor.subprocess, "Popen", lambda cmd, **kw: _Proc())
+    conductor.execute_batch(ws, batch, user_id=6)
+    assert seen["api_key"] == USER

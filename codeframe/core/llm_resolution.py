@@ -264,10 +264,13 @@ def create_provider(settings: LLMSettings, user_id: Optional[int] = None):
     kwargs = settings.provider_kwargs()
     key = require_api_key(settings, user_id)
     if not key and settings.provider_type in OPENAI_COMPATIBLE_PROVIDERS:
-        if user_id is not None and _is_hosted():
-            # get_provider hands a keyless local provider OPENAI_API_KEY from
-            # the env when it is set — the operator's key, to a tenant's endpoint.
-            key = resolve_api_key("openai", user_id) or "not-required"
+        # A keyless provider still sends OPENAI_API_KEY when there is one (an
+        # OpenAI-compatible gateway may need it), so a stored key counts too.
+        key = resolve_api_key("openai", user_id)
+        if not key and user_id is not None and _is_hosted():
+            # Otherwise get_provider falls back to the env: the operator's key,
+            # sent to a tenant's endpoint.
+            key = "not-required"
     if key:
         kwargs["api_key"] = key
     return get_provider(settings.provider_type, **kwargs)
