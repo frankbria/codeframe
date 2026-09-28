@@ -446,7 +446,13 @@ When unsure: simpler state, fewer dependencies, smaller surface area, core-first
 ## Environment Variables
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...          # Required for Anthropic provider (default)
+ANTHROPIC_API_KEY=sk-ant-...          # Required for Anthropic provider (default), unless
+                                      # stored via `cf auth setup` / Settings → API Keys.
+                                      # One resolver (#1264): llm_resolution.resolve_api_key —
+                                      # env → the principal's store → machine-wide store; a
+                                      # hosted tenant gets only its own stored key. Build
+                                      # providers with create_provider(settings, user_id=...),
+                                      # passing the server principal, never get_provider bare.
 E2B_API_KEY=e2b_...                   # Required for --engine cloud
 DATABASE_PATH=./codeframe.db          # Optional
 

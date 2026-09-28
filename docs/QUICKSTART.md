@@ -21,6 +21,9 @@ equivalent executables, `cf` and `codeframe`. This guide spells out `codeframe`;
    ```bash
    export ANTHROPIC_API_KEY=sk-ant-...
    ```
+   Or store it once with `cf auth setup --provider anthropic` (the web UI's
+   Settings → API Keys does the same). A set environment variable wins over a
+   stored key.
    To use OpenAI-compatible providers (OpenAI, Ollama, vLLM, or any compatible endpoint):
    ```bash
    export CODEFRAME_LLM_PROVIDER=openai      # or: ollama, vllm, compatible

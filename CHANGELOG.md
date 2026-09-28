@@ -104,6 +104,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Keys saved with `cf auth setup` or Settings → API Keys are now used
+  (#1264).** The credential store was write-only. Every LLM path read the
+  environment, so a saved and verified key still produced
+  `ANTHROPIC_API_KEY is not set`. One resolver now checks the environment
+  first, then the stored key.
+  - Server requests use the signed-in user's own store; `cf` uses the
+    machine-wide one.
+  - Batch runs and delegated coding CLIs receive the resolved key.
+  - In hosted mode a tenant gets only its own stored key, never the
+    operator's.
+  - **Behavior change:** if you ran `cf auth setup` and are also logged in to
+    `claude` or `codex` by subscription, the stored key is now forwarded to
+    that CLI, which may then bill the API key.
+
 - **The codex engine no longer reports a task done when it wrote nothing, and
   its dangerous-command guard now runs (#1278).** A codex turn that finished
   without changing a file, or making a commit, used to go to the gates as
