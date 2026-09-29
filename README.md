@@ -110,6 +110,7 @@ When working from source, prefix the commands below with `uv run`.
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."   # get yours at https://console.anthropic.com/
+# or store it once instead: cf auth setup --provider anthropic
 ```
 
 **Step 3 — Initialize your project**

@@ -63,7 +63,8 @@ class TestTasksGenerateRecursiveFlag:
             patch("codeframe.core.workspace.get_workspace", return_value=mock_workspace),
             patch("codeframe.core.prd.get_latest", return_value=mock_prd),
             patch("codeframe.cli.validators.require_anthropic_api_key"),
-            patch("codeframe.adapters.llm.get_provider") as mock_get_provider,
+            # create_provider resolves the key before get_provider runs (#1264).
+            patch("codeframe.core.llm_resolution.create_provider"),
             patch("codeframe.core.task_tree.generate_task_tree", return_value=mock_tree) as mock_gen_tree,
             patch("codeframe.core.task_tree.flatten_task_tree", return_value=[mock_task]) as mock_flatten,
             patch("codeframe.core.events.emit_for_workspace"),
@@ -99,8 +100,10 @@ class TestTasksGenerateRecursiveFlag:
             patch("codeframe.core.prd.get_latest", return_value=mock_prd),
             patch("codeframe.cli.validators.require_anthropic_api_key"),
             # Provider construction now happens before generate_from_prd (#768);
-            # patch the factory so no real key (env or CredentialManager) is needed.
-            patch("codeframe.adapters.llm.get_provider"),
+            # patch the factory so no real key (env or CredentialManager) is
+            # needed. create_provider, not get_provider: key resolution happens
+            # there, before get_provider runs (#1264).
+            patch("codeframe.core.llm_resolution.create_provider"),
             patch("codeframe.core.tasks.generate_from_prd", return_value=[mock_task]) as mock_gen,
             patch("codeframe.core.events.emit_for_workspace"),
         ):

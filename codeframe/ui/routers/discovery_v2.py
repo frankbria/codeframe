@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
+from codeframe.auth.dependencies import require_auth
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import prd_discovery, prd, tasks
@@ -110,6 +111,7 @@ class GenerateTasksResponse(BaseModel):
 async def start_discovery(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> StartDiscoveryResponse:
     """Start a new PRD discovery session.
 
@@ -142,13 +144,17 @@ async def start_discovery(
 
     try:
         # Check for existing active session
-        existing = await run_in_threadpool(prd_discovery.get_active_session, workspace)
+        existing = await run_in_threadpool(
+            prd_discovery.get_active_session, workspace, auth.get("user_id")
+        )
         if existing and not existing.is_complete():
             raise _already_active(existing.session_id, existing.answered_count)
 
         # Start new session
         # LLM round trip: minutes, not milliseconds (#902).
-        session = await run_in_threadpool(prd_discovery.start_discovery_session, workspace)
+        session = await run_in_threadpool(
+            prd_discovery.start_discovery_session, workspace, user_id=auth.get("user_id")
+        )
         question = session.get_current_question()
 
         return StartDiscoveryResponse(
@@ -162,7 +168,9 @@ async def start_discovery(
         # both pass it and the database decides the winner (#1042). Report the
         # loser exactly as the pre-check would have.
         try:
-            winner = await run_in_threadpool(prd_discovery.get_active_session, workspace)
+            winner = await run_in_threadpool(
+                prd_discovery.get_active_session, workspace, auth.get("user_id")
+            )
         except Exception:
             # get_active_session builds an LLM provider, so it can raise
             # (NoApiKeyError, UntrustedBaseURLError). An exception raised inside
@@ -202,6 +210,7 @@ async def get_status(
     request: Request,
     session_id: Optional[str] = Query(None, description="Specific session ID"),
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> StatusResponse:
     """Get discovery status for the workspace.
 
@@ -219,6 +228,7 @@ async def get_status(
         prd_discovery.get_discovery_status,
         workspace,
         session_id=session_id,
+        user_id=auth.get("user_id"),
     )
     return StatusResponse(**status)
 
@@ -230,6 +240,7 @@ async def submit_answer(
     session_id: str,
     body: AnswerRequest,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> AnswerResponse:
     """Submit an answer to the current discovery question.
 
@@ -259,6 +270,7 @@ async def submit_answer(
             workspace,
             session_id,
             body.answer,
+            user_id=auth.get("user_id"),
         )
         return AnswerResponse(**result)
 
@@ -286,6 +298,7 @@ async def generate_prd(
     session_id: str,
     body: GeneratePrdRequest = None,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> GeneratePrdResponse:
     """Generate a PRD from a completed discovery session.
 
@@ -315,6 +328,7 @@ async def generate_prd(
             workspace,
             session_id,
             template_id=template_id,
+            user_id=auth.get("user_id"),
         )
 
         preview = prd_record.content[:500]
@@ -394,6 +408,7 @@ async def generate_tasks_from_prd(
         description="Use LLM for intelligent task generation (vs simple extraction)",
     ),
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> GenerateTasksResponse:
     """Generate tasks from a PRD.
 
@@ -443,7 +458,10 @@ async def generate_tasks_from_prd(
             )
 
             provider = await run_in_threadpool(
-                lambda: create_provider(resolve_llm_settings(workspace.repo_path))
+                lambda: create_provider(
+                    resolve_llm_settings(workspace.repo_path),
+                    user_id=auth.get("user_id"),
+                )
             )
 
         # Generate tasks

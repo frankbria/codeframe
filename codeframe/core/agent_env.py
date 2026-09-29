@@ -187,16 +187,27 @@ def build_delegated_agent_env(
         adapter_name: Names the per-adapter home, so two CLIs do not fight over
             one config directory.
         credential_vars: Environment variables to forward from the operator's
-            environment. Anything not listed is dropped.
+            environment. Anything not listed is dropped. An LLM key missing
+            from the environment is taken from the credential store (#1264).
         home_passthrough: Paths relative to the operator's real home to symlink
             into the sandbox home (e.g. ``.claude``, ``.config/opencode``).
             Missing entries are skipped.
     """
+    from codeframe.core.llm_resolution import resolve_key_env
+
     env = build_agent_env(workspace_path)
     real_home = Path(os.path.expanduser("~"))
 
     for var in credential_vars:
-        if var in os.environ:
+        if os.environ.get(var):
+            env[var] = os.environ[var]
+        elif key := resolve_key_env(var):
+            # `cf auth setup` stores the key; the CLI never exports it (#1264).
+            # An empty env value counts as unset, as it does for the resolver
+            # that gates the run — otherwise the check passes on the stored key
+            # and the child gets the blank.
+            env[var] = key
+        elif var in os.environ:
             env[var] = os.environ[var]
 
     if _inherit_home():

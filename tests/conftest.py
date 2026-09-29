@@ -3,6 +3,7 @@
 import jwt
 import os
 import tempfile
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Generator
@@ -257,6 +258,23 @@ def mock_env(monkeypatch) -> dict[str, str]:
     # Provide helper method
     env["_set"] = set_env
     return env
+
+
+@pytest.fixture(autouse=True)
+def isolate_default_credential_store(tmp_path_factory, monkeypatch):
+    """Point the machine-wide credential file store at a per-test temp dir.
+
+    Every LLM path falls back to the stored key since #1264, so a test that
+    expects "no key anywhere" would otherwise read the developer's real
+    ~/.codeframe/credentials.json and pass or fail by machine.
+    """
+    import codeframe.core.credentials as credentials_module
+
+    monkeypatch.setattr(
+        credentials_module,
+        "DEFAULT_STORAGE_DIR",
+        tmp_path_factory.getbasetemp() / f"creds-{uuid.uuid4().hex}",
+    )
 
 
 @pytest.fixture(autouse=True)

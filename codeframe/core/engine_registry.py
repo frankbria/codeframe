@@ -249,10 +249,13 @@ def check_requirements(
     # Builtin engines call the LLM themselves, so which key they need depends on
     # the configured provider — the external adapters' requirements are fixed.
     reqs = req_method(repo_path) if engine in BUILTIN_ENGINES else req_method()
+    from codeframe.core.llm_resolution import resolve_key_env
+
     result: dict[str, bool] = {}
     for key in reqs:
-        # Check environment variables for builtin engines
-        result[key] = bool(os.getenv(key))
+        # The env, or for an LLM key the one `cf auth setup` stored (#1264) —
+        # the same answer `cf work start` gets.
+        result[key] = bool(os.getenv(key) or resolve_key_env(key))
 
     # External adapters may also have a check_ready() classmethod
     check_ready = getattr(adapter_cls, "check_ready", None)

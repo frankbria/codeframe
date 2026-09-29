@@ -177,7 +177,10 @@ class CodexAdapter:
         Presence of the file is not the test either: ``codex logout`` can leave
         it behind with empty tokens.
         """
-        if os.environ.get("OPENAI_API_KEY"):
+        from codeframe.core.llm_resolution import resolve_api_key
+
+        # Env or `cf auth setup`: build_delegated_agent_env forwards either (#1264).
+        if resolve_api_key("openai"):
             return True
 
         try:

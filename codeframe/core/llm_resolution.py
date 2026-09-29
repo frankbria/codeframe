@@ -172,8 +172,115 @@ def resolve_llm_settings(
     return LLMSettings(provider_type=provider_type, model=model, base_url=base_url)
 
 
-def create_provider(settings: LLMSettings):
-    """Build the LLM provider for resolved settings."""
-    from codeframe.adapters.llm import get_provider
+class MissingApiKeyError(ValueError):
+    """The resolved provider needs a key and none was found (#1264)."""
 
-    return get_provider(settings.provider_type, **settings.provider_kwargs())
+
+def _is_hosted() -> bool:
+    # Mirrors ui.server.is_hosted_mode, which core cannot import.
+    return os.getenv("CODEFRAME_DEPLOYMENT_MODE", "").strip().lower() == "hosted"
+
+
+def resolve_api_key(provider_type: str, user_id: Optional[int] = None) -> Optional[str]:
+    """The API key for ``provider_type``: environment first, then the store (#1264).
+
+    ``cf auth setup`` and Settings → API Keys write to the credential store, and
+    nothing used to read it — every LLM path checked the environment only.
+
+    ``user_id`` is the server principal; ``None`` is the CLI (machine-wide store).
+    Self-hosted, a principal's own store is checked before the machine-wide one:
+    the env and the machine-wide store are both the operator's. In hosted mode a
+    principal gets its own stored key or nothing — the environment and the
+    machine-wide store belong to the operator, and borrowing them bills every
+    tenant to the operator's account.
+    """
+    from codeframe.core.credentials import (
+        CredentialManager,
+        CredentialProvider,
+        CredentialStoreUnreadableError,
+    )
+
+    env_var = REQUIRED_KEY_ENV.get(provider_type)
+    if env_var is None:
+        return None
+    provider = next(p for p in CredentialProvider if p.env_var == env_var)
+    hosted_tenant = user_id is not None and _is_hosted()
+
+    if not hosted_tenant and os.getenv(env_var):
+        return os.environ[env_var]
+
+    scopes = [user_id] if hosted_tenant else list(dict.fromkeys([user_id, None]))
+    for scope in scopes:
+        try:
+            key = CredentialManager(user_id=scope, migrate=False).get_stored_credential(provider)
+        except CredentialStoreUnreadableError as exc:
+            # A store we cannot decrypt holds no usable key; the missing-key
+            # error that follows is the actionable one.
+            logger.warning("Ignoring unreadable credential store: %s", exc)
+            continue
+        if key:
+            return key
+    return None
+
+
+def resolve_key_env(env_var: str) -> Optional[str]:
+    """``resolve_api_key`` addressed by env var name (e.g. ``ANTHROPIC_API_KEY``).
+
+    None for a variable that is not an LLM key. For callers that deal in env
+    var names: delegated-agent environments and readiness checks (#1264).
+    """
+    provider_type = next((p for p, v in REQUIRED_KEY_ENV.items() if v == env_var), None)
+    return resolve_api_key(provider_type) if provider_type else None
+
+
+def require_api_key(settings: LLMSettings, user_id: Optional[int] = None) -> Optional[str]:
+    """``resolve_api_key`` for resolved settings, raising when a needed key is absent.
+
+    Returns None for providers that need no key (local / mock).
+
+    Raises:
+        MissingApiKeyError: naming both ways to supply the key.
+    """
+    env_var = settings.required_key_env
+    if env_var is None:
+        return None
+    key = resolve_api_key(settings.provider_type, user_id)
+    if key:
+        return key
+    if user_id is not None and _is_hosted():
+        # Not "add one in Settings": storing a key needs the admin scope, which
+        # an ordinary tenant does not hold (#898).
+        raise MissingApiKeyError(
+            f"No {settings.provider_type} API key is stored for your account, and "
+            "this hosted server does not lend its own. Storing a key requires an "
+            "administrator account (Settings → API Keys)."
+        )
+    raise MissingApiKeyError(
+        f"No {settings.provider_type} API key found. Set {env_var}, or store one "
+        f"with `cf auth setup --provider {settings.provider_type}` "
+        "(web UI: Settings → API Keys)."
+    )
+
+
+def create_provider(settings: LLMSettings, user_id: Optional[int] = None):
+    """Build the LLM provider for resolved settings.
+
+    The key is resolved here and passed explicitly, so a stored credential is
+    used (#1264) and a hosted tenant without one is refused before the adapter
+    can fall back to reading the operator's environment itself.
+    """
+    from codeframe.adapters.llm import OPENAI_COMPATIBLE_PROVIDERS, get_provider
+
+    kwargs = settings.provider_kwargs()
+    key = require_api_key(settings, user_id)
+    if not key and settings.provider_type in OPENAI_COMPATIBLE_PROVIDERS:
+        # A keyless provider still sends OPENAI_API_KEY when there is one (an
+        # OpenAI-compatible gateway may need it), so a stored key counts too.
+        key = resolve_api_key("openai", user_id)
+        if not key and user_id is not None and _is_hosted():
+            # Otherwise get_provider falls back to the env: the operator's key,
+            # sent to a tenant's endpoint.
+            key = "not-required"
+    if key:
+        kwargs["api_key"] = key
+    return get_provider(settings.provider_type, **kwargs)

@@ -21,6 +21,7 @@ from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import conductor
 from codeframe.core.conductor import BatchStatus
+from codeframe.auth.dependencies import require_auth
 from codeframe.ui.dependencies import get_v2_workspace, refuse_execution_in_hosted_mode
 from codeframe.ui.response_models import api_error, ErrorCodes
 
@@ -236,6 +237,7 @@ async def resume_batch(
     batch_id: str,
     body: ResumeBatchRequest = None,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> BatchResponse:
     """Resume a batch by re-running failed/blocked tasks.
 
@@ -257,7 +259,11 @@ async def resume_batch(
 
     try:
         batch = await run_in_threadpool(
-            conductor.resume_batch, workspace, batch_id, force=force
+            conductor.resume_batch,
+            workspace,
+            batch_id,
+            force=force,
+            user_id=auth.get("user_id"),
         )
         return _batch_to_response(batch)
 

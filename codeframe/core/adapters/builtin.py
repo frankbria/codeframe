@@ -229,9 +229,13 @@ class BuiltinPlanAdapter:
         output_logger: Optional[RunOutputLogger] = None,
         fix_coordinator: Optional[GlobalFixCoordinator] = None,
         event_publisher: Optional[EventPublisher] = None,
+        user_id: Optional[int] = None,
     ) -> None:
         self._workspace = workspace
         self._llm_provider = llm_provider
+        # The supervisor builds its own provider, so it needs the principal
+        # too — or a key stored only per user never reaches it (#1264).
+        self._user_id = user_id
         self._dry_run = dry_run
         self._verbose = verbose
         self._debug = debug
@@ -302,7 +306,7 @@ class BuiltinPlanAdapter:
         """Try supervisor resolution for BLOCKED tasks."""
         from codeframe.core.conductor import get_supervisor
 
-        supervisor = get_supervisor(self._workspace)
+        supervisor = get_supervisor(self._workspace, self._user_id)
         if supervisor.try_resolve_blocked_task(task_id):
             logger.info("[Supervisor] Retrying task after auto-resolution...")
             agent = build_agent()
@@ -324,7 +328,7 @@ class BuiltinPlanAdapter:
         if not matched_patterns:
             return state
 
-        supervisor = get_supervisor(self._workspace)
+        supervisor = get_supervisor(self._workspace, self._user_id)
         resolution = supervisor._generate_tactical_resolution(error_msg)
         logger.info(
             "Supervisor detected recoverable error, providing guidance: %s...",
