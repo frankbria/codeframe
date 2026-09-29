@@ -414,3 +414,47 @@ def test_auto_strategy_dependency_analysis_uses_the_principals_key(store_dir, tm
     monkeypatch.setattr(conductor.subprocess, "Popen", lambda cmd, **kw: _Proc())
     conductor.execute_batch(ws, batch, user_id=6)
     assert seen["api_key"] == USER
+
+
+def test_plan_engine_supervisor_gets_the_principal(store_dir, tmp_path, monkeypatch):
+    # The plan adapter's supervisor builds its own provider; a server-started
+    # plan run must hand it the principal, as batches do.
+    import codeframe.core.engine_registry as registry
+    from codeframe.core import conductor, runtime, tasks
+    from codeframe.core.state_machine import TaskStatus
+
+    ws = _workspace(tmp_path)
+    task = tasks.create(ws, title="t", description="d", status=TaskStatus.READY)
+    run = runtime.start_task_run(ws, task.id)
+    _store(USER, user_id=8)
+    seen = {}
+    real = registry.get_builtin_adapter
+
+    def _capture(engine, workspace, provider, **kwargs):
+        adapter = real(engine, workspace, provider, **kwargs)
+        seen["key"] = conductor.get_supervisor(workspace, adapter._user_id).llm.api_key
+        raise RuntimeError("stop after adapter construction")  # execute_agent records it
+
+    monkeypatch.setattr(registry, "get_builtin_adapter", _capture)
+    runtime.execute_agent(ws, run, dry_run=True, engine="plan", user_id=8)
+    assert seen["key"] == USER
+
+
+def test_plan_adapter_supervisor_lookup_uses_its_principal(store_dir, tmp_path, monkeypatch):
+    from codeframe.core import conductor
+    from codeframe.core.adapters.builtin import BuiltinPlanAdapter
+
+    ws = _workspace(tmp_path)
+    _store(USER, user_id=8)
+    seen = {}
+
+    class _Supervisor:
+        def __init__(self, workspace, user_id):
+            seen["key"] = conductor.SupervisorResolver(workspace, user_id).llm.api_key
+
+        def try_resolve_blocked_task(self, task_id):
+            return False
+
+    monkeypatch.setattr(conductor, "get_supervisor", lambda w, u=None: _Supervisor(w, u))
+    BuiltinPlanAdapter(ws, None, user_id=8)._try_supervisor_unblock("state", "t1", None)
+    assert seen["key"] == USER

@@ -910,6 +910,9 @@ def execute_agent(
             if engine in _STALL_AWARE_ENGINES:
                 builtin_kwargs["stall_timeout_s"] = stall_timeout_s
                 builtin_kwargs["stall_action"] = resolved_action
+            else:
+                # The plan engine's supervisor resolves its own provider (#1264).
+                builtin_kwargs["user_id"] = user_id
 
             adapter = get_builtin_adapter(
                 engine, workspace, provider, **builtin_kwargs,
