@@ -34,6 +34,13 @@ services:
       # env file would put the DB inside the container and lose it on restart.
       DATABASE_PATH: /data/codeframe.db
       WORKSPACE_ROOT: /workspaces
+      # The credential store (GitHub PAT, API keys) is $HOME/.codeframe. At
+      # the image's /home/codeframe it was off every volume, so each deploy
+      # discarded it (#1265). This also keeps hook trust and agent logins.
+      HOME: /data/home
+      # Mixed into the credential file's key. Without it the key is derivable
+      # from the image alone, so compose refuses to start (#1265).
+      CODEFRAME_CREDENTIAL_SECRET: ${CODEFRAME_CREDENTIAL_SECRET:?set CODEFRAME_CREDENTIAL_SECRET in the env file (see deploy/README.md)}
       # The backend's peer here is the Docker gateway (Caddy on the host
       # reaches it through the published port), not loopback, so trust the
       # Docker bridge range too — otherwise every client shares one rate-limit

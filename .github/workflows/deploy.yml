@@ -275,6 +275,7 @@ jobs:
           ENV_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ENV_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
           ENV_AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          ENV_CREDENTIAL_SECRET: ${{ secrets.CODEFRAME_CREDENTIAL_SECRET }}
           ENV_DATABASE_PATH: ${{ secrets.DATABASE_PATH }}
           ENV_WORKSPACE_ROOT: ${{ secrets.WORKSPACE_ROOT }}
           ENV_API_HOST: ${{ secrets.API_HOST }}
@@ -307,6 +308,15 @@ jobs:
             exit 1
           fi
 
+          # Same check for the credential-store key (#1265). Compose refuses to
+          # start without it, but only after the box has been touched.
+          if [ -z "${ENV_CREDENTIAL_SECRET}" ] || ! printf '%s' "${ENV_CREDENTIAL_SECRET}" | grep -q '[^[:space:]]'; then
+            echo "❌ CODEFRAME_CREDENTIAL_SECRET GitHub Actions secret is not set (or blank/whitespace-only)."
+            echo "   Set it once and never change it (changing it re-keys the store):"
+            echo "     gh secret set CODEFRAME_CREDENTIAL_SECRET --body \"\$(openssl rand -hex 32)\""
+            exit 1
+          fi
+
           # Build env file content safely using printf (no shell interpretation)
           ENV_CONTENT=$(printf '%s\n' \
             "# CodeFRAME Environment Configuration" \
@@ -320,6 +330,9 @@ jobs:
             "# Required: the backend hard-fails on the default secret when auth" \
             "# is enabled (the default) — see issue #643." \
             "AUTH_SECRET=${ENV_AUTH_SECRET}" \
+            "# Key for the encrypted credential store (#1265). Never rotate it:" \
+            "# stored credentials would become undecryptable." \
+            "CODEFRAME_CREDENTIAL_SECRET=${ENV_CREDENTIAL_SECRET}" \
             "" \
             "# Database Configuration" \
             "DATABASE_PATH=${ENV_DATABASE_PATH}" \
@@ -593,6 +606,7 @@ jobs:
           USER: ${{ secrets.USER }}
           PROJECT_PATH: ${{ secrets.PROJECT_PATH }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          CODEFRAME_CREDENTIAL_SECRET: ${{ secrets.CODEFRAME_CREDENTIAL_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           API_PORT: ${{ secrets.API_PORT }}
           API_URL: ${{ secrets.API_URL }}
@@ -601,7 +615,7 @@ jobs:
         run: |
           set -euo pipefail
           REQUIRED="SSH_KEY SSH_KNOWN_HOSTS TS_OAUTH_CLIENT_ID TS_OAUTH_SECRET
-                    HOST USER PROJECT_PATH AUTH_SECRET ANTHROPIC_API_KEY
+                    HOST USER PROJECT_PATH AUTH_SECRET CODEFRAME_CREDENTIAL_SECRET ANTHROPIC_API_KEY
                     API_PORT API_URL WS_URL CORS_ORIGINS"
 
           missing=""
@@ -672,6 +686,7 @@ jobs:
           ENV_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ENV_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
           ENV_AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          ENV_CREDENTIAL_SECRET: ${{ secrets.CODEFRAME_CREDENTIAL_SECRET }}
           ENV_DATABASE_PATH: ${{ secrets.DATABASE_PATH }}
           ENV_WORKSPACE_ROOT: ${{ secrets.WORKSPACE_ROOT }}
           ENV_API_HOST: ${{ secrets.API_HOST }}
@@ -704,6 +719,15 @@ jobs:
             exit 1
           fi
 
+          # Same check for the credential-store key (#1265). Compose refuses to
+          # start without it, but only after the box has been touched.
+          if [ -z "${ENV_CREDENTIAL_SECRET}" ] || ! printf '%s' "${ENV_CREDENTIAL_SECRET}" | grep -q '[^[:space:]]'; then
+            echo "❌ CODEFRAME_CREDENTIAL_SECRET GitHub Actions secret is not set (or blank/whitespace-only)."
+            echo "   Set it once and never change it (changing it re-keys the store):"
+            echo "     gh secret set CODEFRAME_CREDENTIAL_SECRET --body \"\$(openssl rand -hex 32)\""
+            exit 1
+          fi
+
           # Build env file content safely using printf (no shell interpretation)
           ENV_CONTENT=$(printf '%s\n' \
             "# CodeFRAME Environment Configuration" \
@@ -717,6 +741,9 @@ jobs:
             "# Required: the backend hard-fails on the default secret when auth" \
             "# is enabled (the default) — see issue #643." \
             "AUTH_SECRET=${ENV_AUTH_SECRET}" \
+            "# Key for the encrypted credential store (#1265). Never rotate it:" \
+            "# stored credentials would become undecryptable." \
+            "CODEFRAME_CREDENTIAL_SECRET=${ENV_CREDENTIAL_SECRET}" \
             "" \
             "# Database Configuration" \
             "DATABASE_PATH=${ENV_DATABASE_PATH}" \

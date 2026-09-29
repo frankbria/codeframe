@@ -158,6 +158,55 @@ def test_state_lives_on_volumes_not_in_the_image():
     assert env["WORKSPACE_ROOT"] == "/workspaces"
 
 
+def test_the_credential_store_lives_on_a_volume():
+    """#1265: the encrypted credential file is ``$HOME/.codeframe``. With HOME
+    left at the image's /home/codeframe it sat outside every volume, so each
+    deploy discarded the GitHub PAT and API keys stored through the web UI."""
+    import posixpath
+
+    import yaml
+
+    compose = yaml.safe_load(COMPOSE.read_text())
+    backend = compose["services"]["backend"]
+    named = set(compose["volumes"])
+    mounts = [
+        v.split(":")[1] for v in backend["volumes"] if v.split(":")[0] in named
+    ]
+    store = posixpath.join(backend["environment"]["HOME"], ".codeframe")
+
+    assert any(store == m or store.startswith(m.rstrip("/") + "/") for m in mounts), (
+        f"{store} must be under a named-volume mount, got {mounts}"
+    )
+
+
+def test_the_credential_secret_is_required():
+    """#1265: with no secret the key comes from the machine id alone. Compose's
+    ``:?`` makes a missing value refuse to start instead of silently degrading."""
+    env = _compose(COMPOSE)["backend"]["environment"]
+    assert env["CODEFRAME_CREDENTIAL_SECRET"].startswith(
+        "${CODEFRAME_CREDENTIAL_SECRET:?"
+    )
+
+
+def test_the_image_pins_what_the_credential_key_derives_from():
+    """#1265: slim has no /etc/machine-id, so the key fell back to the container
+    hostname and MAC — new on every recreate, so a persisted store could still
+    never be decrypted. And there is no keyring daemon in a container."""
+    text = BACKEND_DOCKERFILE.read_text()
+    assert "CODEFRAME_DISABLE_KEYRING=1" in text
+    assert "/etc/machine-id" in text
+
+
+def test_deploy_workflow_writes_the_credential_secret():
+    """Both env write-outs emit it, and both fail fast when it is blank rather
+    than letting compose refuse later with a less specific error."""
+    text = DEPLOY_YML.read_text()
+    assert text.count('"CODEFRAME_CREDENTIAL_SECRET=${ENV_CREDENTIAL_SECRET}"') == 2
+    assert text.count("CODEFRAME_CREDENTIAL_SECRET GitHub Actions secret is not set") == 2
+    preflight = re.search(r'REQUIRED="([^"]*)"', text).group(1).split()
+    assert "CODEFRAME_CREDENTIAL_SECRET" in preflight
+
+
 def test_the_backend_trusts_the_docker_gateway_as_a_proxy():
     """#1274: in the container the peer is the Docker gateway, not loopback.
     Without trusting it, every client shares one rate-limit bucket."""
