@@ -10,6 +10,9 @@ updates:
     schedule:
       interval: weekly
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       actions:
         patterns: ["*"]
         update-types: [minor, patch]
@@ -23,6 +26,9 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       python-minor-patch:
         update-types: [minor, patch]
 
@@ -38,5 +44,8 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
       npm-minor-patch:
         update-types: [minor, patch]
