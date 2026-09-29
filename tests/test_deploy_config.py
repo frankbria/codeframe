@@ -207,6 +207,20 @@ def test_deploy_workflow_writes_the_credential_secret():
     assert "CODEFRAME_CREDENTIAL_SECRET" in preflight
 
 
+def test_every_compose_call_reads_the_env_file():
+    """#1265: the compose file now interpolates a required variable, and
+    ``env_file:`` does not feed interpolation. A call without ``--env-file``
+    errors out, which blanked the failure diagnostics and the rollback record
+    (both swallow errors with ``|| true``)."""
+    calls = [
+        line for line in DEPLOY_YML.read_text().splitlines()
+        if "docker compose" in line and not line.strip().startswith("#")
+    ]
+    assert calls
+    for line in calls:
+        assert "--env-file .env." in line, line
+
+
 def test_the_backend_trusts_the_docker_gateway_as_a_proxy():
     """#1274: in the container the peer is the Docker gateway, not loopback.
     Without trusting it, every client shares one rate-limit bucket."""

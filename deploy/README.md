@@ -260,6 +260,10 @@ already stored reads as empty and must be re-entered. The image also pins
 `/etc/machine-id` (the other key input) for the same reason; before #1265 it
 was the random container hostname, so no store survived a recreate.
 
+Rolling back to an image built before #1265 has no pinned machine-id, so it
+cannot read credentials stored since, and anything re-entered during the
+rollback is unreadable again after rolling forward. Re-enter them either way.
+
 ### Deploying by hand
 
 ```bash

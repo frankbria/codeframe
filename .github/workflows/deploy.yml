@@ -531,7 +531,7 @@ jobs:
           echo "::group::Backend diagnostics (container state + recent logs)"
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "
             cd '${{ secrets.PROJECT_PATH }}' || exit 0
-            COMPOSE='docker compose -f docker-compose.yml -f docker-compose.staging.yml'
+            COMPOSE='docker compose --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml'
             \$COMPOSE ps || true
             echo '--- last 60 lines of backend logs ---'
             \$COMPOSE logs --tail 60 backend 2>&1 || echo '(no backend container)'
@@ -833,7 +833,7 @@ jobs:
               git rev-parse HEAD 2>/dev/null || echo "no-checkout"
               git log -1 --format="%H %s" 2>/dev/null || true
             } > \${TMP_BACKUP}/previous_commit.txt
-            docker compose -f docker-compose.yml -f docker-compose.production.yml \
+            docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.production.yml \
               images --format json > \${TMP_BACKUP}/previous_images.json 2>/dev/null || true
             echo "📝 Previous version: \$(head -1 \${TMP_BACKUP}/previous_commit.txt)"
 
@@ -988,7 +988,7 @@ jobs:
           echo "::group::Backend diagnostics (container state + recent logs)"
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "
             cd '${{ secrets.PROJECT_PATH }}' || exit 0
-            COMPOSE='docker compose -f docker-compose.yml -f docker-compose.production.yml'
+            COMPOSE='docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.production.yml'
             \$COMPOSE ps || true
             echo '--- last 60 lines of backend logs ---'
             \$COMPOSE logs --tail 60 backend 2>&1 || echo '(no backend container)'
