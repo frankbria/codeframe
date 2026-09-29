@@ -155,14 +155,6 @@ def build_agent_env(workspace_path: Path | str) -> dict[str, str]:
     return env
 
 
-def _stored_llm_key(var: str) -> str | None:
-    """The machine-wide stored LLM key for ``var`` (e.g. ANTHROPIC_API_KEY), if any."""
-    from codeframe.core.llm_resolution import REQUIRED_KEY_ENV, resolve_api_key
-
-    provider_type = next((p for p, v in REQUIRED_KEY_ENV.items() if v == var), None)
-    return resolve_api_key(provider_type) if provider_type else None
-
-
 def build_delegated_agent_env(
     workspace_path: Path | str,
     *,
@@ -201,13 +193,15 @@ def build_delegated_agent_env(
             into the sandbox home (e.g. ``.claude``, ``.config/opencode``).
             Missing entries are skipped.
     """
+    from codeframe.core.llm_resolution import resolve_key_env
+
     env = build_agent_env(workspace_path)
     real_home = Path(os.path.expanduser("~"))
 
     for var in credential_vars:
         if os.environ.get(var):
             env[var] = os.environ[var]
-        elif key := _stored_llm_key(var):
+        elif key := resolve_key_env(var):
             # `cf auth setup` stores the key; the CLI never exports it (#1264).
             # An empty env value counts as unset, as it does for the resolver
             # that gates the run — otherwise the check passes on the stored key

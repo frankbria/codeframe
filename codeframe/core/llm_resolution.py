@@ -223,6 +223,16 @@ def resolve_api_key(provider_type: str, user_id: Optional[int] = None) -> Option
     return None
 
 
+def resolve_key_env(env_var: str) -> Optional[str]:
+    """``resolve_api_key`` addressed by env var name (e.g. ``ANTHROPIC_API_KEY``).
+
+    None for a variable that is not an LLM key. For callers that deal in env
+    var names: delegated-agent environments and readiness checks (#1264).
+    """
+    provider_type = next((p for p, v in REQUIRED_KEY_ENV.items() if v == env_var), None)
+    return resolve_api_key(provider_type) if provider_type else None
+
+
 def require_api_key(settings: LLMSettings, user_id: Optional[int] = None) -> Optional[str]:
     """``resolve_api_key`` for resolved settings, raising when a needed key is absent.
 

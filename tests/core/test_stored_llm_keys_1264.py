@@ -458,3 +458,12 @@ def test_plan_adapter_supervisor_lookup_uses_its_principal(store_dir, tmp_path, 
     monkeypatch.setattr(conductor, "get_supervisor", lambda w, u=None: _Supervisor(w, u))
     BuiltinPlanAdapter(ws, None, user_id=8)._try_supervisor_unblock("state", "t1", None)
     assert seen["key"] == USER
+
+
+def test_engines_check_counts_a_stored_key(store_dir, tmp_path):
+    # `cf engines check` must agree with `cf work start`, which accepts it.
+    from codeframe.core.engine_registry import check_requirements
+
+    assert check_requirements("react", tmp_path) == {"ANTHROPIC_API_KEY": False}
+    _store(STORED)
+    assert check_requirements("react", tmp_path) == {"ANTHROPIC_API_KEY": True}
