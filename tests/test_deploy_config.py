@@ -194,7 +194,7 @@ def test_the_image_pins_what_the_credential_key_derives_from():
     never be decrypted. And there is no keyring daemon in a container."""
     text = BACKEND_DOCKERFILE.read_text()
     assert "CODEFRAME_DISABLE_KEYRING=1" in text
-    assert "/etc/machine-id" in text
+    assert re.search(r"^RUN .*> /etc/machine-id$", text, re.M)
 
 
 def test_deploy_workflow_writes_the_credential_secret():
