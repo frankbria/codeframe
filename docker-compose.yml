@@ -35,7 +35,7 @@ services:
       DATABASE_PATH: /data/codeframe.db
       WORKSPACE_ROOT: /workspaces
       # The credential store (GitHub PAT, API keys) is $HOME/.codeframe. At
-      # the image's /home/codeframe it was off every volume, so each deploy
+      # the image's default home it was off every volume, so each deploy
       # discarded it (#1265). This also keeps hook trust and agent logins.
       HOME: /data/home
       # Mixed into the credential file's key. Without it the key is derivable
