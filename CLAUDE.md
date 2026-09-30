@@ -642,6 +642,11 @@ CODEFRAME_CREDENTIAL_SECRET=<secret>  # Mixed into the PBKDF2 KDF for the
                                       # adding/changing this rekeys the store, so
                                       # previously stored credentials become
                                       # undecryptable and must be re-entered.
+                                      # REQUIRED by the container deploy (#1265):
+                                      # compose refuses to start without it, and
+                                      # the image pins /etc/machine-id and puts
+                                      # HOME on the data volume so the store
+                                      # survives a recreate. Never rotate it.
 
 # Unresponsive keyring backends (#1181)
 CODEFRAME_DISABLE_KEYRING=1           # Skip the OS keyring entirely and use the

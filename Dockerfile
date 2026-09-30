@@ -46,9 +46,23 @@ ENV GIT_COMMIT=${GIT_COMMIT}
 # Non-root. WORKSPACE_ROOT and the SQLite DB arrive as volumes owned by this
 # uid (compose sets it), so the app can still write where it must and nowhere
 # else.
+#
+# /data/home is HOME under compose (#1265): the credential store is
+# $HOME/.codeframe, and anywhere off a volume is wiped by every deploy.
 RUN useradd --create-home --uid 10001 codeframe \
-    && mkdir -p /data /workspaces \
+    && mkdir -p /data/home /workspaces \
     && chown -R codeframe:codeframe /data /workspaces /app
+
+# The credential file's key derives from /etc/machine-id, and slim ships none,
+# so it fell back to the container hostname and MAC — new on every recreate,
+# which left even a persisted store undecryptable (#1265). A container is not a
+# machine: the fixed id only makes the key stable. The per-install salt on the
+# volume and the required CODEFRAME_CREDENTIAL_SECRET carry the rest. Changing
+# this line re-keys every deployed store.
+RUN echo codeframe-container > /etc/machine-id
+
+# No keyring daemon exists in a container; go straight to the encrypted file.
+ENV CODEFRAME_DISABLE_KEYRING=1
 USER codeframe
 
 EXPOSE 14200
