@@ -32,6 +32,7 @@ on:
       - "pyproject.toml"
       - "tests/adapters/test_sdk_kwargs_guard_614.py"
       - "tests/adapters/test_model_defaults_guard_1112.py"
+      - "pytest.ini" # its filterwarnings decide whether these guards pass (#1340)
       - ".github/workflows/unlocked-resolution.yml"
 
 permissions:
