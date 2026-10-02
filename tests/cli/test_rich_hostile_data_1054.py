@@ -176,6 +176,7 @@ EXEMPT: dict[str, str] = {
     "auth api-key-rotate": "writes the machine-wide platform store",
     "auth set-password":
         "writes the machine-wide platform store",
+    "auth user-create": "writes the machine-wide platform store",
     "auth deactivate": "writes the machine-wide platform store",
     "auth activate": "writes the machine-wide platform store",
     "auth user-list": "reads the machine-wide platform store",
