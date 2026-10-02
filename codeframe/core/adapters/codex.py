@@ -28,6 +28,7 @@ import logging
 import queue
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -46,9 +47,9 @@ from codeframe.core.dangerous_commands import is_dangerous_command
 
 logger = logging.getLogger(__name__)
 
-# A private CODEX_HOME, under the delegated agent home, for runs that log in
-# with an API key: that login writes auth.json, which must not land in the
-# operator's passed-through ~/.codex (#1270).
+# Private CODEX_HOMEs, one per run, under the delegated agent home for runs
+# that log in with an API key: that login writes auth.json, which must not land
+# in the operator's passed-through ~/.codex (#1270).
 _API_KEY_HOME = ".codex-api-key"
 
 _TIMEOUT = object()  # No message within the read window (process still alive)
@@ -253,12 +254,14 @@ class CodexAdapter:
         )
         key = None if self._codex_login() else self._api_key()
         if key:
-            private = Path(env["HOME"]) / _API_KEY_HOME
-            private.mkdir(mode=0o700, parents=True, exist_ok=True)
+            # One per run: parallel batch tasks share the agent home, and one
+            # run's cleanup must not delete a sibling's login mid-run.
+            root = Path(env["HOME"]) / _API_KEY_HOME
+            root.mkdir(mode=0o700, parents=True, exist_ok=True)
+            private = Path(tempfile.mkdtemp(prefix="run-", dir=root))
             config = self.codex_home() / "config.toml"
-            link = private / "config.toml"
-            if config.is_file() and not link.is_symlink() and not link.exists():
-                link.symlink_to(config)  # keep the operator's model/provider settings
+            if config.is_file():
+                (private / "config.toml").symlink_to(config)  # the operator's model settings
             env["CODEX_HOME"] = str(private)
         return env, key
 
@@ -331,9 +334,9 @@ class CodexAdapter:
             self._kill(process)
             stderr_thread.join(timeout=5)
             if login_key:
-                # The login stored the key in the private CODEX_HOME; it is
-                # re-sent each run, so nothing needs it at rest.
-                (Path(env["CODEX_HOME"]) / "auth.json").unlink(missing_ok=True)
+                # The login stored the key in this run's private CODEX_HOME; it
+                # is re-sent each run, so nothing needs it at rest.
+                shutil.rmtree(env["CODEX_HOME"], ignore_errors=True)
 
         if result.status == "failed" and stderr_chunks and stderr_chunks[0].strip():
             result.error = f"{result.error}\nstderr: {stderr_chunks[0].strip()[-2000:]}"

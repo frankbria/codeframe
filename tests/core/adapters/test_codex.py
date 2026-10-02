@@ -778,6 +778,7 @@ class TestApiKeyLogin:
             captured["key"] = key
             # What the real login does: codex writes the key to CODEX_HOME.
             (Path(env["CODEX_HOME"]) / "auth.json").write_text('{"OPENAI_API_KEY": "sk"}')
+            captured["config"] = (Path(env["CODEX_HOME"]) / "config.toml").read_text()
             return env, key
 
         adapter._child_env = spy
@@ -791,12 +792,18 @@ class TestApiKeyLogin:
         )
         # A private CODEX_HOME, never the operator's ~/.codex ...
         private = Path(real_popen_env["CODEX_HOME"])
-        assert private.name == ".codex-api-key"
+        assert private.parent.name == ".codex-api-key"
         assert not str(private).startswith(str(homes / ".codex"))
-        # ... that still sees the operator's model settings ...
-        assert (private / "config.toml").read_text() == 'model = "gpt-5"\n'
-        # ... and keeps no key at rest once the run is over.
-        assert not (private / "auth.json").exists()
+        assert captured["config"] == 'model = "gpt-5"\n'  # operator's settings seen
+        # ... and the run's home, key included, is gone once the run is over.
+        assert not private.exists()
+
+    def test_concurrent_runs_get_separate_homes(self, homes, tmp_path):
+        """One run's cleanup must not delete a parallel sibling's login."""
+        adapter = _make_adapter()
+        a, _ = adapter._child_env(tmp_path)
+        b, _ = adapter._child_env(tmp_path)
+        assert a["CODEX_HOME"] != b["CODEX_HOME"]
 
     def test_an_existing_codex_login_wins_over_the_key(self, homes, tmp_path):
         """A ChatGPT-plan login must not quietly move to metered API billing."""
