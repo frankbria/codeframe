@@ -135,9 +135,10 @@ class TestAdminScope:
 
     def test_write_key_forbidden_on_credential_storage(self, scoped_app):
         app, keys = scoped_app
-        # write is not enough — credential storage is admin-only.
+        # write is not enough for the GitHub PAT, which stays admin-only.
+        # (#1303: LLM keys are now tenant-owned and need only write scope.)
         r = TestClient(app).put(
-            "/api/v2/settings/keys/openai", headers=_hdr(keys["write"]), json={"value": "sk-x"}
+            "/api/v2/settings/keys/GIT_GITHUB", headers=_hdr(keys["write"]), json={"value": "sk-x"}
         )
         assert r.status_code == 403
 
@@ -184,7 +185,8 @@ class TestJwtIsNotAutomaticallyAdmin:
     def test_non_superuser_jwt_forbidden_on_credential_storage(self, scoped_app):
         app, _ = scoped_app
         r = TestClient(app).put(
-            "/api/v2/settings/keys/openai", headers=self._jwt(), json={"value": "sk-x"}
+            # #1303: LLM keys are tenant-owned now; the GitHub PAT stays admin-only.
+            "/api/v2/settings/keys/GIT_GITHUB", headers=self._jwt(), json={"value": "sk-x"}
         )
         assert r.status_code == 403, r.text
 

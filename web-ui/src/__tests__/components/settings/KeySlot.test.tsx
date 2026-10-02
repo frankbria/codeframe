@@ -1,8 +1,8 @@
 /**
- * KeySlot admin gating (#1255). Storing and removing credentials is
- * admin-only on the server (#717); a non-admin is told so up front instead of
- * typing a key and getting a 403 toast. Verify stays available — it is not
- * admin-guarded.
+ * KeySlot admin gating (#1255, #1303). The GitHub PAT is admin-only on the
+ * server (#717); a non-admin is told so up front instead of typing a key and
+ * getting a 403 toast. LLM keys are the user's own since #1303, so they stay
+ * enabled. Verify stays available — it is not admin-guarded.
  */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { KeySlot } from '@/components/settings/KeySlot';
@@ -24,16 +24,17 @@ const STORED = {
   last_four: 'abcd',
 } as unknown as KeyStatusResponse;
 
-function renderSlot() {
+function renderSlot(provider: 'LLM_ANTHROPIC' | 'GIT_GITHUB' = 'GIT_GITHUB') {
+  const name = provider === 'GIT_GITHUB' ? 'GitHub' : 'Anthropic';
   render(
-    <KeySlot provider="LLM_ANTHROPIC" displayName="Anthropic" status={STORED} onChanged={jest.fn()} />
+    <KeySlot provider={provider} displayName={name} status={{ ...STORED, provider }} onChanged={jest.fn()} />
   );
-  fireEvent.change(screen.getByLabelText('Anthropic'), { target: { value: 'sk-ant-x' } });
+  fireEvent.change(screen.getByLabelText(name), { target: { value: 'sk-ant-x' } });
 }
 
 beforeEach(() => mockAdminDenied.mockReturnValue(false));
 
-it('disables Save and Remove for a non-admin and says why', () => {
+it('disables Save and Remove on the GitHub token for a non-admin and says why', () => {
   mockAdminDenied.mockReturnValue(true);
   renderSlot();
 
@@ -45,6 +46,15 @@ it('disables Save and Remove for a non-admin and says why', () => {
 
 it('leaves Save and Remove enabled for an admin', () => {
   renderSlot();
+
+  expect(screen.getByRole('button', { name: /save/i })).toBeEnabled();
+  expect(screen.getByRole('button', { name: /remove/i })).toBeEnabled();
+  expect(screen.queryByText(/requires an admin account/i)).not.toBeInTheDocument();
+});
+
+it('leaves a non-admin in charge of their own LLM key (#1303)', () => {
+  mockAdminDenied.mockReturnValue(true);
+  renderSlot('LLM_ANTHROPIC');
 
   expect(screen.getByRole('button', { name: /save/i })).toBeEnabled();
   expect(screen.getByRole('button', { name: /remove/i })).toBeEnabled();
