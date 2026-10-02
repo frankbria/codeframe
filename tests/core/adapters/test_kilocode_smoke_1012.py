@@ -19,6 +19,7 @@ but it is **launch-gating**, not deferred: kilocode is a shipped engine.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -64,11 +65,19 @@ def repo(tmp_path: Path) -> Path:
     return workspace
 
 
-def test_there_is_no_run_subcommand() -> None:
-    """The assumption that produced the bug, checked against the binary's own help.
+def _surface() -> str:
+    from codeframe.core.adapters.kilocode import _detect_surface
 
-    Asserted on the CLI rather than on our code, so it fails if kilocode ever
-    adds a `run` command and the adapter should be revisited.
+    return _detect_surface(shutil.which(KilocodeAdapter._resolve_binary()) or "")
+
+
+def test_the_run_subcommand_matches_the_installed_surface() -> None:
+    """Checked against the binary's own help, so a future CLI change fails here.
+
+    0.22 had no ``run`` (#1012: it was consumed as the prompt and opened a TUI);
+    the 7.x rewrite is an opencode fork whose documented entry point is
+    ``kilo run [message..]`` (#1015). The commands are listed one per line as
+    ``kilo <command> ...``, so they are parsed by that, not by column.
     """
     proc = subprocess.run(
         [KilocodeAdapter._resolve_binary(), "--help"],
@@ -77,33 +86,35 @@ def test_there_is_no_run_subcommand() -> None:
         timeout=60,
     )
     help_text = proc.stdout + proc.stderr
-
-    assert "Commands:" in help_text, "kilo --help no longer lists its commands"
-    commands_block = help_text.split("Commands:", 1)[1]
-    listed = [
-        line.strip().split()[0]
-        for line in commands_block.splitlines()
-        if line.strip() and not line.startswith(" " * 20)
-    ]
-    assert "run" not in listed, (
-        f"kilo now has a `run` command ({listed}); revisit the adapter's invocation"
-    )
+    has_run = re.search(r"^\s*kilo(?:code)?\s+run\b", help_text, re.MULTILINE) is not None
+    if _surface() == "modern":
+        assert has_run, f"kilo 7.x no longer lists `run`; revisit the adapter:\n{help_text[:800]}"
+    else:
+        assert not has_run, "kilocode 0.22 now has `run`; revisit the legacy invocation"
 
 
-def test_the_adapter_does_not_prepend_a_subcommand() -> None:
-    """The adapter's own command must put the prompt first, ahead of any flag."""
-    adapter = KilocodeAdapter()
-    cmd = adapter.build_command("say hello", Path("/tmp/repo"))
+def test_the_adapter_command_matches_the_installed_surface() -> None:
+    """The adapter's own command, for whichever CLI is actually installed."""
+    cmd = KilocodeAdapter().build_command("say hello", Path("/tmp/repo"))
 
-    assert cmd[1] == "say hello", f"prompt is not the leading positional: {cmd[:3]}"
+    if _surface() == "modern":
+        assert cmd[1] == "run", f"7.x needs `kilo run`: {cmd[:3]}"
+        assert "--dir" in cmd
+        # On 7.x --auto is the old --yolo: the #916 permission bypass stays off.
+        assert "--auto" not in cmd
+    else:
+        assert cmd[1] == "say hello", f"prompt is not the leading positional: {cmd[:3]}"
 
 
 def test_the_old_invocation_hangs_and_writes_nothing(repo: Path) -> None:
-    """Pins the bug, so nobody restores `run` believing it worked.
+    """Pins the 0.22 bug, so nobody restores `run` there believing it worked.
 
     The old command opens the TUI: it never reaches a terminal state on its own,
-    so it is killed by the timeout and leaves the workspace untouched.
+    so it is killed by the timeout and leaves the workspace untouched. On 7.x
+    `run` is the real entry point, so the premise does not apply.
     """
+    if _surface() == "modern":
+        pytest.skip("kilo 7.x: `run` is the documented entry point, not the 0.22 bug")
     binary = KilocodeAdapter._resolve_binary()
     try:
         subprocess.run(

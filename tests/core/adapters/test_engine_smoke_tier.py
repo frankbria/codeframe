@@ -69,6 +69,17 @@ _UPSTREAM_FAULT_MARKERS = (
 )
 
 
+#: The provider received a key and refused it: the CI secret is wrong or
+#: revoked, which only an operator can fix (#1271). Deliberately NOT here:
+#: "Missing bearer" and kilo's "You need to sign in" — those mean the adapter
+#: failed to deliver a credential, which is exactly the #1270 bug this tier
+#: exists to catch.
+_CREDENTIAL_REJECTED_MARKERS = (
+    "Incorrect API key provided",  # OpenAI
+    "invalid x-api-key",  # Anthropic
+)
+
+
 def _environmental_reason(error: str | None) -> str | None:
     """Return why this run could not be attempted, or None if it genuinely failed.
 
@@ -83,6 +94,12 @@ def _environmental_reason(error: str | None) -> str | None:
     for marker in _UPSTREAM_FAULT_MARKERS:
         if marker in error:
             return f"upstream provider fault, not an adapter defect: {error[:300]}"
+    for marker in _CREDENTIAL_REJECTED_MARKERS:
+        if marker in error:
+            return (
+                "the provider rejected the CI credential (rotate the repo secret); "
+                f"the adapter did deliver it: {marker}"
+            )
     return None
 
 
@@ -346,3 +363,27 @@ def test_a_run_that_writes_nothing_is_not_reported_completed(
         f"{engine.name}: a run that wrote nothing was reported completed — gates "
         f"would then pass on an unchanged tree"
     )
+
+
+# ----------------------------------------------------------------------
+# Classification of what is NOT an adapter defect (#1271)
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("error", [
+    "unexpected status 401 Unauthorized: Incorrect API key provided: sk-proj-***4fYA.",
+    '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
+])
+def test_a_rejected_ci_credential_is_skipped_with_a_named_reason(error):
+    reason = _environmental_reason(error)
+    assert reason is not None and "rotate the repo secret" in reason
+
+
+@pytest.mark.parametrize("error", [
+    # #1270: the adapter never delivered a key. These must stay failures.
+    "unexpected status 401 Unauthorized: Missing bearer or basic authentication in header",
+    "You need to sign in to use this model",
+    "Process exited 1",
+])
+def test_an_undelivered_credential_is_still_a_failure(error):
+    assert _environmental_reason(error) is None
