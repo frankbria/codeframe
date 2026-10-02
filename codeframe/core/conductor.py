@@ -2071,6 +2071,9 @@ def _execute_parallel(
 
             group_size = len(group)
             logger.info(f"Group {group_idx + 1}/{plan.num_groups}: {group_size} task(s)")
+            # Groups run one after another, so only this group's tasks share
+            # the remainder; a mostly-linear plan must not be split N ways.
+            _set_spend_share(batch.id, min(group_size, batch.max_parallel))
 
             if group_size == 1:
                 # Single task - run directly
@@ -2099,6 +2102,7 @@ def _execute_parallel(
                 else:
                     effective_workers = min(group_size, batch.max_parallel)
                 logger.info(f"Running {group_size} tasks with {effective_workers} workers")
+                _set_spend_share(batch.id, effective_workers)
 
                 # Execute group in parallel
                 results = _execute_group_parallel(
@@ -2629,7 +2633,14 @@ def _execute_task_subprocess(
         if held is not None and user_id is not None:
             from codeframe.core.spend_limit import release
 
-            release(user_id, held)
+            release(user_id, held, group=batch_id)
+
+
+def _set_spend_share(batch_id: str, share: int) -> None:
+    """How many of this batch's tasks may hold a slice at once (#1303)."""
+    entry = _batch_spend_scope.get(batch_id)
+    if entry is not None:
+        _batch_spend_scope[batch_id] = (entry[0], max(share, 1))
 
 
 def _spawn_task_child(

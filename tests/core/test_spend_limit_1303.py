@@ -498,3 +498,44 @@ def test_concurrent_siblings_get_equal_slices(monkeypatch, repos, clean_holds):
         conductor._batch_spend_scope.pop("b4", None)
     assert sorted(ceilings) == [pytest.approx(2.5)] * 4
     assert spend_limit._held == {}
+
+
+class TestRound4:
+    """Bot review of b8a1f39 on PR #1343."""
+
+    def test_yesterdays_sibling_does_not_take_a_slot_today(self, monkeypatch, repos, clean_holds):
+        from datetime import date, timedelta
+
+        monkeypatch.setenv(LIMIT_ENV, "10")
+        day = date(2026, 10, 1)
+        monkeypatch.setattr(spend_limit, "_today", lambda: day)
+        spend_limit.reserve_today_usd(1, [repos[0]], share=4, group="b")
+        monkeypatch.setattr(spend_limit, "_today", lambda: day + timedelta(days=1))
+        # 10 / 4 free slots, not 10 / 3: the D1 hold adds $0 to today.
+        assert spend_limit.reserve_today_usd(1, [repos[0]], share=4, group="b") == pytest.approx(2.5)
+
+    def test_release_matches_the_group_too(self, monkeypatch, repos, clean_holds):
+        monkeypatch.setenv(LIMIT_ENV, "10")
+        a = spend_limit.reserve_today_usd(1, [repos[0]], share=2, group="a")
+        b = spend_limit.reserve_today_usd(1, [repos[0]], share=1, group="b")
+        assert a == b == pytest.approx(5.0)  # same amount, different groups
+        spend_limit.release(1, b, group="b")
+        assert [g for *_, g in spend_limit._held[1]] == ["a"]
+
+    def test_a_linear_chain_is_not_split_by_max_parallel(self, monkeypatch, repos, clean_holds):
+        """Groups run in turn, so a 1-task group gets the whole remainder."""
+        from codeframe.core import conductor, tasks
+        from codeframe.core.state_machine import TaskStatus
+
+        monkeypatch.setenv(LIMIT_ENV, "2")
+        ws = create_or_load_workspace(repos[0])
+        t1 = tasks.create(ws, title="a", description="d", status=TaskStatus.READY)
+        t2 = tasks.create(ws, title="b", description="d", status=TaskStatus.READY, depends_on=[t1.id])
+        batch = conductor.create_batch(ws, [t1.id, t2.id], strategy="parallel", max_parallel=4)
+        ceilings: list = []
+        monkeypatch.setattr(
+            conductor, "_spawn_task_child",
+            lambda *a, **kw: ceilings.append(kw["cost_ceiling_usd"]) or "COMPLETED",
+        )
+        conductor.execute_batch(ws, batch, user_id=7, spend_scope=lambda: [repos[0]])
+        assert ceilings == [pytest.approx(2.0), pytest.approx(2.0)]

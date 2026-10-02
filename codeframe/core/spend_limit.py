@@ -158,20 +158,25 @@ def reserve_today_usd(
     spent = spend_today_usd(repo_paths)
     with _held_lock:
         holds = _held.setdefault(user_id, [])
-        siblings = sum(1 for *_, g in holds if group is not None and g == group)
+        today = _today()
+        siblings = sum(
+            1 for day, _, g in holds if group is not None and g == group and day == today
+        )
         amount = _free_today(user_id, spent, limit) / max(share - siblings, 1)
         holds.append((_today(), amount, group))
         return amount
 
 
-def release(user_id: Optional[int], amount: Optional[float]) -> None:
+def release(
+    user_id: Optional[int], amount: Optional[float], group: Optional[str] = None
+) -> None:
     """Return a hold taken by ``reserve_today_usd``; its real spend is recorded by now."""
     if user_id is None or amount is None:
         return
     with _held_lock:
         holds = _held.get(user_id, [])
-        for i, (_, held, _group) in enumerate(holds):
-            if held == amount:
+        for i, (_, held, held_group) in enumerate(holds):
+            if held == amount and held_group == group:
                 del holds[i]
                 break
         if not holds:
