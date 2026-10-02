@@ -308,7 +308,14 @@ class CodexAdapter:
         # Baseline so a run that commits its own work still counts (#739).
         head_before = self._git_head(workspace_path)
 
-        env, login_key = self._child_env(workspace_path)
+        try:
+            env, login_key = self._child_env(workspace_path)
+        except OSError as e:
+            # Building the private CODEX_HOME touches the filesystem (disk
+            # full, no symlink support); fail like a spawn error, not uncaught.
+            return AgentResult(
+                status="failed", error=f"Could not prepare the codex environment: {e}"
+            )
         try:
             process = subprocess.Popen(
                 [self._binary_path, "app-server"],

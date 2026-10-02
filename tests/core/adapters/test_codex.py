@@ -928,3 +928,15 @@ class TestPrivateHomeCleanup:
             result = adapter.run("t", "p", tmp_path)
         assert result.status == "failed"
         assert list(root.glob("run-*")) == []
+
+
+    def test_a_filesystem_error_preparing_the_home_is_a_clean_failure(self, root, tmp_path, monkeypatch):
+        """claude-review on PR #1352: it used to escape run() uncaught."""
+        from codeframe.core.adapters import codex as codex_mod
+
+        monkeypatch.setattr(codex_mod.CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
+        monkeypatch.setattr(codex_mod.CodexAdapter, "_codex_login", classmethod(lambda cls: False))
+        monkeypatch.setattr(codex_mod.tempfile, "mkdtemp", lambda **kw: (_ for _ in ()).throw(OSError(28, "No space left on device")))
+        result = _make_adapter().run("t", "p", tmp_path)
+        assert result.status == "failed"
+        assert "Could not prepare the codex environment" in result.error
