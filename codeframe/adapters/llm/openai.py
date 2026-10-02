@@ -113,9 +113,16 @@ class OpenAIProvider(LLMProvider):
         OpenAI itself takes ``max_completion_tokens`` on every chat model and
         rejects ``max_tokens`` on reasoning models, which also reject any
         temperature. Ollama, vllm and other compatible servers keep
-        ``max_tokens``: many predate the new name (#1267).
+        ``max_tokens``: many predate the new name (#1267). That includes
+        ``provider: openai`` pointed at one through ``base_url``, the documented
+        local-model setup, so the endpoint decides, not just the provider name.
         """
-        if self.provider_name != "openai":
+        from urllib.parse import urlparse
+
+        openai_itself = self.provider_name == "openai" and (
+            not self.base_url or urlparse(self.base_url).hostname == "api.openai.com"
+        )
+        if not openai_itself:
             limits: dict = {"max_tokens": max_tokens}
         else:
             limits = {"max_completion_tokens": max_tokens}

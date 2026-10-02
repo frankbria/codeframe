@@ -137,7 +137,7 @@ class TestAnthropicThinking:
         assert self._thinking(model) == {"type": "enabled", "budget_tokens": 4000}
 
 
-def _openai(model: str, captured: dict, provider_name: str = "openai"):
+def _openai(model: str, captured: dict, provider_name: str = "openai", base_url=None):
     import httpx
     import openai
 
@@ -152,7 +152,9 @@ def _openai(model: str, captured: dict, provider_name: str = "openai"):
             "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         })
 
-    provider = OpenAIProvider(api_key="test-key", model=model, provider_name=provider_name)
+    provider = OpenAIProvider(
+        api_key="test-key", model=model, provider_name=provider_name, base_url=base_url
+    )
     provider._client = openai.OpenAI(
         api_key="test-key",
         http_client=openai.DefaultHttpxClient(transport=httpx.MockTransport(handler)),
@@ -190,3 +192,20 @@ class TestOpenAIShape:
         body = captured["body"]
         assert body["max_tokens"] == 123 and body["temperature"] == 0.0
         assert "max_completion_tokens" not in body
+
+
+    def test_provider_openai_pointed_at_a_local_server_keeps_max_tokens(self):
+        """CLAUDE.md documents provider: openai + base_url: localhost:11434."""
+        captured: dict = {}
+        _openai(
+            "qwen2.5-coder:7b", captured, base_url="http://localhost:11434/v1"
+        ).complete(messages=[{"role": "user", "content": "hi"}], max_tokens=123)
+        assert captured["body"]["max_tokens"] == 123
+        assert "max_completion_tokens" not in captured["body"]
+
+    def test_an_explicit_api_openai_com_base_url_is_still_openai(self):
+        captured: dict = {}
+        _openai("gpt-5", captured, base_url="https://api.openai.com/v1").complete(
+            messages=[{"role": "user", "content": "hi"}], max_tokens=123
+        )
+        assert captured["body"]["max_completion_tokens"] == 123
