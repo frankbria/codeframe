@@ -117,6 +117,24 @@ class TestCapture:
         assert req.severity.value == "high"
         assert req.source.value == "qa"
 
+    def test_a_typo_at_the_prompt_reprompts_instead_of_crashing(self, ws):
+        """#1268: with typer's vendored click a typo raised BadParameter as a
+        traceback. The prompt names the choices and asks again."""
+        workspace, workspace_path = ws
+        result = runner.invoke(
+            app,
+            [
+                "proof", "capture", "-w", str(workspace_path),
+                "--title", "T", "--description", "D", "--where", "src/x.py",
+            ],
+            input="hgih\nhigh\nqaa\nqa\n",
+        )
+        assert result.exit_code == 0, result.output
+        assert "critical/high/medium/low" in result.output  # choices are shown
+        assert result.output.count("Choose one of") == 2
+        req = ledger.get_requirement(workspace, "REQ-0001")
+        assert (req.severity.value, req.source.value) == ("high", "qa")
+
     def test_capture_second_req_increments_id(self, ws_with_req):
         """A second capture should produce REQ-0002."""
         workspace, workspace_path = ws_with_req

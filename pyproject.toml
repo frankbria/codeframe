@@ -39,7 +39,9 @@ dependencies = [
     # running a security check.
     "bandit>=1.8.6",
     "tenacity>=8.2.0",
-    "openai>=1.12.0",
+    # Capped at the tested major (#1268, the #1168 lesson): an unlocked install
+    # resolved openai 3.x against a locked 2.x with nothing checking it.
+    "openai>=1.12.0,<3",
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
     "websockets>=12.0",
@@ -50,7 +52,16 @@ dependencies = [
     "aiosqlite>=0.19.0",
     "aiohttp>=3.14.0",
     "httpx>=0.27.0",
-    "typer>=0.9.0",
+    # Capped at the tested MINOR (#1268): typer is pre-1.0, and 0.27 started
+    # vendoring its own click, which broke `cf proof capture`, --help and
+    # telemetry on a fresh install. The installed-click objects that broke are
+    # gone, but raise this only together with a run of tests/cli against it.
+    "typer>=0.9.0,<0.20",
+    # Not imported directly; capped because the typer above is. typer 0.19
+    # imports click.utils.get_binary_stream, which click 8.5 deprecates and
+    # click 9 removes, so an uncapped click is a fresh install whose `cf` dies
+    # at import. Lift together with typer (#1268).
+    "click>=8.1,<8.5",
     "rich>=13.7.0",
     "textual>=0.86.0",
     "requests>=2.33.0",

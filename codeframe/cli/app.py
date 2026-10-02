@@ -20,8 +20,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import click
 import typer
+from enum import StrEnum
 from rich.console import Console
 from rich.markup import escape
 
@@ -55,6 +55,31 @@ app = typer.Typer(
 )
 
 console = Console()
+
+
+# Choice types for options. Typer builds the choice list from an Enum itself;
+# handing it an installed-click `click.Choice` broke once typer began vendoring
+# its own click (>= 0.27): choices vanished from --help (#1268). StrEnum, so
+# the values still compare, format and pass to subprocesses as plain strings.
+class StallActionChoice(StrEnum):
+    BLOCKER = "blocker"
+    RETRY = "retry"
+    FAIL = "fail"
+
+
+class IsolationChoice(StrEnum):
+    NONE = "none"
+    WORKTREE = "worktree"
+
+
+class BatchIsolationChoice(StrEnum):
+    NONE = "none"
+
+
+class ExportFormatChoice(StrEnum):
+    JSON = "json"
+    MARKDOWN = "markdown"
+
 
 #: The single "you need a PRD" hint, shared by every command that reaches this
 #: state (#1111). `prd generate` is the primary path per GOLDEN_PATH §2 and is
@@ -2973,17 +2998,17 @@ def work_start(
         "--stall-timeout",
         help="Seconds without a tool call before agent is considered stalled (0 = disabled)",
     ),
-    stall_action: str = typer.Option(
-        "blocker",
+    stall_action: StallActionChoice = typer.Option(
+        StallActionChoice.BLOCKER,
         "--stall-action",
         help="Recovery action on stall: 'blocker' (default), 'retry', or 'fail'",
-        click_type=click.Choice(["blocker", "retry", "fail"], case_sensitive=False),
+        case_sensitive=False,
     ),
-    isolation: str = typer.Option(
-        "none",
+    isolation: IsolationChoice = typer.Option(
+        IsolationChoice.NONE,
         "--isolation",
         help="Task execution isolation: none (default) or worktree",
-        click_type=click.Choice(["none", "worktree"], case_sensitive=False),
+        case_sensitive=False,
     ),
     cloud_timeout: int = typer.Option(
         30,
@@ -4190,12 +4215,12 @@ def work_export_trace(
         "-w",
         help="Workspace path (defaults to current directory)",
     ),
-    output_format: str = typer.Option(
-        "json",
+    output_format: ExportFormatChoice = typer.Option(
+        ExportFormatChoice.JSON,
         "--format",
         "-f",
         help="Export format: json or markdown",
-        click_type=click.Choice(["json", "markdown"], case_sensitive=False),
+        case_sensitive=False,
     ),
     output: Optional[Path] = typer.Option(
         None,
@@ -4383,20 +4408,20 @@ def batch_run(
         "--stall-timeout",
         help="Seconds without a tool call before agent is considered stalled (0 = disabled)",
     ),
-    stall_action: str = typer.Option(
-        "blocker",
+    stall_action: StallActionChoice = typer.Option(
+        StallActionChoice.BLOCKER,
         "--stall-action",
         help="Recovery action on stall: 'blocker' (default), 'retry', or 'fail'",
-        click_type=click.Choice(["blocker", "retry", "fail"], case_sensitive=False),
+        case_sensitive=False,
     ),
-    isolation: str = typer.Option(
-        "none",
+    isolation: BatchIsolationChoice = typer.Option(
+        BatchIsolationChoice.NONE,
         "--isolation",
         help=(
             "Task execution isolation: none (default). Worktree isolation is "
             "single-task only: `cf work start <task> --execute --isolation worktree`."
         ),
-        click_type=click.Choice(["none"], case_sensitive=False),
+        case_sensitive=False,
     ),
     cloud_timeout: int = typer.Option(
         30,

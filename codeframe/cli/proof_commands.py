@@ -8,7 +8,6 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-import click
 import typer
 from rich.console import Console
 from rich.markup import escape
@@ -23,6 +22,20 @@ proof_app = typer.Typer(
     help="PROOF9 quality memory system — evidence-based verification",
     no_args_is_help=True,
 )
+
+
+def _prompt_choice(text: str, choices: list[str], default: str) -> str:
+    """Prompt until the answer is one of ``choices`` (#723).
+
+    A plain loop rather than ``type=click.Choice``: typer >= 0.27 vendors its
+    own click, so an installed-click type handed to ``typer.prompt`` lost its
+    choice list and turned a typo into a traceback (#1268).
+    """
+    while True:
+        answer = typer.prompt(f"{text} ({'/'.join(choices)})", default=default)
+        if answer in choices:
+            return answer
+        console.print(f"[red]Choose one of:[/red] {', '.join(choices)}")
 
 
 @proof_app.command("capture")
@@ -77,16 +90,10 @@ def capture(
     if not where:
         where = typer.prompt("Where? (file path, URL, API route, or component)")
     if not severity:
-        severity = typer.prompt(
-            "Severity", default="medium",
-            # click.Choice — typer has no Choice; typer.prompt delegates to
-            # click.prompt, so this constrains the interactive input (#723).
-            type=click.Choice(["critical", "high", "medium", "low"]),
-        )
+        severity = _prompt_choice("Severity", ["critical", "high", "medium", "low"], "medium")
     if not source:
-        source = typer.prompt(
-            "Source", default="qa",
-            type=click.Choice(["production", "qa", "dogfooding", "monitoring", "user_report"]),
+        source = _prompt_choice(
+            "Source", ["production", "qa", "dogfooding", "monitoring", "user_report"], "qa"
         )
 
     try:

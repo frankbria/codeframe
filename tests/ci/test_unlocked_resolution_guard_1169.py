@@ -76,3 +76,40 @@ def test_the_release_is_gated_on_it():
         f"release job 'build' does not need {gate!r}, so a tag can publish a "
         "release whose unlocked resolution was never checked"
     )
+
+
+
+def test_it_runs_the_cli_suite_and_the_mock_lifecycle_against_the_resolved_env():
+    """#1268: typer 0.27 broke `cf proof capture` while `cf --help` still ran."""
+    runs = " ".join(s.get("run", "") for s in _steps(_load(UNLOCKED)))
+    for target in (
+        "tests/cli",
+        "tests/core/test_tui_dashboard.py",
+        "tests/core/test_cli_validators.py",
+        "tests/lifecycle/test_api_lifecycle.py",
+        "tests/adapters/test_request_shape_1267.py",  # wire-level OpenAIProvider
+    ):
+        assert target in runs, f"{target} is not run against the unlocked resolution"
+
+
+def test_it_uses_the_unlocked_interpreter_by_absolute_path():
+    """An activated venv can fall back to another interpreter on PATH."""
+    runs = [s.get("run", "") for s in _steps(_load(UNLOCKED))]
+    pytest_runs = [r for r in runs if "-m pytest" in r]
+    assert pytest_runs and all(
+        '"$RUNNER_TEMP/unlocked/bin/python" -m pytest' in r for r in pytest_runs
+    )
+    assert not any("activate" in r for r in runs)
+
+
+@pytest.mark.parametrize("package", ["anthropic", "openai", "typer", "click", "pytest"])
+def test_sdks_the_cli_calls_into_have_a_ceiling(package):
+    """The #1168 lesson: a floor-only pin is a latent dead-on-arrival release."""
+    import tomllib
+
+    pyproject = tomllib.loads((WORKFLOWS.parents[1] / "pyproject.toml").read_text())
+    spec = next(
+        d for d in pyproject["project"]["dependencies"]
+        if d.split(">")[0].split("<")[0].split("=")[0].split("[")[0].strip() == package
+    )
+    assert "<" in spec, f"{spec!r} has no upper bound"
