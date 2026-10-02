@@ -230,9 +230,16 @@ def _build_status(
     )
 
 
+# An allowlist, so a provider added later is admin-only until someone decides
+# otherwise (PR #1343 review).
+_TENANT_OWNED_PROVIDERS = frozenset(
+    {CredentialProvider.LLM_ANTHROPIC, CredentialProvider.LLM_OPENAI}
+)
+
+
 def _require_admin_unless_llm_key(auth: dict, cp: CredentialProvider) -> None:
     """Only LLM keys are tenant-owned; anything else (GitHub PAT) needs admin (#717, #1303)."""
-    if cp is not CredentialProvider.GIT_GITHUB or has_scope(auth, SCOPE_ADMIN):
+    if cp in _TENANT_OWNED_PROVIDERS or has_scope(auth, SCOPE_ADMIN):
         return
     raise HTTPException(
         status_code=403,

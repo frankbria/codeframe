@@ -88,7 +88,7 @@ def spend_today_usd(repo_paths: Iterable[Path]) -> float:
 # ponytail: per process — fine for the single-worker server; a multi-worker
 # deploy needs this in shared storage (same caveat as stream tickets, #745).
 # A run that crosses midnight is not re-reserved for the new day.
-_held: dict[int, list[tuple[date, float]]] = {}
+_held: dict[int, list[tuple[date, float, Optional[str]]]] = {}
 _held_lock = threading.Lock()
 
 
@@ -100,15 +100,13 @@ def _held_today(user_id: Optional[int]) -> float:
     if user_id is None:
         return 0.0
     today = _today()
-    return sum(amount for day, amount in _held.get(user_id, []) if day == today)
+    return sum(amount for day, amount, _ in _held.get(user_id, []) if day == today)
 
 
-def _free_today(user_id: Optional[int], repo_paths: Iterable[Path]) -> Optional[float]:
+def _free_today(
+    user_id: Optional[int], spent: float, limit: float
+) -> float:
     """What is left after recorded spend and in-flight holds; raises when none."""
-    limit = daily_limit_usd()
-    if limit is None:
-        return None
-    spent = spend_today_usd(repo_paths)
     held = _held_today(user_id)
     if spent + held >= limit:
         in_flight = f" (${held:.2f} held by runs in progress)" if held else ""
@@ -128,27 +126,41 @@ def remaining_today_usd(
     Raises:
         SpendLimitExceeded: nothing is left.
     """
+    limit = daily_limit_usd()
+    if limit is None:
+        return None
+    spent = spend_today_usd(repo_paths)  # disk I/O stays outside the lock
     with _held_lock:
-        return _free_today(user_id, repo_paths)
+        return _free_today(user_id, spent, limit)
 
 
 def reserve_today_usd(
-    user_id: int, repo_paths: Iterable[Path], share: int = 1
+    user_id: int,
+    repo_paths: Iterable[Path],
+    share: int = 1,
+    group: Optional[str] = None,
 ) -> Optional[float]:
     """Hold a slice of what is left for one run; ``release`` it when it ends.
 
-    ``share`` splits the remainder between runs about to start together (a
-    parallel batch's slots), so the first one cannot take all of it.
+    ``share`` is how many runs of ``group`` (a parallel batch's slots) may run
+    at once. The remainder is divided by the slots its siblings do not already
+    hold, counted under the same lock, so concurrent siblings get equal slices
+    rather than each taking ``1/share`` of what the previous one left.
 
     Raises:
         SpendLimitExceeded: nothing is left.
     """
+    limit = daily_limit_usd()
+    if limit is None:
+        return None
+    # Read outside the lock: recorded spend only grows through runs, and those
+    # are covered by holds, which are what the lock protects.
+    spent = spend_today_usd(repo_paths)
     with _held_lock:
-        free = _free_today(user_id, repo_paths)
-        if free is None:
-            return None
-        amount = free / max(share, 1)
-        _held.setdefault(user_id, []).append((_today(), amount))
+        holds = _held.setdefault(user_id, [])
+        siblings = sum(1 for *_, g in holds if group is not None and g == group)
+        amount = _free_today(user_id, spent, limit) / max(share - siblings, 1)
+        holds.append((_today(), amount, group))
         return amount
 
 
@@ -158,7 +170,7 @@ def release(user_id: Optional[int], amount: Optional[float]) -> None:
         return
     with _held_lock:
         holds = _held.get(user_id, [])
-        for i, (_, held) in enumerate(holds):
+        for i, (_, held, _group) in enumerate(holds):
             if held == amount:
                 del holds[i]
                 break

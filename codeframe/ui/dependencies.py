@@ -325,7 +325,9 @@ def check_spend_limit(
     from codeframe.ui.response_models import ErrorCodes, api_error
 
     user_id = auth.get("user_id")
-    if user_id is None:
+    # Auth-off is the single local operator, who is never limited. Since #963
+    # that principal carries the operator's real user_id, so test its type too.
+    if user_id is None or auth.get("type") == "disabled":
         return None, None
     current = str(Path(workspace.repo_path))
     registry = getattr(getattr(request.app.state, "db", None), "workspace_registry", None)

@@ -835,7 +835,9 @@ def execute_batch(
     _batch_principal[batch.id] = user_id
     if spend_scope is not None:
         # Parallel siblings start together, so each holds only its slot's share.
-        share = batch.max_parallel if batch.strategy != "serial" else 1
+        share = (
+            min(batch.max_parallel, len(batch.task_ids)) if batch.strategy != "serial" else 1
+        )
         _batch_spend_scope[batch.id] = (spend_scope, share)
     try:
         return _execute_batch(workspace, batch, max_retries, on_event, user_id)
@@ -2613,7 +2615,7 @@ def _execute_task_subprocess(
             return RunStatus.FAILED.value
 
         try:
-            held = reserve_today_usd(user_id, spend[0](), share=spend[1])
+            held = reserve_today_usd(user_id, spend[0](), share=spend[1], group=batch_id)
         except SpendLimitExceeded as exc:
             logger.error("Task %s not started: %s", task_id, exc)
             return RunStatus.FAILED.value

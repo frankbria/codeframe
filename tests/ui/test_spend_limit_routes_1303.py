@@ -261,3 +261,19 @@ def test_the_worker_releases_its_hold_when_the_run_ends(env, monkeypatch):
     assert seen["held"] == pytest.approx(2.0)  # held while running
     assert spend_limit._held == {}  # and returned afterwards
 
+
+
+def test_auth_off_principal_with_a_real_user_id_is_not_limited(env, monkeypatch):
+    """Since #963 the auth-off principal carries the operator's real user_id, so
+    `user_id is None` alone never exempted it (GLM review on PR #1343)."""
+    client, ws, repo, other = env
+    client.app.dependency_overrides[require_auth] = lambda: {
+        "type": "disabled", "user_id": USER, "scopes": ["read", "write", "admin"],
+    }
+    monkeypatch.setattr(tasks_v2, "_spawn_agent_worker", lambda *a, **kw: None)
+    _record(repo, 99.0)
+    task = tasks.create(ws, title="t", description="d", status=TaskStatus.READY)
+
+    resp = client.post(f"/api/v2/tasks/{task.id}/start?execute=true&{_q(repo)}")
+
+    assert resp.status_code == 200, resp.text

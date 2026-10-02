@@ -167,3 +167,16 @@ def test_non_admin_github_connect_does_not_copy_operator_keys(env, tmp_path):
 
     assert r.status_code == 403, r.text  # reached the admin check, past the workspace
     assert _user_store(store_dir).get_credential(CredentialProvider.LLM_OPENAI) is None
+
+
+@pytest.mark.parametrize("provider", ["GIT_GITLAB", "CICD_GENERIC", "DATABASE"])
+def test_any_provider_other_than_llm_keys_needs_admin(provider):
+    """An allowlist: a provider added to the route later is admin-only by default
+    (claude-review on PR #1343)."""
+    from fastapi import HTTPException
+
+    from codeframe.ui.routers.settings_v2 import _require_admin_unless_llm_key
+
+    with pytest.raises(HTTPException) as exc:
+        _require_admin_unless_llm_key({"scopes": ["read", "write"]}, CredentialProvider[provider])
+    assert exc.value.status_code == 403

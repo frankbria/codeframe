@@ -256,16 +256,25 @@ class TestBatchRechecksBeforeEachTask:
         assert len(spawned) == 1
         assert float(spawned[0][spend_limit.RUN_CEILING_ENV]) == pytest.approx(1.5)
 
-    def test_parallel_batch_child_gets_its_slots_share(self, monkeypatch, repos, clean_holds):
-        """Siblings start together, so each holds remaining / max_parallel."""
+    def test_parallel_batch_children_split_the_remainder(self, monkeypatch, repos, clean_holds):
+        """Two tasks in two slots: each holds half (share = min(slots, tasks))."""
+        from codeframe.core import conductor, tasks
+        from codeframe.core.state_machine import TaskStatus
+
         monkeypatch.setenv(LIMIT_ENV, "2")
-        spawned = self._run_batch(
-            repos[0], monkeypatch,
-            batch_opts={"strategy": "parallel", "max_parallel": 2},
-            user_id=7, spend_scope=lambda: [repos[0]],
+        ws = create_or_load_workspace(repos[0])
+        ids = [
+            tasks.create(ws, title=f"t{i}", description="d", status=TaskStatus.READY).id
+            for i in range(2)
+        ]
+        batch = conductor.create_batch(ws, ids, strategy="parallel", max_parallel=4)
+        ceilings: list = []
+        monkeypatch.setattr(
+            conductor, "_spawn_task_child",
+            lambda *a, **kw: ceilings.append(kw["cost_ceiling_usd"]) or "FAILED",
         )
-        assert len(spawned) == 1
-        assert float(spawned[0][spend_limit.RUN_CEILING_ENV]) == pytest.approx(1.0)
+        conductor.execute_batch(ws, batch, user_id=7, spend_scope=lambda: [repos[0]])
+        assert ceilings == [pytest.approx(1.0), pytest.approx(1.0)]
 
     def test_exhausted_limit_spawns_nothing(self, monkeypatch, repos):
         monkeypatch.setenv(LIMIT_ENV, "1")
@@ -451,3 +460,41 @@ class TestUnmeteredEnginesAreRefusedUnderALimit:
         )
         assert spawned == []
         assert spend_limit._held == {}
+
+
+def test_concurrent_siblings_get_equal_slices(monkeypatch, repos, clean_holds):
+    """Four slots starting together each hold a quarter — not a shrinking
+    10/4, 7.5/4, … sequence (GLM + claude-review on PR #1343)."""
+    import threading
+
+    from codeframe.core import conductor
+
+    monkeypatch.setenv(LIMIT_ENV, "10")
+    barrier = threading.Barrier(4, timeout=10)
+    ceilings: list = []
+    lock = threading.Lock()
+
+    def _child(*a, **kw):
+        with lock:
+            ceilings.append(kw["cost_ceiling_usd"])
+        barrier.wait()  # all four hold at once
+        return "COMPLETED"
+
+    monkeypatch.setattr(conductor, "_spawn_task_child", _child)
+    conductor._batch_principal["b4"] = 1
+    conductor._batch_spend_scope["b4"] = (lambda: [repos[0]], 4)
+    ws = create_or_load_workspace(repos[0])
+    try:
+        threads = [
+            threading.Thread(target=conductor._execute_task_subprocess, args=(ws, f"t{i}", "b4"))
+            for i in range(4)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(15)
+    finally:
+        conductor._batch_principal.pop("b4", None)
+        conductor._batch_spend_scope.pop("b4", None)
+    assert sorted(ceilings) == [pytest.approx(2.5)] * 4
+    assert spend_limit._held == {}
