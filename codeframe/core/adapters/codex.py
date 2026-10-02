@@ -179,7 +179,10 @@ class CodexAdapter:
         """
         from codeframe.core.llm_resolution import resolve_api_key
 
-        # Env or `cf auth setup`: build_delegated_agent_env forwards either (#1264).
+        # codex-cli's own variable, forwarded as-is (#1270).
+        if os.environ.get("CODEX_API_KEY"):
+            return True
+        # Env or `cf auth setup`: _child_env hands it to codex as CODEX_API_KEY.
         if resolve_api_key("openai"):
             return True
 
@@ -209,8 +212,25 @@ class CodexAdapter:
 
     @classmethod
     def credential_env_vars(cls) -> tuple[str, ...]:
-        """Plus the gateway override — an operator proxying OpenAI still needs it."""
-        return ("OPENAI_API_KEY", "OPENAI_BASE_URL")
+        """Plus the gateway override — an operator proxying OpenAI still needs it.
+
+        codex-cli reads ``CODEX_API_KEY``, not ``OPENAI_API_KEY`` (that alone
+        gets "401 Missing bearer"), so both are forwarded and ``_child_env``
+        maps the OpenAI key onto it when it is unset (#1270).
+        """
+        return ("CODEX_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL")
+
+    def _child_env(self, workspace_path: Path) -> dict[str, str]:
+        """The #996 sandboxed environment, with the key where codex reads it."""
+        env = build_delegated_agent_env(
+            workspace_path,
+            adapter_name=self.name,
+            credential_vars=self.credential_env_vars(),
+            home_passthrough=self.home_passthrough(),
+        )
+        if not env.get("CODEX_API_KEY") and env.get("OPENAI_API_KEY"):
+            env["CODEX_API_KEY"] = env["OPENAI_API_KEY"]
+        return env
 
     @classmethod
     def home_passthrough(cls) -> tuple[str, ...]:
@@ -246,12 +266,7 @@ class CodexAdapter:
                 errors="replace",
                 # Codex spawns its own process rather than going through
                 # SubprocessAdapter.run, so it needs the #996 env explicitly.
-                env=build_delegated_agent_env(
-                    workspace_path,
-                    adapter_name=self.name,
-                    credential_vars=self.credential_env_vars(),
-                    home_passthrough=self.home_passthrough(),
-                ),
+                env=self._child_env(workspace_path),
             )
         except FileNotFoundError:
             return AgentResult(

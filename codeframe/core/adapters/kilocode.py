@@ -177,9 +177,22 @@ class KilocodeAdapter(SubprocessAdapter):
         }
 
     @classmethod
+    def credential_env_vars(cls) -> tuple[str, ...]:
+        """kilo is multi-provider like opencode, so both keys are in scope (#1270).
+
+        Only ``KILOCODE_PATH`` used to be forwarded, so a provider key never
+        reached the CLI and it answered "You need to sign in to use this model".
+        """
+        return ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "KILOCODE_PATH")
+
+    @classmethod
     def home_passthrough(cls) -> tuple[str, ...]:
-        """`kilo` keeps its login here; a bare sandbox home logs it out (#996)."""
-        return (".kilocode",)
+        """Where `kilo` keeps its login; a bare sandbox home logs it out (#996).
+
+        kilo 7.x keeps its state under the XDG dirs (#1270); ``.kilocode`` is
+        the 0.22 legacy CLI's.
+        """
+        return (".config/kilo", ".local/share/kilo", ".kilocode")
 
     @classmethod
     def check_ready(cls) -> dict[str, bool]:
