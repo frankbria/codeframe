@@ -834,11 +834,8 @@ def execute_batch(
     """
     _batch_principal[batch.id] = user_id
     if spend_scope is not None:
-        # Parallel siblings start together, so each holds only its slot's share.
-        share = (
-            min(batch.max_parallel, len(batch.task_ids)) if batch.strategy != "serial" else 1
-        )
-        _batch_spend_scope[batch.id] = (spend_scope, share)
+        # One task at a time until a parallel group sets its own share.
+        _batch_spend_scope[batch.id] = (spend_scope, 1)
     try:
         return _execute_batch(workspace, batch, max_retries, on_event, user_id)
     finally:
