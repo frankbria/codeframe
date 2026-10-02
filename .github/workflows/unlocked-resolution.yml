@@ -32,6 +32,15 @@ on:
       - "pyproject.toml"
       - "tests/adapters/test_sdk_kwargs_guard_614.py"
       - "tests/adapters/test_model_defaults_guard_1112.py"
+      # Everything the job now runs (#1268), so a PR that breaks one under the
+      # unlocked resolution is red on the PR, not on the next morning's run.
+      - "tests/adapters/test_request_shape_1267.py"
+      - "tests/cli/**"
+      - "tests/core/test_tui_dashboard.py"
+      - "tests/core/test_cli_validators.py"
+      - "tests/lifecycle/test_api_lifecycle.py"
+      - "codeframe/cli/**"
+      - "codeframe/adapters/llm/**"
       - "pytest.ini" # its filterwarnings decide whether these guards pass (#1340)
       - ".github/workflows/unlocked-resolution.yml"
 

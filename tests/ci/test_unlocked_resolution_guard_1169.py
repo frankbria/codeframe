@@ -78,7 +78,6 @@ def test_the_release_is_gated_on_it():
     )
 
 
-
 def test_it_runs_the_cli_suite_and_the_mock_lifecycle_against_the_resolved_env():
     """#1268: typer 0.27 broke `cf proof capture` while `cf --help` still ran."""
     runs = " ".join(s.get("run", "") for s in _steps(_load(UNLOCKED)))
@@ -107,9 +106,16 @@ def test_sdks_the_cli_calls_into_have_a_ceiling(package):
     """The #1168 lesson: a floor-only pin is a latent dead-on-arrival release."""
     import tomllib
 
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+
     pyproject = tomllib.loads((WORKFLOWS.parents[1] / "pyproject.toml").read_text())
-    spec = next(
-        d for d in pyproject["project"]["dependencies"]
-        if d.split(">")[0].split("<")[0].split("=")[0].split("[")[0].strip() == package
+    reqs = {
+        canonicalize_name(r.name): r
+        for r in map(Requirement, pyproject["project"]["dependencies"])
+    }
+    req = reqs.get(canonicalize_name(package))
+    assert req is not None, f"{package} is not a runtime dependency"
+    assert any(s.operator in ("<", "<=", "~=", "==") for s in req.specifier), (
+        f"{req} has no upper bound"
     )
-    assert "<" in spec, f"{spec!r} has no upper bound"

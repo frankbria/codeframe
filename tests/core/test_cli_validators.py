@@ -3,8 +3,8 @@
 import os
 from pathlib import Path
 
-import click
 import pytest
+import typer
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -64,7 +64,7 @@ class TestRequireAnthropicApiKey:
 
         from codeframe.cli.validators import require_anthropic_api_key
 
-        with pytest.raises(click.exceptions.Exit):
+        with pytest.raises(typer.Exit):
             require_anthropic_api_key()
 
 
