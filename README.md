@@ -188,9 +188,17 @@ check, and `cf pr merge` refuses to merge while any of them is open.
 
 **Step 8 — Ship**
 
+`cf pr` talks to GitHub, so it needs a token and the repository: connect them in
+the web UI (Settings → Integrations), or export `GITHUB_TOKEN` (a PAT with
+`repo` scope) and `GITHUB_REPO=owner/repo`.
+
 ```bash
 cf pr create                        # Open a PR with proof report attached
 ```
+
+The title defaults to the branch's newest commit (`--title` overrides it), and
+the body ends with the workspace's PROOF9 status: requirement counts, the open
+ones by name, and the latest `cf proof run` verdict.
 
 That is the entire workflow. An empty directory through a green `cf proof run`
 is **5m59s** of wall clock on a clean machine — measured, not estimated, in
@@ -387,13 +395,13 @@ cf dashboard                          # Launch TUI dashboard
 ### SHIP -- Delivery
 
 ```bash
-cf pr create                          # Create PR from current branch
+cf pr create --title "Add search"     # PR from the current branch, PROOF9 report appended
 cf pr list                            # List open PRs
 cf pr status                          # PR status, review state and CI checks
 cf pr get <number>                    # Details for one PR
-cf pr merge                           # Merge approved PR
+cf pr merge <number>                  # Merge it (refused while a requirement is open)
 cf pr close <number>                  # Close a PR without merging
-cf commit                             # Commit verified changes
+cf commit create -m "feat: search"    # Commit verified changes
 cf patch export                       # Export changes as patch
 ```
 

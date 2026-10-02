@@ -128,6 +128,37 @@ def get_commit_messages(repo_path: Path, base: str, head: str) -> str:
         return ""
 
 
+def _newest_commit_subject(repo_path: Path, base: str, head: str) -> str:
+    """The subject of the newest commit on ``head`` that ``base`` lacks (#1273)."""
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%s", f"{base}..{head}"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError:
+        return ""
+
+
+def _proof_report_for_cwd() -> str:
+    """The PROOF9 report for the workspace in the cwd, or "" outside one (#1273)."""
+    from codeframe.core.proof.ledger import init_proof_tables
+    from codeframe.core.proof.report import pr_proof_report
+    from codeframe.core.workspace import get_workspace, workspace_exists
+
+    cwd = Path.cwd()
+    if not workspace_exists(cwd):
+        return ""
+    workspace = get_workspace(cwd)
+    init_proof_tables(workspace)
+    return pr_proof_report(workspace)
+
+
 def _get_github_config() -> tuple[str, str]:
     """Resolve the GitHub token and repo for the workspace in the cwd (#900).
 
@@ -190,7 +221,8 @@ def create_pr(
         None, "--branch", "-b", help="Branch name (defaults to current)"
     ),
     title: Optional[str] = typer.Option(
-        None, "--title", "-t", help="PR title"
+        None, "--title", "-t",
+        help="PR title (defaults to the newest commit subject on the branch)",
     ),
     body: Optional[str] = typer.Option(
         None, "--body", help="PR description body"
@@ -203,6 +235,11 @@ def create_pr(
         "--auto-description/--no-auto-description",
         help="Auto-generate PR description from commits",
     ),
+    proof_report: bool = typer.Option(
+        True,
+        "--proof-report/--no-proof-report",
+        help="Append the workspace's PROOF9 status to the PR body",
+    ),
 ):
     """Create a new pull request.
 
@@ -210,6 +247,8 @@ def create_pr(
     Optionally auto-generates a description from commit messages.
 
     Examples:
+
+        codeframe pr create
 
         codeframe pr create --title "Add new feature"
 
@@ -245,9 +284,18 @@ def create_pr(
         if not body:
             body = ""
 
-        # Title is required
+        if proof_report:
+            report = _proof_report_for_cwd()
+            if report:
+                body = f"{body}\n\n{report}" if body else report
+
         if not title:
-            console.print("[red]Error:[/red] --title is required.")
+            title = _newest_commit_subject(Path.cwd(), base, branch)
+        if not title:
+            console.print(
+                f"[red]Error:[/red] No commits on {escape(str(branch))} since "
+                f"{escape(base)} to take a title from; pass --title."
+            )
             raise typer.Exit(1)
 
         async def _create():

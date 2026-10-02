@@ -720,3 +720,68 @@ class TestCliUsesWorkspaceResolution:
 
         assert result.exit_code == 0, result.output
         assert MockGH.call_args.kwargs["repo"] == "operator/ambient-repo"
+
+
+class TestPRCreateDefaults1273:
+    """README's SHIP step ran `cf pr create` bare: --title was required and the
+    'proof report attached' it promised was never built (#1273)."""
+
+    @pytest.fixture
+    def repo(self, tmp_path, monkeypatch):
+        import subprocess
+
+        r = tmp_path / "repo"
+        r.mkdir()
+        run = lambda *a: subprocess.run(["git", *a], cwd=r, check=True, capture_output=True)  # noqa: E731
+        run("init", "-q", "-b", "main")
+        run("config", "user.email", "t@example.com")
+        run("config", "user.name", "T")
+        (r / "a.txt").write_text("a")
+        run("add", "a.txt")
+        run("commit", "-q", "-m", "chore: base")
+        run("checkout", "-q", "-b", "feature/x")
+        (r / "b.txt").write_text("b")
+        run("add", "b.txt")
+        run("commit", "-q", "-m", "feat: add the thing")
+        monkeypatch.chdir(r)
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_test_token_12345")
+        monkeypatch.setenv("GITHUB_REPO", "testowner/testrepo")
+        return r
+
+    def _create(self, mock_pr_details, *args):
+        from codeframe.cli.pr_commands import pr_app
+
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            MockGH.return_value.create_pull_request.return_value = mock_pr_details
+            result = runner.invoke(pr_app, ["create", *args])
+        return result, MockGH.return_value.create_pull_request.call_args
+
+    def test_the_title_defaults_to_the_branchs_newest_commit(self, repo, mock_pr_details):
+        result, call = self._create(mock_pr_details, "--no-auto-description")
+        assert result.exit_code == 0, result.output
+        assert call.kwargs["title"] == "feat: add the thing"
+
+    def test_an_explicit_title_still_wins(self, repo, mock_pr_details):
+        _, call = self._create(mock_pr_details, "--title", "Mine", "--no-auto-description")
+        assert call.kwargs["title"] == "Mine"
+
+    def test_the_body_carries_the_proof_report_in_a_workspace(self, repo, mock_pr_details):
+        from codeframe.core.workspace import create_or_load_workspace
+
+        create_or_load_workspace(repo)
+        result, call = self._create(mock_pr_details, "--body", "Why this change.")
+        assert result.exit_code == 0, result.output
+        assert call.kwargs["body"].startswith("Why this change.")
+        assert "## PROOF9" in call.kwargs["body"]
+
+    def test_no_proof_report_opts_out(self, repo, mock_pr_details):
+        from codeframe.core.workspace import create_or_load_workspace
+
+        create_or_load_workspace(repo)
+        _, call = self._create(mock_pr_details, "--body", "B", "--no-proof-report")
+        assert "## PROOF9" not in call.kwargs["body"]
+
+    def test_outside_a_workspace_there_is_no_report_and_no_error(self, repo, mock_pr_details):
+        result, call = self._create(mock_pr_details, "--body", "B")
+        assert result.exit_code == 0, result.output
+        assert "## PROOF9" not in call.kwargs["body"]
