@@ -26,8 +26,9 @@ def pr_proof_report(workspace: Workspace) -> str:
         return "\n".join(lines)
 
     by_status = {s: [r for r in reqs if r.status == s] for s in ReqStatus}
+    noun = "requirement" if len(reqs) == 1 else "requirements"
     lines.append(
-        f"{len(reqs)} requirements: {len(by_status[ReqStatus.OPEN])} open, "
+        f"{len(reqs)} {noun}: {len(by_status[ReqStatus.OPEN])} open, "
         f"{len(by_status[ReqStatus.SATISFIED])} satisfied, "
         f"{len(by_status[ReqStatus.WAIVED])} waived."
     )
