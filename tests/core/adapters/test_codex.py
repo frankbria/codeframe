@@ -19,6 +19,17 @@ pytestmark = pytest.mark.v2
 FIXTURES = Path(__file__).parent / "fixtures" / "codex_app_server"
 
 
+@pytest.fixture(autouse=True)
+def _no_api_key_login(request, monkeypatch):
+    """Scripted responses are keyed by request id, and an API-key login (#1270)
+    inserts a request; keep it out unless a test asks for it, whatever key the
+    developer's environment holds."""
+    if getattr(request.cls, "__name__", "") != "TestApiKeyLogin":
+        from codeframe.core.adapters.codex import CodexAdapter
+
+        monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: None))
+
+
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
@@ -722,3 +733,93 @@ class TestCodexZeroFileGuard:
 
     def test_a_non_git_workspace_is_not_judged(self) -> None:
         assert self._run(heads=(None, None)).status == "completed"
+
+
+
+# ----------------------------------------------------------------------
+# #1270: app-server ignores CODEX_API_KEY / OPENAI_API_KEY in the env
+# ----------------------------------------------------------------------
+
+
+class TestApiKeyLogin:
+    """Verified against codex-cli 0.159: with either variable set, a turn fails
+    with "401 Missing bearer"; after ``account/login/start {type: apiKey}`` the
+    key reaches OpenAI. That login writes auth.json into CODEX_HOME."""
+
+    @pytest.fixture
+    def homes(self, tmp_path, monkeypatch):
+        operator = tmp_path / "operator"
+        (operator / ".codex").mkdir(parents=True)
+        (operator / ".codex" / "config.toml").write_text('model = "gpt-5"\n')
+        monkeypatch.setenv("HOME", str(operator))
+        monkeypatch.delenv("CODEX_HOME", raising=False)
+        monkeypatch.delenv("CODEX_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-KEY")
+        return operator
+
+    def _lines(self):
+        return [
+            _response(1, {"userAgent": "codeframe"}),
+            _response(2, {}),  # account/login/start
+            _response(3, {"thread": {"id": "th-1"}}),
+            _turn_completed(),
+        ]
+
+    def test_without_a_codex_login_the_key_logs_the_server_in(self, homes, tmp_path):
+        adapter = _make_adapter()
+        captured = {}
+        real_popen_env = {}
+
+        orig = adapter._child_env
+
+        def spy(ws):
+            env, key = orig(ws)
+            real_popen_env.update(env)
+            captured["key"] = key
+            return env, key
+
+        adapter._child_env = spy
+        result, sent = _run_with_script(adapter, self._lines(), workspace_path=tmp_path)
+
+        assert result.status == "completed", result.error
+        login = next(m for m in sent if m.get("method") == "account/login/start")
+        assert login["params"] == {"type": "apiKey", "apiKey": "sk-test-KEY"}
+        assert sent.index(login) < next(
+            i for i, m in enumerate(sent) if m.get("method") == "thread/start"
+        )
+        # A private CODEX_HOME, never the operator's ~/.codex ...
+        private = Path(real_popen_env["CODEX_HOME"])
+        assert private.name == ".codex-api-key"
+        assert not str(private).startswith(str(homes / ".codex"))
+        # ... that still sees the operator's model settings ...
+        assert (private / "config.toml").read_text() == 'model = "gpt-5"\n'
+        # ... and keeps no key at rest once the run is over.
+        assert not (private / "auth.json").exists()
+
+    def test_an_existing_codex_login_wins_over_the_key(self, homes, tmp_path):
+        """A ChatGPT-plan login must not quietly move to metered API billing."""
+        (homes / ".codex" / "auth.json").write_text(json.dumps({
+            "OPENAI_API_KEY": None, "tokens": {"access_token": "at"},
+        }))
+        adapter = _make_adapter()
+        result, sent = _run_with_script(adapter, _handshake_lines() + [_turn_completed()],
+                                        workspace_path=tmp_path)
+        assert result.status == "completed", result.error
+        assert not any(m.get("method") == "account/login/start" for m in sent)
+
+    def test_no_key_and_no_login_sends_no_login(self, homes, tmp_path, monkeypatch):
+        from codeframe.core import llm_resolution
+
+        monkeypatch.delenv("OPENAI_API_KEY")
+        monkeypatch.setattr(llm_resolution, "resolve_api_key", lambda *a, **k: None)
+        adapter = _make_adapter()
+        _, sent = _run_with_script(adapter, _handshake_lines() + [_turn_completed()],
+                                   workspace_path=tmp_path)
+        assert not any(m.get("method") == "account/login/start" for m in sent)
+
+    def test_codex_api_key_beats_the_openai_key(self, homes, tmp_path, monkeypatch):
+        monkeypatch.setenv("CODEX_API_KEY", "sk-codex-OWN")
+        adapter = _make_adapter()
+        _, sent = _run_with_script(adapter, self._lines(), workspace_path=tmp_path)
+        login = next(m for m in sent if m.get("method") == "account/login/start")
+        assert login["params"]["apiKey"] == "sk-codex-OWN"

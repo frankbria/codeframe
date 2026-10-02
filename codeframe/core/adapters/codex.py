@@ -31,7 +31,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from codeframe import __version__ as _codeframe_version
 from codeframe.core.adapters.agent_adapter import (
@@ -45,6 +45,11 @@ from codeframe.core.agent_env import build_delegated_agent_env
 from codeframe.core.dangerous_commands import is_dangerous_command
 
 logger = logging.getLogger(__name__)
+
+# A private CODEX_HOME, under the delegated agent home, for runs that log in
+# with an API key: that login writes auth.json, which must not land in the
+# operator's passed-through ~/.codex (#1270).
+_API_KEY_HOME = ".codex-api-key"
 
 _TIMEOUT = object()  # No message within the read window (process still alive)
 _EOF = object()  # stdout closed — the process is gone
@@ -167,25 +172,34 @@ class CodexAdapter:
 
     @classmethod
     def is_authenticated(cls) -> bool:
-        """True when codex can actually talk to a model (#1010).
+        """True when codex can actually talk to a model (#1010, #1270).
 
-        ``OPENAI_API_KEY`` is *not* the test. ``codex login`` writes ChatGPT-plan
-        credentials to ``auth.json`` and records ``"OPENAI_API_KEY": null`` in
-        the very same file — so gating on the environment variable refuses the
-        common case, where the CLI works perfectly well.
+        ``OPENAI_API_KEY`` is *not* the test on its own terms. ``codex login``
+        writes ChatGPT-plan credentials to ``auth.json`` and records
+        ``"OPENAI_API_KEY": null`` in the very same file — so gating on the
+        environment variable refuses the common case, where the CLI works
+        perfectly well. A key does count, because ``run`` logs the app-server
+        in with it (see ``_child_env``).
+        """
+        return cls._codex_login() or bool(cls._api_key())
 
-        Presence of the file is not the test either: ``codex logout`` can leave
-        it behind with empty tokens.
+    @classmethod
+    def _api_key(cls) -> Optional[str]:
+        """An API key to log codex in with: ``CODEX_API_KEY``, else the OpenAI key.
+
+        The OpenAI key comes from the env or ``cf auth setup`` (#1264).
         """
         from codeframe.core.llm_resolution import resolve_api_key
 
-        # codex-cli's own variable, forwarded as-is (#1270).
-        if os.environ.get("CODEX_API_KEY"):
-            return True
-        # Env or `cf auth setup`: _child_env hands it to codex as CODEX_API_KEY.
-        if resolve_api_key("openai"):
-            return True
+        return os.environ.get("CODEX_API_KEY") or resolve_api_key("openai")
 
+    @classmethod
+    def _codex_login(cls) -> bool:
+        """Whether codex's own ``auth.json`` holds a working login.
+
+        Presence of the file is not the test: ``codex logout`` can leave it
+        behind with empty tokens.
+        """
         try:
             auth = json.loads((cls.codex_home() / "auth.json").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, ValueError):
@@ -214,23 +228,39 @@ class CodexAdapter:
     def credential_env_vars(cls) -> tuple[str, ...]:
         """Plus the gateway override — an operator proxying OpenAI still needs it.
 
-        codex-cli reads ``CODEX_API_KEY``, not ``OPENAI_API_KEY`` (that alone
-        gets "401 Missing bearer"), so both are forwarded and ``_child_env``
-        maps the OpenAI key onto it when it is unset (#1270).
+        ``codex app-server`` reads neither key from the environment (both get
+        "401 Missing bearer"); ``run`` logs it in over the protocol instead
+        (#1270). They are still forwarded for a ``config.toml`` provider whose
+        ``env_key`` names one.
         """
         return ("CODEX_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL")
 
-    def _child_env(self, workspace_path: Path) -> dict[str, str]:
-        """The #996 sandboxed environment, with the key where codex reads it."""
+    def _child_env(self, workspace_path: Path) -> tuple[dict[str, str], Optional[str]]:
+        """The #996 sandboxed environment, and the API key to log in with (if any).
+
+        An existing ``codex login`` wins: logging in with a key on top of a
+        ChatGPT plan would quietly move the operator's runs to metered billing.
+        Without one, a key logs the app-server in — and that login writes
+        ``auth.json`` into ``CODEX_HOME``, so it gets a private one rather than
+        the passed-through ``~/.codex``, where it would overwrite the
+        operator's own login.
+        """
         env = build_delegated_agent_env(
             workspace_path,
             adapter_name=self.name,
             credential_vars=self.credential_env_vars(),
             home_passthrough=self.home_passthrough(),
         )
-        if not env.get("CODEX_API_KEY") and env.get("OPENAI_API_KEY"):
-            env["CODEX_API_KEY"] = env["OPENAI_API_KEY"]
-        return env
+        key = None if self._codex_login() else self._api_key()
+        if key:
+            private = Path(env["HOME"]) / _API_KEY_HOME
+            private.mkdir(mode=0o700, parents=True, exist_ok=True)
+            config = self.codex_home() / "config.toml"
+            link = private / "config.toml"
+            if config.is_file() and not link.is_symlink() and not link.exists():
+                link.symlink_to(config)  # keep the operator's model/provider settings
+            env["CODEX_HOME"] = str(private)
+        return env, key
 
     @classmethod
     def home_passthrough(cls) -> tuple[str, ...]:
@@ -254,6 +284,7 @@ class CodexAdapter:
         # Baseline so a run that commits its own work still counts (#739).
         head_before = self._git_head(workspace_path)
 
+        env, login_key = self._child_env(workspace_path)
         try:
             process = subprocess.Popen(
                 [self._binary_path, "app-server"],
@@ -266,7 +297,7 @@ class CodexAdapter:
                 errors="replace",
                 # Codex spawns its own process rather than going through
                 # SubprocessAdapter.run, so it needs the #996 env explicitly.
-                env=self._child_env(workspace_path),
+                env=env,
             )
         except FileNotFoundError:
             return AgentResult(
@@ -287,7 +318,7 @@ class CodexAdapter:
 
         reader = _MessageReader(process.stdout)
         try:
-            thread_id = self._handshake(process.stdin, reader, workspace_path)
+            thread_id = self._handshake(process.stdin, reader, workspace_path, login_key)
             turn_request_id = self._start_turn(process.stdin, thread_id, prompt, workspace_path)
             result = self._stream_turn(
                 reader, process.stdin, turn_request_id=turn_request_id, on_event=on_event
@@ -299,6 +330,10 @@ class CodexAdapter:
         finally:
             self._kill(process)
             stderr_thread.join(timeout=5)
+            if login_key:
+                # The login stored the key in the private CODEX_HOME; it is
+                # re-sent each run, so nothing needs it at rest.
+                (Path(env["CODEX_HOME"]) / "auth.json").unlink(missing_ok=True)
 
         if result.status == "failed" and stderr_chunks and stderr_chunks[0].strip():
             result.error = f"{result.error}\nstderr: {stderr_chunks[0].strip()[-2000:]}"
@@ -364,8 +399,17 @@ class CodexAdapter:
     # Handshake
     # ------------------------------------------------------------------
 
-    def _handshake(self, stdin: Any, reader: _MessageReader, workspace_path: Path) -> str:
-        """initialize -> initialized -> thread/start. Returns the thread id."""
+    def _handshake(
+        self,
+        stdin: Any,
+        reader: _MessageReader,
+        workspace_path: Path,
+        login_key: Optional[str] = None,
+    ) -> str:
+        """initialize -> initialized [-> account/login/start] -> thread/start.
+
+        Returns the thread id.
+        """
         self._request(
             stdin,
             reader,
@@ -379,6 +423,10 @@ class CodexAdapter:
             },
         )
         self._notify(stdin, "initialized")
+        if login_key:
+            self._request(
+                stdin, reader, "account/login/start", {"type": "apiKey", "apiKey": login_key}
+            )
 
         params: dict[str, Any] = {
             "cwd": str(workspace_path),
