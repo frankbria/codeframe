@@ -149,12 +149,13 @@ def _proof_report_for_cwd() -> str:
     """The PROOF9 report for the workspace in the cwd, or "" outside one (#1273)."""
     from codeframe.core.proof.ledger import init_proof_tables
     from codeframe.core.proof.report import pr_proof_report
-    from codeframe.core.workspace import get_workspace, workspace_exists
+    from codeframe.core.workspace import find_workspace_root, get_workspace
 
-    cwd = Path.cwd()
-    if not workspace_exists(cwd):
+    # Upward, like the merge gate (#926): people run git from subdirectories.
+    root = find_workspace_root(Path.cwd())
+    if root is None:
         return ""
-    workspace = get_workspace(cwd)
+    workspace = get_workspace(root)
     init_proof_tables(workspace)
     return pr_proof_report(workspace)
 
@@ -314,8 +315,13 @@ def create_pr(
         pr = _run_async(_create())
 
         console.print(f"[green]✓ PR #{pr.number} created successfully[/green]")
-        console.print(f"\n[bold]Title:[/bold] {pr.title}")
-        console.print(f"[bold]Branch:[/bold] {pr.head_branch} → {pr.base_branch}")
+        # GitHub echoes the title back, and it may be a raw commit subject
+        # ("[WIP] …") since #1273: escape it, or the print raises after the PR
+        # already exists (#1054).
+        console.print(f"\n[bold]Title:[/bold] {escape(str(pr.title))}")
+        console.print(
+            f"[bold]Branch:[/bold] {escape(str(pr.head_branch))} → {escape(str(pr.base_branch))}"
+        )
         console.print(f"[bold]URL:[/bold] [link={pr.url}]{pr.url}[/link]")
 
     except GitHubAPIError as e:
@@ -398,8 +404,8 @@ def list_prs(
 
             table.add_row(
                 str(pr.number),
-                pr.title[:40] if pr.title else "",
-                pr.head_branch,
+                escape(pr.title[:40]) if pr.title else "",
+                escape(str(pr.head_branch)),
                 state_display,
                 pr.created_at.strftime("%Y-%m-%d") if pr.created_at else "",
             )
@@ -451,9 +457,11 @@ def get_pr(
             return
 
         # Text format
-        console.print(f"\n[bold]PR #{pr.number}[/bold] - {pr.title}")
+        console.print(f"\n[bold]PR #{pr.number}[/bold] - {escape(str(pr.title))}")
         console.print(f"\n[bold]State:[/bold] {pr.state}")
-        console.print(f"[bold]Branch:[/bold] {pr.head_branch} → {pr.base_branch}")
+        console.print(
+            f"[bold]Branch:[/bold] {escape(str(pr.head_branch))} → {escape(str(pr.base_branch))}"
+        )
         console.print(f"[bold]Created:[/bold] {pr.created_at.strftime('%Y-%m-%d %H:%M') if pr.created_at else 'N/A'}")
 
         if pr.merged_at:
@@ -795,9 +803,11 @@ def pr_status():
         pr = _run_async(_status())
 
         if pr:
-            console.print(f"\n[bold]PR #{pr.number}[/bold] - {pr.title}")
+            console.print(f"\n[bold]PR #{pr.number}[/bold] - {escape(str(pr.title))}")
             console.print(f"[bold]State:[/bold] [green]{pr.state}[/green]")
-            console.print(f"[bold]Branch:[/bold] {pr.head_branch} → {pr.base_branch}")
+            console.print(
+            f"[bold]Branch:[/bold] {escape(str(pr.head_branch))} → {escape(str(pr.base_branch))}"
+        )
             console.print(f"[bold]URL:[/bold] {pr.url}")
         else:
             console.print(f"[yellow]No open PR found for branch '{current_branch}'[/yellow]")

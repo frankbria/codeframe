@@ -785,3 +785,27 @@ class TestPRCreateDefaults1273:
         result, call = self._create(mock_pr_details, "--body", "B")
         assert result.exit_code == 0, result.output
         assert "## PROOF9" not in call.kwargs["body"]
+
+    def test_a_bracketed_commit_subject_does_not_crash_after_creating(self, repo, mock_pr_details):
+        """GLM/claude-review on #1357: GitHub echoes the defaulted title back,
+        and an unescaped '[WIP]' raised after the PR already existed."""
+        import dataclasses
+        import subprocess
+
+        subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "[WIP] fix a[0] and [/b]"],
+                       cwd=repo, check=True)
+        echoed = dataclasses.replace(mock_pr_details, title="[WIP] fix a[0] and [/b]")
+        result, call = self._create(echoed, "--no-auto-description")
+        assert result.exit_code == 0, result.output
+        assert call.kwargs["title"] == "[WIP] fix a[0] and [/b]"
+        assert "[WIP] fix a[0] and [/b]" in result.output
+
+    def test_the_report_is_found_from_a_subdirectory(self, repo, mock_pr_details, monkeypatch):
+        """#926 class: the workspace is looked up upward, like the merge gate."""
+        from codeframe.core.workspace import create_or_load_workspace
+
+        create_or_load_workspace(repo)
+        (repo / "src").mkdir()
+        monkeypatch.chdir(repo / "src")
+        _, call = self._create(mock_pr_details, "--body", "B")
+        assert "## PROOF9" in call.kwargs["body"]
