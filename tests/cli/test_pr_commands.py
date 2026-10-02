@@ -845,3 +845,21 @@ class TestPRCreateDefaults1273:
         assert result.exit_code == 0, result.output
         data = _json.loads(result.output)
         assert data["title"] == "[WIP] a[0] [/b]" and data["body"] == "[admin]"
+
+
+    def test_json_output_of_a_long_body_is_valid_json(self, repo, mock_pr_details):
+        """Rich hard-wraps at the console width (80 when piped): a long body
+        (commit subjects + PROOF9 report) produced invalid JSON."""
+        import dataclasses
+        import json as _json
+
+        from codeframe.cli.pr_commands import pr_app
+
+        long = dataclasses.replace(mock_pr_details, body="x" * 500 + "\n## PROOF9\n" + "y" * 300)
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            MockGH.return_value.get_pull_request.return_value = long
+            MockGH.return_value.list_pull_requests.return_value = [long]
+            got = runner.invoke(pr_app, ["get", "42", "--format", "json"])
+            listed = runner.invoke(pr_app, ["list", "--format", "json"])
+        assert _json.loads(got.output)["body"] == long.body
+        assert _json.loads(listed.output)[0]["body"] == long.body
