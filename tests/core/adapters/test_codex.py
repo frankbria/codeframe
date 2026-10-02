@@ -852,3 +852,65 @@ class TestApiKeyLogin:
             env, key = adapter._child_env(tmp_path)
         assert key == "sk-test-KEY"
         assert Path(env["CODEX_HOME"]).is_dir()
+
+
+class TestPrivateHomeCleanup:
+    """GLM + claude-review on PR #1352: the key must not outlive a killed run."""
+
+    @pytest.fixture
+    def root(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        r = tmp_path / ".codeframe" / "agent-homes" / "codex-api-key"
+        r.mkdir(parents=True)
+        return r
+
+    def _home(self, root, name, pid=None, age_s=0):
+        h = root / name
+        h.mkdir()
+        (h / "auth.json").write_text('{"OPENAI_API_KEY": "sk"}')
+        if pid is not None:
+            (h / "owner.pid").write_text(str(pid))
+        if age_s:
+            t = time.time() - age_s
+            os.utime(h, (t, t))
+        return h
+
+    def test_a_killed_runs_home_is_swept(self, root):
+        from codeframe.core.adapters.codex import _sweep_orphaned_homes
+
+        dead = self._home(root, "run-dead", pid=2**22 + 12345)  # no such process
+        _sweep_orphaned_homes(root)
+        assert not dead.exists()
+
+    def test_a_live_siblings_home_is_kept(self, root):
+        from codeframe.core.adapters.codex import _sweep_orphaned_homes
+
+        live = self._home(root, "run-live", pid=os.getpid())
+        _sweep_orphaned_homes(root)
+        assert live.exists()
+
+    def test_a_home_still_being_created_is_kept(self, root):
+        """mkdtemp happened, the PID is not written yet."""
+        from codeframe.core.adapters.codex import _sweep_orphaned_homes
+
+        fresh = self._home(root, "run-fresh")
+        _sweep_orphaned_homes(root)
+        assert fresh.exists()
+
+    def test_an_old_home_with_no_pid_is_swept(self, root):
+        from codeframe.core.adapters.codex import _sweep_orphaned_homes
+
+        stale = self._home(root, "run-stale", age_s=3600)
+        _sweep_orphaned_homes(root)
+        assert not stale.exists()
+
+    def test_a_failed_spawn_removes_its_home(self, root, tmp_path, monkeypatch):
+        from codeframe.core.adapters.codex import CodexAdapter
+
+        monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
+        monkeypatch.setattr(CodexAdapter, "_codex_login", classmethod(lambda cls: False))
+        adapter = _make_adapter()
+        with patch("subprocess.Popen", side_effect=PermissionError("not executable")):
+            result = adapter.run("t", "p", tmp_path)
+        assert result.status == "failed"
+        assert list(root.glob("run-*")) == []

@@ -51,6 +51,44 @@ logger = logging.getLogger(__name__)
 # that log in with an API key: that login writes auth.json, which must not land
 # in the operator's passed-through ~/.codex (#1270).
 _API_KEY_HOME = "codex-api-key"
+# Each private home records the PID of the cf process that made it.
+_OWNER_FILE = "owner.pid"
+_UNOWNED_GRACE_S = 60
+
+
+def _sweep_orphaned_homes(root: Path) -> None:
+    """Remove private homes whose owning process is gone (#1270).
+
+    A run's own cleanup cannot fire when its process is killed (``batch stop
+    --force`` sends SIGTERM, which nothing handles; SIGKILL; OOM), and that
+    home holds the API key in auth.json. Live siblings are left alone. PID
+    reuse can only keep an orphan longer, never remove a live home.
+    """
+    for home in root.glob("run-*"):
+        try:
+            pid = int((home / _OWNER_FILE).read_text())
+        except (OSError, ValueError):
+            # No PID yet: a sibling may be between mkdtemp and writing it, so
+            # only a home old enough to have been abandoned goes.
+            try:
+                if time.time() - home.stat().st_mtime < _UNOWNED_GRACE_S:
+                    continue
+            except OSError:
+                continue
+            pid = None
+        if pid is not None and _pid_alive(pid):
+            continue
+        shutil.rmtree(home, ignore_errors=True)
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, owned by someone else
+    return True
 
 _TIMEOUT = object()  # No message within the read window (process still alive)
 _EOF = object()  # stdout closed — the process is gone
@@ -260,7 +298,9 @@ class CodexAdapter:
             # env may carry no HOME at all.
             root = Path.home() / ".codeframe" / "agent-homes" / _API_KEY_HOME
             root.mkdir(mode=0o700, parents=True, exist_ok=True)
+            _sweep_orphaned_homes(root)
             private = Path(tempfile.mkdtemp(prefix="run-", dir=root))
+            (private / _OWNER_FILE).write_text(str(os.getpid()))
             # Everything codex keeps in its home (config.toml, AGENTS.md,
             # skills, ...) except the login itself.
             real = self.codex_home()
@@ -309,11 +349,13 @@ class CodexAdapter:
                 env=env,
             )
         except FileNotFoundError:
+            self._drop_login_home(env, login_key)
             return AgentResult(
                 status="failed",
                 error=f"Binary '{self._binary}' not found during execution",
             )
         except OSError as e:
+            self._drop_login_home(env, login_key)
             return AgentResult(status="failed", error=f"Failed to start '{self._binary}': {e}")
 
         stderr_chunks: list[str] = []
@@ -339,10 +381,7 @@ class CodexAdapter:
         finally:
             self._kill(process)
             stderr_thread.join(timeout=5)
-            if login_key:
-                # The login stored the key in this run's private CODEX_HOME; it
-                # is re-sent each run, so nothing needs it at rest.
-                shutil.rmtree(env["CODEX_HOME"], ignore_errors=True)
+            self._drop_login_home(env, login_key)
 
         if result.status == "failed" and stderr_chunks and stderr_chunks[0].strip():
             result.error = f"{result.error}\nstderr: {stderr_chunks[0].strip()[-2000:]}"
@@ -407,6 +446,16 @@ class CodexAdapter:
     # ------------------------------------------------------------------
     # Handshake
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _drop_login_home(env: dict[str, str], login_key: Optional[str]) -> None:
+        """Remove this run's private CODEX_HOME, and the key the login left in it.
+
+        The key is re-sent each run, so nothing needs it at rest. A run killed
+        before this point is swept by the next one (``_sweep_orphaned_homes``).
+        """
+        if login_key:
+            shutil.rmtree(env["CODEX_HOME"], ignore_errors=True)
 
     def _handshake(
         self,
