@@ -5,7 +5,6 @@ Tables live in the workspace's state.db alongside PRDs and tasks.
 """
 
 import json
-import re
 import sqlite3
 from datetime import date, datetime, timezone
 import logging
@@ -153,11 +152,13 @@ def _ensure_tables(
     # Run on the connection already open here. When proof_runs is absent
     # entirely, PRAGMA reports no columns, this no-ops, and init_proof_tables
     # below creates the table with the column already in place.
-    _migrate_proof_runs_vacuous_pass_column(workspace, conn=conn)
-    if not missing:
-        _normalize_absolute_scope_files(workspace, conn)
-    if own_conn:
-        conn.close()
+    try:
+        _migrate_proof_runs_vacuous_pass_column(workspace, conn=conn)
+        if not missing:
+            _normalize_absolute_scope_files(workspace, conn)
+    finally:
+        if own_conn:
+            conn.close()
     if missing:
         init_proof_tables(workspace)
     _migrate_evidence_status_column(workspace)
@@ -166,9 +167,6 @@ def _ensure_tables(
 # Workspaces whose stored scopes were checked for absolute paths this process.
 _scope_normalized_workspaces: set[str] = set()
 
-# An absolute spelling a repo-relative changed file can never equal.
-_ABSOLUTE_SCOPE_PATH = re.compile(r"^(?:/|\\|~|file://|[A-Za-z]:[\\/])")
-
 
 def _normalize_absolute_scope_files(workspace: Workspace, conn: sqlite3.Connection) -> None:
     """Re-classify 0.9.3-era absolute ``scope.files`` entries (#1276).
@@ -176,15 +174,16 @@ def _normalize_absolute_scope_files(workspace: Workspace, conn: sqlite3.Connecti
     0.9.3 stored paths such as ``/repo/my file.py`` or ``C:/repo/x.py`` as
     files. The scoped merge gate (#1247) compares against repo-relative paths,
     so those never matched and the requirement silently stopped blocking.
-    #1258's classifier handles new captures; this runs the stored rows through
-    it: a path inside the workspace is relativized, anything else becomes an
-    uncomparable tag, which fails closed. Idempotent — once rewritten, nothing
+    #1258's classifier handles new captures; this applies its absolute-path
+    rule to the stored rows, one entry at a time (a filename may contain a
+    comma): a path inside the workspace is relativized, anything else becomes
+    an uncomparable tag, which fails closed. Idempotent — once rewritten, nothing
     matches — and run on the borrowed connection, so a cold dashboard load
     keeps its connection count.
     """
     if workspace.id in _scope_normalized_workspaces:
         return
-    from codeframe.core.proof.scope import build_scope_from_capture
+    from codeframe.core.proof.scope import _is_absolute_path, _relativize
 
     rows = conn.execute(
         "SELECT id, scope FROM proof_requirements WHERE workspace_id = ?", (workspace.id,)
@@ -192,19 +191,21 @@ def _normalize_absolute_scope_files(workspace: Workspace, conn: sqlite3.Connecti
     changed = False
     for req_id, raw in rows:
         scope = _scope_from_json(raw)
-        if not any(_ABSOLUTE_SCOPE_PATH.match(f) for f in scope.files):
+        if not any(_is_absolute_path(f) for f in scope.files):
             continue
         files: list[str] = []
         for f in scope.files:
-            if not _ABSOLUTE_SCOPE_PATH.match(f):
+            if not _is_absolute_path(f):
                 files.append(f)
                 continue
-            reclassified = build_scope_from_capture(f, workspace=workspace)
-            files += reclassified.files
-            scope.routes += reclassified.routes
-            scope.apis += reclassified.apis
-            scope.components += reclassified.components
-            scope.tags += reclassified.tags
+            # One stored entry is one path: the capture classifier would split
+            # a filename on its commas. Not inside the repo -> a tag, which is
+            # uncomparable and therefore fails closed.
+            located = _relativize(f, workspace)
+            if located is not None:
+                files += located[0]
+            else:
+                scope.tags.append(f)
         scope.files = files
         conn.execute(
             "UPDATE proof_requirements SET scope = ? WHERE id = ? AND workspace_id = ?",

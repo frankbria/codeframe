@@ -180,9 +180,10 @@ def list_blocking_requirements(
     has no file dimension at all, and #922 exists because excluding those made
     runs pass while the gate still blocked on them.
 
-    Two reasons a requirement blocks:
+    Three reasons a requirement blocks:
 
     * It is still OPEN — never proven.
+    * It is WAIVED but the waiver's expiry date has passed (#1276).
     * It is recorded SATISFIED but its evidence no longer verifies. Checksum
       verification is worthless if the only path that runs it is a fresh proof
       run: a requirement marked satisfied yesterday keeps that status forever,

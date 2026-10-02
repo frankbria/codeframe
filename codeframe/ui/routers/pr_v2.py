@@ -823,7 +823,7 @@ async def merge_pull_request(
             detail = api_error(
                 f"PROOF9 merge gate: {len(blocking_reqs)} requirement(s) block this merge",
                 ErrorCodes.INVALID_STATE,
-                f"{summary}. Each is either unproven, or recorded satisfied with evidence that no longer matches its checksum. Satisfy, waive or re-prove them, or pass override=true with a reason.",
+                f"{summary}. Each is unproven, waived past its expiry date, or recorded satisfied with evidence that no longer matches its checksum. Satisfy, waive or re-prove them, or pass override=true with a reason.",
             )
             # The blocking set as data, not only as prose (#1247). A client
             # cannot re-derive it: /proof/status reports OPEN requirements,

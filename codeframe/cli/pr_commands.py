@@ -620,8 +620,8 @@ def _check_merge_gate(
         for r in blocking_reqs[:10]:
             console.print(f"  - {r.id}: {escape(r.title)}")  # captured free text (#1054)
         console.print(
-            "Each is either unproven, or recorded satisfied with evidence that "
-            "no longer matches its checksum."
+            "Each is unproven, waived past its expiry date, or recorded "
+            "satisfied with evidence that no longer matches its checksum."
         )
         console.print('Satisfy, waive or re-prove them, or pass --override --reason "...".')
         raise typer.Exit(1)

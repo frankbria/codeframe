@@ -126,7 +126,11 @@ class TestLegacyAbsoluteScopes:
         assert _ids(blocking) == ["REQ-0001"]  # scoped to app.py, so it blocks
         assert ledger.get_requirement(ws, "REQ-0001").scope.files == ["app.py"]
 
-    @pytest.mark.parametrize("stored", ["C:/repo/app.py", "~/repo/app.py", "file:///repo/app.py"])
+    @pytest.mark.parametrize("stored", [
+        "C:/repo/app.py", "~/repo/app.py", "file:///repo/app.py",
+        # Spellings the scope classifier treats as absolute (internal review).
+        "file:/repo/app.py", "C:repo/app.py", "\\\\share\\app.py",
+    ])
     def test_an_unmatchable_absolute_path_fails_closed(self, ws, stored):
         """It can never equal a repo-relative path, so it must block every PR."""
         ledger.save_requirement(ws, _req())
@@ -135,6 +139,18 @@ class TestLegacyAbsoluteScopes:
         blocking = list_blocking_requirements(ws, RequirementScope(files=["README.md"]))
 
         assert _ids(blocking) == ["REQ-0001"]
+
+    def test_a_comma_in_a_stored_filename_is_not_a_separator(self, ws):
+        """One stored entry is one path (codex review): the capture classifier
+        would split `a,b.py` into route `a` plus file `b.py`."""
+        (ws.repo_path / "a,b.py").write_text("")
+        ledger.save_requirement(ws, _req())
+        _store_raw_scope(ws, "REQ-0001", [str(ws.repo_path / "a,b.py")])
+
+        blocking = list_blocking_requirements(ws, RequirementScope(files=["a,b.py"]))
+
+        assert _ids(blocking) == ["REQ-0001"]
+        assert ledger.get_requirement(ws, "REQ-0001").scope.files == ["a,b.py"]
 
     def test_relative_paths_are_left_alone(self, ws):
         ledger.save_requirement(ws, _req(files=("src/x.py",)))
