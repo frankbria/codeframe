@@ -9,6 +9,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **A fresh install no longer resolves an untested typer, click or openai
+  (#1268).** `typer`, `click` and `openai` had floor-only pins, so `uv tool
+  install codeframe-ai` resolved typer 0.27. That version vendors its own click,
+  which broke `cf proof capture` prompts, `--help` metavars and telemetry
+  command names, and openai resolved to 3.x against a tested 2.x. They are now
+  capped at the tested versions (`typer<0.20`, `click<8.5`, `openai<3`), and the
+  CLI no longer hands installed-click objects to Typer. The daily Unlocked
+  Resolution check now runs the CLI suite, the TUI and validators tests, and
+  the mock-provider API lifecycle against a fresh resolution.
+
 - **Current Claude and OpenAI models now work (#1267).** Opus 4.7+, Opus 5/5.5,
   Sonnet 5/5.5 and Fable reject `temperature` and a fixed thinking budget, and
   OpenAI's gpt-5 and o-series reject `max_tokens` and `temperature`. Setting
