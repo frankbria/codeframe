@@ -522,20 +522,28 @@ class TestRound4:
         spend_limit.release(1, b, group="b")
         assert [g for *_, g in spend_limit._held[1]] == ["a"]
 
-    def test_a_linear_chain_is_not_split_by_max_parallel(self, monkeypatch, repos, clean_holds):
-        """Groups run in turn, so a 1-task group gets the whole remainder."""
+    def test_each_dependency_group_sets_its_own_share(self, monkeypatch, repos, clean_holds):
+        """Groups run in turn: a 2-task group splits the remainder, the 1-task
+        group after it gets all of it — not the previous group's split."""
         from codeframe.core import conductor, tasks
         from codeframe.core.state_machine import TaskStatus
 
         monkeypatch.setenv(LIMIT_ENV, "2")
         ws = create_or_load_workspace(repos[0])
         t1 = tasks.create(ws, title="a", description="d", status=TaskStatus.READY)
-        t2 = tasks.create(ws, title="b", description="d", status=TaskStatus.READY, depends_on=[t1.id])
-        batch = conductor.create_batch(ws, [t1.id, t2.id], strategy="parallel", max_parallel=4)
-        ceilings: list = []
+        t2 = tasks.create(ws, title="b", description="d", status=TaskStatus.READY)
+        t3 = tasks.create(
+            ws, title="c", description="d", status=TaskStatus.READY, depends_on=[t1.id, t2.id]
+        )
+        batch = conductor.create_batch(
+            ws, [t1.id, t2.id, t3.id], strategy="parallel", max_parallel=4
+        )
+        ceilings: dict = {}
         monkeypatch.setattr(
             conductor, "_spawn_task_child",
-            lambda *a, **kw: ceilings.append(kw["cost_ceiling_usd"]) or "COMPLETED",
+            lambda ws_, tid, *a, **kw: ceilings.__setitem__(tid, kw["cost_ceiling_usd"]) or "COMPLETED",
         )
         conductor.execute_batch(ws, batch, user_id=7, spend_scope=lambda: [repos[0]])
-        assert ceilings == [pytest.approx(2.0), pytest.approx(2.0)]
+        assert ceilings[t1.id] == pytest.approx(1.0)
+        assert ceilings[t2.id] == pytest.approx(1.0)
+        assert ceilings[t3.id] == pytest.approx(2.0)
