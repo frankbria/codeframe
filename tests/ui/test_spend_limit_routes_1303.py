@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from codeframe.auth.dependencies import require_auth
-from codeframe.core import runtime, tasks
+from codeframe.core import runtime, spend_limit, tasks
 from codeframe.core.models import TokenUsage
 from codeframe.core.state_machine import TaskStatus
 from codeframe.core.workspace import create_or_load_workspace
@@ -208,7 +208,8 @@ def test_switching_to_an_unowned_workspace_does_not_reset_the_meter(env, tmp_pat
     ws3 = create_or_load_workspace(third)
     t3 = tasks.create(ws3, title="t", description="d", status=TaskStatus.READY)
     assert client.post(f"/api/v2/tasks/{t3.id}/start?execute=true&{_q(third)}").status_code == 200
-    _record(third, 2.0)  # that run used the whole day's limit
+    _record(third, 2.0)  # that run used the whole day's limit...
+    spend_limit._held.clear()  # ...and ended (the stubbed worker never releases)
     task = tasks.create(ws, title="t", description="d", status=TaskStatus.READY)
 
     resp = client.post(f"/api/v2/tasks/{task.id}/start?execute=true&{_q(repo)}")

@@ -212,13 +212,13 @@ class TestCeilingReachesBothEngines:
 class TestBatchRechecksBeforeEachTask:
     """execute_batch re-reads the spend before spawning each task's child."""
 
-    def _run_batch(self, repo: Path, monkeypatch, **kwargs):
+    def _run_batch(self, repo: Path, monkeypatch, batch_opts=None, **kwargs):
         from codeframe.core import conductor, tasks
         from codeframe.core.state_machine import TaskStatus
 
         ws = create_or_load_workspace(repo)
         task = tasks.create(ws, title="t", description="d", status=TaskStatus.READY)
-        batch = conductor.create_batch(ws, [task.id])
+        batch = conductor.create_batch(ws, [task.id], **(batch_opts or {}))
         spawned: list = []
 
         class _Proc:
@@ -247,6 +247,17 @@ class TestBatchRechecksBeforeEachTask:
         spawned = self._run_batch(repos[0], monkeypatch, user_id=7, spend_paths=list(repos))
         assert len(spawned) == 1
         assert float(spawned[0][spend_limit.RUN_CEILING_ENV]) == pytest.approx(1.5)
+
+    def test_parallel_batch_child_gets_its_slots_share(self, monkeypatch, repos, clean_holds):
+        """Siblings start together, so each holds remaining / max_parallel."""
+        monkeypatch.setenv(LIMIT_ENV, "2")
+        spawned = self._run_batch(
+            repos[0], monkeypatch,
+            batch_opts={"strategy": "parallel", "max_parallel": 2},
+            user_id=7, spend_paths=[repos[0]],
+        )
+        assert len(spawned) == 1
+        assert float(spawned[0][spend_limit.RUN_CEILING_ENV]) == pytest.approx(1.0)
 
     def test_exhausted_limit_spawns_nothing(self, monkeypatch, repos):
         monkeypatch.setenv(LIMIT_ENV, "1")
