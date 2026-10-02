@@ -30,7 +30,8 @@ logger = logging.getLogger(__name__)
 
 # OpenAI's reasoning models (o-series, gpt-5 family) reject ``max_tokens`` and
 # any ``temperature`` (#1267).
-_REASONING_MODEL = re.compile(r"^(?:o\d|gpt-5)")
+# A fine-tune id ("ft:o4-mini:org::id") names its base model after "ft:".
+_REASONING_MODEL = re.compile(r"(?:^|:)(?:o\d|gpt-5)")
 
 _STOP_REASON_MAP = {
     "stop": "end_turn",
@@ -122,12 +123,15 @@ class OpenAIProvider(LLMProvider):
         openai_itself = self.provider_name == "openai" and (
             not self.base_url or urlparse(self.base_url).hostname == "api.openai.com"
         )
-        if not openai_itself:
-            limits: dict = {"max_tokens": max_tokens}
-        else:
-            limits = {"max_completion_tokens": max_tokens}
-            if _REASONING_MODEL.match(model):
-                temperature = None
+        limits: dict = (
+            {"max_completion_tokens": max_tokens}
+            if openai_itself
+            else {"max_tokens": max_tokens}
+        )
+        # Temperature is the model's constraint, so it applies behind Azure or
+        # a proxy too; only the token-cap name depends on the endpoint.
+        if _REASONING_MODEL.search(model):
+            temperature = None
         if temperature is not None:
             limits["temperature"] = temperature
         return limits

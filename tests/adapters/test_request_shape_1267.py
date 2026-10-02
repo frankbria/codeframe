@@ -29,6 +29,8 @@ SAMPLING = [
     "claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-6", "claude-sonnet-4-6",
     "claude-sonnet-4-5-20250929", "claude-opus-4-1", "claude-opus-4-20250514",
     "claude-3-5-haiku-20241022", "claude-opus-4-5@20251101",  # Vertex snapshot
+    "anthropic.claude-sonnet-4-5-20250929-v1:0",  # Bedrock with version suffix
+    "claude-sonnet-4.5", "anthropic/claude-sonnet-4.5",  # gateway dotted spellings
 ]
 
 _MESSAGE = {
@@ -209,3 +211,14 @@ class TestOpenAIShape:
             messages=[{"role": "user", "content": "hi"}], max_tokens=123
         )
         assert captured["body"]["max_completion_tokens"] == 123
+
+
+    @pytest.mark.parametrize("model", ["gpt-5", "ft:o4-mini:org::abc"])
+    def test_reasoning_models_lose_temperature_behind_any_endpoint(self, model):
+        """Azure/proxies keep max_tokens, but gpt-5 rejects temperature anywhere."""
+        captured: dict = {}
+        _openai(model, captured, base_url="https://x.openai.azure.com/openai/v1").complete(
+            messages=[{"role": "user", "content": "hi"}], max_tokens=123, temperature=0.0
+        )
+        assert "temperature" not in captured["body"]
+        assert captured["body"]["max_tokens"] == 123

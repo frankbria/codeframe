@@ -24,11 +24,14 @@ if TYPE_CHECKING:
 # Model families that still accept sampling parameters and a fixed thinking
 # budget: every Claude 3, and Claude 4 up to 4.6. Opus 4.7+, Opus 5/5.5,
 # Sonnet 5/5.5 and Fable reject both with a 400 (#1267). An allowlist, because
-# each new generation has rejected them: an unknown or future model gets the
-# request shape that cannot 400. The prefix and suffix allow a Bedrock
-# "anthropic." prefix, a "-YYYYMMDD" date and a Vertex "@" snapshot.
+# each new generation has rejected them, so an unknown or future model gets the
+# current shape (no temperature, adaptive thinking). The flip side is that a
+# spelling of an OLD model this misses would get adaptive thinking, which
+# pre-4.6 models reject — so the pattern takes every spelling we know of: a
+# Bedrock "anthropic." prefix, a "-YYYYMMDD" date, a Vertex "@" snapshot, and a
+# gateway's dotted "claude-sonnet-4.5".
 _LEGACY_SHAPE = re.compile(
-    r"claude-(?:3\b|(?:opus|sonnet|haiku)-4(?:-[0-6](?!\d)|-\d{8}|@|$))"
+    r"claude-(?:3\b|(?:opus|sonnet|haiku)-4(?:[.-][0-6](?!\d)|-\d{8}|@|$))"
 )
 
 
