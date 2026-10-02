@@ -51,44 +51,20 @@ logger = logging.getLogger(__name__)
 # that log in with an API key: that login writes auth.json, which must not land
 # in the operator's passed-through ~/.codex (#1270).
 _API_KEY_HOME = "codex-api-key"
-# Each private home records the PID of the cf process that made it.
-_OWNER_FILE = "owner.pid"
-_UNOWNED_GRACE_S = 60
+# A private home holds only links once its login's auth.json is deleted, so one
+# left by a killed run is clutter, not a secret; anything older than this goes.
+_STALE_HOME_S = 24 * 3600
 
 
-def _sweep_orphaned_homes(root: Path) -> None:
-    """Remove private homes whose owning process is gone (#1270).
-
-    A run's own cleanup cannot fire when its process is killed (``batch stop
-    --force`` sends SIGTERM, which nothing handles; SIGKILL; OOM), and that
-    home holds the API key in auth.json. Live siblings are left alone. PID
-    reuse can only keep an orphan longer, never remove a live home.
-    """
+def _sweep_stale_homes(root: Path) -> None:
+    """Remove private homes old enough that no live run can own them (#1270)."""
+    cutoff = time.time() - _STALE_HOME_S
     for home in root.glob("run-*"):
         try:
-            pid = int((home / _OWNER_FILE).read_text())
-        except (OSError, ValueError):
-            # No PID yet: a sibling may be between mkdtemp and writing it, so
-            # only a home old enough to have been abandoned goes.
-            try:
-                if time.time() - home.stat().st_mtime < _UNOWNED_GRACE_S:
-                    continue
-            except OSError:
-                continue
-            pid = None
-        if pid is not None and _pid_alive(pid):
+            if home.stat().st_mtime < cutoff:
+                shutil.rmtree(home, ignore_errors=True)
+        except OSError:
             continue
-        shutil.rmtree(home, ignore_errors=True)
-
-
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True  # exists, owned by someone else
-    return True
 
 _TIMEOUT = object()  # No message within the read window (process still alive)
 _EOF = object()  # stdout closed — the process is gone
@@ -298,9 +274,8 @@ class CodexAdapter:
             # env may carry no HOME at all.
             root = Path.home() / ".codeframe" / "agent-homes" / _API_KEY_HOME
             root.mkdir(mode=0o700, parents=True, exist_ok=True)
-            _sweep_orphaned_homes(root)
+            _sweep_stale_homes(root)
             private = Path(tempfile.mkdtemp(prefix="run-", dir=root))
-            (private / _OWNER_FILE).write_text(str(os.getpid()))
             # Everything codex keeps in its home (config.toml, AGENTS.md,
             # skills, ...) except the login itself.
             real = self.codex_home()
@@ -369,7 +344,10 @@ class CodexAdapter:
 
         reader = _MessageReader(process.stdout)
         try:
-            thread_id = self._handshake(process.stdin, reader, workspace_path, login_key)
+            thread_id = self._handshake(
+                process.stdin, reader, workspace_path, login_key,
+                Path(env["CODEX_HOME"]) if login_key else None,
+            )
             turn_request_id = self._start_turn(process.stdin, thread_id, prompt, workspace_path)
             result = self._stream_turn(
                 reader, process.stdin, turn_request_id=turn_request_id, on_event=on_event
@@ -449,10 +427,11 @@ class CodexAdapter:
 
     @staticmethod
     def _drop_login_home(env: dict[str, str], login_key: Optional[str]) -> None:
-        """Remove this run's private CODEX_HOME, and the key the login left in it.
+        """Remove this run's private CODEX_HOME.
 
-        The key is re-sent each run, so nothing needs it at rest. A run killed
-        before this point is swept by the next one (``_sweep_orphaned_homes``).
+        The key itself is already gone (``_handshake`` deletes the login's
+        auth.json the moment the login succeeds); a home left by a killed run
+        holds only links and is swept once stale (``_sweep_stale_homes``).
         """
         if login_key:
             shutil.rmtree(env["CODEX_HOME"], ignore_errors=True)
@@ -463,6 +442,7 @@ class CodexAdapter:
         reader: _MessageReader,
         workspace_path: Path,
         login_key: Optional[str] = None,
+        login_home: Optional[Path] = None,
     ) -> str:
         """initialize -> initialized [-> account/login/start] -> thread/start.
 
@@ -482,9 +462,16 @@ class CodexAdapter:
         )
         self._notify(stdin, "initialized")
         if login_key:
-            self._request(
-                stdin, reader, "account/login/start", {"type": "apiKey", "apiKey": login_key}
-            )
+            try:
+                self._request(
+                    stdin, reader, "account/login/start", {"type": "apiKey", "apiKey": login_key}
+                )
+            finally:
+                # The app-server keeps the login in memory (verified against
+                # codex-cli 0.159: a turn still authenticates with auth.json
+                # gone), so the key need not stay on disk for the run.
+                if login_home is not None:
+                    (login_home / "auth.json").unlink(missing_ok=True)
 
         params: dict[str, Any] = {
             "cwd": str(workspace_path),

@@ -864,44 +864,58 @@ class TestPrivateHomeCleanup:
         r.mkdir(parents=True)
         return r
 
-    def _home(self, root, name, pid=None, age_s=0):
+    def _home(self, root, name, age_s=0):
         h = root / name
         h.mkdir()
-        (h / "auth.json").write_text('{"OPENAI_API_KEY": "sk"}')
-        if pid is not None:
-            (h / "owner.pid").write_text(str(pid))
         if age_s:
             t = time.time() - age_s
             os.utime(h, (t, t))
         return h
 
-    def test_a_killed_runs_home_is_swept(self, root):
-        from codeframe.core.adapters.codex import _sweep_orphaned_homes
+    def test_the_login_auth_json_is_deleted_as_soon_as_the_login_succeeds(self, root, tmp_path):
+        """A killed run must not leave the key on disk, so it never stays there."""
+        from codeframe.core.adapters.codex import CodexAdapter
 
-        dead = self._home(root, "run-dead", pid=2**22 + 12345)  # no such process
-        _sweep_orphaned_homes(root)
-        assert not dead.exists()
+        adapter = _make_adapter()
+        home = root / "run-x"
+        home.mkdir()
+        (home / "auth.json").write_text('{"OPENAI_API_KEY": "sk"}')  # what the login writes
+        lines = [_response(1, {}), _response(2, {"type": "apiKey"}),
+                 _response(3, {"thread": {"id": "th-1"}})]
+        pipe = _PipeStdout()
+        pipe.write_lines(lines)
+        pipe.close()
+        from codeframe.core.adapters.codex import _MessageReader
 
-    def test_a_live_siblings_home_is_kept(self, root):
-        from codeframe.core.adapters.codex import _sweep_orphaned_homes
+        stdin = MagicMock()
+        thread_id = CodexAdapter._handshake(
+            adapter, stdin, _MessageReader(pipe.reader), tmp_path, "sk", home
+        )
+        assert thread_id == "th-1"
+        assert not (home / "auth.json").exists()
 
-        live = self._home(root, "run-live", pid=os.getpid())
-        _sweep_orphaned_homes(root)
-        assert live.exists()
+    def test_a_stale_home_is_swept(self, root):
+        from codeframe.core.adapters.codex import _sweep_stale_homes
 
-    def test_a_home_still_being_created_is_kept(self, root):
-        """mkdtemp happened, the PID is not written yet."""
-        from codeframe.core.adapters.codex import _sweep_orphaned_homes
+        stale = self._home(root, "run-stale", age_s=2 * 24 * 3600)
+        _sweep_stale_homes(root)
+        assert not stale.exists()
 
-        fresh = self._home(root, "run-fresh")
-        _sweep_orphaned_homes(root)
-        assert fresh.exists()
+    def test_a_recent_home_is_kept(self, root):
+        """It may belong to a live parallel sibling."""
+        from codeframe.core.adapters.codex import _sweep_stale_homes
 
-    def test_an_old_home_with_no_pid_is_swept(self, root):
-        from codeframe.core.adapters.codex import _sweep_orphaned_homes
+        recent = self._home(root, "run-recent")
+        _sweep_stale_homes(root)
+        assert recent.exists()
 
-        stale = self._home(root, "run-stale", age_s=3600)
-        _sweep_orphaned_homes(root)
+    def test_starting_an_api_key_run_sweeps_stale_homes(self, root, tmp_path, monkeypatch):
+        from codeframe.core.adapters.codex import CodexAdapter
+
+        stale = self._home(root, "run-stale", age_s=2 * 24 * 3600)
+        monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
+        monkeypatch.setattr(CodexAdapter, "_codex_login", classmethod(lambda cls: False))
+        _make_adapter()._child_env(tmp_path)
         assert not stale.exists()
 
     def test_a_failed_spawn_removes_its_home(self, root, tmp_path, monkeypatch):
@@ -914,12 +928,3 @@ class TestPrivateHomeCleanup:
             result = adapter.run("t", "p", tmp_path)
         assert result.status == "failed"
         assert list(root.glob("run-*")) == []
-
-    def test_starting_an_api_key_run_sweeps_orphans(self, root, tmp_path, monkeypatch):
-        from codeframe.core.adapters.codex import CodexAdapter
-
-        dead = self._home(root, "run-dead", pid=2**22 + 12345)
-        monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
-        monkeypatch.setattr(CodexAdapter, "_codex_login", classmethod(lambda cls: False))
-        _make_adapter()._child_env(tmp_path)
-        assert not dead.exists()
