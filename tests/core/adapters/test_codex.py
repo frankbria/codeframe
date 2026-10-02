@@ -914,3 +914,12 @@ class TestPrivateHomeCleanup:
             result = adapter.run("t", "p", tmp_path)
         assert result.status == "failed"
         assert list(root.glob("run-*")) == []
+
+    def test_starting_an_api_key_run_sweeps_orphans(self, root, tmp_path, monkeypatch):
+        from codeframe.core.adapters.codex import CodexAdapter
+
+        dead = self._home(root, "run-dead", pid=2**22 + 12345)
+        monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
+        monkeypatch.setattr(CodexAdapter, "_codex_login", classmethod(lambda cls: False))
+        _make_adapter()._child_env(tmp_path)
+        assert not dead.exists()
