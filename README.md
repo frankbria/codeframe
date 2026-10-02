@@ -36,7 +36,7 @@ THINK    What are you building? How should it be broken down?
            cf tasks generate       Atomic tasks with dependency graphs
 
 BUILD    Delegate to the best coding agent for the job
-           cf work start --engine  Claude Code, Codex, OpenCode, Kilocode, or built-in
+           cf work start <task> --engine  Claude Code, Codex, OpenCode, Kilocode, or built-in
            CodeFRAME owns: verification gates, self-correction, stall detection
 
 PROVE    Is the output any good?
@@ -49,7 +49,7 @@ PROVE    Is the output any good?
 
 SHIP     Deploy with confidence
            cf pr create            PR with proof report attached
-           cf pr merge             Only merges if proof passes
+           cf pr merge <number>    Only merges if proof passes
 
 THE CLOSED LOOP
   Glitch in production
@@ -271,7 +271,7 @@ before you kick off a large batch; see [`docs/QUICKSTART.md`](docs/QUICKSTART.md
                                v
   +-SHIP----------------------------------------------+
   |  cf pr create       PR with proof report           |
-  |  cf pr merge        Merge if proof passes          |
+  |  cf pr merge <n>    Merge if proof passes          |
   +---------------------------------------------------+
                                |
             Glitch in production?

@@ -149,16 +149,21 @@ def _code_block_invocations():
                 continue
             if not fenced or NOT_IMPLEMENTED_MARKER in line:
                 continue
+            # Aligned columns (`cf pr merge             Only merges if…`,
+            # diagram rows) put prose after a run of 2+ spaces. Treat that run
+            # as a command separator, so the prose is its own segment and is
+            # never counted as the command's arguments.
+            line_code = re.sub(r"(?<=\S)\s{2,}", " ; ", line)
             try:
                 # comments=True drops a trailing "# ..." but keeps a quoted
                 # "Fix #123" argument intact.
-                tokens = shlex.split(line, comments=True)
+                tokens = shlex.split(line_code, comments=True)
             except ValueError:
                 continue
             # Every command on the line, not just the first: `cf a && cf b`.
             segments, current = [], []
             for tok in tokens:
-                if tok in ("&&", "||", ";", "|"):
+                if tok in ("&&", "||", ";", "|", "→"):  # → chains diagram steps
                     segments.append(current)
                     current = []
                 else:

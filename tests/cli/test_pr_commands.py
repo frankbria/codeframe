@@ -830,3 +830,18 @@ class TestPRCreateDefaults1273:
         result, call = self._create(mock_pr_details, "--body", "B")
         assert result.exit_code == 0, result.output
         assert "## PROOF9" not in call.kwargs["body"]
+
+    def test_json_output_is_not_parsed_as_markup(self, repo, mock_pr_details):
+        """Bot review on #1357: --format json went through Rich markup too."""
+        import dataclasses
+        import json as _json
+
+        from codeframe.cli.pr_commands import pr_app
+
+        hostile = dataclasses.replace(mock_pr_details, title="[WIP] a[0] [/b]", body="[admin]")
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            MockGH.return_value.get_pull_request.return_value = hostile
+            result = runner.invoke(pr_app, ["get", "42", "--format", "json"])
+        assert result.exit_code == 0, result.output
+        data = _json.loads(result.output)
+        assert data["title"] == "[WIP] a[0] [/b]" and data["body"] == "[admin]"

@@ -380,7 +380,7 @@ def list_prs(
                 d["created_at"] = pr.created_at.isoformat() if pr.created_at else None
                 d["merged_at"] = pr.merged_at.isoformat() if pr.merged_at else None
                 pr_dicts.append(d)
-            console.print(json.dumps(pr_dicts, indent=2))
+            console.print(json.dumps(pr_dicts, indent=2), markup=False, highlight=False)
             return
 
         # Table format
@@ -456,7 +456,7 @@ def get_pr(
             d = asdict(pr)
             d["created_at"] = pr.created_at.isoformat() if pr.created_at else None
             d["merged_at"] = pr.merged_at.isoformat() if pr.merged_at else None
-            console.print(json.dumps(d, indent=2))
+            console.print(json.dumps(d, indent=2), markup=False, highlight=False)
             return
 
         # Text format
