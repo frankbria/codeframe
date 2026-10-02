@@ -545,3 +545,65 @@ def test_os_environ_is_not_mutated(env_dumper, operator_home, workspace, monkeyp
     _run(_make_adapter(env_dumper), workspace)
 
     assert dict(os.environ) == before
+
+
+# ---------------------------------------------------------------------------
+# #1270: codex reads CODEX_API_KEY; kilo 7.x keeps its login under XDG dirs
+# ---------------------------------------------------------------------------
+
+
+def test_a_user_set_codex_api_key_is_forwarded(monkeypatch, operator_home, workspace):
+    """The #996 allowlist used to strip it; a config.toml provider may name it."""
+    from codeframe.core.adapters.codex import CodexAdapter
+    from codeframe.core.agent_env import build_delegated_agent_env
+
+    monkeypatch.setenv("CODEX_API_KEY", "sk-codex-OWN")
+    env = build_delegated_agent_env(
+        workspace, adapter_name="codex",
+        credential_vars=CodexAdapter.credential_env_vars(),
+        home_passthrough=CodexAdapter.home_passthrough(),
+    )
+    assert env.get("CODEX_API_KEY") == "sk-codex-OWN"
+
+
+def test_kilo_7_login_is_reachable_through_the_sandbox_xdg_dirs(operator_home, workspace):
+    """kilo 7.x keeps state in ~/.config/kilo and ~/.local/share/kilo."""
+    from codeframe.core.adapters.kilocode import KilocodeAdapter
+    from codeframe.core.agent_env import build_delegated_agent_env
+
+    (operator_home / ".config" / "kilo").mkdir(parents=True)
+    (operator_home / ".config" / "kilo" / "config.json").write_text("CFG")
+    (operator_home / ".local" / "share" / "kilo").mkdir(parents=True)
+    (operator_home / ".local" / "share" / "kilo" / "auth.json").write_text("LOGIN")
+
+    env = build_delegated_agent_env(
+        workspace, adapter_name="kilocode",
+        credential_vars=KilocodeAdapter.credential_env_vars(),
+        home_passthrough=KilocodeAdapter.home_passthrough(),
+    )
+    assert (Path(env["XDG_CONFIG_HOME"]) / "kilo" / "config.json").read_text() == "CFG"
+    assert (Path(env["XDG_DATA_HOME"]) / "kilo" / "auth.json").read_text() == "LOGIN"
+    assert env["HOME"] != str(operator_home)
+
+
+def test_kilocode_forwards_provider_keys_like_opencode(monkeypatch, operator_home, workspace):
+    from codeframe.core.adapters.kilocode import KilocodeAdapter
+    from codeframe.core.agent_env import build_delegated_agent_env
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-NEEDED")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-NEEDED")
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-SHOULD-NOT-LEAK")
+    env = build_delegated_agent_env(
+        workspace, adapter_name="kilocode",
+        credential_vars=KilocodeAdapter.credential_env_vars(),
+        home_passthrough=KilocodeAdapter.home_passthrough(),
+    )
+    assert env.get("ANTHROPIC_API_KEY") == "sk-ant-NEEDED"
+    assert env.get("OPENAI_API_KEY") == "sk-openai-NEEDED"
+    assert "TAVILY_API_KEY" not in env
+
+
+def test_kilocode_keeps_the_legacy_login_dir_for_0_22():
+    from codeframe.core.adapters.kilocode import KilocodeAdapter
+
+    assert ".kilocode" in KilocodeAdapter.home_passthrough()

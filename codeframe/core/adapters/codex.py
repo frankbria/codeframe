@@ -28,10 +28,11 @@ import logging
 import queue
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from codeframe import __version__ as _codeframe_version
 from codeframe.core.adapters.agent_adapter import (
@@ -45,6 +46,25 @@ from codeframe.core.agent_env import build_delegated_agent_env
 from codeframe.core.dangerous_commands import is_dangerous_command
 
 logger = logging.getLogger(__name__)
+
+# Private CODEX_HOMEs, one per run, under the delegated agent home for runs
+# that log in with an API key: that login writes auth.json, which must not land
+# in the operator's passed-through ~/.codex (#1270).
+_API_KEY_HOME = "codex-api-key"
+# A private home holds only links once its login's auth.json is deleted, so one
+# left by a killed run is clutter, not a secret; anything older than this goes.
+_STALE_HOME_S = 24 * 3600
+
+
+def _sweep_stale_homes(root: Path) -> None:
+    """Remove private homes old enough that no live run can own them (#1270)."""
+    cutoff = time.time() - _STALE_HOME_S
+    for home in root.glob("run-*"):
+        try:
+            if home.stat().st_mtime < cutoff:
+                shutil.rmtree(home, ignore_errors=True)
+        except OSError:
+            continue
 
 _TIMEOUT = object()  # No message within the read window (process still alive)
 _EOF = object()  # stdout closed — the process is gone
@@ -167,24 +187,38 @@ class CodexAdapter:
 
     @classmethod
     def is_authenticated(cls) -> bool:
-        """True when codex can actually talk to a model (#1010).
+        """True when codex can actually talk to a model (#1010, #1270).
 
-        ``OPENAI_API_KEY`` is *not* the test. ``codex login`` writes ChatGPT-plan
-        credentials to ``auth.json`` and records ``"OPENAI_API_KEY": null`` in
-        the very same file — so gating on the environment variable refuses the
-        common case, where the CLI works perfectly well.
+        ``OPENAI_API_KEY`` is *not* the test on its own terms. ``codex login``
+        writes ChatGPT-plan credentials to ``auth.json`` and records
+        ``"OPENAI_API_KEY": null`` in the very same file — so gating on the
+        environment variable refuses the common case, where the CLI works
+        perfectly well. A key does count, because ``run`` logs the app-server
+        in with it (see ``_child_env``).
+        """
+        return cls._codex_login() or bool(cls._api_key())
 
-        Presence of the file is not the test either: ``codex logout`` can leave
-        it behind with empty tokens.
+    @classmethod
+    def _api_key(cls) -> Optional[str]:
+        """An API key to log codex in with: ``CODEX_API_KEY``, else the OpenAI key.
+
+        The OpenAI key comes from the env or ``cf auth setup`` (#1264).
         """
         from codeframe.core.llm_resolution import resolve_api_key
 
-        # Env or `cf auth setup`: build_delegated_agent_env forwards either (#1264).
-        if resolve_api_key("openai"):
-            return True
+        return os.environ.get("CODEX_API_KEY") or resolve_api_key("openai")
 
+    @classmethod
+    def _codex_login(cls, home: Optional[Path] = None) -> bool:
+        """Whether codex's own ``auth.json`` (in ``home``, default ``codex_home()``)
+        holds a working login.
+
+        Presence of the file is not the test: ``codex logout`` can leave it
+        behind with empty tokens.
+        """
+        home = home if home is not None else cls.codex_home()
         try:
-            auth = json.loads((cls.codex_home() / "auth.json").read_text(encoding="utf-8"))
+            auth = json.loads((home / "auth.json").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, ValueError):
             # ValueError also covers UnicodeDecodeError from read_text() — a
             # genuinely corrupt auth.json must read as "not authenticated",
@@ -209,8 +243,55 @@ class CodexAdapter:
 
     @classmethod
     def credential_env_vars(cls) -> tuple[str, ...]:
-        """Plus the gateway override — an operator proxying OpenAI still needs it."""
-        return ("OPENAI_API_KEY", "OPENAI_BASE_URL")
+        """Plus the gateway override — an operator proxying OpenAI still needs it.
+
+        ``codex app-server`` reads neither key from the environment (both get
+        "401 Missing bearer"); ``run`` logs it in over the protocol instead
+        (#1270). They are still forwarded for a ``config.toml`` provider whose
+        ``env_key`` names one.
+        """
+        return ("CODEX_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL")
+
+    def _child_env(self, workspace_path: Path) -> tuple[dict[str, str], Optional[str]]:
+        """The #996 sandboxed environment, and the API key to log in with (if any).
+
+        An existing ``codex login`` wins: logging in with a key on top of a
+        ChatGPT plan would quietly move the operator's runs to metered billing.
+        Without one, a key logs the app-server in — and that login writes
+        ``auth.json`` into ``CODEX_HOME``, so it gets a private one rather than
+        the passed-through ``~/.codex``, where it would overwrite the
+        operator's own login.
+        """
+        env = build_delegated_agent_env(
+            workspace_path,
+            adapter_name=self.name,
+            credential_vars=self.credential_env_vars(),
+            home_passthrough=self.home_passthrough(),
+        )
+        # The operator's real ~/.codex — what the child sees through the
+        # passthrough — never $CODEX_HOME: a cloned repo's .env can set that,
+        # and its config.toml could point a model provider (and so the API
+        # key) at any host. The child never honoured $CODEX_HOME anyway: the
+        # #996 allowlist drops it.
+        real = Path.home() / ".codex"
+        key = None if self._codex_login(real) else self._api_key()
+        if key:
+            # One per run: parallel batch tasks share the agent home, and one
+            # run's cleanup must not delete a sibling's login mid-run. Rooted
+            # under ~/.codeframe even with CODEFRAME_AGENT_INHERIT_HOME, where
+            # env may carry no HOME at all.
+            root = Path.home() / ".codeframe" / "agent-homes" / _API_KEY_HOME
+            root.mkdir(mode=0o700, parents=True, exist_ok=True)
+            _sweep_stale_homes(root)
+            private = Path(tempfile.mkdtemp(prefix="run-", dir=root))
+            # Everything codex keeps in its home (config.toml, AGENTS.md,
+            # skills, ...) except the login itself.
+            if real.is_dir():
+                for entry in real.iterdir():
+                    if entry.name != "auth.json":
+                        (private / entry.name).symlink_to(entry)
+            env["CODEX_HOME"] = str(private)
+        return env, key
 
     @classmethod
     def home_passthrough(cls) -> tuple[str, ...]:
@@ -235,6 +316,14 @@ class CodexAdapter:
         head_before = self._git_head(workspace_path)
 
         try:
+            env, login_key = self._child_env(workspace_path)
+        except OSError as e:
+            # Building the private CODEX_HOME touches the filesystem (disk
+            # full, no symlink support); fail like a spawn error, not uncaught.
+            return AgentResult(
+                status="failed", error=f"Could not prepare the codex environment: {e}"
+            )
+        try:
             process = subprocess.Popen(
                 [self._binary_path, "app-server"],
                 stdin=subprocess.PIPE,
@@ -246,19 +335,16 @@ class CodexAdapter:
                 errors="replace",
                 # Codex spawns its own process rather than going through
                 # SubprocessAdapter.run, so it needs the #996 env explicitly.
-                env=build_delegated_agent_env(
-                    workspace_path,
-                    adapter_name=self.name,
-                    credential_vars=self.credential_env_vars(),
-                    home_passthrough=self.home_passthrough(),
-                ),
+                env=env,
             )
         except FileNotFoundError:
+            self._drop_login_home(env, login_key)
             return AgentResult(
                 status="failed",
                 error=f"Binary '{self._binary}' not found during execution",
             )
         except OSError as e:
+            self._drop_login_home(env, login_key)
             return AgentResult(status="failed", error=f"Failed to start '{self._binary}': {e}")
 
         stderr_chunks: list[str] = []
@@ -272,7 +358,10 @@ class CodexAdapter:
 
         reader = _MessageReader(process.stdout)
         try:
-            thread_id = self._handshake(process.stdin, reader, workspace_path)
+            thread_id = self._handshake(
+                process.stdin, reader, workspace_path, login_key,
+                Path(env["CODEX_HOME"]) if login_key else None,
+            )
             turn_request_id = self._start_turn(process.stdin, thread_id, prompt, workspace_path)
             result = self._stream_turn(
                 reader, process.stdin, turn_request_id=turn_request_id, on_event=on_event
@@ -284,6 +373,7 @@ class CodexAdapter:
         finally:
             self._kill(process)
             stderr_thread.join(timeout=5)
+            self._drop_login_home(env, login_key)
 
         if result.status == "failed" and stderr_chunks and stderr_chunks[0].strip():
             result.error = f"{result.error}\nstderr: {stderr_chunks[0].strip()[-2000:]}"
@@ -349,8 +439,29 @@ class CodexAdapter:
     # Handshake
     # ------------------------------------------------------------------
 
-    def _handshake(self, stdin: Any, reader: _MessageReader, workspace_path: Path) -> str:
-        """initialize -> initialized -> thread/start. Returns the thread id."""
+    @staticmethod
+    def _drop_login_home(env: dict[str, str], login_key: Optional[str]) -> None:
+        """Remove this run's private CODEX_HOME.
+
+        The key itself is already gone (``_handshake`` deletes the login's
+        auth.json the moment the login succeeds); a home left by a killed run
+        holds only links and is swept once stale (``_sweep_stale_homes``).
+        """
+        if login_key:
+            shutil.rmtree(env["CODEX_HOME"], ignore_errors=True)
+
+    def _handshake(
+        self,
+        stdin: Any,
+        reader: _MessageReader,
+        workspace_path: Path,
+        login_key: Optional[str] = None,
+        login_home: Optional[Path] = None,
+    ) -> str:
+        """initialize -> initialized [-> account/login/start] -> thread/start.
+
+        Returns the thread id.
+        """
         self._request(
             stdin,
             reader,
@@ -364,6 +475,17 @@ class CodexAdapter:
             },
         )
         self._notify(stdin, "initialized")
+        if login_key:
+            try:
+                self._request(
+                    stdin, reader, "account/login/start", {"type": "apiKey", "apiKey": login_key}
+                )
+            finally:
+                # The app-server keeps the login in memory (verified against
+                # codex-cli 0.159: a turn still authenticates with auth.json
+                # gone), so the key need not stay on disk for the run.
+                if login_home is not None:
+                    (login_home / "auth.json").unlink(missing_ok=True)
 
         params: dict[str, Any] = {
             "cwd": str(workspace_path),

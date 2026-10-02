@@ -19,6 +19,17 @@ pytestmark = pytest.mark.v2
 FIXTURES = Path(__file__).parent / "fixtures" / "codex_app_server"
 
 
+@pytest.fixture(autouse=True)
+def _no_api_key_login(request, monkeypatch):
+    """Scripted responses are keyed by request id, and an API-key login (#1270)
+    inserts a request; keep it out unless a test asks for it, whatever key the
+    developer's environment holds."""
+    if getattr(request.cls, "__name__", "") != "TestApiKeyLogin":
+        from codeframe.core.adapters.codex import CodexAdapter
+
+        monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: None))
+
+
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
@@ -722,3 +733,228 @@ class TestCodexZeroFileGuard:
 
     def test_a_non_git_workspace_is_not_judged(self) -> None:
         assert self._run(heads=(None, None)).status == "completed"
+
+
+
+# ----------------------------------------------------------------------
+# #1270: app-server ignores CODEX_API_KEY / OPENAI_API_KEY in the env
+# ----------------------------------------------------------------------
+
+
+class TestApiKeyLogin:
+    """Verified against codex-cli 0.159: with either variable set, a turn fails
+    with "401 Missing bearer"; after ``account/login/start {type: apiKey}`` the
+    key reaches OpenAI. That login writes auth.json into CODEX_HOME."""
+
+    @pytest.fixture
+    def homes(self, tmp_path, monkeypatch):
+        operator = tmp_path / "operator"
+        (operator / ".codex").mkdir(parents=True)
+        (operator / ".codex" / "config.toml").write_text('model = "gpt-5"\n')
+        (operator / ".codex" / "AGENTS.md").write_text("global instructions")
+        (operator / ".codex" / "auth.json").write_text("{}")  # logged out: not a login
+        monkeypatch.setenv("HOME", str(operator))
+        monkeypatch.delenv("CODEX_HOME", raising=False)
+        monkeypatch.delenv("CODEX_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-KEY")
+        return operator
+
+    def _lines(self):
+        return [
+            _response(1, {"userAgent": "codeframe"}),
+            _response(2, {}),  # account/login/start
+            _response(3, {"thread": {"id": "th-1"}}),
+            _turn_completed(),
+        ]
+
+    def test_without_a_codex_login_the_key_logs_the_server_in(self, homes, tmp_path):
+        adapter = _make_adapter()
+        captured = {}
+        real_popen_env = {}
+
+        orig = adapter._child_env
+
+        def spy(ws):
+            env, key = orig(ws)
+            real_popen_env.update(env)
+            captured["key"] = key
+            # The operator's (logged-out) auth.json is NOT linked in, so the
+            # login below cannot write through to it.
+            captured["linked_auth"] = (Path(env["CODEX_HOME"]) / "auth.json").exists()
+            # What the real login does: codex writes the key to CODEX_HOME.
+            (Path(env["CODEX_HOME"]) / "auth.json").write_text('{"OPENAI_API_KEY": "sk"}')
+            captured["config"] = (Path(env["CODEX_HOME"]) / "config.toml").read_text()
+            captured["agents"] = (Path(env["CODEX_HOME"]) / "AGENTS.md").read_text()
+            return env, key
+
+        adapter._child_env = spy
+        result, sent = _run_with_script(adapter, self._lines(), workspace_path=tmp_path)
+
+        assert result.status == "completed", result.error
+        login = next(m for m in sent if m.get("method") == "account/login/start")
+        assert login["params"] == {"type": "apiKey", "apiKey": "sk-test-KEY"}
+        assert sent.index(login) < next(
+            i for i, m in enumerate(sent) if m.get("method") == "thread/start"
+        )
+        # A private CODEX_HOME, never the operator's ~/.codex ...
+        private = Path(real_popen_env["CODEX_HOME"])
+        assert private.parent.name == "codex-api-key"
+        assert not str(private).startswith(str(homes / ".codex"))
+        assert captured["config"] == 'model = "gpt-5"\n'  # operator's settings seen
+        assert captured["agents"] == "global instructions"  # and AGENTS.md/skills
+        assert captured["linked_auth"] is False
+        assert (homes / ".codex" / "auth.json").read_text() == "{}"  # untouched
+        # ... and the run's home, key included, is gone once the run is over.
+        assert not private.exists()
+
+    def test_concurrent_runs_get_separate_homes(self, homes, tmp_path):
+        """One run's cleanup must not delete a parallel sibling's login."""
+        adapter = _make_adapter()
+        a, _ = adapter._child_env(tmp_path)
+        b, _ = adapter._child_env(tmp_path)
+        assert a["CODEX_HOME"] != b["CODEX_HOME"]
+
+    def test_an_existing_codex_login_wins_over_the_key(self, homes, tmp_path):
+        """A ChatGPT-plan login must not quietly move to metered API billing."""
+        (homes / ".codex" / "auth.json").write_text(json.dumps({
+            "OPENAI_API_KEY": None, "tokens": {"access_token": "at"},
+        }))
+        adapter = _make_adapter()
+        result, sent = _run_with_script(adapter, _handshake_lines() + [_turn_completed()],
+                                        workspace_path=tmp_path)
+        assert result.status == "completed", result.error
+        assert not any(m.get("method") == "account/login/start" for m in sent)
+
+    def test_no_key_and_no_login_sends_no_login(self, homes, tmp_path, monkeypatch):
+        from codeframe.core import llm_resolution
+
+        monkeypatch.delenv("OPENAI_API_KEY")
+        monkeypatch.setattr(llm_resolution, "resolve_api_key", lambda *a, **k: None)
+        adapter = _make_adapter()
+        _, sent = _run_with_script(adapter, _handshake_lines() + [_turn_completed()],
+                                   workspace_path=tmp_path)
+        assert not any(m.get("method") == "account/login/start" for m in sent)
+
+    def test_codex_api_key_beats_the_openai_key(self, homes, tmp_path, monkeypatch):
+        monkeypatch.setenv("CODEX_API_KEY", "sk-codex-OWN")
+        adapter = _make_adapter()
+        _, sent = _run_with_script(adapter, self._lines(), workspace_path=tmp_path)
+        login = next(m for m in sent if m.get("method") == "account/login/start")
+        assert login["params"]["apiKey"] == "sk-codex-OWN"
+
+
+    def test_inherit_home_without_home_does_not_crash(self, homes, tmp_path, monkeypatch):
+        """CODEFRAME_AGENT_INHERIT_HOME with HOME unset leaves env without HOME."""
+        monkeypatch.setenv("CODEFRAME_AGENT_INHERIT_HOME", "1")
+        adapter = _make_adapter()
+        with patch("codeframe.core.adapters.codex.build_delegated_agent_env",
+                   return_value={"PATH": os.environ.get("PATH", "")}):
+            env, key = adapter._child_env(tmp_path)
+        assert key == "sk-test-KEY"
+        assert Path(env["CODEX_HOME"]).is_dir()
+
+
+class TestPrivateHomeCleanup:
+    """GLM + claude-review on PR #1352: the key must not outlive a killed run."""
+
+    @pytest.fixture
+    def root(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        r = tmp_path / ".codeframe" / "agent-homes" / "codex-api-key"
+        r.mkdir(parents=True)
+        return r
+
+    def _home(self, root, name, age_s=0):
+        h = root / name
+        h.mkdir()
+        if age_s:
+            t = time.time() - age_s
+            os.utime(h, (t, t))
+        return h
+
+    def test_the_login_auth_json_is_deleted_as_soon_as_the_login_succeeds(self, root, tmp_path):
+        """A killed run must not leave the key on disk, so it never stays there."""
+        from codeframe.core.adapters.codex import CodexAdapter
+
+        adapter = _make_adapter()
+        home = root / "run-x"
+        home.mkdir()
+        (home / "auth.json").write_text('{"OPENAI_API_KEY": "sk"}')  # what the login writes
+        lines = [_response(1, {}), _response(2, {"type": "apiKey"}),
+                 _response(3, {"thread": {"id": "th-1"}})]
+        pipe = _PipeStdout()
+        pipe.write_lines(lines)
+        pipe.close()
+        from codeframe.core.adapters.codex import _MessageReader
+
+        stdin = MagicMock()
+        thread_id = CodexAdapter._handshake(
+            adapter, stdin, _MessageReader(pipe.reader), tmp_path, "sk", home
+        )
+        assert thread_id == "th-1"
+        assert not (home / "auth.json").exists()
+
+    def test_a_stale_home_is_swept(self, root):
+        from codeframe.core.adapters.codex import _sweep_stale_homes
+
+        stale = self._home(root, "run-stale", age_s=2 * 24 * 3600)
+        _sweep_stale_homes(root)
+        assert not stale.exists()
+
+    def test_a_recent_home_is_kept(self, root):
+        """It may belong to a live parallel sibling."""
+        from codeframe.core.adapters.codex import _sweep_stale_homes
+
+        recent = self._home(root, "run-recent")
+        _sweep_stale_homes(root)
+        assert recent.exists()
+
+    def test_starting_an_api_key_run_sweeps_stale_homes(self, root, tmp_path, monkeypatch):
+        from codeframe.core.adapters.codex import CodexAdapter
+
+        stale = self._home(root, "run-stale", age_s=2 * 24 * 3600)
+        monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
+        monkeypatch.setattr(CodexAdapter, "_codex_login", classmethod(lambda cls, home=None: False))
+        _make_adapter()._child_env(tmp_path)
+        assert not stale.exists()
+
+    def test_a_failed_spawn_removes_its_home(self, root, tmp_path, monkeypatch):
+        from codeframe.core.adapters.codex import CodexAdapter
+
+        monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
+        monkeypatch.setattr(CodexAdapter, "_codex_login", classmethod(lambda cls, home=None: False))
+        adapter = _make_adapter()
+        with patch("subprocess.Popen", side_effect=PermissionError("not executable")):
+            result = adapter.run("t", "p", tmp_path)
+        assert result.status == "failed"
+        assert list(root.glob("run-*")) == []
+
+
+    def test_a_filesystem_error_preparing_the_home_is_a_clean_failure(self, root, tmp_path, monkeypatch):
+        """claude-review on PR #1352: it used to escape run() uncaught."""
+        from codeframe.core.adapters import codex as codex_mod
+
+        monkeypatch.setattr(codex_mod.CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
+        monkeypatch.setattr(codex_mod.CodexAdapter, "_codex_login", classmethod(lambda cls, home=None: False))
+        monkeypatch.setattr(codex_mod.tempfile, "mkdtemp", lambda **kw: (_ for _ in ()).throw(OSError(28, "No space left on device")))
+        result = _make_adapter().run("t", "p", tmp_path)
+        assert result.status == "failed"
+        assert "Could not prepare the codex environment" in result.error
+
+
+    def test_a_repo_set_codex_home_cannot_choose_the_config(self, root, tmp_path, monkeypatch):
+        """GLM on PR #1352: a cloned repo's .env can set CODEX_HOME; its
+        config.toml must not reach the run the operator's key logs into."""
+        from codeframe.core.adapters.codex import CodexAdapter
+
+        real = tmp_path / ".codex"  # HOME is tmp_path (root fixture)
+        real.mkdir()
+        (real / "config.toml").write_text("operator")
+        evil = tmp_path / "repo" / ".codex"
+        evil.mkdir(parents=True)
+        (evil / "config.toml").write_text("attacker")
+        monkeypatch.setenv("CODEX_HOME", str(evil))
+        monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
+        env, key = _make_adapter()._child_env(tmp_path)
+        assert key == "sk-K"
+        assert (Path(env["CODEX_HOME"]) / "config.toml").read_text() == "operator"

@@ -32,6 +32,7 @@ def codex_home(tmp_path: Path, monkeypatch) -> Path:
     home.mkdir()
     monkeypatch.setenv("CODEX_HOME", str(home))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("CODEX_API_KEY", raising=False)
     return home
 
 
@@ -241,3 +242,12 @@ def test_a_directory_where_auth_json_should_be_is_not_authenticated(codex_home):
     (codex_home / "auth.json").mkdir()
 
     assert CodexAdapter.is_authenticated() is False
+
+
+
+def test_a_codex_api_key_counts(codex_home, monkeypatch):
+    """codex-cli's own variable (#1270); the adapter now forwards it."""
+    monkeypatch.setenv("CODEX_API_KEY", "sk-codex")
+    from codeframe.core.adapters.codex import CodexAdapter
+
+    assert CodexAdapter.is_authenticated() is True
