@@ -49,7 +49,11 @@ def run_ceiling_from_env() -> Optional[float]:
 
 
 def spend_today_usd(repo_paths: Iterable[Path]) -> float:
-    """Sum of today's (UTC) recorded spend across the given workspaces."""
+    """Sum of today's (UTC) recorded spend across the given workspaces.
+
+    Raises:
+        SpendLimitExceeded: a workspace's ledger exists but cannot be read.
+    """
     from codeframe.core.workspace import CODEFRAME_DIR, STATE_DB_NAME
     from codeframe.platform_store.repositories.token_repository import (
         TokenRepository,
@@ -63,9 +67,13 @@ def spend_today_usd(repo_paths: Iterable[Path]) -> float:
         try:
             total += TokenRepository(sync_conn=conn).get_costs_summary(1)["total_spend_usd"]
         except sqlite3.Error as exc:
-            # ponytail: an unreadable DB under-counts rather than blocking every
-            # run; fail closed here if a tenant can corrupt its own state.db.
+            # Fail closed: counting an unreadable ledger as $0 would hand out
+            # budget the principal may already have spent (#1303 review).
             logger.warning("Could not read spend from %s: %s", db_path, exc)
+            raise SpendLimitExceeded(
+                f"Today's spend in {db_path.parent.parent.name} could not be read, "
+                "so no new work can start until it can."
+            ) from exc
         finally:
             conn.close()
     return total

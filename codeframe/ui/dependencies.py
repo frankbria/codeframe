@@ -9,7 +9,7 @@ v2-only: All dependencies use codeframe.core modules.
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from fastapi import Depends, HTTPException, Query, Request
 
@@ -304,14 +304,16 @@ def check_spend_limit(
     auth: Dict[str, Any],
     *,
     reserve: bool = False,
-) -> tuple[Optional[list[Path]], Optional[float]]:
+) -> tuple[Optional[Callable[[], list[Path]]], Optional[float]]:
     """429 when the principal has used up today's spend limit (#1303).
 
-    Returns ``(spend_paths, budget_usd)`` for the work being started, or
+    Returns ``(spend_scope, budget_usd)`` for the work being started, or
     ``(None, None)`` when no limit applies: none is configured, or the principal
-    is the auth-off operator. ``reserve=True`` holds ``budget_usd`` for one run;
-    the caller must ``spend_limit.release`` it when that run ends. Blocking
-    I/O — call via ``run_in_threadpool``, and before any state is written, so a
+    is the auth-off operator. ``spend_scope()`` lists the workspaces whose spend
+    counts, read fresh on each call so a batch rechecks workspaces the principal
+    starts using later. ``reserve=True`` holds ``budget_usd`` for one run; the
+    caller must ``spend_limit.release`` it when that run ends. Blocking I/O —
+    call via ``run_in_threadpool``, and before any state is written, so a
     refusal leaves nothing behind.
     """
     from codeframe.core.spend_limit import (
@@ -333,24 +335,28 @@ def check_spend_limit(
         registry.record_spend_use(user_id, current)
     if daily_limit_usd() is None:
         return None, None
-    # ponytail: attribution is by workspace, not by who made the call, so a
-    # workspace shared between users counts in full for each of them (fails
-    # closed). A user_id column on token_usage would make it exact.
-    paths = [Path(current)]
-    if registry is not None:
-        paths += [Path(p) for p in registry.spend_paths(user_id)]
+
+    def spend_scope() -> list[Path]:
+        # ponytail: attribution is by workspace, not by who made the call, so
+        # a workspace shared between users counts in full for each of them
+        # (fails closed). A user_id column on token_usage would make it exact.
+        paths = [Path(current)]
+        if registry is not None:
+            paths += [Path(p) for p in registry.spend_paths(user_id)]
+        return paths
+
     try:
         budget = (
-            reserve_today_usd(user_id, paths)
+            reserve_today_usd(user_id, spend_scope())
             if reserve
-            else remaining_today_usd(paths, user_id)
+            else remaining_today_usd(spend_scope(), user_id)
         )
     except SpendLimitExceeded as exc:
         raise HTTPException(
             status_code=429,
             detail=api_error(str(exc), ErrorCodes.SPEND_LIMIT_EXCEEDED),
         )
-    return paths, budget
+    return spend_scope, budget
 
 
 def resolve_github_pat(credential_manager, auth: Dict[str, Any]) -> Optional[str]:

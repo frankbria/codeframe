@@ -261,7 +261,7 @@ async def resume_batch(
     """
     force = body.force if body else False
 
-    spend_paths, _ = await run_in_threadpool(check_spend_limit, request, workspace, auth)
+    spend_scope, _ = await run_in_threadpool(check_spend_limit, request, workspace, auth)
     try:
         batch = await run_in_threadpool(
             conductor.resume_batch,
@@ -269,7 +269,7 @@ async def resume_batch(
             batch_id,
             force=force,
             user_id=auth.get("user_id"),
-            spend_paths=spend_paths,
+            spend_scope=spend_scope,
         )
         return _batch_to_response(batch)
 

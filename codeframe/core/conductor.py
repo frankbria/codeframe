@@ -107,10 +107,11 @@ _active_processes_lock = threading.Lock()
 # otherwise never reach it.
 _batch_principal: dict[str, Optional[int]] = {}
 
-# Workspaces whose spend counts toward that principal's daily limit (#1303),
-# keyed the same way. Present only when the caller wants the limit enforced;
-# each task re-reads the spend before it is spawned.
-_batch_spend_paths: dict[str, tuple[list[Path], int]] = {}
+# Returns the workspaces whose spend counts toward that principal's daily limit
+# (#1303), keyed the same way. Present only when the caller wants the limit
+# enforced; it is called again before each task, so a workspace the principal
+# starts using mid-batch is counted too.
+_batch_spend_scope: dict[str, tuple[Callable[[], list[Path]], int]] = {}
 
 
 def _principal_credential_env(user_id: Optional[int]) -> dict[str, str]:
@@ -807,7 +808,7 @@ def execute_batch(
     max_retries: int = 0,
     on_event: Optional[Callable[[str, dict], None]] = None,
     user_id: Optional[int] = None,
-    spend_paths: Optional[list[Path]] = None,
+    spend_scope: Optional[Callable[[], list[Path]]] = None,
 ) -> BatchRun:
     """Run an already-created batch to completion. **Blocks.**
 
@@ -825,22 +826,22 @@ def execute_batch(
         max_retries: Max retry attempts for failed tasks (0 = no retries)
         on_event: Optional callback for batch events
         user_id: Server principal whose stored LLM keys the tasks use (#1264)
-        spend_paths: Workspaces whose spend counts toward the principal's
-            daily limit; None skips the limit (#1303)
+        spend_scope: Returns the workspaces whose spend counts toward the
+            principal's daily limit; None skips the limit (#1303)
 
     Returns:
         The same BatchRun, with results populated.
     """
     _batch_principal[batch.id] = user_id
-    if spend_paths is not None:
+    if spend_scope is not None:
         # Parallel siblings start together, so each holds only its slot's share.
         share = batch.max_parallel if batch.strategy != "serial" else 1
-        _batch_spend_paths[batch.id] = (spend_paths, share)
+        _batch_spend_scope[batch.id] = (spend_scope, share)
     try:
         return _execute_batch(workspace, batch, max_retries, on_event, user_id)
     finally:
         _batch_principal.pop(batch.id, None)
-        _batch_spend_paths.pop(batch.id, None)
+        _batch_spend_scope.pop(batch.id, None)
 
 
 def _execute_batch(
@@ -1188,7 +1189,7 @@ def resume_batch(
     force: bool = False,
     on_event: Optional[Callable[[str, dict], None]] = None,
     user_id: Optional[int] = None,
-    spend_paths: Optional[list[Path]] = None,
+    spend_scope: Optional[Callable[[], list[Path]]] = None,
 ) -> BatchRun:
     """Resume a batch by re-running failed/blocked tasks.
 
@@ -1198,8 +1199,8 @@ def resume_batch(
         force: If True, re-run all tasks including completed ones
         on_event: Optional callback for batch events
         user_id: Server principal whose stored LLM keys the tasks use (#1264)
-        spend_paths: Workspaces whose spend counts toward the principal's
-            daily limit; None skips the limit (#1303)
+        spend_scope: Returns the workspaces whose spend counts toward the
+            principal's daily limit; None skips the limit (#1303)
 
     Returns:
         Updated BatchRun with new results
@@ -1293,13 +1294,13 @@ def resume_batch(
 
     # Execute the tasks
     _batch_principal[batch.id] = user_id
-    if spend_paths is not None:
-        _batch_spend_paths[batch.id] = (spend_paths, 1)  # resume runs serially
+    if spend_scope is not None:
+        _batch_spend_scope[batch.id] = (spend_scope, 1)  # resume runs serially
     try:
         _execute_serial_resume(workspace, batch, tasks_to_run, on_event)
     finally:
         _batch_principal.pop(batch.id, None)
-        _batch_spend_paths.pop(batch.id, None)
+        _batch_spend_scope.pop(batch.id, None)
 
     return batch
 
@@ -2597,13 +2598,13 @@ def _execute_task_subprocess(
     released when the child exits. An exhausted limit fails the task unstarted.
     """
     user_id = _batch_principal.get(batch_id) if batch_id else None
-    spend = _batch_spend_paths.get(batch_id) if batch_id else None
+    spend = _batch_spend_scope.get(batch_id) if batch_id else None
     held: Optional[float] = None
     if spend is not None and user_id is not None:
         from codeframe.core.spend_limit import SpendLimitExceeded, reserve_today_usd
 
         try:
-            held = reserve_today_usd(user_id, spend[0], share=spend[1])
+            held = reserve_today_usd(user_id, spend[0](), share=spend[1])
         except SpendLimitExceeded as exc:
             logger.error("Task %s not started: %s", task_id, exc)
             return RunStatus.FAILED.value

@@ -173,7 +173,7 @@ class TestRemainingBudgetIsHandedOn:
         resp = client.post(f"/api/v2/tasks/execute?{_q(repo)}", json={})
 
         assert resp.status_code == 200, resp.text
-        assert {p.resolve() for p in seen["spend_paths"]} == {repo.resolve(), other.resolve()}
+        assert {p.resolve() for p in seen["spend_scope"]()} == {repo.resolve(), other.resolve()}
 
 
 def test_auth_off_operator_is_never_limited(env, monkeypatch):

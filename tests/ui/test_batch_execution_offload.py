@@ -63,7 +63,7 @@ def slow_batch(monkeypatch):
         "thread": None,
     }
 
-    def _blocking_execute(workspace, batch, max_retries=0, on_event=None, user_id=None, spend_paths=None):
+    def _blocking_execute(workspace, batch, max_retries=0, on_event=None, user_id=None, spend_scope=None):
         state["thread"] = threading.current_thread()
         state["started"].set()
         state["release"].wait(timeout=MAX_BLOCK_SECONDS)
@@ -325,7 +325,7 @@ class TestWedgedBatchIsFinalized:
         from codeframe.core import conductor
         from codeframe.ui.routers import tasks_v2
 
-        def _boom(workspace, batch, max_retries=0, on_event=None, user_id=None, spend_paths=None):
+        def _boom(workspace, batch, max_retries=0, on_event=None, user_id=None, spend_scope=None):
             raise RuntimeError("plan building exploded")
 
         monkeypatch.setattr(tasks_v2.conductor, "execute_batch", _boom)

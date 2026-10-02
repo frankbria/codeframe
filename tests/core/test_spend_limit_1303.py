@@ -87,6 +87,14 @@ class TestSpendToday:
         _record(a, 1.0)
         assert spend_limit.spend_today_usd([a, a]) == pytest.approx(1.0)
 
+    def test_unreadable_ledger_refuses_rather_than_counting_zero(self, repos):
+        a, b = repos
+        _record(a, 1.0)
+        db = b / ".codeframe" / "state.db"
+        db.write_bytes(b"not a sqlite database" * 100)
+        with pytest.raises(spend_limit.SpendLimitExceeded, match="could not be read"):
+            spend_limit.spend_today_usd([a, b])
+
     def test_missing_workspace_is_skipped(self, repos, tmp_path):
         a, _ = repos
         _record(a, 1.0)
@@ -238,13 +246,13 @@ class TestBatchRechecksBeforeEachTask:
 
         monkeypatch.setattr(conductor.subprocess, "Popen", _popen)
         conductor.execute_batch(ws, batch, **kwargs)
-        assert batch.id not in conductor._batch_spend_paths  # cleaned up
+        assert batch.id not in conductor._batch_spend_scope  # cleaned up
         return spawned
 
     def test_child_receives_the_remaining_budget(self, monkeypatch, repos):
         monkeypatch.setenv(LIMIT_ENV, "2")
         _record(repos[1], 0.5)
-        spawned = self._run_batch(repos[0], monkeypatch, user_id=7, spend_paths=list(repos))
+        spawned = self._run_batch(repos[0], monkeypatch, user_id=7, spend_scope=lambda: list(repos))
         assert len(spawned) == 1
         assert float(spawned[0][spend_limit.RUN_CEILING_ENV]) == pytest.approx(1.5)
 
@@ -254,7 +262,7 @@ class TestBatchRechecksBeforeEachTask:
         spawned = self._run_batch(
             repos[0], monkeypatch,
             batch_opts={"strategy": "parallel", "max_parallel": 2},
-            user_id=7, spend_paths=[repos[0]],
+            user_id=7, spend_scope=lambda: [repos[0]],
         )
         assert len(spawned) == 1
         assert float(spawned[0][spend_limit.RUN_CEILING_ENV]) == pytest.approx(1.0)
@@ -262,8 +270,46 @@ class TestBatchRechecksBeforeEachTask:
     def test_exhausted_limit_spawns_nothing(self, monkeypatch, repos):
         monkeypatch.setenv(LIMIT_ENV, "1")
         _record(repos[1], 1.0)
-        spawned = self._run_batch(repos[0], monkeypatch, user_id=7, spend_paths=list(repos))
+        spawned = self._run_batch(repos[0], monkeypatch, user_id=7, spend_scope=lambda: list(repos))
         assert spawned == []
+
+    def test_scope_is_reread_before_each_task(self, monkeypatch, repos, clean_holds):
+        """A workspace the user starts using mid-batch counts for the next task
+        (codex round 2): the scope is re-read, not snapshotted at batch start."""
+        from codeframe.core import conductor, tasks
+        from codeframe.core.state_machine import TaskStatus
+
+        monkeypatch.setenv(LIMIT_ENV, "1")
+        ws = create_or_load_workspace(repos[0])
+        ids = [
+            tasks.create(ws, title=f"t{i}", description="d", status=TaskStatus.READY).id
+            for i in range(2)
+        ]
+        batch = conductor.create_batch(ws, ids)
+        scope = [repos[0]]
+        spawned: list = []
+
+        class _Proc:
+            returncode = 1
+            pid = 0
+
+            def wait(self, timeout=None):
+                return 1
+
+            def poll(self):
+                return 1
+
+        def _popen(cmd, **kw):
+            if "work" in cmd:
+                spawned.append(cmd)
+                # Meanwhile the user spent the day's limit in another workspace.
+                _record(repos[1], 1.0)
+                scope.append(repos[1])
+            return _Proc()
+
+        monkeypatch.setattr(conductor.subprocess, "Popen", _popen)
+        conductor.execute_batch(ws, batch, user_id=7, spend_scope=lambda: list(scope))
+        assert len(spawned) == 1  # the second task was refused
 
     def test_without_spend_paths_no_limit_applies(self, monkeypatch, repos):
         monkeypatch.setenv(LIMIT_ENV, "1")
@@ -363,13 +409,13 @@ class TestReservation:
 
         monkeypatch.setattr(conductor, "_spawn_task_child", _child)
         conductor._batch_principal["b1"] = 1
-        conductor._batch_spend_paths["b1"] = ([repos[0]], 4)
+        conductor._batch_spend_scope["b1"] = (lambda: [repos[0]], 4)
         try:
             ws = create_or_load_workspace(repos[0])
             assert conductor._execute_task_subprocess(ws, "t1", batch_id="b1") == "COMPLETED"
         finally:
             conductor._batch_principal.pop("b1", None)
-            conductor._batch_spend_paths.pop("b1", None)
+            conductor._batch_spend_scope.pop("b1", None)
         assert seen["ceiling"] == pytest.approx(2.5)  # a quarter: 4 parallel slots
         assert seen["held"] == {1: pytest.approx(2.5)}
         assert spend_limit._held == {}  # released once the child exited

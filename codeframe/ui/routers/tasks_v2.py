@@ -14,7 +14,7 @@ import functools
 import logging
 import threading
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Callable, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -639,7 +639,7 @@ def _run_batch_in_background(
     batch_id: str,
     max_retries: int = 0,
     user_id: Optional[int] = None,
-    spend_paths: Optional[list[Path]] = None,
+    spend_scope: Optional[Callable[[], list[Path]]] = None,
 ) -> None:
     """Execute an already-created batch on a worker thread (issue #901).
 
@@ -660,7 +660,7 @@ def _run_batch_in_background(
             return
         conductor.execute_batch(
             workspace, batch, max_retries=max_retries, user_id=user_id,
-            spend_paths=spend_paths,
+            spend_scope=spend_scope,
         )
     except Exception as exc:
         logger.error("Background batch %s failed: %s", batch_id, exc, exc_info=True)
@@ -672,7 +672,7 @@ def _start_batch_detached(
     batch_id: str,
     max_retries: int = 0,
     user_id: Optional[int] = None,
-    spend_paths: Optional[list[Path]] = None,
+    spend_scope: Optional[Callable[[], list[Path]]] = None,
 ) -> None:
     """Hand a persisted batch to a daemon thread and return immediately.
 
@@ -683,7 +683,7 @@ def _start_batch_detached(
     """
     threading.Thread(
         target=_run_batch_in_background,
-        args=(workspace, batch_id, max_retries, user_id, spend_paths),
+        args=(workspace, batch_id, max_retries, user_id, spend_scope),
         daemon=True,
         name=f"batch-{batch_id[:8]}",
     ).start()
@@ -724,9 +724,9 @@ async def approve_tasks_endpoint(
     """
     try:
         # Before any approval is written, so a refusal leaves nothing behind.
-        spend_paths = None
+        spend_scope = None
         if body.start_execution:
-            spend_paths, _ = await run_in_threadpool(
+            spend_scope, _ = await run_in_threadpool(
                 check_spend_limit, request, workspace, auth
             )
 
@@ -775,7 +775,7 @@ async def approve_tasks_endpoint(
             )
             batch_id = batch.id
             _start_batch_detached(
-                workspace, batch_id, user_id=auth.get("user_id"), spend_paths=spend_paths
+                workspace, batch_id, user_id=auth.get("user_id"), spend_scope=spend_scope
             )
             message = f"Approved {result.approved_count} task(s) and started execution (batch {batch_id[:8]})."
 
@@ -881,7 +881,7 @@ async def start_execution(
                 ),
             )
 
-        spend_paths, _ = await run_in_threadpool(
+        spend_scope, _ = await run_in_threadpool(
             check_spend_limit, request, workspace, auth
         )
 
@@ -901,7 +901,7 @@ async def start_execution(
         )
         _start_batch_detached(
             workspace, batch.id, max_retries=body.retry_count, user_id=auth.get("user_id"),
-            spend_paths=spend_paths,
+            spend_scope=spend_scope,
         )
 
         return StartExecutionResponse(
