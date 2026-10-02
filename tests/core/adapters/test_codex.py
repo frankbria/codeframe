@@ -914,7 +914,7 @@ class TestPrivateHomeCleanup:
 
         stale = self._home(root, "run-stale", age_s=2 * 24 * 3600)
         monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
-        monkeypatch.setattr(CodexAdapter, "_codex_login", classmethod(lambda cls: False))
+        monkeypatch.setattr(CodexAdapter, "_codex_login", classmethod(lambda cls, home=None: False))
         _make_adapter()._child_env(tmp_path)
         assert not stale.exists()
 
@@ -922,7 +922,7 @@ class TestPrivateHomeCleanup:
         from codeframe.core.adapters.codex import CodexAdapter
 
         monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
-        monkeypatch.setattr(CodexAdapter, "_codex_login", classmethod(lambda cls: False))
+        monkeypatch.setattr(CodexAdapter, "_codex_login", classmethod(lambda cls, home=None: False))
         adapter = _make_adapter()
         with patch("subprocess.Popen", side_effect=PermissionError("not executable")):
             result = adapter.run("t", "p", tmp_path)
@@ -935,8 +935,26 @@ class TestPrivateHomeCleanup:
         from codeframe.core.adapters import codex as codex_mod
 
         monkeypatch.setattr(codex_mod.CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
-        monkeypatch.setattr(codex_mod.CodexAdapter, "_codex_login", classmethod(lambda cls: False))
+        monkeypatch.setattr(codex_mod.CodexAdapter, "_codex_login", classmethod(lambda cls, home=None: False))
         monkeypatch.setattr(codex_mod.tempfile, "mkdtemp", lambda **kw: (_ for _ in ()).throw(OSError(28, "No space left on device")))
         result = _make_adapter().run("t", "p", tmp_path)
         assert result.status == "failed"
         assert "Could not prepare the codex environment" in result.error
+
+
+    def test_a_repo_set_codex_home_cannot_choose_the_config(self, root, tmp_path, monkeypatch):
+        """GLM on PR #1352: a cloned repo's .env can set CODEX_HOME; its
+        config.toml must not reach the run the operator's key logs into."""
+        from codeframe.core.adapters.codex import CodexAdapter
+
+        real = tmp_path / ".codex"  # HOME is tmp_path (root fixture)
+        real.mkdir()
+        (real / "config.toml").write_text("operator")
+        evil = tmp_path / "repo" / ".codex"
+        evil.mkdir(parents=True)
+        (evil / "config.toml").write_text("attacker")
+        monkeypatch.setenv("CODEX_HOME", str(evil))
+        monkeypatch.setattr(CodexAdapter, "_api_key", classmethod(lambda cls: "sk-K"))
+        env, key = _make_adapter()._child_env(tmp_path)
+        assert key == "sk-K"
+        assert (Path(env["CODEX_HOME"]) / "config.toml").read_text() == "operator"

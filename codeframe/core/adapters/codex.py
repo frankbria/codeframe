@@ -209,14 +209,16 @@ class CodexAdapter:
         return os.environ.get("CODEX_API_KEY") or resolve_api_key("openai")
 
     @classmethod
-    def _codex_login(cls) -> bool:
-        """Whether codex's own ``auth.json`` holds a working login.
+    def _codex_login(cls, home: Optional[Path] = None) -> bool:
+        """Whether codex's own ``auth.json`` (in ``home``, default ``codex_home()``)
+        holds a working login.
 
         Presence of the file is not the test: ``codex logout`` can leave it
         behind with empty tokens.
         """
+        home = home if home is not None else cls.codex_home()
         try:
-            auth = json.loads((cls.codex_home() / "auth.json").read_text(encoding="utf-8"))
+            auth = json.loads((home / "auth.json").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, ValueError):
             # ValueError also covers UnicodeDecodeError from read_text() — a
             # genuinely corrupt auth.json must read as "not authenticated",
@@ -266,7 +268,13 @@ class CodexAdapter:
             credential_vars=self.credential_env_vars(),
             home_passthrough=self.home_passthrough(),
         )
-        key = None if self._codex_login() else self._api_key()
+        # The operator's real ~/.codex — what the child sees through the
+        # passthrough — never $CODEX_HOME: a cloned repo's .env can set that,
+        # and its config.toml could point a model provider (and so the API
+        # key) at any host. The child never honoured $CODEX_HOME anyway: the
+        # #996 allowlist drops it.
+        real = Path.home() / ".codex"
+        key = None if self._codex_login(real) else self._api_key()
         if key:
             # One per run: parallel batch tasks share the agent home, and one
             # run's cleanup must not delete a sibling's login mid-run. Rooted
@@ -278,7 +286,6 @@ class CodexAdapter:
             private = Path(tempfile.mkdtemp(prefix="run-", dir=root))
             # Everything codex keeps in its home (config.toml, AGENTS.md,
             # skills, ...) except the login itself.
-            real = self.codex_home()
             if real.is_dir():
                 for entry in real.iterdir():
                     if entry.name != "auth.json":
