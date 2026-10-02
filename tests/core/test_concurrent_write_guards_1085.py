@@ -154,8 +154,10 @@ class TestAnUnreadableStoreIsAFormattedError:
         return TestClient(app, raise_server_exceptions=False)
 
     def _response(self, client):
+        # Patched at its source: the request dependency moved to ui.dependencies
+        # and imports the class at call time (#1303).
         with patch(
-            "codeframe.ui.routers.settings_v2.CredentialManager",
+            "codeframe.core.credentials.CredentialManager",
             side_effect=CredentialStoreUnreadableError(self.LEAKY_MESSAGE),
         ):
             return client.get("/api/v2/settings/keys")

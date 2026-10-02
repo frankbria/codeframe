@@ -72,7 +72,7 @@ A third trap, found over three review rounds: **a captured path that passes thro
 
 **`ProofRun.vacuous_pass`** distinguishes a pass from a pass that verified nothing, computed as *passed with an empty tally* rather than by reading the config — so it also catches an `enabled_gates` list that excludes every obligation, and an all-UNVERIFIABLE run. A warn-mode run that masked a real failure is **not** vacuous (its gates ran), and a workspace with no requirements is not either (an empty ledger makes no false claim). The merge gate is deliberately **not** coupled to it: a vacuous run leaves requirements OPEN, so the gate already blocks them via requirement status. The ledger column is added by lazy `ALTER TABLE` mirroring #728 — and it **borrows the connection `_ensure_tables` already holds**, because `tests/core/test_tui_dashboard.py` pins a cold dashboard load at 3 connections and the TUI refreshes every 2s.
 
-**The frontend no longer predicts the gate.** `canMerge` retains `!!proofData` (meaning "the panel has loaded") but dropped the open-requirement count: the panel reads the workspace-global `/proof/status` while the server scopes to the PR's files, so predicting blocked out-of-scope PRs and steered users into recording an override for a bypass that never happened — a false entry in the audit trail the override exists to create. The panel attempts the merge and renders the server's refusal. The 409 carries `blocking_requirements` as data, **untruncated** (the prose summary caps at 10), because the client cannot re-derive that set: the gate also blocks SATISFIED requirements whose evidence fails verification (#952), which never appear in `/proof/status`. A 409 is treated as the gate **only when it carries a non-empty `blocking_requirements`** — GitHub returns 409 for its own conflicts and `_github_error_http` propagates upstream statuses verbatim. **Admin-only actions are gated up front (#1255).** `GET /auth/me` returns the scopes `require_auth` resolved plus `is_admin` (computed server-side with `has_scope`; the auth-off operator is admin), and `useAdminDenied()` disables-and-explains Merge (the only way into the override dialog), Create PR, API-key Save/Remove and GitHub Connect/Disconnect. It is true **only** on an explicit `is_admin: false` — loading or a failed probe leaves controls enabled, and the server's 403 stays the backstop. Never hide an admin action: a hidden button is indistinguishable from a missing feature. A new admin-guarded UI action should call the same hook.
+**The frontend no longer predicts the gate.** `canMerge` retains `!!proofData` (meaning "the panel has loaded") but dropped the open-requirement count: the panel reads the workspace-global `/proof/status` while the server scopes to the PR's files, so predicting blocked out-of-scope PRs and steered users into recording an override for a bypass that never happened — a false entry in the audit trail the override exists to create. The panel attempts the merge and renders the server's refusal. The 409 carries `blocking_requirements` as data, **untruncated** (the prose summary caps at 10), because the client cannot re-derive that set: the gate also blocks SATISFIED requirements whose evidence fails verification (#952), which never appear in `/proof/status`. A 409 is treated as the gate **only when it carries a non-empty `blocking_requirements`** — GitHub returns 409 for its own conflicts and `_github_error_http` propagates upstream statuses verbatim. **Admin-only actions are gated up front (#1255).** `GET /auth/me` returns the scopes `require_auth` resolved plus `is_admin` (computed server-side with `has_scope`; the auth-off operator is admin), and `useAdminDenied()` disables-and-explains Merge (the only way into the override dialog), Create PR, GitHub-token Save/Remove and GitHub Connect/Disconnect. LLM-key Save/Remove is **not** admin-gated since #1303: a user manages the LLM keys in their own per-user store (write scope), and a non-admin's credential manager never runs the machine-wide→per-user migration, which would copy the operator's keys into the tenant's store. The one shared `get_credential_manager` lives in `ui/dependencies.py`; the GitHub router's private copy migrated before its admin check. It is true **only** on an explicit `is_admin: false` — loading or a failed probe leaves controls enabled, and the server's 403 stays the backstop. Never hide an admin action: a hidden button is indistinguishable from a missing feature. A new admin-guarded UI action should call the same hook.
 
 Phase 4A is ✅ Complete in the roadmap's Summary table, which is the single status authority (#1246).
 
@@ -616,6 +616,27 @@ CODEFRAME_ALLOW_CONFIG_BASE_URL=1    # Allow a `.codeframe/config.yaml`
                                       # anthropic/openai: get_provider hands
                                       # OPENAI_API_KEY to ollama/vllm/compatible
                                       # too when it is set.
+
+# Per-user daily spend limit (#1303) — default OFF
+CODEFRAME_USER_DAILY_COST_LIMIT_USD=5 # Cap on what each server principal's runs
+                                      # spend per UTC day. Task start/resume,
+                                      # execute, approve+start and batch resume
+                                      # return 429 SPEND_LIMIT_EXCEEDED before
+                                      # writing state; a batch re-checks before
+                                      # each task. Spend = today's token_usage in
+                                      # every workspace the user started work in
+                                      # (workspace_spend_users) or owns. What is
+                                      # left clamps max_cost_usd (offset by the
+                                      # task's prior spend, so a resume is not
+                                      # refused), each run holds its slice while
+                                      # in flight (core/spend_limit.py, per
+                                      # process), an unreadable spend DB refuses,
+                                      # and a delegated engine cannot run under
+                                      # it (unmetered). Auth-off/CLI is exempt.
+                                      # The source is each workspace's own DB, so
+                                      # it guards against runaway cost, not a
+                                      # tenant who edits it. Add users after the
+                                      # first with `cf auth user-create`.
 
 # Optional — Rate limiting
 RATE_LIMIT_ENABLED=true

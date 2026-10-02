@@ -28,7 +28,8 @@ export function KeySlot({
   const [value, setValue] = useState('');
   const [verifyResult, setVerifyResult] = useState<VerifyResult>(null);
   const [working, setWorking] = useState(false);
-  const adminDenied = useAdminDenied();
+  // Users manage their own LLM keys; the GitHub PAT stays admin-only (#1303).
+  const adminDenied = useAdminDenied() && provider === 'GIT_GITHUB';
 
   const handleSave = async () => {
     if (!value) return;
@@ -146,7 +147,7 @@ export function KeySlot({
       </div>
 
       {adminDenied && !fromEnv && (
-        <p className="mt-2 text-xs text-muted-foreground">Storing or removing keys requires an admin account.</p>
+        <p className="mt-2 text-xs text-muted-foreground">Storing or removing the GitHub token requires an admin account.</p>
       )}
 
       {fromEnv && (

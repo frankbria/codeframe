@@ -123,6 +123,28 @@ class WorkspaceRegistryRepository(BaseRepository):
 
         return [self._row_to_workspace_registry(row) for row in rows]
 
+    def record_spend_use(self, user_id: int, repo_path: str) -> None:
+        """Note that ``user_id`` started work in ``repo_path`` (#1303)."""
+        self._execute_write(
+            "INSERT OR IGNORE INTO workspace_spend_users (user_id, repo_path) VALUES (?, ?)",
+            (user_id, repo_path),
+        )
+
+    def spend_paths(self, user_id: int) -> List[str]:
+        """Workspaces whose spend counts toward ``user_id``'s daily limit.
+
+        Every workspace the user started work in, plus every one it owns.
+        """
+        rows = self._fetchall(
+            """
+            SELECT repo_path FROM workspace_spend_users WHERE user_id = ?
+            UNION
+            SELECT repo_path FROM workspaces_registry WHERE owner_user_id = ?
+            """,
+            (user_id, user_id),
+        )
+        return [row["repo_path"] for row in rows]
+
     def get_by_id(self, workspace_id: str) -> Optional[Dict[str, Any]]:
         """Get a registry entry by its id, or None if not found."""
         row = self._fetchone(

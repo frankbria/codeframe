@@ -90,6 +90,8 @@ class ErrorCodes:
     # FORBIDDEN so a transient 429 is never read as "your token lacks a
     # scope" — that sent users to regenerate a working PAT (#956).
     RATE_LIMITED = "RATE_LIMITED"
+    # The principal used up the operator's daily spend limit (#1303).
+    SPEND_LIMIT_EXCEEDED = "SPEND_LIMIT_EXCEEDED"
 
     # Server errors (5xx)
     INTERNAL_ERROR = "INTERNAL_ERROR"

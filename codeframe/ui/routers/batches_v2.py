@@ -22,7 +22,11 @@ from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import conductor
 from codeframe.core.conductor import BatchStatus
 from codeframe.auth.dependencies import require_auth
-from codeframe.ui.dependencies import get_v2_workspace, refuse_execution_in_hosted_mode
+from codeframe.ui.dependencies import (
+    check_spend_limit,
+    get_v2_workspace,
+    refuse_execution_in_hosted_mode,
+)
 from codeframe.ui.response_models import api_error, ErrorCodes
 
 logger = logging.getLogger(__name__)
@@ -257,6 +261,7 @@ async def resume_batch(
     """
     force = body.force if body else False
 
+    spend_scope, _ = await run_in_threadpool(check_spend_limit, request, workspace, auth)
     try:
         batch = await run_in_threadpool(
             conductor.resume_batch,
@@ -264,6 +269,7 @@ async def resume_batch(
             batch_id,
             force=force,
             user_id=auth.get("user_id"),
+            spend_scope=spend_scope,
         )
         return _batch_to_response(batch)
 

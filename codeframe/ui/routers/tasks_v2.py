@@ -13,7 +13,8 @@ to core/runtime.py and core/conductor.py. It:
 import functools
 import logging
 import threading
-from typing import Any, Literal, Optional
+from pathlib import Path
+from typing import Any, Callable, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -22,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
-from codeframe.core import runtime, tasks, conductor, streaming
+from codeframe.core import runtime, spend_limit, tasks, conductor, streaming
 from codeframe.core.runtime import RunStatus
 from codeframe.core.state_machine import (
     InvalidTransitionError,
@@ -30,7 +31,11 @@ from codeframe.core.state_machine import (
     can_transition,
 )
 from codeframe.auth.dependencies import require_auth
-from codeframe.ui.dependencies import get_v2_workspace, refuse_execution_in_hosted_mode
+from codeframe.ui.dependencies import (
+    check_spend_limit,
+    get_v2_workspace,
+    refuse_execution_in_hosted_mode,
+)
 from codeframe.ui.response_models import api_error, ErrorCodes
 
 logger = logging.getLogger(__name__)
@@ -634,6 +639,7 @@ def _run_batch_in_background(
     batch_id: str,
     max_retries: int = 0,
     user_id: Optional[int] = None,
+    spend_scope: Optional[Callable[[], list[Path]]] = None,
 ) -> None:
     """Execute an already-created batch on a worker thread (issue #901).
 
@@ -652,7 +658,10 @@ def _run_batch_in_background(
         if batch is None:  # pragma: no cover - the caller just persisted it
             logger.error("Batch %s vanished before execution", batch_id)
             return
-        conductor.execute_batch(workspace, batch, max_retries=max_retries, user_id=user_id)
+        conductor.execute_batch(
+            workspace, batch, max_retries=max_retries, user_id=user_id,
+            spend_scope=spend_scope,
+        )
     except Exception as exc:
         logger.error("Background batch %s failed: %s", batch_id, exc, exc_info=True)
         _finalize_wedged_batch(workspace, batch_id, reason=str(exc))
@@ -663,6 +672,7 @@ def _start_batch_detached(
     batch_id: str,
     max_retries: int = 0,
     user_id: Optional[int] = None,
+    spend_scope: Optional[Callable[[], list[Path]]] = None,
 ) -> None:
     """Hand a persisted batch to a daemon thread and return immediately.
 
@@ -673,7 +683,7 @@ def _start_batch_detached(
     """
     threading.Thread(
         target=_run_batch_in_background,
-        args=(workspace, batch_id, max_retries, user_id),
+        args=(workspace, batch_id, max_retries, user_id, spend_scope),
         daemon=True,
         name=f"batch-{batch_id[:8]}",
     ).start()
@@ -713,6 +723,13 @@ async def approve_tasks_endpoint(
         Approval result with counts and optional batch ID
     """
     try:
+        # Before any approval is written, so a refusal leaves nothing behind.
+        spend_scope = None
+        if body.start_execution:
+            spend_scope, _ = await run_in_threadpool(
+                check_spend_limit, request, workspace, auth
+            )
+
         # Approve tasks (transition BACKLOG → READY)
         try:
             result = runtime.approve_tasks(
@@ -757,7 +774,9 @@ async def approve_tasks_endpoint(
                 )
             )
             batch_id = batch.id
-            _start_batch_detached(workspace, batch_id, user_id=auth.get("user_id"))
+            _start_batch_detached(
+                workspace, batch_id, user_id=auth.get("user_id"), spend_scope=spend_scope
+            )
             message = f"Approved {result.approved_count} task(s) and started execution (batch {batch_id[:8]})."
 
         return ApproveTasksResponse(
@@ -862,6 +881,10 @@ async def start_execution(
                 ),
             )
 
+        spend_scope, _ = await run_in_threadpool(
+            check_spend_limit, request, workspace, auth
+        )
+
         # Persist the batch, then execute it off the event loop (#901): the
         # handler must return batch_id at once so the UI can start polling
         # while the batch runs.
@@ -877,7 +900,8 @@ async def start_execution(
             )
         )
         _start_batch_detached(
-            workspace, batch.id, max_retries=body.retry_count, user_id=auth.get("user_id")
+            workspace, batch.id, max_retries=body.retry_count, user_id=auth.get("user_id"),
+            spend_scope=spend_scope,
         )
 
         return StartExecutionResponse(
@@ -908,8 +932,12 @@ def _spawn_agent_worker(
     verbose: bool = False,
     engine: str = "react",
     user_id: Optional[int] = None,
+    cost_ceiling_usd: Optional[float] = None,
 ) -> None:
     """Run the agent for ``run`` on a background thread.
+
+    ``cost_ceiling_usd`` is a hold from ``check_spend_limit(reserve=True)``;
+    it is released when the agent finishes, however it finishes (#1303).
 
     Shared by ``start`` and ``resume``. It lives in one place because they drifted:
     resume flipped the run to RUNNING and returned without ever spawning a worker,
@@ -932,6 +960,7 @@ def _spawn_agent_worker(
                 event_publisher=publisher,
                 engine=engine,
                 user_id=user_id,
+                cost_ceiling_usd=cost_ceiling_usd,
             )
         except Exception as exc:
             logger.error(f"Background agent failed for task {task_id}: {exc}", exc_info=True)
@@ -957,6 +986,8 @@ def _spawn_agent_worker(
                 ),
             )
             publisher.complete_task_sync(task_id)
+        finally:
+            spend_limit.release(user_id, cost_ceiling_usd)
 
     threading.Thread(target=_run_agent, daemon=True).start()
 
@@ -995,9 +1026,17 @@ async def start_single_task(
             - 404: Task not found
             - 500: Execution error
     """
+    ceiling = None
+    if execute:
+        _, ceiling = await run_in_threadpool(
+            functools.partial(check_spend_limit, request, workspace, auth, reserve=True)
+        )
     try:
-        # Start the run
-        run = runtime.start_task_run(workspace, task_id)
+        try:
+            run = runtime.start_task_run(workspace, task_id)
+        except BaseException:
+            spend_limit.release(auth.get("user_id"), ceiling)  # no worker will
+            raise
 
         result = {
             "success": True,
@@ -1010,7 +1049,7 @@ async def start_single_task(
         if execute:
             _spawn_agent_worker(
                 workspace, run, task_id, dry_run=dry_run, verbose=verbose, engine=engine,
-                user_id=auth.get("user_id"),
+                user_id=auth.get("user_id"), cost_ceiling_usd=ceiling,
             )
 
             result["status"] = "executing"
@@ -1018,6 +1057,8 @@ async def start_single_task(
 
         return result
 
+    except HTTPException:
+        raise  # the spend-limit 429 must not become a 500 below
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg.lower():
@@ -1119,14 +1160,23 @@ async def resume_task(
             - 400: Run not blocked
             - 404: No active run for task
     """
+    ceiling = None
+    if execute:
+        _, ceiling = await run_in_threadpool(
+            functools.partial(check_spend_limit, request, workspace, auth, reserve=True)
+        )
     try:
-        run = runtime.resume_run(workspace, task_id)
+        try:
+            run = runtime.resume_run(workspace, task_id)
+        except BaseException:
+            spend_limit.release(auth.get("user_id"), ceiling)  # no worker will
+            raise
 
         message = f"Resumed run {run.id[:8]} for task {task_id[:8]}."
         if execute:
             _spawn_agent_worker(
                 workspace, run, task_id, dry_run=dry_run, verbose=verbose, engine=engine,
-                user_id=auth.get("user_id"),
+                user_id=auth.get("user_id"), cost_ceiling_usd=ceiling,
             )
             message += f" Connect to GET /{task_id}/stream for events."
 

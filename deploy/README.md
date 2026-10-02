@@ -99,12 +99,14 @@ Registration still closes permanently once the first real account exists, token
 or not. The seeded `admin@localhost` row has a disabled password, cannot log in,
 and does not count as that account.
 
-That first account is also the instance's **admin** (`is_superuser`), and it is
-the only one — admin scope is what gates credential storage, GitHub PAT storage
-and PR merge (issue #898). A session for any later, non-superuser account gets
-`[read, write]` and is refused on those endpoints. Grant admin to another
-account by setting `is_superuser = 1` on its `users` row in the control-plane
-DB; there is no in-product promotion flow yet.
+That first account is also the instance's **admin** (`is_superuser`) — admin
+scope is what gates GitHub PAT storage and PR merge (issue #898). A session for
+any later, non-superuser account gets `[read, write]` and is refused on those
+endpoints; it can still store and remove **its own** LLM API keys, which live
+in that user's own credential store (#1303). Grant admin to another account
+with `codeframe auth user-create --admin`, or by setting `is_superuser = 1` on
+its `users` row in the control-plane DB; there is no in-product promotion flow
+yet.
 
 **Set the token before the first deploy** — it is in `.env.production.example` /
 `.env.staging.example`:
@@ -141,6 +143,34 @@ password or email later through `PATCH /users/me`, send the current one in
 After the account exists, remove `CODEFRAME_BOOTSTRAP_TOKEN` from the
 environment if you like — the route is closed either way, and a token left in
 place has no further use.
+
+### Adding more accounts
+
+Registration is closed after the first account, so further accounts are made
+offline, against the control-plane database (#1303) — anyone who can run this
+already has the server's data, which is the trust boundary:
+
+```bash
+# Container deploy: the backend's DATABASE_PATH is /data/codeframe.db
+docker compose exec backend codeframe auth user-create teammate@example.com --name "Team Mate"
+# Bare-metal: run it on the host with the server's DATABASE_PATH exported
+DATABASE_PATH=/path/to/codeframe.db codeframe auth user-create teammate@example.com
+```
+
+It prompts for the password (same policy as above) and creates a regular
+account; add `--admin` for another admin. On an instance with no admin yet it
+insists on `--admin`, because the server promotes the earliest account to admin
+when no admin can log in.
+
+### Daily spend limit
+
+`CODEFRAME_USER_DAILY_COST_LIMIT_USD` caps what each signed-in user's runs may
+spend per UTC day (#1303). Starting a task, a batch or a resume returns **429**
+once it is used up, and what is left clamps the workspace's "max cost per task".
+Unset means no limit. It meters the react and plan engines only — while it is
+set, a delegated engine (claude-code, codex, …) cannot run. It is read from
+each workspace's own database, so treat it as a guard against runaway cost, not
+as a defence against a user who controls their workspace's files.
 
 ## Routing
 

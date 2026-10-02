@@ -18,6 +18,7 @@ from codeframe.core.state_machine import (
     TaskStatus,
     can_transition,
 )
+from codeframe.core.spend_limit import run_ceiling_from_env
 from codeframe.core.workspace import Workspace, get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -722,6 +723,7 @@ def execute_agent(
     llm_provider: Optional[str] = None,
     llm_model: Optional[str] = None,
     user_id: Optional[int] = None,
+    cost_ceiling_usd: Optional[float] = None,
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -742,6 +744,8 @@ def execute_agent(
         cloud_timeout_minutes: Sandbox timeout for cloud engine (1-60 minutes, default: 30)
         user_id: Server principal whose stored key to use; None (CLI) uses the
             machine-wide store (#1264)
+        cost_ceiling_usd: Remaining daily spend limit that clamps the
+            workspace cost cap (#1303); None reads CODEFRAME_RUN_COST_CEILING_USD
 
     Returns:
         Final AgentState after execution
@@ -905,6 +909,13 @@ def execute_agent(
                 "debug": debug,
                 "output_logger": output_logger,
                 "fix_coordinator": fix_coordinator,
+                # What is left of the principal's daily spend limit (#1303); a
+                # batch's `cf work start` child receives it through the env.
+                "cost_ceiling_usd": (
+                    cost_ceiling_usd
+                    if cost_ceiling_usd is not None
+                    else run_ceiling_from_env()
+                ),
             }
             # Stall detection is only relevant for the react engine
             if engine in _STALL_AWARE_ENGINES:

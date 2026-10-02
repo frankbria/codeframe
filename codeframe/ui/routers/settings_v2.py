@@ -27,8 +27,9 @@ from anthropic import AuthenticationError as _AnthropicAuthError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 
-from codeframe.auth.api_keys import SCOPE_ADMIN
-from codeframe.auth.dependencies import require_auth, require_scope
+from codeframe.auth.api_keys import SCOPE_ADMIN, SCOPE_WRITE
+from codeframe.auth.dependencies import require_scope
+from codeframe.auth.scopes import has_scope
 from openai import AuthenticationError as _OpenAIAuthError
 from openai import OpenAI as _OpenAIClient
 from pydantic import BaseModel, Field
@@ -40,7 +41,6 @@ from codeframe.core.config import (
     save_environment_config,
 )
 from codeframe.core.credentials import (
-    CredentialStoreUnreadableError,
     CredentialManager,
     CredentialProvider,
     CredentialSource,
@@ -60,7 +60,11 @@ from codeframe.notifications.webhook import (
     format_test_payload,
 )
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
-from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.dependencies import (
+    get_credential_manager,
+    get_credential_manager_readonly,
+    get_v2_workspace,
+)
 from codeframe.ui.models import (
     AGENT_TYPES,
     KEY_PROVIDERS,
@@ -73,71 +77,12 @@ from codeframe.ui.models import (
     VerifyKeyRequest,
     VerifyKeyResponse,
 )
-from codeframe.ui.response_models import ErrorCodes, api_error, internal_error
+from codeframe.ui.response_models import ErrorCodes, api_error
 from codeframe.core.notifications_config import redact_webhook_url
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/settings", tags=["settings"])
-
-
-def get_credential_manager(auth: dict = Depends(require_auth)) -> CredentialManager:
-    """Dependency: CredentialManager scoped to the authenticated user (#790).
-
-    ``user_id=None`` (auth disabled / self-hosted) yields the machine-wide
-    store. Overridden in tests to point at an isolated temp directory.
-    Runs the machine-wide migration — use only on write (admin-scoped) paths.
-    """
-    # CredentialManager's constructor runs the machine-wide migration, which
-    # can raise CredentialStoreUnreadableError since #954. Raised from a
-    # DEPENDENCY it bypasses each route's own try/except, so the client got a
-    # bare 500 instead of the formatted error every other path produces (#1085).
-    # The exception's message carries the recovery text the CLI already prints.
-    try:
-        return CredentialManager(user_id=auth.get("user_id"), migrate=True)
-    except CredentialStoreUnreadableError as e:
-        # internal_error, NOT str(e) (#934): the exception message embeds the
-        # absolute store path — /home/<operator>/.codeframe/users/<id>/... —
-        # so rendering it would hand an authenticated tenant the operator's
-        # home directory and the per-tenant storage layout. The full message
-        # goes to the operator's log under the correlation id; the client gets
-        # the recovery step, which is the part that is actually actionable and
-        # contains no path.
-        body = internal_error(e, operation="read the credential store", logger=logger)
-        body["detail"] += (
-            " The credential store could not be read; re-enter your keys with "
-            "`cf auth setup`."
-        )
-        raise HTTPException(status_code=500, detail=body)
-
-
-def get_credential_manager_readonly(auth: dict = Depends(require_auth)) -> CredentialManager:
-    """Read-only variant: scoped to the authenticated user but skips migration.
-
-    Used on GET endpoints so that a plain status check cannot trigger a
-    credential write into a new tenant's store (#790).
-    """
-    # CredentialManager's constructor runs the machine-wide migration, which
-    # can raise CredentialStoreUnreadableError since #954. Raised from a
-    # DEPENDENCY it bypasses each route's own try/except, so the client got a
-    # bare 500 instead of the formatted error every other path produces (#1085).
-    # The exception's message carries the recovery text the CLI already prints.
-    try:
-        return CredentialManager(user_id=auth.get("user_id"), migrate=False)
-    except CredentialStoreUnreadableError as e:
-        # internal_error, NOT str(e) (#934): the exception message embeds the
-        # absolute store path — /home/<operator>/.codeframe/users/<id>/... —
-        # so rendering it would hand an authenticated tenant the operator's
-        # home directory and the per-tenant storage layout. The full message
-        # goes to the operator's log under the correlation id; the client gets
-        # the recovery step, which is the part that is actually actionable and
-        # contains no path.
-        body = internal_error(e, operation="read the credential store", logger=logger)
-        body["detail"] += (
-            " The credential store could not be read; re-enter your keys with "
-            "`cf auth setup`."
-        )
-        raise HTTPException(status_code=500, detail=body)
 
 
 def _config_to_response(config: EnvironmentConfig) -> AgentSettingsResponse:
@@ -285,6 +230,23 @@ def _build_status(
     )
 
 
+# An allowlist, so a provider added later is admin-only until someone decides
+# otherwise (PR #1343 review).
+_TENANT_OWNED_PROVIDERS = frozenset(
+    {CredentialProvider.LLM_ANTHROPIC, CredentialProvider.LLM_OPENAI}
+)
+
+
+def _require_admin_unless_llm_key(auth: dict, cp: CredentialProvider) -> None:
+    """Only LLM keys are tenant-owned; anything else (GitHub PAT) needs admin (#717, #1303)."""
+    if cp in _TENANT_OWNED_PROVIDERS or has_scope(auth, SCOPE_ADMIN):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=f"Insufficient permissions: '{SCOPE_ADMIN}' scope required",
+    )
+
+
 @router.get("/keys", response_model=list[KeyStatusResponse])
 @rate_limit_standard()
 async def list_key_status(
@@ -310,11 +272,16 @@ async def store_key(
     provider: str,
     body: StoreKeyRequest,
     request: Request,
-    auth: dict = Depends(require_scope(SCOPE_ADMIN)),  # credential storage is admin-only (#717)
+    auth: dict = Depends(require_scope(SCOPE_WRITE)),  # LLM keys: own store, write scope (#1303)
     manager: CredentialManager = Depends(get_credential_manager),
 ) -> KeyStatusResponse:
-    """Store an API key for the given provider after validating its format."""
+    """Store an API key for the given provider after validating its format.
+
+    A user may manage their own LLM keys (write scope, own per-user store,
+    #1303); the GitHub PAT stays admin-only (#717).
+    """
     cp = _resolve_provider(provider)
+    _require_admin_unless_llm_key(auth, cp)
     if not validate_credential_format(cp, body.value):
         raise HTTPException(
             status_code=400,
@@ -348,11 +315,15 @@ async def store_key(
 async def delete_key(
     provider: str,
     request: Request,
-    auth: dict = Depends(require_scope(SCOPE_ADMIN)),  # credential deletion is admin-only (#717)
+    auth: dict = Depends(require_scope(SCOPE_WRITE)),  # LLM keys: own store, write scope (#1303)
     manager: CredentialManager = Depends(get_credential_manager),
 ) -> Response:
-    """Delete a stored credential. Idempotent — non-existent keys are a no-op."""
+    """Delete a stored credential. Idempotent — non-existent keys are a no-op.
+
+    Same rule as store_key: own LLM keys need write scope, GitHub PAT is admin.
+    """
     cp = _resolve_provider(provider)
+    _require_admin_unless_llm_key(auth, cp)
     try:
         await run_in_threadpool(manager.delete_credential, cp)
     except Exception as e:

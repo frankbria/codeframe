@@ -1205,6 +1205,77 @@ def set_password(
     console.print(f"[green]✓ Password updated for {escape(email)}[/green]")
 
 
+@auth_app.command("user-create")
+def user_create(
+    email: str = typer.Argument(..., help="Email of the new account"),
+    name: Optional[str] = typer.Option(None, "--name", help="Display name"),
+    admin: bool = typer.Option(False, "--admin", help="Grant admin (superuser) rights"),
+    password: Optional[str] = typer.Option(
+        None, "--password", "-p", help="Password (prompted if omitted)",
+    ),
+) -> None:
+    """Create an account offline: the way to add users after the first one.
+
+    HTTP registration closes once the first account exists (#336), so this is
+    the only way to add more (#1303). Like set-password it writes straight to
+    the server's database, so it needs direct access to that database.
+
+    Example:
+
+        codeframe auth user-create teammate@example.com --name "Team Mate"
+    """
+    email = email.strip().lower()
+    local, _, domain = email.partition("@")
+    if not local or not domain or "@" in domain or " " in email:
+        print_error(f"Invalid email address: {email!r}")
+        raise typer.Exit(1)
+
+    if not password:
+        password = typer.prompt("Password", hide_input=True, confirmation_prompt=True)
+
+    from codeframe.auth.manager import password_policy_error
+
+    reason = password_policy_error(password, email)
+    if reason:
+        print_error(reason)
+        raise typer.Exit(1)
+
+    from fastapi_users.password import PasswordHelper
+
+    db = get_db_for_cli()
+    if db.conn.execute(
+        "SELECT 1 FROM users WHERE lower(email) = ?", (email,)
+    ).fetchone():
+        print_error(f"A user with email {email!r} already exists")
+        raise typer.Exit(1)
+
+    from codeframe.platform_store.schema_manager import DISABLED_PASSWORD
+
+    has_admin = db.conn.execute(
+        "SELECT 1 FROM users WHERE is_superuser = 1 AND hashed_password != ?",
+        (DISABLED_PASSWORD,),
+    ).fetchone()
+    if not admin and not has_admin:
+        # The server promotes the earliest account to admin when none can log
+        # in (#898 backfill), so a "regular" first account would silently
+        # become the admin — and close web sign-up for the operator.
+        print_error(
+            "No admin account exists yet, so the first account must be one: "
+            "re-run with --admin."
+        )
+        raise typer.Exit(1)
+
+    cursor = db.conn.execute(
+        "INSERT INTO users (email, name, hashed_password, is_active, is_superuser, is_verified) "
+        "VALUES (?, ?, ?, 1, ?, 0)",
+        (email, name, PasswordHelper().hash(password), int(admin)),
+    )
+    db.conn.commit()
+
+    role = "admin" if admin else "regular user"
+    console.print(f"[green]✓ Created {escape(email)} (id {cursor.lastrowid}, {role})[/green]")
+
+
 @auth_app.command("deactivate")
 def deactivate_user(
     email: str = typer.Argument(..., help="Email of the account to disable"),
