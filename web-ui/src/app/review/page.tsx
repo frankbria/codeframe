@@ -25,6 +25,18 @@ import { PRCreatedModal } from '@/components/review/PRCreatedModal';
 import { PRStatusPanel } from '@/components/review/PRStatusPanel';
 import { PRHistoryPanel } from '@/components/review/PRHistoryPanel';
 
+/**
+ * The branch a PR can be opened from, or null. git status names "no branch" as
+ * "(detached HEAD at <sha>)" or "(no commits)" (core/git.py); those exact
+ * forms only, since a real branch may itself be called "(feature)" (#1272).
+ */
+function asPrBranch(name: string | null): string | null {
+  if (!name || name === '(no commits)' || /^\(detached HEAD at [0-9a-f]+\)$/.test(name)) {
+    return null;
+  }
+  return name;
+}
+
 export default function ReviewPage() {
   const {
     workspacePath,
@@ -57,9 +69,7 @@ export default function ReviewPage() {
   // The checked-out branch, from git status. A PR is opened from it (#1272);
   // the backend rejects an empty branch with a 422.
   const [currentBranch, setCurrentBranch] = useState<string | null>(null);
-  // "(detached HEAD at …)" / "(no commits)" are git status's names for "no
-  // branch": nothing a PR can be opened from.
-  const prBranch = currentBranch && !currentBranch.startsWith('(') ? currentBranch : null;
+  const prBranch = asPrBranch(currentBranch);
 
   useEffect(() => {
     if (!workspacePath) return;
@@ -239,8 +249,17 @@ export default function ReviewPage() {
       if (!workspacePath || !prBranch) return;
       setIsCreatingPR(true);
       try {
+        // Re-read it: the branch shown may have changed since the page loaded,
+        // and a PR from the wrong branch carries someone else's changes.
+        const status = await gitApi.getStatus(workspacePath);
+        setCurrentBranch(status.current_branch);
+        const branch = asPrBranch(status.current_branch);
+        if (!branch) {
+          setFeedback({ type: 'error', message: 'Check out a branch to open a pull request.' });
+          return;
+        }
         const result = await prApi.create(workspacePath, {
-          branch: prBranch,
+          branch,
           title,
           body,
         });

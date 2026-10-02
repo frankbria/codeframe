@@ -271,6 +271,32 @@ describe('review page — pull request', () => {
     );
   });
 
+  it('re-reads the branch at create time, so a switch since load is honoured', async () => {
+    mockCreatePR.mockResolvedValue({ url: 'u', number: 8 });
+    render(<ReviewPage />);
+    await waitFor(() => expect(gitApi.getStatus).toHaveBeenCalled());
+    (gitApi.getStatus as jest.Mock).mockResolvedValue({ current_branch: 'feature/y' });
+
+    await userEvent.click(screen.getByText('do-create-pr'));
+
+    await waitFor(() =>
+      expect(mockCreatePR).toHaveBeenCalledWith('/ws', { branch: 'feature/y', title: 'T', body: 'B' })
+    );
+  });
+
+  it('opens a PR from a branch whose name starts with a parenthesis', async () => {
+    (gitApi.getStatus as jest.Mock).mockResolvedValue({ current_branch: '(feature)' });
+    mockCreatePR.mockResolvedValue({ url: 'u', number: 9 });
+    render(<ReviewPage />);
+    await waitFor(() => expect(screen.getByTestId('pr-branch')).toHaveTextContent('(feature)'));
+
+    await userEvent.click(screen.getByText('do-create-pr'));
+
+    await waitFor(() =>
+      expect(mockCreatePR).toHaveBeenCalledWith('/ws', { branch: '(feature)', title: 'T', body: 'B' })
+    );
+  });
+
   it.each([
     ['a detached HEAD', '(detached HEAD at abc1234)'],
     ['an unborn repo', '(no commits)'],
