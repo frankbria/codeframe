@@ -204,6 +204,13 @@ def list_blocking_requirements(
     from codeframe.core.proof.models import ReqStatus
 
     blocking = list(ledger.list_requirements(workspace, status=ReqStatus.OPEN))
+    # A lapsed waiver blocks too (#1276). Read-only: reverting the status to
+    # OPEN stays `cf proof`'s job, so a merge check never rewrites the ledger.
+    blocking += [
+        req
+        for req in ledger.list_requirements(workspace, status=ReqStatus.WAIVED)
+        if ledger.waiver_expired(req)
+    ]
 
     for req in ledger.list_requirements(workspace, status=ReqStatus.SATISFIED):
         # list_evidence returns newest first, so the first passing row for a

@@ -783,8 +783,11 @@ async def merge_pull_request(
                     # its new path only, so without the old one a rename would
                     # stop intersecting the requirement scoped to it and drop
                     # that requirement from the gate (#1247).
+                    # require_complete: a partial list (GitHub's 3000-file cap,
+                    # or a count that disagrees with the PR's) raises into the
+                    # workspace-global fallback below (#1276).
                     changed_files = await scope_client.get_pr_files(
-                        pr_number, include_previous=True
+                        pr_number, include_previous=True, require_complete=True
                     )
                 finally:
                     await scope_client.close()

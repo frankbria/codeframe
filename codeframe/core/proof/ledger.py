@@ -5,6 +5,7 @@ Tables live in the workspace's state.db alongside PRDs and tasks.
 """
 
 import json
+import re
 import sqlite3
 from datetime import date, datetime, timezone
 import logging
@@ -153,11 +154,66 @@ def _ensure_tables(
     # entirely, PRAGMA reports no columns, this no-ops, and init_proof_tables
     # below creates the table with the column already in place.
     _migrate_proof_runs_vacuous_pass_column(workspace, conn=conn)
+    if not missing:
+        _normalize_absolute_scope_files(workspace, conn)
     if own_conn:
         conn.close()
     if missing:
         init_proof_tables(workspace)
     _migrate_evidence_status_column(workspace)
+
+
+# Workspaces whose stored scopes were checked for absolute paths this process.
+_scope_normalized_workspaces: set[str] = set()
+
+# An absolute spelling a repo-relative changed file can never equal.
+_ABSOLUTE_SCOPE_PATH = re.compile(r"^(?:/|\\|~|file://|[A-Za-z]:[\\/])")
+
+
+def _normalize_absolute_scope_files(workspace: Workspace, conn: sqlite3.Connection) -> None:
+    """Re-classify 0.9.3-era absolute ``scope.files`` entries (#1276).
+
+    0.9.3 stored paths such as ``/repo/my file.py`` or ``C:/repo/x.py`` as
+    files. The scoped merge gate (#1247) compares against repo-relative paths,
+    so those never matched and the requirement silently stopped blocking.
+    #1258's classifier handles new captures; this runs the stored rows through
+    it: a path inside the workspace is relativized, anything else becomes an
+    uncomparable tag, which fails closed. Idempotent — once rewritten, nothing
+    matches — and run on the borrowed connection, so a cold dashboard load
+    keeps its connection count.
+    """
+    if workspace.id in _scope_normalized_workspaces:
+        return
+    from codeframe.core.proof.scope import build_scope_from_capture
+
+    rows = conn.execute(
+        "SELECT id, scope FROM proof_requirements WHERE workspace_id = ?", (workspace.id,)
+    ).fetchall()
+    changed = False
+    for req_id, raw in rows:
+        scope = _scope_from_json(raw)
+        if not any(_ABSOLUTE_SCOPE_PATH.match(f) for f in scope.files):
+            continue
+        files: list[str] = []
+        for f in scope.files:
+            if not _ABSOLUTE_SCOPE_PATH.match(f):
+                files.append(f)
+                continue
+            reclassified = build_scope_from_capture(f, workspace=workspace)
+            files += reclassified.files
+            scope.routes += reclassified.routes
+            scope.apis += reclassified.apis
+            scope.components += reclassified.components
+            scope.tags += reclassified.tags
+        scope.files = files
+        conn.execute(
+            "UPDATE proof_requirements SET scope = ? WHERE id = ? AND workspace_id = ?",
+            (_scope_to_json(scope), req_id, workspace.id),
+        )
+        changed = True
+    if changed:
+        conn.commit()
+    _scope_normalized_workspaces.add(workspace.id)
 
 
 # Workspaces already checked for the #728 status column this process —
@@ -755,11 +811,25 @@ def get_run_evidence(workspace: Workspace, run_id: str) -> list[Evidence]:
     ]
 
 
+def waiver_expired(req: Requirement, today: Optional[date] = None) -> bool:
+    """Whether ``req``'s waiver has lapsed (UTC; the expiry date is its last valid day).
+
+    Shared by ``check_expired_waivers`` (which reverts the status) and the merge
+    gate (which only reads it, #1276), so the two cannot disagree on a date.
+    """
+    # UTC, not the machine's local date: the ledger's timestamps are UTC, so a
+    # local date makes expiry depend on the operator's timezone (#952).
+    today = today or datetime.now(timezone.utc).date()
+    # `<` not `<=`: the expiry date is the waiver's LAST VALID day, so a waiver
+    # expiring today must survive today. `<=` expired it a day early and
+    # spuriously blocked the #731 merge gate (#952). Compared as dates, not
+    # isoformat strings, so the comparison cannot silently go lexicographic.
+    return bool(req.waiver and req.waiver.expires and req.waiver.expires < today)
+
+
 def check_expired_waivers(workspace: Workspace) -> list[Requirement]:
     """Find and revert expired waivers to open status."""
     _ensure_tables(workspace)
-    # UTC, not the machine's local date: the ledger's timestamps are UTC, so a
-    # local date makes expiry depend on the operator's timezone (#952).
     today = datetime.now(timezone.utc).date()
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
@@ -777,12 +847,7 @@ def check_expired_waivers(workspace: Workspace) -> list[Requirement]:
 
     for row in rows:
         req = _row_to_requirement(row)
-        # `<` not `<=`: the expiry date is the waiver's LAST VALID day, so a
-        # waiver expiring today must survive today. `<=` expired it a day early
-        # and spuriously blocked the #731 merge gate (#952). Compared as dates,
-        # not isoformat strings, so the comparison cannot silently go
-        # lexicographic on a malformed value.
-        if req.waiver and req.waiver.expires and req.waiver.expires < today:
+        if waiver_expired(req, today):
             cursor.execute(
                 "UPDATE proof_requirements SET status = 'open', waiver = NULL WHERE id = ?",
                 (req.id,),

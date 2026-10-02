@@ -142,7 +142,7 @@ class TestMergeGateScope:
 
         factory = _github()
 
-        async def _files(pr_number, include_previous=False):
+        async def _files(pr_number, include_previous=False, require_complete=False):
             return ["renamed.py", "x.py"] if include_previous else ["renamed.py"]
 
         factory.instance.get_pr_files = AsyncMock(side_effect=_files)
@@ -158,7 +158,7 @@ class TestMergeGateScope:
             _gate(factory)
 
         factory.instance.get_pr_files.assert_called_once_with(
-            PR_NUMBER, include_previous=True
+            PR_NUMBER, include_previous=True, require_complete=True
         )
 
     def test_the_client_is_closed(self, workspace):
@@ -290,7 +290,7 @@ class TestCommandWiring:
             result = CliRunner().invoke(pr_app, ["merge", str(PR_NUMBER)])
 
         factory.instance.get_pr_files.assert_called_once_with(
-            PR_NUMBER, include_previous=True
+            PR_NUMBER, include_previous=True, require_complete=True
         )
         # The command must have got *past* the gate to the merge it then fails
         # on — otherwise this passes on a lookup made by a command that died
