@@ -213,3 +213,29 @@ class TestRun:
         self._run(monkeypatch, ["ok"])
         ids = {batch["events"][0]["anonymous_id"] for batch in sent}
         assert len(ids) == 1
+
+
+    @pytest.mark.parametrize("exc", [KeyboardInterrupt, typer.Abort])
+    def test_an_abort_is_recorded_as_exit_130_and_reraised(self, home, sent, monkeypatch, exc):
+        """#1268: the handler must catch the Abort typer actually raises; an
+        installed-click Abort stops matching once typer vendors its own click."""
+        monkeypatch.setenv("CODEFRAME_TELEMETRY", "on")
+        monkeypatch.setattr(telemetry_runtime, "_is_interactive", lambda: False)
+        monkeypatch.setattr("sys.argv", ["cf", "ok"])
+        with pytest.raises(exc):
+            telemetry_runtime.run(_AbortingApp(_tiny_app(), exc))
+        (event,) = sent[0]["events"]
+        assert event["exit_code"] == 130
+
+
+class _AbortingApp:
+    """A Typer app whose invocation aborts, for the abort branch of run()."""
+
+    def __init__(self, app, exc):
+        self._app, self._exc = app, exc
+
+    def __getattr__(self, name):
+        return getattr(self._app, name)
+
+    def __call__(self, *a, **kw):
+        raise self._exc()
