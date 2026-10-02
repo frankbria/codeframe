@@ -185,6 +185,14 @@ class TestIncompleteFileLists:
         with pytest.raises(IncompletePRFilesError):
             _files(changed_files=4200, listed=3000)
 
+    def test_a_list_at_the_cap_is_refused_even_when_the_count_agrees(self):
+        """At exactly 3000 the list cannot be told apart from a truncated one
+        (changed_files may itself be capped), so refuse rather than trust it."""
+        from codeframe.git.github_integration import IncompletePRFilesError
+
+        with pytest.raises(IncompletePRFilesError):
+            _files(changed_files=3000, listed=3000)
+
     def test_a_count_that_disagrees_with_the_pr_is_refused(self):
         from codeframe.git.github_integration import IncompletePRFilesError
 
