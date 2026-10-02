@@ -145,6 +145,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Three ways the PROOF9 merge gate let a merge through (#1276).** Both `cf pr
+  merge` and the web/API merge now block on:
+  - a **lapsed waiver**: a requirement whose waiver expiry date has passed blocks
+    like an OPEN one. The check is read-only and does not change the
+    requirement's status; `cf proof` still does that;
+  - a **0.9.3-era absolute path** in a requirement's stored file scope. These
+    paths never matched a PR's repo-relative paths. They are rewritten once:
+    inside the repo, the path becomes relative; any other path becomes a
+    match-everything tag;
+  - a **PR with more than 3000 files**. GitHub silently truncates the file list
+    at 3000, so a requirement on a file beyond the cap escaped. A list at the
+    cap, or one whose length disagrees with the PR's `changed_files`, is now
+    refused, and the gate checks every requirement in the workspace instead.
+
 - **Keys saved with `cf auth setup` or Settings → API Keys are now used
   (#1264).** The credential store was write-only. Every LLM path read the
   environment, so a saved and verified key still produced
