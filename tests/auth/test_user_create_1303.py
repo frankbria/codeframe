@@ -22,7 +22,7 @@ PASSWORD = "correct-horse-battery"
 
 
 @pytest.fixture
-def db(tmp_path, monkeypatch):
+def fresh_db(tmp_path, monkeypatch):
     db_path = tmp_path / "state.db"
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
     monkeypatch.delenv("CODEFRAME_BOOTSTRAP_TOKEN", raising=False)
@@ -32,6 +32,14 @@ def db(tmp_path, monkeypatch):
     monkeypatch.setattr(auth_commands, "get_db_for_cli", lambda: database)
     yield database
     reset_auth_engine()
+
+
+@pytest.fixture
+def db(fresh_db):
+    """An instance that already has its first (admin) account."""
+    result = _create("--admin", email="operator@example.com")
+    assert result.exit_code == 0, result.output
+    return fresh_db
 
 
 def _create(*args, password=PASSWORD, email=EMAIL):
@@ -99,3 +107,26 @@ def test_created_user_can_log_in_through_the_real_router(db):
     assert resp.json()["access_token"]
     bad = client.post("/auth/jwt/login", data={"username": EMAIL, "password": "wrong-password-xx"})
     assert bad.status_code == 400
+
+
+class TestFirstAccount:
+    """The server promotes the earliest account when no admin can log in
+    (#898 backfill), so a regular first account would silently become admin."""
+
+    def test_regular_first_account_is_refused(self, fresh_db):
+        result = _create()
+        assert result.exit_code == 1
+        assert "--admin" in result.output
+        assert _row(fresh_db) is None
+
+    def test_admin_first_account_is_created(self, fresh_db):
+        result = _create("--admin")
+        assert result.exit_code == 0, result.output
+        assert _row(fresh_db)[2] == 1
+
+    def test_seeded_placeholder_admin_does_not_count(self, fresh_db):
+        """admin@localhost is a superuser row nobody can log in as."""
+        assert fresh_db.conn.execute(
+            "SELECT 1 FROM users WHERE is_superuser = 1"
+        ).fetchone()
+        assert _create().exit_code == 1

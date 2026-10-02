@@ -40,19 +40,27 @@ def covers_engine(engine: str) -> bool:
 
 
 def resolve_cost_cap(
-    repo_path: Path, ceiling_usd: Optional[float] = None
+    repo_path: Path,
+    ceiling_usd: Optional[float] = None,
+    prior_usd: float = 0.0,
 ) -> Optional[float]:
     """The per-task spend cap, or None when neither limit applies.
 
     Read from the same ``.codeframe/config.yaml`` the Settings page writes, then
-    clamped to ``ceiling_usd`` — what is left of the principal's daily limit
+    clamped by ``ceiling_usd`` — what is left of the principal's daily limit
     (#1303). The workspace value is tenant-writable, so a null or larger one
     must never lift the ceiling.
+
+    The cap is compared against the task's lifetime spend (``prior_usd`` plus
+    this run), but the ceiling limits only *new* spend — today's share of
+    ``prior_usd`` is already subtracted from it — so it is offset by
+    ``prior_usd``. Otherwise a resumed task would be refused at once.
     """
     cap = _workspace_cost_cap(repo_path)
     if ceiling_usd is None:
         return cap
-    return ceiling_usd if cap is None else min(cap, ceiling_usd)
+    budget = prior_usd + ceiling_usd
+    return budget if cap is None else min(cap, budget)
 
 
 def _workspace_cost_cap(repo_path: Path) -> Optional[float]:

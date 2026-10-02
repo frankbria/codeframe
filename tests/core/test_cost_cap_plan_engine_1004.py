@@ -326,8 +326,11 @@ class TestPriorSpendCountsSoResumeCannotBypassTheCap:
 
         from codeframe.core import agent as agent_mod
 
+        # Both go through _load_prior_cost since #1303, which also offsets the
+        # daily ceiling by the prior spend; it must still read the ledger.
+        assert "load_prior_task_cost(" in inspect.getsource(agent_mod.Agent._load_prior_cost)
         for method in (agent_mod.Agent.run, agent_mod.Agent.resume):
-            assert "load_prior_task_cost(" in inspect.getsource(method), (
+            assert "_load_prior_cost(" in inspect.getsource(method), (
                 f"{method.__name__} does not carry prior spend forward"
             )
 

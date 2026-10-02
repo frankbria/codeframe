@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -70,20 +71,72 @@ def spend_today_usd(repo_paths: Iterable[Path]) -> float:
     return total
 
 
-def remaining_today_usd(repo_paths: Iterable[Path]) -> Optional[float]:
+# Budget handed to runs still in flight, per principal. A run's spend reaches
+# token_usage only as it happens, so without this every concurrent start would
+# be handed the same remainder (#1303 review). A run's own spend counts twice
+# (recorded and held) until it ends, which errs toward refusing.
+# ponytail: per process — fine for the single-worker server; a multi-worker
+# deploy needs this in shared storage (same caveat as stream tickets, #745).
+_held: dict[int, float] = {}
+_held_lock = threading.Lock()
+
+
+def _free_today(user_id: Optional[int], repo_paths: Iterable[Path]) -> Optional[float]:
+    """What is left after recorded spend and in-flight holds; raises when none."""
+    limit = daily_limit_usd()
+    if limit is None:
+        return None
+    spent = spend_today_usd(repo_paths)
+    held = _held.get(user_id, 0.0) if user_id is not None else 0.0
+    if spent + held >= limit:
+        in_flight = f" (${held:.2f} held by runs in progress)" if held else ""
+        raise SpendLimitExceeded(
+            f"Daily spend limit reached: ${spent:.2f} of ${limit:.2f} used today "
+            f"(UTC){in_flight}. It resets at midnight UTC; the operator sets it "
+            f"with {DAILY_LIMIT_ENV}."
+        )
+    return limit - spent - held
+
+
+def remaining_today_usd(
+    repo_paths: Iterable[Path], user_id: Optional[int] = None
+) -> Optional[float]:
     """What is left of today's ceiling: None when no ceiling is set.
 
     Raises:
         SpendLimitExceeded: nothing is left.
     """
-    limit = daily_limit_usd()
-    if limit is None:
-        return None
-    spent = spend_today_usd(repo_paths)
-    if spent >= limit:
-        raise SpendLimitExceeded(
-            f"Daily spend limit reached: ${spent:.2f} of ${limit:.2f} used today (UTC). "
-            "It resets at midnight UTC; the operator sets it with "
-            f"{DAILY_LIMIT_ENV}."
-        )
-    return limit - spent
+    with _held_lock:
+        return _free_today(user_id, repo_paths)
+
+
+def reserve_today_usd(
+    user_id: int, repo_paths: Iterable[Path], share: int = 1
+) -> Optional[float]:
+    """Hold a slice of what is left for one run; ``release`` it when it ends.
+
+    ``share`` splits the remainder between runs about to start together (a
+    parallel batch's slots), so the first one cannot take all of it.
+
+    Raises:
+        SpendLimitExceeded: nothing is left.
+    """
+    with _held_lock:
+        free = _free_today(user_id, repo_paths)
+        if free is None:
+            return None
+        amount = free / max(share, 1)
+        _held[user_id] = _held.get(user_id, 0.0) + amount
+        return amount
+
+
+def release(user_id: Optional[int], amount: Optional[float]) -> None:
+    """Return a hold taken by ``reserve_today_usd``; its real spend is recorded by now."""
+    if user_id is None or amount is None:
+        return
+    with _held_lock:
+        left = _held.get(user_id, 0.0) - amount
+        if left > 1e-9:
+            _held[user_id] = left
+        else:
+            _held.pop(user_id, None)

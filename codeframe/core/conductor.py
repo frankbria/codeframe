@@ -110,7 +110,7 @@ _batch_principal: dict[str, Optional[int]] = {}
 # Workspaces whose spend counts toward that principal's daily limit (#1303),
 # keyed the same way. Present only when the caller wants the limit enforced;
 # each task re-reads the spend before it is spawned.
-_batch_spend_paths: dict[str, list[Path]] = {}
+_batch_spend_paths: dict[str, tuple[list[Path], int]] = {}
 
 
 def _principal_credential_env(user_id: Optional[int]) -> dict[str, str]:
@@ -833,7 +833,9 @@ def execute_batch(
     """
     _batch_principal[batch.id] = user_id
     if spend_paths is not None:
-        _batch_spend_paths[batch.id] = spend_paths
+        # Parallel siblings start together, so each holds only its slot's share.
+        share = batch.max_parallel if batch.strategy != "serial" else 1
+        _batch_spend_paths[batch.id] = (spend_paths, share)
     try:
         return _execute_batch(workspace, batch, max_retries, on_event, user_id)
     finally:
@@ -1292,7 +1294,7 @@ def resume_batch(
     # Execute the tasks
     _batch_principal[batch.id] = user_id
     if spend_paths is not None:
-        _batch_spend_paths[batch.id] = spend_paths
+        _batch_spend_paths[batch.id] = (spend_paths, 1)  # resume runs serially
     try:
         _execute_serial_resume(workspace, batch, tasks_to_run, on_event)
     finally:
@@ -2588,6 +2590,49 @@ def _execute_task_subprocess(
     llm_provider: Optional[str] = None,
     llm_model: Optional[str] = None,
 ) -> str:
+    """Execute a single task via subprocess, inside the principal's daily limit.
+
+    When the batch carries spend paths (#1303) the remaining budget is re-read
+    and a slice of it held for this task before its child is spawned, then
+    released when the child exits. An exhausted limit fails the task unstarted.
+    """
+    user_id = _batch_principal.get(batch_id) if batch_id else None
+    spend = _batch_spend_paths.get(batch_id) if batch_id else None
+    held: Optional[float] = None
+    if spend is not None and user_id is not None:
+        from codeframe.core.spend_limit import SpendLimitExceeded, reserve_today_usd
+
+        try:
+            held = reserve_today_usd(user_id, spend[0], share=spend[1])
+        except SpendLimitExceeded as exc:
+            logger.error("Task %s not started: %s", task_id, exc)
+            return RunStatus.FAILED.value
+    try:
+        return _spawn_task_child(
+            workspace, task_id, batch_id, engine, stall_timeout_s, stall_action,
+            worktree_path, cloud_timeout_minutes, llm_provider, llm_model,
+            cost_ceiling_usd=held,
+        )
+    finally:
+        if held is not None and user_id is not None:
+            from codeframe.core.spend_limit import release
+
+            release(user_id, held)
+
+
+def _spawn_task_child(
+    workspace: Workspace,
+    task_id: str,
+    batch_id: Optional[str] = None,
+    engine: str = "react",
+    stall_timeout_s: int = 300,
+    stall_action: str = "blocker",
+    worktree_path: Optional[Path] = None,
+    cloud_timeout_minutes: int = 30,
+    llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
+    cost_ceiling_usd: Optional[float] = None,
+) -> str:
     """Execute a single task via subprocess.
 
     Runs `cf work start <task_id> --execute --engine <engine>` as a subprocess.
@@ -2621,24 +2666,10 @@ def _execute_task_subprocess(
 
     credential_env = _principal_credential_env(_batch_principal.get(batch_id)) if batch_id else None
 
-    spend_paths = _batch_spend_paths.get(batch_id) if batch_id else None
-    if spend_paths is not None:
-        from codeframe.core.spend_limit import (
-            RUN_CEILING_ENV,
-            SpendLimitExceeded,
-            remaining_today_usd,
-        )
+    if cost_ceiling_usd is not None:
+        from codeframe.core.spend_limit import RUN_CEILING_ENV
 
-        try:
-            remaining = remaining_today_usd(spend_paths)
-        except SpendLimitExceeded as exc:
-            logger.error("Task %s not started: %s", task_id, exc)
-            return RunStatus.FAILED.value
-        if remaining is not None:
-            # ponytail: parallel siblings each get the whole remainder, so a
-            # batch can overshoot by up to max_parallel x remaining; reserve
-            # budget per spawn if that matters.
-            credential_env = {**(credential_env or {}), RUN_CEILING_ENV: repr(remaining)}
+        credential_env = {**(credential_env or {}), RUN_CEILING_ENV: repr(cost_ceiling_usd)}
 
     process = None
     try:

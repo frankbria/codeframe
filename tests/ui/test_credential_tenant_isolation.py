@@ -13,6 +13,8 @@ from types import SimpleNamespace
 from typing import Optional
 
 import pytest
+
+from codeframe.core import credentials
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
@@ -132,21 +134,25 @@ class TestManagerDependencyScoping:
     def test_settings_manager_dep_scopes_to_auth_user(self, monkeypatch):
         from codeframe.ui.routers import settings_v2
 
-        monkeypatch.setattr(settings_v2, "CredentialManager", self._FakeCM)
+        # The dependency moved to ui.dependencies and imports the class at call
+        # time (#1303: one shared copy for both routers), so patch its source.
+        monkeypatch.setattr(credentials, "CredentialManager", self._FakeCM)
         manager = settings_v2.get_credential_manager(auth={"user_id": 7})
         assert manager.user_id == 7
 
     def test_settings_manager_dep_machine_wide_when_no_user(self, monkeypatch):
         from codeframe.ui.routers import settings_v2
 
-        monkeypatch.setattr(settings_v2, "CredentialManager", self._FakeCM)
+        # The dependency moved to ui.dependencies and imports the class at call
+        # time (#1303: one shared copy for both routers), so patch its source.
+        monkeypatch.setattr(credentials, "CredentialManager", self._FakeCM)
         manager = settings_v2.get_credential_manager(auth={"user_id": None})
         assert manager.user_id is None
 
     def test_github_manager_dep_scopes_to_auth_user(self, monkeypatch):
         from codeframe.ui.routers import github_integrations_v2
 
-        monkeypatch.setattr(github_integrations_v2, "CredentialManager", self._FakeCM)
+        monkeypatch.setattr(credentials, "CredentialManager", self._FakeCM)
         manager = github_integrations_v2.get_credential_manager(auth={"user_id": 7})
         assert manager.user_id == 7
 

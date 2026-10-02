@@ -1249,6 +1249,22 @@ def user_create(
         print_error(f"A user with email {email!r} already exists")
         raise typer.Exit(1)
 
+    from codeframe.platform_store.schema_manager import DISABLED_PASSWORD
+
+    has_admin = db.conn.execute(
+        "SELECT 1 FROM users WHERE is_superuser = 1 AND hashed_password != ?",
+        (DISABLED_PASSWORD,),
+    ).fetchone()
+    if not admin and not has_admin:
+        # The server promotes the earliest account to admin when none can log
+        # in (#898 backfill), so a "regular" first account would silently
+        # become the admin — and close web sign-up for the operator.
+        print_error(
+            "No admin account exists yet, so the first account must be one: "
+            "re-run with --admin."
+        )
+        raise typer.Exit(1)
+
     cursor = db.conn.execute(
         "INSERT INTO users (email, name, hashed_password, is_active, is_superuser, is_verified) "
         "VALUES (?, ?, ?, 1, ?, 0)",

@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
-from codeframe.core import runtime, tasks, conductor, streaming
+from codeframe.core import runtime, spend_limit, tasks, conductor, streaming
 from codeframe.core.runtime import RunStatus
 from codeframe.core.state_machine import (
     InvalidTransitionError,
@@ -936,6 +936,9 @@ def _spawn_agent_worker(
 ) -> None:
     """Run the agent for ``run`` on a background thread.
 
+    ``cost_ceiling_usd`` is a hold from ``check_spend_limit(reserve=True)``;
+    it is released when the agent finishes, however it finishes (#1303).
+
     Shared by ``start`` and ``resume``. It lives in one place because they drifted:
     resume flipped the run to RUNNING and returned without ever spawning a worker,
     so the task held an *active* run that nothing executed — and `start_task_run`
@@ -983,6 +986,8 @@ def _spawn_agent_worker(
                 ),
             )
             publisher.complete_task_sync(task_id)
+        finally:
+            spend_limit.release(user_id, cost_ceiling_usd)
 
     threading.Thread(target=_run_agent, daemon=True).start()
 
@@ -1021,14 +1026,17 @@ async def start_single_task(
             - 404: Task not found
             - 500: Execution error
     """
+    ceiling = None
+    if execute:
+        _, ceiling = await run_in_threadpool(
+            functools.partial(check_spend_limit, request, workspace, auth, reserve=True)
+        )
     try:
-        ceiling = None
-        if execute:
-            _, ceiling = await run_in_threadpool(
-                check_spend_limit, request, workspace, auth
-            )
-        # Start the run
-        run = runtime.start_task_run(workspace, task_id)
+        try:
+            run = runtime.start_task_run(workspace, task_id)
+        except BaseException:
+            spend_limit.release(auth.get("user_id"), ceiling)  # no worker will
+            raise
 
         result = {
             "success": True,
@@ -1152,13 +1160,17 @@ async def resume_task(
             - 400: Run not blocked
             - 404: No active run for task
     """
+    ceiling = None
+    if execute:
+        _, ceiling = await run_in_threadpool(
+            functools.partial(check_spend_limit, request, workspace, auth, reserve=True)
+        )
     try:
-        ceiling = None
-        if execute:
-            _, ceiling = await run_in_threadpool(
-                check_spend_limit, request, workspace, auth
-            )
-        run = runtime.resume_run(workspace, task_id)
+        try:
+            run = runtime.resume_run(workspace, task_id)
+        except BaseException:
+            spend_limit.release(auth.get("user_id"), ceiling)  # no worker will
+            raise
 
         message = f"Resumed run {run.id[:8]} for task {task_id[:8]}."
         if execute:

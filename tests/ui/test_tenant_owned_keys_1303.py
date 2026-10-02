@@ -145,3 +145,25 @@ def test_non_admin_does_not_inherit_operator_keys(env):
     mine = _user_store(store_dir)
     assert mine.get_credential(CredentialProvider.LLM_OPENAI) is None
     assert mine.get_credential(CredentialProvider.LLM_ANTHROPIC) == ANTHROPIC
+
+
+def test_non_admin_github_connect_does_not_copy_operator_keys(env, tmp_path):
+    """The GitHub router built its manager before its admin check, so a refused
+    non-admin connect still migrated the operator's keys into the tenant's
+    store (internal review of #1303). One shared dependency now serves both."""
+    from codeframe.core.workspace import create_or_load_workspace
+
+    client, keys, store_dir = env
+    _machine_store(store_dir).set_credential(CredentialProvider.LLM_OPENAI, OPENAI)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    create_or_load_workspace(repo)
+
+    r = client.post(
+        f"/api/v2/integrations/github/connect?workspace_path={repo}",
+        headers=_h(keys["write"]),
+        json={"pat": "ghp_" + "x" * 36, "repo": "o/r"},
+    )
+
+    assert r.status_code == 403, r.text  # reached the admin check, past the workspace
+    assert _user_store(store_dir).get_credential(CredentialProvider.LLM_OPENAI) is None

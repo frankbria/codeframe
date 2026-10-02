@@ -31,7 +31,6 @@ from codeframe.auth.dependencies import require_auth, require_scope
 from codeframe.core.credentials import (
     CredentialManager,
     CredentialProvider,
-    CredentialStoreUnreadableError,
 )
 from codeframe.core.github_connect_service import (
     GitHubConnectError,
@@ -57,71 +56,17 @@ from codeframe.core.github_integration_config import (
 from codeframe.core import tasks
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
-from codeframe.ui.dependencies import get_v2_workspace, resolve_github_pat
-from codeframe.ui.response_models import ErrorCodes, api_error, internal_error
+from codeframe.ui.dependencies import (
+    get_credential_manager,
+    get_credential_manager_readonly,
+    get_v2_workspace,
+    resolve_github_pat,
+)
+from codeframe.ui.response_models import ErrorCodes, api_error
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/integrations/github", tags=["integrations"])
-
-
-def get_credential_manager(auth: dict = Depends(require_auth)) -> CredentialManager:
-    """Dependency: CredentialManager scoped to the authenticated user (#790).
-
-    ``user_id=None`` (auth disabled / self-hosted) yields the machine-wide
-    store. Overridden in tests to point at an isolated temp directory.
-    Runs the machine-wide migration — use only on write paths.
-    """
-    # CredentialManager's constructor runs the machine-wide migration, which
-    # can raise CredentialStoreUnreadableError since #954. Raised from a
-    # DEPENDENCY it bypasses each route's own try/except, so the client got a
-    # bare 500 instead of the formatted error every other path produces (#1085).
-    # The exception's message carries the recovery text the CLI already prints.
-    try:
-        return CredentialManager(user_id=auth.get("user_id"), migrate=True)
-    except CredentialStoreUnreadableError as e:
-        # internal_error, NOT str(e) (#934): the exception message embeds the
-        # absolute store path — /home/<operator>/.codeframe/users/<id>/... —
-        # so rendering it would hand an authenticated tenant the operator's
-        # home directory and the per-tenant storage layout. The full message
-        # goes to the operator's log under the correlation id; the client gets
-        # the recovery step, which is the part that is actually actionable and
-        # contains no path.
-        body = internal_error(e, operation="read the credential store", logger=logger)
-        body["detail"] += (
-            " The credential store could not be read; re-enter your keys with "
-            "`cf auth setup`."
-        )
-        raise HTTPException(status_code=500, detail=body)
-
-
-def get_credential_manager_readonly(auth: dict = Depends(require_auth)) -> CredentialManager:
-    """Read-only variant: scoped to the authenticated user but skips migration.
-
-    Used on GET endpoints so that a plain status check cannot trigger a
-    credential write into a new tenant's store (#790).
-    """
-    # CredentialManager's constructor runs the machine-wide migration, which
-    # can raise CredentialStoreUnreadableError since #954. Raised from a
-    # DEPENDENCY it bypasses each route's own try/except, so the client got a
-    # bare 500 instead of the formatted error every other path produces (#1085).
-    # The exception's message carries the recovery text the CLI already prints.
-    try:
-        return CredentialManager(user_id=auth.get("user_id"), migrate=False)
-    except CredentialStoreUnreadableError as e:
-        # internal_error, NOT str(e) (#934): the exception message embeds the
-        # absolute store path — /home/<operator>/.codeframe/users/<id>/... —
-        # so rendering it would hand an authenticated tenant the operator's
-        # home directory and the per-tenant storage layout. The full message
-        # goes to the operator's log under the correlation id; the client gets
-        # the recovery step, which is the part that is actually actionable and
-        # contains no path.
-        body = internal_error(e, operation="read the credential store", logger=logger)
-        body["detail"] += (
-            " The credential store could not be read; re-enter your keys with "
-            "`cf auth setup`."
-        )
-        raise HTTPException(status_code=500, detail=body)
 
 
 class ConnectRequest(BaseModel):

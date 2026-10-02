@@ -6,9 +6,10 @@ shared application state across all API endpoints.
 v2-only: All dependencies use codeframe.core modules.
 """
 
+import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, Query, Request
 
@@ -16,6 +17,11 @@ from codeframe.auth.dependencies import require_auth
 
 # v2 imports
 from codeframe.core.workspace import Workspace, get_workspace, workspace_exists
+
+logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from codeframe.core.credentials import CredentialManager
 
 
 def _allowed_workspace_roots() -> list[Path]:
@@ -228,41 +234,123 @@ def refuse_execution_in_hosted_mode() -> None:
         )
 
 
+def _build_credential_manager(auth: Dict[str, Any], *, migrate: bool) -> "CredentialManager":
+    """Build the caller's CredentialManager, mapping an unreadable store to 500.
+
+    Shared by every router that builds one from a request (#1303): the copy in
+    the GitHub router kept migrating for non-admins after Settings stopped.
+    """
+    from codeframe.core.credentials import (
+        CredentialManager,
+        CredentialStoreUnreadableError,
+    )
+    from codeframe.ui.response_models import internal_error
+
+    # CredentialManager's constructor runs the machine-wide migration, which
+    # can raise CredentialStoreUnreadableError since #954. Raised from a
+    # DEPENDENCY it bypasses each route's own try/except, so the client got a
+    # bare 500 instead of the formatted error every other path produces (#1085).
+    # The exception's message carries the recovery text the CLI already prints.
+    try:
+        return CredentialManager(user_id=auth.get("user_id"), migrate=migrate)
+    except CredentialStoreUnreadableError as e:
+        # internal_error, NOT str(e) (#934): the exception message embeds the
+        # absolute store path — /home/<operator>/.codeframe/users/<id>/... —
+        # so rendering it would hand an authenticated tenant the operator's
+        # home directory and the per-tenant storage layout. The full message
+        # goes to the operator's log under the correlation id; the client gets
+        # the recovery step, which is the part that is actually actionable and
+        # contains no path.
+        body = internal_error(e, operation="read the credential store", logger=logger)
+        body["detail"] += (
+            " The credential store could not be read; re-enter your keys with "
+            "`cf auth setup`."
+        )
+        raise HTTPException(status_code=500, detail=body)
+
+
+def get_credential_manager(auth: Dict[str, Any] = Depends(require_auth)) -> "CredentialManager":
+    """Dependency: CredentialManager scoped to the authenticated user (#790).
+
+    ``user_id=None`` (auth disabled / self-hosted) yields the machine-wide
+    store. Overridden in tests to point at an isolated temp directory.
+    Use only on write paths.
+
+    The machine-wide migration runs for admins only (#1303). It copies the
+    operator's machine-wide credentials into the caller's per-user store, so a
+    non-admin tenant storing their own LLM key would otherwise inherit the
+    operator's keys (and in hosted mode that store is all they read).
+    """
+    from codeframe.auth.api_keys import SCOPE_ADMIN
+    from codeframe.auth.scopes import has_scope
+
+    return _build_credential_manager(auth, migrate=has_scope(auth, SCOPE_ADMIN))
+
+
+def get_credential_manager_readonly(
+    auth: Dict[str, Any] = Depends(require_auth),
+) -> "CredentialManager":
+    """Read-only variant: scoped to the authenticated user but skips migration.
+
+    Used on GET endpoints so that a plain status check cannot trigger a
+    credential write into a new tenant's store (#790).
+    """
+    return _build_credential_manager(auth, migrate=False)
+
+
 def check_spend_limit(
-    request: Request, workspace: Workspace, auth: Dict[str, Any]
+    request: Request,
+    workspace: Workspace,
+    auth: Dict[str, Any],
+    *,
+    reserve: bool = False,
 ) -> tuple[Optional[list[Path]], Optional[float]]:
     """429 when the principal has used up today's spend limit (#1303).
 
-    Returns ``(spend_paths, remaining_usd)`` for the run being started, or
+    Returns ``(spend_paths, budget_usd)`` for the work being started, or
     ``(None, None)`` when no limit applies: none is configured, or the principal
-    is the auth-off operator. Spend is counted across the workspaces the
-    principal owns plus this one. Blocking I/O — call via ``run_in_threadpool``,
-    and before any state is written, so a refusal leaves nothing behind.
+    is the auth-off operator. ``reserve=True`` holds ``budget_usd`` for one run;
+    the caller must ``spend_limit.release`` it when that run ends. Blocking
+    I/O — call via ``run_in_threadpool``, and before any state is written, so a
+    refusal leaves nothing behind.
     """
     from codeframe.core.spend_limit import (
         SpendLimitExceeded,
         daily_limit_usd,
         remaining_today_usd,
+        reserve_today_usd,
     )
     from codeframe.ui.response_models import ErrorCodes, api_error
 
     user_id = auth.get("user_id")
-    if user_id is None or daily_limit_usd() is None:
+    if user_id is None:
         return None, None
-    # ponytail: attribution is by workspace, not by who ran the call, so a
-    # workspace shared between users counts toward each of them (fails closed).
-    # A user_id column on token_usage would make it exact.
-    paths = [Path(workspace.repo_path)]
+    current = str(Path(workspace.repo_path))
     registry = getattr(getattr(request.app.state, "db", None), "workspace_registry", None)
     if registry is not None:
-        paths += [Path(row["repo_path"]) for row in registry.list_all(owner_user_id=user_id)]
+        # Recorded even with no limit set, so turning one on mid-day still
+        # counts the workspaces used earlier that day.
+        registry.record_spend_use(user_id, current)
+    if daily_limit_usd() is None:
+        return None, None
+    # ponytail: attribution is by workspace, not by who made the call, so a
+    # workspace shared between users counts in full for each of them (fails
+    # closed). A user_id column on token_usage would make it exact.
+    paths = [Path(current)]
+    if registry is not None:
+        paths += [Path(p) for p in registry.spend_paths(user_id)]
     try:
-        return paths, remaining_today_usd(paths)
+        budget = (
+            reserve_today_usd(user_id, paths)
+            if reserve
+            else remaining_today_usd(paths, user_id)
+        )
     except SpendLimitExceeded as exc:
         raise HTTPException(
             status_code=429,
             detail=api_error(str(exc), ErrorCodes.SPEND_LIMIT_EXCEEDED),
         )
+    return paths, budget
 
 
 def resolve_github_pat(credential_manager, auth: Dict[str, Any]) -> Optional[str]:

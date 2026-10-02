@@ -260,3 +260,105 @@ class TestBatchRechecksBeforeEachTask:
         spawned = self._run_batch(repos[0], monkeypatch)
         assert len(spawned) == 1
         assert spawned[0] is None or spend_limit.RUN_CEILING_ENV not in spawned[0]
+
+
+class TestResumeIsNotDoubleCounted:
+    """The ceiling limits NEW spend; the cap is compared to lifetime spend.
+
+    $6 already spent on a task and $4 left today must allow $4 more, not
+    refuse at once because 6 > 4 (codex review of #1303).
+    """
+
+    def test_ceiling_is_offset_by_prior_spend(self, repos):
+        assert resolve_cost_cap(repos[0], ceiling_usd=4.0, prior_usd=6.0) == 10.0
+
+    def test_workspace_cap_still_bounds_lifetime_spend(self, repos):
+        TestCeilingClampsWorkspaceCap()._set_cap(repos[0], 7.0)
+        assert resolve_cost_cap(repos[0], ceiling_usd=4.0, prior_usd=6.0) == 7.0
+
+    def test_react_agent_offsets_by_the_tasks_prior_spend(self, repos, monkeypatch):
+        from codeframe.core import react_agent as ra
+
+        ws = create_or_load_workspace(repos[0])
+        agent = ra.ReactAgent(workspace=ws, llm_provider=None, cost_ceiling_usd=4.0)
+        monkeypatch.setattr(agent, "_load_prior_task_cost", lambda task_id: 6.0)
+        seen = {}
+
+        def _stop(*a, **kw):
+            seen["cap"] = agent._max_cost_usd
+            raise RuntimeError("stop after cap resolution")
+
+        monkeypatch.setattr(agent, "_calculate_adaptive_budget", _stop)
+        monkeypatch.setattr(
+            ra.TaskContextPackager, "load_context", lambda self, task_id: object()
+        )
+        try:
+            agent.run("t1")
+        except Exception:
+            pass
+        assert seen["cap"] == 10.0
+
+    def test_plan_agent_offsets_by_the_tasks_prior_spend(self, repos, monkeypatch):
+        from codeframe.core import agent as plan
+
+        ws = create_or_load_workspace(repos[0])
+        a = plan.Agent(workspace=ws, llm_provider=None, cost_ceiling_usd=4.0)
+        monkeypatch.setattr(plan, "load_prior_task_cost", lambda ws, task_id: 6.0)
+        a._load_prior_cost("t1")
+        assert a.cost_tracker.cap_usd == 10.0
+        assert a.cost_tracker.prior_cost_usd == 6.0
+
+
+@pytest.fixture
+def clean_holds():
+    spend_limit._held.clear()
+    yield
+    spend_limit._held.clear()
+
+
+class TestReservation:
+    """Concurrent starts must not each be handed the whole remainder."""
+
+    def test_second_concurrent_run_gets_only_what_is_left(self, monkeypatch, repos, clean_holds):
+        monkeypatch.setenv(LIMIT_ENV, "10")
+        assert spend_limit.reserve_today_usd(1, [repos[0]], share=4) == pytest.approx(2.5)
+        assert spend_limit.reserve_today_usd(1, [repos[0]]) == pytest.approx(7.5)
+        with pytest.raises(spend_limit.SpendLimitExceeded, match="held by runs in progress"):
+            spend_limit.reserve_today_usd(1, [repos[0]])
+
+    def test_release_returns_the_budget(self, monkeypatch, repos, clean_holds):
+        monkeypatch.setenv(LIMIT_ENV, "10")
+        held = spend_limit.reserve_today_usd(1, [repos[0]])
+        spend_limit.release(1, held)
+        assert spend_limit.remaining_today_usd([repos[0]], 1) == pytest.approx(10)
+
+    def test_holds_are_per_principal(self, monkeypatch, repos, clean_holds):
+        monkeypatch.setenv(LIMIT_ENV, "10")
+        spend_limit.reserve_today_usd(1, [repos[0]])
+        assert spend_limit.reserve_today_usd(2, [repos[1]]) == pytest.approx(10)
+
+    def test_batch_task_holds_during_the_child_and_releases_after(
+        self, monkeypatch, repos, clean_holds
+    ):
+        from codeframe.core import conductor
+
+        monkeypatch.setenv(LIMIT_ENV, "10")
+        seen = {}
+
+        def _child(*a, **kw):
+            seen["ceiling"] = kw["cost_ceiling_usd"]
+            seen["held"] = dict(spend_limit._held)
+            return "COMPLETED"
+
+        monkeypatch.setattr(conductor, "_spawn_task_child", _child)
+        conductor._batch_principal["b1"] = 1
+        conductor._batch_spend_paths["b1"] = ([repos[0]], 4)
+        try:
+            ws = create_or_load_workspace(repos[0])
+            assert conductor._execute_task_subprocess(ws, "t1", batch_id="b1") == "COMPLETED"
+        finally:
+            conductor._batch_principal.pop("b1", None)
+            conductor._batch_spend_paths.pop("b1", None)
+        assert seen["ceiling"] == pytest.approx(2.5)  # a quarter: 4 parallel slots
+        assert seen["held"] == {1: pytest.approx(2.5)}
+        assert spend_limit._held == {}  # released once the child exited

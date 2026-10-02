@@ -247,6 +247,18 @@ class SchemaManager:
             )
             """
         )
+        # Every workspace a principal has started work in (#1303). Its spend
+        # counts toward that principal's daily limit, owned or not, so moving
+        # to another workspace cannot reset the meter.
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workspace_spend_users (
+                user_id INTEGER NOT NULL,
+                repo_path TEXT NOT NULL,
+                PRIMARY KEY (user_id, repo_path)
+            )
+            """
+        )
 
     def _create_audit_log_table(self, cursor: sqlite3.Cursor) -> None:
         """Create the audit log table."""

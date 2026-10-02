@@ -296,6 +296,7 @@ class ReactAgent:
             self._max_cost_usd = self._resolve_cost_cap()
             if self._max_cost_usd is not None:
                 self._prior_task_cost_usd = self._load_prior_task_cost(task_id)
+                self._max_cost_usd = self._resolve_cost_cap(self._prior_task_cost_usd)
 
             # Adaptive budget based on task complexity
             adaptive = self._calculate_adaptive_budget(context)
@@ -1201,14 +1202,16 @@ class ReactAgent:
         """
         return load_prior_task_cost(self.workspace, task_id)
 
-    def _resolve_cost_cap(self) -> Optional[float]:
+    def _resolve_cost_cap(self, prior_usd: float = 0.0) -> Optional[float]:
         """The configured per-task spend cap, or None when unset.
 
         Read from the same ``.codeframe/config.yaml`` the Settings page writes.
         Shared with the plan engine (#1004) — the resolver was always
         engine-agnostic, it just had only one caller.
         """
-        return resolve_cost_cap(self.workspace.repo_path, self._cost_ceiling_usd)
+        return resolve_cost_cap(
+            self.workspace.repo_path, self._cost_ceiling_usd, prior_usd
+        )
 
     def _calculate_adaptive_budget(self, context: TaskContext) -> int:
         """Calculate iteration budget based on task complexity.

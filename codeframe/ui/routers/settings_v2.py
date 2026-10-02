@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 
 from codeframe.auth.api_keys import SCOPE_ADMIN, SCOPE_WRITE
-from codeframe.auth.dependencies import require_auth, require_scope
+from codeframe.auth.dependencies import require_scope
 from codeframe.auth.scopes import has_scope
 from openai import AuthenticationError as _OpenAIAuthError
 from openai import OpenAI as _OpenAIClient
@@ -41,7 +41,6 @@ from codeframe.core.config import (
     save_environment_config,
 )
 from codeframe.core.credentials import (
-    CredentialStoreUnreadableError,
     CredentialManager,
     CredentialProvider,
     CredentialSource,
@@ -61,7 +60,11 @@ from codeframe.notifications.webhook import (
     format_test_payload,
 )
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
-from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.dependencies import (
+    get_credential_manager,
+    get_credential_manager_readonly,
+    get_v2_workspace,
+)
 from codeframe.ui.models import (
     AGENT_TYPES,
     KEY_PROVIDERS,
@@ -74,61 +77,12 @@ from codeframe.ui.models import (
     VerifyKeyRequest,
     VerifyKeyResponse,
 )
-from codeframe.ui.response_models import ErrorCodes, api_error, internal_error
+from codeframe.ui.response_models import ErrorCodes, api_error
 from codeframe.core.notifications_config import redact_webhook_url
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/settings", tags=["settings"])
-
-
-def _build_manager(auth: dict, *, migrate: bool) -> CredentialManager:
-    """Build the caller's CredentialManager, mapping an unreadable store to 500."""
-    # CredentialManager's constructor runs the machine-wide migration, which
-    # can raise CredentialStoreUnreadableError since #954. Raised from a
-    # DEPENDENCY it bypasses each route's own try/except, so the client got a
-    # bare 500 instead of the formatted error every other path produces (#1085).
-    # The exception's message carries the recovery text the CLI already prints.
-    try:
-        return CredentialManager(user_id=auth.get("user_id"), migrate=migrate)
-    except CredentialStoreUnreadableError as e:
-        # internal_error, NOT str(e) (#934): the exception message embeds the
-        # absolute store path — /home/<operator>/.codeframe/users/<id>/... —
-        # so rendering it would hand an authenticated tenant the operator's
-        # home directory and the per-tenant storage layout. The full message
-        # goes to the operator's log under the correlation id; the client gets
-        # the recovery step, which is the part that is actually actionable and
-        # contains no path.
-        body = internal_error(e, operation="read the credential store", logger=logger)
-        body["detail"] += (
-            " The credential store could not be read; re-enter your keys with "
-            "`cf auth setup`."
-        )
-        raise HTTPException(status_code=500, detail=body)
-
-
-def get_credential_manager(auth: dict = Depends(require_auth)) -> CredentialManager:
-    """Dependency: CredentialManager scoped to the authenticated user (#790).
-
-    ``user_id=None`` (auth disabled / self-hosted) yields the machine-wide
-    store. Overridden in tests to point at an isolated temp directory.
-    Use only on write paths.
-
-    The machine-wide migration runs for admins only (#1303). It copies the
-    operator's machine-wide credentials into the caller's per-user store, so a
-    non-admin tenant storing their own LLM key would otherwise inherit the
-    operator's keys (and in hosted mode that store is all they read).
-    """
-    return _build_manager(auth, migrate=has_scope(auth, SCOPE_ADMIN))
-
-
-def get_credential_manager_readonly(auth: dict = Depends(require_auth)) -> CredentialManager:
-    """Read-only variant: scoped to the authenticated user but skips migration.
-
-    Used on GET endpoints so that a plain status check cannot trigger a
-    credential write into a new tenant's store (#790).
-    """
-    return _build_manager(auth, migrate=False)
 
 
 def _config_to_response(config: EnvironmentConfig) -> AgentSettingsResponse:

@@ -8,6 +8,7 @@ workspace ``max_cost_usd``.
 from __future__ import annotations
 
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -42,6 +43,15 @@ def _record(repo: Path, cost: float) -> None:
         )
     finally:
         conn.close()
+
+
+@pytest.fixture(autouse=True)
+def _clean_holds():
+    from codeframe.core import spend_limit
+
+    spend_limit._held.clear()
+    yield
+    spend_limit._held.clear()
 
 
 @pytest.fixture
@@ -187,3 +197,65 @@ def test_no_limit_configured_is_never_limited(env, monkeypatch):
     resp = client.post(f"/api/v2/tasks/execute?{_q(repo)}", json={})
 
     assert resp.status_code != 429
+
+
+def test_switching_to_an_unowned_workspace_does_not_reset_the_meter(env, tmp_path, monkeypatch):
+    """Spend in a workspace the user merely worked in still counts (review #2)."""
+    client, ws, repo, other = env
+    monkeypatch.setattr(tasks_v2, "_spawn_agent_worker", lambda *a, **kw: None)
+    third = repo.parent / "third"  # not owned by USER, never registered
+    third.mkdir()
+    ws3 = create_or_load_workspace(third)
+    t3 = tasks.create(ws3, title="t", description="d", status=TaskStatus.READY)
+    assert client.post(f"/api/v2/tasks/{t3.id}/start?execute=true&{_q(third)}").status_code == 200
+    _record(third, 2.0)  # that run used the whole day's limit
+    task = tasks.create(ws, title="t", description="d", status=TaskStatus.READY)
+
+    resp = client.post(f"/api/v2/tasks/{task.id}/start?execute=true&{_q(repo)}")
+
+    assert resp.status_code == 429, resp.text
+
+
+def test_a_failed_start_releases_its_hold(env):
+    from codeframe.core import spend_limit
+
+    client, ws, repo, other = env
+    resp = client.post(f"/api/v2/tasks/no-such-task/start?execute=true&{_q(repo)}")
+
+    assert resp.status_code == 404, resp.text
+    assert spend_limit._held == {}
+
+
+def test_the_worker_releases_its_hold_when_the_run_ends(env, monkeypatch):
+    from codeframe.core import spend_limit
+
+    client, ws, repo, other = env
+    task = tasks.create(ws, title="t", description="d", status=TaskStatus.READY)
+    seen = {}
+
+    def _agent(*a, **kw):
+        seen["held"] = dict(spend_limit._held)
+
+    monkeypatch.setattr(runtime, "execute_agent", _agent)
+    started = threading.Event()
+    real_thread = threading.Thread
+
+    def _joined_thread(*a, **kw):
+        t = real_thread(*a, **kw)
+        original = t.start
+
+        def _start():
+            original()
+            t.join(10)
+            started.set()
+
+        t.start = _start
+        return t
+
+    monkeypatch.setattr(tasks_v2.threading, "Thread", _joined_thread)
+    resp = client.post(f"/api/v2/tasks/{task.id}/start?execute=true&{_q(repo)}")
+
+    assert resp.status_code == 200, resp.text
+    assert started.wait(10)
+    assert seen["held"] == {USER: pytest.approx(2.0)}  # held while running
+    assert spend_limit._held == {}  # and returned afterwards
