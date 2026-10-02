@@ -9,6 +9,28 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **Current Claude and OpenAI models now work (#1267).** Opus 4.7+, Opus 5/5.5,
+  Sonnet 5/5.5 and Fable reject `temperature` and a fixed thinking budget, and
+  OpenAI's gpt-5 and o-series reject `max_tokens` and `temperature`. Setting
+  `CODEFRAME_*_MODEL` to any of them made every request fail with a 400. Each
+  model now gets the request shape it accepts: Claude 3 and Claude 4 up to 4.6
+  keep `temperature` (including `0.0`) and a thinking budget, and every other
+  Claude model gets adaptive thinking. Requests to OpenAI itself send
+  `max_completion_tokens`. Ollama, vLLM and other compatible servers, including
+  `provider: openai` with a local `base_url`, keep `max_tokens`. The defaults
+  are unchanged. `claude-sonnet-4-5` reaches end of life on 2026-11-30;
+  `docs/AGENT_SYSTEM_REFERENCE.md` has the dated plan for moving off it.
+
+- **Accounts, own LLM keys and a daily spend limit for multi-user servers
+  (#1303).** `codeframe auth user-create` adds accounts after the first
+  (offline, against the server's database; the first account must be
+  `--admin`). Any signed-in user can now store and remove their **own** LLM
+  API keys; the GitHub token stays admin-only. The new
+  `CODEFRAME_USER_DAILY_COST_LIMIT_USD` caps what each user's runs spend per
+  UTC day. Once it is used up, starting work returns 429, and what is left caps
+  each run. **Behavior change:** while the limit is set, delegated engines
+  (claude-code, codex, …) cannot run, because their spend is not metered.
+
 - **The web UI image and CI run Node 24 (#1301).** Node 20 reached end of
   life on 2026-04-30 and has had no security release since, yet it still ran
   the internet-facing web server. `npm audit` checks packages, not the

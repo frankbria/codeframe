@@ -195,7 +195,8 @@ class TestAnthropicExtendedThinkingRouting:
     async def _drain(self, provider, **kw):
         async for _ in provider.async_stream(
             messages=[{"role": "user", "content": "hi"}],
-            system="s", tools=[], model="claude-x", max_tokens=4096, **kw,
+            # Takes a thinking budget; current models get adaptive (#1267).
+            system="s", tools=[], model="claude-sonnet-4-5", max_tokens=4096, **kw,
         ):
             pass
 

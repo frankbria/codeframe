@@ -132,7 +132,9 @@ async def _collect(provider, **kwargs):
             messages=[{"role": "user", "content": "hi"}],
             system="sys",
             tools=[],
-            model="claude-x",
+            # A model that takes a thinking budget; current ones get adaptive
+            # thinking instead (#1267, tests/adapters/test_request_shape_1267.py).
+            model="claude-sonnet-4-5",
             max_tokens=kwargs.pop("max_tokens", 4096),
             **kwargs,
         )

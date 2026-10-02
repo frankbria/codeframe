@@ -8,7 +8,9 @@ import asyncio
 import json
 import logging
 import os
+import re
 from typing import TYPE_CHECKING, AsyncIterator, Iterator, Optional
+from urllib.parse import urlparse
 
 import openai
 
@@ -26,6 +28,12 @@ if TYPE_CHECKING:
     from codeframe.core.credentials import CredentialManager
 
 logger = logging.getLogger(__name__)
+
+# OpenAI's reasoning models (o-series, gpt-5 family) reject ``max_tokens`` and
+# any ``temperature`` (#1267).
+# A fine-tune id ("ft:o4-mini:org::id") names its base model after "ft:", and a
+# gateway (OpenRouter, LiteLLM) after a vendor namespace ("openai/gpt-5-mini").
+_REASONING_MODEL = re.compile(r"(?:^|[:/])(?:o\d|gpt-5)")
 
 _STOP_REASON_MAP = {
     "stop": "end_turn",
@@ -100,6 +108,34 @@ class OpenAIProvider(LLMProvider):
         self._client = None
         self._async_client = None
 
+    def _limits(
+        self, model: str, max_tokens: int, temperature: Optional[float]
+    ) -> dict:
+        """Token cap and temperature in the shape this provider and model take.
+
+        OpenAI itself takes ``max_completion_tokens`` on every chat model and
+        rejects ``max_tokens`` on reasoning models, which also reject any
+        temperature. Ollama, vllm and other compatible servers keep
+        ``max_tokens``: many predate the new name (#1267). That includes
+        ``provider: openai`` pointed at one through ``base_url``, the documented
+        local-model setup, so the endpoint decides, not just the provider name.
+        """
+        openai_itself = self.provider_name == "openai" and (
+            not self.base_url or urlparse(self.base_url).hostname == "api.openai.com"
+        )
+        limits: dict = (
+            {"max_completion_tokens": max_tokens}
+            if openai_itself
+            else {"max_tokens": max_tokens}
+        )
+        # Temperature is the model's constraint, so it applies behind Azure or
+        # a proxy too; only the token-cap name depends on the endpoint.
+        if _REASONING_MODEL.search(model):
+            temperature = None
+        if temperature is not None:
+            limits["temperature"] = temperature
+        return limits
+
     def get_model(self, purpose: Purpose) -> str:
         """Return the model for a given purpose.
 
@@ -145,11 +181,11 @@ class OpenAIProvider(LLMProvider):
         if system:
             converted = [{"role": "system", "content": system}] + converted
 
+        model = self.get_model(purpose)
         kwargs = {
-            "model": self.get_model(purpose),
-            "max_tokens": max_tokens,
+            "model": model,
             "messages": converted,
-            "temperature": temperature,
+            **self._limits(model, max_tokens, temperature),
         }
 
         if tools:
@@ -194,11 +230,11 @@ class OpenAIProvider(LLMProvider):
         if system:
             converted = [{"role": "system", "content": system}] + converted
 
+        model = self.get_model(purpose)
         kwargs: dict = {
-            "model": self.get_model(purpose),
-            "max_tokens": max_tokens,
+            "model": model,
             "messages": converted,
-            "temperature": temperature,
+            **self._limits(model, max_tokens, temperature),
         }
         if tools:
             kwargs["tools"] = self._convert_tools(tools)
@@ -255,10 +291,10 @@ class OpenAIProvider(LLMProvider):
 
         kwargs: dict = {
             "model": model,
-            "max_tokens": max_tokens,
             "messages": converted,
             "stream": True,
             "stream_options": {"include_usage": True},
+            **self._limits(model, max_tokens, None),
         }
 
         if tools:
@@ -384,12 +420,12 @@ class OpenAIProvider(LLMProvider):
         if system:
             converted = [{"role": "system", "content": system}] + converted
 
+        model = self.get_model(purpose)
         kwargs = {
-            "model": self.get_model(purpose),
-            "max_tokens": max_tokens,
+            "model": model,
             "messages": converted,
             "stream": True,
-            "temperature": temperature,
+            **self._limits(model, max_tokens, temperature),
         }
 
         for chunk in self.client.chat.completions.create(**kwargs):
