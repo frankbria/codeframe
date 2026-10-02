@@ -335,7 +335,8 @@ def check_spend_limit(
         registry.record_spend_use(user_id, current)
     if daily_limit_usd() is None:
         return None, None
-
+    # The REST routes only accept react/plan; a delegated engine can still
+    # arrive via batch resume, which the conductor refuses per task.
     def spend_scope() -> list[Path]:
         # ponytail: attribution is by workspace, not by who made the call, so
         # a workspace shared between users counts in full for each of them

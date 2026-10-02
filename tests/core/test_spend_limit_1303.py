@@ -404,7 +404,7 @@ class TestReservation:
 
         def _child(*a, **kw):
             seen["ceiling"] = kw["cost_ceiling_usd"]
-            seen["held"] = dict(spend_limit._held)
+            seen["held"] = spend_limit._held_today(1)
             return "COMPLETED"
 
         monkeypatch.setattr(conductor, "_spawn_task_child", _child)
@@ -417,5 +417,37 @@ class TestReservation:
             conductor._batch_principal.pop("b1", None)
             conductor._batch_spend_scope.pop("b1", None)
         assert seen["ceiling"] == pytest.approx(2.5)  # a quarter: 4 parallel slots
-        assert seen["held"] == {1: pytest.approx(2.5)}
+        assert seen["held"] == pytest.approx(2.5)
         assert spend_limit._held == {}  # released once the child exited
+
+
+class TestHoldsResetAtMidnight:
+    """A run still holding yesterday's budget must not block today (codex PR pass)."""
+
+    def test_yesterdays_hold_does_not_count_today(self, monkeypatch, repos, clean_holds):
+        from datetime import date, timedelta
+
+        monkeypatch.setenv(LIMIT_ENV, "10")
+        today = date(2026, 10, 1)
+        monkeypatch.setattr(spend_limit, "_today", lambda: today)
+        held = spend_limit.reserve_today_usd(1, [repos[0]])
+        assert held == pytest.approx(10)
+        with pytest.raises(spend_limit.SpendLimitExceeded):
+            spend_limit.reserve_today_usd(1, [repos[0]])
+
+        monkeypatch.setattr(spend_limit, "_today", lambda: today + timedelta(days=1))
+        assert spend_limit.remaining_today_usd([repos[0]], 1) == pytest.approx(10)
+
+        spend_limit.release(1, held)  # the old run ends: its hold goes away
+        assert spend_limit._held == {}
+
+
+class TestUnmeteredEnginesAreRefusedUnderALimit:
+    def test_batch_with_a_delegated_engine_spawns_nothing(self, monkeypatch, repos, clean_holds):
+        monkeypatch.setenv(LIMIT_ENV, "10")
+        spawned = TestBatchRechecksBeforeEachTask()._run_batch(
+            repos[0], monkeypatch, batch_opts={"engine": "claude-code"},
+            user_id=7, spend_scope=lambda: [repos[0]],
+        )
+        assert spawned == []
+        assert spend_limit._held == {}

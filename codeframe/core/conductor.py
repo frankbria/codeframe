@@ -2601,7 +2601,16 @@ def _execute_task_subprocess(
     spend = _batch_spend_scope.get(batch_id) if batch_id else None
     held: Optional[float] = None
     if spend is not None and user_id is not None:
+        from codeframe.core.cost_tracker import covers_engine
         from codeframe.core.spend_limit import SpendLimitExceeded, reserve_today_usd
+
+        if not covers_engine(engine):
+            # Its spend never reaches token_usage, so the limit could not bind.
+            logger.error(
+                "Task %s not started: the %s engine is not metered, so it cannot "
+                "run under the daily spend limit", task_id, engine,
+            )
+            return RunStatus.FAILED.value
 
         try:
             held = reserve_today_usd(user_id, spend[0](), share=spend[1])

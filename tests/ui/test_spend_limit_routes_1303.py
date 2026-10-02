@@ -235,7 +235,7 @@ def test_the_worker_releases_its_hold_when_the_run_ends(env, monkeypatch):
     seen = {}
 
     def _agent(*a, **kw):
-        seen["held"] = dict(spend_limit._held)
+        seen["held"] = spend_limit._held_today(USER)
 
     monkeypatch.setattr(runtime, "execute_agent", _agent)
     started = threading.Event()
@@ -258,5 +258,6 @@ def test_the_worker_releases_its_hold_when_the_run_ends(env, monkeypatch):
 
     assert resp.status_code == 200, resp.text
     assert started.wait(10)
-    assert seen["held"] == {USER: pytest.approx(2.0)}  # held while running
+    assert seen["held"] == pytest.approx(2.0)  # held while running
     assert spend_limit._held == {}  # and returned afterwards
+

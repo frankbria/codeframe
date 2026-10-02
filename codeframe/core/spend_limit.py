@@ -15,6 +15,7 @@ import logging
 import os
 import sqlite3
 import threading
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -79,14 +80,27 @@ def spend_today_usd(repo_paths: Iterable[Path]) -> float:
     return total
 
 
-# Budget handed to runs still in flight, per principal. A run's spend reaches
-# token_usage only as it happens, so without this every concurrent start would
-# be handed the same remainder (#1303 review). A run's own spend counts twice
-# (recorded and held) until it ends, which errs toward refusing.
+# Budget handed to runs still in flight, per principal and UTC day. A run's
+# spend reaches token_usage only as it happens, so without this every
+# concurrent start would be handed the same remainder (#1303 review). A run's
+# own spend counts twice (recorded and held) until it ends, which errs toward
+# refusing. Only today's holds count, so the limit still resets at midnight.
 # ponytail: per process — fine for the single-worker server; a multi-worker
 # deploy needs this in shared storage (same caveat as stream tickets, #745).
-_held: dict[int, float] = {}
+# A run that crosses midnight is not re-reserved for the new day.
+_held: dict[int, list[tuple[date, float]]] = {}
 _held_lock = threading.Lock()
+
+
+def _today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+def _held_today(user_id: Optional[int]) -> float:
+    if user_id is None:
+        return 0.0
+    today = _today()
+    return sum(amount for day, amount in _held.get(user_id, []) if day == today)
 
 
 def _free_today(user_id: Optional[int], repo_paths: Iterable[Path]) -> Optional[float]:
@@ -95,7 +109,7 @@ def _free_today(user_id: Optional[int], repo_paths: Iterable[Path]) -> Optional[
     if limit is None:
         return None
     spent = spend_today_usd(repo_paths)
-    held = _held.get(user_id, 0.0) if user_id is not None else 0.0
+    held = _held_today(user_id)
     if spent + held >= limit:
         in_flight = f" (${held:.2f} held by runs in progress)" if held else ""
         raise SpendLimitExceeded(
@@ -134,7 +148,7 @@ def reserve_today_usd(
         if free is None:
             return None
         amount = free / max(share, 1)
-        _held[user_id] = _held.get(user_id, 0.0) + amount
+        _held.setdefault(user_id, []).append((_today(), amount))
         return amount
 
 
@@ -143,8 +157,10 @@ def release(user_id: Optional[int], amount: Optional[float]) -> None:
     if user_id is None or amount is None:
         return
     with _held_lock:
-        left = _held.get(user_id, 0.0) - amount
-        if left > 1e-9:
-            _held[user_id] = left
-        else:
+        holds = _held.get(user_id, [])
+        for i, (_, held) in enumerate(holds):
+            if held == amount:
+                del holds[i]
+                break
+        if not holds:
             _held.pop(user_id, None)
