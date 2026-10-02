@@ -149,23 +149,40 @@ def _code_block_invocations():
                 continue
             if not fenced or NOT_IMPLEMENTED_MARKER in line:
                 continue
-            code = line.split(" #", 1)[0]  # trailing shell comment
-            m = INVOCATION.search(code)
-            if not m or "|" in m.group(1):
-                continue
             try:
-                tokens = shlex.split(code[m.start(1):])
+                # comments=True drops a trailing "# ..." but keeps a quoted
+                # "Fix #123" argument intact.
+                tokens = shlex.split(line, comments=True)
             except ValueError:
                 continue
-            node, used = root, 0
+            # Every command on the line, not just the first: `cf a && cf b`.
+            segments, current = [], []
             for tok in tokens:
-                subcommands = getattr(node, "commands", None)
-                if not subcommands or tok not in subcommands:
-                    break
-                node, used = subcommands[tok], used + 1
-            if used == 0:
-                continue  # unresolved: the test above owns it
-            yield f"{rel}:{lineno}", node, tokens[used:], line.strip()
+                if tok in ("&&", "||", ";", "|"):
+                    segments.append(current)
+                    current = []
+                else:
+                    current.append(tok)
+            segments.append(current)
+            for seg in segments:
+                # `$ cf …`, `uv run cf …`, `VAR=1 cf …`: start at the binary.
+                start = next((i for i, t in enumerate(seg) if t in ("cf", "codeframe")), None)
+                if start is None:
+                    continue
+                seg = seg[start:]
+                if len(seg) < 2:
+                    continue
+                if any("|" in t for t in seg[1:]):
+                    continue  # `pr create|list|merge`: a listing, not an invocation
+                node, used = root, 0
+                for tok in seg[1:]:
+                    subcommands = getattr(node, "commands", None)
+                    if not subcommands or tok not in subcommands:
+                        break
+                    node, used = subcommands[tok], used + 1
+                if used == 0:
+                    continue  # unresolved: the test above owns it
+                yield f"{rel}:{lineno}", node, seg[1 + used:], line.strip()
 
 
 def _positional_count(command, argv):

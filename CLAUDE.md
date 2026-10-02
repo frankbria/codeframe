@@ -304,7 +304,7 @@ cf blocker show <id>
 cf blocker answer <id> "answer"
 
 # Quality / State
-cf review && cf patch export && cf commit
+cf review && cf patch export && cf commit create -m "feat: ..."
 cf checkpoint create|list|restore
 cf summary
 

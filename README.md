@@ -253,7 +253,7 @@ before you kick off a large batch; see [`docs/QUICKSTART.md`](docs/QUICKSTART.md
                                |
                                v
   +-BUILD---------------------------------------------+
-  |  cf work start --engine <agent>                    |
+  |  cf work start <task> --engine <agent>             |
   |                                                    |
   |  +-- Claude Code / Codex / OpenCode / Kilocode / ReAct        |
   |  |                                                 |

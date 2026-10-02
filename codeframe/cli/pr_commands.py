@@ -155,7 +155,10 @@ def _proof_report_for_cwd() -> str:
     root = find_workspace_root(Path.cwd())
     if root is None:
         return ""
-    workspace = get_workspace(root)
+    try:
+        workspace = get_workspace(root)
+    except FileNotFoundError:
+        return ""  # a state.db with no workspace row: skip the report, as the gate does
     init_proof_tables(workspace)
     return pr_proof_report(workspace)
 
@@ -470,7 +473,8 @@ def get_pr(
         console.print(f"[bold]URL:[/bold] {pr.url}")
 
         if pr.body:
-            console.print(f"\n[bold]Description:[/bold]\n{pr.body}")
+            # Commit subjects and captured requirement titles land here (#1273).
+            console.print(f"\n[bold]Description:[/bold]\n{escape(pr.body)}")
 
     except GitHubAPIError as e:
         if e.status_code == 404:

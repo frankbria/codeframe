@@ -809,3 +809,24 @@ class TestPRCreateDefaults1273:
         monkeypatch.chdir(repo / "src")
         _, call = self._create(mock_pr_details, "--body", "B")
         assert "## PROOF9" in call.kwargs["body"]
+
+    def test_pr_get_prints_a_hostile_body(self, repo, mock_pr_details):
+        """The body now carries commit subjects and requirement titles (#1273)."""
+        import dataclasses
+
+        from codeframe.cli.pr_commands import pr_app
+
+        hostile = dataclasses.replace(mock_pr_details, body="- `REQ-0001` fix a[0] and [/b]")
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            MockGH.return_value.get_pull_request.return_value = hostile
+            result = runner.invoke(pr_app, ["get", "42"])
+        assert result.exit_code == 0, result.output
+        assert "fix a[0] and [/b]" in result.output
+
+    def test_a_half_initialised_workspace_skips_the_report(self, repo, mock_pr_details):
+        """state.db without a workspace row: no report, no traceback."""
+        (repo / ".codeframe").mkdir()
+        (repo / ".codeframe" / "state.db").write_bytes(b"")
+        result, call = self._create(mock_pr_details, "--body", "B")
+        assert result.exit_code == 0, result.output
+        assert "## PROOF9" not in call.kwargs["body"]
