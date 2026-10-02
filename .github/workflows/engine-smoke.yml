@@ -182,3 +182,14 @@ jobs:
             tests/core/adapters/test_opencode_smoke_913.py \
             tests/core/adapters/test_kilocode_smoke_1012.py \
             -v --no-header -p no:randomly -rs
+
+  # Same signal test.yml, unlocked-resolution.yml and web-ui-audit.yml use
+  # (#1239): a red scheduled run has no PR to be red on. This one was red on
+  # every Sunday from 2026-08-02 to 2026-09-20 and nobody saw it (#1271).
+  report-scheduled-failure:
+    name: Report scheduled failure
+    needs: [contract, task]
+    if: failure() && github.event_name == 'schedule'
+    uses: ./.github/workflows/scheduled-failure-issue.yml
+    permissions:
+      issues: write
