@@ -14,8 +14,8 @@ import sys
 import time
 from typing import Optional
 
-import click
 import typer
+from typer.core import TyperGroup
 import typer.main
 from rich.console import Console
 
@@ -47,7 +47,10 @@ def resolve_command_name(cli_app: typer.Typer, args: list[str]) -> Optional[str]
     for token in args:
         if token.startswith("-"):
             continue
-        if not isinstance(group, click.Group):
+        # typer's own Group class, not the installed click's: typer >= 0.27
+        # vendors click, so an isinstance against `click.Group` is always
+        # False there and every command was recorded as "unknown" (#1268).
+        if not isinstance(group, TyperGroup):
             break
         command = group.commands.get(token)
         if command is None:
@@ -86,7 +89,7 @@ def maybe_prompt_first_run(args: list[str]) -> None:
         config.prompted = True
         telemetry.save_config(config)
         console.print()
-    except (click.Abort, KeyboardInterrupt):
+    except (typer.Abort, KeyboardInterrupt):
         raise
     except Exception:
         logger.debug("Telemetry first-run prompt failed", exc_info=True)
@@ -139,7 +142,7 @@ def run(cli_app: typer.Typer) -> None:
     except SystemExit as e:
         _dispatch(command, start, _coerce_exit_code(e.code))
         raise
-    except (KeyboardInterrupt, click.Abort):
+    except (KeyboardInterrupt, typer.Abort):
         _dispatch(command, start, 130)
         raise
     except BaseException as e:

@@ -272,13 +272,13 @@ class TestCliValidators:
     def test_missing_key_message_offers_auth_setup(self, store_dir, tmp_path, monkeypatch, capsys):
         from pathlib import Path
 
-        import click
+        import typer
 
         from codeframe.cli.validators import require_openai_api_key
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-        with pytest.raises(click.exceptions.Exit):
+        with pytest.raises(typer.Exit):
             require_openai_api_key()
         assert "cf auth setup --provider openai" in capsys.readouterr().out
 

@@ -32,6 +32,15 @@ on:
       - "pyproject.toml"
       - "tests/adapters/test_sdk_kwargs_guard_614.py"
       - "tests/adapters/test_model_defaults_guard_1112.py"
+      # Everything the job now runs (#1268), so a PR that breaks one under the
+      # unlocked resolution is red on the PR, not on the next morning's run.
+      - "tests/adapters/test_request_shape_1267.py"
+      - "tests/cli/**"
+      - "tests/core/test_tui_dashboard.py"
+      - "tests/core/test_cli_validators.py"
+      - "tests/lifecycle/test_api_lifecycle.py"
+      - "codeframe/cli/**"
+      - "codeframe/adapters/llm/**"
       - "pytest.ini" # its filterwarnings decide whether these guards pass (#1340)
       - ".github/workflows/unlocked-resolution.yml"
 
@@ -42,9 +51,9 @@ jobs:
   unlocked-install:
     name: Fresh resolve + smoke test
     runs-on: ubuntu-latest
-    # Seconds in practice. The cap is for the unattended schedule: a stalled
+    # A few minutes in practice. The cap is for the unattended schedule: a stalled
     # PyPI resolution would otherwise sit on a runner until the 6h default.
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,15 +82,33 @@ jobs:
         run: |
           "$RUNNER_TEMP/unlocked/bin/cf" --help
 
-      - name: SDK signature + model-default guards against the resolved env
+      - name: Test harness plugin
+        # pytest itself is a runtime dependency; pytest-timeout is a dev one the
+        # lifecycle test's timeout marker needs under --strict-markers. Installed
+        # after the summary above, so the listed resolution is the product's.
+        run: uv pip install --python "$RUNNER_TEMP/unlocked" pytest-timeout
+
+      - name: CLI, TUI, validators, mock API lifecycle and SDK wire guards against the resolved env
         # Installing cleanly is not evidence: 0.9.2 installed fine and raised on
-        # the first API call. These two assert the adapters can actually call
-        # what the resolution produced.
+        # the first API call, and a fresh typer 0.27 broke `cf proof capture`,
+        # --help and telemetry while `cf --help` still ran (#1268). So this runs
+        # the CLI suite, the TUI and validators, the Golden Path over HTTP on the
+        # mock provider, and the SDK guards (signature, model defaults, and the
+        # wire-level request shape for both providers).
+        #
+        # The interpreter is invoked by absolute path, never by activating the
+        # venv: an activated venv can fall back to a different interpreter on
+        # PATH and quietly test the wrong environment. The code under test is
+        # the checkout; what this checks is the dependency resolution under it.
         run: |
-          "$RUNNER_TEMP/unlocked/bin/python" -m pytest \
+          "$RUNNER_TEMP/unlocked/bin/python" -m pytest -p no:cacheprovider -q \
+            tests/cli \
+            tests/core/test_tui_dashboard.py \
+            tests/core/test_cli_validators.py \
+            tests/lifecycle/test_api_lifecycle.py \
             tests/adapters/test_sdk_kwargs_guard_614.py \
             tests/adapters/test_model_defaults_guard_1112.py \
-            -q
+            tests/adapters/test_request_shape_1267.py
 
   # Same signal test.yml and web-ui-audit.yml use (#1239): a red scheduled run
   # has no PR to be red on, so open or update the one issue for this workflow.
