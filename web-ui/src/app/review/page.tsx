@@ -25,6 +25,18 @@ import { PRCreatedModal } from '@/components/review/PRCreatedModal';
 import { PRStatusPanel } from '@/components/review/PRStatusPanel';
 import { PRHistoryPanel } from '@/components/review/PRHistoryPanel';
 
+/**
+ * The branch a PR can be opened from, or null. git status names "no branch" as
+ * "(detached HEAD at <sha>)" or "(no commits)" (core/git.py); those exact
+ * forms only, since a real branch may itself be called "(feature)" (#1272).
+ */
+function asPrBranch(name: string | null): string | null {
+  if (!name || name === '(no commits)' || /^\(detached HEAD at [0-9a-f]+\)$/.test(name)) {
+    return null;
+  }
+  return name;
+}
+
 export default function ReviewPage() {
   const {
     workspacePath,
@@ -54,6 +66,26 @@ export default function ReviewPage() {
   const [showPRModal, setShowPRModal] = useState(false);
   const [prUrl, setPrUrl] = useState('');
   const [prNumber, setPrNumber] = useState(0);
+  // The checked-out branch, from git status. A PR is opened from it (#1272);
+  // the backend rejects an empty branch with a 422.
+  const [currentBranch, setCurrentBranch] = useState<string | null>(null);
+  const prBranch = asPrBranch(currentBranch);
+
+  useEffect(() => {
+    if (!workspacePath) return;
+    let cancelled = false;
+    gitApi
+      .getStatus(workspacePath)
+      .then((status) => {
+        if (!cancelled) setCurrentBranch(status.current_branch);
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentBranch(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspacePath]);
 
   // Restore the open PR on load (#944). prNumber lived only in local state set
   // by handleCreatePR, so reloading or navigating away while CI ran — the
@@ -66,12 +98,13 @@ export default function ReviewPage() {
   // stale one, the panel would restore someone else's PR and its Merge button
   // would merge it.
   useEffect(() => {
-    if (!workspacePath || prNumber > 0) return;
+    if (!workspacePath || prNumber > 0 || !currentBranch) return;
     let cancelled = false;
-    Promise.all([gitApi.getStatus(workspacePath), prApi.list(workspacePath, 'open')])
-      .then(([status, res]) => {
+    prApi
+      .list(workspacePath, 'open')
+      .then((res) => {
         if (cancelled) return;
-        const mine = pickOpenPr(res.pull_requests, status.current_branch);
+        const mine = pickOpenPr(res.pull_requests, currentBranch);
         if (mine?.number) {
           setPrNumber(mine.number);
           if (mine.url) setPrUrl(mine.url);
@@ -84,7 +117,7 @@ export default function ReviewPage() {
     return () => {
       cancelled = true;
     };
-  }, [workspacePath, prNumber]);
+  }, [workspacePath, prNumber, currentBranch]);
 
   // Feedback
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -213,11 +246,20 @@ export default function ReviewPage() {
 
   const handleCreatePR = useCallback(
     async (title: string, body: string) => {
-      if (!workspacePath) return;
+      if (!workspacePath || !prBranch) return;
       setIsCreatingPR(true);
       try {
+        // Re-read it: the branch shown may have changed since the page loaded,
+        // and a PR from the wrong branch carries someone else's changes.
+        const status = await gitApi.getStatus(workspacePath);
+        setCurrentBranch(status.current_branch);
+        const branch = asPrBranch(status.current_branch);
+        if (!branch) {
+          setFeedback({ type: 'error', message: 'Check out a branch to open a pull request.' });
+          return;
+        }
         const result = await prApi.create(workspacePath, {
-          branch: '', // Let backend use current branch
+          branch,
           title,
           body,
         });
@@ -230,7 +272,7 @@ export default function ReviewPage() {
         setIsCreatingPR(false);
       }
     },
-    [workspacePath]
+    [workspacePath, prBranch]
   );
 
   const handleFileSelect = useCallback(
@@ -349,6 +391,7 @@ export default function ReviewPage() {
             isCreatingPR={isCreatingPR}
             changedFiles={diffData?.changed_files.map((f) => f.path) ?? []}
             onCreatePR={handleCreatePR}
+            prBranch={prBranch}
           />
           {prNumber > 0 && workspacePath && (
             <PRStatusPanel prNumber={prNumber} workspacePath={workspacePath} />
