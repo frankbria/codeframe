@@ -751,6 +751,8 @@ class TestApiKeyLogin:
         operator = tmp_path / "operator"
         (operator / ".codex").mkdir(parents=True)
         (operator / ".codex" / "config.toml").write_text('model = "gpt-5"\n')
+        (operator / ".codex" / "AGENTS.md").write_text("global instructions")
+        (operator / ".codex" / "auth.json").write_text("{}")  # logged out: not a login
         monkeypatch.setenv("HOME", str(operator))
         monkeypatch.delenv("CODEX_HOME", raising=False)
         monkeypatch.delenv("CODEX_API_KEY", raising=False)
@@ -776,9 +778,13 @@ class TestApiKeyLogin:
             env, key = orig(ws)
             real_popen_env.update(env)
             captured["key"] = key
+            # The operator's (logged-out) auth.json is NOT linked in, so the
+            # login below cannot write through to it.
+            captured["linked_auth"] = (Path(env["CODEX_HOME"]) / "auth.json").exists()
             # What the real login does: codex writes the key to CODEX_HOME.
             (Path(env["CODEX_HOME"]) / "auth.json").write_text('{"OPENAI_API_KEY": "sk"}')
             captured["config"] = (Path(env["CODEX_HOME"]) / "config.toml").read_text()
+            captured["agents"] = (Path(env["CODEX_HOME"]) / "AGENTS.md").read_text()
             return env, key
 
         adapter._child_env = spy
@@ -792,9 +798,12 @@ class TestApiKeyLogin:
         )
         # A private CODEX_HOME, never the operator's ~/.codex ...
         private = Path(real_popen_env["CODEX_HOME"])
-        assert private.parent.name == ".codex-api-key"
+        assert private.parent.name == "codex-api-key"
         assert not str(private).startswith(str(homes / ".codex"))
         assert captured["config"] == 'model = "gpt-5"\n'  # operator's settings seen
+        assert captured["agents"] == "global instructions"  # and AGENTS.md/skills
+        assert captured["linked_auth"] is False
+        assert (homes / ".codex" / "auth.json").read_text() == "{}"  # untouched
         # ... and the run's home, key included, is gone once the run is over.
         assert not private.exists()
 
@@ -832,3 +841,14 @@ class TestApiKeyLogin:
         _, sent = _run_with_script(adapter, self._lines(), workspace_path=tmp_path)
         login = next(m for m in sent if m.get("method") == "account/login/start")
         assert login["params"]["apiKey"] == "sk-codex-OWN"
+
+
+    def test_inherit_home_without_home_does_not_crash(self, homes, tmp_path, monkeypatch):
+        """CODEFRAME_AGENT_INHERIT_HOME with HOME unset leaves env without HOME."""
+        monkeypatch.setenv("CODEFRAME_AGENT_INHERIT_HOME", "1")
+        adapter = _make_adapter()
+        with patch("codeframe.core.adapters.codex.build_delegated_agent_env",
+                   return_value={"PATH": os.environ.get("PATH", "")}):
+            env, key = adapter._child_env(tmp_path)
+        assert key == "sk-test-KEY"
+        assert Path(env["CODEX_HOME"]).is_dir()

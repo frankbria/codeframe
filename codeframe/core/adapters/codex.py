@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 # Private CODEX_HOMEs, one per run, under the delegated agent home for runs
 # that log in with an API key: that login writes auth.json, which must not land
 # in the operator's passed-through ~/.codex (#1270).
-_API_KEY_HOME = ".codex-api-key"
+_API_KEY_HOME = "codex-api-key"
 
 _TIMEOUT = object()  # No message within the read window (process still alive)
 _EOF = object()  # stdout closed — the process is gone
@@ -255,13 +255,19 @@ class CodexAdapter:
         key = None if self._codex_login() else self._api_key()
         if key:
             # One per run: parallel batch tasks share the agent home, and one
-            # run's cleanup must not delete a sibling's login mid-run.
-            root = Path(env["HOME"]) / _API_KEY_HOME
+            # run's cleanup must not delete a sibling's login mid-run. Rooted
+            # under ~/.codeframe even with CODEFRAME_AGENT_INHERIT_HOME, where
+            # env may carry no HOME at all.
+            root = Path.home() / ".codeframe" / "agent-homes" / _API_KEY_HOME
             root.mkdir(mode=0o700, parents=True, exist_ok=True)
             private = Path(tempfile.mkdtemp(prefix="run-", dir=root))
-            config = self.codex_home() / "config.toml"
-            if config.is_file():
-                (private / "config.toml").symlink_to(config)  # the operator's model settings
+            # Everything codex keeps in its home (config.toml, AGENTS.md,
+            # skills, ...) except the login itself.
+            real = self.codex_home()
+            if real.is_dir():
+                for entry in real.iterdir():
+                    if entry.name != "auth.json":
+                        (private / entry.name).symlink_to(entry)
             env["CODEX_HOME"] = str(private)
         return env, key
 
