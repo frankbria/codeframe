@@ -720,3 +720,146 @@ class TestCliUsesWorkspaceResolution:
 
         assert result.exit_code == 0, result.output
         assert MockGH.call_args.kwargs["repo"] == "operator/ambient-repo"
+
+
+class TestPRCreateDefaults1273:
+    """README's SHIP step ran `cf pr create` bare: --title was required and the
+    'proof report attached' it promised was never built (#1273)."""
+
+    @pytest.fixture
+    def repo(self, tmp_path, monkeypatch):
+        import subprocess
+
+        r = tmp_path / "repo"
+        r.mkdir()
+        run = lambda *a: subprocess.run(["git", *a], cwd=r, check=True, capture_output=True)  # noqa: E731
+        run("init", "-q", "-b", "main")
+        run("config", "user.email", "t@example.com")
+        run("config", "user.name", "T")
+        (r / "a.txt").write_text("a")
+        run("add", "a.txt")
+        run("commit", "-q", "-m", "chore: base")
+        run("checkout", "-q", "-b", "feature/x")
+        (r / "b.txt").write_text("b")
+        run("add", "b.txt")
+        run("commit", "-q", "-m", "feat: add the thing")
+        monkeypatch.chdir(r)
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_test_token_12345")
+        monkeypatch.setenv("GITHUB_REPO", "testowner/testrepo")
+        return r
+
+    def _create(self, mock_pr_details, *args):
+        from codeframe.cli.pr_commands import pr_app
+
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            MockGH.return_value.create_pull_request.return_value = mock_pr_details
+            result = runner.invoke(pr_app, ["create", *args])
+        return result, MockGH.return_value.create_pull_request.call_args
+
+    def test_the_title_defaults_to_the_branchs_newest_commit(self, repo, mock_pr_details):
+        result, call = self._create(mock_pr_details, "--no-auto-description")
+        assert result.exit_code == 0, result.output
+        assert call.kwargs["title"] == "feat: add the thing"
+
+    def test_an_explicit_title_still_wins(self, repo, mock_pr_details):
+        _, call = self._create(mock_pr_details, "--title", "Mine", "--no-auto-description")
+        assert call.kwargs["title"] == "Mine"
+
+    def test_the_body_carries_the_proof_report_in_a_workspace(self, repo, mock_pr_details):
+        from codeframe.core.workspace import create_or_load_workspace
+
+        create_or_load_workspace(repo)
+        result, call = self._create(mock_pr_details, "--body", "Why this change.")
+        assert result.exit_code == 0, result.output
+        assert call.kwargs["body"].startswith("Why this change.")
+        assert "## PROOF9" in call.kwargs["body"]
+
+    def test_no_proof_report_opts_out(self, repo, mock_pr_details):
+        from codeframe.core.workspace import create_or_load_workspace
+
+        create_or_load_workspace(repo)
+        _, call = self._create(mock_pr_details, "--body", "B", "--no-proof-report")
+        assert "## PROOF9" not in call.kwargs["body"]
+
+    def test_outside_a_workspace_there_is_no_report_and_no_error(self, repo, mock_pr_details):
+        result, call = self._create(mock_pr_details, "--body", "B")
+        assert result.exit_code == 0, result.output
+        assert "## PROOF9" not in call.kwargs["body"]
+
+    def test_a_bracketed_commit_subject_does_not_crash_after_creating(self, repo, mock_pr_details):
+        """GLM/claude-review on #1357: GitHub echoes the defaulted title back,
+        and an unescaped '[WIP]' raised after the PR already existed."""
+        import dataclasses
+        import subprocess
+
+        subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "[WIP] fix a[0] and [/b]"],
+                       cwd=repo, check=True)
+        echoed = dataclasses.replace(mock_pr_details, title="[WIP] fix a[0] and [/b]")
+        result, call = self._create(echoed, "--no-auto-description")
+        assert result.exit_code == 0, result.output
+        assert call.kwargs["title"] == "[WIP] fix a[0] and [/b]"
+        assert "[WIP] fix a[0] and [/b]" in result.output
+
+    def test_the_report_is_found_from_a_subdirectory(self, repo, mock_pr_details, monkeypatch):
+        """#926 class: the workspace is looked up upward, like the merge gate."""
+        from codeframe.core.workspace import create_or_load_workspace
+
+        create_or_load_workspace(repo)
+        (repo / "src").mkdir()
+        monkeypatch.chdir(repo / "src")
+        _, call = self._create(mock_pr_details, "--body", "B")
+        assert "## PROOF9" in call.kwargs["body"]
+
+    def test_pr_get_prints_a_hostile_body(self, repo, mock_pr_details):
+        """The body now carries commit subjects and requirement titles (#1273)."""
+        import dataclasses
+
+        from codeframe.cli.pr_commands import pr_app
+
+        hostile = dataclasses.replace(mock_pr_details, body="- `REQ-0001` fix a[0] and [/b]")
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            MockGH.return_value.get_pull_request.return_value = hostile
+            result = runner.invoke(pr_app, ["get", "42"])
+        assert result.exit_code == 0, result.output
+        assert "fix a[0] and [/b]" in result.output
+
+    def test_a_half_initialised_workspace_skips_the_report(self, repo, mock_pr_details):
+        """state.db without a workspace row: no report, no traceback."""
+        (repo / ".codeframe").mkdir()
+        (repo / ".codeframe" / "state.db").write_bytes(b"")
+        result, call = self._create(mock_pr_details, "--body", "B")
+        assert result.exit_code == 0, result.output
+        assert "## PROOF9" not in call.kwargs["body"]
+
+    def test_json_output_is_not_parsed_as_markup(self, repo, mock_pr_details):
+        """Bot review on #1357: --format json went through Rich markup too."""
+        import dataclasses
+        import json as _json
+
+        from codeframe.cli.pr_commands import pr_app
+
+        hostile = dataclasses.replace(mock_pr_details, title="[WIP] a[0] [/b]", body="[admin]")
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            MockGH.return_value.get_pull_request.return_value = hostile
+            result = runner.invoke(pr_app, ["get", "42", "--format", "json"])
+        assert result.exit_code == 0, result.output
+        data = _json.loads(result.output)
+        assert data["title"] == "[WIP] a[0] [/b]" and data["body"] == "[admin]"
+
+
+    def test_json_output_of_a_long_body_is_valid_json(self, repo, mock_pr_details):
+        """Rich hard-wraps at the console width (80 when piped): a long body
+        (commit subjects + PROOF9 report) produced invalid JSON."""
+        import dataclasses
+        import json as _json
+
+        from codeframe.cli.pr_commands import pr_app
+
+        long = dataclasses.replace(mock_pr_details, body="x" * 500 + "\n## PROOF9\n" + "y" * 300)
+        with patch("codeframe.cli.pr_commands.GitHubIntegration", autospec=True) as MockGH:
+            MockGH.return_value.get_pull_request.return_value = long
+            MockGH.return_value.list_pull_requests.return_value = [long]
+            got = runner.invoke(pr_app, ["get", "42", "--format", "json"])
+            listed = runner.invoke(pr_app, ["list", "--format", "json"])
+        assert _json.loads(got.output)["body"] == long.body
+        assert _json.loads(listed.output)[0]["body"] == long.body

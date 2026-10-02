@@ -9,6 +9,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **`cf pr create` works as the README shows it (#1273).** It no longer needs
+  `--title`: the title defaults to the branch's newest commit. The body now
+  ends with the workspace's PROOF9 status (requirement counts, the open ones by
+  name, the latest `cf proof run` verdict), which the README promised but which
+  was never built. `--no-proof-report` turns it off. The README's SHIP step now
+  names the GitHub prerequisites and the real forms `cf pr merge <number>` and
+  `cf commit create -m`, and the docs test now fails when a documented example
+  is missing a required argument or names a bare command group.
+
 - **A fresh install no longer resolves an untested typer, click or openai
   (#1268).** `typer`, `click` and `openai` had floor-only pins, so `uv tool
   install codeframe-ai` resolved typer 0.27. That version vendors its own click,

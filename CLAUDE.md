@@ -12,9 +12,9 @@ It owns the **edges** of the AI coding pipeline — everything BEFORE code gets 
 
 ```
 THINK:  cf prd generate → cf prd stress-test → cf tasks generate
-BUILD:  cf work start --engine claude-code  (or codex, opencode, built-in)
+BUILD:  cf work start <task> --engine claude-code  (or codex, opencode, built-in)
 PROVE:  cf proof run  (9-gate evidence-based quality system)
-SHIP:   cf pr create → cf pr merge
+SHIP:   cf pr create → cf pr merge <number>
 LOOP:   Glitch → cf proof capture → New REQ → Enforced forever
 ```
 
@@ -304,7 +304,7 @@ cf blocker show <id>
 cf blocker answer <id> "answer"
 
 # Quality / State
-cf review && cf patch export && cf commit
+cf review && cf patch export && cf commit create -m "feat: ..."
 cf checkpoint create|list|restore
 cf summary
 

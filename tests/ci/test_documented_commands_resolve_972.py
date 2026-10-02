@@ -126,3 +126,111 @@ def test_extractor_still_sees_the_cli():
         if _unresolvable(root, words) is None
     ]
     assert len(resolved) > 50, f"extractor found only {len(resolved)} commands in docs"
+
+
+# ---------------------------------------------------------------------------
+# Required arguments (#1273): a documented invocation that cannot run as typed
+# ---------------------------------------------------------------------------
+
+
+def _code_block_invocations():
+    """Yield (location, leaf_command, argv_after_path, line) for every
+    executable-looking invocation: inside a fenced code block, not a
+    ``a|b|c`` listing. Prose and listings name commands; code blocks run them."""
+    import shlex
+
+    root = _command_tree()
+    for doc in DOC_FILES:
+        rel = doc.relative_to(REPO_ROOT)
+        fenced = False
+        for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+            if line.lstrip().startswith("```"):
+                fenced = not fenced
+                continue
+            if not fenced or NOT_IMPLEMENTED_MARKER in line:
+                continue
+            # Aligned columns (`cf pr merge             Only merges if…`,
+            # diagram rows) put prose after a run of 2+ spaces. Treat that run
+            # as a command separator, so the prose is its own segment and is
+            # never counted as the command's arguments.
+            line_code = re.sub(r"(?<=\S)\s{2,}", " ; ", line)
+            try:
+                # comments=True drops a trailing "# ..." but keeps a quoted
+                # "Fix #123" argument intact.
+                tokens = shlex.split(line_code, comments=True)
+            except ValueError:
+                continue
+            # Every command on the line, not just the first: `cf a && cf b`.
+            segments, current = [], []
+            for tok in tokens:
+                if tok in ("&&", "||", ";", "|", "→"):  # → chains diagram steps
+                    segments.append(current)
+                    current = []
+                else:
+                    current.append(tok)
+            segments.append(current)
+            for seg in segments:
+                # `$ cf …`, `uv run cf …`, `VAR=1 cf …`: start at the binary.
+                start = next((i for i, t in enumerate(seg) if t in ("cf", "codeframe")), None)
+                if start is None:
+                    continue
+                seg = seg[start:]
+                if len(seg) < 2:
+                    continue
+                if any("|" in t for t in seg[1:]):
+                    continue  # `pr create|list|merge`: a listing, not an invocation
+                node, used = root, 0
+                for tok in seg[1:]:
+                    subcommands = getattr(node, "commands", None)
+                    if not subcommands or tok not in subcommands:
+                        break
+                    node, used = subcommands[tok], used + 1
+                if used == 0:
+                    continue  # unresolved: the test above owns it
+                yield f"{rel}:{lineno}", node, seg[1 + used:], line.strip()
+
+
+def _positional_count(command, argv):
+    """How many positional values ``argv`` gives ``command`` (options skipped)."""
+    takes_value = {
+        opt
+        for p in command.params
+        if not getattr(p, "is_flag", False) and getattr(p, "opts", None) and p.param_type_name == "option"
+        for opt in p.opts + p.secondary_opts
+    }
+    count, skip = 0, False
+    for tok in argv:
+        if skip:
+            skip = False
+        elif tok.startswith("-"):
+            skip = tok in takes_value and "=" not in tok
+        else:
+            count += 1
+    return count
+
+
+def test_documented_invocations_carry_their_required_arguments():
+    """`cf pr merge` without the PR number is a doc that cannot run (#1273)."""
+    failures = []
+    for location, command, argv, line in _code_block_invocations():
+        if getattr(command, "commands", None) is not None:
+            runs_alone = getattr(command, "invoke_without_command", False)  # `cf dashboard`
+            if not runs_alone and not any(not a.startswith("-") for a in argv) and "--help" not in argv:
+                # `cf commit` alone prints help; the real command is a subcommand.
+                failures.append(f"  {location}: a command group, prints help only — in: {line[:100]}")
+            continue
+        required = [
+            p for p in command.params
+            if p.param_type_name == "argument" and p.required
+        ]
+        if _positional_count(command, argv) < len(required):
+            names = ", ".join(p.name.upper() for p in required)
+            failures.append(f"  {location}: needs {names} — in: {line[:100]}")
+    assert not failures, (
+        "Documented invocations are missing required arguments:\n" + "\n".join(failures)
+    )
+
+
+def test_the_argument_check_sees_code_blocks():
+    """Guard the guard."""
+    assert len(list(_code_block_invocations())) > 30

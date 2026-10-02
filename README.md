@@ -36,7 +36,7 @@ THINK    What are you building? How should it be broken down?
            cf tasks generate       Atomic tasks with dependency graphs
 
 BUILD    Delegate to the best coding agent for the job
-           cf work start --engine  Claude Code, Codex, OpenCode, Kilocode, or built-in
+           cf work start <task> --engine  Claude Code, Codex, OpenCode, Kilocode, or built-in
            CodeFRAME owns: verification gates, self-correction, stall detection
 
 PROVE    Is the output any good?
@@ -49,7 +49,7 @@ PROVE    Is the output any good?
 
 SHIP     Deploy with confidence
            cf pr create            PR with proof report attached
-           cf pr merge             Only merges if proof passes
+           cf pr merge <number>    Only merges if proof passes
 
 THE CLOSED LOOP
   Glitch in production
@@ -188,9 +188,17 @@ check, and `cf pr merge` refuses to merge while any of them is open.
 
 **Step 8 — Ship**
 
+`cf pr` talks to GitHub, so it needs a token and the repository: connect them in
+the web UI (Settings → Integrations), or export `GITHUB_TOKEN` (a PAT with
+`repo` scope) and `GITHUB_REPO=owner/repo`.
+
 ```bash
 cf pr create                        # Open a PR with proof report attached
 ```
+
+The title defaults to the branch's newest commit (`--title` overrides it), and
+the body ends with the workspace's PROOF9 status: requirement counts, the open
+ones by name, and the latest `cf proof run` verdict.
 
 That is the entire workflow. An empty directory through a green `cf proof run`
 is **5m59s** of wall clock on a clean machine — measured, not estimated, in
@@ -245,7 +253,7 @@ before you kick off a large batch; see [`docs/QUICKSTART.md`](docs/QUICKSTART.md
                                |
                                v
   +-BUILD---------------------------------------------+
-  |  cf work start --engine <agent>                    |
+  |  cf work start <task> --engine <agent>             |
   |                                                    |
   |  +-- Claude Code / Codex / OpenCode / Kilocode / ReAct        |
   |  |                                                 |
@@ -263,7 +271,7 @@ before you kick off a large batch; see [`docs/QUICKSTART.md`](docs/QUICKSTART.md
                                v
   +-SHIP----------------------------------------------+
   |  cf pr create       PR with proof report           |
-  |  cf pr merge        Merge if proof passes          |
+  |  cf pr merge <n>    Merge if proof passes          |
   +---------------------------------------------------+
                                |
             Glitch in production?
@@ -387,13 +395,13 @@ cf dashboard                          # Launch TUI dashboard
 ### SHIP -- Delivery
 
 ```bash
-cf pr create                          # Create PR from current branch
+cf pr create --title "Add search"     # PR from the current branch, PROOF9 report appended
 cf pr list                            # List open PRs
 cf pr status                          # PR status, review state and CI checks
 cf pr get <number>                    # Details for one PR
-cf pr merge                           # Merge approved PR
+cf pr merge <number>                  # Merge it (refused while a requirement is open)
 cf pr close <number>                  # Close a PR without merging
-cf commit                             # Commit verified changes
+cf commit create -m "feat: search"    # Commit verified changes
 cf patch export                       # Export changes as patch
 ```
 

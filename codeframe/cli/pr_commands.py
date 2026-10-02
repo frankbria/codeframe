@@ -128,6 +128,41 @@ def get_commit_messages(repo_path: Path, base: str, head: str) -> str:
         return ""
 
 
+def _newest_commit_subject(repo_path: Path, base: str, head: str) -> str:
+    """The subject of the newest commit on ``head`` that ``base`` lacks (#1273)."""
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%s", f"{base}..{head}"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError:
+        return ""
+
+
+def _proof_report_for_cwd() -> str:
+    """The PROOF9 report for the workspace in the cwd, or "" outside one (#1273)."""
+    from codeframe.core.proof.ledger import init_proof_tables
+    from codeframe.core.proof.report import pr_proof_report
+    from codeframe.core.workspace import find_workspace_root, get_workspace
+
+    # Upward, like the merge gate (#926): people run git from subdirectories.
+    root = find_workspace_root(Path.cwd())
+    if root is None:
+        return ""
+    try:
+        workspace = get_workspace(root)
+    except FileNotFoundError:
+        return ""  # a state.db with no workspace row: skip the report, as the gate does
+    init_proof_tables(workspace)
+    return pr_proof_report(workspace)
+
+
 def _get_github_config() -> tuple[str, str]:
     """Resolve the GitHub token and repo for the workspace in the cwd (#900).
 
@@ -190,7 +225,8 @@ def create_pr(
         None, "--branch", "-b", help="Branch name (defaults to current)"
     ),
     title: Optional[str] = typer.Option(
-        None, "--title", "-t", help="PR title"
+        None, "--title", "-t",
+        help="PR title (defaults to the newest commit subject on the branch)",
     ),
     body: Optional[str] = typer.Option(
         None, "--body", help="PR description body"
@@ -203,6 +239,11 @@ def create_pr(
         "--auto-description/--no-auto-description",
         help="Auto-generate PR description from commits",
     ),
+    proof_report: bool = typer.Option(
+        True,
+        "--proof-report/--no-proof-report",
+        help="Append the workspace's PROOF9 status to the PR body",
+    ),
 ):
     """Create a new pull request.
 
@@ -210,6 +251,8 @@ def create_pr(
     Optionally auto-generates a description from commit messages.
 
     Examples:
+
+        codeframe pr create
 
         codeframe pr create --title "Add new feature"
 
@@ -245,9 +288,18 @@ def create_pr(
         if not body:
             body = ""
 
-        # Title is required
+        if proof_report:
+            report = _proof_report_for_cwd()
+            if report:
+                body = f"{body}\n\n{report}" if body else report
+
         if not title:
-            console.print("[red]Error:[/red] --title is required.")
+            title = _newest_commit_subject(Path.cwd(), base, branch)
+        if not title:
+            console.print(
+                f"[red]Error:[/red] No commits on {escape(str(branch))} since "
+                f"{escape(base)} to take a title from; pass --title."
+            )
             raise typer.Exit(1)
 
         async def _create():
@@ -266,8 +318,13 @@ def create_pr(
         pr = _run_async(_create())
 
         console.print(f"[green]✓ PR #{pr.number} created successfully[/green]")
-        console.print(f"\n[bold]Title:[/bold] {pr.title}")
-        console.print(f"[bold]Branch:[/bold] {pr.head_branch} → {pr.base_branch}")
+        # GitHub echoes the title back, and it may be a raw commit subject
+        # ("[WIP] …") since #1273: escape it, or the print raises after the PR
+        # already exists (#1054).
+        console.print(f"\n[bold]Title:[/bold] {escape(str(pr.title))}")
+        console.print(
+            f"[bold]Branch:[/bold] {escape(str(pr.head_branch))} → {escape(str(pr.base_branch))}"
+        )
         console.print(f"[bold]URL:[/bold] [link={pr.url}]{pr.url}[/link]")
 
     except GitHubAPIError as e:
@@ -323,7 +380,7 @@ def list_prs(
                 d["created_at"] = pr.created_at.isoformat() if pr.created_at else None
                 d["merged_at"] = pr.merged_at.isoformat() if pr.merged_at else None
                 pr_dicts.append(d)
-            console.print(json.dumps(pr_dicts, indent=2))
+            typer.echo(json.dumps(pr_dicts, indent=2))  # not Rich: it wraps and parses markup
             return
 
         # Table format
@@ -350,8 +407,8 @@ def list_prs(
 
             table.add_row(
                 str(pr.number),
-                pr.title[:40] if pr.title else "",
-                pr.head_branch,
+                escape(pr.title[:40]) if pr.title else "",
+                escape(str(pr.head_branch)),
                 state_display,
                 pr.created_at.strftime("%Y-%m-%d") if pr.created_at else "",
             )
@@ -399,13 +456,15 @@ def get_pr(
             d = asdict(pr)
             d["created_at"] = pr.created_at.isoformat() if pr.created_at else None
             d["merged_at"] = pr.merged_at.isoformat() if pr.merged_at else None
-            console.print(json.dumps(d, indent=2))
+            typer.echo(json.dumps(d, indent=2))  # not Rich: it wraps and parses markup
             return
 
         # Text format
-        console.print(f"\n[bold]PR #{pr.number}[/bold] - {pr.title}")
+        console.print(f"\n[bold]PR #{pr.number}[/bold] - {escape(str(pr.title))}")
         console.print(f"\n[bold]State:[/bold] {pr.state}")
-        console.print(f"[bold]Branch:[/bold] {pr.head_branch} → {pr.base_branch}")
+        console.print(
+            f"[bold]Branch:[/bold] {escape(str(pr.head_branch))} → {escape(str(pr.base_branch))}"
+        )
         console.print(f"[bold]Created:[/bold] {pr.created_at.strftime('%Y-%m-%d %H:%M') if pr.created_at else 'N/A'}")
 
         if pr.merged_at:
@@ -414,7 +473,8 @@ def get_pr(
         console.print(f"[bold]URL:[/bold] {pr.url}")
 
         if pr.body:
-            console.print(f"\n[bold]Description:[/bold]\n{pr.body}")
+            # Commit subjects and captured requirement titles land here (#1273).
+            console.print(f"\n[bold]Description:[/bold]\n{escape(pr.body)}")
 
     except GitHubAPIError as e:
         if e.status_code == 404:
@@ -553,7 +613,7 @@ def _check_merge_gate(
             f"[red]PROOF9 merge gate:[/red] {len(blocking_reqs)} requirement(s) block this merge:"
         )
         for r in blocking_reqs[:10]:
-            console.print(f"  - {r.id}: {r.title}")
+            console.print(f"  - {r.id}: {escape(r.title)}")  # captured free text (#1054)
         console.print(
             "Each is either unproven, or recorded satisfied with evidence that "
             "no longer matches its checksum."
@@ -747,9 +807,11 @@ def pr_status():
         pr = _run_async(_status())
 
         if pr:
-            console.print(f"\n[bold]PR #{pr.number}[/bold] - {pr.title}")
+            console.print(f"\n[bold]PR #{pr.number}[/bold] - {escape(str(pr.title))}")
             console.print(f"[bold]State:[/bold] [green]{pr.state}[/green]")
-            console.print(f"[bold]Branch:[/bold] {pr.head_branch} → {pr.base_branch}")
+            console.print(
+            f"[bold]Branch:[/bold] {escape(str(pr.head_branch))} → {escape(str(pr.base_branch))}"
+        )
             console.print(f"[bold]URL:[/bold] {pr.url}")
         else:
             console.print(f"[yellow]No open PR found for branch '{current_branch}'[/yellow]")
