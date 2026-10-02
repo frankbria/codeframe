@@ -28,6 +28,7 @@ function setup(overrides: Partial<React.ComponentProps<typeof CommitPanel>> = {}
     isCreatingPR: false,
     changedFiles: ['src/a.ts', 'src/b.ts'],
     onCreatePR: jest.fn(),
+    prBranch: 'feature/x',
     ...overrides,
   };
   render(<CommitPanel {...props} />);
@@ -110,6 +111,20 @@ describe('CommitPanel — pull request flow', () => {
     await userEvent.click(screen.getByRole('button', { name: /create pr/i }));
 
     expect(props.onCreatePR).toHaveBeenCalledWith('Add the thing', 'It does the thing.');
+  });
+
+  it('names the branch the PR will be opened from (#1272)', async () => {
+    setup();
+    await userEvent.click(screen.getByLabelText(/create pull request/i));
+    expect(screen.getByText(/feature\/x/)).toBeInTheDocument();
+  });
+
+  it('disables Create PR and says why without a checked-out branch (#1272)', async () => {
+    setup({ prBranch: null });
+    await userEvent.click(screen.getByLabelText(/create pull request/i));
+    fireEvent.change(screen.getByLabelText(/pr title/i), { target: { value: 'T' } });
+    expect(screen.getByRole('button', { name: /create pr/i })).toBeDisabled();
+    expect(screen.getByText(/check out a branch/i)).toBeInTheDocument();
   });
 
   it('refuses to open a PR with no title', async () => {

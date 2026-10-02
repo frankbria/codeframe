@@ -21,6 +21,8 @@ export interface CommitPanelProps {
   isCreatingPR: boolean;
   changedFiles: string[];
   onCreatePR: (title: string, body: string) => void;
+  /** The branch the PR is opened from; null when none is checked out (#1272). */
+  prBranch: string | null;
 }
 
 export function CommitPanel({
@@ -33,6 +35,7 @@ export function CommitPanel({
   isCreatingPR,
   changedFiles,
   onCreatePR,
+  prBranch,
 }: CommitPanelProps) {
   const [showPRForm, setShowPRForm] = useState(false);
   const adminDenied = useAdminDenied();
@@ -161,10 +164,20 @@ export function CommitPanel({
                 onChange={(e) => setPrBody(e.target.value)}
               />
             </div>
+            {prBranch ? (
+              <p className="text-xs text-muted-foreground">
+                From branch <span className="font-mono">{prBranch}</span>
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                A pull request needs a branch: check out a branch first (the
+                workspace is on a detached HEAD or has no commits).
+              </p>
+            )}
             <Button
               variant="outline"
               onClick={() => onCreatePR(prTitle, prBody)}
-              disabled={isCreatingPR || !prTitle.trim()}
+              disabled={isCreatingPR || !prTitle.trim() || !prBranch}
               className="w-full transition-all"
             >
               {isCreatingPR ? (

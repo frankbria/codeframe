@@ -37,14 +37,17 @@ jest.mock('@/components/review/CommitPanel', () => ({
     onCreatePR,
     commitMessage,
     isCommitting,
+    prBranch,
   }: {
     onCommit: () => void;
     onGenerateMessage: () => void;
     onCreatePR: (t: string, b: string) => void;
     commitMessage: string;
     isCommitting: boolean;
+    prBranch: string | null;
   }) => (
     <div>
+      <span data-testid="pr-branch">{prBranch ?? 'none'}</span>
       <span data-testid="commit-message">{commitMessage}</span>
       <span data-testid="is-committing">{String(isCommitting)}</span>
       <button onClick={onCommit}>do-commit</button>
@@ -95,7 +98,7 @@ const mutateDiff = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
-  (gitApi.getStatus as jest.Mock).mockResolvedValue({ branch: 'main' });
+  (gitApi.getStatus as jest.Mock).mockResolvedValue({ current_branch: 'feature/x' });
   (prApi.list as jest.Mock).mockResolvedValue({ pull_requests: [] });
   // The page auto-generates a commit message once the diff loads; without a
   // resolved promise here every test dies on `.then of undefined`.
@@ -251,19 +254,35 @@ describe('review page — export patch', () => {
 });
 
 describe('review page — pull request', () => {
-  it('creates a PR against the current branch and shows the result', async () => {
+  it('creates a PR from the checked-out branch (#1272)', async () => {
+    // branch: '' was rejected by the backend's min_length=1 with a 422.
     mockCreatePR.mockResolvedValue({ url: 'https://github.com/o/r/pull/7', number: 7 });
     render(<ReviewPage />);
+    await waitFor(() => expect(gitApi.getStatus).toHaveBeenCalledWith('/ws'));
 
     await userEvent.click(screen.getByText('do-create-pr'));
 
     await waitFor(() =>
       expect(mockCreatePR).toHaveBeenCalledWith('/ws', {
-        branch: '',
+        branch: 'feature/x',
         title: 'T',
         body: 'B',
       })
     );
+  });
+
+  it.each([
+    ['a detached HEAD', '(detached HEAD at abc1234)'],
+    ['an unborn repo', '(no commits)'],
+  ])('does not send a PR request from %s', async (_label, branch) => {
+    (gitApi.getStatus as jest.Mock).mockResolvedValue({ current_branch: branch });
+    render(<ReviewPage />);
+    await waitFor(() => expect(gitApi.getStatus).toHaveBeenCalled());
+
+    await userEvent.click(screen.getByText('do-create-pr'));
+
+    expect(mockCreatePR).not.toHaveBeenCalled();
+    expect(screen.getByTestId('pr-branch')).toHaveTextContent('none');
   });
 
   it('reports a PR failure', async () => {
