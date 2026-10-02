@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from typing import TYPE_CHECKING, AsyncIterator, Iterator, Optional
 
 import openai
@@ -26,6 +27,10 @@ if TYPE_CHECKING:
     from codeframe.core.credentials import CredentialManager
 
 logger = logging.getLogger(__name__)
+
+# OpenAI's reasoning models (o-series, gpt-5 family) reject ``max_tokens`` and
+# any ``temperature`` (#1267).
+_REASONING_MODEL = re.compile(r"^(?:o\d|gpt-5)")
 
 _STOP_REASON_MAP = {
     "stop": "end_turn",
@@ -100,6 +105,26 @@ class OpenAIProvider(LLMProvider):
         self._client = None
         self._async_client = None
 
+    def _limits(
+        self, model: str, max_tokens: int, temperature: Optional[float]
+    ) -> dict:
+        """Token cap and temperature in the shape this provider and model take.
+
+        OpenAI itself takes ``max_completion_tokens`` on every chat model and
+        rejects ``max_tokens`` on reasoning models, which also reject any
+        temperature. Ollama, vllm and other compatible servers keep
+        ``max_tokens``: many predate the new name (#1267).
+        """
+        if self.provider_name != "openai":
+            limits: dict = {"max_tokens": max_tokens}
+        else:
+            limits = {"max_completion_tokens": max_tokens}
+            if _REASONING_MODEL.match(model):
+                temperature = None
+        if temperature is not None:
+            limits["temperature"] = temperature
+        return limits
+
     def get_model(self, purpose: Purpose) -> str:
         """Return the model for a given purpose.
 
@@ -145,11 +170,11 @@ class OpenAIProvider(LLMProvider):
         if system:
             converted = [{"role": "system", "content": system}] + converted
 
+        model = self.get_model(purpose)
         kwargs = {
-            "model": self.get_model(purpose),
-            "max_tokens": max_tokens,
+            "model": model,
             "messages": converted,
-            "temperature": temperature,
+            **self._limits(model, max_tokens, temperature),
         }
 
         if tools:
@@ -194,11 +219,11 @@ class OpenAIProvider(LLMProvider):
         if system:
             converted = [{"role": "system", "content": system}] + converted
 
+        model = self.get_model(purpose)
         kwargs: dict = {
-            "model": self.get_model(purpose),
-            "max_tokens": max_tokens,
+            "model": model,
             "messages": converted,
-            "temperature": temperature,
+            **self._limits(model, max_tokens, temperature),
         }
         if tools:
             kwargs["tools"] = self._convert_tools(tools)
@@ -255,10 +280,10 @@ class OpenAIProvider(LLMProvider):
 
         kwargs: dict = {
             "model": model,
-            "max_tokens": max_tokens,
             "messages": converted,
             "stream": True,
             "stream_options": {"include_usage": True},
+            **self._limits(model, max_tokens, None),
         }
 
         if tools:
@@ -384,12 +409,12 @@ class OpenAIProvider(LLMProvider):
         if system:
             converted = [{"role": "system", "content": system}] + converted
 
+        model = self.get_model(purpose)
         kwargs = {
-            "model": self.get_model(purpose),
-            "max_tokens": max_tokens,
+            "model": model,
             "messages": converted,
             "stream": True,
-            "temperature": temperature,
+            **self._limits(model, max_tokens, temperature),
         }
 
         for chunk in self.client.chat.completions.create(**kwargs):

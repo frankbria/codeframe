@@ -37,10 +37,40 @@ Detailed reference for CodeFRAME's agent system. Loaded on-demand — not requir
 
 ## Model Selection Strategy
 
-Task-based heuristic via `Purpose` enum:
-- **PLANNING** → claude-sonnet-4-20250514 (complex reasoning)
-- **EXECUTION** → claude-sonnet-4-20250514 (balanced)
-- **GENERATION** → claude-haiku-4-20250514 (fast/cheap)
+Task-based heuristic via `Purpose` enum (`adapters/llm/base.py`, each overridable
+with `CODEFRAME_<PURPOSE>_MODEL`):
+- **PLANNING / EXECUTION / CORRECTION / SUPERVISION** → `claude-sonnet-4-5`
+- **GENERATION** → `claude-haiku-4-5` (fast/cheap)
+
+**Request shape follows the model (#1267).** Opus 4.7+, Opus 5/5.5, Sonnet 5/5.5
+and Fable reject `temperature` and a fixed `thinking.budget_tokens` with a 400, so
+the Anthropic adapter sends them only to an allowlist of families that take them
+(Claude 3, Claude 4 up to 4.6) and asks everything else for adaptive thinking. On
+OpenAI itself the adapter sends `max_completion_tokens`, and drops `temperature`
+for reasoning models (o-series, gpt-5); ollama/vllm/compatible keep `max_tokens`.
+Wire tests: `tests/adapters/test_request_shape_1267.py`.
+
+### Plan: moving the defaults off Sonnet 4.5
+
+`claude-sonnet-4-5` reaches end-of-life on **2026-11-30** (listed in
+`anthropic` 1.11's `DEPRECATED_MODELS`); Haiku 4.5 has no announced date yet.
+The request-shape fix above is the prerequisite — it lets any current model run.
+
+1. **Ship the request-shape fix** (#1267) in a release, so a user who overrides
+   `CODEFRAME_*_MODEL` to a current model already works.
+2. **By 2026-10-31, move the Sonnet-tier defaults** (planning, execution,
+   correction, supervision) to `claude-sonnet-5-5` in one PR: update
+   `base.py` and `tests/adapters/test_model_defaults_guard_1112.py`.
+   Before merging, run `scripts/lifecycle --mode cli` against the new default
+   and compare cost and gate pass rate with Sonnet 4.5 — it runs adaptive
+   thinking by default, so spend per task can move in either direction. Sonnet
+   5.5 is cheaper per token ($2/$10 vs $3/$15).
+3. **Cut a release** carrying the new defaults at least two weeks before
+   2026-11-30, then run the cold-start check (`scripts/quickstart-cleanroom`)
+   against the published package — #1112 shipped retired IDs exactly this way.
+4. **Haiku 4.5** stays the generation default until a retirement date is
+   announced; the Unlocked Resolution workflow surfaces the SDK's deprecation
+   notice when it appears (#1340).
 
 Future: `cf tasks set provider <id> <provider>` for per-task override.
 

@@ -5,6 +5,7 @@ Provides Claude model access via the Anthropic API.
 
 import asyncio
 import os
+import re
 from typing import TYPE_CHECKING, AsyncIterator, Iterator, Optional
 
 from codeframe.adapters.llm.base import (
@@ -19,6 +20,32 @@ from codeframe.adapters.llm.base import (
 
 if TYPE_CHECKING:
     from codeframe.core.credentials import CredentialManager
+
+# Model families that still accept sampling parameters and a fixed thinking
+# budget: every Claude 3, and Claude 4 up to 4.6. Opus 4.7+, Opus 5/5.5,
+# Sonnet 5/5.5 and Fable reject both with a 400 (#1267). An allowlist, because
+# each new generation has rejected them: an unknown or future model gets the
+# request shape that cannot 400. The prefix and suffix allow a Bedrock
+# "anthropic." prefix, a "-YYYYMMDD" date and a Vertex "@" snapshot.
+_LEGACY_SHAPE = re.compile(
+    r"claude-(?:3\b|(?:opus|sonnet|haiku)-4(?:-[0-6](?!\d)|-\d{8}|@|$))"
+)
+
+
+def _accepts_sampling(model: str) -> bool:
+    """Whether ``model`` takes ``temperature`` and ``thinking.budget_tokens``."""
+    return bool(_LEGACY_SHAPE.search(model))
+
+
+def _sampling(model: str, temperature: float) -> dict:
+    """The ``extra_body`` for a request: temperature only where it is accepted.
+
+    temperature=0.0 is a real request for deterministic sampling, not "unset"
+    (#767), so it is sent whenever the model takes it. It rides in extra_body
+    because anthropic 1.x dropped the sampling kwargs from the typed signature
+    (#1170); the SDK merges extra_body into the request JSON verbatim.
+    """
+    return {"temperature": temperature} if _accepts_sampling(model) else {}
 
 
 class AnthropicProvider(LLMProvider):
@@ -122,16 +149,7 @@ class AnthropicProvider(LLMProvider):
             "messages": self._convert_messages(messages),
         }
 
-        # Pass temperature unconditionally: temperature=0.0 is a valid request
-        # for deterministic sampling, not "unset". Guarding on `> 0` silently
-        # dropped it and let the API default to 1.0 (#767).
-        #
-        # It rides in extra_body because anthropic 1.x dropped the sampling
-        # kwargs from the typed signature (#1170); the SDK merges extra_body
-        # into the request JSON verbatim, so the wire request is unchanged. The
-        # model families that reject sampling (Opus 4.7+, Opus 5, Sonnet 5)
-        # rejected it on 0.x too — parity, not a new limitation.
-        kwargs["extra_body"] = {"temperature": temperature}
+        kwargs["extra_body"] = _sampling(model, temperature)
 
         if system:
             kwargs["system"] = system
@@ -182,9 +200,7 @@ class AnthropicProvider(LLMProvider):
             "max_tokens": max_tokens,
             "messages": self._convert_messages(messages),
         }
-        # temperature in extra_body — same reasoning as complete() above
-        # (#767 invariant, #1170 transport).
-        kwargs["extra_body"] = {"temperature": temperature}
+        kwargs["extra_body"] = _sampling(model, temperature)
         if system:
             kwargs["system"] = system
         if tools:
@@ -247,8 +263,12 @@ class AnthropicProvider(LLMProvider):
         # a blanket except swallowed it and retried without thinking every turn).
         # budget_tokens must be >=1024 and < max_tokens, so only enable when the
         # cap leaves room.
+        # Current models take adaptive thinking (interleaved by default) and
+        # reject a fixed budget (#1267).
         use_thinking = extended_thinking and max_tokens > 1024
-        if use_thinking:
+        if use_thinking and not _accepts_sampling(model):
+            kwargs["thinking"] = {"type": "adaptive"}
+        elif use_thinking:
             kwargs["betas"] = ["interleaved-thinking-2025-05-14"]
             kwargs["thinking"] = {
                 "type": "enabled",
@@ -356,9 +376,7 @@ class AnthropicProvider(LLMProvider):
             "messages": self._convert_messages(messages),
         }
 
-        # temperature in extra_body — same reasoning as complete() above
-        # (#767 invariant, #1170 transport).
-        kwargs["extra_body"] = {"temperature": temperature}
+        kwargs["extra_body"] = _sampling(model, temperature)
 
         if system:
             kwargs["system"] = system
