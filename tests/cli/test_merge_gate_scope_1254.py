@@ -353,3 +353,14 @@ class TestRequirementPathSpelling:
 
         with pytest.raises(typer.Exit):
             _gate(_github(["anything/at/all.py"]))
+
+
+def test_a_bracketed_requirement_title_is_listed_not_crashed_on(workspace, capsys):
+    """Bot review on #1357: the blocking list printed the captured title raw,
+    so '[admin]' / '[/b]' raised instead of naming what blocks the merge."""
+    import dataclasses
+
+    save_requirement(workspace, dataclasses.replace(_req(), title="crash on [admin] and [/b]"))
+    with pytest.raises(typer.Exit):
+        _gate(_github(["x.py"]))
+    assert "crash on [admin] and [/b]" in capsys.readouterr().out

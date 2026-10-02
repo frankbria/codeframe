@@ -613,7 +613,7 @@ def _check_merge_gate(
             f"[red]PROOF9 merge gate:[/red] {len(blocking_reqs)} requirement(s) block this merge:"
         )
         for r in blocking_reqs[:10]:
-            console.print(f"  - {r.id}: {r.title}")
+            console.print(f"  - {r.id}: {escape(r.title)}")  # captured free text (#1054)
         console.print(
             "Each is either unproven, or recorded satisfied with evidence that "
             "no longer matches its checksum."
