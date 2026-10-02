@@ -195,7 +195,6 @@ class TestOpenAIShape:
         assert body["max_tokens"] == 123 and body["temperature"] == 0.0
         assert "max_completion_tokens" not in body
 
-
     def test_provider_openai_pointed_at_a_local_server_keeps_max_tokens(self):
         """CLAUDE.md documents provider: openai + base_url: localhost:11434."""
         captured: dict = {}
@@ -213,7 +212,7 @@ class TestOpenAIShape:
         assert captured["body"]["max_completion_tokens"] == 123
 
 
-    @pytest.mark.parametrize("model", ["gpt-5", "ft:o4-mini:org::abc"])
+    @pytest.mark.parametrize("model", ["gpt-5", "ft:o4-mini:org::abc", "openai/gpt-5-mini"])
     def test_reasoning_models_lose_temperature_behind_any_endpoint(self, model):
         """Azure/proxies keep max_tokens, but gpt-5 rejects temperature anywhere."""
         captured: dict = {}

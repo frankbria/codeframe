@@ -10,6 +10,7 @@ import logging
 import os
 import re
 from typing import TYPE_CHECKING, AsyncIterator, Iterator, Optional
+from urllib.parse import urlparse
 
 import openai
 
@@ -30,8 +31,9 @@ logger = logging.getLogger(__name__)
 
 # OpenAI's reasoning models (o-series, gpt-5 family) reject ``max_tokens`` and
 # any ``temperature`` (#1267).
-# A fine-tune id ("ft:o4-mini:org::id") names its base model after "ft:".
-_REASONING_MODEL = re.compile(r"(?:^|:)(?:o\d|gpt-5)")
+# A fine-tune id ("ft:o4-mini:org::id") names its base model after "ft:", and a
+# gateway (OpenRouter, LiteLLM) after a vendor namespace ("openai/gpt-5-mini").
+_REASONING_MODEL = re.compile(r"(?:^|[:/])(?:o\d|gpt-5)")
 
 _STOP_REASON_MAP = {
     "stop": "end_turn",
@@ -118,8 +120,6 @@ class OpenAIProvider(LLMProvider):
         ``provider: openai`` pointed at one through ``base_url``, the documented
         local-model setup, so the endpoint decides, not just the provider name.
         """
-        from urllib.parse import urlparse
-
         openai_itself = self.provider_name == "openai" and (
             not self.base_url or urlparse(self.base_url).hostname == "api.openai.com"
         )
