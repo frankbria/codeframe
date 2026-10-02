@@ -228,6 +228,43 @@ def refuse_execution_in_hosted_mode() -> None:
         )
 
 
+def check_spend_limit(
+    request: Request, workspace: Workspace, auth: Dict[str, Any]
+) -> tuple[Optional[list[Path]], Optional[float]]:
+    """429 when the principal has used up today's spend limit (#1303).
+
+    Returns ``(spend_paths, remaining_usd)`` for the run being started, or
+    ``(None, None)`` when no limit applies: none is configured, or the principal
+    is the auth-off operator. Spend is counted across the workspaces the
+    principal owns plus this one. Blocking I/O — call via ``run_in_threadpool``,
+    and before any state is written, so a refusal leaves nothing behind.
+    """
+    from codeframe.core.spend_limit import (
+        SpendLimitExceeded,
+        daily_limit_usd,
+        remaining_today_usd,
+    )
+    from codeframe.ui.response_models import ErrorCodes, api_error
+
+    user_id = auth.get("user_id")
+    if user_id is None or daily_limit_usd() is None:
+        return None, None
+    # ponytail: attribution is by workspace, not by who ran the call, so a
+    # workspace shared between users counts toward each of them (fails closed).
+    # A user_id column on token_usage would make it exact.
+    paths = [Path(workspace.repo_path)]
+    registry = getattr(getattr(request.app.state, "db", None), "workspace_registry", None)
+    if registry is not None:
+        paths += [Path(row["repo_path"]) for row in registry.list_all(owner_user_id=user_id)]
+    try:
+        return paths, remaining_today_usd(paths)
+    except SpendLimitExceeded as exc:
+        raise HTTPException(
+            status_code=429,
+            detail=api_error(str(exc), ErrorCodes.SPEND_LIMIT_EXCEEDED),
+        )
+
+
 def resolve_github_pat(credential_manager, auth: Dict[str, Any]) -> Optional[str]:
     """The GitHub PAT this caller may act with (#900).
 

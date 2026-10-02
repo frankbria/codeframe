@@ -103,9 +103,11 @@ class BuiltinReactAdapter:
         debug: bool = False,
         output_logger: Optional[RunOutputLogger] = None,
         fix_coordinator: Optional[GlobalFixCoordinator] = None,
+        cost_ceiling_usd: Optional[float] = None,
     ) -> None:
         self._workspace = workspace
         self._llm_provider = llm_provider
+        self._cost_ceiling_usd = cost_ceiling_usd
         self._stall_timeout_s = stall_timeout_s
         self._stall_action = stall_action
         self._event_publisher = event_publisher
@@ -157,6 +159,7 @@ class BuiltinReactAdapter:
                 "debug": self._debug,
                 "output_logger": self._output_logger,
                 "fix_coordinator": self._fix_coordinator,
+                "cost_ceiling_usd": self._cost_ceiling_usd,
             }
             if self._stall_action is not None:
                 kwargs["stall_action"] = self._stall_action
@@ -230,9 +233,11 @@ class BuiltinPlanAdapter:
         fix_coordinator: Optional[GlobalFixCoordinator] = None,
         event_publisher: Optional[EventPublisher] = None,
         user_id: Optional[int] = None,
+        cost_ceiling_usd: Optional[float] = None,
     ) -> None:
         self._workspace = workspace
         self._llm_provider = llm_provider
+        self._cost_ceiling_usd = cost_ceiling_usd
         # The supervisor builds its own provider, so it needs the principal
         # too — or a key stored only per user never reaches it (#1264).
         self._user_id = user_id
@@ -281,6 +286,7 @@ class BuiltinPlanAdapter:
                 fix_coordinator=self._fix_coordinator,
                 output_logger=self._output_logger,
                 event_publisher=self._event_publisher,
+                cost_ceiling_usd=self._cost_ceiling_usd,
             )
 
         agent = _build_agent()

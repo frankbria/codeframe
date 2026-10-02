@@ -274,6 +274,7 @@ class Agent:
         fix_coordinator: Optional["GlobalFixCoordinator"] = None,
         output_logger: Optional["RunOutputLogger"] = None,
         event_publisher: Optional["EventPublisher"] = None,
+        cost_ceiling_usd: Optional[float] = None,
     ):
         """Initialize the agent.
 
@@ -309,7 +310,9 @@ class Agent:
         # to compare against here and could never fire. Resolved once per run;
         # `prior_cost_usd` is filled in when the task id is known so answering a
         # blocker and resuming cannot hand the task a fresh full budget.
-        self.cost_tracker = CostTracker(cap_usd=resolve_cost_cap(workspace.repo_path))
+        self.cost_tracker = CostTracker(
+            cap_usd=resolve_cost_cap(workspace.repo_path, cost_ceiling_usd)
+        )
 
         # Fix attempt tracking for loop prevention and escalation
         self.fix_tracker = FixAttemptTracker()

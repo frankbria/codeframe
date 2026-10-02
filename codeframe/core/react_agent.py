@@ -200,8 +200,11 @@ class ReactAgent:
         output_logger: Optional[RunOutputLogger] = None,
         fix_coordinator: Optional[GlobalFixCoordinator] = None,
         execution_recorder: Optional[ExecutionRecorder] = None,
+        cost_ceiling_usd: Optional[float] = None,
     ) -> None:
         self.workspace = workspace
+        #: What is left of the principal's daily spend limit (#1303).
+        self._cost_ceiling_usd = cost_ceiling_usd
         self.llm_provider = llm_provider
         self.max_iterations = max_iterations
         self._max_cost_usd: Optional[float] = None
@@ -1205,7 +1208,7 @@ class ReactAgent:
         Shared with the plan engine (#1004) — the resolver was always
         engine-agnostic, it just had only one caller.
         """
-        return resolve_cost_cap(self.workspace.repo_path)
+        return resolve_cost_cap(self.workspace.repo_path, self._cost_ceiling_usd)
 
     def _calculate_adaptive_budget(self, context: TaskContext) -> int:
         """Calculate iteration budget based on task complexity.
