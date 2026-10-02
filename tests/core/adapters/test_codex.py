@@ -776,6 +776,8 @@ class TestApiKeyLogin:
             env, key = orig(ws)
             real_popen_env.update(env)
             captured["key"] = key
+            # What the real login does: codex writes the key to CODEX_HOME.
+            (Path(env["CODEX_HOME"]) / "auth.json").write_text('{"OPENAI_API_KEY": "sk"}')
             return env, key
 
         adapter._child_env = spy
