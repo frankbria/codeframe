@@ -1243,9 +1243,13 @@ def _in_dependency_order(workspace: Workspace, task_ids: list[str]) -> list[str]
     """``task_ids`` with every task after its prerequisites, or as given if
     the dependencies form a cycle (which the run then reports as before)."""
     try:
-        return list(create_execution_plan(workspace, task_ids).task_order)
+        ordered = list(create_execution_plan(workspace, task_ids).task_order)
     except CycleDetectedError:
         return list(task_ids)
+    # The plan's graph dedupes, so a duplicated id would shrink the loop below
+    # len(batch.task_ids): the tally never reaches total and a fully successful
+    # batch finalizes PARTIAL (GLM review). Keep the given order then.
+    return ordered if len(ordered) == len(task_ids) else list(task_ids)
 
 
 def _unmet_dependency(workspace: Workspace, batch: BatchRun, task_id: str) -> Optional[str]:
@@ -1561,7 +1565,10 @@ def _run_serial_resume(
     # Recount from results
     final_completed = sum(1 for s in batch.results.values() if s == RunStatus.COMPLETED.value)
     final_failed = sum(1 for s in batch.results.values() if s == RunStatus.FAILED.value)
-    final_blocked = sum(1 for s in batch.results.values() if s == RunStatus.BLOCKED.value)
+    # A dependency skip is "not completed" too, like the serial tally (review).
+    final_blocked = sum(
+        1 for s in batch.results.values() if s in (RunStatus.BLOCKED.value, SKIPPED)
+    )
 
     if final_completed == total:
         batch.status = BatchStatus.COMPLETED
@@ -1749,7 +1756,10 @@ def _run_retries(
     total = len(batch.task_ids)
     final_completed = sum(1 for s in batch.results.values() if s == RunStatus.COMPLETED.value)
     final_failed = sum(1 for s in batch.results.values() if s == RunStatus.FAILED.value)
-    final_blocked = sum(1 for s in batch.results.values() if s == RunStatus.BLOCKED.value)
+    # A dependency skip is "not completed" too, like the serial tally (review).
+    final_blocked = sum(
+        1 for s in batch.results.values() if s in (RunStatus.BLOCKED.value, SKIPPED)
+    )
 
     if final_completed == total:
         batch.status = BatchStatus.COMPLETED
@@ -2201,7 +2211,9 @@ def _execute_parallel(
                 )
                 if result == RunStatus.COMPLETED.value:
                     completed_count += 1
-                elif result == RunStatus.BLOCKED.value:
+                elif result in (RunStatus.BLOCKED.value, SKIPPED):
+                    # A skip is not a failure: it must not trip --on-failure
+                    # stop or count as failed (GLM / claude review).
                     blocked_count += 1
                 else:
                     failed_count += 1
@@ -2232,7 +2244,7 @@ def _execute_parallel(
                     task_index += 1
                     if result_status == RunStatus.COMPLETED.value:
                         completed_count += 1
-                    elif result_status == RunStatus.BLOCKED.value:
+                    elif result_status in (RunStatus.BLOCKED.value, SKIPPED):
                         blocked_count += 1
                     else:
                         failed_count += 1

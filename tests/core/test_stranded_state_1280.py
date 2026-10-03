@@ -239,6 +239,70 @@ class TestALateErrorDoesNotUndoAStop:
         assert conductor.get_batch(ws, batch.id).status == BatchStatus.CANCELLED
 
 
+class TestSkipsAreTalliedAsNotCompletedNotFailed:
+    """GLM / claude review on the PR."""
+
+    def test_a_duplicated_task_id_does_not_shrink_the_batch(self, ws, monkeypatch):
+        a = _task(ws, "a")
+        batch = _batch(ws, [a.id, a.id])
+        monkeypatch.setattr(
+            conductor, "_execute_task_subprocess", lambda *a, **k: RunStatus.COMPLETED.value
+        )
+        monkeypatch.setattr(conductor, "_run_batch_level_validation", lambda *a, **k: (True, None))
+
+        conductor._execute_serial(ws, batch)
+
+        assert conductor.get_batch(ws, batch.id).status == BatchStatus.COMPLETED
+
+    def test_a_skip_does_not_trip_on_failure_stop_in_parallel(self, ws, monkeypatch):
+        """Nothing failed: A is BLOCKED (a human is needed), B is skipped on
+        it. C, two groups later, must still run under --on-failure stop."""
+        a, x = _task(ws, "a"), _task(ws, "x")
+        b = _task(ws, "b", depends_on=[a.id])
+        y = _task(ws, "y", depends_on=[x.id])
+        c = _task(ws, "c", depends_on=[y.id])
+        batch = _batch(ws, [a.id, x.id, b.id, y.id, c.id], strategy="parallel")
+        batch.on_failure = OnFailure.STOP
+        conductor._save_batch(ws, batch)
+        ran: list[str] = []
+
+        def execute(_ws, task_id, *args, **kwargs):
+            ran.append(task_id)
+            return RunStatus.BLOCKED.value if task_id == a.id else RunStatus.COMPLETED.value
+
+        monkeypatch.setattr(conductor, "_execute_task_subprocess", execute)
+        monkeypatch.setattr(conductor, "get_supervisor", lambda *a, **k: _NoSupervisor())
+
+        conductor._execute_parallel(ws, batch)
+
+        assert c.id in ran, "a dependency skip stopped the batch as if something failed"
+
+    def test_a_resume_reports_its_skips(self, ws, monkeypatch):
+        a = _task(ws, "a")
+        b = _task(ws, "b", depends_on=[a.id])
+        batch = _batch(ws, [a.id, b.id], results={a.id: "FAILED", b.id: "SKIPPED"})
+        monkeypatch.setattr(
+            conductor, "_execute_task_subprocess", lambda *a, **k: RunStatus.FAILED.value
+        )
+        emitted: list[dict] = []
+        real_emit = conductor.events.emit_for_workspace
+
+        def emit(ws_, event_type, data=None, **kw):
+            if data and data.get("is_resume") and "total" in data:
+                emitted.append(data)
+            return real_emit(ws_, event_type, data, **kw)
+
+        monkeypatch.setattr(conductor.events, "emit_for_workspace", emit)
+        conductor._execute_serial_resume(ws, batch, [a.id, b.id])
+
+        assert emitted and emitted[-1]["blocked"] == 1  # B, skipped again
+
+
+class _NoSupervisor:
+    def try_resolve_blocked_task(self, task_id):
+        return False
+
+
 # 5. The CLI resume pre-check ----------------------------------------------------
 
 

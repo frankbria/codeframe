@@ -3243,12 +3243,9 @@ def work_resume(
                     workspace, run, dry_run=dry_run, verbose=verbose, engine=engine
                 )
             except Exception as exc:
-                # resume_run already flipped the run to RUNNING. A misconfig
-                # (missing ANTHROPIC_API_KEY, unknown provider) raises *before*
-                # execute_agent's own try, so without this the run stays RUNNING
-                # with no worker and `work start` refuses the task — the very
-                # wedge this command is being fixed for. Mirrors the web
-                # worker's #722 recovery.
+                # resume_run already flipped the run to RUNNING. execute_agent
+                # now fails a still-RUNNING run on any error itself (#1280);
+                # this remains a backstop, and the double-fail below is a no-op.
                 try:
                     runtime.fail_run(workspace, run.id, reason=str(exc))
                 except Exception:
