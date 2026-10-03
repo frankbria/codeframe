@@ -344,6 +344,33 @@ class TestRetriesLeaveAStoppedTaskAlone:
         assert conductor._stopped_by_user(ws, stopped.id) is True
         assert conductor._stopped_by_user(ws, failed.id) is False
 
+    def test_the_retry_loop_reruns_only_the_real_failure(self, ws, monkeypatch):
+        from datetime import datetime, timezone
+
+        from codeframe.core import conductor
+        from codeframe.core.conductor import BatchRun, BatchStatus, OnFailure
+
+        stopped, _ = _start(ws)
+        runtime.stop_run(ws, stopped.id)
+        failed, failed_run = _start(ws)
+        runtime.fail_run(ws, failed_run.id)
+        batch = BatchRun(
+            id="b-1279", workspace_id=ws.id, task_ids=[stopped.id, failed.id],
+            status=BatchStatus.RUNNING, strategy="serial", max_parallel=1,
+            on_failure=OnFailure.CONTINUE, started_at=datetime.now(timezone.utc),
+            completed_at=None, results={stopped.id: "FAILED", failed.id: "FAILED"},
+        )
+        conductor._save_batch(ws, batch)
+        rerun: list[str] = []
+        monkeypatch.setattr(
+            conductor, "_execute_task_subprocess",
+            lambda _ws, task_id, *a, **k: rerun.append(task_id) or "COMPLETED",
+        )
+
+        conductor._run_retries(ws, batch, max_retries=1)
+
+        assert rerun == [failed.id]
+
 
 class TestThePlanEngineStopsToo:
     def test_no_step_starts_after_a_stop(self, ws):
