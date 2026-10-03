@@ -862,8 +862,9 @@ jobs:
             mkdir -p \${BACKUP_BASE}
             chmod 700 \${BACKUP_BASE}
 
-            # Create temporary staging directory
-            mkdir -p \${TMP_BACKUP}
+            # Create temporary staging directory. 700: it receives the env
+            # files and the database, under a world-traversable /tmp (#1295).
+            mkdir -m 700 \${TMP_BACKUP}
 
             # Record current commit
             # Since #1121 the host has no checkout — the deploy pulls an image

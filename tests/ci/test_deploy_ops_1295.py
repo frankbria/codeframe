@@ -277,3 +277,12 @@ def test_a_database_with_corrupt_pages_fails_the_integrity_check(volume, tmp_pat
     assert r.returncode == 1
     assert "integrity_check" in r.stderr
     assert not out.exists()
+
+
+def test_backups_are_never_readable_by_other_users_while_written():
+    """Shared host: the 600 applied after the fact left the streaming partial
+    file, and production's /tmp staging dir, readable meanwhile (codex)."""
+    script = SCRIPT.read_text()
+    assert script.index("umask 077") < script.index("docker run")
+    run = next(s for s in _steps("deploy-production") if s.get("name") == "Create pre-deployment backup")["run"]
+    assert "mkdir -m 700 \\${TMP_BACKUP}" in run

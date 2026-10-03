@@ -22,6 +22,9 @@
 #
 # After an intentional reset, delete <state-dir>/.database-backed-up.
 set -euo pipefail
+# The backup holds password hashes and tokens, and this is a shared host: the
+# partial file must never exist with group/other bits, not even mid-stream.
+umask 077
 
 OUT="${1:?usage: backup-db.sh <output-file> <state-dir>}"
 STATE_DIR="${2:?usage: backup-db.sh <output-file> <state-dir>}"
