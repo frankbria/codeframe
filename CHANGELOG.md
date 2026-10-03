@@ -145,6 +145,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A self-hosted web UI streams, and a local one runs out of the box (#1296).**
+  - The task and stress-test streams now find the backend from
+    `NEXT_PUBLIC_API_URL` when `NEXT_PUBLIC_SSE_URL` is not set. They used to
+    dial `localhost:8000`, so a deploy that followed the docs had dead streams.
+  - The Content-Security-Policy allows the origins the streams and sockets
+    actually dial, including in the container image. There it used to fall
+    back to a loopback default whatever the image was built for.
+  - The web UI's defaults point at `codeframe serve`'s port, 8080, not 8000,
+    so signing in from `npm run dev` works with nothing configured.
+  - `docs/QUICKSTART.md` documents `WORKSPACE_ROOT`, without which the server
+    refuses to start, and how to run the web UI locally. `.env.example`
+    gains `WORKSPACE_ROOT`.
 - **Large workspaces no longer lose tasks, blockers or events past a list limit (#1294).**
   - `cf tasks generate --overwrite` removes every old task. Past 100 tasks the
     rest survived, and `cf work batch run --all-ready` would run them.
