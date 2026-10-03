@@ -59,7 +59,7 @@ from codeframe.core.credentials import (
     CredentialStoreUnreadableError,
 )
 from codeframe.core.api_key_service import ApiKeyService
-from codeframe.platform_store.database import Database
+from codeframe.platform_store.database import Database, default_database_path
 
 logger = logging.getLogger(__name__)
 
@@ -72,17 +72,13 @@ logger = logging.getLogger(__name__)
 def get_db_for_cli() -> Database:
     """Get database instance for CLI commands.
 
-    Uses DATABASE_PATH environment variable if set, otherwise defaults
-    to .codeframe/state.db in the current directory.
+    Uses DATABASE_PATH if set, otherwise .codeframe/platform.db in the
+    current directory (see ``default_database_path``).
 
     Returns:
         Initialized Database instance
     """
-    db_path = os.getenv(
-        "DATABASE_PATH",
-        os.path.join(os.getcwd(), ".codeframe", "state.db")
-    )
-    db = Database(db_path)
+    db = Database(default_database_path())
     db.initialize()
     return db
 

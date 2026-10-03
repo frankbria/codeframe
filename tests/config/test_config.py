@@ -21,7 +21,7 @@ class TestGlobalConfig:
         monkeypatch.delenv("DEFAULT_PROVIDER", raising=False)
 
         config = GlobalConfig(_env_file=None)
-        assert config.database_path == ".codeframe/state.db"
+        assert config.database_path == ".codeframe/platform.db"
         # 127.0.0.1 since #935 — binding every interface by default put
         # workspace file access and agent execution on the LAN.
         assert config.api_host == "127.0.0.1"

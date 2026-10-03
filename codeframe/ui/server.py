@@ -6,7 +6,6 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, UTC
 from enum import Enum
-from pathlib import Path
 
 # Third-party imports
 from fastapi import Depends, FastAPI
@@ -43,7 +42,7 @@ from codeframe.ui.routers import (
 )
 from codeframe.auth import router as auth_router
 from codeframe.auth.dependencies import require_method_scope
-from codeframe.platform_store.database import Database
+from codeframe.platform_store.database import Database, default_database_path
 from codeframe.lib.rate_limiter import (
     get_rate_limiter,
     rate_limit_exceeded_handler,
@@ -451,11 +450,7 @@ async def lifespan(app: FastAPI):
     _validate_workspace_allowlist_config()
 
     # Initialize global persistent DB (used by interactive_sessions and auth)
-    db_path = os.environ.get(
-        "DATABASE_PATH",
-        str(Path.cwd() / ".codeframe" / "state.db"),
-    )
-    db = Database(db_path)
+    db = Database(default_database_path())
     db.initialize()
     app.state.db = db
 

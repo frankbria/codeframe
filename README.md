@@ -480,7 +480,7 @@ export OPENAI_BASE_URL=http://localhost:11434/v1  # for Ollama, vLLM, LM Studio,
 # Per-workspace: .codeframe/config.yaml supports an `llm:` block for the same options
 
 # Optional
-export DATABASE_PATH=./codeframe.db         # Default: ./.codeframe/state.db
+export DATABASE_PATH=./codeframe.db         # Server accounts/keys; default ./.codeframe/platform.db
 export RATE_LIMIT_ENABLED=true              # API rate limiting
 export RATE_LIMIT_DEFAULT=100/minute        # Default limit
 ```

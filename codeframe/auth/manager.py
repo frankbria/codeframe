@@ -129,10 +129,9 @@ _current_database_path = None
 
 def _get_database_path() -> str:
     """Get the current database path from environment."""
-    return os.getenv(
-        "DATABASE_PATH",
-        os.path.join(os.getcwd(), ".codeframe", "state.db")
-    )
+    from codeframe.platform_store.database import default_database_path
+
+    return default_database_path()
 
 
 def reset_auth_engine():

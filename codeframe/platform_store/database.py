@@ -11,6 +11,7 @@ operations.
 """
 
 import contextlib
+import os
 import sqlite3
 import threading
 from pathlib import Path
@@ -30,6 +31,51 @@ from codeframe.platform_store.repositories import (
 from codeframe.platform_store.repositories.interactive_sessions import InteractiveSessionRepository
 
 logger = logging.getLogger(__name__)
+
+_warned_legacy: set[str] = set()
+
+
+def default_database_path() -> str:
+    """The control-plane DB path: ``DATABASE_PATH``, else ``.codeframe/platform.db``.
+
+    It used to default to ``.codeframe/state.db``, the workspace's own DB
+    (#1287): serving first left a ``state.db`` that ``cf init`` refused, and
+    serving second wrote users and API keys into the repo's domain data. An
+    install that already keeps its accounts in ``state.db`` stays there, so the
+    operator does not silently lose them on upgrade.
+    """
+    env = os.getenv("DATABASE_PATH")
+    if env:
+        return env
+    state_dir = Path.cwd() / ".codeframe"
+    platform_db = state_dir / "platform.db"
+    legacy = state_dir / "state.db"
+    if not platform_db.exists() and _has_users_table(legacy):
+        if str(legacy) not in _warned_legacy:
+            _warned_legacy.add(str(legacy))
+            logger.warning(
+                "Using the legacy control-plane DB %s, which is also the workspace "
+                "DB. Move it to %s or set DATABASE_PATH to separate them (#1287).",
+                legacy,
+                platform_db,
+            )
+        return str(legacy)
+    return str(platform_db)
+
+
+def _has_users_table(db_path: Path) -> bool:
+    if not db_path.is_file():
+        return False
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            return conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'"
+            ).fetchone() is not None
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
 
 
 class Database:
