@@ -419,8 +419,9 @@ def _per_worker_rate_limit_warning(
         f"⚠️  Rate limiting uses in-memory storage with {worker_count} workers: "
         f"counters are per-worker, so limits (including auth brute-force "
         f"protection) are effectively multiplied by ~{worker_count}x. "
-        f"Set RATE_LIMIT_STORAGE=redis (with REDIS_URL) for shared, "
-        f"cross-worker rate limiting."
+        f"Set RATE_LIMIT_STORAGE=redis (with REDIS_URL, and the "
+        f"codeframe-ai[redis] extra installed) for shared, cross-worker rate "
+        f"limiting."
     )
 
 

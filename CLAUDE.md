@@ -648,7 +648,8 @@ RATE_LIMIT_AI=20/minute
 RATE_LIMIT_STORAGE=memory             # memory (default) or redis
 REDIS_URL=redis://localhost:6379
 # Multi-worker deployments (uvicorn/gunicorn with --workers > 1): set
-# RATE_LIMIT_STORAGE=redis (+ REDIS_URL) for shared, cross-worker counters.
+# RATE_LIMIT_STORAGE=redis (+ REDIS_URL, + the codeframe-ai[redis] extra; the
+# server refuses to start without it, #1289) for shared, cross-worker counters.
 # With the default in-memory storage each worker keeps its OWN counters, so the
 # effective limit — including auth brute-force protection — multiplies by the
 # worker count. The server logs a WARNING at startup when this is detected.

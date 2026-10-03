@@ -111,6 +111,11 @@ dependencies = [
 cloud = [
     "e2b>=2.0.0",
 ]
+# Shared rate-limit counters for multi-worker servers: RATE_LIMIT_STORAGE=redis
+# (#1289). limits' own extra, so it keeps choosing the redis range it supports.
+redis = [
+    "limits[redis]",
+]
 dev = [
     "pytest>=9.0.3,<10",
     "pytest-asyncio>=1.4.0",
@@ -124,6 +129,7 @@ dev = [
     "hypothesis>=6.0.0",
     "e2b>=2.0.0",
     "jsonschema>=4.0.0",  # codex app-server protocol contract test (#914)
+    "limits[redis]",  # imports the server with RATE_LIMIT_STORAGE=redis (#1289)
 ]
 
 [project.scripts]

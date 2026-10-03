@@ -28,6 +28,7 @@ from typing import Any, Callable, Optional
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from limits import parse as parse_rate_limit
+from limits.errors import ConfigurationError
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.wrappers import Limit
@@ -171,9 +172,18 @@ def get_rate_limiter() -> Optional[Limiter]:
                     storage_uri=config.redis_url,
                 )
                 logger.info("Rate limiter initialized with Redis storage")
-            except ImportError as e:
-                logger.error(f"Redis storage requested but redis module not available: {e}. Falling back to memory.")
-                _limiter = Limiter(key_func=get_rate_limit_key)
+            except (ImportError, ConfigurationError) as e:
+                # Refuse rather than fall back to memory: per-worker counters
+                # multiply every limit, auth brute-force included, by the
+                # worker count — the problem this setting exists to fix. limits
+                # raises ConfigurationError, not ImportError, for a missing
+                # redis, so this used to escape as a raw traceback (#1289).
+                raise RuntimeError(
+                    "RATE_LIMIT_STORAGE=redis needs the redis client: install "
+                    "`codeframe-ai[redis]` (e.g. `uv tool install "
+                    "'codeframe-ai[redis]'`), or unset RATE_LIMIT_STORAGE for "
+                    f"single-worker in-memory limits. ({e})"
+                ) from e
         else:
             _limiter = Limiter(key_func=get_rate_limit_key)
             logger.info("Rate limiter initialized with in-memory storage")
