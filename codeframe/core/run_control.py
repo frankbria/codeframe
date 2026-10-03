@@ -191,6 +191,11 @@ def new_session_kwargs() -> dict:
     return {"start_new_session": True} if os.name == "posix" else {}
 
 
+#: macOS (and some other POSIX systems) has no os.waitid, so ownership of a
+#: pid cannot be proven there; only the direct child is ever signalled.
+_HAS_WAITID = hasattr(os, "waitid")
+
+
 def _owned_unreaped(pid: int) -> bool:
     """Is ``pid`` our own child, running or an unreaped zombie?
 
@@ -265,14 +270,10 @@ def terminate_tree(proc: subprocess.Popen, grace_s: float = 5.0) -> None:
     group cannot be proven, only the direct child is signalled, by pid, and
     only when it is ours and unreaped. Anything else is refused and logged.
     """
-    if os.name != "posix":
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=grace_s)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
+    if os.name != "posix" or not _HAS_WAITID:
+        # No way to prove a group is ours (Windows has none; macOS lacks
+        # waitid): stop the direct child through Popen, which reaps safely.
+        _terminate_popen(proc, grace_s)
         return
 
     pgid = _verified_group(proc)
@@ -304,6 +305,22 @@ def _killpg(pgid: int, sig: int) -> None:
 #: Captured at import: tests patch ``subprocess.Popen`` with a mock, which
 #: would make an isinstance check against the live attribute raise TypeError.
 _POPEN = subprocess.Popen
+
+
+def _terminate_popen(proc: object, grace_s: float) -> None:
+    """terminate/kill through Popen alone. It polls before signalling, so it
+    never signals a pid it has already reaped."""
+    if not isinstance(proc, _POPEN) or proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=grace_s)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        try:
+            proc.wait(timeout=grace_s)
+        except subprocess.TimeoutExpired:
+            logger.warning("Process %d did not exit after kill", proc.pid)
 
 
 def _terminate_direct_child(proc: object, grace_s: float) -> None:

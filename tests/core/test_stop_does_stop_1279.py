@@ -247,3 +247,37 @@ class TestExecuteAgentAfterAStop:
         assert state.status == AgentStatus.FAILED
         assert tasks.get(ws, task.id).status == TaskStatus.READY
 
+
+class TestAStopDuringTheGates:
+    def test_no_correction_run_follows(self, ws, tmp_path, monkeypatch):
+        """Stop lands while the gates run and they fail: no quick fix, no
+        blocker and no second agent run may follow (codex review)."""
+        from codeframe.core.adapters.agent_adapter import AgentResult
+        from codeframe.core.adapters.verification_wrapper import VerificationWrapper
+
+        task, run = _start(ws)
+        runs: list[str] = []
+
+        class Inner:
+            name = "inner"
+
+            def run(self, task_id, prompt, workspace_path, on_event=None):
+                runs.append(prompt)
+                return AgentResult(status="completed", output="done")
+
+        def gates_that_fail_after_a_stop(*a, **k):
+            runtime.stop_run(ws, task.id)
+            return MagicMock(passed=False)
+
+        monkeypatch.setattr(
+            "codeframe.core.adapters.verification_wrapper.run_gates",
+            gates_that_fail_after_a_stop,
+        )
+        with run_control.supervise(ws, run):
+            result = VerificationWrapper(Inner(), ws, max_correction_rounds=3).run(
+                task.id, "do it", tmp_path
+            )
+
+        assert len(runs) == 1, "a correction run started after Stop"
+        assert result.status == "failed" and "stopped" in (result.error or "").lower()
+

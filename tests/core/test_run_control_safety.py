@@ -141,3 +141,26 @@ class TestAVerifiedGroupIsStillSignalled:
         finally:
             _real_kill(child.pid, 9)
             child.wait()
+
+
+class TestWithoutWaitid:
+    """macOS has no os.waitid, so no group can be proven ours (codex review)."""
+
+    def test_only_the_direct_child_is_signalled(self, signals, monkeypatch):
+        monkeypatch.setattr(run_control, "_HAS_WAITID", False)
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            **run_control.new_session_kwargs(),
+        )
+        try:
+            run_control.terminate_tree(child, grace_s=0.1)
+            assert signals and all(k == "kill" and t == child.pid for k, t, _ in signals)
+        finally:
+            _real_kill(child.pid, 9)
+            child.wait()
+
+    def test_a_mock_is_still_never_signalled(self, signals, monkeypatch):
+        monkeypatch.setattr(run_control, "_HAS_WAITID", False)
+        run_control.terminate_tree(MagicMock(), grace_s=0.1)
+        assert signals == []
+
