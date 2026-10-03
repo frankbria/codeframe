@@ -286,9 +286,9 @@ class TestStubsSurviveHostileText:
             for marker in ('import os; os.system("rm -rf /")', "assert True  # injected"):
                 assert stripped != marker, f"{gate} stub: {marker!r} became code"
 
-    @pytest.mark.parametrize(
-        "gate", [g for g in Gate if g not in (Gate.E2E, Gate.DEMO, Gate.MANUAL)]
-    )
+    # E2E and DEMO are pytest stubs since #1284, so a hostile title must not
+    # break out of them either; that replaces the old TypeScript-literal test.
+    @pytest.mark.parametrize("gate", [g for g in Gate if g is not Gate.MANUAL])
     def test_python_stubs_still_parse(self, gate):
         import ast
 
@@ -305,26 +305,6 @@ class TestStubsSurviveHostileText:
         assert content.count('"""') == 4, (
             f'unbalanced docstring delimiters ({content.count(chr(34)*3)})'
         )
-
-    def test_the_e2e_stub_string_literal_is_escaped(self):
-        """`test('{title}')` with a quote or newline in the title produced
-        invalid — and injectable — TypeScript."""
-        from codeframe.core.proof.stubs import generate_stubs
-
-        content = generate_stubs(self._req())[Gate.E2E]
-        test_line = next(ln for ln in content.splitlines() if ln.startswith("test("))
-
-        # The title's embedded double quotes must be escaped inside the literal,
-        # and the statement must still be the well-formed call it was.
-        assert '\\"stop\\"' in test_line, (
-            f"quotes in the title were not escaped: {test_line}"
-        )
-        assert test_line.rstrip().endswith("=> {")
-        # And the literal itself round-trips back to exactly the title.
-        import json
-
-        literal = test_line[len("test("):test_line.rindex(", async")]
-        assert json.loads(literal) == " ".join(HOSTILE_TITLE.split())
 
     def test_ordinary_titles_are_still_readable(self):
         """Escaping must not mangle the normal case."""
@@ -493,14 +473,14 @@ class TestOnlyTheLatestEvidencePerGateIsChecked:
 class TestTextEndingAtTheDocstringBoundary:
     """A lone trailing quote is not a `\"\"\"` run, so collapsing runs missed it.
 
-    Six templates butt `{description}` straight against their own closing
+    Every Python template butts `{description}` straight against their own closing
     delimiter — `\"\"\"Proves: {description}\"\"\"`. A description ending in one
     quote makes four in a row; Python closes the docstring on the first three
     and the fourth starts an unterminated literal. That is a SyntaxError in the
     generated stub, the exact failure AC4 exists to prevent (CI review).
     """
 
-    _PY_GATES = [Gate.UNIT, Gate.CONTRACT, Gate.VISUAL, Gate.A11Y, Gate.PERF, Gate.SEC]
+    _PY_GATES = [g for g in Gate if g is not Gate.MANUAL]
 
     @pytest.mark.parametrize(
         "tail", ['"', '""', "\\", '\\"', "C:\\path", "re: \\d+", "\\n"]
@@ -631,43 +611,24 @@ class TestEscapingIsPerContextNotStacked:
             _requirement("REQ-952-12", self.RAW_TITLE, self.RAW_DESC, gates)
         )
 
-    def test_the_e2e_title_round_trips_to_exactly_the_original(self):
-        import json
-
-        content = self._stubs([Gate.E2E])[Gate.E2E]
-        line = next(ln for ln in content.splitlines() if ln.startswith("test("))
-        literal = line[len("test("):line.rindex(", async")]
-
-        assert json.loads(literal) == self.RAW_TITLE, (
-            "the E2E title was escaped twice"
-        )
-
-    def test_the_python_docstring_reads_back_as_the_original(self):
+    # E2E and DEMO are pytest stubs since #1284, so they get the Python
+    # escaping and must round-trip through the parser like UNIT does.
+    @pytest.mark.parametrize("gate", [Gate.UNIT, Gate.E2E, Gate.DEMO])
+    def test_the_python_docstring_reads_back_as_the_original(self, gate):
         """Doubling is right here — but only once."""
         import ast
 
-        content = self._stubs([Gate.UNIT])[Gate.UNIT]
+        content = self._stubs([gate])[gate]
         tree = ast.parse(content)
         func = next(n for n in tree.body if isinstance(n, ast.FunctionDef))
 
-        assert ast.get_docstring(func) == f"Proves: {self.RAW_DESC}"
+        assert ast.get_docstring(func).endswith(self.RAW_DESC)
         assert self.RAW_TITLE in ast.get_docstring(tree)
 
-    @pytest.mark.parametrize("gate", [Gate.DEMO, Gate.MANUAL])
-    def test_markdown_stubs_show_the_original_text(self, gate):
+    def test_the_markdown_stub_shows_the_original_text(self):
         """Markdown is not Python — a doubled backslash is just wrong there."""
-        content = self._stubs([gate])[gate]
+        content = self._stubs([Gate.MANUAL])[Gate.MANUAL]
 
         assert self.RAW_TITLE in content
-        if gate is Gate.MANUAL:
-            assert self.RAW_DESC in content
+        assert self.RAW_DESC in content
 
-    def test_the_e2e_comments_show_the_original_text(self):
-        """E2E's title/description live in `//` comments, not Python
-        docstrings, so they want no backslash-doubling either — only the
-        `title_js` string literal needs JSON escaping."""
-        content = self._stubs([Gate.E2E])[Gate.E2E]
-        comments = [ln for ln in content.splitlines() if ln.lstrip().startswith("//")]
-
-        assert any(self.RAW_TITLE in ln for ln in comments), comments
-        assert any(self.RAW_DESC in ln for ln in comments), comments

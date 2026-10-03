@@ -809,6 +809,14 @@ def _run_pytest(
         )
 
 
+#: Paths the SEC gate's bandit scan skips: tool and virtualenv directories,
+#: and test code (#1284), matched by bandit's glob support.
+_BANDIT_EXCLUDES = ",".join([
+    "./.venv", "./venv", "./.tox", "./.nox", "./.codeframe",
+    "*/tests/*", "*/test_*.py", "*_test.py", "*/conftest.py",
+])
+
+
 def _run_bandit(repo_path: Path, verbose: bool = False) -> GateCheck:
     """Run bandit — the security scanner behind the PROOF9 SEC gate (#925).
 
@@ -834,10 +842,16 @@ def _run_bandit(repo_path: Path, verbose: bool = False) -> GateCheck:
     try:
         # -x replaces bandit's defaults. `uv run` syncs the project into .venv
         # before it finds no bandit, and the fallback must not scan that (#1262).
+        # Test code is excluded too (#1284). Every pytest test asserts (B101),
+        # and a test that drives a CLI imports subprocess (B404/B603), so the
+        # SEC gate failed in any workspace with tests, including after its own
+        # stub was implemented. Tests are not production attack surface. B101
+        # is NOT skipped: an `assert user.is_admin` in application code is
+        # exactly what it exists to catch, since `python -O` removes it.
         result = _run_tool(
             "bandit",
             prefix,
-            ["-r", ".", "-q", "-f", "txt", "-x", "./.venv,./venv,./.tox,./.nox,./.codeframe"],
+            ["-r", ".", "-q", "-f", "txt", "-x", _BANDIT_EXCLUDES],
             repo_path,
             timeout=300,
         )

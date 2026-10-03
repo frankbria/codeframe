@@ -145,6 +145,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Following a PROOF9 stub can satisfy its gate (#1284).**
+  - The E2E and DEMO stubs are now pytest files (`draft_test_*_e2e.py`,
+    `draft_test_*_demo.py`). They used to be Playwright TypeScript and a
+    showboat script, which the runner's `pytest -k test_<gate>_<slug>` never
+    collects, so a developer who followed them got FAILED forever. E2E is an
+    obligation of five of the seven glitch types.
+  - The PERF stub fails until written. It used to time an empty block, so it
+    passed as soon as it was renamed and recorded evidence for work nobody did.
+  - The SEC gate's bandit scan skips test code (`tests/`, `test_*.py`,
+    `*_test.py`, `conftest.py`) and the virtualenv, so an implemented test stub
+    no longer fails it on `assert` or `subprocess`. B101 still applies to
+    application code, where `python -O` strips an `assert` used as a check.
+
 - **"Close the GitHub issue when the task is DONE" works for a repo connected
   in the web UI (#1283).**
   - Integrations → Connect stores the PAT in the connecting user's own

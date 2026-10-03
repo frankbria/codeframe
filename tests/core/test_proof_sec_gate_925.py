@@ -96,6 +96,33 @@ class TestSecurityGateRuns:
         )
 
     @requires_bandit
+    def test_an_assert_used_as_a_check_in_app_code_still_fails(self, workspace):
+        """#1284 excludes test code, but B101 stays on for application code:
+        `python -O` strips an assert, so an `assert user.is_admin` there is an
+        auth bypass and exactly what the SEC gate must report."""
+        from codeframe.core.gates import GateStatus, _run_bandit
+
+        (workspace.repo_path / "auth.py").write_text("def check(user):\n    assert user.is_admin\n")
+
+        assert _run_bandit(workspace.repo_path).status == GateStatus.FAILED
+
+    @requires_bandit
+    def test_test_code_is_not_scanned(self, workspace):
+        """Tests assert and drive CLIs through subprocess (#1284)."""
+        from codeframe.core.gates import GateStatus, _run_bandit
+
+        tests = workspace.repo_path / "tests" / "proof" / "REQ-1"
+        tests.mkdir(parents=True)
+        (tests / "test_demo_x.py").write_text(
+            "import subprocess\n\n\ndef test_demo_x():\n"
+            "    out = subprocess.run(['echo', 'ok'], capture_output=True, text=True)\n"
+            "    assert out.stdout.strip() == 'ok'\n"
+        )
+        (workspace.repo_path / "pkg_test.py").write_text("def test_y():\n    assert 1\n")
+
+        assert _run_bandit(workspace.repo_path).status == GateStatus.PASSED
+
+    @requires_bandit
     def test_a_clean_tree_passes(self, workspace):
         from codeframe.core.gates import GateStatus, _run_bandit
 
