@@ -207,8 +207,11 @@ class TestRestart:
         """A heartbeat that stopped beating is not a live agent."""
         task, run = _start(ws)
         control = run_control.start(ws, run)
-        control._stop_heartbeat()  # the process died without cleaning up
-        runtime.stop_run(ws, task.id)
-        monkeypatch.setattr(run_control, "STALE_AFTER_S", 0)
+        try:
+            control._stop_heartbeat()  # the process died; its file stays behind
+            runtime.stop_run(ws, task.id)
+            monkeypatch.setattr(run_control, "STALE_AFTER_S", 0)
 
-        assert runtime.start_task_run(ws, task.id).status == runtime.RunStatus.RUNNING
+            assert runtime.start_task_run(ws, task.id).status == runtime.RunStatus.RUNNING
+        finally:
+            control.stop()  # unbind, or every later test on this thread reads "stopped"

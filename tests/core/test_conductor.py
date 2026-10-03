@@ -383,10 +383,12 @@ class TestStopBatch:
         _active_processes[batch_id] = {"task-1": mock_process}
 
         try:
-            stopped = stop_batch(workspace, batch_id, force=True)
+            # The whole process group goes, not only the worker (#1279); the
+            # real kill is exercised in test_stop_does_stop_1279.py.
+            with patch("codeframe.core.run_control.terminate_tree") as kill_tree:
+                stopped = stop_batch(workspace, batch_id, force=True)
 
-            # Process should have been terminated
-            mock_process.terminate.assert_called_once()
+            kill_tree.assert_called_once_with(mock_process)
             assert stopped.status == BatchStatus.CANCELLED
 
             # Process tracking should be cleaned up

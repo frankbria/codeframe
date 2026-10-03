@@ -225,9 +225,11 @@ class TestApplyChanges:
         batch = MagicMock()
         batch.results = {}
 
-        engine.apply_changes(result, batch, active_processes)
+        # The worker and its delegated CLI's group (#1279).
+        with patch("codeframe.core.run_control.terminate_tree") as kill_tree:
+            engine.apply_changes(result, batch, active_processes)
 
-        mock_proc.terminate.assert_called_once()
+        kill_tree.assert_called_once_with(mock_proc)
         assert "t1" in result.tasks_skipped
 
     def test_closed_change_terminates_process(self) -> None:
@@ -249,9 +251,11 @@ class TestApplyChanges:
         batch = MagicMock()
         batch.results = {}
 
-        engine.apply_changes(result, batch, active_processes)
+        # The worker and its delegated CLI's group (#1279).
+        with patch("codeframe.core.run_control.terminate_tree") as kill_tree:
+            engine.apply_changes(result, batch, active_processes)
 
-        mock_proc.terminate.assert_called_once()
+        kill_tree.assert_called_once_with(mock_proc)
         assert "t1" in result.tasks_skipped
 
     def test_blocker_resolved_requeues_task(self) -> None:

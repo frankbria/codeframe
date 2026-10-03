@@ -99,7 +99,8 @@ class RunControl:
             # own error handling deal with a DB that is really gone.
             logger.warning("Could not read run %s status", self.run_id, exc_info=True)
             return False
-        self._cancelled = row is None or row[0] != "RUNNING"
+        # Only an explicit non-RUNNING status is a Stop; a missing row is not.
+        self._cancelled = row is not None and row[0] != "RUNNING"
         return self._cancelled
 
     # -- liveness ----------------------------------------------------------
