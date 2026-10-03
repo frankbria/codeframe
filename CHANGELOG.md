@@ -145,6 +145,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Webhooks fired by the CLI are delivered (#1288).** `batch.completed` at
+  the end of `cf work batch run`, and `blocker.created` raised in a batch-task
+  subprocess, were sent on a daemon thread that died when the process exited,
+  so the POST never left. The Settings page's **Test** button waits for its
+  send, which is why it never showed the problem. The send now runs on a
+  non-daemon thread, and the process waits for it at exit: up to the webhook
+  timeout (5s) to resolve the host plus 5s to send. Host lookup no longer uses
+  the executor that interpreter shutdown closes first, so a late send is not
+  refused, and a hung DNS lookup cannot stretch the wait past the timeout.
+  Sends scheduled from the server are also held until they finish.
+
 - **`cf serve` no longer breaks the workspace it runs in (#1287).** Without
   `DATABASE_PATH`, the server kept its accounts and API keys in
   `.codeframe/state.db`, which is the workspace's own database. Serving before

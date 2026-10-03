@@ -25,8 +25,12 @@ def _skip_ssrf_guard(monkeypatch):
     """These tests cover transport behavior with fake hosts (example.com) and
     a fully mocked ClientSession — opt out of the #746 dispatch-time host
     check so no real DNS resolution happens. The guard itself is covered in
-    test_webhook_ssrf_guard.py."""
+    test_webhook_ssrf_guard.py. Since #1288 resolution runs (and is pinned) even
+    with the guard off, so stub the unvetted resolver as well."""
     monkeypatch.setenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", "1")
+    monkeypatch.setattr(
+        "codeframe.notifications.webhook._resolve_unvetted", lambda host: ["127.0.0.1"]
+    )
 
 
 def _mock_post(status: int):
@@ -129,7 +133,7 @@ async def test_send_event_handles_client_error():
 
 
 def test_send_event_background_outside_loop_runs_in_thread():
-    """In sync context (no running loop), dispatch spawns a daemon thread
+    """In sync context (no running loop), dispatch spawns a non-daemon thread
     and runs the send to completion. The caller must not block beyond the
     thread spawn cost.
 
@@ -154,7 +158,7 @@ def test_send_event_background_outside_loop_runs_in_thread():
                 break
             time.sleep(0.01)
 
-    assert mock_runner.called, "expected daemon thread to invoke the sync runner"
+    assert mock_runner.called, "expected the background thread to invoke the sync runner"
     # The thread spawns and dies — no leaked thread count. Give it up to a
     # second to clean up before asserting (the runner is mocked so this is
     # really just the thread overhead).
