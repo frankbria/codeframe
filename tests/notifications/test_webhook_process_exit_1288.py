@@ -131,3 +131,36 @@ def test_a_hung_resolver_does_not_hold_the_process_open(monkeypatch):
     subprocess.run([sys.executable, "-c", script], check=True, timeout=60)
 
     assert time.monotonic() - start < 15
+
+
+@pytest.mark.parametrize("allow_private", [True, False], ids=["private-allowed", "vetted"])
+def test_an_internationalized_hostname_is_pinned_under_the_name_aiohttp_dials(
+    receiver, monkeypatch, allow_private
+):
+    """``urlparse`` keeps ``bücher.example``; aiohttp asks the resolver for
+    ``xn--bcher-kva.example``, which the pinned resolver refused (codex review)."""
+    from codeframe.notifications import webhook
+
+    url, hits = receiver
+    port = url.split(":")[2].split("/")[0]
+    asked: list[str] = []
+
+    def lookup(host):
+        asked.append(host)
+        return ["127.0.0.1"]
+
+    if allow_private:
+        monkeypatch.setenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", "1")
+        monkeypatch.setattr(webhook, "_resolve_unvetted", lookup)
+    else:
+        monkeypatch.delenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", raising=False)
+        monkeypatch.setattr(webhook, "vet_webhook_host", lookup)
+
+    result = asyncio.run(
+        webhook.WebhookNotificationService(f"http://bücher.example:{port}/hook").send_event(
+            {"event": "e"}
+        )
+    )
+
+    assert result.ok, result.error
+    assert asked == ["xn--bcher-kva.example"] and len(hits) == 1

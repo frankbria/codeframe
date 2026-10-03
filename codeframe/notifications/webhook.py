@@ -16,9 +16,9 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Optional
-from urllib.parse import urlparse
 
 import aiohttp
+import yarl
 
 from codeframe.core.notifications_config import (
     UnsafeWebhookHostError,
@@ -254,7 +254,7 @@ class WebhookNotificationService:
         # file can be hand-edited, and a host can rebind after save. Resolve
         # and check here, then pin the vetted IPs into the connector. The
         # whole vetting block must uphold send_event's never-raises contract:
-        # urlparse can raise on malformed IPv6 brackets, getaddrinfo can
+        # URL parsing can raise on malformed IPv6 brackets, getaddrinfo can
         # raise UnicodeError on bad IDN labels, and a hung resolver must not
         # stall the caller past self.timeout.
         #
@@ -269,7 +269,10 @@ class WebhookNotificationService:
             _resolve_unvetted if allow_private_webhook_hosts() else vet_webhook_host
         )
         try:
-            hostname = urlparse(target_url).hostname
+            # raw_host is the IDNA form aiohttp dials and asks the resolver
+            # for; urlparse keeps "bücher.example", which the pinned resolver
+            # then refused as an unexpected host (codex review).
+            hostname = yarl.URL(target_url).raw_host
             if not hostname:
                 return WebhookSendResult(
                     ok=False, status_code=None, error="Webhook URL has no host"
