@@ -265,3 +265,21 @@ def test_a_blocked_task_with_an_active_run_is_left_alone(tmp_path, monkeypatch):
 
     assert tasks.get(ws, task.id).status == TaskStatus.BLOCKED
     assert any("run is active" in s["reason"] for s in report.tasks_skipped)
+
+
+def test_a_prd_opening_with_plain_text_and_a_code_block_is_not_unwrapped():
+    """Same shape without a heading: the inner text holds one closer and one
+    opener, so it is fence-balanced and only the untagged-fence rule stops it."""
+    body = (
+        "Search service\n\n```\nproj/\n  src/\n```\n\n"
+        + "Results are sorted by relevance. " * 40
+        + "\n\n```\nGET /search?q=x\n```"
+    )
+    result = _refine(LLMResponse(content=body, stop_reason="end_turn"))
+    assert result == body.strip()
+
+
+def test_an_untagged_wrapper_around_a_prd_without_code_is_unwrapped():
+    body = _PRD.replace("date", "relevance").strip()
+    reply = f"Updated PRD:\n```\n{body}\n```"
+    assert _refine(LLMResponse(content=reply, stop_reason="end_turn")) == body

@@ -454,7 +454,7 @@ def ambiguity_to_dict(amb: Ambiguity) -> dict[str, object]:
 #: examples stay inside it; ``strip_code_fence`` would return the first inner
 #: block instead and store a code snippet as the PRD.
 _OUTER_FENCE_RE = re.compile(
-    r"\A(?:[^`#\n][^`\n]*\n|\n){0,3}?[ \t]*```[ \t]*(?:markdown|md)?[ \t]*\n(.*)\n[ \t]*```[ \t]*\Z",
+    r"\A(?:[^`#\n][^`\n]*\n|\n){0,3}?[ \t]*```[ \t]*(markdown|md)?[ \t]*\n(.*)\n[ \t]*```[ \t]*\Z",
     re.DOTALL | re.IGNORECASE,
 )
 _FENCE_LINE_RE = re.compile(r"^[ \t]*```", re.MULTILINE)
@@ -463,15 +463,20 @@ _FENCE_LINE_RE = re.compile(r"^[ \t]*```", re.MULTILINE)
 def _unwrap_outer_fence(content: str) -> str:
     """Unwrap a reply that is one fenced block, never a PRD shaped like one.
 
-    The preamble may not contain a heading, and the unwrapped text must leave
-    every inner fence balanced: a real PRD that opens with a title and a code
-    block and ends with another would otherwise lose its title and its first
-    and last fences (#1293 review).
+    A real PRD that opens with a code block and ends with another has this
+    shape too, and unwrapping it drops its first and last fences (#1293
+    review). So the preamble may not hold a heading; an untagged wrapper is
+    unwrapped only when nothing inside it is fenced; and a ``markdown``-tagged
+    one only when its inner fences balance.
     """
     match = _OUTER_FENCE_RE.match(content)
-    if not match or len(_FENCE_LINE_RE.findall(match.group(1))) % 2:
+    if not match:
         return content
-    return match.group(1).strip()
+    tag, inner = match.group(1), match.group(2)
+    inner_fences = len(_FENCE_LINE_RE.findall(inner))
+    if (inner_fences if tag is None else inner_fences % 2):
+        return content
+    return inner.strip()
 
 
 def resolve_ambiguities_into_prd(
