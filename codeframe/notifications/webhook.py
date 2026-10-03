@@ -9,12 +9,13 @@ but never break the triggering operation.
 """
 
 import asyncio
+import ipaddress
 import logging
 import socket
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Callable, Optional
 from urllib.parse import urlparse
 
 import aiohttp
@@ -29,6 +30,52 @@ logger = logging.getLogger(__name__)
 
 #: In-flight async sends, strongly referenced until done (see send_event_background).
 _background_tasks: "set[asyncio.Task]" = set()
+
+
+async def _in_daemon_thread(fn: Callable[[str], list[str]], arg: str) -> list[str]:
+    """Run blocking ``fn(arg)`` on a plain daemon thread and await the result.
+
+    Not ``run_in_executor``: concurrent.futures stops accepting work as soon as
+    interpreter shutdown starts, which is exactly when a CLI's last webhook is
+    still being sent (#1288). Daemon, so a hung resolver cannot hold the process
+    open — the caller's ``wait_for`` bounds the wait instead.
+    """
+    loop = asyncio.get_running_loop()
+    future: "asyncio.Future[list[str]]" = loop.create_future()
+
+    def deliver(result: Optional[list[str]], error: Optional[BaseException]) -> None:
+        if future.done():  # the caller timed out and cancelled it
+            return
+        if error is not None:
+            future.set_exception(error)
+        else:
+            future.set_result(result or [])
+
+    def run() -> None:
+        try:
+            result, error = fn(arg), None
+        except BaseException as e:
+            result, error = None, e
+        try:
+            loop.call_soon_threadsafe(deliver, result, error)
+        except RuntimeError:
+            pass  # the loop already closed after a timeout
+
+    threading.Thread(target=run, daemon=True, name="webhook-resolve").start()
+    return await future
+
+
+def _resolve_unvetted(hostname: str) -> list[str]:
+    """Resolve without the private-range check, for ``CODEFRAME_ALLOW_PRIVATE_WEBHOOKS``."""
+    try:
+        return [str(ipaddress.ip_address(hostname))]
+    except ValueError:
+        pass
+    try:
+        infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return []
+    return list(dict.fromkeys(str(info[4][0]) for info in infos))
 
 
 class _PinnedResolver(aiohttp.abc.AbstractResolver):
@@ -210,52 +257,58 @@ class WebhookNotificationService:
         # urlparse can raise on malformed IPv6 brackets, getaddrinfo can
         # raise UnicodeError on bad IDN labels, and a hung resolver must not
         # stall the caller past self.timeout.
+        #
+        # Resolution always happens here and is always pinned, private hosts
+        # allowed or not: aiohttp's own resolver runs on the loop's default
+        # executor, as run_in_executor would, and concurrent.futures refuses new
+        # work once interpreter shutdown begins — before non-daemon threads are
+        # joined. A CLI process that fired a webhook and exited lost the POST
+        # that way (#1288).
         session_kwargs: dict = {}
-        if not allow_private_webhook_hosts():
-            try:
-                hostname = urlparse(target_url).hostname
-                if not hostname:
-                    return WebhookSendResult(
-                        ok=False, status_code=None, error="Webhook URL has no host"
-                    )
-                # Blocking DNS — keep it off the event loop, bounded by the
-                # same timeout as the HTTP request.
-                vetted = await asyncio.wait_for(
-                    asyncio.get_running_loop().run_in_executor(
-                        None, vet_webhook_host, hostname
-                    ),
-                    timeout=self.timeout,
+        lookup = (
+            _resolve_unvetted if allow_private_webhook_hosts() else vet_webhook_host
+        )
+        try:
+            hostname = urlparse(target_url).hostname
+            if not hostname:
+                return WebhookSendResult(
+                    ok=False, status_code=None, error="Webhook URL has no host"
                 )
-                if not vetted:
-                    return WebhookSendResult(
-                        ok=False,
-                        status_code=None,
-                        error=f"Could not resolve webhook host {hostname!r}",
-                    )
-                session_kwargs["connector"] = aiohttp.TCPConnector(
-                    resolver=_PinnedResolver(hostname, vetted), use_dns_cache=False
-                )
-            except UnsafeWebhookHostError as e:
-                logger.warning(
-                    "Refusing webhook dispatch for event %s: %s",
-                    payload.get("event"),
-                    e,
-                )
-                return WebhookSendResult(ok=False, status_code=None, error=str(e))
-            except asyncio.TimeoutError:
+            # Blocking DNS — keep it off the event loop, bounded by the
+            # same timeout as the HTTP request.
+            vetted = await asyncio.wait_for(
+                _in_daemon_thread(lookup, hostname), timeout=self.timeout
+            )
+            if not vetted:
                 return WebhookSendResult(
                     ok=False,
                     status_code=None,
-                    error=f"Timed out resolving webhook host after {self.timeout}s",
+                    error=f"Could not resolve webhook host {hostname!r}",
                 )
-            except Exception as e:
-                logger.error(
-                    "Webhook host vetting failed for event %s: %s",
-                    payload.get("event"),
-                    e,
-                    exc_info=True,
-                )
-                return WebhookSendResult(ok=False, status_code=None, error=str(e))
+            session_kwargs["connector"] = aiohttp.TCPConnector(
+                resolver=_PinnedResolver(hostname, vetted), use_dns_cache=False
+            )
+        except UnsafeWebhookHostError as e:
+            logger.warning(
+                "Refusing webhook dispatch for event %s: %s",
+                payload.get("event"),
+                e,
+            )
+            return WebhookSendResult(ok=False, status_code=None, error=str(e))
+        except asyncio.TimeoutError:
+            return WebhookSendResult(
+                ok=False,
+                status_code=None,
+                error=f"Timed out resolving webhook host after {self.timeout}s",
+            )
+        except Exception as e:
+            logger.error(
+                "Webhook host vetting failed for event %s: %s",
+                payload.get("event"),
+                e,
+                exc_info=True,
+            )
+            return WebhookSendResult(ok=False, status_code=None, error=str(e))
 
         try:
             async with aiohttp.ClientSession(**session_kwargs) as session:
@@ -315,8 +368,11 @@ class WebhookNotificationService:
           fresh event loop on a **non-daemon** thread, so a process that
           fires an event and then exits still delivers it (#1288) — a daemon
           thread died at exit with the POST unsent. The interpreter waits for
-          it at exit, bounded by ``self.timeout`` (plus the OS resolver's own
-          timeout if DNS hangs), as ``tasks._close_issue_background`` does.
+          it at exit, as for ``tasks._close_issue_background`` — at most
+          ``self.timeout`` to resolve plus ``self.timeout`` to send. DNS runs
+          on its own daemon thread, never the default executor, so a hung
+          resolver cannot extend that and interpreter shutdown cannot refuse
+          it.
 
         Either way, the triggering operation never blocks on webhook
         delivery and never sees an exception from this method.

@@ -74,3 +74,60 @@ def test_the_async_branch_holds_a_strong_reference_until_the_send_finishes(monke
         return in_flight, len(webhook._background_tasks)
 
     assert asyncio.run(scenario()) == (1, 0)
+
+
+@pytest.mark.parametrize("allow_private", [False, True], ids=["vetted", "private-allowed"])
+def test_delivery_survives_interpreter_shutdown_starting_first(receiver, monkeypatch, allow_private):
+    """At exit CPython runs concurrent.futures' atexit hook *before* joining
+    non-daemon threads, so a send that reaches ``run_in_executor`` late got
+    "cannot schedule new futures after interpreter shutdown" (codex review).
+    Both resolution paths are forced through that window: SSRF vetting (the
+    default), and aiohttp's own resolver for a hostname when private hosts are
+    allowed. The worker sleeps first, so the race is deterministic."""
+    url, hits = receiver
+    port = url.split(":")[2].split("/")[0]
+    if allow_private:
+        monkeypatch.setenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", "1")
+        target = f"http://localhost:{port}/hook"
+        stub_vetting = ""
+    else:
+        monkeypatch.delenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", raising=False)
+        target = f"http://hook.example:{port}/hook"
+        # The receiver is loopback, which vetting rightly refuses; stand in a
+        # vetter that passes it, so the real vetting *mechanism* still runs.
+        stub_vetting = "webhook.vet_webhook_host = lambda host: ['127.0.0.1']\n"
+    script = (
+        "import time\n"
+        "from codeframe.notifications import webhook\n"
+        + stub_vetting
+        + "run = webhook.WebhookNotificationService._run_send_event_sync\n"
+        "def late(self, *a):\n"
+        "    time.sleep(0.5)\n"
+        "    run(self, *a)\n"
+        "webhook.WebhookNotificationService._run_send_event_sync = late\n"
+        f"webhook.WebhookNotificationService({target!r}).send_event_background({{'event': 'blocker.created'}})\n"
+    )
+
+    subprocess.run([sys.executable, "-c", script], check=True, timeout=60)
+
+    assert len(hits) == 1 and b"blocker.created" in hits[0]
+
+
+def test_a_hung_resolver_does_not_hold_the_process_open(monkeypatch):
+    """The send thread is non-daemon now, so its bound matters: resolution must
+    give up at the timeout instead of waiting on a stuck getaddrinfo."""
+    import time
+
+    monkeypatch.delenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", raising=False)
+    script = (
+        "import time\n"
+        "from codeframe.notifications import webhook\n"
+        "webhook.vet_webhook_host = lambda host: time.sleep(60) or []\n"
+        "webhook.WebhookNotificationService('http://hook.example/x', timeout=1)"
+        ".send_event_background({'event': 'e'})\n"
+    )
+
+    start = time.monotonic()
+    subprocess.run([sys.executable, "-c", script], check=True, timeout=60)
+
+    assert time.monotonic() - start < 15

@@ -25,8 +25,12 @@ def _skip_ssrf_guard(monkeypatch):
     """These tests cover transport behavior with fake hosts (example.com) and
     a fully mocked ClientSession — opt out of the #746 dispatch-time host
     check so no real DNS resolution happens. The guard itself is covered in
-    test_webhook_ssrf_guard.py."""
+    test_webhook_ssrf_guard.py. Since #1288 resolution runs (and is pinned) even
+    with the guard off, so stub the unvetted resolver as well."""
     monkeypatch.setenv("CODEFRAME_ALLOW_PRIVATE_WEBHOOKS", "1")
+    monkeypatch.setattr(
+        "codeframe.notifications.webhook._resolve_unvetted", lambda host: ["127.0.0.1"]
+    )
 
 
 def _mock_post(status: int):
