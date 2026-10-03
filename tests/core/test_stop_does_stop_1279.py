@@ -412,7 +412,7 @@ class TestThePlanEngineStopsToo:
         )
         runtime.stop_run(ws, task.id)
         with run_control.supervise(ws, run):
-            agent._execute_plan()
+            agent._execute_plan_until_stopped()
 
         assert "step_started" not in events
         assert agent.state.status == AgentStatus.FAILED
@@ -464,7 +464,7 @@ class TestNoCorrectionAfterAStop:
             steps=[PlanStep(index=1, type=StepType.FILE_CREATE, description="d", target="a.py")],
         )
         with run_control.supervise(ws, run):
-            agent._execute_plan()
+            agent._execute_plan_until_stopped()
 
         assert agent.state.status == AgentStatus.FAILED
         llm.complete.assert_not_called()  # no self-correction call

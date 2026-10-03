@@ -252,7 +252,7 @@ from codeframe.core.blocker_detection import (  # noqa: E402
 
 
 class _RunStopped(Exception):
-    """The user stopped the run (#1279); unwinds the plan loop to _execute_plan."""
+    """The user stopped the run (#1279); unwinds the plan loop to _execute_plan_until_stopped."""
 
 
 class Agent:
@@ -402,7 +402,7 @@ class Agent:
 
             # Execute plan
             self.state.status = AgentStatus.EXECUTING
-            self._execute_plan()
+            self._execute_plan_until_stopped()
 
             # Run final verification if execution succeeded
             if self.state.status == AgentStatus.EXECUTING:
@@ -443,7 +443,7 @@ class Agent:
                 # Blockers resolved, continue execution
                 self.state.status = AgentStatus.EXECUTING
                 self.state.blocker = None
-                self._execute_plan()
+                self._execute_plan_until_stopped()
             else:
                 # Still blocked
                 return self.state
@@ -465,12 +465,12 @@ class Agent:
         planner = Planner(self.llm)
         return planner.create_plan(self.context)
 
-    def _execute_plan(self) -> None:
-        """Execute the implementation plan step by step."""
+    def _execute_plan_until_stopped(self) -> None:
+        """`_execute_plan`, ending quietly when the user stops the run (#1279).
+        No blocker: a stop needs no answer."""
         try:
-            self._execute_plan_steps()
+            self._execute_plan()
         except _RunStopped:
-            # Stopped by the user (#1279). No blocker: nothing needs answering.
             self._debug_log("Run stopped by user", level="INFO", always=True)
             self.state.status = AgentStatus.FAILED
 
@@ -478,7 +478,8 @@ class Agent:
         if run_control.cancellation_requested():
             raise _RunStopped
 
-    def _execute_plan_steps(self) -> None:
+    def _execute_plan(self) -> None:
+        """Execute the implementation plan step by step."""
         if not self.state.plan:
             raise ValueError("No plan to execute")
 
