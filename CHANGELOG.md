@@ -145,6 +145,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **`cf work resume` and `cf work retry` keep the task's engine, and
+  `--dry-run` is no longer a real run on an external engine (#1281).**
+  - Resume always fell back to the built-in engine, and retry had no
+    `--engine` option at all. So a claude-code task switched engines partway
+    through, or failed outright for lack of an `ANTHROPIC_API_KEY`.
+  - Start, resume, retry and batch run now choose the engine the same way:
+    `--engine`, then `CODEFRAME_ENGINE`, then the workspace config, then
+    `react`. The API key check uses that same engine.
+  - `--dry-run` never reached claude-code, codex, opencode or kilocode. They
+    edited the repository, the task went DONE, and auto-close could close its
+    GitHub issue. With an external engine, `--dry-run` is now refused before
+    any run is created.
+
 - **No run, task or batch is left stuck in RUNNING (#1280).** Several things
   used to leave state behind with nothing running, so the next start, run or
   resume refused the task or re-did finished work:
