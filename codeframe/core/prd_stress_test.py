@@ -449,34 +449,11 @@ def ambiguity_to_dict(amb: Ambiguity) -> dict[str, object]:
     }
 
 
-#: A reply that is one fenced block, after at most a few lines of preamble
-#: ("Here is the updated PRD:"). Greedy to the *last* fence, so a PRD's own code
-#: examples stay inside it; ``strip_code_fence`` would return the first inner
-#: block instead and store a code snippet as the PRD.
-_OUTER_FENCE_RE = re.compile(
-    r"\A(?:[^`\n]*\n){0,3}?[ \t]*```[ \t]*(?:markdown|md)?[ \t]*\n(.*)\n[ \t]*```[ \t]*\Z",
-    re.DOTALL | re.IGNORECASE,
+#: A reply shaped like one fenced block, after at most a few lines of preamble
+#: ("Here is the updated PRD:"), greedy to the last fence.
+_WRAPPED_RE = re.compile(
+    r"\A(?:[^`\n]*\n){0,3}?[ \t]*```[^\n`]*\n.*\n[ \t]*```[ \t]*\Z", re.DOTALL
 )
-
-
-def _first_line(text: str) -> str:
-    return next((line.strip() for line in text.splitlines() if line.strip()), "")
-
-
-def _unwrap_outer_fence(content: str, original: str) -> str:
-    """Unwrap a reply that is one fenced block around the rewritten PRD.
-
-    A real PRD with code blocks at both ends has the same *shape* as a wrapped
-    reply, and syntax cannot tell a bare closing fence from a bare opening one,
-    so every structural rule left a variant that lost the PRD's first line and
-    outer fences (#1293 reviews). The positive test: a wrapper's payload is the
-    PRD itself, so it starts with the original PRD's first line, which a refine
-    does not rewrite. Anything else is stored as it came, as before.
-    """
-    match = _OUTER_FENCE_RE.match(content)
-    if match and _first_line(match.group(1)) == _first_line(original):
-        return match.group(1).strip()
-    return content
 
 
 def resolve_ambiguities_into_prd(
@@ -518,7 +495,18 @@ def resolve_ambiguities_into_prd(
             response.stop_reason,
         )
         return prd_content
-    updated = _unwrap_outer_fence(response.content.strip(), prd_content)
+    updated = response.content.strip()
+    # A wrapped reply is rejected, not unwrapped: a real PRD with code blocks at
+    # both ends has the same shape, syntax cannot tell a bare closing fence from
+    # an opening one, and every unwrapping rule left a variant that stored a
+    # corrupted PRD (#1293 reviews). A PRD that itself has that shape is stored
+    # as the model returned it, as before.
+    if _WRAPPED_RE.match(updated) and not _WRAPPED_RE.match(prd_content.strip()):
+        logger.warning(
+            "PRD rewrite came wrapped in a code fence; returning original. "
+            "Re-run the refine."
+        )
+        return prd_content
     if not updated or len(updated) < len(prd_content) // 2:
         logger.warning(
             "PRD rewrite looks truncated (%d chars vs original %d), returning original",

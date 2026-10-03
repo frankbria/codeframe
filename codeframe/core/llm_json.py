@@ -63,31 +63,39 @@ def parse_json_response(content: str, *, what: str = "response") -> Any:
 
 
 def extract_json_array(content: str, *, what: str = "response") -> list:
-    """Return the first complete JSON array in an LLM response.
+    """Return the top-level JSON array in an LLM response.
 
-    Decodes from each ``[`` in turn, in the raw text and then unfenced, and
-    stops at the end of the first array that parses, so prose brackets before it ("[2 of them]")
-    and prose after it ("These are the tasks.") are both tolerated. A greedy
-    ``\\[...\\]`` search spanned those brackets and reported valid JSON as
-    truncated (#1293).
+    Decodes from each ``[`` in turn and stops at the first array that is a
+    plausible result, so prose and a markdown fence around it are tolerated, and
+    backticks inside a JSON string (a code example) are inert: the decoder knows
+    strings, where a fence stripper would stop at them. Two rules keep the scan
+    from settling on the wrong array (#1293 reviews):
+
+    - an array of objects (``[`` then ``{``) that fails to decode means the
+      reply's array is malformed or cut off: raise, rather than let one of its
+      nested arrays stand in for the whole result;
+    - a list of scalars (prose like ``Tasks [1]:``) is skipped; only an empty
+      list or one holding an object counts.
 
     Raises:
-        LLMJsonError: If no JSON array can be decoded from the content.
+        LLMJsonError: If no such array can be decoded from the content.
     """
-    # The raw text first: the decoder knows JSON strings, so backticks inside a
-    # description (a code example) are inert there, while strip_code_fence would
-    # stop at them. The unfenced text is the fallback (#1293 review).
+    text = content or ""
     decoder = json.JSONDecoder()
-    for text in (content or "", strip_code_fence(content or "")):
-        start = text.find("[")
-        while start != -1:
-            try:
-                value, _ = decoder.raw_decode(text, start)
-            except json.JSONDecodeError:
-                pass
-            else:
-                if isinstance(value, list):
-                    return value
-            start = text.find("[", start + 1)
-    preview = (content or "")[:200].replace("\n", " ")
+    start = text.find("[")
+    while start != -1:
+        try:
+            value, _ = decoder.raw_decode(text, start)
+        except json.JSONDecodeError as exc:
+            if text[start + 1:].lstrip().startswith("{"):
+                raise LLMJsonError(
+                    f"The JSON array in {what} is malformed or incomplete: {exc}"
+                ) from exc
+        else:
+            if isinstance(value, list) and (
+                not value or any(isinstance(item, dict) for item in value)
+            ):
+                return value
+        start = text.find("[", start + 1)
+    preview = text[:200].replace("\n", " ")
     raise LLMJsonError(f"No JSON array in {what}. Content began: {preview!r}")

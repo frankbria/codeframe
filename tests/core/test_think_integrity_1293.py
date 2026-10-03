@@ -63,7 +63,7 @@ def test_a_decomposition_with_no_subtasks_is_an_error(reply):
 _PRD = "# Search\n\n" + "Results are sorted by date. " * 40 + "\n"
 
 
-def _refine(reply: LLMResponse) -> str:
+def _refine(reply: LLMResponse, original: str = _PRD) -> str:
     from codeframe.core.prd_stress_test import Ambiguity, resolve_ambiguities_into_prd
 
     provider = MockProvider()
@@ -72,7 +72,7 @@ def _refine(reply: LLMResponse) -> str:
         id="amb-1", label="Sort order", questions=["Which order?"], source_node_title="Search",
         recommendation="", severity="blocking", resolved_answer="By relevance",
     )
-    return resolve_ambiguities_into_prd(_PRD, [amb], provider)
+    return resolve_ambiguities_into_prd(original, [amb], provider)
 
 
 @pytest.mark.parametrize("stop_reason", ["max_tokens", "length"])
@@ -87,13 +87,17 @@ def test_a_truncated_refine_is_rejected(stop_reason, caplog):
     assert "truncated" in caplog.text
 
 
-def test_a_fenced_refine_is_unwrapped_and_keeps_its_own_code_blocks():
-    """The preamble and outer fence were stored verbatim; a PRD's own code
-    example must survive the unwrapping."""
+def test_a_wrapped_refine_is_rejected(caplog):
+    """A reply wrapped in a fence (with or without a preamble) was stored
+    verbatim as the new PRD. It is rejected, as the AC says: unwrapping it
+    cannot be done safely, because a real PRD with code blocks at both ends
+    has the same shape (#1293 reviews), and rejecting keeps the original."""
     body = _PRD.replace("date", "relevance") + "\n```python\nsearch(q)\n```\n"
     reply = f"Here is the updated PRD:\n\n```markdown\n{body}```\n"
-    result = _refine(LLMResponse(content=reply, stop_reason="end_turn"))
-    assert result == body.strip()
+    with caplog.at_level(logging.WARNING):
+        result = _refine(LLMResponse(content=reply, stop_reason="end_turn"))
+    assert result == _PRD
+    assert "fence" in caplog.text
 
 
 def test_an_unfenced_refine_is_stored_as_is():
@@ -238,7 +242,8 @@ def test_a_prd_that_opens_and_ends_with_code_blocks_is_not_unwrapped():
         + "Results are sorted by relevance. " * 40
         + "\n\n## API\n\n```\nGET /search?q=x\n```"
     )
-    result = _refine(LLMResponse(content=body, stop_reason="end_turn"))
+    # The PRD itself has this shape; its refined echo is stored as returned.
+    result = _refine(LLMResponse(content=body, stop_reason="end_turn"), original=body.replace("relevance", "date").replace("markdown. ", "markdown! "))
     assert result == body.strip()
 
 
@@ -275,14 +280,15 @@ def test_a_prd_opening_with_plain_text_and_a_code_block_is_not_unwrapped():
         + "Results are sorted by relevance. " * 40
         + "\n\n```\nGET /search?q=x\n```"
     )
-    result = _refine(LLMResponse(content=body, stop_reason="end_turn"))
+    # The PRD itself has this shape; its refined echo is stored as returned.
+    result = _refine(LLMResponse(content=body, stop_reason="end_turn"), original=body.replace("relevance", "date").replace("markdown. ", "markdown! "))
     assert result == body.strip()
 
 
-def test_an_untagged_wrapper_around_a_prd_without_code_is_unwrapped():
+def test_an_untagged_wrapper_is_rejected_too():
     body = _PRD.replace("date", "relevance").strip()
     reply = f"Updated PRD:\n```\n{body}\n```"
-    assert _refine(LLMResponse(content=reply, stop_reason="end_turn")) == body
+    assert _refine(LLMResponse(content=reply, stop_reason="end_turn")) == _PRD
 
 
 def test_a_titled_prd_with_markdown_example_blocks_is_not_unwrapped():
@@ -293,7 +299,8 @@ def test_a_titled_prd_with_markdown_example_blocks_is_not_unwrapped():
         + "Pages render from markdown. " * 40
         + "\n\n```markdown\n## Another example\n```"
     )
-    result = _refine(LLMResponse(content=body, stop_reason="end_turn"))
+    # The PRD itself has this shape; its refined echo is stored as returned.
+    result = _refine(LLMResponse(content=body, stop_reason="end_turn"), original=body.replace("relevance", "date").replace("markdown. ", "markdown! "))
     assert result == body.strip()
 
 
@@ -377,3 +384,40 @@ def test_fenced_task_json_with_a_code_example_in_a_description_parses(workspace)
     created = tasks.generate_from_prd(workspace, record, provider=provider)
     assert [t.title for t in created] == ["Add search"]
     assert "search(q)" in created[0].description
+
+
+
+def test_a_prd_whose_first_block_repeats_its_title_is_stored_as_is():
+    """GLM review: a doc-by-example PRD whose first fenced block starts with the
+    PRD's own title. A PRD that already has a wrapper's shape is stored as the
+    model returned it, never unwrapped and never rejected."""
+    body = (
+        "# Contributing Guide\n\n```markdown\n# Contributing Guide\n\nBody.\n```\n\n"
+        + "## Requirements\n" + "Run the tests before pushing. " * 40
+        + "\n\n```bash\nmake test\n```"
+    )
+    from codeframe.core.prd_stress_test import Ambiguity, resolve_ambiguities_into_prd
+
+    provider = MockProvider()
+    edited = body.replace("pushing", "opening a PR")
+    provider.add_response(LLMResponse(content=edited, stop_reason="end_turn"))
+    amb = Ambiguity(id="a", label="When", source_node_title="S", questions=["?"],
+                    recommendation="", severity="blocking", resolved_answer="before a PR")
+    assert resolve_ambiguities_into_prd(body, [amb], provider) == edited.strip()
+
+
+def test_an_incomplete_outer_array_is_not_rescued_by_a_nested_one():
+    """codex: '[{"title":"Parent","children":[{"title":"Child"}]},' returned only
+    Child. A '[' after ':' / ',' / '[' is a nested value, never a candidate."""
+    from codeframe.core.llm_json import LLMJsonError, extract_json_array
+
+    with pytest.raises(LLMJsonError):
+        extract_json_array('[{"title":"Parent","children":[{"title":"Child"}]},')
+
+
+def test_a_prose_array_of_scalars_does_not_shadow_the_real_one():
+    """GLM: 'Tasks [1]:' decoded as [1] and was returned before the fenced array."""
+    from codeframe.core.llm_json import extract_json_array
+
+    reply = 'Tasks [1]:\n```json\n[{"title": "A", "description": "d"}]\n```'
+    assert extract_json_array(reply) == [{"title": "A", "description": "d"}]
