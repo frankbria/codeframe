@@ -10,6 +10,7 @@ This module is headless — no FastAPI or HTTP dependencies.
 
 import asyncio
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from enum import Enum
@@ -448,6 +449,13 @@ def ambiguity_to_dict(amb: Ambiguity) -> dict[str, object]:
     }
 
 
+#: A reply shaped like one fenced block, after at most a few lines of preamble
+#: ("Here is the updated PRD:"), greedy to the last fence.
+_WRAPPED_RE = re.compile(
+    r"\A(?:[^`\n]*\n){0,3}?[ \t]*```[^\n`]*\n.*\n[ \t]*```[ \t]*\Z", re.DOTALL
+)
+
+
 def resolve_ambiguities_into_prd(
     prd_content: str,
     ambiguities: list[Ambiguity],
@@ -474,10 +482,31 @@ def resolve_ambiguities_into_prd(
         }],
         purpose=Purpose.PLANNING,
         system=AMBIGUITY_RESOLUTION_SYSTEM,
-        max_tokens=8192,
+        max_tokens=16000,
         temperature=0.0,
     )
+    # Stored as a new PRD version, so a cut-off rewrite must never pass: the
+    # length check alone accepted any truncation past half the original
+    # (#1293). Anthropic reports max_tokens; OpenAI-compatible providers, length.
+    if response.stop_reason in ("max_tokens", "length"):
+        logger.warning(
+            "PRD rewrite was truncated at the token limit (stop_reason=%s), "
+            "returning original",
+            response.stop_reason,
+        )
+        return prd_content
     updated = response.content.strip()
+    # A wrapped reply is rejected, not unwrapped: a real PRD with code blocks at
+    # both ends has the same shape, syntax cannot tell a bare closing fence from
+    # an opening one, and every unwrapping rule left a variant that stored a
+    # corrupted PRD (#1293 reviews). A PRD that itself has that shape is stored
+    # as the model returned it, as before.
+    if _WRAPPED_RE.match(updated) and not _WRAPPED_RE.match(prd_content.strip()):
+        logger.warning(
+            "PRD rewrite came wrapped in a code fence; returning original. "
+            "Re-run the refine."
+        )
+        return prd_content
     if not updated or len(updated) < len(prd_content) // 2:
         logger.warning(
             "PRD rewrite looks truncated (%d chars vs original %d), returning original",

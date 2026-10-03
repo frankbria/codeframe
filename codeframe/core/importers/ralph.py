@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from codeframe.core.state_machine import TaskStatus
+from codeframe.core.state_machine import TaskStatus, transition_path
 
 # Section headings in fix_plan.md whose unchecked items do not block ralph's
 # exit; they import as BACKLOG instead of READY. Overridable per project via
@@ -263,14 +263,20 @@ def map_tasks(project: RalphProject) -> tuple[list[dict], list[dict]]:
     mapped: list[dict] = []
     skipped: list[dict] = []
     seen_urls: set[str] = set()
+    # Checked items get their own ordinals so the keys of unchecked items stay
+    # exactly what earlier imports stored (codex review on #1293).
+    checked_urls: set[str] = set()
 
     for item in project.fix_plan_items:
         if item.checked:
+            # The key is what lets a re-import find the task an earlier import
+            # created for this item before it was checked off (#1293).
             skipped.append(
                 {
                     "title": item.title,
                     "section": item.section,
                     "reason": "already completed in fix_plan.md",
+                    "external_url": _external_url(item.section, item.title, checked_urls),
                 }
             )
             continue
@@ -428,7 +434,7 @@ def import_ralph_project(
     Raises:
         RalphProjectNotFoundError: if ``ralph_path`` is not a ralph project.
     """
-    from codeframe.core import prd, tasks
+    from codeframe.core import prd, runtime, tasks
     from codeframe.core.workspace import (
         create_or_load_workspace,
         get_workspace,
@@ -525,6 +531,30 @@ def import_ralph_project(
                 )
                 continue
         report.tasks_created.append(spec)
+
+    # An item checked off upstream since the last import must not stay READY
+    # here (#1293). The state machine has no READY -> DONE edge, so walk the
+    # legal path; a task a local run holds IN_PROGRESS is left alone.
+    # A key an unchecked item also holds is ambiguous (a duplicate title in the
+    # same section): completing it could close the pending twin, so skip it.
+    pending_keys = {spec["external_url"] for spec in mapped_tasks}
+    for item in mapping_skipped if workspace is not None else []:
+        if item["external_url"] in pending_keys:
+            continue
+        existing = tasks.get_by_external_url(workspace, item["external_url"])
+        if existing is None or existing.status in (TaskStatus.DONE, TaskStatus.MERGED):
+            continue
+        # A RUNNING or BLOCKED run owns the task: walking it to DONE would leave
+        # that run and its open blocker behind against a finished task.
+        if existing.status == TaskStatus.IN_PROGRESS or runtime.get_active_run(workspace, existing.id):
+            item["reason"] = (
+                f"completed in fix_plan.md; left {existing.status.value} (a run is active)"
+            )
+            continue
+        if not dry_run:
+            for step in transition_path(existing.status, TaskStatus.DONE):
+                tasks.update_status(workspace, existing.id, step, github_autoclose=False)
+        item["reason"] = "completed in fix_plan.md; marked DONE"
 
     if agents_mapping is not None:
         agents_path = target / "AGENTS.md"

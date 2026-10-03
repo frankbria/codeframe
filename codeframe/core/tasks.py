@@ -23,6 +23,7 @@ from codeframe.core.state_machine import (
     validate_transition,
 )
 from codeframe.core.workspace import Workspace, get_db_connection
+from codeframe.core.llm_json import LLMJsonError, extract_json_array, strip_code_fence
 from codeframe.core.prd import PrdRecord
 
 logger = logging.getLogger(__name__)
@@ -1222,14 +1223,51 @@ def generate_from_prd(
     # update_depends_on replaces the stale one: it was being discarded, so
     # generate_from_prd returned tasks whose depends_on was empty even though
     # the row on disk had them (#1115).
+    #
+    # Model output is untrusted: a self-edge made update_depends_on raise after
+    # every task was created (a partial result, and a 500 in the web UI), and a
+    # cycle was saved silently and broke `cf schedule` later (#1293). Each edge
+    # is checked against the graph built so far; one that would close a cycle
+    # is dropped with a warning rather than failing the whole generation.
+    from codeframe.core.dependency_analyzer import _path_to
+
     title_to_id = {t.title: t.id for t in created_tasks}
+    graph: dict[str, list[str]] = {t.id: [] for t in created_tasks}
     for i, (task_data, task) in enumerate(zip(tasks_data, created_tasks)):
-        dep_titles = task_data.get("depends_on_titles", [])
-        dep_ids = [title_to_id[t] for t in dep_titles if t in title_to_id]
-        if dep_ids:
-            created_tasks[i] = update_depends_on(workspace, task.id, dep_ids)
+        for dep_title in dict.fromkeys(task_data.get("depends_on_titles", [])):
+            dep_id = title_to_id.get(dep_title)
+            if dep_id is None:
+                continue
+            cycle = _path_to(graph, dep_id, task.id)
+            if cycle is not None:
+                logger.warning(
+                    "Dropped generated dependency %r -> %r: it would close a cycle",
+                    task.title, dep_title,
+                )
+                continue
+            graph[task.id].append(dep_id)
+        if graph[task.id]:
+            created_tasks[i] = update_depends_on(workspace, task.id, graph[task.id])
 
     return created_tasks
+
+
+def _why_no_task_array(response_text: str, error: Exception) -> str:
+    """Say why no task array was found: each cause needs a different remedy.
+
+    Valid JSON of the wrong shape is "not an array"; otherwise an unclosed
+    reply reads as truncated (#1115), and anything else as not JSON.
+    """
+    unfenced = strip_code_fence(response_text)
+    try:
+        json.loads(unfenced)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    else:
+        return "the model did not return a JSON array of tasks"
+    if not unfenced.endswith("]"):
+        return "the response was truncated before the JSON array closed"
+    return f"the response was not valid JSON ({error})"
 
 
 def _generate_tasks_with_llm(
@@ -1304,28 +1342,25 @@ PRD:
     # Extract JSON from response
     response_text = response.content.strip()
 
-    # Try to find JSON array in response
-    json_match = re.search(r"\[[\s\S]*\]", response_text)
-    try:
-        tasks_raw = json.loads(json_match.group() if json_match else response_text)
-    except json.JSONDecodeError as e:
-        # Distinguish "the model wrote prose" from "the response ran out of
-        # tokens" — they need different things from the user (#1115).
-        truncated = not response_text.endswith("]")
-        detail = (
-            "the response was truncated before the JSON array closed"
-            if truncated
-            else f"the response was not valid JSON ({e})"
-        )
+    # The reply is cut off whatever happens to decode: the first complete array
+    # in a truncated reply can be one task's "files_to_modify", and truncation
+    # then read as "no usable tasks" (#1293 review).
+    if response.stop_reason in ("max_tokens", "length"):
         raise TaskGenerationError(
-            f"Task generation failed: {detail}. " + _RETRY_HINT
-        ) from e
+            "Task generation failed: the response was truncated before the JSON "
+            "array closed. " + _RETRY_HINT
+        )
 
-    if not isinstance(tasks_raw, list):
+    # The first complete array wins, whatever prose or fence surrounds it: a
+    # greedy bracket search spanned prose brackets around a fenced array and
+    # valid JSON was reported as truncated (#1293).
+    try:
+        tasks_raw = extract_json_array(response_text, what="task generation response")
+    except LLMJsonError as e:
         raise TaskGenerationError(
-            "Task generation failed: the model did not return a JSON array of "
-            "tasks. " + _RETRY_HINT
-        )
+            f"Task generation failed: {_why_no_task_array(response_text, e)}. "
+            + _RETRY_HINT
+        ) from e
 
     # Validate and extract rich fields
     validated = []

@@ -145,6 +145,24 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **THINK-stage output fails loudly instead of corrupting your plan (#1293).**
+  - **`cf tasks generate --recursive`:** an unclear answer from the model now
+    stops with an error. It used to produce placeholder tasks such as
+    "Part 1 of: <whole PRD>".
+  - **`cf prd stress-test` refine:** a rewrite cut off at the model's token
+    limit is no longer saved as a new PRD version. A reply wrapped in a code
+    fence is rejected too: the original PRD is kept and a warning is logged,
+    so re-run the refine. A PRD that is itself shaped like that is saved as
+    returned.
+  - **Task dependencies:** a generated task that depends on itself no longer
+    crashes generation halfway through, and a dependency cycle is broken with
+    a warning instead of being saved, where it used to break `cf schedule`
+    later.
+  - **Valid task JSON:** a reply with prose or a code fence around the array is
+    no longer misreported as truncated.
+  - **`cf import ralph`:** an item checked off in `fix_plan.md` since the last
+    import is now marked DONE.
+
 - **Every Settings control now does something (#1292).**
   - **Workspace → default branch:** it is now the base for a PR created
     without one, from the web UI or `cf pr create`.

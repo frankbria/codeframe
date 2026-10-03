@@ -47,11 +47,11 @@ class TestClassifyTask:
         result = classify_task(provider, "Build entire auth system", [])
         assert result == "composite"
 
-    def test_classify_defaults_to_atomic(self, provider):
-        """LLM returns garbage, verify 'atomic' default."""
+    def test_classify_rejects_an_unrecognised_reply(self, provider):
+        """An unrecognised reply is an error, not a silent 'atomic' (#1293, #1115)."""
         provider.add_text_response("I think this task is somewhere in between")
-        result = classify_task(provider, "Some task", [])
-        assert result == "atomic"
+        with pytest.raises(tasks.TaskGenerationError):
+            classify_task(provider, "Some task", [])
 
     def test_classify_uses_planning_purpose(self, provider):
         """Should use Purpose.PLANNING for classification."""
@@ -100,14 +100,15 @@ class TestDecomposeTask:
 
         assert len(result) == 7
 
-    def test_decompose_handles_fewer_than_2(self, provider):
-        """LLM returns 1 item, verify padded to at least 2."""
+    def test_decompose_keeps_a_single_subtask_without_padding(self, provider):
+        """One real subtask is kept as is: padding it with 'Part N of: <PRD>'
+        placeholders created tasks scoped to the whole PRD (#1293)."""
         subtasks = [{"title": "Only one", "description": "Single task"}]
         provider.add_text_response(json.dumps(subtasks))
 
         result = decompose_task(provider, "Small task", [])
 
-        assert len(result) >= 2
+        assert [r["title"] for r in result] == ["Only one"]
 
     def test_decompose_handles_markdown_wrapped_json(self, provider):
         """LLM wraps JSON in markdown code block."""
@@ -123,14 +124,12 @@ class TestDecomposeTask:
         assert len(result) == 2
         assert result[0]["title"] == "Sub A"
 
-    def test_decompose_returns_empty_on_invalid_json(self, provider):
-        """LLM returns garbage, should return fallback subtasks."""
+    def test_decompose_raises_on_invalid_json(self, provider):
+        """An unparseable decomposition is an error, never placeholder tasks (#1293)."""
         provider.add_text_response("This is not JSON at all")
 
-        result = decompose_task(provider, "Bad response task", [])
-
-        # Should return at least 2 fallback items
-        assert len(result) >= 2
+        with pytest.raises(tasks.TaskGenerationError):
+            decompose_task(provider, "Bad response task", [])
 
 
 class TestGenerateTaskTree:
