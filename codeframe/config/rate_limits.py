@@ -117,13 +117,8 @@ class RateLimitConfig:
             )
             storage = "memory"
 
-        # Warn if redis storage is requested but no URL provided
-        if storage == "redis" and not redis_url:
-            logger.warning(
-                "RATE_LIMIT_STORAGE is 'redis' but REDIS_URL is not set. "
-                "Falling back to in-memory storage."
-            )
-            storage = "memory"
+        # redis without REDIS_URL is refused by get_rate_limiter (#1289), not
+        # downgraded to per-worker memory counters here.
 
         return cls(
             auth_limit=global_config.rate_limit_auth,

@@ -46,3 +46,36 @@ def test_without_the_extra_the_error_names_it():
     last_line = result.stderr.strip().splitlines()[-1]
     assert "codeframe-ai[redis]" in last_line, last_line
     assert "RATE_LIMIT_STORAGE" in last_line, last_line
+
+
+@pytest.mark.parametrize(
+    "url", ["localhost:6379", "http://localhost:6379", "redis+sentinel://localhost:26379"]
+)
+def test_a_bad_redis_url_is_reported_as_a_bad_url_not_a_missing_extra(url):
+    """limits raises ConfigurationError for any bad URI too; telling an operator
+    who has the extra to install it sends them the wrong way (internal review)."""
+    result = subprocess.run(
+        [sys.executable, "-c", "import codeframe.ui.server"],
+        env={**os.environ, **_REDIS_ENV, "REDIS_URL": url},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode != 0
+    last_line = result.stderr.strip().splitlines()[-1]
+    assert "REDIS_URL" in last_line and "codeframe-ai[redis]" not in last_line, last_line
+
+
+def test_redis_storage_without_a_url_refuses_instead_of_using_memory():
+    """It used to downgrade to per-worker counters with only a WARNING — the
+    same multiplication the extra's refusal exists to prevent."""
+    env = {**os.environ, **_REDIS_ENV}
+    env.pop("REDIS_URL")
+    result = subprocess.run(
+        [sys.executable, "-c", "import codeframe.ui.server"],
+        env=env, capture_output=True, text=True, timeout=120,
+    )
+
+    assert result.returncode != 0
+    assert "REDIS_URL" in result.stderr.strip().splitlines()[-1]

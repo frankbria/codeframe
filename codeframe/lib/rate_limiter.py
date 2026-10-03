@@ -21,6 +21,7 @@ Security:
 """
 
 import asyncio
+import importlib.util
 import logging
 import threading
 from typing import Any, Callable, Optional
@@ -165,25 +166,33 @@ def get_rate_limiter() -> Optional[Limiter]:
 
     if _limiter is None:
         # Create limiter with appropriate storage
-        if config.storage == "redis" and config.redis_url:
+        if config.storage == "redis":
+            # Refuse rather than fall back to memory: per-worker counters
+            # multiply every limit, auth brute-force included, by the worker
+            # count, which is the problem this setting exists to fix (#1289).
+            if not config.redis_url:
+                raise RuntimeError(
+                    "RATE_LIMIT_STORAGE=redis needs REDIS_URL (e.g. "
+                    "redis://localhost:6379/0), or unset RATE_LIMIT_STORAGE for "
+                    "single-worker in-memory limits."
+                )
+            # Checked up front: limits reports a missing client and a bad URL
+            # with the same ConfigurationError, and only one means "install".
+            if importlib.util.find_spec("redis") is None:
+                raise RuntimeError(
+                    "RATE_LIMIT_STORAGE=redis needs the redis client: install "
+                    "`codeframe-ai[redis]` (e.g. `uv tool install "
+                    "'codeframe-ai[redis]'`), or unset RATE_LIMIT_STORAGE for "
+                    "single-worker in-memory limits."
+                )
             try:
                 _limiter = Limiter(
                     key_func=get_rate_limit_key,
                     storage_uri=config.redis_url,
                 )
-                logger.info("Rate limiter initialized with Redis storage")
-            except (ImportError, ConfigurationError) as e:
-                # Refuse rather than fall back to memory: per-worker counters
-                # multiply every limit, auth brute-force included, by the
-                # worker count — the problem this setting exists to fix. limits
-                # raises ConfigurationError, not ImportError, for a missing
-                # redis, so this used to escape as a raw traceback (#1289).
-                raise RuntimeError(
-                    "RATE_LIMIT_STORAGE=redis needs the redis client: install "
-                    "`codeframe-ai[redis]` (e.g. `uv tool install "
-                    "'codeframe-ai[redis]'`), or unset RATE_LIMIT_STORAGE for "
-                    f"single-worker in-memory limits. ({e})"
-                ) from e
+            except (ConfigurationError, ValueError) as e:
+                raise RuntimeError(f"Invalid REDIS_URL for RATE_LIMIT_STORAGE=redis: {e}") from e
+            logger.info("Rate limiter initialized with Redis storage")
         else:
             _limiter = Limiter(key_func=get_rate_limit_key)
             logger.info("Rate limiter initialized with in-memory storage")
