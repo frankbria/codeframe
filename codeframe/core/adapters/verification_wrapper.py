@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from codeframe.core.adapters.agent_adapter import AgentAdapter, AgentEvent, AgentResult
-from codeframe.core import blockers
+from codeframe.core import blockers, run_control
 from codeframe.core.fix_tracker import (
     EscalationDecision,
     FixAttemptTracker,
@@ -101,6 +101,12 @@ class VerificationWrapper:
 
         # Run verification gates with self-correction loop
         for round_num in range(self._max_correction_rounds):
+            # A Stop during the gates must not start another correction run (#1279).
+            if run_control.cancellation_requested():
+                return _stamp(
+                    AgentResult(status="failed", output=result.output, error="Stopped by user"),
+                    False, round_num,
+                )
             if on_event:
                 on_event(AgentEvent(
                     type="verification",

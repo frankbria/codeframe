@@ -102,6 +102,15 @@ def start_task_run(workspace: Workspace, task_id: str) -> Run:
     if active:
         raise ValueError(f"Task already has an active run: {active.id}")
 
+    # A stopped run's agent can still be finishing its current step. Starting
+    # another would put two agents on one tree (#1279).
+    from codeframe.core import run_control
+
+    if run_control.previous_run_alive(workspace, task_id):
+        raise ValueError(
+            f"Task {task_id}'s previous run is still stopping; try again in a few seconds."
+        )
+
     # Transition task to IN_PROGRESS (validates the transition)
     # If task is in BACKLOG, we need to go through READY first
     if task.status == TaskStatus.BACKLOG:
@@ -826,6 +835,11 @@ def execute_agent(
     # finally block cleans up (merged) vs preserves the branch (failed/conflict).
     worktree_merged = False
 
+    # Heartbeat + the Stop signal the agent and adapters poll (#1279).
+    from codeframe.core import run_control
+
+    control = run_control.start(workspace, run)
+
     try:
         exec_ctx = create_execution_context(
             run.task_id, IsolationLevel(isolation), workspace.repo_path
@@ -939,6 +953,13 @@ def execute_agent(
             f"Engine '{engine}' completed: {result.status}",
             {"engine": engine, "output_length": len(result.output)},
         )
+
+        if control.cancelled():
+            # stop_run already failed the run and returned the task to READY.
+            # Do not merge back a half-done tree or transition the run again
+            # (complete_run would raise on a run that is no longer RUNNING).
+            run_logger.info(LogCategory.STATE_CHANGE, "Run stopped by user")
+            return AgentState(status=AgentStatus.FAILED)
 
         # Map AgentResult to AgentState for rest of runtime
         status_map = {
@@ -1116,6 +1137,7 @@ def execute_agent(
         return AgentState(status=AgentStatus.FAILED)
 
     finally:
+        control.stop()
         # Always close the output logger to ensure file is properly flushed
         output_logger.close()
         # Clean up execution context. For NONE this is a harmless no-op. For a

@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Callable, Optional
 
 from codeframe.adapters.llm.base import LLMProvider, Purpose, ToolResult
-from codeframe.core import blockers, events, gates
+from codeframe.core import blockers, events, gates, run_control
 from codeframe.core.agent import AgentStatus
 from codeframe.core.blocker_detection import classify_error_for_blocker
 from codeframe.core.context import TaskContext
@@ -544,6 +544,12 @@ class ReactAgent:
         prompt_summary = system_prompt[:200]
 
         while iterations < self.max_iterations:
+            # Stopped by the user (#1279): stop_run has already moved the run
+            # and the task, so just stop spending.
+            if run_control.cancellation_requested():
+                self._verbose_print("[ReactAgent] Run stopped by user")
+                return AgentStatus.FAILED
+
             # Check for stall before each iteration
             if self._stall_triggered.is_set():
                 stall_ctx = ""

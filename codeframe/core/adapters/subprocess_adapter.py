@@ -6,10 +6,12 @@ import logging
 import shutil
 import subprocess
 import threading
+import time
 from collections import deque
 from pathlib import Path
 from typing import Callable
 
+from codeframe.core import run_control
 from codeframe.core.adapters.agent_adapter import AgentEvent, AgentResult
 from codeframe.core.agent_env import build_delegated_agent_env
 from codeframe.core.adapters.git_utils import detect_modified_files, git_head
@@ -260,6 +262,9 @@ class SubprocessAdapter:
                 encoding="utf-8",
                 errors="replace",
                 env=child_env,
+                # Its own process group, so a stop or timeout reaches whatever
+                # the CLI spawned, not only the CLI itself (#1279).
+                **run_control.new_session_kwargs(),
             )
 
             # Drain stderr in a background thread to prevent deadlock.
@@ -332,21 +337,41 @@ class SubprocessAdapter:
             stdin_thread = threading.Thread(target=_write_stdin, daemon=True)
             stdin_thread.start()
 
-            # Bound the entire read+exit window. On expiry the child is killed,
+            # Bound the entire read+exit window, and look for a Stop once a
+            # second (#1279). On either, the whole process group is killed,
             # which closes its stdout and unblocks the reader thread.
-            try:
-                process.wait(timeout=self._timeout_s)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+            def _killed(error: str) -> AgentResult:
+                run_control.terminate_tree(process)
                 stdin_thread.join(timeout=5)
                 stdout_thread.join(timeout=5)
                 stderr_thread.join(timeout=5)
                 return AgentResult(
                     status="failed",
                     output=_joined(stdout_lines, stdout_line_count),
-                    error=f"Process timed out after {self._timeout_s}s",
+                    error=error,
                 )
+
+            deadline = (
+                time.monotonic() + self._timeout_s if self._timeout_s is not None else None
+            )
+            try:
+                while True:
+                    step = 1.0
+                    if deadline is not None:
+                        step = max(0.0, min(step, deadline - time.monotonic()))
+                    try:
+                        process.wait(timeout=step)
+                        break
+                    except subprocess.TimeoutExpired:
+                        if run_control.cancellation_requested():
+                            return _killed("Stopped by user")
+                        if deadline is not None and time.monotonic() >= deadline:
+                            return _killed(f"Process timed out after {self._timeout_s}s")
+            except BaseException:
+                # SIGTERM to a batch worker arrives here as SystemExit
+                # (run_control.exit_on_sigterm): take the CLI's group down too.
+                run_control.terminate_tree(process)
+                raise
 
             # Process exited on its own; drain any buffered output.
             stdin_thread.join(timeout=10)
