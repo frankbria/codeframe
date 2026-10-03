@@ -295,3 +295,11 @@ def test_a_titled_prd_with_markdown_example_blocks_is_not_unwrapped():
     )
     result = _refine(LLMResponse(content=body, stop_reason="end_turn"))
     assert result == body.strip()
+
+
+@pytest.mark.parametrize("reply", ["Not composite", "non-composite", "This is not composite."])
+def test_a_negated_composite_is_atomic(reply):
+    """The mirror case: matching the word alone read these as composite (codex)."""
+    provider = MockProvider()
+    provider.add_text_response(reply)
+    assert classify_task(provider, "task", []) == "atomic"
