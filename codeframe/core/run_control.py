@@ -116,7 +116,7 @@ class RunControl:
         path = _heartbeat_path(self.workspace, self.task_id)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(self.run_id)
+            path.write_text(self.run_id, encoding="utf-8")
         except OSError:
             logger.warning("Could not write heartbeat %s", path, exc_info=True)
 
@@ -134,9 +134,9 @@ class RunControl:
         self._stop_heartbeat()
         path = _heartbeat_path(self.workspace, self.task_id)
         try:
-            if path.read_text() == self.run_id:  # never remove a successor's
+            if path.read_text(encoding="utf-8") == self.run_id:  # never remove a successor's
                 path.unlink()
-        except OSError:
+        except (OSError, ValueError):  # ValueError: a file that is not our UTF-8 run id
             pass
         if self._token is not None:
             _current.reset(self._token)
