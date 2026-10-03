@@ -303,3 +303,47 @@ def test_a_negated_composite_is_atomic(reply):
     provider = MockProvider()
     provider.add_text_response(reply)
     assert classify_task(provider, "task", []) == "atomic"
+
+
+def test_a_prd_echoed_with_a_tagged_example_block_first_is_not_unwrapped():
+    """The tagged twin of the plain-text-first case (GLM review): its inner
+    fences balance, so only "the reply opens like the PRD itself" tells an
+    echoed PRD from a wrapper."""
+    body = (
+        "My Project\n\n```markdown\n# Example page\n```\n\n"
+        + "Results are sorted by date. " * 40
+        + "\n\n```\nGET /search?q=x\n```"
+    )
+    from codeframe.core.prd_stress_test import Ambiguity, resolve_ambiguities_into_prd
+
+    provider = MockProvider()
+    edited = body.replace("date", "relevance")
+    provider.add_response(LLMResponse(content=edited, stop_reason="end_turn"))
+    amb = Ambiguity(id="a", label="Sort", source_node_title="S", questions=["?"],
+                    recommendation="", severity="blocking", resolved_answer="relevance")
+    assert resolve_ambiguities_into_prd(body, [amb], provider) == edited.strip()
+
+
+def _task_generation_error(workspace, reply: LLMResponse) -> str:
+    provider = MockProvider()
+    provider.add_response(reply)
+    record = prd.store(workspace, "# P\n\nBuild it.\n")
+    with pytest.raises(tasks.TaskGenerationError) as exc:
+        tasks.generate_from_prd(workspace, record, provider=provider)
+    return str(exc.value)
+
+
+def test_a_truncated_task_reply_is_called_truncated_even_if_an_inner_array_decodes(workspace):
+    """Cut at max_tokens after one task, the first complete array is that
+    task's files_to_modify list, so truncation read as "no usable tasks" (GLM)."""
+    cut = '[{"title": "A", "description": "a", "files_to_modify": ["src/a.py", "src/b.py"]}, {"title": "B", "files_to_mod'
+    message = _task_generation_error(workspace, LLMResponse(content=cut, stop_reason="max_tokens"))
+    assert "truncated" in message
+
+
+def test_valid_json_that_is_not_an_array_says_so(workspace):
+    """{"status": ...} has no '[', and was misreported as truncated (claude-review)."""
+    message = _task_generation_error(
+        workspace, LLMResponse(content='{"status": "no tasks needed"}', stop_reason="end_turn")
+    )
+    assert "did not return a JSON array" in message and "truncated" not in message

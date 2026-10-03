@@ -95,7 +95,7 @@ def classify_task(
 def decompose_task(
     provider, description: str, lineage: list[str]
 ) -> list[dict]:
-    """Decompose a task into 2-7 subtasks using LLM.
+    """Decompose a task into 1-7 subtasks using LLM.
 
     Args:
         provider: LLM provider instance
@@ -103,7 +103,10 @@ def decompose_task(
         lineage: List of ancestor task descriptions for context
 
     Returns:
-        List of dicts with 'title' and 'description' keys (2-7 items)
+        List of dicts with 'title' and 'description' keys (1-7 items)
+
+    Raises:
+        TaskGenerationError: If the reply holds no subtask with a title.
     """
     lineage_context = ""
     if lineage:

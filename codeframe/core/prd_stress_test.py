@@ -460,7 +460,11 @@ _OUTER_FENCE_RE = re.compile(
 _FENCE_LINE_RE = re.compile(r"^[ \t]*```", re.MULTILINE)
 
 
-def _unwrap_outer_fence(content: str) -> str:
+def _first_line(text: str) -> str:
+    return next((line.strip() for line in text.splitlines() if line.strip()), "")
+
+
+def _unwrap_outer_fence(content: str, original: str = "") -> str:
     """Unwrap a reply that is one fenced block, never a PRD shaped like one.
 
     A real PRD that opens with a code block and ends with another has this
@@ -469,6 +473,11 @@ def _unwrap_outer_fence(content: str) -> str:
     unwrapped only when nothing inside it is fenced; and a ``markdown``-tagged
     one only when its inner fences balance.
     """
+    # A reply that opens like the PRD itself is the PRD echoed back, not a
+    # preamble: syntax alone can't tell a bare closer from a bare opener, so a
+    # PRD with a plain first line and code blocks at both ends looked wrapped.
+    if original and _first_line(content) == _first_line(original):
+        return content
     match = _OUTER_FENCE_RE.match(content)
     if not match:
         return content
@@ -518,7 +527,7 @@ def resolve_ambiguities_into_prd(
             response.stop_reason,
         )
         return prd_content
-    updated = _unwrap_outer_fence(response.content.strip())
+    updated = _unwrap_outer_fence(response.content.strip(), prd_content)
     if not updated or len(updated) < len(prd_content) // 2:
         logger.warning(
             "PRD rewrite looks truncated (%d chars vs original %d), returning original",

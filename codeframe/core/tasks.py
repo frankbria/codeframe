@@ -1252,6 +1252,24 @@ def generate_from_prd(
     return created_tasks
 
 
+def _why_no_task_array(response_text: str, error: Exception) -> str:
+    """Say why no task array was found: each cause needs a different remedy.
+
+    Valid JSON of the wrong shape is "not an array"; otherwise an unclosed
+    reply reads as truncated (#1115), and anything else as not JSON.
+    """
+    unfenced = strip_code_fence(response_text)
+    try:
+        json.loads(unfenced)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    else:
+        return "the model did not return a JSON array of tasks"
+    if not unfenced.endswith("]"):
+        return "the response was truncated before the JSON array closed"
+    return f"the response was not valid JSON ({error})"
+
+
 def _generate_tasks_with_llm(
     prd_content: str, provider=None, repo_path=None
 ) -> list[dict]:
@@ -1324,29 +1342,25 @@ PRD:
     # Extract JSON from response
     response_text = response.content.strip()
 
+    # The reply is cut off whatever happens to decode: the first complete array
+    # in a truncated reply can be one task's "files_to_modify", and truncation
+    # then read as "no usable tasks" (#1293 review).
+    if response.stop_reason in ("max_tokens", "length"):
+        raise TaskGenerationError(
+            "Task generation failed: the response was truncated before the JSON "
+            "array closed. " + _RETRY_HINT
+        )
+
     # The first complete array wins, whatever prose or fence surrounds it: a
     # greedy bracket search spanned prose brackets around a fenced array and
     # valid JSON was reported as truncated (#1293).
     try:
         tasks_raw = extract_json_array(response_text, what="task generation response")
     except LLMJsonError as e:
-        # Distinguish "the model wrote prose" from "the response ran out of
-        # tokens" — they need different things from the user (#1115).
-        truncated = not strip_code_fence(response_text).endswith("]")
-        detail = (
-            "the response was truncated before the JSON array closed"
-            if truncated
-            else f"the response was not valid JSON ({e})"
-        )
         raise TaskGenerationError(
-            f"Task generation failed: {detail}. " + _RETRY_HINT
+            f"Task generation failed: {_why_no_task_array(response_text, e)}. "
+            + _RETRY_HINT
         ) from e
-
-    if not isinstance(tasks_raw, list):
-        raise TaskGenerationError(
-            "Task generation failed: the model did not return a JSON array of "
-            "tasks. " + _RETRY_HINT
-        )
 
     # Validate and extract rich fields
     validated = []
