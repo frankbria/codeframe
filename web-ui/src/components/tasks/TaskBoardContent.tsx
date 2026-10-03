@@ -62,27 +62,32 @@ export function TaskBoardContent({
   }, [tasks]);
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-      {COLUMN_ORDER.map((status) => (
-        <TaskColumn
-          key={status}
-          status={status}
-          tasks={tasksByStatus[status]}
-          selectionMode={selectionMode}
-          selectedTaskIds={selectedTaskIds}
-          onTaskClick={onTaskClick}
-          onToggleSelect={onToggleSelect}
-          onExecute={onExecute}
-          onMarkReady={onMarkReady}
-          onStop={onStop}
-          onReset={onReset}
-          onSelectAll={onSelectAll}
-          onDeselectAll={onDeselectAll}
-          loadingTaskIds={loadingTaskIds}
-          requirementsMap={requirementsMap}
-          costMap={costMap}
-        />
-      ))}
+    // Six columns never shrink below a card's 220px: grid-cols-6 tracks did,
+    // so columns overlapped and Done was clipped at 1280-1440px (#1297). The
+    // board scrolls sideways instead.
+    <div className="overflow-x-auto pb-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(6,minmax(220px,1fr))]">
+        {COLUMN_ORDER.map((status) => (
+          <TaskColumn
+            key={status}
+            status={status}
+            tasks={tasksByStatus[status]}
+            selectionMode={selectionMode}
+            selectedTaskIds={selectedTaskIds}
+            onTaskClick={onTaskClick}
+            onToggleSelect={onToggleSelect}
+            onExecute={onExecute}
+            onMarkReady={onMarkReady}
+            onStop={onStop}
+            onReset={onReset}
+            onSelectAll={onSelectAll}
+            onDeselectAll={onDeselectAll}
+            loadingTaskIds={loadingTaskIds}
+            requirementsMap={requirementsMap}
+            costMap={costMap}
+          />
+        ))}
+      </div>
     </div>
   );
 }

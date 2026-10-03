@@ -145,6 +145,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Web UI: confirmations, visible failures, and pages that fit the screen (#1297).**
+  - Removing an API key, disconnecting GitHub, and Stop on a task card now ask
+    first. Each one used to delete a credential or stop a running agent on a
+    single click.
+  - A failed PRD save, workspace init, tech-stack save or Stop now shows an
+    error; each used to fail silently. Initialize Workspace shows its progress.
+  - The task board's six columns no longer overlap at 1280 to 1440px; it scrolls
+    sideways instead. At phone width the execution page no longer overflows, so
+    its Stop button stays on screen.
 - **Container deploys back up the real database and can create their first account (#1295).**
   - Every deploy, staging included, now takes an online SQLite backup of the
     live `/data/codeframe.db` (`deploy/backup-db.sh`). The old step copied a

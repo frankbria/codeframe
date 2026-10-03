@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import useSWR from 'swr';
 import { toast } from 'sonner';
 
@@ -187,9 +187,11 @@ describe('ApiKeysTab', () => {
     mockRemove.mockResolvedValue(undefined);
 
     render(<ApiKeysTab />);
-    const removeButton = screen.getByRole('button', { name: /Remove/i });
+    fireEvent.click(screen.getByRole('button', { name: /Remove/i }));
+    // Confirmed first (#1297).
+    const dialog = await screen.findByRole('alertdialog');
     await act(async () => {
-      fireEvent.click(removeButton);
+      fireEvent.click(within(dialog).getByRole('button', { name: /remove key/i }));
     });
 
     expect(mockRemove).toHaveBeenCalledWith('LLM_ANTHROPIC');
