@@ -1216,7 +1216,12 @@ def _record_batch_aborted(
         logger.exception("Batch execution failed unexpectedly")
     batch.status = BatchStatus.CANCELLED if interrupted else BatchStatus.FAILED
     batch.completed_at = _utc_now()
-    _save_batch(workspace, batch, preserve_terminal_cancel=False)
+    # The cancel guard stays on: a late worker error after a graceful stop
+    # must not turn the user's CANCELLED into FAILED (codex review). The
+    # guard flips the in-memory status back to CANCELLED when it refuses.
+    _save_batch(workspace, batch)
+    if not interrupted and batch.status == BatchStatus.CANCELLED:
+        return
     events.emit_for_workspace(
         workspace,
         events.EventType.BATCH_CANCELLED if interrupted else events.EventType.BATCH_FAILED,
@@ -1227,6 +1232,15 @@ def _record_batch_aborted(
         },
         print_event=True,
     )
+
+
+def _in_dependency_order(workspace: Workspace, task_ids: list[str]) -> list[str]:
+    """``task_ids`` with every task after its prerequisites, or as given if
+    the dependencies form a cycle (which the run then reports as before)."""
+    try:
+        return list(create_execution_plan(workspace, task_ids).task_order)
+    except CycleDetectedError:
+        return list(task_ids)
 
 
 def _unmet_dependency(workspace: Workspace, batch: BatchRun, task_id: str) -> Optional[str]:
@@ -1428,7 +1442,7 @@ def _run_serial_resume(
             if batch.results.get(task_id) == RunStatus.COMPLETED.value:
                 completed_count += 1
 
-    for i, task_id in enumerate(tasks_to_run):
+    for i, task_id in enumerate(_in_dependency_order(workspace, tasks_to_run)):
         # Check if batch was cancelled
         current_batch = get_batch(workspace, batch.id)
         if current_batch and current_batch.status == BatchStatus.CANCELLED:
@@ -1867,7 +1881,9 @@ def _execute_serial(
     batch_finalized = False  # True once a terminal status is persisted (#763)
 
     try:
-        for i, task_id in enumerate(batch.task_ids):
+        # Dependency order, so a dependent never runs (or is skipped) before
+        # its prerequisite merely because it was listed first (#1280).
+        for i, task_id in enumerate(_in_dependency_order(workspace, batch.task_ids)):
             # Check if batch was cancelled
             current_batch = get_batch(workspace, batch.id)
             if current_batch and current_batch.status == BatchStatus.CANCELLED:

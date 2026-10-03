@@ -138,6 +138,53 @@ class TestADependentOfAFailedTaskIsNotRun:
         assert conductor.get_batch(ws, batch.id).results[b.id] == RunStatus.BLOCKED.value
 
 
+class TestDependencyOrderNotListOrder:
+    """A batch listed as [B, A] with B needing A must still run A first, not
+    skip B as blocked before A has run (codex review)."""
+
+    def _ok(self, monkeypatch, ran):
+        def execute(_ws, task_id, *args, **kwargs):
+            ran.append(task_id)
+            return RunStatus.COMPLETED.value
+
+        monkeypatch.setattr(conductor, "_execute_task_subprocess", execute)
+
+    def test_serial(self, ws, monkeypatch):
+        a = _task(ws, "a")
+        b = _task(ws, "b", depends_on=[a.id])
+        batch = _batch(ws, [b.id, a.id])
+        ran: list[str] = []
+        self._ok(monkeypatch, ran)
+
+        conductor._execute_serial(ws, batch)
+
+        assert ran == [a.id, b.id]
+        assert conductor.get_batch(ws, batch.id).results[b.id] == RunStatus.COMPLETED.value
+
+    def test_resume(self, ws, monkeypatch):
+        a = _task(ws, "a")
+        b = _task(ws, "b", depends_on=[a.id])
+        batch = _batch(ws, [b.id, a.id], results={a.id: "FAILED", b.id: "BLOCKED"})
+        ran: list[str] = []
+        self._ok(monkeypatch, ran)
+
+        conductor._execute_serial_resume(ws, batch, [b.id, a.id])
+
+        assert ran == [a.id, b.id]
+
+
+class TestALateErrorDoesNotUndoAStop:
+    def test_a_gracefully_stopped_batch_stays_cancelled(self, ws):
+        """The in-flight task's error arrives after the user's graceful stop."""
+        a = _task(ws, "a")
+        batch = _batch(ws, [a.id])
+        conductor.stop_batch(ws, batch.id)
+
+        conductor._record_batch_aborted(ws, batch, ValueError("cleanup failed"), strategy="serial")
+
+        assert conductor.get_batch(ws, batch.id).status == BatchStatus.CANCELLED
+
+
 # 5. The CLI resume pre-check ----------------------------------------------------
 
 
