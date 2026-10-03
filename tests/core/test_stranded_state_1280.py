@@ -242,15 +242,36 @@ class TestALateErrorDoesNotUndoAStop:
 class TestSkipsAreTalliedAsNotCompletedNotFailed:
     """GLM / claude review on the PR."""
 
-    def test_a_duplicated_task_id_does_not_shrink_the_batch(self, ws, monkeypatch):
+    def test_create_batch_runs_a_repeated_task_once(self, ws):
         a = _task(ws, "a")
-        batch = _batch(ws, [a.id, a.id])
+        batch = conductor.create_batch(ws, [a.id, a.id])
+        assert batch.task_ids == [a.id]
+
+    @pytest.mark.parametrize("strategy", ["serial", "parallel"])
+    def test_an_older_batch_with_a_repeated_id_still_completes(self, ws, monkeypatch, strategy):
+        """Batches saved before the dedupe can hold [B, A, B] (GLM review)."""
+        a = _task(ws, "a")
+        b = _task(ws, "b", depends_on=[a.id])
+        batch = _batch(ws, [b.id, a.id, b.id], strategy=strategy)
+        monkeypatch.setattr(
+            conductor, "_execute_task_subprocess", lambda *a, **k: RunStatus.COMPLETED.value
+        )
+        monkeypatch.setattr(conductor, "_run_batch_level_validation", lambda *a, **k: (True, None))
+        run_batch = conductor._execute_serial if strategy == "serial" else conductor._execute_parallel
+
+        run_batch(ws, batch)
+
+        assert conductor.get_batch(ws, batch.id).status == BatchStatus.COMPLETED
+
+    def test_a_resume_of_an_older_batch_with_a_repeated_id_completes(self, ws, monkeypatch):
+        a = _task(ws, "a")
+        batch = _batch(ws, [a.id, a.id], results={a.id: "FAILED"})
         monkeypatch.setattr(
             conductor, "_execute_task_subprocess", lambda *a, **k: RunStatus.COMPLETED.value
         )
         monkeypatch.setattr(conductor, "_run_batch_level_validation", lambda *a, **k: (True, None))
 
-        conductor._execute_serial(ws, batch)
+        conductor._execute_serial_resume(ws, batch, conductor.resumable_task_ids(batch))
 
         assert conductor.get_batch(ws, batch.id).status == BatchStatus.COMPLETED
 

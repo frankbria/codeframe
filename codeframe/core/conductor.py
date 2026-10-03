@@ -681,6 +681,10 @@ def create_batch(
     """
     if not task_ids:
         raise ValueError("task_ids cannot be empty")
+    # A task listed twice runs once: the dependency graph, the results dict and
+    # every tally key on distinct ids, and a duplicate made a fully successful
+    # batch finalize PARTIAL with nothing left to resume (#1280 review).
+    task_ids = list(dict.fromkeys(task_ids))
 
     # Validate all task IDs exist
     for task_id in task_ids:
@@ -1199,10 +1203,11 @@ def resumable_task_ids(batch: BatchRun, force: bool = False) -> list[str]:
     """The tasks a resume would run: every task with ``force``; otherwise the
     failed, blocked and stale ones plus any that never started. The CLI's
     pre-check calls this too, so the two cannot disagree (#1280)."""
+    distinct = list(dict.fromkeys(batch.task_ids))
     if force:
-        return list(batch.task_ids)
+        return distinct
     return [
-        tid for tid in batch.task_ids
+        tid for tid in distinct
         if tid not in batch.results or batch.results[tid] in _RESUMABLE_RESULTS
     ]
 
@@ -1244,13 +1249,9 @@ def _in_dependency_order(workspace: Workspace, task_ids: list[str]) -> list[str]
     """``task_ids`` with every task after its prerequisites, or as given if
     the dependencies form a cycle (which the run then reports as before)."""
     try:
-        ordered = list(create_execution_plan(workspace, task_ids).task_order)
+        return list(create_execution_plan(workspace, task_ids).task_order)
     except CycleDetectedError:
-        return list(task_ids)
-    # The plan's graph dedupes, so a duplicated id would shrink the loop below
-    # len(batch.task_ids): the tally never reaches total and a fully successful
-    # batch finalizes PARTIAL (GLM review). Keep the given order then.
-    return ordered if len(ordered) == len(task_ids) else list(task_ids)
+        return list(dict.fromkeys(task_ids))
 
 
 #: Per-batch in-batch dependencies and whether they form a cycle. Computed
@@ -1586,7 +1587,7 @@ def _run_serial_resume(
             on_event("batch_task_completed", {"task_id": task_id, "status": result_status})
 
     # Determine final batch status based on ALL results
-    total = len(batch.task_ids)
+    total = len(set(batch.task_ids))  # distinct: older batches may repeat an id
 
     # Recount from results
     final_completed = sum(1 for s in batch.results.values() if s == RunStatus.COMPLETED.value)
@@ -1780,7 +1781,7 @@ def _run_retries(
                 })
 
     # Recalculate final batch status after all retries
-    total = len(batch.task_ids)
+    total = len(set(batch.task_ids))  # distinct: older batches may repeat an id
     final_completed = sum(1 for s in batch.results.values() if s == RunStatus.COMPLETED.value)
     final_failed = sum(1 for s in batch.results.values() if s == RunStatus.FAILED.value)
     # A dependency skip is "not completed" too, like the serial tally (review).
@@ -2076,7 +2077,7 @@ def _execute_serial(
                 on_event("batch_task_completed", {"task_id": task_id, "status": result_status})
 
         # Determine final batch status
-        total = len(batch.task_ids)
+        total = len(set(batch.task_ids))  # distinct: older batches may repeat an id
 
         if completed_count == total:
             batch.status = BatchStatus.COMPLETED
@@ -2284,7 +2285,7 @@ def _execute_parallel(
                         pass
 
         # Determine final batch status
-        total = len(batch.task_ids)
+        total = len(set(batch.task_ids))  # distinct: older batches may repeat an id
 
         if completed_count == total:
             batch.status = BatchStatus.COMPLETED
