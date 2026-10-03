@@ -845,6 +845,7 @@ def execute_batch(
         return _execute_batch(workspace, batch, max_retries, on_event, user_id)
     finally:
         run_control.restore_signal_handlers(prev_handlers)
+        _batch_deps.pop(batch.id, None)
         _batch_principal.pop(batch.id, None)
         _batch_spend_scope.pop(batch.id, None)
 
@@ -1252,6 +1253,35 @@ def _in_dependency_order(workspace: Workspace, task_ids: list[str]) -> list[str]
     return ordered if len(ordered) == len(task_ids) else list(task_ids)
 
 
+#: Per-batch in-batch dependencies and whether they form a cycle. Computed
+#: once on the conductor thread (see `_load_batch_dependencies`): computing
+#: them per task in the pool workers added enough concurrent DB reads to make
+#: the workers' own event writes hit "database is locked".
+_batch_deps: dict[str, tuple[dict[str, list[str]], bool]] = {}
+
+
+def _load_batch_dependencies(workspace: Workspace, batch: BatchRun) -> None:
+    """(Re)compute the batch's dependency map. Call before starting tasks."""
+    deps: dict[str, list[str]] = {}
+    for tid in batch.task_ids:
+        task = tasks.get(workspace, tid)
+        deps[tid] = [d for d in (task.depends_on if task else []) if d in batch.task_ids]
+    try:
+        create_execution_plan(workspace, batch.task_ids)
+        cyclic = False
+    except CycleDetectedError:
+        cyclic = True
+    _batch_deps[batch.id] = (deps, cyclic)
+
+
+def _batch_dependencies(
+    workspace: Workspace, batch: BatchRun
+) -> tuple[dict[str, list[str]], bool]:
+    if batch.id not in _batch_deps:
+        _load_batch_dependencies(workspace, batch)
+    return _batch_deps[batch.id]
+
+
 def _unmet_dependency(workspace: Workspace, batch: BatchRun, task_id: str) -> Optional[str]:
     """The first dependency of ``task_id`` in this batch that did not complete.
 
@@ -1259,18 +1289,12 @@ def _unmet_dependency(workspace: Workspace, batch: BatchRun, task_id: str) -> Op
     whether the user meant to run them first, and refusing would change how a
     lone task runs today.
     """
-    task = tasks.get(workspace, task_id)
-    deps = [d for d in (task.depends_on if task else []) if d in batch.task_ids]
-    if not deps:
-        return None
+    deps_by_task, cyclic = _batch_dependencies(workspace, batch)
     # A cycle has no valid order, and the batch already falls back to running
     # it serially (#959); enforcing the rule there would skip every member.
-    # ponytail: rebuilds the graph per task, O(n^2) reads; cache per batch if batches grow large.
-    try:
-        create_execution_plan(workspace, batch.task_ids)
-    except CycleDetectedError:
+    if cyclic:
         return None
-    for dep in deps:
+    for dep in deps_by_task.get(task_id, []):
         if batch.results.get(dep) != RunStatus.COMPLETED.value:
             return dep
     return None
@@ -1409,6 +1433,7 @@ def resume_batch(
     try:
         _execute_serial_resume(workspace, batch, tasks_to_run, on_event)
     finally:
+        _batch_deps.pop(batch.id, None)
         _batch_principal.pop(batch.id, None)
         _batch_spend_scope.pop(batch.id, None)
 
@@ -1426,6 +1451,7 @@ def _execute_serial_resume(
     Similar to _execute_serial but only runs specified tasks and
     merges results with existing batch results.
     """
+    _load_batch_dependencies(workspace, batch)  # fresh, on this thread (#1280)
     # resume_batch pinned the batch to RUNNING before calling us, so an
     # unexpected worker error must not leave it stuck RUNNING (#848 — the same
     # failure mode #763 fixed for _execute_serial/_execute_parallel). Unlike
@@ -1659,6 +1685,7 @@ def _run_retries(
     on_event: Optional[Callable[[str, dict], None]] = None,
 ) -> None:
     """Retry loop + finalization for :func:`_execute_retries` (#848)."""
+    _load_batch_dependencies(workspace, batch)  # fresh, on this thread (#1280)
     # FAILED, not BLOCKED (a human must answer). SKIPPED too: a task skipped
     # because its dependency failed gets its turn once a retry fixes that
     # dependency, which the round below runs first (#1280 review).
@@ -1895,6 +1922,7 @@ def _execute_serial(
 
     Updates batch.results and batch.status as tasks complete.
     """
+    _load_batch_dependencies(workspace, batch)  # fresh, on this thread (#1280)
     # Start reconciliation thread for continuous state checking
     from codeframe.core.config import load_environment_config
     env_config = load_environment_config(workspace.repo_path)
@@ -2136,6 +2164,7 @@ def _execute_parallel(
     Raises:
         CycleDetectedError: If circular dependencies are detected
     """
+    _load_batch_dependencies(workspace, batch)  # fresh, on this thread (#1280)
     # No orphan-worktree sweep here (#958). It called WorktreeRegistry, which
     # nothing ever registered into — sandbox/context.py deliberately skips
     # registration because liveness-keyed cleanup would force-delete a branch
