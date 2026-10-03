@@ -368,7 +368,7 @@ class TestMergeGateScope:
 
         mock = _make_mock_client()
 
-        async def _files(pr_number, include_previous=False):
+        async def _files(pr_number, include_previous=False, require_complete=False):
             return ["renamed.py", "x.py"] if include_previous else ["renamed.py"]
 
         mock.get_pr_files = AsyncMock(side_effect=_files)
@@ -387,7 +387,7 @@ class TestMergeGateScope:
             resp = _merge(test_client)
 
         assert resp.status_code == 409
-        mock.get_pr_files.assert_called_once_with(42, include_previous=True)
+        mock.get_pr_files.assert_called_once_with(42, include_previous=True, require_complete=True)
 
     def test_override_still_merges_an_in_scope_block(self, test_client, test_workspace):
         """Scope filtering must not disturb the audited override path."""

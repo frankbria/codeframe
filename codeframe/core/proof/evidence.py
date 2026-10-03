@@ -180,9 +180,10 @@ def list_blocking_requirements(
     has no file dimension at all, and #922 exists because excluding those made
     runs pass while the gate still blocked on them.
 
-    Two reasons a requirement blocks:
+    Three reasons a requirement blocks:
 
     * It is still OPEN — never proven.
+    * It is WAIVED but the waiver's expiry date has passed (#1276).
     * It is recorded SATISFIED but its evidence no longer verifies. Checksum
       verification is worthless if the only path that runs it is a fresh proof
       run: a requirement marked satisfied yesterday keeps that status forever,
@@ -204,6 +205,13 @@ def list_blocking_requirements(
     from codeframe.core.proof.models import ReqStatus
 
     blocking = list(ledger.list_requirements(workspace, status=ReqStatus.OPEN))
+    # A lapsed waiver blocks too (#1276). Read-only: reverting the status to
+    # OPEN stays `cf proof`'s job, so a merge check never rewrites the ledger.
+    blocking += [
+        req
+        for req in ledger.list_requirements(workspace, status=ReqStatus.WAIVED)
+        if ledger.waiver_expired(req)
+    ]
 
     for req in ledger.list_requirements(workspace, status=ReqStatus.SATISFIED):
         # list_evidence returns newest first, so the first passing row for a

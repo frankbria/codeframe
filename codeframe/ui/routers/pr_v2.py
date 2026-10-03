@@ -783,8 +783,11 @@ async def merge_pull_request(
                     # its new path only, so without the old one a rename would
                     # stop intersecting the requirement scoped to it and drop
                     # that requirement from the gate (#1247).
+                    # require_complete: a partial list (GitHub's 3000-file cap,
+                    # or a count that disagrees with the PR's) raises into the
+                    # workspace-global fallback below (#1276).
                     changed_files = await scope_client.get_pr_files(
-                        pr_number, include_previous=True
+                        pr_number, include_previous=True, require_complete=True
                     )
                 finally:
                     await scope_client.close()
@@ -820,7 +823,7 @@ async def merge_pull_request(
             detail = api_error(
                 f"PROOF9 merge gate: {len(blocking_reqs)} requirement(s) block this merge",
                 ErrorCodes.INVALID_STATE,
-                f"{summary}. Each is either unproven, or recorded satisfied with evidence that no longer matches its checksum. Satisfy, waive or re-prove them, or pass override=true with a reason.",
+                f"{summary}. Each is unproven, waived past its expiry date, or recorded satisfied with evidence that no longer matches its checksum. Satisfy, waive or re-prove them, or pass override=true with a reason.",
             )
             # The blocking set as data, not only as prose (#1247). A client
             # cannot re-derive it: /proof/status reports OPEN requirements,

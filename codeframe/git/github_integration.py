@@ -17,6 +17,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class IncompletePRFilesError(Exception):
+    """The PR's file list is not the whole change (#1276).
+
+    GitHub's ``/pulls/{n}/files`` stops at 3000 files without saying so, and a
+    list shorter than the PR's own ``changed_files`` count is not complete
+    either. A caller scoping a check to "the files this PR touched" must not
+    treat a partial list as the answer.
+    """
+
+
+#: GitHub's documented maximum for ``/pulls/{n}/files``.
+PR_FILES_CAP = 3000
+
+
 class GitHubAPIError(Exception):
     """Exception raised when GitHub API returns an error."""
 
@@ -421,7 +435,10 @@ class GitHubIntegration:
         return items
 
     async def get_pr_files(
-        self, pr_number: int, include_previous: bool = False
+        self,
+        pr_number: int,
+        include_previous: bool = False,
+        require_complete: bool = False,
     ) -> List[str]:
         """Get the list of files changed in a pull request.
 
@@ -439,13 +456,21 @@ class GitHubIntegration:
                 requirement scoped to it, dropping that requirement from the
                 gate entirely.
 
+            require_complete: raise rather than return a list that may be
+                partial: one at GitHub's 3000-file cap, or whose entry count
+                disagrees with the PR's ``changed_files``. The PROOF9 merge gate
+                needs this — a truncated list scopes the gate to fewer files
+                than the change touches, which is a silent merge (#1276).
+
         Returns:
             List of filenames changed in the PR
 
         Raises:
             GitHubAPIError: If API error occurs
+            IncompletePRFilesError: with ``require_complete``, if the list may be partial
         """
         files: List[str] = []
+        entries = 0
         page = 1
         while True:
             endpoint = (
@@ -455,6 +480,7 @@ class GitHubIntegration:
             data = await self._make_request(method="GET", endpoint=endpoint)
             if not isinstance(data, list) or not data:
                 break
+            entries += len(data)
             for f in data:
                 files.append(f["filename"])
                 if include_previous and f.get("previous_filename"):
@@ -464,6 +490,19 @@ class GitHubIntegration:
             if len(data) < 100:
                 break
             page += 1
+        if require_complete:
+            if entries >= PR_FILES_CAP:
+                raise IncompletePRFilesError(
+                    f"PR #{pr_number} lists {entries} files, GitHub's cap; the change may be larger"
+                )
+            pr = await self._make_request(
+                method="GET", endpoint=f"/repos/{self.owner}/{self.repo_name}/pulls/{pr_number}"
+            )
+            expected = pr.get("changed_files") if isinstance(pr, dict) else None
+            if not isinstance(expected, int) or expected != entries:
+                raise IncompletePRFilesError(
+                    f"PR #{pr_number} lists {entries} files but reports {expected} changed"
+                )
         return files
 
     async def get_pr_ci_checks(

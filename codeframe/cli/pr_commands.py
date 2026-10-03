@@ -515,7 +515,12 @@ def _resolve_pr_scope(
                 # path only, so without the old one a rename stops intersecting
                 # the requirement scoped to it and drops that requirement from
                 # the gate entirely (#1247).
-                return await gh.get_pr_files(pr_number, include_previous=True)
+                # require_complete: a list at GitHub's 3000-file cap, or one
+                # shorter than the PR's own count, raises and falls back to
+                # match-everything below, instead of narrowing the gate (#1276).
+                return await gh.get_pr_files(
+                    pr_number, include_previous=True, require_complete=True
+                )
             finally:
                 await gh.close()
 
@@ -615,8 +620,8 @@ def _check_merge_gate(
         for r in blocking_reqs[:10]:
             console.print(f"  - {r.id}: {escape(r.title)}")  # captured free text (#1054)
         console.print(
-            "Each is either unproven, or recorded satisfied with evidence that "
-            "no longer matches its checksum."
+            "Each is unproven, waived past its expiry date, or recorded "
+            "satisfied with evidence that no longer matches its checksum."
         )
         console.print('Satisfy, waive or re-prove them, or pass --override --reason "...".')
         raise typer.Exit(1)
