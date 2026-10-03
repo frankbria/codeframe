@@ -1184,6 +1184,75 @@ def stop_batch(workspace: Workspace, batch_id: str, force: bool = False) -> Batc
     return batch
 
 
+#: Batch results a resume re-runs. "RUNNING" is a stale result left by a
+#: crashed or killed subprocess (#742), so it is retryable too.
+_RESUMABLE_RESULTS = frozenset({"FAILED", "BLOCKED", "RUNNING"})
+
+
+def resumable_task_ids(batch: BatchRun, force: bool = False) -> list[str]:
+    """The tasks a resume would run: every task with ``force``; otherwise the
+    failed, blocked and stale ones plus any that never started. The CLI's
+    pre-check calls this too, so the two cannot disagree (#1280)."""
+    if force:
+        return list(batch.task_ids)
+    return [
+        tid for tid in batch.task_ids
+        if tid not in batch.results or batch.results[tid] in _RESUMABLE_RESULTS
+    ]
+
+
+def _record_batch_aborted(
+    workspace: Workspace, batch: BatchRun, exc: BaseException, strategy: str
+) -> None:
+    """Persist a terminal status for a batch whose execution raised.
+
+    Ctrl+C or SIGTERM is the user ending it, so CANCELLED (resumable). Anything
+    else is FAILED, as #763 has always recorded it.
+    """
+    interrupted = isinstance(exc, (KeyboardInterrupt, SystemExit))
+    if interrupted:
+        logger.warning("Batch interrupted (%s); marking it CANCELLED", type(exc).__name__)
+    else:
+        logger.exception("Batch execution failed unexpectedly")
+    batch.status = BatchStatus.CANCELLED if interrupted else BatchStatus.FAILED
+    batch.completed_at = _utc_now()
+    _save_batch(workspace, batch, preserve_terminal_cancel=False)
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.BATCH_CANCELLED if interrupted else events.EventType.BATCH_FAILED,
+        {
+            "batch_id": batch.id,
+            "error": "interrupted" if interrupted else "unexpected execution error",
+            "strategy": strategy,
+        },
+        print_event=True,
+    )
+
+
+def _unmet_dependency(workspace: Workspace, batch: BatchRun, task_id: str) -> Optional[str]:
+    """The first dependency of ``task_id`` in this batch that did not complete.
+
+    Only dependencies inside the batch are checked: outside it, nothing says
+    whether the user meant to run them first, and refusing would change how a
+    lone task runs today.
+    """
+    task = tasks.get(workspace, task_id)
+    for dep in (task.depends_on if task else []):
+        if dep in batch.task_ids and batch.results.get(dep) != RunStatus.COMPLETED.value:
+            return dep
+    return None
+
+
+def _skip_for_dependency(batch: BatchRun, task_id: str, dep: str) -> str:
+    """Record ``task_id`` as BLOCKED on ``dep`` without running it (#1280).
+
+    BLOCKED rather than FAILED: nothing about the task itself went wrong, and a
+    resume re-runs it once the dependency is fixed.
+    """
+    logger.warning("Skipping %s: its dependency %s did not complete", task_id, dep)
+    return _record_task_result(batch, task_id, RunStatus.BLOCKED.value)
+
+
 def resume_batch(
     workspace: Workspace,
     batch_id: str,
@@ -1233,11 +1302,7 @@ def resume_batch(
     else:
         # Only re-run failed/blocked tasks. "RUNNING" is a stale result left by
         # a crashed/killed subprocess (#742) — treat it as retryable too.
-        failed_statuses = {"FAILED", "BLOCKED", "RUNNING"}
-        tasks_to_run = [
-            tid for tid in batch.task_ids
-            if batch.results.get(tid) in failed_statuses or tid not in batch.results
-        ]
+        tasks_to_run = resumable_task_ids(batch)
         if not tasks_to_run:
             logger.info(f"No failed or blocked tasks to resume in batch {batch_id[:8]}")
             return batch
@@ -1376,6 +1441,13 @@ def _run_serial_resume(
             {"batch_id": batch.id, "task_id": task_id, "position": i + 1},
             print_event=True,
         )
+
+        dep = _unmet_dependency(workspace, batch, task_id)
+        if dep is not None:  # same rule as a first run (#1280)
+            _skip_for_dependency(batch, task_id, dep)
+            _save_batch(workspace, batch)
+            blocked_count += 1
+            continue
 
         # Get task info for display
         task = tasks.get(workspace, task_id)
@@ -1826,6 +1898,20 @@ def _execute_serial(
                 print_event=True,
             )
 
+            dep = _unmet_dependency(workspace, batch, task_id)
+            if dep is not None:
+                _skip_for_dependency(batch, task_id, dep)
+                _save_batch(workspace, batch)
+                blocked_count += 1
+                events.emit_for_workspace(
+                    workspace,
+                    events.EventType.BATCH_TASK_BLOCKED,
+                    {"batch_id": batch.id, "task_id": task_id, "reason": "dependency",
+                     "dependency": dep},
+                    print_event=True,
+                )
+                continue
+
             # Get task info for display
             task = tasks.get(workspace, task_id)
             task_title = task.title if task else task_id
@@ -1965,23 +2051,15 @@ def _execute_serial(
             logger.warning(f"Failed: {failed_count}")
         if blocked_count > 0:
             logger.info(f"Blocked: {blocked_count}")
-    except Exception:
+    except BaseException as exc:
         # An unexpected worker/setup error (e.g. create_execution_context
-        # failing) must not leave the batch RUNNING forever (#763). Only mark it
-        # FAILED when no terminal status was persisted yet — an error in the
-        # finalization tail (after COMPLETED/PARTIAL is saved) must NOT overwrite
-        # that correct record. Re-raise so callers keep their propagation/fallback.
-        logger.exception("Batch execution failed unexpectedly")
+        # failing) must not leave the batch RUNNING forever (#763), and neither
+        # may Ctrl+C or SIGTERM, which `except Exception` let through (#1280).
+        # Only mark it when no terminal status was persisted yet: an error in
+        # the finalization tail must NOT overwrite that correct record.
+        # Re-raise so callers keep their propagation/fallback.
         if not batch_finalized:
-            batch.status = BatchStatus.FAILED
-            batch.completed_at = _utc_now()
-            _save_batch(workspace, batch)
-            events.emit_for_workspace(
-                workspace,
-                events.EventType.BATCH_FAILED,
-                {"batch_id": batch.id, "error": "unexpected execution error"},
-                print_event=True,
-            )
+            _record_batch_aborted(workspace, batch, exc, strategy="serial")
         raise
     finally:
         # Always stop the reconciliation thread — otherwise the polling daemon
@@ -2180,23 +2258,12 @@ def _execute_parallel(
             logger.warning(f"Failed: {failed_count}")
         if blocked_count > 0:
             logger.info(f"Blocked: {blocked_count}")
-    except Exception:
-        # An unexpected worker/setup error must not leave the batch RUNNING
-        # forever (#763). Only mark it FAILED when no terminal status was
-        # persisted yet — an error in the finalization tail (after
-        # COMPLETED/PARTIAL is saved) must NOT overwrite that correct record.
-        # Re-raise so callers keep their existing propagation/fallback behavior.
-        logger.exception("Batch execution failed unexpectedly")
+    except BaseException as exc:
+        # As in _execute_serial: an error, Ctrl+C or SIGTERM must not leave the
+        # batch RUNNING (#763, #1280), nor overwrite a terminal status already
+        # saved. Re-raise so callers keep their existing propagation/fallback.
         if not batch_finalized:
-            batch.status = BatchStatus.FAILED
-            batch.completed_at = _utc_now()
-            _save_batch(workspace, batch)
-            events.emit_for_workspace(
-                workspace,
-                events.EventType.BATCH_FAILED,
-                {"batch_id": batch.id, "error": "unexpected execution error", "strategy": "parallel"},
-                print_event=True,
-            )
+            _record_batch_aborted(workspace, batch, exc, strategy="parallel")
         raise
     finally:
         # Always stop the reconciliation thread — otherwise the polling daemon
@@ -2358,6 +2425,13 @@ def _execute_single_task(
         )
         return batch.results[task_id]
 
+    # Same dependency rule as the pool worker and the serial loop (#1280).
+    dep = _unmet_dependency(workspace, batch, task_id)
+    if dep is not None:
+        _skip_for_dependency(batch, task_id, dep)
+        _save_batch(workspace, batch)
+        return batch.results[task_id]
+
     # Emit task queued event
     events.emit_for_workspace(
         workspace,
@@ -2502,6 +2576,13 @@ def _execute_group_parallel(
             logger.info(
                 "Task %s already completed outside the batch — skipping", task_id
             )
+            return task_id, batch.results[task_id]
+
+        # Groups run in dependency order, so an earlier group's result is in.
+        dep = _unmet_dependency(workspace, batch, task_id)
+        if dep is not None:
+            _skip_for_dependency(batch, task_id, dep)
+            _save_batch(workspace, batch)
             return task_id, batch.results[task_id]
 
         # Emit task started event
@@ -2727,6 +2808,16 @@ def _spawn_task_child(
             returncode = process.wait()
         except BaseException:
             run_control.terminate_tree(process, grace_s=run_control.WORKER_GRACE_S)
+            # A worker killed after its grace never finalized its run; do it
+            # here, or the task keeps an active run nothing is behind (#1280).
+            try:
+                stale = get_active_run(workspace, task_id)
+                if stale is not None and stale.status == RunStatus.RUNNING:
+                    from codeframe.core.runtime import fail_run
+
+                    fail_run(workspace, stale.id, reason="batch interrupted")
+            except Exception:
+                logger.warning("Could not fail the interrupted run of %s", task_id, exc_info=True)
             raise
         finally:
             run_control.release_child(process)
@@ -2873,7 +2964,15 @@ def _save_batch(
                 existing = cursor.fetchone()
                 if existing and existing[0] == BatchStatus.CANCELLED.value:
                     # Reflect the cancel into the in-memory batch so the loop
-                    # stops, and leave the persisted terminal record untouched.
+                    # stops, and leave the persisted status untouched. The
+                    # results still land: a graceful stop lets the in-flight
+                    # task finish, and dropping its result made resume re-run
+                    # a task that was already done (#1280).
+                    cursor.execute(
+                        "UPDATE batch_runs SET results = ? WHERE id = ?",
+                        (results_json, batch.id),
+                    )
+                    conn.commit()
                     batch.status = BatchStatus.CANCELLED
                     return
 

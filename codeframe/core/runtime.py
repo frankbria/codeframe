@@ -5,12 +5,13 @@ Manages task execution runs and the agent loop.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import functools
 import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from codeframe.core import engine_stats, events, tasks
 from codeframe.core.state_machine import (
@@ -100,7 +101,10 @@ def start_task_run(workspace: Workspace, task_id: str) -> Run:
     # Check if there's already an active run
     active = get_active_run(workspace, task_id)
     if active:
-        raise ValueError(f"Task already has an active run: {active.id}")
+        raise ValueError(
+            f"Task already has an active run: {active.id}. "
+            f"Stop it first with `cf work stop {task_id}`."
+        )
 
     # A stopped run's agent can still be finishing its current step. Starting
     # another would put two agents on one tree (#1279).
@@ -722,6 +726,35 @@ def execute_stub(workspace: Workspace, run: Run) -> None:
     )
 
 
+def _fail_run_on_escape(fn: Callable[..., "AgentState"]) -> Callable[..., "AgentState"]:
+    """Fail the run when anything escapes ``execute_agent`` (#1280).
+
+    Setup that runs before its own ``try`` (resolving the LLM provider, for one)
+    raises with the run already RUNNING, and a KeyboardInterrupt or SystemExit
+    passes its ``except Exception``. Either way the run stayed RUNNING with no
+    worker, and every later start refused the task. A run that is no longer
+    RUNNING (it finished, or ``stop_run`` got there first) is left alone.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> "AgentState":
+        try:
+            return fn(*args, **kwargs)
+        except BaseException as exc:
+            workspace = args[0] if args else kwargs["workspace"]
+            run = args[1] if len(args) > 1 else kwargs["run"]
+            try:
+                current = get_run(workspace, run.id)
+                if current is not None and current.status == RunStatus.RUNNING:
+                    fail_run(workspace, run.id, reason=f"{type(exc).__name__}: {exc}"[:500])
+            except Exception:
+                logger.warning("Could not fail run %s after an error", run.id, exc_info=True)
+            raise
+
+    return wrapper
+
+
+@_fail_run_on_escape
 def execute_agent(
     workspace: Workspace,
     run: Run,
