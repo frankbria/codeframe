@@ -477,7 +477,7 @@ def update_auto_close(
 def list_tasks(
     workspace: Workspace,
     status: Optional[TaskStatus] = None,
-    limit: Optional[int] = 100,
+    limit: Optional[int] = None,
     conn: Optional[sqlite3.Connection] = None,
 ) -> list[Task]:
     """List tasks in a workspace.
@@ -485,16 +485,15 @@ def list_tasks(
     Args:
         workspace: Workspace to query
         status: Optional status filter
-        limit: Maximum tasks to return. ``None`` returns every task (uncapped)
-            so listing/bulk ops can address tasks beyond the default cap (#743).
+        limit: Maximum tasks to return. ``None`` (the default) returns every
+            task: each caller that took the old default of 100 wanted them all,
+            and silently dropped the rest (#743, #1294). Pagination passes one.
         conn: Optional borrowed connection (caller keeps ownership; not closed
             here). Lets callers batch several reads on one connection (#776).
 
     Returns:
         List of Tasks
     """
-    # ponytail: default stays 100 for backward-compat (API pagination relies on
-    # it); pass limit=None to opt into an uncapped list.
     limit_clause = "" if limit is None else "LIMIT ?"
 
     own_conn = conn is None

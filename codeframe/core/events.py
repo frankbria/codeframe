@@ -266,7 +266,8 @@ def list_recent(
     Args:
         workspace: Workspace to query
         limit: Maximum number of events to return
-        since_id: Only return events after this ID (for pagination)
+        since_id: Only return events after this ID (for pagination): the
+            ``limit`` events immediately after it, not the newest ``limit``
         conn: Optional borrowed connection (caller keeps ownership; not closed)
 
     Returns:
@@ -278,13 +279,13 @@ def list_recent(
     try:
         cursor = conn.cursor()
 
-        if since_id:
+        if since_id is not None:
             cursor.execute(
                 """
                 SELECT id, workspace_id, event_type, payload, created_at
                 FROM events
                 WHERE workspace_id = ? AND id > ?
-                ORDER BY id DESC
+                ORDER BY id ASC
                 LIMIT ?
                 """,
                 (workspace.id, since_id, limit),
@@ -302,6 +303,11 @@ def list_recent(
             )
 
         rows = cursor.fetchall()
+        if since_id is not None:
+            # Paging forward takes the oldest rows after the cursor; DESC took
+            # the newest and a poller skipped the rest (#1294). Returned
+            # newest-first like the unpaged query.
+            rows.reverse()
     finally:
         if own_conn:
             conn.close()
