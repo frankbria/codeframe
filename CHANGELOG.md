@@ -145,6 +145,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Large workspaces no longer lose tasks, blockers or events past a list limit (#1294).**
+  - `cf tasks generate --overwrite` removes every old task. Past 100 tasks the
+    rest survived, and `cf work batch run --all-ready` would run them.
+  - The TUI dashboard, `cf blocker list` and dependent-task lookups see more
+    than 100 rows; `cf schedule` and `cf checkpoint create` see more than 1000.
+    A checkpoint used to drop the rest, so restoring it could not bring them back.
+  - `cf work follow` / `cf work batch follow` no longer skip events when more
+    than 50 arrive between polls, so a batch's final event is not missed.
+    `GET /api/v2/events?since_id=N` now returns the events right after `N`
+    rather than the newest ones.
 - **THINK-stage output fails loudly instead of corrupting your plan (#1293).**
   - **`cf tasks generate --recursive`:** an unclear answer from the model now
     stops with an error. It used to produce placeholder tasks such as
