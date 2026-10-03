@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from codeframe.core.config_watcher import ConfigReloadState
 
 from codeframe.core.workspace import Workspace, get_db_connection
-from codeframe.core import events, tasks, blockers
+from codeframe.core import blockers, events, run_control, tasks
 from codeframe.core.dependency_graph import create_execution_plan, CycleDetectedError
 from codeframe.core.dependency_analyzer import analyze_dependencies, apply_inferred_dependencies
 from codeframe.core.runtime import RunStatus, get_active_run, reset_blocked_run
@@ -1152,20 +1152,19 @@ def stop_batch(workspace: Workspace, batch_id: str, force: bool = False) -> Batc
     _save_batch(workspace, batch)
 
     terminated_count = 0
+    to_kill: list[subprocess.Popen] = []
     with _active_processes_lock:
         if force and batch_id in _active_processes:
-            # Terminate all running processes for this batch
-            processes = _active_processes.get(batch_id, {})
-            for task_id, process in list(processes.items()):
-                try:
-                    if process.poll() is None:  # Still running
-                        process.terminate()  # SIGTERM
-                        terminated_count += 1
-                except (ProcessLookupError, OSError):
-                    pass  # Process already exited
-
-            # Cleanup tracking
-            _active_processes.pop(batch_id, None)
+            to_kill = list(_active_processes.pop(batch_id, {}).values())
+    # Outside the lock: terminate_tree waits out a grace period per worker.
+    for process in to_kill:
+        try:
+            if process.poll() is None:  # Still running
+                terminated_count += 1
+            # The whole group, even if the worker itself already exited (#1279).
+            run_control.terminate_tree(process)
+        except (ProcessLookupError, OSError):
+            pass  # Process already exited
 
     # Emit event
     event_data = {"batch_id": batch_id, "force": force}
@@ -2703,6 +2702,8 @@ def _spawn_task_child(
             text=True,
             encoding="utf-8",
             errors="replace",
+            # Its own group, so a force stop reaches the delegated CLI (#1279).
+            **run_control.new_session_kwargs(),
         )
 
         # Track process if batch_id provided (thread-safe)

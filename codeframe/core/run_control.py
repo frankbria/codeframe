@@ -69,6 +69,7 @@ class RunControl:
         self._done = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._token: Optional[contextvars.Token] = None
+        self._prev_sigterm: object = None
 
     def cancelled(self, min_interval_s: float = 0.0) -> bool:
         """True once the run has been stopped. Sticky.
@@ -132,6 +133,9 @@ class RunControl:
         if self._token is not None:
             _current.reset(self._token)
             self._token = None
+        if self._prev_sigterm is not None:
+            signal.signal(signal.SIGTERM, self._prev_sigterm)  # type: ignore[arg-type]
+            self._prev_sigterm = None
 
 
 def start(workspace: "Workspace", run: "Run") -> RunControl:
@@ -143,6 +147,9 @@ def start(workspace: "Workspace", run: "Run") -> RunControl:
     )
     control._thread.start()
     control._token = _current.set(control)
+    # A batch worker (`cf work start --execute`) is stopped with SIGTERM. Let
+    # it unwind, so the adapter's except-block takes its CLI's group down.
+    control._prev_sigterm = exit_on_sigterm()
     return control
 
 
@@ -216,16 +223,17 @@ def terminate_tree(proc: subprocess.Popen, grace_s: float = 5.0) -> None:
     proc.wait()
 
 
-def exit_on_sigterm() -> None:
+def exit_on_sigterm() -> object:
     """Turn SIGTERM into SystemExit, so `finally`/`except BaseException`
     blocks run and a delegated CLI's session is torn down with its worker.
 
-    Only valid on the main thread. Elsewhere it is a no-op.
+    Only valid on the main thread; elsewhere (the server's worker threads) it
+    is a no-op. Returns the previous handler, or None when nothing changed.
     """
     if os.name != "posix" or threading.current_thread() is not threading.main_thread():
-        return
+        return None
 
     def _raise(signum, frame):  # noqa: ARG001
         raise SystemExit(128 + signum)
 
-    signal.signal(signal.SIGTERM, _raise)
+    return signal.signal(signal.SIGTERM, _raise)

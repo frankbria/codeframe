@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable, Optional
 
-from codeframe.core import blockers, tasks
+from codeframe.core import blockers, run_control, tasks
 from codeframe.core.state_machine import TaskStatus
 
 if TYPE_CHECKING:
@@ -389,7 +389,8 @@ class ReconciliationEngine:
                     proc = active_processes.get(change.task_id)
                     if proc is not None:
                         try:
-                            proc.terminate()
+                            # The worker and its delegated CLI's group (#1279).
+                            run_control.terminate_tree(proc)
                         except OSError:
                             pass  # Process already dead
 
