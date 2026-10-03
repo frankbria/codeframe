@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from codeframe import __version__ as _codeframe_version
+from codeframe.core import run_control
 from codeframe.core.adapters.agent_adapter import (
     AdapterTokenUsage,
     AgentEvent,
@@ -336,6 +337,7 @@ class CodexAdapter:
                 # Codex spawns its own process rather than going through
                 # SubprocessAdapter.run, so it needs the #996 env explicitly.
                 env=env,
+                **run_control.new_session_kwargs(),  # #1279: stop reaches its children
             )
         except FileNotFoundError:
             self._drop_login_home(env, login_key)
@@ -347,6 +349,7 @@ class CodexAdapter:
             self._drop_login_home(env, login_key)
             return AgentResult(status="failed", error=f"Failed to start '{self._binary}': {e}")
 
+        run_control.register_child(process)  # stopped at exit if still alive (#1279)
         stderr_chunks: list[str] = []
 
         def _drain_stderr() -> None:
@@ -372,6 +375,7 @@ class CodexAdapter:
             result = AgentResult(status="failed", error=str(exc))
         finally:
             self._kill(process)
+            run_control.release_child(process)
             stderr_thread.join(timeout=5)
             self._drop_login_home(env, login_key)
 
@@ -557,6 +561,10 @@ class CodexAdapter:
                 on_event(AgentEvent(type=type_, message=message, data=data or {}))
 
         while True:
+            if run_control.cancellation_requested(min_interval_s=1.0):
+                return AgentResult(
+                    status="failed", error="Stopped by user", output="\n".join(output_parts)
+                )
             if stall_timeout_s > 0 and (time.monotonic() - last_message) > stall_timeout_s:
                 return AgentResult(
                     status="failed",
@@ -570,7 +578,9 @@ class CodexAdapter:
                     output="\n".join(output_parts),
                 )
 
-            msg = reader.recv(timeout_s=read_timeout_s)
+            # Wake at least once a second so a Stop is seen on a quiet turn;
+            # a timeout here only loops, the stall clock is last_message.
+            msg = reader.recv(timeout_s=min(read_timeout_s, 1.0))
             if msg is _TIMEOUT:
                 continue
             if msg is _EOF:
@@ -715,13 +725,8 @@ class CodexAdapter:
 
     @staticmethod
     def _kill(process: subprocess.Popen) -> None:
-        """Terminate the subprocess if still running."""
-        if process.poll() is None:
-            process.kill()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
+        """Terminate the app-server and everything in its process group (#1279)."""
+        run_control.terminate_tree(process, grace_s=5)
 
     @staticmethod
     def _detect_modified_files(workspace_path: Path) -> list[str]:

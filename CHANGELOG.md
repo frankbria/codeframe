@@ -145,6 +145,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Stop now stops the run (#1279).** `cf work stop`, the web UI's Stop, a
+  forced batch stop and reconciliation used to mark the run failed while
+  nothing told the running agent. A delegated CLI such as claude, codex or
+  opencode, and anything it had started, kept running and editing the tree.
+  The task could be started again on top of it. Now:
+  - the ReAct and plan engines and the delegated-CLI adapters check for a stop
+    once a second, or once per step;
+  - each CLI runs in its own process group, and the whole group is stopped;
+  - a restart is refused until the stopped agent has actually exited;
+  - `--retry` no longer restarts a task the user stopped;
+  - Ctrl+C or closing the terminal reaches batch workers and their CLIs.
+  A process group is only signalled once it is proven to be our own child's.
+  An agent cannot be stopped in the middle of an LLM call it has already made.
+
 - **Three ways the PROOF9 merge gate let a merge through (#1276).** Both `cf pr
   merge` and the web/API merge now block on:
   - a **lapsed waiver**: a requirement whose waiver expiry date has passed blocks

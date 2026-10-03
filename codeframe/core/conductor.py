@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import contextlib
 import subprocess
 import sys
 import threading
@@ -20,13 +21,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from enum import Enum
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Callable, Iterator, Optional
 
 if TYPE_CHECKING:
     from codeframe.core.config_watcher import ConfigReloadState
 
 from codeframe.core.workspace import Workspace, get_db_connection
-from codeframe.core import events, tasks, blockers
+from codeframe.core import blockers, events, run_control, tasks
 from codeframe.core.dependency_graph import create_execution_plan, CycleDetectedError
 from codeframe.core.dependency_analyzer import analyze_dependencies, apply_inferred_dependencies
 from codeframe.core.runtime import RunStatus, get_active_run, reset_blocked_run
@@ -836,9 +837,14 @@ def execute_batch(
     if spend_scope is not None:
         # One task at a time until a parallel group sets its own share.
         _batch_spend_scope[batch.id] = (spend_scope, 1)
+    # Workers run in their own sessions, so closing the terminal (SIGHUP) or a
+    # SIGTERM reaches only this process. Unwind instead of dying on the spot,
+    # so the wait wrappers and the atexit hook stop the workers (#1279).
+    prev_handlers = run_control.exit_on_sigterm()
     try:
         return _execute_batch(workspace, batch, max_retries, on_event, user_id)
     finally:
+        run_control.restore_signal_handlers(prev_handlers)
         _batch_principal.pop(batch.id, None)
         _batch_spend_scope.pop(batch.id, None)
 
@@ -1152,20 +1158,16 @@ def stop_batch(workspace: Workspace, batch_id: str, force: bool = False) -> Batc
     _save_batch(workspace, batch)
 
     terminated_count = 0
+    to_kill: list[subprocess.Popen] = []
     with _active_processes_lock:
         if force and batch_id in _active_processes:
-            # Terminate all running processes for this batch
-            processes = _active_processes.get(batch_id, {})
-            for task_id, process in list(processes.items()):
-                try:
-                    if process.poll() is None:  # Still running
-                        process.terminate()  # SIGTERM
-                        terminated_count += 1
-                except (ProcessLookupError, OSError):
-                    pass  # Process already exited
-
-            # Cleanup tracking
-            _active_processes.pop(batch_id, None)
+            to_kill = list(_active_processes.pop(batch_id, {}).values())
+    # Outside the lock, and all at once: each worker gets WORKER_GRACE_S to
+    # tear down its own CLI first (#1279).
+    # returncode, not poll(): poll() reaps, and a reaped leader's group can no
+    # longer be proven ours, so terminate_tree would have to leave it alone.
+    terminated_count = sum(1 for p in to_kill if p.returncode is None)
+    run_control.terminate_trees(to_kill, grace_s=run_control.WORKER_GRACE_S)
 
     # Emit event
     event_data = {"batch_id": batch_id, "force": force}
@@ -1551,6 +1553,7 @@ def _run_retries(
         failed_tasks = [
             tid for tid in batch.task_ids
             if batch.results.get(tid) in failed_statuses
+            and not _stopped_by_user(workspace, tid, since=batch.started_at)
         ]
 
         if not failed_tasks:
@@ -2539,7 +2542,9 @@ def _execute_group_parallel(
         return task_id, batch.results[task_id]
 
     # Execute tasks in parallel using thread pool
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor, _stop_workers_on_interrupt(
+        batch.id
+    ):
         futures = {executor.submit(execute_task, tid): tid for tid in group}
 
         for future in as_completed(futures):
@@ -2703,6 +2708,8 @@ def _spawn_task_child(
             text=True,
             encoding="utf-8",
             errors="replace",
+            # Its own group, so a force stop reaches the delegated CLI (#1279).
+            **run_control.new_session_kwargs(),
         )
 
         # Track process if batch_id provided (thread-safe)
@@ -2712,8 +2719,17 @@ def _spawn_task_child(
                     _active_processes[batch_id] = {}
                 _active_processes[batch_id][task_id] = process
 
-        # Wait for completion (outside lock to avoid blocking)
-        returncode = process.wait()
+        # Wait for completion (outside lock to avoid blocking). The worker is in
+        # its own session, so the terminal's Ctrl+C reaches only us: pass it on
+        # rather than leave the worker running headless (#1279 review).
+        run_control.register_child(process)
+        try:
+            returncode = process.wait()
+        except BaseException:
+            run_control.terminate_tree(process, grace_s=run_control.WORKER_GRACE_S)
+            raise
+        finally:
+            run_control.release_child(process)
 
         # Untrack process (thread-safe)
         if batch_id:
@@ -2772,6 +2788,44 @@ def _spawn_task_child(
                     if not _active_processes[batch_id]:
                         _active_processes.pop(batch_id, None)
         return RunStatus.FAILED.value
+
+
+def _stopped_by_user(workspace: Workspace, task_id: str, since: datetime) -> bool:
+    """Did the user stop the run this batch started for the task?
+
+    Its batch result reads FAILED like a real failure, but retrying it would
+    restart the work the user just stopped (#1279 review). Only a run started
+    at or after ``since`` (the batch's start) counts: a stop marker from an
+    older run must not suppress the retry of a later spawn failure that never
+    created a run row (GLM review).
+    """
+    from codeframe.core.runtime import list_runs
+
+    latest = list_runs(workspace, task_id=task_id, limit=1)
+    return (
+        bool(latest)
+        and latest[0].started_at >= since
+        and run_control.was_stopped(workspace, latest[0].id)
+    )
+
+
+@contextlib.contextmanager
+def _stop_workers_on_interrupt(batch_id: str) -> Iterator[None]:
+    """Stop the batch's workers on Ctrl+C, SIGTERM or SIGHUP, then re-raise.
+
+    They run in their own sessions (#1279), so the terminal's signal reaches
+    only this process. Entered *inside* the executor's ``with`` so it exits
+    first: the executor's own exit is ``shutdown(wait=True)``, which would
+    otherwise wait for every worker to finish headless (GLM review). Only an
+    interrupt: one task's ordinary failure must not kill its siblings.
+    """
+    try:
+        yield
+    except (KeyboardInterrupt, SystemExit):
+        with _active_processes_lock:
+            procs = list(_active_processes.get(batch_id, {}).values())
+        run_control.terminate_trees(procs, grace_s=run_control.WORKER_GRACE_S)
+        raise
 
 
 def _save_batch(
