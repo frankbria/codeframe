@@ -488,6 +488,17 @@ class TestDiffVersions:
         # Diff should show additions with + prefix
         assert "+" in diff
 
+    def test_a_last_line_without_a_newline_stays_on_its_own_line(self, workspace: Workspace):
+        """``lineterm=""`` with ``keepends`` lines glued the ---/+++ headers
+        together and merged a changed last line into the next one (#1290)."""
+        v1 = prd.store(workspace, "intro\nold ending")
+        prd.create_new_version(workspace, v1.id, "intro\nnew ending", "edit")
+
+        lines = prd.diff_versions(workspace, v1.id, 1, 2).splitlines()
+
+        assert lines[:2] == ["--- Version 1", "+++ Version 2"]
+        assert "-old ending" in lines and "+new ending" in lines
+
     def test_returns_none_for_invalid_versions(self, workspace: Workspace, sample_prd_file: Path):
         """Should return None when versions don't exist."""
         content = prd.load_file(sample_prd_file)

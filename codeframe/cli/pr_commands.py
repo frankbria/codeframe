@@ -325,15 +325,15 @@ def create_pr(
         console.print(
             f"[bold]Branch:[/bold] {escape(str(pr.head_branch))} → {escape(str(pr.base_branch))}"
         )
-        console.print(f"[bold]URL:[/bold] [link={pr.url}]{pr.url}[/link]")
+        console.print(f"[bold]URL:[/bold] [link={pr.url}]{escape(pr.url)}[/link]")
 
     except GitHubAPIError as e:
         if e.status_code == 422:
             console.print("[red]Error:[/red] PR already exists for this branch or validation failed.")
             if e.details:
-                console.print(f"Details: {e.details}")
+                console.print(f"Details: {escape(str(e.details))}")
         else:
-            console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {e.message}")
+            console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {escape(str(e.message))}")
         raise typer.Exit(1)
 
 
@@ -388,7 +388,7 @@ def list_prs(
             console.print(f"[yellow]No {escape(status)} pull requests found.[/yellow]")
             return
 
-        table = Table(title=f"Pull Requests ({status})")
+        table = Table(title=f"Pull Requests ({escape(status)})")  # titles are markup too
         table.add_column("PR #", style="cyan", no_wrap=True)
         table.add_column("Title", max_width=40)
         table.add_column("Branch", style="blue")
@@ -397,9 +397,9 @@ def list_prs(
 
         for pr in prs:
             # Format state with color
-            state_display = pr.state
+            state_display = escape(pr.state)
             if pr.state == "open":
-                state_display = f"[green]{pr.state}[/green]"
+                state_display = f"[green]{escape(pr.state)}[/green]"
             elif pr.merged_at:
                 state_display = "[magenta]merged[/magenta]"
             elif pr.state == "closed":
@@ -420,7 +420,7 @@ def list_prs(
             console.print("[red]Error:[/red] GitHub API rate limit exceeded.")
             console.print("Please wait and try again later.")
         else:
-            console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {e.message}")
+            console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {escape(str(e.message))}")
         raise typer.Exit(1)
 
 
@@ -461,7 +461,7 @@ def get_pr(
 
         # Text format
         console.print(f"\n[bold]PR #{pr.number}[/bold] - {escape(str(pr.title))}")
-        console.print(f"\n[bold]State:[/bold] {pr.state}")
+        console.print(f"\n[bold]State:[/bold] {escape(pr.state)}")
         console.print(
             f"[bold]Branch:[/bold] {escape(str(pr.head_branch))} → {escape(str(pr.base_branch))}"
         )
@@ -470,7 +470,7 @@ def get_pr(
         if pr.merged_at:
             console.print(f"[bold]Merged:[/bold] {pr.merged_at.strftime('%Y-%m-%d %H:%M')}")
 
-        console.print(f"[bold]URL:[/bold] {pr.url}")
+        console.print(f"[bold]URL:[/bold] {escape(pr.url)}")
 
         if pr.body:
             # Commit subjects and captured requirement titles land here (#1273).
@@ -480,7 +480,7 @@ def get_pr(
         if e.status_code == 404:
             console.print(f"[red]Error:[/red] PR #{pr_number} not found")
         else:
-            console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {e.message}")
+            console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {escape(str(e.message))}")
         raise typer.Exit(1)
 
 
@@ -680,7 +680,7 @@ def merge_pr(
                     return None
 
                 if pr.state != "open":
-                    console.print(f"[yellow]PR #{pr_number} is {pr.state} and cannot be merged.[/yellow]")
+                    console.print(f"[yellow]PR #{pr_number} is {escape(pr.state)} and cannot be merged.[/yellow]")
                     return None
 
                 # Merge the PR
@@ -716,7 +716,7 @@ def merge_pr(
                 console.print(f"[bold]Merge commit:[/bold] {result.sha[:7]}")
             console.print(f"[bold]Strategy:[/bold] {escape(strategy)}")
         else:
-            console.print(f"[red]Error:[/red] Merge failed: {result.message}")
+            console.print(f"[red]Error:[/red] Merge failed: {escape(str(result.message))}")
             raise typer.Exit(1)
 
     except GitHubAPIError as e:
@@ -725,7 +725,7 @@ def merge_pr(
         elif e.status_code == 405:
             console.print("[red]Error:[/red] PR cannot be merged (check for conflicts)")
         else:
-            console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {e.message}")
+            console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {escape(str(e.message))}")
         raise typer.Exit(1)
 
 
@@ -774,7 +774,7 @@ def close_pr(
         if e.status_code == 404:
             console.print(f"[red]Error:[/red] PR #{pr_number} not found")
         else:
-            console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {e.message}")
+            console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {escape(str(e.message))}")
         raise typer.Exit(1)
 
 
@@ -813,15 +813,15 @@ def pr_status():
 
         if pr:
             console.print(f"\n[bold]PR #{pr.number}[/bold] - {escape(str(pr.title))}")
-            console.print(f"[bold]State:[/bold] [green]{pr.state}[/green]")
+            console.print(f"[bold]State:[/bold] [green]{escape(pr.state)}[/green]")
             console.print(
             f"[bold]Branch:[/bold] {escape(str(pr.head_branch))} → {escape(str(pr.base_branch))}"
         )
-            console.print(f"[bold]URL:[/bold] {pr.url}")
+            console.print(f"[bold]URL:[/bold] {escape(pr.url)}")
         else:
-            console.print(f"[yellow]No open PR found for branch '{current_branch}'[/yellow]")
+            console.print(f"[yellow]No open PR found for branch '{escape(current_branch)}'[/yellow]")
             console.print("\nCreate one with: codeframe pr create --title \"Your PR title\"")
 
     except GitHubAPIError as e:
-        console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {e.message}")
+        console.print(f"[red]GitHub API Error ({e.status_code}):[/red] {escape(str(e.message))}")
         raise typer.Exit(1)

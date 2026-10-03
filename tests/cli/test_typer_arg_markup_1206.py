@@ -32,6 +32,17 @@ CLI_DIR = REPO_ROOT / "codeframe" / "cli"
 
 #: Rich renderers that treat their string as markup.
 RENDERERS = {"print", "write", "add_row"}
+#: Constructors whose text arguments Rich also parses as markup — a Table or
+#: Panel title, a Panel body string. Matched by bare name too, unlike the
+#: method renderers, where a bare ``print`` is the builtin (#1290: a
+#: ``Table(title=f"... ({status})")`` slipped past this check).
+CONSTRUCTORS = {"Table", "Panel"}
+
+
+def _is_renderer(call: ast.Call) -> bool:
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr in RENDERERS | CONSTRUCTORS
+    return isinstance(call.func, ast.Name) and call.func.id in CONSTRUCTORS
 
 #: ``module:function:parameter`` → reason. A site may be listed only when
 #: escaping it is wrong, not merely inconvenient.
@@ -124,7 +135,7 @@ def find_violations(path: Path) -> list[tuple[str, int, str, str]]:
         for node in ast.walk(func):
             if not isinstance(node, ast.Call):
                 continue
-            if not (isinstance(node.func, ast.Attribute) and node.func.attr in RENDERERS):
+            if not _is_renderer(node):
                 continue
             for expr in _rendered_expressions(node):
                 for name in sorted(_unescaped_names(expr, untrusted)):

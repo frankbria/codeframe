@@ -752,8 +752,11 @@ def diff_versions(
         return None
 
     # Generate unified diff
-    lines1 = v1.content.splitlines(keepends=True)
-    lines2 = v2.content.splitlines(keepends=True)
+    # No keepends: lineterm="" applies only to the header lines, so keepends
+    # content glued "---"/"+++" together and merged a changed last line that
+    # had no newline into the next diff line (#1290).
+    lines1 = v1.content.splitlines()
+    lines2 = v2.content.splitlines()
 
     diff = difflib.unified_diff(
         lines1,
@@ -763,4 +766,4 @@ def diff_versions(
         lineterm="",
     )
 
-    return "".join(diff)
+    return "\n".join(diff)

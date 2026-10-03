@@ -145,6 +145,23 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **CLI output shows text from files, GitHub and the LLM as written (#1290).**
+  Text in square brackets, such as `[/login]`, `list[str]` or `arr[i]`, was
+  read as Rich markup.
+  - **Crashes:** `cf import ralph` crashed after the import was already
+    written, `cf prd stress-test` crashed before saving its `--output` file
+    (which is now written first), and `cf tasks generate` crashed after saving
+    the tasks.
+  - **Dropped or mangled text:** `cf prd diff`, `cf work diff`,
+    `cf work batch run`, `cf prd versions` and the `cf pr` commands dropped or
+    mangled bracketed text.
+  - **Invalid JSON:** `cf engines stats --format json` printed through Rich,
+    so it was not valid JSON when lines were long, when the data contained
+    brackets, or when `FORCE_COLOR` was set.
+  - **PRD diffs:** they put their `---`/`+++` headers on one line and merged a
+    changed last line into the next. This also affected the API, which
+    returns the same diff.
+
 - **`RATE_LIMIT_STORAGE=redis` works (#1289).** It is the documented setting
   for multi-worker servers, but the redis client was not a dependency, and
   `codeframe serve` crashed at import with a raw `limits` traceback. Install the

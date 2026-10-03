@@ -24,6 +24,7 @@ import typer
 from enum import StrEnum
 from rich.console import Console
 from rich.markup import escape
+from rich.text import Text
 
 # Import auth subapp for credential management
 from codeframe.cli.helpers import print_error
@@ -794,7 +795,7 @@ def status(
         console.print()  # Final newline for cleaner output
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         console.print("Run 'codeframe init <path>' to initialize.")
         raise typer.Exit(1)
     except Exception as e:
@@ -868,7 +869,7 @@ def summary(
         )
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -951,7 +952,7 @@ def review(
             raise typer.Exit(1)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         console.print("Run 'codeframe init' to initialize a workspace first.")
         raise typer.Exit(1)
 
@@ -1523,7 +1524,7 @@ def prd_versions(
             console.print(f"    [dim]ID: {v.id[:8]}...[/dim]")
             console.print(f"    [dim]Date: {v.created_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
             if v.change_summary:
-                console.print(f"    [dim]Changes: {v.change_summary}[/dim]")
+                console.print(f"    [dim]Changes: {escape(v.change_summary)}[/dim]")
             console.print()
 
     except FileNotFoundError as e:
@@ -1580,15 +1581,17 @@ def prd_diff(
 
         console.print(f"\n[bold]Diff: v{version1} → v{version2}[/bold]\n")
         # Color the diff output
+        # Diff lines are PRD text: style them, never parse them (#1290).
         for line in diff.splitlines():
             if line.startswith("+") and not line.startswith("+++"):
-                console.print(f"[green]{line}[/green]")
+                style = "green"
             elif line.startswith("-") and not line.startswith("---"):
-                console.print(f"[red]{line}[/red]")
+                style = "red"
             elif line.startswith("@@"):
-                console.print(f"[cyan]{line}[/cyan]")
+                style = "cyan"
             else:
-                console.print(line)
+                style = None
+            console.print(line, style=style, markup=False, highlight=False)
 
     except FileNotFoundError as e:
         print_error(e)
@@ -2153,7 +2156,7 @@ def prd_stress_test(
         # run, so it is one of the likelier ways the command ends.
         console.print(
             f"[red]Error:[/red] PRD stress test failed while calling the LLM "
-            f"provider: {e}"
+            f"provider: {escape(str(e))}"
         )
         console.print(
             "[dim]Check your API key and network connection, then retry. "
@@ -2238,13 +2241,15 @@ def prd_stress_test(
         else:
             console.print("[yellow]Warning:[/yellow] Failed to create new PRD version.")
 
-    # Show tech spec
-    console.print(Panel(result.tech_spec_markdown[:2000], title="Technical Specification", border_style="blue"))
-
-    # Write to file
+    # Written before anything renders it: this is a paid multi-call result, and
+    # a render failure used to lose it (#1290).
     if output:
         output.write_text(result.tech_spec_markdown)
-        console.print(f"\n[green]✓[/green] Tech spec written to [bold]{output}[/bold]")
+
+    # Show tech spec — LLM text, so a Text, never parsed as markup.
+    console.print(Panel(Text(result.tech_spec_markdown[:2000]), title="Technical Specification", border_style="blue"))
+    if output:
+        console.print(f"\n[green]✓[/green] Tech spec written to [bold]{escape(str(output))}[/bold]")
 
     # Summary
     node_count = _count_nodes(result.tree)
@@ -2432,7 +2437,7 @@ def tasks_generate(
             if task.description:
                 # Show first line of description
                 desc_preview = task.description.split("\n")[0][:60]
-                console.print(f"     [dim]{desc_preview}[/dim]")
+                console.print(f"     [dim]{escape(desc_preview)}[/dim]")
 
         console.print()
         console.print("Next steps:")
@@ -2607,7 +2612,7 @@ def tasks_show(
     try:
         workspace = get_workspace(workspace_path)
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {workspace_path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(workspace_path))}")
         console.print("Run 'codeframe init' to initialize a workspace first.")
         raise typer.Exit(1)
 
@@ -3167,7 +3172,7 @@ def work_start(
             console.print("[green]Run completed (stub)[/green]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except InvalidTransitionError as e:
         print_error(e)
@@ -3303,7 +3308,7 @@ def work_resume(
             )
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -3359,7 +3364,7 @@ def work_stop(
         console.print("  Task returned to: [blue]READY[/blue]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -3422,7 +3427,7 @@ def work_status(
                 console.print("[dim]No active runs[/dim]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -3496,7 +3501,7 @@ def work_show(
                 console.print(tbl)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -3585,7 +3590,7 @@ def work_diagnose(
         _display_diagnostic_report(report, task.title, verbose, workspace, latest_run.id)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -3783,7 +3788,7 @@ def work_retry(
             raise typer.Exit(1)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except InvalidTransitionError as e:
         print_error(e)
@@ -3850,7 +3855,7 @@ def work_update_description(
         console.print(f"  codeframe work retry {task.id[:8]}  # Retry with updated description")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -4029,7 +4034,7 @@ def work_follow(
             raise typer.Exit(0)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -4152,7 +4157,7 @@ def work_replay(
                       f"{summary['files_modified']} files modified[/dim]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -4219,11 +4224,11 @@ def work_diff(
             after = change["after"] or ""
 
             if change["before"] is None:
-                console.print(f"[green]+++ {file_path}[/green] (created)")
+                console.print(f"[green]+++ {escape(file_path)}[/green] (created)")
             elif change["after"] is None:
-                console.print(f"[red]--- {file_path}[/red] (deleted)")
+                console.print(f"[red]--- {escape(file_path)}[/red] (deleted)")
             else:
-                console.print(f"[yellow]~~~ {file_path}[/yellow] (modified)")
+                console.print(f"[yellow]~~~ {escape(file_path)}[/yellow] (modified)")
 
             diff_lines = list(
                 difflib.unified_diff(
@@ -4233,18 +4238,20 @@ def work_diff(
                     tofile=f"b/{file_path}",
                 )
             )
+            # Diff lines are file contents: style them, never parse them (#1290).
             for line in diff_lines:
                 line = line.rstrip()
                 if line.startswith("+") and not line.startswith("+++"):
-                    console.print(f"[green]{line}[/green]")
+                    style = "green"
                 elif line.startswith("-") and not line.startswith("---"):
-                    console.print(f"[red]{line}[/red]")
+                    style = "red"
                 else:
-                    console.print(f"[dim]{line}[/dim]")
+                    style = "dim"
+                console.print(line, style=style, markup=False, highlight=False)
             console.print()
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -4310,7 +4317,7 @@ def work_export_trace(
             console.print(content, highlight=False)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -4368,7 +4375,7 @@ def work_rerun(
             console.print("\n[yellow]No remaining steps after this point[/yellow]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -4549,10 +4556,10 @@ def batch_run(
             for partial_id in task_ids:
                 matching = tasks_module.find_by_prefix(workspace, partial_id)
                 if not matching:
-                    console.print(f"[red]Error:[/red] No task found matching '{partial_id}'")
+                    console.print(f"[red]Error:[/red] No task found matching '{escape(partial_id)}'")
                     raise typer.Exit(1)
                 if len(matching) > 1:
-                    console.print(f"[red]Error:[/red] Multiple tasks match '{partial_id}':")
+                    console.print(f"[red]Error:[/red] Multiple tasks match '{escape(partial_id)}':")
                     for t in matching[:3]:
                         console.print(f"  {t.id[:8]} - {escape(t.title)}")
                     raise typer.Exit(1)
@@ -4574,7 +4581,7 @@ def batch_run(
             for i, tid in enumerate(ids_to_execute):
                 task = tasks_module.get(workspace, tid)
                 title = task.title if task else tid
-                console.print(f"  [{i + 1}] {tid[:8]} - {title}")
+                console.print(f"  [{i + 1}] {tid[:8]} - {escape(title)}")
             return
 
         # Validate API key before batch execution
@@ -4640,7 +4647,7 @@ def batch_run(
                         # Show truncated output for failures
                         output_lines = check.output.strip().split("\n")[:5]
                         for line in output_lines:
-                            console.print(f"    [dim]{line}[/dim]")
+                            console.print(f"    [dim]{escape(line)}[/dim]")
                         if len(check.output.strip().split("\n")) > 5:
                             console.print("    [dim]...[/dim]")
 
@@ -4655,7 +4662,7 @@ def batch_run(
             raise typer.Exit(1)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -4797,7 +4804,7 @@ def batch_status(
             console.print(table)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -4868,7 +4875,7 @@ def batch_stop(
             console.print(f"[green]Batch {batch.id[:8]} stopping (will finish current tasks)[/green]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -4975,7 +4982,7 @@ def batch_resume(
             console.print(f"\n[red]✗ Batch {batch.status.value.lower()}[/red]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5248,7 +5255,7 @@ ETA: {eta} | Elapsed: {elapsed}"""
             console.print(f"[red]✗ Batch {batch_id_short} {batch.status.value.lower()}[/red]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5290,7 +5297,7 @@ def events_tail(
     try:
         workspace = get_workspace(path)
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
     recent = events.list_recent(workspace, limit=limit)
@@ -5383,7 +5390,7 @@ def blocker_list(
         console.print(table)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5439,7 +5446,7 @@ def blocker_show(
                 console.print(f"  [dim]Answered: {blocker.answered_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5485,7 +5492,7 @@ def blocker_create(
         console.print(f"  Question: {escape(question[:60])}{'...' if len(question) > 60 else ''}")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5520,7 +5527,7 @@ def blocker_answer(
         console.print(f"\nUse 'codeframe blocker resolve {blocker.id[:8]}' to mark as resolved.")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5558,7 +5565,7 @@ def blocker_resolve(
         console.print("  Status: [green]RESOLVED[/green]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5622,7 +5629,7 @@ def patch_export(
         )
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5674,7 +5681,7 @@ def patch_list(
         console.print(table)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5727,7 +5734,7 @@ def patch_status(
                 console.print(f"  ... and {len(status['untracked']) - 5} more")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5778,7 +5785,7 @@ def commit_create(
         )
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5832,7 +5839,7 @@ def checkpoint_create(
             console.print(f"  Git: {git_ref[:7]}")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5886,7 +5893,7 @@ def checkpoint_list(
         console.print(table)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5941,7 +5948,7 @@ def checkpoint_show(
         console.print(f"  Open blockers: {summary.get('open_blockers', 0)}")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5979,7 +5986,7 @@ def checkpoint_restore(
         console.print(f"  Tasks restored: {summary.get('total_tasks', 0)}")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -6017,7 +6024,7 @@ def checkpoint_delete(
             raise typer.Exit(1)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 

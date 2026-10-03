@@ -91,6 +91,22 @@ class TestEnginesStats:
 
     @patch("codeframe.cli.engines_commands.engine_stats")
     @patch("codeframe.cli.engines_commands.get_workspace")
+    def test_json_survives_colour_and_markup(self, mock_get_ws, mock_es, tmp_path, monkeypatch):
+        """Rich colourised it under FORCE_COLOR and parsed `[...]` as markup,
+        so `--format json` was not JSON (#1290)."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("FORCE_COLOR", "3")
+        mock_get_ws.return_value = "fake-ws"
+        stats = {"[bold]react[/bold] " + "x" * 90: SAMPLE_STATS["react"]}
+        mock_es.get_engine_stats.return_value = stats
+
+        result = runner.invoke(app, ["engines", "stats", "--format", "json"])
+
+        assert result.exit_code == 0
+        assert json.loads(result.output) == json.loads(json.dumps(stats))
+
+    @patch("codeframe.cli.engines_commands.engine_stats")
+    @patch("codeframe.cli.engines_commands.get_workspace")
     def test_engines_stats_filter_engine(self, mock_get_ws, mock_es, tmp_path, monkeypatch):
         """Should pass engine filter to get_engine_stats."""
         monkeypatch.chdir(tmp_path)
