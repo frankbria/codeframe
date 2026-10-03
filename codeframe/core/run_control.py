@@ -181,6 +181,22 @@ def cancellation_requested(min_interval_s: float = 0.0) -> bool:
     return bool(control and control.cancelled(min_interval_s))
 
 
+def mark_stopped(workspace: "Workspace", run_id: str) -> None:
+    """Record that the user stopped ``run_id``. A FAILED run row alone cannot
+    say whether it failed or was stopped, and the batch retry needs to know."""
+    # ponytail: one empty file per stopped run, never pruned; a ledger column if it ever matters.
+    path = Path(workspace.state_dir) / _HEARTBEAT_DIR / "stopped" / run_id
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+    except OSError:
+        logger.warning("Could not record that run %s was stopped", run_id, exc_info=True)
+
+
+def was_stopped(workspace: "Workspace", run_id: str) -> bool:
+    return (Path(workspace.state_dir) / _HEARTBEAT_DIR / "stopped" / run_id).exists()
+
+
 def previous_run_alive(workspace: "Workspace", task_id: str) -> bool:
     """Is an agent for ``task_id`` still running, even if its run was stopped?"""
     path = _heartbeat_path(workspace, task_id)

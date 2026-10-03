@@ -2782,13 +2782,13 @@ def _spawn_task_child(
 
 
 def _stopped_by_user(workspace: Workspace, task_id: str) -> bool:
-    """A task the user stopped is FAILED in the batch but READY in the ledger:
-    `stop_run` returns it to READY, while a real failure leaves it FAILED.
-    Retrying it would restart the work the user just stopped (#1279 review)."""
-    from codeframe.core.state_machine import TaskStatus
+    """Was the task's latest run stopped by the user? Its batch result reads
+    FAILED like a real failure, but retrying it would restart the work the
+    user just stopped (#1279 review)."""
+    from codeframe.core.runtime import list_runs
 
-    task = tasks.get(workspace, task_id)
-    return task is not None and task.status == TaskStatus.READY
+    latest = list_runs(workspace, task_id=task_id, limit=1)
+    return bool(latest) and run_control.was_stopped(workspace, latest[0].id)
 
 
 def _as_completed_or_stop(futures: dict, batch_id: str) -> Iterator:

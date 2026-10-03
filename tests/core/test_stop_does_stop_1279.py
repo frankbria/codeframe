@@ -371,6 +371,31 @@ class TestRetriesLeaveAStoppedTaskAlone:
 
         assert rerun == [failed.id]
 
+    def test_a_task_whose_worker_never_started_is_still_retried(self, ws, monkeypatch):
+        """READY with no run (a spawn failure) is a failure, not a stop."""
+        from datetime import datetime, timezone
+
+        from codeframe.core import conductor
+        from codeframe.core.conductor import BatchRun, BatchStatus, OnFailure
+
+        never_ran = tasks.create(ws, title="t", status=TaskStatus.READY)
+        batch = BatchRun(
+            id="b-1279-spawn", workspace_id=ws.id, task_ids=[never_ran.id],
+            status=BatchStatus.RUNNING, strategy="serial", max_parallel=1,
+            on_failure=OnFailure.CONTINUE, started_at=datetime.now(timezone.utc),
+            completed_at=None, results={never_ran.id: "FAILED"},
+        )
+        conductor._save_batch(ws, batch)
+        rerun: list[str] = []
+        monkeypatch.setattr(
+            conductor, "_execute_task_subprocess",
+            lambda _ws, task_id, *a, **k: rerun.append(task_id) or "COMPLETED",
+        )
+
+        conductor._run_retries(ws, batch, max_retries=1)
+
+        assert rerun == [never_ran.id]
+
 
 class TestThePlanEngineStopsToo:
     def test_no_step_starts_after_a_stop(self, ws):

@@ -635,6 +635,10 @@ def stop_run(workspace: Workspace, task_id: str) -> Run:
     finally:
         conn.close()
 
+    from codeframe.core import run_control
+
+    run_control.mark_stopped(workspace, run.id)
+
     # Transition task back to READY so it can be restarted (if not already)
     task = tasks.get(workspace, task_id)
     if task and task.status != TaskStatus.READY:

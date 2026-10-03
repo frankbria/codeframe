@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+from codeframe.core import run_control
+
 import pytest
 
 pytestmark = pytest.mark.v2
@@ -229,7 +231,7 @@ class TestApplyChanges:
         with patch("codeframe.core.run_control.terminate_tree") as kill_tree:
             engine.apply_changes(result, batch, active_processes)
 
-        kill_tree.assert_called_once_with(mock_proc)
+        kill_tree.assert_called_once_with(mock_proc, grace_s=run_control.WORKER_GRACE_S)
         assert "t1" in result.tasks_skipped
 
     def test_closed_change_terminates_process(self) -> None:
@@ -255,7 +257,7 @@ class TestApplyChanges:
         with patch("codeframe.core.run_control.terminate_tree") as kill_tree:
             engine.apply_changes(result, batch, active_processes)
 
-        kill_tree.assert_called_once_with(mock_proc)
+        kill_tree.assert_called_once_with(mock_proc, grace_s=run_control.WORKER_GRACE_S)
         assert "t1" in result.tasks_skipped
 
     def test_blocker_resolved_requeues_task(self) -> None:
@@ -304,7 +306,7 @@ class TestApplyChanges:
         ) as kill_tree:
             engine.apply_changes(result, batch, active_processes)
 
-        kill_tree.assert_called_once_with(mock_proc)
+        kill_tree.assert_called_once_with(mock_proc, grace_s=run_control.WORKER_GRACE_S)
         assert "t1" in result.tasks_skipped
 
 
