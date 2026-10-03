@@ -408,7 +408,10 @@ protection. The storage backend is selected by `RATE_LIMIT_STORAGE` (default
 > with more than one worker (e.g. `uvicorn --workers 4`) multiplies the effective
 > limit by the worker count and silently weakens auth brute-force protection. For
 > any multi-worker deployment, set `RATE_LIMIT_STORAGE=redis` and `REDIS_URL` for
-> shared, cross-worker buckets. The server logs a `WARNING` at startup when it
+> shared, cross-worker buckets, and install the redis client with the extra:
+> `uv tool install 'codeframe-ai[redis]'` (or `pip install 'codeframe-ai[redis]'`).
+> Without it the server refuses to start and names the extra, rather than quietly
+> falling back to per-worker counters. The server logs a `WARNING` at startup when it
 > detects in-memory storage with multiple workers (via the `WEB_CONCURRENCY` /
 > `UVICORN_WORKERS` env vars).
 

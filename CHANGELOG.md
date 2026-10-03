@@ -145,6 +145,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **`RATE_LIMIT_STORAGE=redis` works (#1289).** It is the documented setting
+  for multi-worker servers, but the redis client was not a dependency, and
+  `codeframe serve` crashed at import with a raw `limits` traceback. Install the
+  new extra, `codeframe-ai[redis]`. Without it the server refuses to start with
+  a message naming the extra, and a malformed `REDIS_URL` is reported as one.
+  It deliberately does not fall back to in-memory counters, which would
+  multiply every limit, auth brute-force protection included, by the worker
+  count. For the same reason, `RATE_LIMIT_STORAGE=redis` without `REDIS_URL`
+  now refuses to start instead of quietly using memory.
+
 - **Webhooks fired by the CLI are delivered (#1288).** `batch.completed` at
   the end of `cf work batch run`, and `blocker.created` raised in a batch-task
   subprocess, were sent on a daemon thread that died when the process exited,
