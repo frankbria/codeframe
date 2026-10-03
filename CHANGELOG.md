@@ -150,8 +150,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
     stops with an error. It used to produce placeholder tasks such as
     "Part 1 of: <whole PRD>".
   - **`cf prd stress-test` refine:** a rewrite cut off at the model's token
-    limit is no longer saved as a new PRD version, and a reply wrapped in a
-    code fence is unwrapped. A PRD's own code examples are kept.
+    limit is no longer saved as a new PRD version. A reply wrapped in a code
+    fence is rejected too: the original PRD is kept and a warning is logged,
+    so re-run the refine. A PRD that is itself shaped like that is saved as
+    returned.
   - **Task dependencies:** a generated task that depends on itself no longer
     crashes generation halfway through, and a dependency cycle is broken with
     a warning instead of being saved, where it used to break `cf schedule`
