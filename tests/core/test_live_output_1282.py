@@ -244,3 +244,87 @@ class TestReviewFindings:
         text = streaming.get_run_output_path(ws, run.id).read_text(encoding="utf-8")
         assert "I added the search endpoint." in text
 
+
+class TestClaudeReviewFindings:
+    def test_the_cloud_adapters_output_messages_reach_output_log(self, ws, monkeypatch):
+        """The E2B adapter emits output as message, not data['line']."""
+        from codeframe.core import engine_registry
+        from codeframe.core.adapters.agent_adapter import AgentEvent, AgentResult
+
+        class StubCloud:
+            name = "cloud"
+
+            def run(self, task_id, prompt, workspace_path, on_event=None):
+                on_event(AgentEvent(type="output", message="sandbox says hi", data={"stream": "stdout"}))
+                return AgentResult(status="failed", error="stub stops here")
+
+        monkeypatch.setattr(engine_registry, "get_external_adapter", lambda *a, **k: StubCloud())
+        monkeypatch.setenv("CODEFRAME_ENABLE_CLOUD_ENGINE", "1")
+        _task, run = _running(ws)
+
+        runtime.execute_agent(ws, run, engine="cloud")
+
+        text = streaming.get_run_output_path(ws, run.id).read_text(encoding="utf-8")
+        assert "sandbox says hi" in text
+
+    def test_the_async_tail_yields_the_last_lines_before_stopping(self, ws):
+        _task, run = _running(ws)
+        log = streaming.RunOutputLogger(ws, run.id)
+        log.write("final line\n")
+        log.close()
+
+        async def always():
+            return True
+
+        async def collect():
+            return [line async for line in streaming.atail_run_output(
+                ws, run.id, poll_interval=0.05, should_stop=always,
+            )]
+
+        assert asyncio.run(collect()) == ["final line\n"]
+
+    def test_the_output_stream_ends_when_the_run_has(self, ws):
+        """GET /tasks/{id}/output polled a finished run for up to 5 minutes."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from codeframe.ui.dependencies import get_v2_workspace
+        from codeframe.ui.routers import tasks_v2
+
+        task, run = _running(ws)
+        log = streaming.RunOutputLogger(ws, run.id)
+        log.write("all done\n")
+        log.close()
+        runtime.complete_run(ws, run.id)
+        app = FastAPI()
+        app.include_router(tasks_v2.router)
+        app.dependency_overrides[get_v2_workspace] = lambda: ws
+        start = time.monotonic()
+
+        response = TestClient(app).get(f"/api/v2/tasks/{task.id}/output")
+
+        assert time.monotonic() - start < 10, "the stream kept polling a finished run"
+        assert "all done" in response.text and "event: done" in response.text
+
+    def test_a_failing_initial_check_does_not_end_the_stream(self):
+        from codeframe.core.models import CompletionEvent
+        from codeframe.core.streaming import EventPublisher
+        from codeframe.ui.streaming_utils import event_stream_generator
+
+        checks = {"n": 0}
+
+        def flaky():
+            checks["n"] += 1
+            if checks["n"] == 1:
+                raise RuntimeError("database is locked")  # the subscribe-time check
+            return CompletionEvent(task_id="t", status="completed", duration_seconds=1.0)
+
+        async def collect():
+            return [c async for c in event_stream_generator(
+                "t", EventPublisher(), _Connected(), heartbeat_interval=0.1,
+                after_subscribe=flaky,
+            )]
+
+        chunks = asyncio.run(asyncio.wait_for(collect(), timeout=10))
+        assert any("completion" in c for c in chunks)
+

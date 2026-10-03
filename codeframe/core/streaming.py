@@ -368,8 +368,9 @@ async def atail_run_output(
         if max_wait is not None and (time.monotonic() - start_time) >= max_wait:
             break
 
-        if should_stop is not None and await should_stop():
-            break
+        # Decided before this poll's read, so a run that just finished still
+        # gets its last lines out (#1282), as in tail_run_output.
+        stopping = should_stop is not None and await should_stop()
 
         if log_path.exists():
             appended, was_reset = _read_new()
@@ -392,6 +393,8 @@ async def atail_run_output(
                 reached_tail = True
                 yield line + "\n"
 
+        if stopping:
+            break
         await asyncio.sleep(poll_interval)
 
     # Flush a final unterminated line (a log whose last write had no newline),

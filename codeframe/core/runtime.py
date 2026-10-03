@@ -931,7 +931,12 @@ def execute_agent(
         def on_adapter_event(event: AdapterEvent) -> None:
             on_agent_event(event.type, event.data)
             if external:
-                text = event.data.get("line") if event.type == "output" else event.message
+                # SubprocessAdapter puts an output line in data["line"]; the
+                # cloud (E2B) adapter puts it in message (review).
+                text = (
+                    (event.data.get("line") or event.message)
+                    if event.type == "output" else event.message
+                )
                 if text:
                     output_logger.write(str(text).rstrip("\n") + "\n")
                 # codex reports what its agent said as an item, not a line.
@@ -943,7 +948,7 @@ def execute_agent(
         # Tell the user when their stall flags will be dropped (#957).
         _warn_if_stall_settings_ignored(engine, stall_timeout_s, stall_action)
 
-        if is_external_engine(engine):
+        if external:
             from codeframe.core.context_packager import TaskContextPackager
             from codeframe.core.adapters.verification_wrapper import VerificationWrapper
 

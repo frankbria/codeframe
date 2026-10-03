@@ -124,7 +124,13 @@ async def event_stream_generator(
         # heartbeats). A duplicate completion is harmless — the loop below stops
         # on the first one it sees.
         if after_subscribe is not None:
-            terminal_event = after_subscribe()
+            try:
+                terminal_event = after_subscribe()
+            except Exception:
+                # Same rule as the heartbeat re-check: a transient DB error
+                # must not end the stream (review).
+                logger.warning("Terminal check failed for %s", task_id, exc_info=True)
+                terminal_event = None
             if terminal_event is not None:
                 yield format_sse_event(terminal_event)
                 return
