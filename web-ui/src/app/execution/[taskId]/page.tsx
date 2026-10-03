@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { useExecutionMonitor } from '@/hooks/useExecutionMonitor';
 import { tasksApi, gatesApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
@@ -74,7 +75,9 @@ export default function ExecutionPage() {
       const detail = (err as { detail?: string })?.detail ?? '';
       // 400/404 from stop is expected if run already completed
       if (!detail.includes('not found') && !detail.includes('Cannot stop')) {
-        console.error('Failed to stop execution:', detail);
+        // Logged only, so a failed Stop looked like nothing happened while
+        // the agent kept running (#1297).
+        toast.error(`Could not stop the task: ${detail || 'unknown error'}. It may still be running.`);
       }
     }
   }, [workspacePath, taskId]);
