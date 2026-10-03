@@ -108,28 +108,40 @@ with `codeframe auth user-create --admin`, or by setting `is_superuser = 1` on
 its `users` row in the control-plane DB; there is no in-product promotion flow
 yet.
 
-**Set the token before the first deploy** — it is in `.env.production.example` /
-`.env.staging.example`:
+**Set the token before the first deploy.** The CI deploy rewrites
+`.env.<stage>` from GitHub secrets on every run, so a value written into that
+file by hand is erased by the next deploy. Set the secret in each environment
+instead:
 
 ```bash
-openssl rand -hex 32          # → CODEFRAME_BOOTSTRAP_TOKEN in your .env.<stage>
+gh secret set CODEFRAME_BOOTSTRAP_TOKEN --env production --body "$(openssl rand -hex 32)"
+gh secret set CODEFRAME_BOOTSTRAP_TOKEN --env staging    --body "$(openssl rand -hex 32)"
 ```
+
+(For a deploy by hand, put it in `.env.<stage>`; it is in
+`.env.production.example` / `.env.staging.example`.)
 
 Then create the account one of two ways.
 
-**From the server host** (simplest — the CLI reads the env var):
+**From the server host**, inside the backend container. Run from the host
+itself, `codeframe auth register` cannot pass the host-local gate: its request
+reaches the container from the Docker bridge gateway (`172.17.0.1`), not from
+loopback, so it is refused with 403 unless it also carries the token. Inside
+the container the backend is on loopback, so this works with or without one:
 
 ```bash
 ssh your-server
 cd /path/to/codeframe
-set -a; . ./.env.production; set +a          # exports CODEFRAME_BOOTSTRAP_TOKEN
-# Point the CLI at the loopback backend — its default is :8080, not your
-# BACKEND_PORT. This hits the app directly, bypassing Caddy.
-CODEFRAME_API_URL="http://127.0.0.1:${BACKEND_PORT:-8000}" \
-  codeframe auth register --email you@example.com
+docker compose --env-file .env.production \
+  -f docker-compose.yml -f docker-compose.production.yml \
+  exec -e CODEFRAME_API_URL=http://127.0.0.1:14200 \
+  backend codeframe auth register --email you@example.com
 ```
 
-(`--bootstrap-token` overrides the env var if you would rather pass it inline.)
+`14200` is the port inside the container for both stages, not the published
+`BACKEND_PORT` (14400 in production). For staging, use `.env.staging` and
+`docker-compose.staging.yml`. Add `--bootstrap-token "$TOKEN"` if the token is
+set: once it is set, it is required even on loopback.
 
 **From your browser**, at `https://your-domain/login` → *"First time here? Create
 the first account"*: fill in email, password, and paste the token into
@@ -140,8 +152,8 @@ The password must be at least 12 characters and must not be the email address
 password or email later through `PATCH /users/me`, send the current one in
 `current_password`. A token alone is not enough.
 
-After the account exists, remove `CODEFRAME_BOOTSTRAP_TOKEN` from the
-environment if you like — the route is closed either way, and a token left in
+After the account exists, delete the `CODEFRAME_BOOTSTRAP_TOKEN` secret if
+you like — the route is closed either way, and a token left in
 place has no further use.
 
 ### Adding more accounts
@@ -349,6 +361,26 @@ check that distinguishes the two.
 
 Volumes are untouched by a rollback — the database and workspaces are outside
 the image by design.
+
+So a rollback does not undo a migration the newer image applied. For that, every
+deploy first takes an online SQLite backup of `/data/codeframe.db`
+(`deploy/backup-db.sh`, #1295), and the deploy fails if this host has a data
+volume with no database in it. Production keeps the last 10 in
+`backups/backup-<ts>.tar.gz` (as `backup-<ts>/codeframe.db`, next to the env and
+compose files), and staging keeps them as `backups/codeframe-<ts>.db.gz`. To
+restore one, unpack it to `./restore/codeframe.db`, then:
+
+```bash
+$COMPOSE stop backend
+docker run --rm -v codeframe_codeframe-data:/data -v "$PWD/restore":/restore:ro \
+  alpine:3.20 sh -c 'cp /restore/codeframe.db /data/codeframe.db &&
+    rm -f /data/codeframe.db-wal /data/codeframe.db-shm &&
+    chown 10001:10001 /data/codeframe.db'
+$COMPOSE start backend
+```
+
+Delete the `-wal`/`-shm` files: left beside a restored DB, SQLite would replay
+the old WAL onto it.
 
 ### Diagnosing a failed deploy
 
