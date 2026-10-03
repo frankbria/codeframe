@@ -210,7 +210,9 @@ class TestRestart:
         try:
             control._stop_heartbeat()  # the process died; its file stays behind
             runtime.stop_run(ws, task.id)
-            monkeypatch.setattr(run_control, "STALE_AFTER_S", 0)
+            # Far below zero: a WSL2 clock correction can put the file's mtime a
+            # moment ahead of time.time(), and 0 would then still read as fresh.
+            monkeypatch.setattr(run_control, "STALE_AFTER_S", -3600)
 
             assert runtime.start_task_run(ws, task.id).status == runtime.RunStatus.RUNNING
         finally:
@@ -348,12 +350,14 @@ class TestRetriesLeaveAStoppedTaskAlone:
         assert conductor._stopped_by_user(ws, failed.id, since=epoch) is False
 
     def test_the_retry_loop_reruns_only_the_real_failure(self, ws, monkeypatch):
-        from datetime import datetime, timezone
+        from datetime import datetime, timedelta, timezone
 
         from codeframe.core import conductor
         from codeframe.core.conductor import BatchRun, BatchStatus, OnFailure
 
-        batch_started = datetime.now(timezone.utc)  # the runs below are this batch's
+        # The runs below are this batch's. Margin for a clock correction between
+        # this line and the runs' own timestamps.
+        batch_started = datetime.now(timezone.utc) - timedelta(minutes=5)
         stopped, _ = _start(ws)
         runtime.stop_run(ws, stopped.id)
         failed, failed_run = _start(ws)

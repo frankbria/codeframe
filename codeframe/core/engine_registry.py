@@ -89,6 +89,37 @@ def _reject_cloud_unless_enabled(engine: str) -> None:
     )
 
 
+def resolve_workspace_engine(cli_engine: str | None, repo_path: "Path") -> str:
+    """The engine a task runs on: flag, then CODEFRAME_ENGINE, then the
+    workspace config (``.codeframe/config.yaml`` / CODEFRAME.md), then react.
+
+    The one resolver for ``work start``, ``work resume``, ``work retry`` and
+    ``work batch run`` (#1281). Resume used to hard-default to react and retry
+    had no choice at all, so a claude-code task switched engines mid-way.
+    """
+    engine = cli_engine or os.environ.get("CODEFRAME_ENGINE")
+    if not engine:
+        from codeframe.core.config import load_environment_config
+
+        config = load_environment_config(Path(repo_path))
+        engine = config.engine if config else None
+    return resolve_engine(engine)
+
+
+def refuse_dry_run_for_external_engine(engine: str, dry_run: bool) -> None:
+    """Raise when ``--dry-run`` meets an engine that cannot honour it (#1281).
+
+    A delegated CLI edits the repository directly, so the flag never reached
+    it: the run completed for real, the task went DONE, and auto-close could
+    close the linked GitHub issue. Refuse rather than pretend.
+    """
+    if dry_run and is_external_engine(engine):
+        raise ValueError(
+            f"--dry-run is not supported by the {engine} engine: it runs a coding "
+            "agent that edits the repository directly. Use --engine react to preview."
+        )
+
+
 def resolve_engine(cli_engine: str | None = None) -> str:
     """Resolve which engine to use.
 

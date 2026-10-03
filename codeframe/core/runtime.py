@@ -807,11 +807,15 @@ def execute_agent(
     from codeframe.core.diagnostics import RunLogger, LogCategory
     from codeframe.core.engine_registry import (
         is_external_engine, resolve_engine, get_external_adapter, get_builtin_adapter,
+        refuse_dry_run_for_external_engine,
     )
     from codeframe.core.adapters.agent_adapter import AgentEvent as AdapterEvent
 
     # Resolve engine (handles "built-in" alias and CODEFRAME_ENGINE env var)
     engine = resolve_engine(engine)
+    # The CLI refuses this before creating a run; this catches every other
+    # caller, and _fail_run_on_escape fails the run it was handed (#1281).
+    refuse_dry_run_for_external_engine(engine, dry_run)
 
     # Resolve LLM provider: CLI flag → env var → workspace config → default "anthropic"
     from codeframe.core.llm_resolution import resolve_llm_settings, create_provider
