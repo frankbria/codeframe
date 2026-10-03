@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, TypedDict
@@ -41,9 +42,6 @@ class GitHubIntegrationConfig(TypedDict):
     owner_login: str
     owner_avatar_url: str
     connected_at: str
-    #: The CodeFRAME user who connected the repo, whose own credential store
-    #: holds the PAT (#1283). None for a CLI/machine-wide connection.
-    owner_user_id: Optional[int]
 
 
 def _config_path(workspace: Workspace) -> Path:
@@ -70,7 +68,6 @@ def load_github_integration_config(
             "owner_login": str(data.get("owner_login") or ""),
             "owner_avatar_url": str(data.get("owner_avatar_url") or ""),
             "connected_at": str(data.get("connected_at") or ""),
-            "owner_user_id": _as_user_id(data.get("owner_user_id")),
         }
     except (OSError, json.JSONDecodeError, ValueError) as e:
         logger.warning(
@@ -95,7 +92,6 @@ def save_github_integration_config(
         "connected_at": str(
             config.get("connected_at") or datetime.now(timezone.utc).isoformat()
         ),
-        "owner_user_id": _as_user_id(config.get("owner_user_id")),
     }
     path = _config_path(workspace)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -115,7 +111,62 @@ def save_github_integration_config(
     return payload
 
 
-def _as_user_id(value: object) -> Optional[int]:
+#: Which user connected each workspace's repo, and so whose credential store
+#: holds its PAT (#1283). Kept beside the credential store, NOT in the
+#: workspace: ``.codeframe/`` is writable by whatever runs in the workspace, and
+#: a forged owner id there would make the background paths use another
+#: account's PAT (codex review). Only the authenticated connect route writes it.
+_OWNERS_FILENAME = "github_connection_owners.json"
+_owners_lock = threading.Lock()
+
+
+def _owners_path() -> Path:
+    from codeframe.core import credentials
+
+    return Path(credentials.DEFAULT_STORAGE_DIR) / _OWNERS_FILENAME
+
+
+def _workspace_key(workspace: Workspace) -> str:
+    return str(Path(workspace.repo_path).resolve())
+
+
+def _read_owners() -> dict:
+    try:
+        data = json.loads(_owners_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def record_connection_owner(workspace: Workspace, user_id: Optional[int]) -> None:
+    """Record (or with ``None`` forget) who connected this workspace's repo."""
+    with _owners_lock:
+        owners = _read_owners()
+        key = _workspace_key(workspace)
+        if user_id is None:
+            if owners.pop(key, None) is None:
+                return
+        else:
+            owners[key] = user_id
+        path = _owners_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w") as f:
+                f.write(json.dumps(owners, indent=2))
+            os.replace(tmp_name, path)
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+
+
+def connection_owner(workspace: Workspace) -> Optional[int]:
+    """The user who connected this workspace's repo through the web UI, if any."""
+    value = _read_owners().get(_workspace_key(workspace))
     if isinstance(value, bool) or not isinstance(value, int):
         return None
     return value
@@ -126,7 +177,8 @@ def resolve_background_pat(workspace: Workspace) -> Optional[str]:
 
     Auto-close and reconciliation run with no principal. The PAT a user
     connected in the web UI lives in *that user's* store (#790), so they read
-    the owner recorded at connect time first, store before environment so an
+    the owner recorded at connect time (outside the workspace, see
+    ``record_connection_owner``) first, store before environment so an
     operator's ambient GITHUB_TOKEN cannot act for the user (#900). Then the
     machine-wide store / GITHUB_TOKEN, for CLI-connected and legacy
     workspaces. Never raises; None when there is no usable PAT.
@@ -134,8 +186,7 @@ def resolve_background_pat(workspace: Workspace) -> Optional[str]:
     from codeframe.core.credentials import CredentialManager, CredentialProvider
 
     try:
-        config = load_github_integration_config(workspace)
-        owner = config.get("owner_user_id") if config else None
+        owner = connection_owner(workspace)
         if owner is not None:
             pat = CredentialManager(user_id=owner, migrate=False).get_credential(
                 CredentialProvider.GIT_GITHUB, prefer_stored=True
@@ -155,6 +206,10 @@ def clear_github_integration_config(workspace: Workspace) -> None:
         path.unlink(missing_ok=True)
     except OSError as e:
         logger.warning("Failed to remove github_integration.json: %s", e)
+    try:
+        record_connection_owner(workspace, None)
+    except OSError as e:
+        logger.warning("Failed to forget the GitHub connection owner: %s", e)
 
 
 class GitHubResolutionError(Exception):

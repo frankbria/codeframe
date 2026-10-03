@@ -21,7 +21,9 @@ from codeframe.core import credentials as creds_mod
 from codeframe.core import tasks
 from codeframe.core.credentials import CredentialManager, CredentialProvider, CredentialStore
 from codeframe.core.github_integration_config import (
-    load_github_integration_config,
+    clear_github_integration_config,
+    connection_owner,
+    record_connection_owner,
     resolve_background_pat,
     save_github_integration_config,
 )
@@ -53,15 +55,28 @@ def _store(user_id, pat):
 
 
 def _connect_config(ws, owner=OWNER):
-    save_github_integration_config(
-        ws, {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": "", "owner_user_id": owner}
-    )
+    save_github_integration_config(ws, {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""})
+    record_connection_owner(ws, owner)
 
 
 class TestTheResolver:
-    def test_the_owner_is_recorded_with_the_repo(self, ws):
+    def test_the_owner_is_recorded_and_forgotten_on_disconnect(self, ws):
         _connect_config(ws)
-        assert load_github_integration_config(ws)["owner_user_id"] == OWNER
+        assert connection_owner(ws) == OWNER
+        clear_github_integration_config(ws)
+        assert connection_owner(ws) is None
+
+    def test_an_owner_forged_in_the_workspace_is_ignored(self, ws, tmp_path):
+        """`.codeframe/` is writable by whatever runs in the workspace; an owner
+        id written there must not unlock another account's PAT (codex P1)."""
+        import json
+
+        _store(99, "ghp_victim_fake_0000")
+        save_github_integration_config(ws, {"repo": "acme/app", "owner_login": "acme", "owner_avatar_url": ""})
+        cfg = ws.state_dir / "github_integration.json"
+        cfg.write_text(json.dumps({**json.loads(cfg.read_text()), "owner_user_id": 99}))
+
+        assert resolve_background_pat(ws) is None
 
     def test_the_owners_pat_is_used(self, ws):
         _connect_config(ws)

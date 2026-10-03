@@ -52,6 +52,7 @@ from codeframe.core.github_issues_service import (
 from codeframe.core.github_integration_config import (
     clear_github_integration_config,
     load_github_integration_config,
+    record_connection_owner,
     save_github_integration_config,
 )
 from codeframe.core import tasks
@@ -323,11 +324,11 @@ async def connect(
                 "repo": result["repo_full_name"],
                 "owner_login": result["owner_login"],
                 "owner_avatar_url": result["owner_avatar_url"],
-                # Whose store holds the PAT, for auto-close and
-                # reconciliation, which run with no request (#1283).
-                "owner_user_id": _auth.get("user_id"),
             },
         )
+        # Whose store holds the PAT, for auto-close and reconciliation, which
+        # run with no request (#1283). Recorded outside the workspace.
+        record_connection_owner(workspace, _auth.get("user_id"))
     except OSError as e:
         # Roll back the credential so we don't leave a half-connected state.
         # Restore the prior token if there was one; only delete when the slot
