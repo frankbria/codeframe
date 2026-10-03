@@ -454,14 +454,24 @@ def ambiguity_to_dict(amb: Ambiguity) -> dict[str, object]:
 #: examples stay inside it; ``strip_code_fence`` would return the first inner
 #: block instead and store a code snippet as the PRD.
 _OUTER_FENCE_RE = re.compile(
-    r"\A(?:[^`\n]*\n){0,3}?[ \t]*```[ \t]*(?:markdown|md)?[ \t]*\n(.*)\n[ \t]*```[ \t]*\Z",
+    r"\A(?:[^`#\n][^`\n]*\n|\n){0,3}?[ \t]*```[ \t]*(?:markdown|md)?[ \t]*\n(.*)\n[ \t]*```[ \t]*\Z",
     re.DOTALL | re.IGNORECASE,
 )
+_FENCE_LINE_RE = re.compile(r"^[ \t]*```", re.MULTILINE)
 
 
 def _unwrap_outer_fence(content: str) -> str:
+    """Unwrap a reply that is one fenced block, never a PRD shaped like one.
+
+    The preamble may not contain a heading, and the unwrapped text must leave
+    every inner fence balanced: a real PRD that opens with a title and a code
+    block and ends with another would otherwise lose its title and its first
+    and last fences (#1293 review).
+    """
     match = _OUTER_FENCE_RE.match(content)
-    return match.group(1).strip() if match else content
+    if not match or len(_FENCE_LINE_RE.findall(match.group(1))) % 2:
+        return content
+    return match.group(1).strip()
 
 
 def resolve_ambiguities_into_prd(

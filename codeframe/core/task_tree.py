@@ -75,7 +75,9 @@ def classify_task(
     # Normalised, not exact: "Atomic." and "**composite**" are answers. A reply
     # naming neither (or both) is not, and defaulting it to "atomic" turned a
     # parse failure into a whole-PRD task (#1293, the #1115 rule).
-    found = set(re.findall(r"\b(atomic|composite)\b", response.content.lower()))
+    # "not atomic" / "non-atomic" mean composite; `\b` would read them as atomic.
+    answer = re.sub(r"\b(?:not|non)[\s-]+atomic\b", "composite", response.content.lower())
+    found = set(re.findall(r"\b(atomic|composite)\b", answer))
     if len(found) == 1:
         return found.pop()
     raise task_module.TaskGenerationError(

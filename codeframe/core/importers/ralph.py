@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from codeframe.core.state_machine import TaskStatus
+from codeframe.core.state_machine import TaskStatus, transition_path
 
 # Section headings in fix_plan.md whose unchecked items do not block ralph's
 # exit; they import as BACKLOG instead of READY. Overridable per project via
@@ -252,15 +252,6 @@ def _external_url(section: str, title: str, seen: set[str]) -> str:
     return candidate
 
 
-#: Legal transitions from a status to DONE, for an item completed upstream.
-_PATH_TO_DONE = {
-    TaskStatus.BACKLOG: [TaskStatus.READY, TaskStatus.IN_PROGRESS, TaskStatus.DONE],
-    TaskStatus.READY: [TaskStatus.IN_PROGRESS, TaskStatus.DONE],
-    TaskStatus.BLOCKED: [TaskStatus.IN_PROGRESS, TaskStatus.DONE],
-    TaskStatus.FAILED: [TaskStatus.IN_PROGRESS, TaskStatus.DONE],
-}
-
-
 def map_tasks(project: RalphProject) -> tuple[list[dict], list[dict]]:
     """Map fix_plan items to task specs ready for ``tasks.create()``.
 
@@ -443,7 +434,7 @@ def import_ralph_project(
     Raises:
         RalphProjectNotFoundError: if ``ralph_path`` is not a ralph project.
     """
-    from codeframe.core import prd, tasks
+    from codeframe.core import prd, runtime, tasks
     from codeframe.core.workspace import (
         create_or_load_workspace,
         get_workspace,
@@ -551,12 +542,17 @@ def import_ralph_project(
         if item["external_url"] in pending_keys:
             continue
         existing = tasks.get_by_external_url(workspace, item["external_url"])
-        if existing is None or existing.status not in _PATH_TO_DONE:
-            if existing is not None and existing.status == TaskStatus.IN_PROGRESS:
-                item["reason"] = "completed in fix_plan.md; left IN_PROGRESS (a run is active)"
+        if existing is None or existing.status in (TaskStatus.DONE, TaskStatus.MERGED):
+            continue
+        # A RUNNING or BLOCKED run owns the task: walking it to DONE would leave
+        # that run and its open blocker behind against a finished task.
+        if existing.status == TaskStatus.IN_PROGRESS or runtime.get_active_run(workspace, existing.id):
+            item["reason"] = (
+                f"completed in fix_plan.md; left {existing.status.value} (a run is active)"
+            )
             continue
         if not dry_run:
-            for step in _PATH_TO_DONE[existing.status]:
+            for step in transition_path(existing.status, TaskStatus.DONE):
                 tasks.update_status(workspace, existing.id, step, github_autoclose=False)
         item["reason"] = "completed in fix_plan.md; marked DONE"
 

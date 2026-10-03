@@ -219,3 +219,49 @@ def test_a_reimport_keeps_existing_duplicate_keys_and_completes_nothing_ambiguou
 
     found = [(t.title, t.status) for t in tasks.list_tasks(get_workspace(root))]
     assert found == [("Add login", TaskStatus.READY)]
+
+
+@pytest.mark.parametrize("reply", ["Not atomic", "non-atomic", "This is not atomic."])
+def test_a_negated_atomic_is_composite(reply):
+    """`\\b` matched 'atomic' inside 'not atomic' / 'non-atomic' (review)."""
+    provider = MockProvider()
+    provider.add_text_response(reply)
+    assert classify_task(provider, "task", []) == "composite"
+
+
+def test_a_prd_that_opens_and_ends_with_code_blocks_is_not_unwrapped():
+    """A title plus an untagged opening block read as preamble + outer fence,
+    so the title and the first/last fences were stripped and the
+    unbalanced remainder stored (review)."""
+    body = (
+        "# Search\n\n```\nproj/\n  src/\n```\n\n"
+        + "Results are sorted by relevance. " * 40
+        + "\n\n## API\n\n```\nGET /search?q=x\n```"
+    )
+    result = _refine(LLMResponse(content=body, stop_reason="end_turn"))
+    assert result == body.strip()
+
+
+def test_a_blocked_task_with_an_active_run_is_left_alone(tmp_path, monkeypatch):
+    """Walking it to DONE left its run BLOCKED and its blocker open against a
+    finished task (review)."""
+    from codeframe.core import runtime
+    from codeframe.core.importers.ralph import import_ralph_project
+    from codeframe.core.workspace import get_workspace
+
+    root = tmp_path / "proj"
+    (root / ".ralph").mkdir(parents=True)
+    plan = root / ".ralph" / "fix_plan.md"
+    plan.write_text("## Auth\n- [ ] Add login\n")
+    import_ralph_project(root)
+    ws = get_workspace(root)
+    (task,) = tasks.list_tasks(ws)
+    tasks.update_status(ws, task.id, TaskStatus.IN_PROGRESS)
+    tasks.update_status(ws, task.id, TaskStatus.BLOCKED)
+    monkeypatch.setattr(runtime, "get_active_run", lambda w, tid: object() if tid == task.id else None)
+
+    plan.write_text("## Auth\n- [x] Add login\n")
+    report = import_ralph_project(root)
+
+    assert tasks.get(ws, task.id).status == TaskStatus.BLOCKED
+    assert any("run is active" in s["reason"] for s in report.tasks_skipped)
