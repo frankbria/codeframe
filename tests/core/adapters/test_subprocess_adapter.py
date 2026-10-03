@@ -1,5 +1,6 @@
 """Tests for SubprocessAdapter base class."""
 
+import itertools
 import subprocess
 import sys
 import time
@@ -197,12 +198,20 @@ class TestSubprocessAdapterRun:
         ]
         mock_process.returncode = -9
 
-        with patch("subprocess.Popen", return_value=mock_process):
+        # The adapter polls once a second (#1279); jump its clock past the
+        # deadline instead of sleeping. The whole process group is killed via
+        # terminate_tree, which refuses a mock, so it is patched here; the real
+        # kill is covered by the real-child test below.
+        clock = itertools.chain([0.0], itertools.repeat(100.0))
+        with patch("subprocess.Popen", return_value=mock_process), patch(
+            "codeframe.core.adapters.subprocess_adapter.time.monotonic",
+            side_effect=lambda: next(clock),
+        ), patch("codeframe.core.run_control.terminate_tree") as kill_tree:
             result = adapter.run("task-1", "fix", Path("/tmp"))
 
         assert result.status == "failed"
         assert "timed out" in result.error
-        mock_process.kill.assert_called_once()
+        kill_tree.assert_called_once_with(mock_process)
 
     def test_real_child_stalling_with_stdout_open_is_killed_at_timeout(self, tmp_path):
         """A real child that keeps stdout open past the timeout must be killed (#736).

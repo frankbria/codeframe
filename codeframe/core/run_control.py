@@ -301,9 +301,14 @@ def _killpg(pgid: int, sig: int) -> None:
         pass  # every member already gone
 
 
+#: Captured at import: tests patch ``subprocess.Popen`` with a mock, which
+#: would make an isinstance check against the live attribute raise TypeError.
+_POPEN = subprocess.Popen
+
+
 def _terminate_direct_child(proc: object, grace_s: float) -> None:
     """Signal ``proc`` alone, by pid. Only a real, unreaped child of ours."""
-    if not isinstance(proc, subprocess.Popen):
+    if not isinstance(proc, _POPEN):
         return  # a mock or stand-in: nothing real to stop
     pid = proc.pid
     if not isinstance(pid, int) or pid <= 1 or not _owned_unreaped(pid):
