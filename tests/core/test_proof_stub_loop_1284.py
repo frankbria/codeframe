@@ -55,11 +55,26 @@ def ws(tmp_path):
     return w
 
 
+#: What the E2E and DEMO stubs advise: drive the CLI through subprocess and
+#: assert on its output. Implemented that way, so the SEC gate scanning the same
+#: tree is exercised against what the stubs actually recommend (review).
+_DRIVES_THE_CLI = (
+    "import subprocess\n"
+    "    out = subprocess.run(['echo', 'fixed'], capture_output=True, text=True)\n"
+    "    assert out.stdout.strip() == 'fixed'"
+)
+
+
 def _implement(path):
     """Do what the stub says: make it a real test, then rename it."""
     text = path.read_text(encoding="utf-8")
     assert _PLACEHOLDER.search(text), f"{path.name} has no placeholder to implement"
-    path.write_text(_PLACEHOLDER.sub(r"\1assert 1 + 1 == 2", text), encoding="utf-8")
+    body = (
+        _DRIVES_THE_CLI
+        if ("_e2e" in path.name or "_demo" in path.name)
+        else "assert 1 + 1 == 2"
+    )
+    path.write_text(_PLACEHOLDER.sub(lambda m: m.group(1) + body, text, count=1), encoding="utf-8")
     final = path.with_name(path.name.removeprefix("draft_"))
     path.rename(final)
     return final
