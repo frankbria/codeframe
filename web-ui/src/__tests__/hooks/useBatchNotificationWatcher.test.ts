@@ -126,6 +126,24 @@ describe('useBatchNotificationWatcher', () => {
     );
   });
 
+  it('does not announce a blocker for a dependency skip (#1280)', async () => {
+    const addNotification = jest.fn();
+    queueResponses(
+      listResponse([batch({ status: 'RUNNING', results: { t1: 'READY' } })]),
+      listResponse([batch({ status: 'RUNNING', results: { t1: 'SKIPPED' } })])
+    );
+
+    renderHook(() => useBatchNotificationWatcher(addNotification, { intervalMs: INTERVAL }));
+    await flushPoll();
+    await tick();
+    await flushPoll();
+    await tick();
+
+    expect(addNotification).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'blocker.created' })
+    );
+  });
+
   it('fires blocker.created with the task title when a task transitions to BLOCKED', async () => {
     const addNotification = jest.fn();
     queueResponses(

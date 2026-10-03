@@ -1186,7 +1186,12 @@ def stop_batch(workspace: Workspace, batch_id: str, force: bool = False) -> Batc
 
 #: Batch results a resume re-runs. "RUNNING" is a stale result left by a
 #: crashed or killed subprocess (#742), so it is retryable too.
-_RESUMABLE_RESULTS = frozenset({"FAILED", "BLOCKED", "RUNNING"})
+_RESUMABLE_RESULTS = frozenset({"FAILED", "BLOCKED", "RUNNING", "SKIPPED"})
+
+#: Result for a task not run because an in-batch dependency did not complete
+#: (#1280). Distinct from BLOCKED: nothing is waiting on a human, so the web
+#: UI must not announce a blocker, and `resume --reset` must not touch it.
+SKIPPED = "SKIPPED"
 
 
 def resumable_task_ids(batch: BatchRun, force: bool = False) -> list[str]:
@@ -1251,20 +1256,41 @@ def _unmet_dependency(workspace: Workspace, batch: BatchRun, task_id: str) -> Op
     lone task runs today.
     """
     task = tasks.get(workspace, task_id)
-    for dep in (task.depends_on if task else []):
-        if dep in batch.task_ids and batch.results.get(dep) != RunStatus.COMPLETED.value:
+    deps = [d for d in (task.depends_on if task else []) if d in batch.task_ids]
+    if not deps:
+        return None
+    # A cycle has no valid order, and the batch already falls back to running
+    # it serially (#959); enforcing the rule there would skip every member.
+    # ponytail: rebuilds the graph per task, O(n^2) reads; cache per batch if batches grow large.
+    try:
+        create_execution_plan(workspace, batch.task_ids)
+    except CycleDetectedError:
+        return None
+    for dep in deps:
+        if batch.results.get(dep) != RunStatus.COMPLETED.value:
             return dep
     return None
 
 
-def _skip_for_dependency(batch: BatchRun, task_id: str, dep: str) -> str:
-    """Record ``task_id`` as BLOCKED on ``dep`` without running it (#1280).
+def _skip_for_dependency(
+    workspace: Workspace, batch: BatchRun, task_id: str, dep: str
+) -> str:
+    """Record ``task_id`` as SKIPPED on ``dep`` without running it (#1280).
 
-    BLOCKED rather than FAILED: nothing about the task itself went wrong, and a
-    resume re-runs it once the dependency is fixed.
+    Not FAILED: nothing about the task itself went wrong. A resume, or the next
+    --retry round, runs it once the dependency has completed.
     """
     logger.warning("Skipping %s: its dependency %s did not complete", task_id, dep)
-    return _record_task_result(batch, task_id, RunStatus.BLOCKED.value)
+    result = _record_task_result(batch, task_id, SKIPPED)
+    _save_batch(workspace, batch)
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.BATCH_TASK_FAILED,
+        {"batch_id": batch.id, "task_id": task_id, "status": SKIPPED,
+         "reason": "dependency", "dependency": dep},
+        print_event=True,
+    )
+    return result
 
 
 def resume_batch(
@@ -1407,18 +1433,11 @@ def _execute_serial_resume(
     finalized = {"done": False}
     try:
         _run_serial_resume(workspace, batch, tasks_to_run, finalized, on_event)
-    except Exception:
-        logger.exception("Batch resume failed unexpectedly")
+    except BaseException as exc:
+        # Ctrl+C or SIGTERM too, or the batch stays RUNNING and resume
+        # then refuses it (#1280 review).
         if not finalized["done"]:
-            batch.status = BatchStatus.FAILED
-            batch.completed_at = _utc_now()
-            _save_batch(workspace, batch)
-            events.emit_for_workspace(
-                workspace,
-                events.EventType.BATCH_FAILED,
-                {"batch_id": batch.id, "error": "unexpected execution error", "is_resume": True},
-                print_event=True,
-            )
+            _record_batch_aborted(workspace, batch, exc, strategy="serial-resume")
         raise
 
 
@@ -1458,9 +1477,10 @@ def _run_serial_resume(
 
         dep = _unmet_dependency(workspace, batch, task_id)
         if dep is not None:  # same rule as a first run (#1280)
-            _skip_for_dependency(batch, task_id, dep)
-            _save_batch(workspace, batch)
+            _skip_for_dependency(workspace, batch, task_id, dep)
             blocked_count += 1
+            if on_event:
+                on_event("batch_task_completed", {"task_id": task_id, "status": SKIPPED})
             continue
 
         # Get task info for display
@@ -1632,15 +1652,18 @@ def _run_retries(
     on_event: Optional[Callable[[str, dict], None]] = None,
 ) -> None:
     """Retry loop + finalization for :func:`_execute_retries` (#848)."""
-    failed_statuses = {RunStatus.FAILED.value}  # Only retry FAILED, not BLOCKED
+    # FAILED, not BLOCKED (a human must answer). SKIPPED too: a task skipped
+    # because its dependency failed gets its turn once a retry fixes that
+    # dependency, which the round below runs first (#1280 review).
+    failed_statuses = {RunStatus.FAILED.value, SKIPPED}
 
     for retry_num in range(1, max_retries + 1):
-        # Find tasks that failed
-        failed_tasks = [
+        # Find tasks that failed, prerequisites first
+        failed_tasks = _in_dependency_order(workspace, [
             tid for tid in batch.task_ids
             if batch.results.get(tid) in failed_statuses
             and not _stopped_by_user(workspace, tid, since=batch.started_at)
-        ]
+        ])
 
         if not failed_tasks:
             # All tasks succeeded, no retries needed
@@ -1674,6 +1697,12 @@ def _run_retries(
             current_batch = get_batch(workspace, batch.id)
             if current_batch and current_batch.status == BatchStatus.CANCELLED:
                 return
+
+            # Its dependency may have failed again in this round.
+            dep = _unmet_dependency(workspace, batch, task_id)
+            if dep is not None:
+                _skip_for_dependency(workspace, batch, task_id, dep)
+                continue
 
             task = tasks.get(workspace, task_id)
             task_title = task.title if task else task_id
@@ -1916,16 +1945,10 @@ def _execute_serial(
 
             dep = _unmet_dependency(workspace, batch, task_id)
             if dep is not None:
-                _skip_for_dependency(batch, task_id, dep)
-                _save_batch(workspace, batch)
-                blocked_count += 1
-                events.emit_for_workspace(
-                    workspace,
-                    events.EventType.BATCH_TASK_BLOCKED,
-                    {"batch_id": batch.id, "task_id": task_id, "reason": "dependency",
-                     "dependency": dep},
-                    print_event=True,
-                )
+                _skip_for_dependency(workspace, batch, task_id, dep)
+                blocked_count += 1  # not completed; feeds the PARTIAL/FAILED verdict
+                if on_event:
+                    on_event("batch_task_completed", {"task_id": task_id, "status": SKIPPED})
                 continue
 
             # Get task info for display
@@ -2444,9 +2467,7 @@ def _execute_single_task(
     # Same dependency rule as the pool worker and the serial loop (#1280).
     dep = _unmet_dependency(workspace, batch, task_id)
     if dep is not None:
-        _skip_for_dependency(batch, task_id, dep)
-        _save_batch(workspace, batch)
-        return batch.results[task_id]
+        return _skip_for_dependency(workspace, batch, task_id, dep)
 
     # Emit task queued event
     events.emit_for_workspace(
@@ -2597,9 +2618,7 @@ def _execute_group_parallel(
         # Groups run in dependency order, so an earlier group's result is in.
         dep = _unmet_dependency(workspace, batch, task_id)
         if dep is not None:
-            _skip_for_dependency(batch, task_id, dep)
-            _save_batch(workspace, batch)
-            return task_id, batch.results[task_id]
+            return task_id, _skip_for_dependency(workspace, batch, task_id, dep)
 
         # Emit task started event
         events.emit_for_workspace(

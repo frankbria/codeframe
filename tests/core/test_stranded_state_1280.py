@@ -96,6 +96,19 @@ class TestCtrlC:
 
         assert conductor.get_batch(ws, batch.id).status == BatchStatus.CANCELLED
 
+    def test_an_interrupted_resume_is_cancelled_not_left_running(self, ws, monkeypatch):
+        a = _task(ws, "a")
+        batch = _batch(ws, [a.id], results={a.id: "FAILED"})
+
+        def interrupted(*args, **kwargs):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(conductor, "_execute_task_subprocess", interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            conductor._execute_serial_resume(ws, batch, [a.id])
+
+        assert conductor.get_batch(ws, batch.id).status == BatchStatus.CANCELLED
+
 
 # 3. Graceful stop -------------------------------------------------------------
 
@@ -135,7 +148,48 @@ class TestADependentOfAFailedTaskIsNotRun:
         run_batch(ws, batch)
 
         assert ran == [a.id], "B ran although A failed"
-        assert conductor.get_batch(ws, batch.id).results[b.id] == RunStatus.BLOCKED.value
+        # SKIPPED, not BLOCKED: nobody has a question to answer, so the web UI
+        # must not announce a blocker (review).
+        assert conductor.get_batch(ws, batch.id).results[b.id] == conductor.SKIPPED
+
+    def test_a_retry_round_recovers_the_chain(self, ws, monkeypatch):
+        """A fails once, then succeeds on --retry; B and C must get their turn
+        rather than stay skipped (review)."""
+        a = _task(ws, "a")
+        b = _task(ws, "b", depends_on=[a.id])
+        c = _task(ws, "c", depends_on=[b.id])
+        batch = _batch(ws, [a.id, b.id, c.id])
+        ran: list[str] = []
+
+        def execute(_ws, task_id, *args, **kwargs):
+            ran.append(task_id)
+            first_try = ran.count(task_id) == 1
+            return RunStatus.FAILED.value if task_id == a.id and first_try else RunStatus.COMPLETED.value
+
+        monkeypatch.setattr(conductor, "_execute_task_subprocess", execute)
+        conductor._execute_serial(ws, batch)
+        conductor._run_retries(ws, batch, max_retries=1)
+
+        assert ran == [a.id, a.id, b.id, c.id]
+        assert set(conductor.get_batch(ws, batch.id).results.values()) == {RunStatus.COMPLETED.value}
+
+    def test_a_dependency_cycle_still_runs(self, ws, monkeypatch):
+        """No order satisfies a cycle; the serial fallback runs it as before
+        instead of skipping every member (review)."""
+        a = _task(ws, "a")
+        b = _task(ws, "b", depends_on=[a.id])
+        tasks.update_depends_on(ws, a.id, [b.id])
+        batch = _batch(ws, [a.id, b.id])
+        ran: list[str] = []
+
+        def execute(_ws, task_id, *args, **kwargs):
+            ran.append(task_id)
+            return RunStatus.COMPLETED.value
+
+        monkeypatch.setattr(conductor, "_execute_task_subprocess", execute)
+        conductor._execute_serial(ws, batch)
+
+        assert sorted(ran) == sorted([a.id, b.id])
 
 
 class TestDependencyOrderNotListOrder:
