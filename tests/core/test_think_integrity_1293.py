@@ -175,3 +175,47 @@ def test_a_ralph_item_checked_off_upstream_is_marked_done_on_reimport(tmp_path):
 
     status = {t.title: t.status for t in tasks.list_tasks(get_workspace(root))}
     assert status == {"Add login": TaskStatus.DONE, "Add logout": TaskStatus.READY}
+
+
+@pytest.mark.parametrize("reply", [
+    '[{"title": "Add search", "description": "d"}]\nThese are the tasks.',
+    'Tasks [1 of them]:\n[{"title": "Add search", "description": "d"}]\nDone [ok].',
+])
+def test_task_json_with_prose_around_it_still_parses(workspace, reply):
+    """Unfencing must not lose the old tolerance for an array with prose
+    around it (codex review)."""
+    provider = MockProvider()
+    provider.add_text_response(reply)
+    record = prd.store(workspace, "# P\n\nBuild it.\n")
+    created = tasks.generate_from_prd(workspace, record, provider=provider)
+    assert [t.title for t in created] == ["Add search"]
+
+
+def test_a_decomposition_with_trailing_prose_parses():
+    provider = MockProvider()
+    provider.add_text_response('[{"title": "A"}, {"title": "B"}]\nThat should cover it.')
+    assert [s["title"] for s in decompose_task(provider, "task", [])] == ["A", "B"]
+
+
+def test_a_reimport_keeps_existing_duplicate_keys_and_completes_nothing_ambiguous(tmp_path):
+    """A checked item followed by an unchecked duplicate: the key an earlier
+    import gave the unchecked one must not change, or a re-import creates a
+    second task and the completion pass marks the original DONE (codex review).
+    The task is seeded with the key the pre-#1293 importer stored: checked
+    items did not consume an ordinal, so the unchecked one got the bare key."""
+    from codeframe.core.importers.ralph import _external_url, import_ralph_project
+    from codeframe.core.workspace import get_workspace
+
+    root = tmp_path / "proj"
+    (root / ".ralph").mkdir(parents=True)
+    (root / ".ralph" / "fix_plan.md").write_text("## Auth\n- [x] Add login\n- [ ] Add login\n")
+    workspace = create_or_load_workspace(root)
+    tasks.create(
+        workspace, title="Add login", status=TaskStatus.READY,
+        external_url=_external_url("Auth", "Add login", set()),
+    )
+
+    import_ralph_project(root)
+
+    found = [(t.title, t.status) for t in tasks.list_tasks(get_workspace(root))]
+    assert found == [("Add login", TaskStatus.READY)]

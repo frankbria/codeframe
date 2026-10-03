@@ -20,7 +20,7 @@ import json
 import re
 from typing import Any
 
-__all__ = ["LLMJsonError", "parse_json_response", "strip_code_fence"]
+__all__ = ["LLMJsonError", "extract_json_array", "parse_json_response", "strip_code_fence"]
 
 #: A fenced block, with or without a language tag, anywhere in the response.
 #: Non-greedy so the *first* complete block wins when a model emits several.
@@ -60,3 +60,31 @@ def parse_json_response(content: str, *, what: str = "response") -> Any:
         raise LLMJsonError(
             f"Could not parse {what} as JSON: {exc}. Content began: {preview!r}"
         ) from exc
+
+
+def extract_json_array(content: str, *, what: str = "response") -> list:
+    """Return the first complete JSON array in an LLM response.
+
+    Unfences first, then decodes from each ``[`` in turn and stops at the end of
+    the first array that parses, so prose brackets before it ("[2 of them]")
+    and prose after it ("These are the tasks.") are both tolerated. A greedy
+    ``\\[...\\]`` search spanned those brackets and reported valid JSON as
+    truncated (#1293).
+
+    Raises:
+        LLMJsonError: If no JSON array can be decoded from the content.
+    """
+    text = strip_code_fence(content or "")
+    decoder = json.JSONDecoder()
+    start = text.find("[")
+    while start != -1:
+        try:
+            value, _ = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            pass
+        else:
+            if isinstance(value, list):
+                return value
+        start = text.find("[", start + 1)
+    preview = text[:200].replace("\n", " ")
+    raise LLMJsonError(f"No JSON array in {what}. Content began: {preview!r}")

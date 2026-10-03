@@ -272,19 +272,20 @@ def map_tasks(project: RalphProject) -> tuple[list[dict], list[dict]]:
     mapped: list[dict] = []
     skipped: list[dict] = []
     seen_urls: set[str] = set()
+    # Checked items get their own ordinals so the keys of unchecked items stay
+    # exactly what earlier imports stored (codex review on #1293).
+    checked_urls: set[str] = set()
 
     for item in project.fix_plan_items:
-        # Computed for checked items too: the key is what lets a re-import find
-        # the task an earlier import created, and skipping it shifted the
-        # ordinal of a later duplicate (#1293).
-        external_url = _external_url(item.section, item.title, seen_urls)
         if item.checked:
+            # The key is what lets a re-import find the task an earlier import
+            # created for this item before it was checked off (#1293).
             skipped.append(
                 {
                     "title": item.title,
                     "section": item.section,
                     "reason": "already completed in fix_plan.md",
-                    "external_url": external_url,
+                    "external_url": _external_url(item.section, item.title, checked_urls),
                 }
             )
             continue
@@ -303,7 +304,7 @@ def map_tasks(project: RalphProject) -> tuple[list[dict], list[dict]]:
                 ),
                 "status": status,
                 "priority": len(mapped),
-                "external_url": external_url,
+                "external_url": _external_url(item.section, item.title, seen_urls),
                 "section": item.section,
             }
         )
@@ -543,7 +544,12 @@ def import_ralph_project(
     # An item checked off upstream since the last import must not stay READY
     # here (#1293). The state machine has no READY -> DONE edge, so walk the
     # legal path; a task a local run holds IN_PROGRESS is left alone.
+    # A key an unchecked item also holds is ambiguous (a duplicate title in the
+    # same section): completing it could close the pending twin, so skip it.
+    pending_keys = {spec["external_url"] for spec in mapped_tasks}
     for item in mapping_skipped if workspace is not None else []:
+        if item["external_url"] in pending_keys:
+            continue
         existing = tasks.get_by_external_url(workspace, item["external_url"])
         if existing is None or existing.status not in _PATH_TO_DONE:
             if existing is not None and existing.status == TaskStatus.IN_PROGRESS:

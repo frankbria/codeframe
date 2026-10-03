@@ -6,14 +6,13 @@ using LLM-powered analysis. Also handles tree display and status propagation.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
-import json
 import logging
 import re
 from typing import Optional
 
 from codeframe.adapters.llm.base import Purpose
 from codeframe.core import tasks as task_module
-from codeframe.core.llm_json import strip_code_fence
+from codeframe.core.llm_json import LLMJsonError, extract_json_array
 from codeframe.core.state_machine import TaskStatus
 from codeframe.core.workspace import Workspace
 
@@ -135,21 +134,12 @@ def _parse_subtasks(content: str) -> list[dict]:
     Raises:
         TaskGenerationError: If no JSON array can be read from the response.
     """
-    candidate = strip_code_fence(content)
-    if not candidate.startswith("["):
-        bracketed = re.search(r"\[[\s\S]*\]", candidate)
-        candidate = bracketed.group(0) if bracketed else candidate
     try:
-        raw = json.loads(candidate)
-    except json.JSONDecodeError as e:
+        raw = extract_json_array(content, what="task decomposition")
+    except LLMJsonError as e:
         raise task_module.TaskGenerationError(
-            f"Could not parse the task decomposition as JSON ({e}). "
-            + task_module._RETRY_HINT
+            f"Could not read the task decomposition: {e}. " + task_module._RETRY_HINT
         ) from e
-    if not isinstance(raw, list):
-        raise task_module.TaskGenerationError(
-            "The task decomposition was not a JSON array. " + task_module._RETRY_HINT
-        )
 
     result = []
     for item in raw:

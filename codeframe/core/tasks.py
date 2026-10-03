@@ -23,7 +23,7 @@ from codeframe.core.state_machine import (
     validate_transition,
 )
 from codeframe.core.workspace import Workspace, get_db_connection
-from codeframe.core.llm_json import strip_code_fence
+from codeframe.core.llm_json import LLMJsonError, extract_json_array, strip_code_fence
 from codeframe.core.prd import PrdRecord
 
 logger = logging.getLogger(__name__)
@@ -1324,17 +1324,15 @@ PRD:
     # Extract JSON from response
     response_text = response.content.strip()
 
-    # Unfence first: the greedy bracket search otherwise spans prose brackets
-    # around a fenced array ("[2 of them]: ```json [...] ``` See [docs]") and
+    # The first complete array wins, whatever prose or fence surrounds it: a
+    # greedy bracket search spanned prose brackets around a fenced array and
     # valid JSON was reported as truncated (#1293).
-    response_text = strip_code_fence(response_text)
-    json_match = None if response_text.startswith("[") else re.search(r"\[[\s\S]*\]", response_text)
     try:
-        tasks_raw = json.loads(json_match.group() if json_match else response_text)
-    except json.JSONDecodeError as e:
+        tasks_raw = extract_json_array(response_text, what="task generation response")
+    except LLMJsonError as e:
         # Distinguish "the model wrote prose" from "the response ran out of
         # tokens" — they need different things from the user (#1115).
-        truncated = not response_text.endswith("]")
+        truncated = not strip_code_fence(response_text).endswith("]")
         detail = (
             "the response was truncated before the JSON array closed"
             if truncated
