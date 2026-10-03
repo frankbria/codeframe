@@ -922,15 +922,33 @@ def execute_agent(
             category = _event_type_to_category(event_type)
             run_logger.info(category, f"Agent event: {event_type}", data)
 
+        # Builtin engines write output.log themselves (they are handed
+        # output_logger). External engines were not, so `cf work follow` and
+        # GET /output showed nothing for them (#1282): write what they report.
+        external = is_external_engine(engine)
+
         # Bridge AgentEvent callbacks to workspace event system
         def on_adapter_event(event: AdapterEvent) -> None:
             on_agent_event(event.type, event.data)
+            if external:
+                # SubprocessAdapter puts an output line in data["line"]; the
+                # cloud (E2B) adapter puts it in message (review).
+                text = (
+                    (event.data.get("line") or event.message)
+                    if event.type == "output" else event.message
+                )
+                if text:
+                    output_logger.write(str(text).rstrip("\n") + "\n")
+                # codex reports what its agent said as an item, not a line.
+                said = event.data.get("text") if event.data.get("type") == "agentMessage" else None
+                if isinstance(said, str) and said.strip():
+                    output_logger.write(said.rstrip("\n") + "\n")
 
         # Get adapter via registry and run
         # Tell the user when their stall flags will be dropped (#957).
         _warn_if_stall_settings_ignored(engine, stall_timeout_s, stall_action)
 
-        if is_external_engine(engine):
+        if external:
             from codeframe.core.context_packager import TaskContextPackager
             from codeframe.core.adapters.verification_wrapper import VerificationWrapper
 

@@ -1275,6 +1275,17 @@ async def stream_task_output_lines(
         run_id = run.id
         current_line = 0
 
+        async def _client_gone_or_run_over() -> bool:
+            # The run finishing ends the stream too, not only the client
+            # leaving: it used to poll a finished run for up to 5 minutes
+            # (#1282 review, matching `cf work follow`).
+            if await request.is_disconnected():
+                return True
+            latest = runtime.get_run(workspace, run_id)
+            return latest is not None and latest.status in (
+                RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.BLOCKED,
+            )
+
         # Check if output exists
         if not streaming.run_output_exists(workspace, run_id):
             yield "event: info\ndata: Waiting for output...\n\n"
@@ -1300,7 +1311,7 @@ async def stream_task_output_lines(
             since_line=current_line,
             poll_interval=0.5,
             max_wait=300.0,  # 5 minute timeout
-            should_stop=request.is_disconnected,
+            should_stop=_client_gone_or_run_over,
         ):
             yield f"event: line\ndata: {line.rstrip()}\n\n"
 

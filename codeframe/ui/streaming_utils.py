@@ -124,7 +124,13 @@ async def event_stream_generator(
         # heartbeats). A duplicate completion is harmless — the loop below stops
         # on the first one it sees.
         if after_subscribe is not None:
-            terminal_event = after_subscribe()
+            try:
+                terminal_event = after_subscribe()
+            except Exception:
+                # Same rule as the heartbeat re-check: a transient DB error
+                # must not end the stream (review).
+                logger.warning("Terminal check failed for %s", task_id, exc_info=True)
+                terminal_event = None
             if terminal_event is not None:
                 yield format_sse_event(terminal_event)
                 return
@@ -146,6 +152,18 @@ async def event_stream_generator(
                     logger.info(f"Task {task_id} completed, closing stream")
                     break
             except asyncio.TimeoutError:
+                # A run finished by another process (a batch subprocess) never
+                # publishes here, so idle is also when to look again (#1282).
+                if after_subscribe is not None:
+                    try:
+                        terminal_event = after_subscribe()
+                    except Exception:
+                        # A transient DB error must not end a live stream.
+                        logger.warning("Terminal re-check failed for %s", task_id, exc_info=True)
+                        terminal_event = None
+                    if terminal_event is not None:
+                        yield format_sse_event(terminal_event)
+                        break
                 yield format_sse_comment("heartbeat")
 
     except asyncio.CancelledError:

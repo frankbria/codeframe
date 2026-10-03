@@ -98,6 +98,9 @@ class RunOutputLogger:
         self.run_id = run_id
         self.log_path = get_run_output_path(workspace, run_id)
         self._file = None  # Initialize before potential mkdir/open failure
+        # Adapter reader threads write here (#1282), and one can outlive the
+        # run when a descendant keeps its stdout open.
+        self._lock = threading.Lock()
 
         # Ensure directory exists
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,8 +116,13 @@ class RunOutputLogger:
         Args:
             message: Message to write (should include newline if desired)
         """
-        self._file.write(message)
-        self._file.flush()
+        with self._lock:
+            # A reader thread that outlived the run must keep draining its
+            # pipe, not die on a closed file and wedge the child (#1282 review).
+            if self._file is None or self._file.closed:
+                return
+            self._file.write(message)
+            self._file.flush()
 
     def write_timestamped(self, message: str) -> None:
         """Write a message with a timestamp prefix.
@@ -129,8 +137,12 @@ class RunOutputLogger:
 
     def close(self) -> None:
         """Close the log file."""
-        if hasattr(self, "_file") and self._file and not self._file.closed:
-            self._file.close()
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            return
+        with lock:
+            if self._file and not self._file.closed:
+                self._file.close()
 
     def __enter__(self) -> "RunOutputLogger":
         """Context manager entry."""
@@ -198,6 +210,7 @@ def tail_run_output(
     poll_interval: float = 0.5,
     max_iterations: Optional[int] = None,
     max_wait: Optional[float] = None,
+    should_stop: Optional["Callable[[], bool]"] = None,
 ) -> Iterator[str]:
     """Tail a run's output log file, yielding new lines.
 
@@ -211,6 +224,9 @@ def tail_run_output(
         poll_interval: How often to check for new lines (seconds)
         max_iterations: Stop after this many poll iterations (for testing)
         max_wait: Maximum total wait time in seconds (for testing)
+        should_stop: Checked on every poll; once it returns True, lines already
+            in the file are yielded and the tail ends (#1282). Without it a
+            finished run that writes nothing more was tailed forever.
 
     Yields:
         Lines from the log file as they appear
@@ -228,8 +244,13 @@ def tail_run_output(
         if max_wait is not None and (time.time() - start_time) >= max_wait:
             break
 
+        # Decided before this poll's read, so the last lines still get out.
+        stopping = should_stop is not None and should_stop()
+
         # Check if file exists
         if not log_path.exists():
+            if stopping:
+                break
             time.sleep(poll_interval)
             iterations += 1
             continue
@@ -246,6 +267,8 @@ def tail_run_output(
         except Exception:
             pass  # File might be temporarily unavailable
 
+        if stopping:
+            break
         time.sleep(poll_interval)
         iterations += 1
 
@@ -345,8 +368,9 @@ async def atail_run_output(
         if max_wait is not None and (time.monotonic() - start_time) >= max_wait:
             break
 
-        if should_stop is not None and await should_stop():
-            break
+        # Decided before this poll's read, so a run that just finished still
+        # gets its last lines out (#1282), as in tail_run_output.
+        stopping = should_stop is not None and await should_stop()
 
         if log_path.exists():
             appended, was_reset = _read_new()
@@ -369,6 +393,8 @@ async def atail_run_output(
                 reached_tail = True
                 yield line + "\n"
 
+        if stopping:
+            break
         await asyncio.sleep(poll_interval)
 
     # Flush a final unterminated line (a log whose last write had no newline),

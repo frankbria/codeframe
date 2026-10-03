@@ -3949,7 +3949,7 @@ def work_follow(
                     if tail and total > tail:
                         console.print(f"[dim](showing last {tail} of {total} lines)[/dim]")
                     for line in lines:
-                        console.print(line.rstrip())
+                        console.print(escape(line.rstrip()))  # agent output, not markup
                 else:
                     console.print("[dim]No output captured for this run.[/dim]")
 
@@ -3973,7 +3973,7 @@ def work_follow(
             if lines:
                 console.print(f"\n[dim]--- Buffered output (last {len(lines)} of {total} lines) ---[/dim]")
                 for line in lines:
-                    console.print(f"[dim]{line.rstrip()}[/dim]")
+                    console.print(f"[dim]{escape(line.rstrip())}[/dim]")
                 console.print("[dim]--- Live output ---[/dim]\n")
                 start_line = total  # Skip already-shown lines
 
@@ -3988,10 +3988,17 @@ def work_follow(
         }
 
         try:
-            import time
+            finished: dict = {}
 
-            last_status_check = time.time()
-            STATUS_CHECK_INTERVAL = 1.0  # Check status every 1 second
+            def run_finished() -> bool:
+                # Checked on every poll, not only when a line arrives: a run
+                # that finishes without writing more was followed forever
+                # (#1282).
+                current_run = runtime.get_run(workspace, active_run.id)
+                if current_run and current_run.status in TERMINAL_STATUSES:
+                    finished["run"] = current_run
+                    return True
+                return False
 
             # Stream output
             for line in tail_run_output(
@@ -4000,26 +4007,21 @@ def work_follow(
                 since_line=start_line,
                 poll_interval=0.3,
                 max_wait=max_wait,
+                should_stop=run_finished,
             ):
-                console.print(line.rstrip())
+                # Raw agent stdout (#1282): a stray `[/b]` must print, not crash.
+                console.print(escape(line.rstrip()))
 
-                # Check run status periodically (not on every line)
-                current_time = time.time()
-                if current_time - last_status_check >= STATUS_CHECK_INTERVAL:
-                    last_status_check = current_time
-                    current_run = runtime.get_run(workspace, active_run.id)
-                    if current_run and current_run.status in TERMINAL_STATUSES:
-                        # Show completion message
-                        status_color = {
-                            runtime.RunStatus.COMPLETED: "green",
-                            runtime.RunStatus.FAILED: "red",
-                            runtime.RunStatus.BLOCKED: "yellow",
-                        }.get(current_run.status, "white")
-
-                        console.print(
-                            f"\n[{status_color}]Run {current_run.status.value}[/{status_color}]"
-                        )
-                        break
+            if "run" in finished:
+                current_run = finished["run"]
+                status_color = {
+                    runtime.RunStatus.COMPLETED: "green",
+                    runtime.RunStatus.FAILED: "red",
+                    runtime.RunStatus.BLOCKED: "yellow",
+                }.get(current_run.status, "white")
+                console.print(
+                    f"\n[{status_color}]Run {current_run.status.value}[/{status_color}]"
+                )
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Streaming interrupted[/yellow]")
