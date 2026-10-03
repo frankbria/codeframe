@@ -54,7 +54,7 @@ from codeframe.core.github_issues_service import (
 from codeframe.core.github_integration_config import (
     clear_github_integration_config,
     load_github_integration_config,
-    record_connection_owner,
+    save_connection,
     save_github_integration_config,
 )
 from codeframe.core import tasks
@@ -320,36 +320,37 @@ async def connect(
         )
 
     prior_config = load_github_integration_config(workspace)
-    saved_config = False
     try:
-        saved = save_github_integration_config(
+        # The repo and whose store holds its PAT (for auto-close and
+        # reconciliation, which run with no request), saved under one lock so
+        # concurrent connects cannot cross them (#1283). Off the event loop:
+        # a cross-process file lock and fsyncs (#1181).
+        saved = await run_in_threadpool(
+            save_connection,
             workspace,
             {
                 "repo": result["repo_full_name"],
                 "owner_login": result["owner_login"],
                 "owner_avatar_url": result["owner_avatar_url"],
             },
+            _auth.get("user_id"),
         )
-        saved_config = True
-        # Whose store holds the PAT, for auto-close and reconciliation, which
-        # run with no request (#1283). Recorded outside the workspace.
-        # Off the event loop: a cross-process file lock and an fsync (#1181).
-        await run_in_threadpool(record_connection_owner, workspace, _auth.get("user_id"))
     except OSError as e:
         # Roll back the credential so we don't leave a half-connected state.
         # Restore the prior token if there was one; only delete when the slot
         # was empty before this request.
         logger.error("Failed to save integration config: %s", e, exc_info=True)
-        if saved_config:
-            # The owner record failed after the repo was saved: put the old
-            # repo back too, or it would pair with the wrong credential (codex).
-            try:
-                if prior_config is not None:
-                    save_github_integration_config(workspace, dict(prior_config))
-                else:
-                    clear_github_integration_config(workspace)
-            except OSError:
-                logger.warning("Could not restore the previous GitHub integration", exc_info=True)
+        # The owner record may have failed after the repo was saved: put the
+        # old repo back too, or it would pair with the wrong credential (codex).
+        try:
+            if prior_config is not None:
+                await run_in_threadpool(
+                    save_github_integration_config, workspace, dict(prior_config)
+                )
+            else:
+                await run_in_threadpool(clear_github_integration_config, workspace)
+        except OSError:
+            logger.warning("Could not restore the previous GitHub integration", exc_info=True)
         try:
             if prior_pat is not None:
                 await run_in_threadpool(
@@ -390,7 +391,8 @@ async def disconnect(
     _auth: dict = Depends(require_scope(SCOPE_ADMIN)),  # PAT deletion is admin-only (#717/#790)
 ) -> Response:
     """Clear stored repo metadata and delete the GitHub PAT. Idempotent."""
-    clear_github_integration_config(workspace)
+    # Off the event loop: forgetting the owner takes a cross-process lock (#1181).
+    await run_in_threadpool(clear_github_integration_config, workspace)
     try:
         await run_in_threadpool(
             manager.delete_credential, CredentialProvider.GIT_GITHUB

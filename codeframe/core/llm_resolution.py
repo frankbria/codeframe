@@ -176,9 +176,13 @@ class MissingApiKeyError(ValueError):
     """The resolved provider needs a key and none was found (#1264)."""
 
 
-def _is_hosted() -> bool:
-    # Mirrors ui.server.is_hosted_mode, which core cannot import.
+def is_hosted() -> bool:
+    """Hosted (multi-tenant) deployment? Mirrors ui.server.is_hosted_mode,
+    which core cannot import."""
     return os.getenv("CODEFRAME_DEPLOYMENT_MODE", "").strip().lower() == "hosted"
+
+
+_is_hosted = is_hosted  # the name this module's own callers use
 
 
 def resolve_api_key(provider_type: str, user_id: Optional[int] = None) -> Optional[str]:

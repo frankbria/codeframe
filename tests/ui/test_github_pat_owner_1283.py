@@ -234,6 +234,31 @@ class TestOwnerMapPersistence:
         monkeypatch.delattr(os, "fchmod", raising=False)
         record_connection_owner(ws, OWNER)
         assert connection_owner(ws) == OWNER
+        owners = creds_mod.DEFAULT_STORAGE_DIR / "github_connection_owners.json"
+        if os.name == "posix":  # private to the operator, as the credential store is
+            assert owners.stat().st_mode & 0o777 == 0o600
+
+    def test_concurrent_connects_never_cross_a_repo_with_another_owner(self, ws):
+        """GLM review: the config and the owner were written separately, so
+        two connects could leave one admin's repo with the other's PAT."""
+        import threading
+
+        from codeframe.core.github_integration_config import (
+            load_github_integration_config,
+            save_connection,
+        )
+
+        def connect_repeatedly(user):
+            for _ in range(25):
+                save_connection(ws, {"repo": f"acme/r{user}", "owner_login": "acme", "owner_avatar_url": ""}, user)
+
+        threads = [threading.Thread(target=connect_repeatedly, args=(u,)) for u in (1, 2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert load_github_integration_config(ws)["repo"] == f"acme/r{connection_owner(ws)}"
 
     def test_a_failed_owner_record_restores_the_previous_repo(self, ws, monkeypatch):
         from codeframe.auth.dependencies import require_auth
@@ -249,8 +274,10 @@ class TestOwnerMapPersistence:
         def broken(*a, **k):
             raise OSError("disk full")
 
+        from codeframe.core import github_integration_config as gic
+
         monkeypatch.setattr(github_integrations_v2, "validate_connection", valid)
-        monkeypatch.setattr(github_integrations_v2, "record_connection_owner", broken)
+        monkeypatch.setattr(gic, "_write_owner", broken)  # after the repo is saved
         app = FastAPI()
         app.include_router(github_integrations_v2.router)
         app.dependency_overrides[get_v2_workspace] = lambda: ws

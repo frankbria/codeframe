@@ -139,6 +139,42 @@ def _read_owners() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def save_connection(
+    workspace: Workspace, config: dict, user_id: Optional[int]
+) -> GitHubIntegrationConfig:
+    """Save the repo config and record its owner as one step (#1283 review).
+
+    Each write is atomic on its own; holding the owner-map lock across both
+    stops two concurrent connects to the same workspace from pairing one
+    admin's repo with the other admin's PAT.
+    """
+    from codeframe.core.atomic_io import read_modify_write_lock
+
+    with read_modify_write_lock(_owners_lock_path()):
+        saved = save_github_integration_config(workspace, config)
+        _write_owner(workspace, user_id)
+    return saved
+
+
+def _owners_lock_path() -> Path:
+    path = _owners_path()
+    return path.with_name(f".{path.name}.lock")
+
+
+def _write_owner(workspace: Workspace, user_id: Optional[int]) -> None:
+    """The owner-map read-modify-write. Callers hold the owners lock."""
+    from codeframe.core.atomic_io import atomic_write_bytes
+
+    owners = _read_owners()
+    key = _workspace_key(workspace)
+    if user_id is None:
+        if owners.pop(key, None) is None:
+            return
+    else:
+        owners[key] = user_id
+    atomic_write_bytes(_owners_path(), json.dumps(owners, indent=2).encode("utf-8"), mode=0o600)
+
+
 def record_connection_owner(workspace: Workspace, user_id: Optional[int]) -> None:
     """Record (or with ``None`` forget) who connected this workspace's repo.
 
@@ -146,18 +182,10 @@ def record_connection_owner(workspace: Workspace, user_id: Optional[int]) -> Non
     can connect different workspaces at once) and the write is atomic with
     0600 permissions on every platform (codex review).
     """
-    from codeframe.core.atomic_io import atomic_write_bytes, read_modify_write_lock
+    from codeframe.core.atomic_io import read_modify_write_lock
 
-    path = _owners_path()
-    with read_modify_write_lock(path.with_name(f".{path.name}.lock")):
-        owners = _read_owners()
-        key = _workspace_key(workspace)
-        if user_id is None:
-            if owners.pop(key, None) is None:
-                return
-        else:
-            owners[key] = user_id
-        atomic_write_bytes(path, json.dumps(owners, indent=2).encode("utf-8"), mode=0o600)
+    with read_modify_write_lock(_owners_lock_path()):
+        _write_owner(workspace, user_id)
 
 
 def connection_owner(workspace: Workspace) -> Optional[int]:
@@ -184,7 +212,7 @@ def resolve_background_pat(workspace: Workspace) -> Optional[str]:
     falls through. Never raises; None when there is no usable PAT.
     """
     from codeframe.core.credentials import CredentialManager, CredentialProvider
-    from codeframe.core.llm_resolution import _is_hosted
+    from codeframe.core.llm_resolution import is_hosted
 
     try:
         owner = connection_owner(workspace)
@@ -199,7 +227,7 @@ def resolve_background_pat(workspace: Workspace) -> Optional[str]:
 
     try:
         manager = CredentialManager()
-        if _is_hosted():
+        if is_hosted():
             return manager.get_stored_credential(CredentialProvider.GIT_GITHUB)
         return manager.get_credential(CredentialProvider.GIT_GITHUB)
     except Exception:  # noqa: BLE001 - background callers must never break
