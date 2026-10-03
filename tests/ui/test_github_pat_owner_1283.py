@@ -238,27 +238,36 @@ class TestOwnerMapPersistence:
         if os.name == "posix":  # private to the operator, as the credential store is
             assert owners.stat().st_mode & 0o777 == 0o600
 
-    def test_concurrent_connects_never_cross_a_repo_with_another_owner(self, ws):
-        """GLM review: the config and the owner were written separately, so
-        two connects could leave one admin's repo with the other's PAT."""
+    def test_concurrent_connects_never_cross_a_repo_with_another_owner(self, ws, monkeypatch):
+        """GLM review: the config and the owner were written separately, so a
+        connect landing between them left one admin's repo with the other's
+        PAT. Deterministic: connect B is fired right after A saves its repo."""
         import threading
 
-        from codeframe.core.github_integration_config import (
-            load_github_integration_config,
-            save_connection,
-        )
+        from codeframe.core import github_integration_config as gic
 
-        def connect_repeatedly(user):
-            for _ in range(25):
-                save_connection(ws, {"repo": f"acme/r{user}", "owner_login": "acme", "owner_avatar_url": ""}, user)
+        real_save = gic.save_github_integration_config
+        fired = {"done": False}
+        b_thread: list = []
 
-        threads = [threading.Thread(target=connect_repeatedly, args=(u,)) for u in (1, 2)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        def save_then_race(workspace, config):
+            saved = real_save(workspace, config)
+            if not fired["done"]:
+                fired["done"] = True
+                t = threading.Thread(target=gic.save_connection, args=(
+                    ws, {"repo": "acme/r2", "owner_login": "acme", "owner_avatar_url": ""}, 2,
+                ))
+                t.start()
+                t.join(timeout=1.0)  # with the lock B waits for A; without it, B finishes here
+                b_thread.append(t)
+            return saved
 
-        assert load_github_integration_config(ws)["repo"] == f"acme/r{connection_owner(ws)}"
+        monkeypatch.setattr(gic, "save_github_integration_config", save_then_race)
+        gic.save_connection(ws, {"repo": "acme/r1", "owner_login": "acme", "owner_avatar_url": ""}, 1)
+        b_thread[0].join(timeout=30)
+
+        repo = gic.load_github_integration_config(ws)["repo"]
+        assert repo == f"acme/r{connection_owner(ws)}", "a repo was paired with another admin"
 
     def test_a_failed_owner_record_restores_the_previous_repo(self, ws, monkeypatch):
         from codeframe.auth.dependencies import require_auth
