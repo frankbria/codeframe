@@ -293,16 +293,19 @@ class TestApplyChanges:
             ],
         )
 
-        # Process that raises on terminate
         mock_proc = MagicMock()
-        mock_proc.terminate.side_effect = OSError("already dead")
         active_processes = {"t1": mock_proc}
         batch = MagicMock()
         batch.results = {}
 
-        # Should not raise
-        engine.apply_changes(result, batch, active_processes)
-        assert len(result.errors) >= 0  # Error may or may not be logged
+        # A kill that fails (the process already died) must not stop the skip.
+        with patch(
+            "codeframe.core.run_control.terminate_tree", side_effect=OSError("already dead")
+        ) as kill_tree:
+            engine.apply_changes(result, batch, active_processes)
+
+        kill_tree.assert_called_once_with(mock_proc)
+        assert "t1" in result.tasks_skipped
 
 
 # ---------------------------------------------------------------------------

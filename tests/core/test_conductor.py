@@ -425,10 +425,14 @@ class TestStopBatch:
         _active_processes[batch_id] = {"task-1": mock_process}
 
         try:
-            stopped = stop_batch(workspace, batch_id, force=True)
+            # Its group is still handed over even though the worker exited: its
+            # children can outlive it. terminate_tree itself refuses a group it
+            # cannot verify (test_run_control_safety.py), so a mock is safe there,
+            # but it is patched here too: never put a mock near a real killpg.
+            with patch("codeframe.core.run_control.terminate_tree") as kill_tree:
+                stopped = stop_batch(workspace, batch_id, force=True)
 
-            # terminate should not be called for exited process
-            mock_process.terminate.assert_not_called()
+            kill_tree.assert_called_once_with(mock_process)
             assert stopped.status == BatchStatus.CANCELLED
         finally:
             _active_processes.pop(batch_id, None)

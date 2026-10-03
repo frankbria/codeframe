@@ -191,12 +191,79 @@ def new_session_kwargs() -> dict:
     return {"start_new_session": True} if os.name == "posix" else {}
 
 
+def _owned_unreaped(pid: int) -> bool:
+    """Is ``pid`` our own child, running or an unreaped zombie?
+
+    WNOWAIT leaves a zombie in place, so the answer stays true until we reap
+    it. While a pid is unreaped, the kernel cannot hand it, or a process
+    group with that id, to anyone else.
+    """
+    try:
+        os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    except ChildProcessError:
+        return False  # not our child, or already reaped (its pid may be reused)
+    return True
+
+
+def _verified_group(proc: object) -> Optional[int]:
+    """The process group we may signal for ``proc``, or None.
+
+    All of these must hold:
+    * ``pid`` is a real int above 1. ``killpg(1)`` is ``kill(-1)``, which
+      signals every process the user owns; ``killpg(0)`` is our own group. A
+      MagicMock's pid coerces to 1, which is how the #1279 tests once killed
+      every session on the machine.
+    * It is our child and unreaped, so the pid cannot have been recycled.
+    * It leads its own group, which means it was started with
+      `new_session_kwargs()`.
+    * That group is not ours.
+
+    The group is verified when this is called, not remembered from spawn.
+    `terminate_tree` keeps the leader unreaped until it has finished
+    signalling, so the verified id cannot be recycled in between. A leader
+    that was already reaped (by `poll()` or `wait()`) cannot be verified, so
+    its group is **not** signalled. Any survivors of that group go unkilled.
+    That is the price of never guessing. In practice a delegated CLI is its
+    own group, and its adapter kills that group on the way out.
+    """
+    pid = getattr(proc, "pid", None)
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 1:
+        logger.warning("Refusing to signal process group for pid %r: not a real child pid", pid)
+        return None
+    if not _owned_unreaped(pid):
+        logger.warning("Refusing to signal process group %d: not an unreaped child", pid)
+        return None
+    try:
+        pgid = os.getpgid(pid)
+    except ProcessLookupError:
+        logger.warning("Refusing to signal process group %d: process is gone", pid)
+        return None
+    if pgid != pid:
+        logger.warning("Refusing to signal process group of %d: it leads no group of its own", pid)
+        return None
+    if pgid == os.getpgrp():
+        logger.warning("Refusing to signal process group %d: it is our own group", pid)
+        return None
+    return pgid
+
+
+def _leader_exited(pid: int) -> bool:
+    """Has the leader exited? It is left unreaped either way."""
+    try:
+        return os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
+    except ChildProcessError:
+        return True  # reaped elsewhere; the caller re-verifies before SIGKILL
+
+
 def terminate_tree(proc: subprocess.Popen, grace_s: float = 5.0) -> None:
     """Stop ``proc`` and everything in its process group.
 
-    The child must have been started with `new_session_kwargs()`. The group
-    is signalled even when the leader has already exited, because its
-    children can outlive it.
+    The child must have been started with `new_session_kwargs()`. Only a group
+    that `_verified_group` proves is ours is ever signalled: SIGTERM, a
+    grace period, then SIGKILL. The leader is reaped only after that, so a
+    child that ignores SIGTERM after its leader obeyed is still killed. If the
+    group cannot be proven, only the direct child is signalled, by pid, and
+    only when it is ours and unreaped. Anything else is refused and logged.
     """
     if os.name != "posix":
         if proc.poll() is None:
@@ -208,20 +275,49 @@ def terminate_tree(proc: subprocess.Popen, grace_s: float = 5.0) -> None:
                 proc.wait()
         return
 
-    def _signal(sig: int) -> None:
-        try:
-            os.killpg(proc.pid, sig)
-        except (ProcessLookupError, PermissionError):
-            pass  # group already gone, or the pid was reused outside our session
+    pgid = _verified_group(proc)
+    if pgid is None:
+        _terminate_direct_child(proc, grace_s)
+        return
 
-    _signal(signal.SIGTERM)
+    _killpg(pgid, signal.SIGTERM)
+    deadline = time.monotonic() + grace_s
+    while time.monotonic() < deadline and not _leader_exited(pgid):
+        time.sleep(0.05)
+    # Re-verify immediately before escalating. If another thread reaped the
+    # leader meanwhile, the id is no longer provably ours.
+    if _verified_group(proc) == pgid:
+        _killpg(pgid, signal.SIGKILL)
+    try:
+        proc.wait(timeout=grace_s)  # reap the leader, now we are done
+    except subprocess.TimeoutExpired:
+        logger.warning("Process %d did not exit after SIGKILL", pgid)
+
+
+def _killpg(pgid: int, sig: int) -> None:
+    try:
+        os.killpg(pgid, sig)
+    except (ProcessLookupError, PermissionError):
+        pass  # every member already gone
+
+
+def _terminate_direct_child(proc: object, grace_s: float) -> None:
+    """Signal ``proc`` alone, by pid. Only a real, unreaped child of ours."""
+    if not isinstance(proc, subprocess.Popen):
+        return  # a mock or stand-in: nothing real to stop
+    pid = proc.pid
+    if not isinstance(pid, int) or pid <= 1 or not _owned_unreaped(pid):
+        return
+    proc.terminate()
     try:
         proc.wait(timeout=grace_s)
     except subprocess.TimeoutExpired:
-        pass
-    # Unconditional: a child that ignores SIGTERM survives a leader that obeyed.
-    _signal(signal.SIGKILL)
-    proc.wait()
+        if _owned_unreaped(pid):
+            proc.kill()
+        try:
+            proc.wait(timeout=grace_s)
+        except subprocess.TimeoutExpired:
+            logger.warning("Process %d did not exit after SIGKILL", pid)
 
 
 def exit_on_sigterm() -> object:
