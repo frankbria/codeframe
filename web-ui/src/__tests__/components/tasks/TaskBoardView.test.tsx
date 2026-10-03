@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen, act, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskBoardView } from '@/components/tasks/TaskBoardView';
 import { tasksApi } from '@/lib/api';
@@ -254,6 +254,7 @@ describe('TaskBoardView', () => {
     act(() => { jest.advanceTimersByTime(350); });
 
     await user.click(screen.getByRole('button', { name: /stop/i }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /stop task/i }));
 
     expect(tasksApi.stopExecution).toHaveBeenCalledWith('/test', 't3');
     expect(mockMutate).toHaveBeenCalled();
@@ -283,6 +284,7 @@ describe('TaskBoardView', () => {
     act(() => { jest.advanceTimersByTime(350); });
 
     await user.click(screen.getByRole('button', { name: /stop/i }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /stop task/i }));
 
     await waitFor(() => {
       expect(screen.getByText('Task not running')).toBeInTheDocument();

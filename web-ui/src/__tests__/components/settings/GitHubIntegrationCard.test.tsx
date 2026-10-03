@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import useSWR from 'swr';
 
 import { GitHubIntegrationCard } from '@/components/settings/GitHubIntegrationCard';
@@ -175,8 +175,12 @@ describe('GitHubIntegrationCard', () => {
 
     render(<GitHubIntegrationCard workspacePath="/ws" />);
 
+    fireEvent.click(screen.getByRole('button', { name: /disconnect/i }));
+    // A single click no longer deletes the stored credential (#1297).
+    const dialog = await screen.findByRole('alertdialog');
+    expect(mockDisconnect).not.toHaveBeenCalled();
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /disconnect/i }));
+      fireEvent.click(within(dialog).getByRole('button', { name: /disconnect/i }));
     });
 
     expect(mockDisconnect).toHaveBeenCalledWith('/ws');

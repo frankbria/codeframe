@@ -103,7 +103,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="flex min-h-screen">
       <AppSidebar />
-      <div className="flex flex-1 flex-col">
+      {/* min-w-0: a flex child defaults to min-width:auto, so any wide page
+          content (the task board) widened the whole page past the viewport
+          (#1297). */}
+      <div className="flex min-w-0 flex-1 flex-col">
         <PipelineProgressBar />
         {children}
       </div>

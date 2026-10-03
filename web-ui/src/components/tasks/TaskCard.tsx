@@ -6,6 +6,17 @@ import { PlayCircleIcon, CheckmarkCircle01Icon, LinkCircleIcon, Cancel01Icon, Ar
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { STATUS_INFO, STATUS_BADGE_VARIANT, STATUS_LABEL } from '@/lib/taskStatusInfo';
@@ -215,18 +226,35 @@ export function TaskCard({
                   </Button>
                 )}
                 {task.status === 'IN_PROGRESS' && onStop && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 gap-1 px-2 text-xs text-destructive"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStop(task.id);
-                    }}
-                  >
-                    <HugeiconsIcon icon={Cancel01Icon} className="h-3.5 w-3.5" />
-                    Stop
-                  </Button>
+                  // Confirmed like every other Stop (#1297). React bubbles
+                  // portal events through the component tree, so the dialog
+                  // stops propagation or its clicks would open the card.
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 gap-1 px-2 text-xs text-destructive"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <HugeiconsIcon icon={Cancel01Icon} className="h-3.5 w-3.5" />
+                        Stop
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Stop this task?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This stops the agent working on <strong>{task.title}</strong>. Any
+                          in-progress file changes may be left incomplete.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => onStop(task.id)}>Stop task</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 )}
                 {task.status === 'FAILED' && onReset && (
                   <Button

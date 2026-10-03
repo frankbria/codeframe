@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskCard } from '@/components/tasks/TaskCard';
 import type { Task, TaskCostEntry } from '@/types';
@@ -174,6 +174,8 @@ describe('TaskCard', () => {
     const user = userEvent.setup();
     renderCard({ status: 'IN_PROGRESS' });
     await user.click(screen.getByRole('button', { name: /stop/i }));
+    // Confirmed first (#1297).
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /stop task/i }));
     expect(defaultHandlers.onStop).toHaveBeenCalledWith('task-1');
     expect(defaultHandlers.onClick).not.toHaveBeenCalled();
   });
@@ -290,5 +292,24 @@ describe('TaskCard', () => {
     const text = screen.getByTestId('cost-badge').textContent ?? '';
     expect(text).toContain('$0.0042');
     expect(text).not.toMatch(/\$0\.00\b/);
+  });
+});
+
+describe('TaskCard Stop (#1297)', () => {
+  it('asks before stopping a running agent, and never opens the card', async () => {
+    const user = userEvent.setup();
+    const onStop = jest.fn();
+    const onClick = jest.fn();
+    renderCard({ status: 'IN_PROGRESS' }, { onStop, onClick });
+
+    await user.click(screen.getByRole('button', { name: /^stop$/i }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(onStop).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: /stop/i }));
+    expect(onStop).toHaveBeenCalledTimes(1);
+    // React bubbles portal events through the component tree: a click in the
+    // dialog must not reach the card and open its detail view.
+    expect(onClick).not.toHaveBeenCalled();
   });
 });

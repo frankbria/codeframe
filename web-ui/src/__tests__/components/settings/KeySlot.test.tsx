@@ -4,7 +4,8 @@
  * getting a 403 toast. LLM keys are the user's own since #1303, so they stay
  * enabled. Verify stays available — it is not admin-guarded.
  */
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { settingsApi } from '@/lib/api';
 import { KeySlot } from '@/components/settings/KeySlot';
 import type { KeyStatusResponse } from '@/types';
 
@@ -59,4 +60,20 @@ it('leaves a non-admin in charge of their own LLM key (#1303)', () => {
   expect(screen.getByRole('button', { name: /save/i })).toBeEnabled();
   expect(screen.getByRole('button', { name: /remove/i })).toBeEnabled();
   expect(screen.queryByText(/requires an admin account/i)).not.toBeInTheDocument();
+});
+
+it('asks before removing a stored key, and removes it only on confirm (#1297)', async () => {
+  renderSlot('LLM_ANTHROPIC');
+  fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+  const dialog = await screen.findByRole('alertdialog');
+  expect(settingsApi.removeKey).not.toHaveBeenCalled();
+
+  fireEvent.click(within(dialog).getByRole('button', { name: /cancel/i }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  expect(settingsApi.removeKey).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+  fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /remove/i }));
+  await waitFor(() => expect(settingsApi.removeKey).toHaveBeenCalledTimes(1));
 });
