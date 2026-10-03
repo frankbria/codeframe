@@ -24,6 +24,6 @@ export function wsBase(overrides: WsEnvOverrides = {}): string {
   // Derive from the API origin: same host, ws(s) scheme. https -> wss, so a
   // TLS deployment does not fall back to an insecure socket.
   // prettier-ignore -- one line so the env-var-before-fallback CI check matches.
-  const apiBase = overrides.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const apiBase = overrides.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   return apiBase.replace(/^http/, 'ws');
 }

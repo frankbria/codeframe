@@ -80,7 +80,7 @@ describe('AgentTerminal stream-ticket buildUrl (issue #745)', () => {
     render(<AgentTerminal sessionId="sess-1" />);
 
     const url = await lastBuildUrl()();
-    expect(url).toBe('ws://localhost:8000/ws/sessions/sess-1/terminal?ticket=tick-abc');
+    expect(url).toBe('ws://localhost:8080/ws/sessions/sess-1/terminal?ticket=tick-abc');
     expect(url).not.toContain('token=');
   });
 
@@ -90,7 +90,7 @@ describe('AgentTerminal stream-ticket buildUrl (issue #745)', () => {
 
     const url = await lastBuildUrl()();
     expect(url).toBe(
-      `ws://localhost:8000/ws/sessions/sess-1/terminal?ticket=${encodeURIComponent('t&?=x')}`
+      `ws://localhost:8080/ws/sessions/sess-1/terminal?ticket=${encodeURIComponent('t&?=x')}`
     );
   });
 
@@ -99,7 +99,7 @@ describe('AgentTerminal stream-ticket buildUrl (issue #745)', () => {
     render(<AgentTerminal sessionId="sess-1" />);
 
     const url = await lastBuildUrl()();
-    expect(url).toBe('ws://localhost:8000/ws/sessions/sess-1/terminal');
+    expect(url).toBe('ws://localhost:8080/ws/sessions/sess-1/terminal');
   });
 
   it('buildUrl mints a fresh ticket on every invocation (single-use tickets)', async () => {
@@ -116,13 +116,13 @@ describe('AgentTerminal stream-ticket buildUrl (issue #745)', () => {
     mockFetchStreamTicket.mockResolvedValueOnce('tick-1').mockResolvedValueOnce('tick-2');
     const { rerender } = render(<AgentTerminal sessionId="sess-1" />);
     await expect(lastBuildUrl()()).resolves.toBe(
-      'ws://localhost:8000/ws/sessions/sess-1/terminal?ticket=tick-1'
+      'ws://localhost:8080/ws/sessions/sess-1/terminal?ticket=tick-1'
     );
 
     rerender(<AgentTerminal sessionId="sess-2" />);
     expect(lastOptions().connectionKey).toBe('sess-2');
     await expect(lastBuildUrl()()).resolves.toBe(
-      'ws://localhost:8000/ws/sessions/sess-2/terminal?ticket=tick-2'
+      'ws://localhost:8080/ws/sessions/sess-2/terminal?ticket=tick-2'
     );
     expect(mockFetchStreamTicket).toHaveBeenCalledTimes(2);
   });

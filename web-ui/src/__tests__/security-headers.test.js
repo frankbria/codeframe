@@ -38,7 +38,26 @@ describe('security headers (#657)', () => {
     const cs = buildConnectSrc({ apiUrl: '', wsUrl: '' });
     expect(cs).not.toContain('*');
     expect(cs).toContain("'self'");
-    expect(cs).toContain('ws://localhost:8000');
+    // The same loopback defaults the streams dial (#1296): cf serve's port.
+    expect(cs).toContain('ws://localhost:8080');
+    expect(cs).toContain('http://localhost:8080');
+    expect(cs).not.toContain(':8000');
+  });
+
+  test('connect-src allows the SSE origin the streams dial (#1296)', () => {
+    // An explicit SSE origin is dialled directly, so the CSP must list it.
+    const cs = buildConnectSrc({
+      apiUrl: 'https://app.example.com',
+      sseUrl: 'https://events.example.com',
+    });
+    expect(cs).toContain('https://events.example.com');
+  });
+
+  test('with only an API URL, the derived socket origin is allowed (#1296)', () => {
+    // wsBase derives wss://<api host>; the CSP used to add ws://localhost:8000.
+    const cs = buildConnectSrc({ apiUrl: 'https://app.example.com' });
+    expect(cs).toContain('wss://app.example.com');
+    expect(cs).not.toContain('localhost');
   });
 
   test('production CSP does not allow eval (#783)', () => {
