@@ -172,3 +172,24 @@ describe('the nonce requires dynamic rendering (#936)', () => {
     expect(proxy).toContain('getRandomValues');
   });
 });
+
+describe('proxy.ts feeds the CSP the build-time origins (#1296)', () => {
+  // proxy.ts used to call buildCsp(process.env). Next inlines only the literal
+  // `process.env.NEXT_PUBLIC_X` form, and the image's runner stage has no
+  // NEXT_PUBLIC_* at all, so the shipped CSP always fell back to loopback
+  // while the client dialled the origin baked in at build.
+  const fs = require('fs');
+  const path = require('path');
+  const source = fs.readFileSync(path.join(process.cwd(), 'src/proxy.ts'), 'utf8');
+
+  test.each(['NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_WS_URL', 'NEXT_PUBLIC_SSE_URL'])(
+    'reads %s as a literal process.env expression',
+    (key) => {
+      expect(source).toContain(`process.env.${key}`);
+    }
+  );
+
+  test('never hands buildCsp the env object itself', () => {
+    expect(source).not.toMatch(/buildCsp\(\s*process\.env\s*[,)]/);
+  });
+});

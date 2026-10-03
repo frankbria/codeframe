@@ -28,7 +28,19 @@ export function proxy(request: NextRequest) {
   crypto.getRandomValues(bytes);
   const nonce = btoa(String.fromCharCode(...bytes));
 
-  const csp = buildCsp(process.env, { nonce });
+  // Literal reads, never `process.env` itself: Next inlines only this exact
+  // form, and the image's runtime has no NEXT_PUBLIC_* — passing the object
+  // made the CSP fall back to loopback while the client dialled the origins
+  // baked in at build (#1296).
+  const csp = buildCsp(
+    {
+      NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+      NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL,
+      NEXT_PUBLIC_SSE_URL: process.env.NEXT_PUBLIC_SSE_URL,
+      NODE_ENV: process.env.NODE_ENV,
+    },
+    { nonce }
+  );
 
   // Set on the REQUEST headers too: Next.js reads the nonce from the CSP header
   // it receives and stamps it onto the framework's own inline bootstrap scripts.
