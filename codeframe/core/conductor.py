@@ -836,9 +836,14 @@ def execute_batch(
     if spend_scope is not None:
         # One task at a time until a parallel group sets its own share.
         _batch_spend_scope[batch.id] = (spend_scope, 1)
+    # Workers run in their own sessions, so closing the terminal (SIGHUP) or a
+    # SIGTERM reaches only this process. Unwind instead of dying on the spot,
+    # so the wait wrappers and the atexit hook stop the workers (#1279).
+    prev_handlers = run_control.exit_on_sigterm()
     try:
         return _execute_batch(workspace, batch, max_retries, on_event, user_id)
     finally:
+        run_control.restore_signal_handlers(prev_handlers)
         _batch_principal.pop(batch.id, None)
         _batch_spend_scope.pop(batch.id, None)
 

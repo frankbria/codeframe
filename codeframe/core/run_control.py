@@ -141,10 +141,8 @@ class RunControl:
         if self._token is not None:
             _current.reset(self._token)
             self._token = None
-        if self._prev_handlers is not None:
-            for sig, handler in self._prev_handlers.items():
-                signal.signal(sig, handler)
-            self._prev_handlers = None
+        restore_signal_handlers(self._prev_handlers)
+        self._prev_handlers = None
 
 
 def start(workspace: "Workspace", run: "Run") -> RunControl:
@@ -382,6 +380,12 @@ def exit_on_sigterm() -> Optional[dict]:
         raise SystemExit(128 + signum)
 
     return {sig: signal.signal(sig, _raise) for sig in (signal.SIGTERM, signal.SIGHUP)}
+
+
+def restore_signal_handlers(previous: Optional[dict]) -> None:
+    """Undo `exit_on_sigterm`; a no-op for its None."""
+    for sig, handler in (previous or {}).items():
+        signal.signal(sig, handler)
 
 
 def terminate_trees(procs: list[subprocess.Popen], grace_s: float = CHILD_GRACE_S) -> None:

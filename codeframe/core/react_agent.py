@@ -864,6 +864,9 @@ class ReactAgent:
         max_fix_turns = 5  # LLM turns per retry attempt
 
         for attempt in range(1 + self.max_verification_retries):
+            # Stopped by the user (#1279, codex review): no more gate runs.
+            if run_control.cancellation_requested():
+                return (False, "stopped_by_user")
             if self._stall_triggered.is_set():
                 if self._stall_action == StallAction.RETRY:
                     raise StallDetectedError(
@@ -887,6 +890,9 @@ class ReactAgent:
             self.self_correction_count = attempt
             if gate_result.passed:
                 return (True, None)
+            # Gates take minutes; a Stop during them ends it here.
+            if run_control.cancellation_requested():
+                return (False, "stopped_by_user")
 
             if attempt >= self.max_verification_retries:
                 return (False, gate_result.summary)
@@ -925,6 +931,8 @@ class ReactAgent:
             ]
 
             for _turn in range(max_fix_turns):
+                if run_control.cancellation_requested():
+                    return (False, "stopped_by_user")
                 # The correction loop spends too. Without this a run could sit
                 # at $4.99 under a $5 cap, fail verification, and then spend
                 # max_verification_retries * max_fix_turns more calls — a cap

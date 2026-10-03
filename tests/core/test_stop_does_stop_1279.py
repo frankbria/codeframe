@@ -417,3 +417,78 @@ class TestThePlanEngineStopsToo:
         assert "step_started" not in events
         assert agent.state.status == AgentStatus.FAILED
 
+
+class TestNoCorrectionAfterAStop:
+    """A Stop during a step or the gates must not lead into the correction
+    loops: more LLM calls, more edits, more gate runs (codex review)."""
+
+    def test_react_final_verification_makes_no_fix_call(self, ws, monkeypatch):
+        task, run = _start(ws)
+        provider = MagicMock()
+        agent = ReactAgent(workspace=ws, llm_provider=provider, max_iterations=5)
+        agent._current_task_id = task.id
+
+        def gates_that_fail_after_a_stop(_ws, *a, **k):
+            runtime.stop_run(ws, task.id)
+            return MagicMock(passed=False, summary="lint failed")
+
+        monkeypatch.setattr("codeframe.core.react_agent.gates.run", gates_that_fail_after_a_stop)
+        with run_control.supervise(ws, run):
+            passed, reason = agent._run_final_verification("system prompt")
+
+        assert (passed, reason) == (False, "stopped_by_user")
+        provider.complete.assert_not_called()
+
+    def test_the_plan_engine_does_not_self_correct_a_stopped_step(self, ws, monkeypatch):
+        from codeframe.core import blockers
+        from codeframe.core.agent import Agent
+        from codeframe.core.executor import ExecutionStatus, StepResult
+        from codeframe.core.planner import ImplementationPlan, PlanStep, StepType
+
+        task, run = _start(ws)
+
+        class StoppedMidStep:
+            def __init__(self, *a, **k):
+                pass
+
+            def execute_step(self, step, context):
+                runtime.stop_run(ws, task.id)  # Stop lands during the step
+                return StepResult(step=step, status=ExecutionStatus.FAILED, error="boom")
+
+        monkeypatch.setattr("codeframe.core.agent.Executor", StoppedMidStep)
+        llm = MagicMock()
+        agent = Agent(ws, llm)
+        agent.state.task_id = task.id
+        agent.state.plan = ImplementationPlan(
+            task_id=task.id, summary="s",
+            steps=[PlanStep(index=1, type=StepType.FILE_CREATE, description="d", target="a.py")],
+        )
+        with run_control.supervise(ws, run):
+            agent._execute_plan()
+
+        assert agent.state.status == AgentStatus.FAILED
+        llm.complete.assert_not_called()  # no self-correction call
+        assert blockers.list_open(ws) == []  # a stop needs no answer
+
+
+class TestTheConductorUnwindsOnTerminalClose:
+    def test_sighup_during_a_batch_unwinds_instead_of_killing_it(self, tmp_path):
+        """Workers are in their own sessions; only the conductor hears SIGHUP.
+        Dying on the spot would skip the code that stops them. Run in a
+        subprocess: without the fix, the SIGHUP kills whoever receives it."""
+        script = tmp_path / "conductor.py"
+        script.write_text(textwrap.dedent("""
+            import os, signal, time
+            from types import SimpleNamespace
+            from codeframe.core import conductor
+
+            def batch_that_hears_sighup(*a, **k):
+                os.kill(os.getpid(), signal.SIGHUP)
+                time.sleep(10)
+
+            conductor._execute_batch = batch_that_hears_sighup
+            conductor.execute_batch(SimpleNamespace(), SimpleNamespace(id="b"))
+        """))
+        r = subprocess.run([sys.executable, str(script)], capture_output=True, timeout=60)
+        assert r.returncode == 128 + 1, (r.returncode, r.stderr[-500:])  # SystemExit, not -SIGHUP
+

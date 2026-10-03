@@ -251,6 +251,10 @@ from codeframe.core.blocker_detection import (  # noqa: E402
 )
 
 
+class _RunStopped(Exception):
+    """The user stopped the run (#1279); unwinds the plan loop to _execute_plan."""
+
+
 class Agent:
     """Orchestrates task execution through the full agent loop.
 
@@ -463,6 +467,18 @@ class Agent:
 
     def _execute_plan(self) -> None:
         """Execute the implementation plan step by step."""
+        try:
+            self._execute_plan_steps()
+        except _RunStopped:
+            # Stopped by the user (#1279). No blocker: nothing needs answering.
+            self._debug_log("Run stopped by user", level="INFO", always=True)
+            self.state.status = AgentStatus.FAILED
+
+    def _raise_if_stopped(self) -> None:
+        if run_control.cancellation_requested():
+            raise _RunStopped
+
+    def _execute_plan_steps(self) -> None:
         if not self.state.plan:
             raise ValueError("No plan to execute")
 
@@ -487,10 +503,7 @@ class Agent:
             step = self.state.plan.steps[self.state.current_step]
 
             # Stopped by the user (#1279): stop before the next step's LLM call.
-            if run_control.cancellation_requested():
-                self._debug_log("Run stopped by user", level="INFO", always=True)
-                self.state.status = AgentStatus.FAILED
-                return
+            self._raise_if_stopped()
 
             # Stop the RUN, not just the step (#1004 review). Executor refuses a
             # capped step by returning FAILED — but FAILED is the trigger for
@@ -546,6 +559,8 @@ class Agent:
 
             # Execute the step
             result = self.executor.execute_step(step, self.context)
+            # A stop during the step must not lead into self-correction (codex review).
+            self._raise_if_stopped()
             self.state.step_results.append(result)
 
             self._debug_log(
@@ -868,6 +883,10 @@ class Agent:
         )
 
         while self.state.attempt_count < self.state.max_attempts:
+            # Stopped by the user (#1279): no more gate runs or fixes.
+            if run_control.cancellation_requested():
+                self.state.status = AgentStatus.FAILED
+                return
             attempt_num = self.state.attempt_count + 1
             self._verbose_print(f"[VERIFY] Attempt {attempt_num}/{self.state.max_attempts}")
             self._debug_log(
@@ -878,6 +897,10 @@ class Agent:
             try:
                 result = run_gates(self.workspace, verbose=False)
                 self.state.gate_results.append(result)
+
+                if not result.passed and run_control.cancellation_requested():
+                    self.state.status = AgentStatus.FAILED  # stopped during the gates
+                    return
 
                 if result.passed:
                     self.state.status = AgentStatus.COMPLETED
@@ -1601,6 +1624,8 @@ IMPORTANT:
         Returns:
             New StepResult if correction was attempted, None if can't correct
         """
+        # Every self-correction path starts here: one check covers them all.
+        self._raise_if_stopped()
         # A cap the correction loop ignores is not a cap (#911 review, #1004).
         # This loop is the expensive one: it steps UP to the CORRECTION model
         # and runs up to MAX_SELF_CORRECTION_ATTEMPTS times per failed step.
