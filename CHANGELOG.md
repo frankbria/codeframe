@@ -151,8 +151,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   - The TUI dashboard, `cf blocker list` and dependent-task lookups see more
     than 100 rows; `cf schedule` and `cf checkpoint create` see more than 1000.
     A checkpoint used to drop the rest, so restoring it could not bring them back.
-  - `cf work follow` / `cf work batch follow` no longer skip events when more
-    than 50 arrive between polls, so a batch's final event is not missed.
+  - `cf work batch follow` and `cf events tail` no longer skip events when
+    more than 50 arrive between polls, so a batch's final event is not missed.
     `GET /api/v2/events?since_id=N` now returns the events right after `N`
     rather than the newest ones.
 - **THINK-stage output fails loudly instead of corrupting your plan (#1293).**
