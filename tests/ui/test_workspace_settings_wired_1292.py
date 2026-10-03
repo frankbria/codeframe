@@ -118,3 +118,45 @@ class TestTechStackChoiceReachesTheWorkspace:
         _save_config(client, auto_detect_tech_stack=False, tech_stack_override="Go 1.22 with chi")
         _save_config(client, auto_detect_tech_stack=True)
         assert self._tech_stack(workspace).startswith("Python with uv")
+
+    def test_saving_only_a_branch_change_keeps_a_hand_set_tech_stack(self, client, workspace):
+        """Auto-detect defaults to on; re-detecting on every save would replace
+        a stack set with `cf init --tech-stack` when the user only changed the
+        branch."""
+        from codeframe.core.workspace import update_workspace_tech_stack
+
+        (workspace.repo_path / "pyproject.toml").write_text('[tool.uv]\n')
+        update_workspace_tech_stack(workspace.repo_path, "Hand-written stack description")
+        _save_config(client, default_branch="develop")
+        assert self._tech_stack(workspace) == "Hand-written stack description"
+
+    def test_clearing_the_override_clears_the_tech_stack(self, client, workspace):
+        """codex review: a cleared override left the old stack in front of the agent."""
+        _save_config(client, auto_detect_tech_stack=False, tech_stack_override="Go 1.22 with chi")
+        _save_config(client, auto_detect_tech_stack=False, tech_stack_override="")
+        assert self._tech_stack(workspace) is None
+
+    def test_auto_detect_finding_nothing_clears_a_stale_override(self, client, workspace):
+        _save_config(client, auto_detect_tech_stack=False, tech_stack_override="Go 1.22 with chi")
+        _save_config(client, auto_detect_tech_stack=True)  # empty repo: nothing detected
+        assert self._tech_stack(workspace) is None
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        {"auto_detect_tech_stack": None},
+        {"default_branch": 7},
+        {"tech_stack_override": ["a"]},
+        ["not", "an", "object"],
+    ],
+)
+def test_a_wrongly_typed_config_file_falls_back_to_defaults(client, workspace, stored):
+    """codex review: valid JSON with bad types made GET a 500."""
+    import json
+
+    from codeframe.core.workspace import WORKSPACE_CONFIG_FILENAME
+
+    (workspace.state_dir / WORKSPACE_CONFIG_FILENAME).write_text(json.dumps(stored))
+    resp = client.get("/api/v2/workspaces/config")
+    assert resp.status_code == 200, resp.text

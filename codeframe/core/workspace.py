@@ -69,11 +69,18 @@ def load_workspace_config(workspace: "Workspace") -> dict:
         logger.warning("Invalid %s — using defaults: %s", path, e)
         return config
     if isinstance(stored, dict):
-        config.update({k: v for k, v in stored.items() if k in config})
+        # Each field is taken only if it has the right type; a hand-edited
+        # `null` must fall back to the default, not 500 the Settings tab.
+        branch = stored.get("default_branch")
+        if isinstance(branch, str) and branch.strip():
+            config["default_branch"] = branch
+        if isinstance(stored.get("auto_detect_tech_stack"), bool):
+            config["auto_detect_tech_stack"] = stored["auto_detect_tech_stack"]
+        override = stored.get("tech_stack_override")
+        if override is None or isinstance(override, str):
+            config["tech_stack_override"] = override
     # Display-only: always the live path, never a stored one that could drift.
     config["workspace_root"] = str(workspace.repo_path)
-    if not isinstance(config["default_branch"], str) or not config["default_branch"].strip():
-        config["default_branch"] = DEFAULT_BRANCH
     return config
 
 

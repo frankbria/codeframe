@@ -451,14 +451,24 @@ async def update_workspace_config(
     ``workspace_root`` is display-only: the server resolves the workspace from
     the ``workspace_path`` query parameter, so editing it relocates nothing.
     """
+    previous = ws.load_workspace_config(workspace)
     payload = body.model_dump(exclude={"workspace_root"})
     payload["workspace_root"] = str(workspace.repo_path)
-    override = (body.tech_stack_override or "").strip()
-    tech_stack = (
-        _detect_tech_stack(workspace.repo_path) if body.auto_detect_tech_stack else override or None
-    )
+    override = (body.tech_stack_override or "").strip() or None
     atomic_write_json(workspace.state_dir / WORKSPACE_CONFIG_FILENAME, payload)
-    if tech_stack is not None and tech_stack != workspace.tech_stack:
+
+    # Only when the tech-stack controls changed: auto-detect is on by default,
+    # so re-detecting on every save would replace a stack set with
+    # `cf init --tech-stack` when the user only changed the branch. When they
+    # did change, apply in full, clearing included (codex review).
+    stack_changed = (
+        body.auto_detect_tech_stack != previous["auto_detect_tech_stack"]
+        or override != ((previous["tech_stack_override"] or "").strip() or None)
+    )
+    if stack_changed:
+        tech_stack = (
+            _detect_tech_stack(workspace.repo_path) if body.auto_detect_tech_stack else override
+        )
         updated = ws.update_workspace_tech_stack(workspace.repo_path, tech_stack)
         _register_workspace(request, updated, auth.get("user_id"))  # registry cache (#601)
     return WorkspaceConfigResponse(**payload)
