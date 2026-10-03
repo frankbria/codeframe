@@ -11,23 +11,33 @@ Closes 4403 in hosted mode, before authenticating: the shell would run as the
 server's uid, so ``<WORKSPACE_ROOT>/<user_id>`` would not contain it (#1266).
 
 Client → Server message types:
-    Raw bytes / text: forwarded verbatim to subprocess stdin.
+    Raw bytes / text: written to the shell's terminal, as typed.
     {"type": "resize", "cols": 120, "rows": 40}: resize the terminal window.
 
 Server → Client:
-    Raw bytes from subprocess stdout/stderr.
+    Raw bytes the shell writes to its terminal.
 
-Note: Uses asyncio pipes (not PTY) for simplicity. Arrow keys, colour output,
-and interactive programs like vim require a PTY — that is a known limitation of
-this initial implementation.
+The shell runs on a PTY that is its controlling terminal (#1291). On pipes,
+bash never saw xterm.js's Enter (``\r``) as end of line, so nothing typed ran;
+the PTY's line discipline maps it, and the controlling tty is what turns ^C into
+SIGINT for the foreground job and applies resizes (SIGWINCH).
 """
 
 import asyncio
+import errno
 import json
 import logging
 import os
 import shutil
+import struct
 from typing import Optional, Tuple
+
+try:  # POSIX only; the server must still import elsewhere
+    import fcntl
+    import pty
+    import termios
+except ImportError:  # pragma: no cover - Windows
+    pty = None  # type: ignore[assignment]
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -59,6 +69,24 @@ async def _authenticate_websocket(websocket: WebSocket) -> Tuple[bool, Optional[
     ``None`` in no-auth mode — matching REST.
     """
     return await authenticate_websocket(websocket, close_code=4001, require_admin=True)
+
+
+def _resize(master_fd: int, msg: dict) -> None:
+    """Apply a ``{"type": "resize"}`` message to the PTY (TIOCSWINSZ)."""
+    try:
+        cols = max(1, min(int(msg.get("cols", 80)), 1000))
+        rows = max(1, min(int(msg.get("rows", 24)), 1000))
+    except (TypeError, ValueError):
+        return
+    fcntl.ioctl(master_fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+
+def _resize_request(raw: bytes | str) -> Optional[dict]:
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return parsed if isinstance(parsed, dict) and parsed.get("type") == "resize" else None
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +157,10 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
         return
     workspace_path = str(revalidated)
 
+    if pty is None:  # pragma: no cover - Windows
+        await websocket.close(code=1011, reason="The terminal needs a POSIX host")
+        return
+
     # --- Per-user connection cap ---
     current = _user_terminal_counts.get(user_id, 0)
     if current >= _MAX_TERMINALS_PER_USER:
@@ -149,10 +181,18 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
     }
 
     shell_exe = shutil.which("bash") or shutil.which("sh") or "sh"
+    # util-linux `setsid --ctty` makes the PTY the shell's controlling terminal
+    # (setsid + TIOCSCTTY) in C, between fork and exec. Python can only do that
+    # with preexec_fn or pty.fork(), both of which run Python code in the child
+    # of a multi-threaded server. Without setsid (macOS) the shell still gets the
+    # PTY and its own session, so Enter works, but ^C does not signal (#1291).
+    setsid_exe = shutil.which("setsid")
+    argv = [setsid_exe, "--ctty", shell_exe] if setsid_exe else [shell_exe]
 
     process: asyncio.subprocess.Process | None = None
     ws_to_stdin_task: asyncio.Task | None = None
     stdout_to_ws_task: asyncio.Task | None = None
+    master_fd: int | None = None
 
     try:
         # Accept inside the try so a failed handshake (client aborts) still hits
@@ -160,71 +200,86 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
         # slot leaks and three aborts lock the user out (#756).
         await websocket.accept()
 
-        process = await asyncio.create_subprocess_exec(
-            shell_exe,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            cwd=workspace_path,
-            env=env,
-        )
+        master_fd, slave_fd = pty.openpty()
+        _resize(master_fd, {"cols": 80, "rows": 24})
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                cwd=workspace_path,
+                env=env,
+                start_new_session=setsid_exe is None,
+            )
+        finally:
+            os.close(slave_fd)  # the shell holds its own copies
+        os.set_blocking(master_fd, False)
+        loop = asyncio.get_running_loop()
+        output: asyncio.Queue[bytes] = asyncio.Queue()
 
-        # --- Relay: stdout → WebSocket ---
-        async def _stdout_relay() -> None:
-            assert process is not None
-            assert process.stdout is not None
+        def _on_readable() -> None:
             try:
-                while True:
-                    chunk = await process.stdout.read(4096)
-                    if not chunk:
-                        break
+                chunk = os.read(master_fd, 4096)  # type: ignore[arg-type]
+            except BlockingIOError:
+                return
+            except OSError as exc:
+                # EIO: every slave fd closed, i.e. the shell exited.
+                if exc.errno != errno.EIO:
+                    logger.debug("Terminal PTY read error: %s", exc)
+                chunk = b""
+            if not chunk:
+                loop.remove_reader(master_fd)  # type: ignore[arg-type]
+            output.put_nowait(chunk)
+
+        loop.add_reader(master_fd, _on_readable)
+
+        # --- Relay: PTY → WebSocket ---
+        async def _stdout_relay() -> None:
+            try:
+                while chunk := await output.get():
                     try:
                         await websocket.send_bytes(chunk)
                     except Exception:
                         break
             except asyncio.CancelledError:
                 pass
-            except Exception as exc:
-                logger.debug("Terminal stdout relay error: %s", exc)
 
-        # --- Relay: WebSocket → stdin (handles both text and binary frames) ---
+        async def _write(data: bytes) -> None:
+            # Bounded by the 64 KiB frame cap; off the loop in case the shell is
+            # not reading and the PTY buffer is full.
+            assert master_fd is not None
+            view = memoryview(data)
+            while view:
+                try:
+                    written = os.write(master_fd, view)
+                except BlockingIOError:
+                    await asyncio.sleep(0.01)
+                    continue
+                view = view[written:]
+
+        # --- Relay: WebSocket → PTY (handles both text and binary frames) ---
         async def _stdin_relay() -> None:
-            assert process is not None
-            assert process.stdin is not None
+            assert master_fd is not None
             try:
                 while True:
-                    try:
-                        msg = await websocket.receive()
-                    except WebSocketDisconnect:
-                        raise
-
-                    if "text" in msg:
-                        raw_text: str = msg["text"]
-                        if len(raw_text) > 65536:
-                            logger.warning("session_id=%s: dropping oversized text frame (%d bytes)", session_id, len(raw_text))
-                            continue
-                        try:
-                            parsed = json.loads(raw_text)
-                            if isinstance(parsed, dict) and parsed.get("type") == "resize":
-                                # Resize: nothing to do without a PTY
-                                continue
-                        except json.JSONDecodeError:
-                            pass
-                        process.stdin.write(raw_text.encode())
-                        await process.stdin.drain()
-                    elif "bytes" in msg:
-                        raw_bytes: bytes = msg["bytes"]
-                        if len(raw_bytes) > 65536:
-                            logger.warning("session_id=%s: dropping oversized binary frame (%d bytes)", session_id, len(raw_bytes))
-                            continue
-                        try:
-                            parsed = json.loads(raw_bytes)
-                            if isinstance(parsed, dict) and parsed.get("type") == "resize":
-                                continue
-                        except (json.JSONDecodeError, UnicodeDecodeError):
-                            pass
-                        process.stdin.write(raw_bytes)
-                        await process.stdin.drain()
+                    msg = await websocket.receive()
+                    if msg.get("type") == "websocket.disconnect":
+                        raise WebSocketDisconnect(msg.get("code", 1000))
+                    if "text" in msg and msg["text"] is not None:
+                        raw: bytes | str = msg["text"]
+                    elif "bytes" in msg and msg["bytes"] is not None:
+                        raw = msg["bytes"]
+                    else:
+                        continue
+                    if len(raw) > 65536:
+                        logger.warning("session_id=%s: dropping oversized frame (%d bytes)", session_id, len(raw))
+                        continue
+                    resize = _resize_request(raw)
+                    if resize is not None:
+                        _resize(master_fd, resize)
+                        continue
+                    await _write(raw.encode() if isinstance(raw, str) else raw)
 
             except WebSocketDisconnect:
                 raise
@@ -247,6 +302,26 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
     except Exception as exc:
         logger.error("Terminal WebSocket error: %s", exc, exc_info=True)
     finally:
+        # Synchronous steps first: the handler can be cancelled at any await
+        # below, and whatever follows that await is then skipped (#1291).
+        #
+        # Release the per-user slot. A leaked slot outlives the connection, and
+        # three of them lock the user out of terminals until restart.
+        count = _user_terminal_counts.get(user_id, 0)
+        if count > 1:
+            _user_terminal_counts[user_id] = count - 1
+        else:
+            _user_terminal_counts.pop(user_id, None)
+
+        # Closing the master hangs up the terminal: SIGHUP ends an interactive
+        # bash, which ignores the SIGTERM below.
+        if master_fd is not None:
+            try:
+                asyncio.get_running_loop().remove_reader(master_fd)
+            except Exception:
+                pass
+            os.close(master_fd)
+
         # Cancel relay tasks
         for task in [ws_to_stdin_task, stdout_to_ws_task]:
             if task and not task.done():
@@ -266,13 +341,6 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
                     process.kill()
                 except ProcessLookupError:
                     pass
-
-        # Release the per-user connection slot
-        count = _user_terminal_counts.get(user_id, 0)
-        if count > 1:
-            _user_terminal_counts[user_id] = count - 1
-        else:
-            _user_terminal_counts.pop(user_id, None)
 
         try:
             await websocket.close()
