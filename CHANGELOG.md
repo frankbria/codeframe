@@ -145,6 +145,25 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **No run, task or batch is left stuck in RUNNING (#1280).** Several things
+  used to leave state behind with nothing running, so the next start, run or
+  resume refused the task or re-did finished work:
+  - an error before the agent starts, such as a typo in `--llm-provider`;
+  - Ctrl+C or SIGTERM during `cf work start`, `cf work batch run` or
+    `cf work batch resume`;
+  - a graceful `batch stop`.
+  Such a run is now marked failed and an interrupted batch CANCELLED, so it
+  can be resumed. A late error does not overwrite a stop the user already
+  made. A graceful stop keeps the result of the task that was still running.
+  A task whose dependency in the same batch failed is no longer run. It is
+  recorded as `SKIPPED`, which the web UI shows as "Skipped (dependency)" and
+  does not announce as a blocker. A resume, or the next `--retry` round, runs
+  it once the dependency succeeds. Batches run in dependency order. A
+  dependency cycle still runs, as before.
+  `cf work batch resume` now counts tasks that never started, as the API
+  already did. The "already has an active run" error names
+  `cf work stop <task>`.
+
 - **Stop now stops the run (#1279).** `cf work stop`, the web UI's Stop, a
   forced batch stop and reconciliation used to mark the run failed while
   nothing told the running agent. A delegated CLI such as claude, codex or

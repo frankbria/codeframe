@@ -3243,12 +3243,9 @@ def work_resume(
                     workspace, run, dry_run=dry_run, verbose=verbose, engine=engine
                 )
             except Exception as exc:
-                # resume_run already flipped the run to RUNNING. A misconfig
-                # (missing ANTHROPIC_API_KEY, unknown provider) raises *before*
-                # execute_agent's own try, so without this the run stays RUNNING
-                # with no worker and `work start` refuses the task — the very
-                # wedge this command is being fixed for. Mirrors the web
-                # worker's #722 recovery.
+                # resume_run already flipped the run to RUNNING. execute_agent
+                # now fails a still-RUNNING run on any error itself (#1280);
+                # this remains a backstop, and the double-fail below is a no-op.
                 try:
                     runtime.fail_run(workspace, run.id, reason=str(exc))
                 except Exception:
@@ -4908,12 +4905,14 @@ def batch_resume(
                 for task_id in blocked_task_ids:
                     runtime.reset_blocked_run(workspace, task_id)
 
-        # Show what we're about to do
-        failed_count = sum(1 for s in batch.results.values() if s in ("FAILED", "BLOCKED"))
+        # Show what we're about to do. The same selection core makes, so the CLI
+        # and the API cannot disagree about whether there is anything to run
+        # (#1280: never-started tasks were missed here).
+        failed_count = len(conductor.resumable_task_ids(batch))
         completed_count = sum(1 for s in batch.results.values() if s == "COMPLETED")
 
         if not force and failed_count == 0:
-            console.print(f"[green]Batch {batch.id[:8]} has no failed/blocked tasks to resume.[/green]")
+            console.print(f"[green]Batch {batch.id[:8]} has no tasks left to resume.[/green]")
             console.print(f"  Status: {batch.status.value}")
             console.print(f"  Completed: {completed_count}/{len(batch.task_ids)}")
             return
@@ -4923,7 +4922,7 @@ def batch_resume(
             console.print(f"  Re-running all {len(batch.task_ids)} tasks")
         else:
             console.print(f"[cyan]Resuming batch {batch.id[:8]}[/cyan]")
-            console.print(f"  Re-running {failed_count} failed/blocked tasks")
+            console.print(f"  Re-running {failed_count} failed, blocked or unstarted tasks")
             console.print(f"  Keeping {completed_count} completed tasks")
 
         # Execute resume
