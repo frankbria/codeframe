@@ -102,12 +102,16 @@ def test_a_stalled_client_pauses_the_pty_reader(terminal, monkeypatch):
 
     from codeframe.ui.routers import terminal_ws
 
-    peak = 0
+    peak, overflows = 0, 0
     real_put = asyncio.Queue.put_nowait
 
     def tracking_put(self, item):
-        nonlocal peak
-        real_put(self, item)
+        nonlocal peak, overflows
+        try:
+            real_put(self, item)
+        except asyncio.QueueFull:
+            overflows += 1  # a read with nowhere to put it: dropped output
+            raise
         peak = max(peak, self.qsize())
 
     stalled = asyncio.Event()
@@ -120,7 +124,10 @@ def test_a_stalled_client_pauses_the_pty_reader(terminal, monkeypatch):
     terminal.send_text("yes\r")
     time.sleep(2)
 
+    # Capped (not unbounded), and capped by pausing the reader — a bounded
+    # queue alone would just drop the output that did not fit.
     assert 0 < peak <= terminal_ws._OUTPUT_QUEUE_CHUNKS
+    assert overflows == 0
 
 
 def test_a_shell_that_exits_closes_the_terminal_even_with_a_background_job(terminal):
