@@ -166,3 +166,77 @@ class TestThroughTheRouterWithAuthOn:
         tasks.update_status(ws, task.id, TaskStatus.DONE)
 
         assert closed == [(OWNER_PAT, "acme/app", 99)]
+
+
+class TestOwnerMapPersistence:
+    """codex re-review: lost updates across workers, incomplete rollback, and a
+    Unix-only permission call."""
+
+    def test_concurrent_processes_do_not_lose_owners(self, tmp_path):
+        import subprocess
+        import sys
+        import textwrap
+
+        home = tmp_path / "home"
+        home.mkdir()
+        script = tmp_path / "writer.py"
+        script.write_text(textwrap.dedent("""
+            import sys
+            from pathlib import Path
+            from types import SimpleNamespace
+            from codeframe.core.github_integration_config import record_connection_owner
+            worker = int(sys.argv[1])
+            for i in range(15):
+                ws = SimpleNamespace(repo_path=Path(sys.argv[2]) / f"w{worker}-{i}")
+                record_connection_owner(ws, worker * 100 + i)
+        """))
+        env = {**__import__("os").environ, "HOME": str(home)}
+        procs = [
+            subprocess.Popen([sys.executable, str(script), str(w), str(tmp_path)], env=env)
+            for w in range(8)
+        ]
+        for p in procs:
+            assert p.wait(timeout=120) == 0
+
+        import json
+
+        owners = json.loads((home / ".codeframe" / "github_connection_owners.json").read_text())
+        assert len(owners) == 8 * 15, "a concurrent writer dropped another's entry"
+
+    def test_recording_works_without_fchmod(self, ws, monkeypatch):
+        import os
+
+        monkeypatch.delattr(os, "fchmod", raising=False)
+        record_connection_owner(ws, OWNER)
+        assert connection_owner(ws) == OWNER
+
+    def test_a_failed_owner_record_restores_the_previous_repo(self, ws, monkeypatch):
+        from codeframe.auth.dependencies import require_auth
+        from codeframe.core.github_integration_config import load_github_integration_config
+        from codeframe.ui.dependencies import get_v2_workspace
+        from codeframe.ui.routers import github_integrations_v2
+
+        save_github_integration_config(ws, {"repo": "acme/old", "owner_login": "acme", "owner_avatar_url": ""})
+
+        async def valid(pat, repo, **kwargs):
+            return {"repo_full_name": repo, "owner_login": "acme", "owner_avatar_url": ""}
+
+        def broken(*a, **k):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(github_integrations_v2, "validate_connection", valid)
+        monkeypatch.setattr(github_integrations_v2, "record_connection_owner", broken)
+        app = FastAPI()
+        app.include_router(github_integrations_v2.router)
+        app.dependency_overrides[get_v2_workspace] = lambda: ws
+        app.dependency_overrides[require_auth] = lambda: {
+            "user_id": OWNER, "scopes": ["read", "write", "admin"], "auth_type": "jwt",
+        }
+
+        r = TestClient(app).post(
+            "/api/v2/integrations/github/connect", json={"pat": OWNER_PAT, "repo": "acme/new"}
+        )
+
+        assert r.status_code == 500
+        assert load_github_integration_config(ws)["repo"] == "acme/old"
+

@@ -25,7 +25,6 @@ import json
 import logging
 import os
 import tempfile
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, TypedDict
@@ -117,7 +116,6 @@ def save_github_integration_config(
 #: a forged owner id there would make the background paths use another
 #: account's PAT (codex review). Only the authenticated connect route writes it.
 _OWNERS_FILENAME = "github_connection_owners.json"
-_owners_lock = threading.Lock()
 
 
 def _owners_path() -> Path:
@@ -139,8 +137,16 @@ def _read_owners() -> dict:
 
 
 def record_connection_owner(workspace: Workspace, user_id: Optional[int]) -> None:
-    """Record (or with ``None`` forget) who connected this workspace's repo."""
-    with _owners_lock:
+    """Record (or with ``None`` forget) who connected this workspace's repo.
+
+    The read-modify-write holds a cross-process lock (several server workers
+    can connect different workspaces at once) and the write is atomic with
+    0600 permissions on every platform (codex review).
+    """
+    from codeframe.core.atomic_io import atomic_write_bytes, read_modify_write_lock
+
+    path = _owners_path()
+    with read_modify_write_lock(path.with_name(f".{path.name}.lock")):
         owners = _read_owners()
         key = _workspace_key(workspace)
         if user_id is None:
@@ -148,20 +154,7 @@ def record_connection_owner(workspace: Workspace, user_id: Optional[int]) -> Non
                 return
         else:
             owners[key] = user_id
-        path = _owners_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
-        try:
-            os.fchmod(fd, 0o600)
-            with os.fdopen(fd, "w") as f:
-                f.write(json.dumps(owners, indent=2))
-            os.replace(tmp_name, path)
-        except Exception:
-            try:
-                os.unlink(tmp_name)
-            except OSError:
-                pass
-            raise
+        atomic_write_bytes(path, json.dumps(owners, indent=2).encode("utf-8"), mode=0o600)
 
 
 def connection_owner(workspace: Workspace) -> Optional[int]:

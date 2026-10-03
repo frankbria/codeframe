@@ -317,6 +317,8 @@ async def connect(
             ),
         )
 
+    prior_config = load_github_integration_config(workspace)
+    saved_config = False
     try:
         saved = save_github_integration_config(
             workspace,
@@ -326,6 +328,7 @@ async def connect(
                 "owner_avatar_url": result["owner_avatar_url"],
             },
         )
+        saved_config = True
         # Whose store holds the PAT, for auto-close and reconciliation, which
         # run with no request (#1283). Recorded outside the workspace.
         record_connection_owner(workspace, _auth.get("user_id"))
@@ -334,6 +337,16 @@ async def connect(
         # Restore the prior token if there was one; only delete when the slot
         # was empty before this request.
         logger.error("Failed to save integration config: %s", e, exc_info=True)
+        if saved_config:
+            # The owner record failed after the repo was saved: put the old
+            # repo back too, or it would pair with the wrong credential (codex).
+            try:
+                if prior_config is not None:
+                    save_github_integration_config(workspace, dict(prior_config))
+                else:
+                    clear_github_integration_config(workspace)
+            except OSError:
+                logger.warning("Could not restore the previous GitHub integration", exc_info=True)
         try:
             if prior_pat is not None:
                 await run_in_threadpool(
