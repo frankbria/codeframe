@@ -3712,7 +3712,7 @@ def work_retry(
         task = matching[0]
 
         # Same engine as start, resolved once and checked before any state
-        # changes (#1281): resume used to hard-default to react.
+        # changes (#1281): retry had no --engine option and always ran react.
         from codeframe.core.engine_registry import (
             refuse_dry_run_for_external_engine,
             resolve_workspace_engine,
