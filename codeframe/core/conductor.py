@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import contextlib
 import subprocess
 import sys
 import threading
@@ -1551,7 +1552,8 @@ def _run_retries(
         # Find tasks that failed
         failed_tasks = [
             tid for tid in batch.task_ids
-            if batch.results.get(tid) in failed_statuses and not _stopped_by_user(workspace, tid)
+            if batch.results.get(tid) in failed_statuses
+            and not _stopped_by_user(workspace, tid, since=batch.started_at)
         ]
 
         if not failed_tasks:
@@ -2540,10 +2542,12 @@ def _execute_group_parallel(
         return task_id, batch.results[task_id]
 
     # Execute tasks in parallel using thread pool
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor, _stop_workers_on_interrupt(
+        batch.id
+    ):
         futures = {executor.submit(execute_task, tid): tid for tid in group}
 
-        for future in _as_completed_or_stop(futures, batch.id):
+        for future in as_completed(futures):
             task_id, result_status = future.result()
             results[task_id] = result_status
 
@@ -2786,28 +2790,37 @@ def _spawn_task_child(
         return RunStatus.FAILED.value
 
 
-def _stopped_by_user(workspace: Workspace, task_id: str) -> bool:
-    """Was the task's latest run stopped by the user? Its batch result reads
-    FAILED like a real failure, but retrying it would restart the work the
-    user just stopped (#1279 review)."""
+def _stopped_by_user(workspace: Workspace, task_id: str, since: datetime) -> bool:
+    """Did the user stop the run this batch started for the task?
+
+    Its batch result reads FAILED like a real failure, but retrying it would
+    restart the work the user just stopped (#1279 review). Only a run started
+    at or after ``since`` (the batch's start) counts: a stop marker from an
+    older run must not suppress the retry of a later spawn failure that never
+    created a run row (GLM review).
+    """
     from codeframe.core.runtime import list_runs
 
     latest = list_runs(workspace, task_id=task_id, limit=1)
-    return bool(latest) and run_control.was_stopped(workspace, latest[0].id)
+    return (
+        bool(latest)
+        and latest[0].started_at >= since
+        and run_control.was_stopped(workspace, latest[0].id)
+    )
 
 
-def _as_completed_or_stop(futures: dict, batch_id: str) -> Iterator:
-    """`as_completed`, but a Ctrl+C while waiting stops the batch's workers.
+@contextlib.contextmanager
+def _stop_workers_on_interrupt(batch_id: str) -> Iterator[None]:
+    """Stop the batch's workers on Ctrl+C, SIGTERM or SIGHUP, then re-raise.
 
-    They run in their own sessions (#1279), so the terminal's SIGINT reaches
-    only this process; and the executor's `with` exit would otherwise wait for
-    every worker to finish on its own before the interrupt got anywhere.
+    They run in their own sessions (#1279), so the terminal's signal reaches
+    only this process. Entered *inside* the executor's ``with`` so it exits
+    first: the executor's own exit is ``shutdown(wait=True)``, which would
+    otherwise wait for every worker to finish headless (GLM review). Only an
+    interrupt: one task's ordinary failure must not kill its siblings.
     """
     try:
-        yield from as_completed(futures)
-    # Only an interrupt. A plain BaseException would also catch GeneratorExit,
-    # which arrives whenever the loop *body* raises (one task's ordinary
-    # failure) and would kill every sibling worker (claude-review, verified).
+        yield
     except (KeyboardInterrupt, SystemExit):
         with _active_processes_lock:
             procs = list(_active_processes.get(batch_id, {}).values())

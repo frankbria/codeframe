@@ -334,6 +334,8 @@ class TestNoChildOutlivesItsParent:
 
 class TestRetriesLeaveAStoppedTaskAlone:
     def test_a_stopped_task_is_not_retried_but_a_failed_one_is(self, ws):
+        from datetime import datetime, timezone
+
         from codeframe.core import conductor
 
         stopped, _ = _start(ws)
@@ -341,8 +343,9 @@ class TestRetriesLeaveAStoppedTaskAlone:
         failed, failed_run = _start(ws)
         runtime.fail_run(ws, failed_run.id)  # FAILED
 
-        assert conductor._stopped_by_user(ws, stopped.id) is True
-        assert conductor._stopped_by_user(ws, failed.id) is False
+        epoch = datetime.min.replace(tzinfo=timezone.utc)
+        assert conductor._stopped_by_user(ws, stopped.id, since=epoch) is True
+        assert conductor._stopped_by_user(ws, failed.id, since=epoch) is False
 
     def test_the_retry_loop_reruns_only_the_real_failure(self, ws, monkeypatch):
         from datetime import datetime, timezone
@@ -350,6 +353,7 @@ class TestRetriesLeaveAStoppedTaskAlone:
         from codeframe.core import conductor
         from codeframe.core.conductor import BatchRun, BatchStatus, OnFailure
 
+        batch_started = datetime.now(timezone.utc)  # the runs below are this batch's
         stopped, _ = _start(ws)
         runtime.stop_run(ws, stopped.id)
         failed, failed_run = _start(ws)
@@ -357,7 +361,7 @@ class TestRetriesLeaveAStoppedTaskAlone:
         batch = BatchRun(
             id="b-1279", workspace_id=ws.id, task_ids=[stopped.id, failed.id],
             status=BatchStatus.RUNNING, strategy="serial", max_parallel=1,
-            on_failure=OnFailure.CONTINUE, started_at=datetime.now(timezone.utc),
+            on_failure=OnFailure.CONTINUE, started_at=batch_started,
             completed_at=None, results={stopped.id: "FAILED", failed.id: "FAILED"},
         )
         conductor._save_batch(ws, batch)
@@ -395,6 +399,34 @@ class TestRetriesLeaveAStoppedTaskAlone:
         conductor._run_retries(ws, batch, max_retries=1)
 
         assert rerun == [never_ran.id]
+
+    def test_an_old_stop_does_not_suppress_a_later_spawn_failure(self, ws, monkeypatch):
+        """The task was stopped in some earlier run; in this batch its worker
+        never started, so there is no new run row (GLM review)."""
+        from datetime import datetime, timedelta, timezone
+
+        from codeframe.core import conductor
+        from codeframe.core.conductor import BatchRun, BatchStatus, OnFailure
+
+        task, _ = _start(ws)
+        runtime.stop_run(ws, task.id)  # long ago
+        batch = BatchRun(
+            id="b-1279-stale", workspace_id=ws.id, task_ids=[task.id],
+            status=BatchStatus.RUNNING, strategy="serial", max_parallel=1,
+            on_failure=OnFailure.CONTINUE,
+            started_at=datetime.now(timezone.utc) + timedelta(seconds=1),
+            completed_at=None, results={task.id: "FAILED"},
+        )
+        conductor._save_batch(ws, batch)
+        rerun: list[str] = []
+        monkeypatch.setattr(
+            conductor, "_execute_task_subprocess",
+            lambda _ws, task_id, *a, **k: rerun.append(task_id) or "COMPLETED",
+        )
+
+        conductor._run_retries(ws, batch, max_retries=1)
+
+        assert rerun == [task.id]
 
 
 class TestThePlanEngineStopsToo:
@@ -494,37 +526,52 @@ class TestTheConductorUnwindsOnTerminalClose:
 
 
 class TestOnlyAnInterruptStopsTheParallelGroup:
-    """`_as_completed_or_stop` kills the batch's workers on Ctrl+C only. One
-    task's ordinary failure, raised in the loop body, closes the generator
-    with GeneratorExit and must not take its siblings down (claude-review)."""
+    """The parallel group's workers are stopped on an interrupt, wherever it
+    lands, and on nothing else (claude-review, GLM review)."""
 
-    def test_a_failing_task_does_not_kill_its_siblings(self, monkeypatch):
-        from concurrent.futures import Future
+    @pytest.fixture
+    def killed(self, monkeypatch):
+        calls: list = []
+        monkeypatch.setattr(run_control, "terminate_trees", lambda procs, **k: calls.append(procs))
+        return calls
 
+    def test_a_failing_task_does_not_kill_its_siblings(self, killed):
         from codeframe.core import conductor
 
-        killed: list = []
-        monkeypatch.setattr(run_control, "terminate_trees", lambda procs, **k: killed.append(procs))
-        done = Future()
-        done.set_result(("t", "FAILED"))
         with pytest.raises(ValueError):
-            for _future in conductor._as_completed_or_stop({done: "t"}, "b"):
+            with conductor._stop_workers_on_interrupt("b"):
                 raise ValueError("this task failed")
         assert killed == []
 
-    def test_ctrl_c_while_waiting_does(self, monkeypatch):
+    @pytest.mark.parametrize("interrupt", [KeyboardInterrupt, SystemExit])
+    def test_an_interrupt_in_the_loop_body_stops_them(self, killed, interrupt):
+        """Not only while blocked in as_completed: in the body, a generator
+        wrapper only ever saw GeneratorExit and the executor then waited on
+        every worker (GLM review)."""
         from codeframe.core import conductor
 
-        def interrupted(_futures):
-            raise KeyboardInterrupt
-            yield  # pragma: no cover
-
-        killed: list = []
-        monkeypatch.setattr(conductor, "as_completed", interrupted)
-        monkeypatch.setattr(run_control, "terminate_trees", lambda procs, **k: killed.append(procs))
-        with pytest.raises(KeyboardInterrupt):
-            list(conductor._as_completed_or_stop({}, "b"))
+        with pytest.raises(interrupt):
+            with conductor._stop_workers_on_interrupt("b"):
+                raise interrupt()
         assert len(killed) == 1
+
+    def test_it_runs_before_the_executor_waits(self, killed):
+        """Exits before ThreadPoolExecutor.shutdown(wait=True)."""
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        from codeframe.core import conductor
+
+        release = threading.Event()
+        with pytest.raises(KeyboardInterrupt):
+            with ThreadPoolExecutor(max_workers=1) as ex, conductor._stop_workers_on_interrupt("b"):
+                ex.submit(release.wait, 30)
+                # A real kill would end the worker; stand in for it here.
+                conductor.run_control.terminate_trees = (
+                    lambda procs, **k: (killed.append(procs), release.set())
+                )
+                raise KeyboardInterrupt
+        assert killed, "the executor waited before the workers were stopped"
 
 
 class TestNestedSignalHandlers:
