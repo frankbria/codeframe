@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 
 import { settingsApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
-import type { AgentSettings, AgentTypeKey, ApiError } from '@/types';
+import type { AgentSettings, ApiError } from '@/types';
 import { ApiKeysTab } from '@/components/settings/ApiKeysTab';
 import { GitHubIntegrationCard } from '@/components/settings/GitHubIntegrationCard';
 import { NotificationsTab } from '@/components/settings/NotificationsTab';
@@ -21,29 +21,6 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-
-const AGENT_TYPE_LABELS: Record<AgentTypeKey, string> = {
-  claude_code: 'Claude Code',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-  react: 'ReAct',
-};
-
-const MODEL_OPTIONS_BY_AGENT: Record<AgentTypeKey, string[]> = {
-  claude_code: ['claude-opus-4', 'claude-sonnet-4', 'claude-haiku-4'],
-  codex: ['gpt-4o', 'gpt-4o-mini', 'o3', 'o3-mini'],
-  opencode: ['claude-opus-4', 'claude-sonnet-4', 'gpt-4o'],
-  react: ['claude-opus-4', 'claude-sonnet-4', 'gpt-4o', 'qwen2.5-coder:7b'],
-};
-
-const UNSET_MODEL_VALUE = '__unset__';
 
 export default function SettingsPage() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
@@ -65,26 +42,11 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (data) {
-      setDraft({
-        ...data,
-        agent_models: data.agent_models.map((m) => ({ ...m })),
-      });
+      setDraft({ ...data });
     }
   }, [data]);
 
   if (!workspaceReady) return null;
-
-  const updateAgentModel = (agentType: AgentTypeKey, model: string) => {
-    if (!draft) return;
-    setDraft({
-      ...draft,
-      agent_models: draft.agent_models.map((entry) =>
-        entry.agent_type === agentType
-          ? { ...entry, default_model: model }
-          : entry
-      ),
-    });
-  };
 
   const handleSave = async () => {
     if (!draft || !workspacePath) return;
@@ -103,10 +65,7 @@ export default function SettingsPage() {
 
   const handleDiscard = () => {
     if (!data) return;
-    setDraft({
-      ...data,
-      agent_models: data.agent_models.map((m) => ({ ...m })),
-    });
+    setDraft({ ...data });
     toast.info('Changes discarded');
   };
 
@@ -129,7 +88,7 @@ export default function SettingsPage() {
             <section className="rounded-lg border bg-card p-6">
               <h2 className="mb-1 text-lg font-semibold">Agent Settings</h2>
               <p className="mb-6 text-sm text-muted-foreground">
-                Default model per agent type, plus per-task limits.
+                Per-task limits for agent runs.
               </p>
 
               {!workspacePath ? (
@@ -143,7 +102,6 @@ export default function SettingsPage() {
               ) : draft ? (
                 <AgentSettingsForm
                   draft={draft}
-                  onModelChange={updateAgentModel}
                   onMaxTurnsChange={(v) =>
                     setDraft({ ...draft, max_turns: v })
                   }
@@ -228,7 +186,6 @@ function NoWorkspaceMessage() {
 
 interface AgentSettingsFormProps {
   draft: AgentSettings;
-  onModelChange: (agentType: AgentTypeKey, model: string) => void;
   onMaxTurnsChange: (value: number) => void;
   onMaxCostChange: (value: number | null) => void;
   onSave: () => void;
@@ -238,7 +195,6 @@ interface AgentSettingsFormProps {
 
 function AgentSettingsForm({
   draft,
-  onModelChange,
   onMaxTurnsChange,
   onMaxCostChange,
   onSave,
@@ -247,51 +203,6 @@ function AgentSettingsForm({
 }: AgentSettingsFormProps) {
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="mb-3 text-sm font-medium">Default model per agent type</h3>
-        <div className="space-y-3">
-          {draft.agent_models.map((entry) => {
-            const label = AGENT_TYPE_LABELS[entry.agent_type as AgentTypeKey] ?? entry.agent_type;
-            const options = MODEL_OPTIONS_BY_AGENT[entry.agent_type as AgentTypeKey] ?? [];
-            const selectValue = entry.default_model || UNSET_MODEL_VALUE;
-            return (
-              <div
-                key={entry.agent_type}
-                className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[180px_1fr]"
-              >
-                <label
-                  htmlFor={`model-${entry.agent_type}`}
-                  className="text-sm text-muted-foreground"
-                >
-                  {label}
-                </label>
-                <Select
-                  value={selectValue}
-                  onValueChange={(value) =>
-                    onModelChange(
-                      entry.agent_type as AgentTypeKey,
-                      value === UNSET_MODEL_VALUE ? '' : value
-                    )
-                  }
-                >
-                  <SelectTrigger id={`model-${entry.agent_type}`}>
-                    <SelectValue placeholder="Select model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={UNSET_MODEL_VALUE}>(default)</SelectItem>
-                    {options.map((model) => (
-                      <SelectItem key={model} value={model}>
-                        {model}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label

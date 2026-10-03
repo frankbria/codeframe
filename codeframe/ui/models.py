@@ -9,27 +9,11 @@ alive only by a test of themselves.
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 # ============================================================================
 # Settings (issue #554)
 # ============================================================================
-
-
-AgentType = Literal["claude_code", "codex", "opencode", "react"]
-AGENT_TYPES: tuple[AgentType, ...] = ("claude_code", "codex", "opencode", "react")
-
-
-class AgentTypeModelConfig(BaseModel):
-    """Default model for a single agent type."""
-
-    agent_type: AgentType = Field(
-        ..., description="One of: claude_code, codex, opencode, react"
-    )
-    default_model: str = Field(
-        default="",
-        description="Model identifier (e.g. 'claude-opus-4', 'gpt-4o'); empty string means unset",
-    )
 
 
 class AgentSettings(BaseModel):
@@ -37,11 +21,12 @@ class AgentSettings(BaseModel):
 
     Defaults match `EnvironmentConfig.agent_budget.max_iterations` so that a
     fresh workspace round-trips its real defaults through GET.
+
+    A per-agent-type default model used to be here. It was saved and never
+    read: no engine took it (#1292), so it was removed rather than left as a
+    control that does nothing.
     """
 
-    agent_models: List[AgentTypeModelConfig] = Field(
-        ..., description="Default model per agent type"
-    )
     max_turns: int = Field(
         default=100, gt=0, description="Maximum turns per task (must be > 0)"
     )

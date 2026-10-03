@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from codeframe.auth.api_keys import SCOPE_ADMIN
 from codeframe.auth.dependencies import require_auth, require_scope
-from codeframe.core.workspace import Workspace
+from codeframe.core.workspace import Workspace, load_workspace_config
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.git.github_integration import GitHubIntegration, GitHubAPIError, PRDetails
 from codeframe.ui.dependencies import get_v2_workspace
@@ -67,7 +67,10 @@ class CreatePRRequest(BaseModel):
     branch: str = Field(..., min_length=1, description="Head branch with changes")
     title: str = Field(..., min_length=1, description="PR title")
     body: str = Field("", description="PR description/body")
-    base: str = Field("main", description="Target branch to merge into")
+    base: Optional[str] = Field(
+        None,
+        description="Target branch to merge into (default: the workspace's default branch, else main)",
+    )
 
 
 class MergePRRequest(BaseModel):
@@ -650,7 +653,7 @@ async def create_pull_request(
             branch=body.branch,
             title=body.title,
             body=body.body,
-            base=body.base,
+            base=body.base or load_workspace_config(workspace)["default_branch"],
         )
 
         # Capture proof snapshot at PR creation time.

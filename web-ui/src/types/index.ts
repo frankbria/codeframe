@@ -645,15 +645,7 @@ export type ProofEvidenceSortCol = 'gate' | 'result' | 'run_id' | 'timestamp' | 
 export type SortDir = 'asc' | 'desc';
 
 // Settings types — mirrors codeframe/ui/models.py
-export type AgentTypeKey = 'claude_code' | 'codex' | 'opencode' | 'react';
-
-export interface AgentTypeModelConfig {
-  agent_type: AgentTypeKey;
-  default_model: string;
-}
-
 export interface AgentSettings {
-  agent_models: AgentTypeModelConfig[];
   max_turns: number;
   max_cost_usd: number | null;
 }
