@@ -21,7 +21,7 @@ import logging
 import asyncio
 import aiosqlite
 
-from codeframe.platform_store.schema_manager import SchemaManager
+from codeframe.platform_store.schema_manager import DISABLED_PASSWORD, SchemaManager
 from codeframe.platform_store.repositories import (
     TokenRepository,
     AuditRepository,
@@ -41,8 +41,9 @@ def default_database_path() -> str:
     It used to default to ``.codeframe/state.db``, the workspace's own DB
     (#1287): serving first left a ``state.db`` that ``cf init`` refused, and
     serving second wrote users and API keys into the repo's domain data. An
-    install that already keeps its accounts in ``state.db`` stays there, so the
-    operator does not silently lose them on upgrade.
+    install that already keeps real accounts in ``state.db`` stays there, so
+    the operator does not silently lose them on upgrade; it is never moved
+    automatically, because a live SQLite file has WAL sidecars.
     """
     env = os.getenv("DATABASE_PATH")
     if env:
@@ -50,32 +51,56 @@ def default_database_path() -> str:
     state_dir = Path.cwd() / ".codeframe"
     platform_db = state_dir / "platform.db"
     legacy = state_dir / "state.db"
-    if not platform_db.exists() and _has_users_table(legacy):
-        if str(legacy) not in _warned_legacy:
-            _warned_legacy.add(str(legacy))
-            logger.warning(
-                "Using the legacy control-plane DB %s, which is also the workspace "
-                "DB. Move it to %s or set DATABASE_PATH to separate them (#1287).",
-                legacy,
-                platform_db,
+    kind = None if platform_db.exists() else _legacy_kind(legacy)
+    if kind is None:
+        return str(platform_db)
+    if str(legacy) not in _warned_legacy:
+        _warned_legacy.add(str(legacy))
+        if kind == "shared":
+            advice = (
+                "It also holds this workspace, so do not move it: stop the server "
+                "and copy it to %s, or set DATABASE_PATH."
             )
-        return str(legacy)
-    return str(platform_db)
+        else:
+            advice = (
+                "It holds no workspace, so `cf init` cannot use this directory "
+                "until it is renamed: stop the server and rename it, with any "
+                "-wal/-shm files, to %s."
+            )
+        logger.warning(
+            "Using the legacy control-plane DB %s (#1287). " + advice, legacy, platform_db
+        )
+    return str(legacy)
 
 
-def _has_users_table(db_path: Path) -> bool:
+def _legacy_kind(db_path: Path) -> Optional[str]:
+    """``"shared"`` / ``"control_plane"`` when ``db_path`` holds a login-capable
+    account, else ``None``. The seeded ``!DISABLED!`` admin alone does not count:
+    the old ``cf stats`` (#943) planted it in workspace DBs that never had a
+    server."""
     if not db_path.is_file():
-        return False
+        return None
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        # as_uri() percent-encodes: a raw path with '#', '?' or '%' names
+        # another file in a SQLite URI (codex review).
+        conn = sqlite3.connect(f"{db_path.absolute().as_uri()}?mode=ro", uri=True)
         try:
-            return conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'"
+            tables = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            if "users" not in tables or conn.execute(
+                "SELECT 1 FROM users WHERE hashed_password != ? LIMIT 1",
+                (DISABLED_PASSWORD,),
+            ).fetchone() is None:
+                return None
+            has_workspace = "workspace" in tables and conn.execute(
+                "SELECT 1 FROM workspace LIMIT 1"
             ).fetchone() is not None
         finally:
             conn.close()
     except sqlite3.Error:
-        return False
+        return None
+    return "shared" if has_workspace else "control_plane"
 
 
 class Database:

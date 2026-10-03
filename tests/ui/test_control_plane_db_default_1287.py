@@ -24,6 +24,15 @@ def _tables(db_path) -> set[str]:
         conn.close()
 
 
+def _add_account(db_path, password="$argon2$real"):
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER, hashed_password TEXT)")
+    conn.execute("INSERT INTO users VALUES (1, ?)", (password,))
+    conn.commit()
+    conn.close()
+
+
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
@@ -82,17 +91,46 @@ def test_database_path_still_wins(repo, monkeypatch):
     assert default_database_path() == str(repo / "elsewhere.db")
 
 
-def test_a_legacy_install_keeps_its_accounts(repo, caplog):
-    """Accounts already in ``state.db`` stay reachable, with a warning."""
+def test_a_serve_first_legacy_install_keeps_its_accounts(repo, caplog):
+    """Accounts in a ``state.db`` with no workspace stay reachable, and the
+    warning says how to free the directory for ``cf init``."""
     from codeframe.platform_store.database import default_database_path
 
     legacy = repo / ".codeframe" / "state.db"
-    legacy.parent.mkdir()
-    sqlite3.connect(legacy).execute("CREATE TABLE users (id INTEGER)").connection.commit()
+    _add_account(legacy)
 
     with caplog.at_level(logging.WARNING):
         assert default_database_path() == str(legacy)
-    assert "DATABASE_PATH" in caplog.text
+    assert "rename" in caplog.text
+
+
+def test_a_shared_legacy_db_is_never_advised_to_move(repo, caplog):
+    """Init-then-serve put the workspace and the accounts in one file: moving
+    it would orphan the PRD, tasks and proof ledger (internal review)."""
+    from codeframe.core.workspace import create_or_load_workspace
+    from codeframe.platform_store.database import default_database_path
+
+    create_or_load_workspace(repo)
+    legacy = repo / ".codeframe" / "state.db"
+    _add_account(legacy)
+
+    with caplog.at_level(logging.WARNING):
+        assert default_database_path() == str(legacy)
+    assert "do not move" in caplog.text and "DATABASE_PATH" in caplog.text
+
+
+def test_a_workspace_db_seeded_by_old_cf_stats_is_not_legacy(repo):
+    """Pre-#943 ``cf stats`` planted a users table holding only the disabled
+    admin; that is contamination, not accounts to keep (internal review)."""
+    from codeframe.core.workspace import create_or_load_workspace
+    from codeframe.platform_store.database import Database, default_database_path
+
+    create_or_load_workspace(repo)
+    db = Database(repo / ".codeframe" / "state.db")
+    db.initialize()
+    db.close()
+
+    assert default_database_path() == str(repo / ".codeframe" / "platform.db")
 
 
 def test_a_workspace_db_without_accounts_is_not_legacy(repo):
@@ -114,7 +152,24 @@ def test_only_the_resolver_supplies_a_database_path_fallback():
     with_fallback = re.compile(r"""(getenv|environ\.get)\(\s*["']DATABASE_PATH["']\s*,""")
     sites = sorted(
         str(p)
-        for p in Path("codeframe").rglob("*.py")
+        for p in (Path(__file__).resolve().parents[2] / "codeframe").rglob("*.py")
         if with_fallback.search(p.read_text())
     )
     assert sites == []
+
+
+@pytest.mark.parametrize("dirname", ["has#hash", "has?query", "has%41percent"])
+def test_a_legacy_install_in_a_uri_special_directory_keeps_its_accounts(
+    tmp_path, monkeypatch, dirname
+):
+    """The probe opens the DB as a SQLite URI; an unencoded ``#``/``?``/``%``
+    made it look at another file and drop the accounts (codex review)."""
+    from codeframe.platform_store.database import default_database_path
+
+    repo = tmp_path / dirname
+    legacy = repo / ".codeframe" / "state.db"
+    _add_account(legacy)
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    monkeypatch.chdir(repo)
+
+    assert default_database_path() == str(legacy)
