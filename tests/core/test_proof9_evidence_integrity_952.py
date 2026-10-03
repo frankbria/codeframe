@@ -473,14 +473,14 @@ class TestOnlyTheLatestEvidencePerGateIsChecked:
 class TestTextEndingAtTheDocstringBoundary:
     """A lone trailing quote is not a `\"\"\"` run, so collapsing runs missed it.
 
-    Six templates butt `{description}` straight against their own closing
+    Every Python template butts `{description}` straight against their own closing
     delimiter — `\"\"\"Proves: {description}\"\"\"`. A description ending in one
     quote makes four in a row; Python closes the docstring on the first three
     and the fourth starts an unterminated literal. That is a SyntaxError in the
     generated stub, the exact failure AC4 exists to prevent (CI review).
     """
 
-    _PY_GATES = [Gate.UNIT, Gate.CONTRACT, Gate.VISUAL, Gate.A11Y, Gate.PERF, Gate.SEC]
+    _PY_GATES = [g for g in Gate if g is not Gate.MANUAL]
 
     @pytest.mark.parametrize(
         "tail", ['"', '""', "\\", '\\"', "C:\\path", "re: \\d+", "\\n"]
