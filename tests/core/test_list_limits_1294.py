@@ -96,3 +96,36 @@ def test_tail_yields_every_event_in_order_when_many_arrive_between_polls(ws, mon
         for event in events.tail(ws, since_id=ids[0] - 1):
             got.append(event.id)
     assert got == ids
+
+
+# A hardcoded limit=1000 (schedule, checkpoints) is the same truncation one
+# order of magnitude later; blockers.list_all had the same 100 default.
+OVER_1000 = 1005
+
+
+def test_checkpoint_snapshots_every_task_and_blocker(ws):
+    from codeframe.core import blockers, checkpoints
+
+    _make_tasks(ws, OVER_1000)
+    for i in range(OVER_1000):
+        blockers.create(ws, question=f"q{i}")
+    snap = checkpoints.create(ws, "cp", include_git_ref=False).snapshot
+    assert len(snap["tasks"]) == OVER_1000
+    assert len(snap["blockers"]) == OVER_1000
+
+
+def test_schedule_sees_every_task(ws):
+    from codeframe.core import schedule
+
+    _make_tasks(ws, OVER_1000)
+    assert len(schedule.get_schedule(ws).task_assignments) == OVER_1000
+
+
+def test_blocker_listing_returns_every_blocker_by_default(ws):
+    from codeframe.core import blockers
+
+    for i in range(MANY):
+        blockers.create(ws, question=f"q{i}")
+    assert len(blockers.list_all(ws)) == MANY
+    assert len(blockers.list_open(ws)) == MANY
+    assert len(blockers.list_all(ws, limit=100)) == 100

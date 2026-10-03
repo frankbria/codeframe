@@ -95,7 +95,7 @@ def get_schedule(
     An empty workspace yields an empty result rather than an error (#1066).
     """
     # Load tasks from workspace
-    task_list = tasks.list_tasks(workspace, limit=1000)
+    task_list = tasks.list_tasks(workspace)
     if not task_list:
         # An empty workspace has an empty schedule, not a missing one (#1066).
         # Raising here made the router answer 404, so a client could not tell
@@ -205,7 +205,7 @@ def predict_completion(
         start_date = _utc_now()
 
     # Load tasks
-    task_list = tasks.list_tasks(workspace, limit=1000)
+    task_list = tasks.list_tasks(workspace)
     if not task_list:
         # Nothing outstanding, so the project is "finished" as of now (#1066).
         # completed_percentage is 100 rather than 0 because 0 remaining hours
@@ -306,7 +306,7 @@ def get_bottlenecks(workspace: Workspace) -> list[BottleneckInfo]:
     An empty workspace yields an empty result rather than an error (#1066).
     """
     # Load tasks
-    task_list = tasks.list_tasks(workspace, limit=1000)
+    task_list = tasks.list_tasks(workspace)
     if not task_list:
         # No tasks means no bottlenecks (#1066), not a missing resource.
         return []

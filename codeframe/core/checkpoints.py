@@ -268,7 +268,7 @@ def _build_snapshot(workspace: Workspace, include_git_ref: bool = True) -> dict:
     }
 
     # Capture tasks
-    all_tasks = tasks.list_tasks(workspace, limit=1000)
+    all_tasks = tasks.list_tasks(workspace)
     snapshot["tasks"] = [
         {
             "id": t.id,
@@ -281,7 +281,7 @@ def _build_snapshot(workspace: Workspace, include_git_ref: bool = True) -> dict:
     ]
 
     # Capture blockers
-    all_blockers = blockers.list_all(workspace, limit=1000)
+    all_blockers = blockers.list_all(workspace)
     snapshot["blockers"] = [
         {
             "id": b.id,
