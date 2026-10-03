@@ -53,7 +53,8 @@ export function ExecutionHeader({
   };
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border bg-card p-4">
+    // flex-wrap: at phone width the Stop button was pushed off-screen (#1297).
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-card p-4">
       {/* Left: task info + agent state */}
       <div className="min-w-0 flex-1">
         <h1 className="truncate text-lg font-semibold tracking-tight">

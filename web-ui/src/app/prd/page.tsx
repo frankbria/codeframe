@@ -112,7 +112,8 @@ export default function PrdPage() {
       mutatePrd(updated, false);
     } catch (err) {
       const apiError = err as ApiError;
-      console.error('[PRD] Save failed:', apiError.detail);
+      // Logged only, the edit was lost with no message (#1297).
+      toast.error(`Could not save the PRD: ${apiError.detail || 'unknown error'}. Your edits are not saved.`);
     } finally {
       setIsSaving(false);
     }

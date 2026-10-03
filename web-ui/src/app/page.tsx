@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
+import { toast } from 'sonner';
 import {
   WorkspaceHeader,
   WorkspaceStatsCards,
@@ -104,6 +105,7 @@ export default function WorkspacePage() {
     open: boolean;
     detectedStack: string | null;
   }>({ open: false, detectedStack: null });
+  const [isInitializing, setIsInitializing] = useState(false);
 
   // Fetch workspace data (only if we have a path)
   const {
@@ -209,19 +211,23 @@ export default function WorkspacePage() {
       await workspaceApi.updateTechStack(workspacePath, stack);
       await mutateWorkspace();
     } catch (error) {
-      console.error('Failed to update tech stack:', error);
+      toast.error(`Could not save the tech stack: ${(error as ApiError).detail || 'unknown error'}`);
     }
   };
 
   // Handle workspace initialization from the header
   const handleInitialize = async () => {
     if (!workspacePath) return;
+    setIsInitializing(true);
     try {
       const initialized = await workspaceApi.init(workspacePath, { detect: true });
       await mutateWorkspace();
       setTechStackDialog({ open: true, detectedStack: initialized.tech_stack });
     } catch (error) {
-      console.error('Failed to initialize workspace:', error);
+      // It used to fail silently (#1297).
+      toast.error(`Could not initialize the workspace: ${(error as ApiError).detail || 'unknown error'}`);
+    } finally {
+      setIsInitializing(false);
     }
   };
 
@@ -247,7 +253,7 @@ export default function WorkspacePage() {
 
         <WorkspaceHeader
           workspace={workspaceNotFound ? null : workspace}
-          isLoading={false}
+          isLoading={isInitializing}
           onInitialize={handleInitialize}
         />
 
