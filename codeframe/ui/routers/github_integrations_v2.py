@@ -10,9 +10,11 @@ The PAT is stored via ``CredentialManager`` in the connecting principal's own
 store (issue #790; since #963 every principal has a user_id, auth on or off)
 under ``CredentialProvider.GIT_GITHUB``, the same slot the API Keys settings
 tab (#555) uses. Repo metadata (non-secret) is persisted per-workspace under
-``.codeframe/github_integration.json``, including the connecting user's id, so
-auto-close and reconciliation, which run with no request, find that PAT
-(#1283). The PAT is never returned in any response.
+``.codeframe/github_integration.json``. The connecting user's id is recorded
+outside the workspace, in ``~/.codeframe/github_connection_owners.json``
+(``record_connection_owner``), never in it, so auto-close and reconciliation,
+which run with no request, find that PAT (#1283). The PAT is never returned in
+any response.
 """
 
 import asyncio
@@ -331,7 +333,8 @@ async def connect(
         saved_config = True
         # Whose store holds the PAT, for auto-close and reconciliation, which
         # run with no request (#1283). Recorded outside the workspace.
-        record_connection_owner(workspace, _auth.get("user_id"))
+        # Off the event loop: a cross-process file lock and an fsync (#1181).
+        await run_in_threadpool(record_connection_owner, workspace, _auth.get("user_id"))
     except OSError as e:
         # Roll back the credential so we don't leave a half-connected state.
         # Restore the prior token if there was one; only delete when the slot

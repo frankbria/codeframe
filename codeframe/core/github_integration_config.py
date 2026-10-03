@@ -2,9 +2,12 @@
 
 Stores only **non-secret** repo metadata for a connected GitHub repository under
 ``.codeframe/github_integration.json``. The PAT itself is stored in the
-caller-scoped ``CredentialManager`` (``CredentialProvider.GIT_GITHUB``; issue
-#790 — per-user when authenticated, machine-wide when auth is disabled) — never
-in this file.
+connecting principal's own ``CredentialManager`` store
+(``CredentialProvider.GIT_GITHUB``; #790, and every principal has a user_id
+since #963), never in this file. *Who* connected is recorded outside the
+workspace, in ``~/.codeframe/github_connection_owners.json``
+(``record_connection_owner``, #1283): anything running in the workspace can
+write ``.codeframe/``.
 
 Headless — no FastAPI or HTTP imports (architecture rule #1). Mirrors the
 shape of ``codeframe/core/notifications_config.py``.
@@ -168,25 +171,37 @@ def connection_owner(workspace: Workspace) -> Optional[int]:
 def resolve_background_pat(workspace: Workspace) -> Optional[str]:
     """The GitHub PAT for work done outside any request (#1283).
 
-    Auto-close and reconciliation run with no principal. The PAT a user
-    connected in the web UI lives in *that user's* store (#790), so they read
-    the owner recorded at connect time (outside the workspace, see
-    ``record_connection_owner``) first, store before environment so an
-    operator's ambient GITHUB_TOKEN cannot act for the user (#900). Then the
-    machine-wide store / GITHUB_TOKEN, for CLI-connected and legacy
-    workspaces. Never raises; None when there is no usable PAT.
+    Auto-close and reconciliation run with no principal. In order:
+
+    1. The PAT that the user recorded as having connected this workspace
+       stored in their own store (#790). Store only: an operator's ambient
+       ``GITHUB_TOKEN`` never stands in for a user's connection (#900).
+    2. The machine-wide store, then ``GITHUB_TOKEN``, for CLI-connected and
+       legacy workspaces. In hosted mode only the machine-wide store: the
+       process environment belongs to the operator (#900).
+
+    Each step is guarded on its own, so an unreadable per-user store still
+    falls through. Never raises; None when there is no usable PAT.
     """
     from codeframe.core.credentials import CredentialManager, CredentialProvider
+    from codeframe.core.llm_resolution import _is_hosted
 
     try:
         owner = connection_owner(workspace)
         if owner is not None:
-            pat = CredentialManager(user_id=owner, migrate=False).get_credential(
-                CredentialProvider.GIT_GITHUB, prefer_stored=True
+            pat = CredentialManager(user_id=owner, migrate=False).get_stored_credential(
+                CredentialProvider.GIT_GITHUB
             )
             if pat:
                 return pat
-        return CredentialManager().get_credential(CredentialProvider.GIT_GITHUB)
+    except Exception:  # noqa: BLE001 - fall through to the machine-wide store
+        logger.warning("Per-user GitHub PAT lookup failed", exc_info=True)
+
+    try:
+        manager = CredentialManager()
+        if _is_hosted():
+            return manager.get_stored_credential(CredentialProvider.GIT_GITHUB)
+        return manager.get_credential(CredentialProvider.GIT_GITHUB)
     except Exception:  # noqa: BLE001 - background callers must never break
         logger.warning("GitHub PAT lookup failed", exc_info=True)
         return None

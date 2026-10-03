@@ -91,6 +91,31 @@ class TestTheResolver:
         monkeypatch.setenv("GITHUB_TOKEN", "ghp_operator_env_fake")
         assert resolve_background_pat(ws) == OWNER_PAT
 
+    def test_an_unreadable_owner_store_still_falls_back(self, ws, monkeypatch):
+        """One broken per-user store must not disable the machine-wide path."""
+        _connect_config(ws)
+        _store(None, MACHINE_PAT)
+        real = creds_mod.CredentialManager
+
+        def manager(*args, user_id=None, **kwargs):
+            if user_id == OWNER:
+                raise creds_mod.CredentialStoreUnreadableError("corrupt users/7 store")
+            return real(*args, user_id=user_id, **kwargs)
+
+        monkeypatch.setattr(creds_mod, "CredentialManager", manager)
+        assert resolve_background_pat(ws) == MACHINE_PAT
+
+    def test_hosted_mode_never_uses_the_operators_github_token(self, ws, monkeypatch):
+        """No connection of the user's own: the operator's env is not theirs (#900)."""
+        monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "hosted")
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_operator_env_fake")
+        assert resolve_background_pat(ws) is None
+
+    def test_self_hosted_still_falls_back_to_github_token(self, ws, monkeypatch):
+        monkeypatch.delenv("CODEFRAME_DEPLOYMENT_MODE", raising=False)
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_operator_env_fake")
+        assert resolve_background_pat(ws) == "ghp_operator_env_fake"
+
     def test_falls_back_to_the_machine_wide_store(self, ws):
         _connect_config(ws)  # the owner has no stored PAT
         _store(None, MACHINE_PAT)
