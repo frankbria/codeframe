@@ -286,3 +286,24 @@ def test_backups_are_never_readable_by_other_users_while_written():
     assert script.index("umask 077") < script.index("docker run")
     run = next(s for s in _steps("deploy-production") if s.get("name") == "Create pre-deployment backup")["run"]
     assert "mkdir -m 700 \\${TMP_BACKUP}" in run
+
+
+@docker
+def test_a_truncated_database_on_a_host_that_had_one_fails_the_deploy(volume, tmp_path):
+    """SQLite opens a zero-byte file as a valid empty database, so 'exists'
+    was not 'still there': the backup succeeded over the loss (GLM)."""
+    _create(volume)
+    _make_db(volume)
+    assert _run_script(volume, tmp_path / "first.db").returncode == 0
+    _docker("run", "--rm", "--user", "10001:10001", "-v", f"{volume}:/data", IMAGE,
+            "sh", "-c", "rm -f /data/codeframe.db-wal /data/codeframe.db-shm; : > /data/codeframe.db")
+    r = _run_script(volume, tmp_path / "b.db")
+    assert r.returncode == 1
+    assert "data loss" in r.stdout
+
+
+def test_the_production_archive_is_never_world_readable_while_written():
+    """The tar.gz lands at the top of /tmp with the ssh shell's umask and was
+    chmod 600 only after the mv (GLM)."""
+    run = next(s for s in _steps("deploy-production") if s.get("name") == "Create pre-deployment backup")["run"]
+    assert run.index("umask 077") < run.index("tar -czf")

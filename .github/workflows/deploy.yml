@@ -864,6 +864,9 @@ jobs:
 
             # Create temporary staging directory. 700: it receives the env
             # files and the database, under a world-traversable /tmp (#1295).
+            # umask 077 for the whole step: the tar.gz written beside it holds
+            # the same secrets and was chmod 600 only after the mv.
+            umask 077
             mkdir -m 700 \${TMP_BACKUP}
 
             # Record current commit

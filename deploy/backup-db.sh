@@ -56,7 +56,8 @@ set +e
 docker run --rm --user 10001:10001 -v "$VOLUME":/data "$IMAGE" python -c '
 import os, sqlite3, sys, tempfile
 src_path = "/data/codeframe.db"
-if not os.path.isfile(src_path):
+# A zero-byte file opens as a valid, empty database, so it counts as gone.
+if not os.path.isfile(src_path) or os.path.getsize(src_path) == 0:
     sys.exit(3)
 # Checked above, so connect cannot create an empty one in its place.
 src = sqlite3.connect(src_path)
@@ -69,7 +70,8 @@ dst.close()
 if verdict != "ok":
     sys.exit("backup failed integrity_check: " + verdict)
 with open(tmp, "rb") as f:
-    sys.stdout.buffer.write(f.read())
+    while chunk := f.read(1 << 20):
+        sys.stdout.buffer.write(chunk)
 ' > "$OUT.partial" < /dev/null
 status=$?
 set -e
@@ -77,7 +79,7 @@ set -e
 if [ "$status" -ne 0 ]; then
   rm -f "$OUT.partial"
   if [ "$status" -eq 3 ]; then
-    no_database "The $VOLUME volume has no codeframe.db"
+    no_database "The $VOLUME volume has no codeframe.db (or an empty one)"
   fi
   echo "❌ Database backup failed (see the error above). Not deploying over an unbacked-up database."
   exit 1
