@@ -145,6 +145,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **The session terminal runs what you type (#1291).** The terminal on
+  `/sessions/[id]` connected but never ran a command: bash ran on pipes, so it
+  never treated the web terminal's Enter (`\r`) as end of line. The shell now
+  runs on a PTY as its controlling terminal (via util-linux `setsid --ctty`),
+  so Enter, Ctrl+C and window resizes work. Closing a terminal also no longer
+  leaks the user's slot; three leaks used to lock that user out until the
+  server restarted. A shell that exits now closes its terminal even with a
+  background job still running.
+
 - **CLI output shows text from files, GitHub and the LLM as written (#1290).**
   Text in square brackets, such as `[/login]`, `list[str]` or `arr[i]`, was
   read as Rich markup.
