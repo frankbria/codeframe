@@ -74,14 +74,18 @@ def _default_fetch_issue_state(pat: str, repo: str, number: int) -> str:
     return issue["state"]
 
 
-def _default_pat() -> Optional[str]:
-    """Resolve the machine-wide GitHub PAT, or ``None`` if there is none.
+def _default_pat(workspace: Optional["Workspace"] = None) -> Optional[str]:
+    """The GitHub PAT for reconciliation, or ``None`` if there is none.
 
-    Same source and same limitation as the auto-close path (``tasks.
-    _dispatch_github_autoclose``): reconciliation runs on a background thread
-    with no request-scoped user, so per-user stored PATs are not reachable here.
+    The same source as auto-close: the PAT the connecting user stored in the
+    web UI, else the machine-wide store (#1283). Without a workspace, only the
+    machine-wide store.
     """
     try:
+        if workspace is not None:
+            from codeframe.core.github_integration_config import resolve_background_pat
+
+            return resolve_background_pat(workspace)
         from codeframe.core.credentials import CredentialManager, CredentialProvider
 
         return CredentialManager().get_credential(CredentialProvider.GIT_GITHUB)
@@ -120,11 +124,13 @@ class GitHubIssueState:
     def __init__(
         self,
         *,
+        workspace: Optional["Workspace"] = None,
         fetch: Optional[Callable[[str, str, int], str]] = None,
         pat: Optional[str] = None,
         open_ttl_seconds: float = _ISSUE_STATE_OPEN_TTL_SECONDS,
         now: Callable[[], float] = time.monotonic,
     ) -> None:
+        self._workspace = workspace  # whose connection owns the PAT (#1283)
         self._fetch = fetch if fetch is not None else _default_fetch_issue_state
         self._pat = pat
         self._pat_resolved = pat is not None
@@ -193,7 +199,7 @@ class GitHubIssueState:
 
     def _resolve_pat(self) -> Optional[str]:
         if not self._pat_resolved:
-            self._pat = _default_pat()
+            self._pat = _default_pat(self._workspace)
             self._pat_resolved = True
         return self._pat
 
@@ -225,7 +231,9 @@ class ReconciliationEngine:
         issue_state: Optional[GitHubIssueState] = None,
     ) -> None:
         self._workspace = workspace
-        self._issue_state = issue_state if issue_state is not None else GitHubIssueState()
+        self._issue_state = (
+            issue_state if issue_state is not None else GitHubIssueState(workspace=workspace)
+        )
         #: Tasks already reported as blocker-resolved. The engine lives for the
         #: batch, so this makes that report one-shot per run — see check_task.
         self._requeued: set[str] = set()

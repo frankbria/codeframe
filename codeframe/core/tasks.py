@@ -694,10 +694,9 @@ def _dispatch_github_autoclose(workspace: Workspace, task: Task) -> None:
     older imported task always closes the right issue even after the workspace
     is reconnected to a different repository.
 
-    The PAT is resolved from the machine-wide credential store / ``GITHUB_TOKEN``
-    environment variable. Per-user stored PATs are **not** used by autoclose
-    (this is a known limitation of the current headless/background task path;
-    hosted tenants should supply ``GITHUB_TOKEN`` via environment for autoclose).
+    The PAT is the one connected in the web UI, from the connecting user's own
+    store, else the machine-wide store / ``GITHUB_TOKEN`` (#1283; see
+    ``github_integration_config.resolve_background_pat``).
     """
     if not task.auto_close_github_issue or task.github_issue_number is None:
         return
@@ -709,9 +708,9 @@ def _dispatch_github_autoclose(workspace: Workspace, task: Task) -> None:
         )
         return
     try:
-        from codeframe.core.credentials import CredentialManager, CredentialProvider
+        from codeframe.core.github_integration_config import resolve_background_pat
 
-        pat = CredentialManager().get_credential(CredentialProvider.GIT_GITHUB)
+        pat = resolve_background_pat(workspace)
         if not pat:
             logger.info(
                 "Skipping GitHub auto-close for issue #%s: no stored PAT.",

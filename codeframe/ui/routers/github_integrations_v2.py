@@ -6,12 +6,13 @@ Routes (prefix ``/api/v2/integrations/github``):
     GET    /status       - Report connection status (never exposes the PAT)
     GET    /issues       - List the connected repo's open issues (#564)
 
-The PAT is stored via ``CredentialManager`` scoped to the authenticated user
-(issue #790; machine-wide when auth is disabled) under
-``CredentialProvider.GIT_GITHUB`` — the same slot the API Keys settings tab
-(#555) uses. Repo metadata (non-secret) is persisted per-workspace under
-``.codeframe/github_integration.json``. The PAT is never returned in any
-response.
+The PAT is stored via ``CredentialManager`` in the connecting principal's own
+store (issue #790; since #963 every principal has a user_id, auth on or off)
+under ``CredentialProvider.GIT_GITHUB``, the same slot the API Keys settings
+tab (#555) uses. Repo metadata (non-secret) is persisted per-workspace under
+``.codeframe/github_integration.json``, including the connecting user's id, so
+auto-close and reconciliation, which run with no request, find that PAT
+(#1283). The PAT is never returned in any response.
 """
 
 import asyncio
@@ -322,6 +323,9 @@ async def connect(
                 "repo": result["repo_full_name"],
                 "owner_login": result["owner_login"],
                 "owner_avatar_url": result["owner_avatar_url"],
+                # Whose store holds the PAT, for auto-close and
+                # reconciliation, which run with no request (#1283).
+                "owner_user_id": _auth.get("user_id"),
             },
         )
     except OSError as e:

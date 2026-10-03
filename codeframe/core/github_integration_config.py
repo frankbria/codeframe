@@ -41,6 +41,9 @@ class GitHubIntegrationConfig(TypedDict):
     owner_login: str
     owner_avatar_url: str
     connected_at: str
+    #: The CodeFRAME user who connected the repo, whose own credential store
+    #: holds the PAT (#1283). None for a CLI/machine-wide connection.
+    owner_user_id: Optional[int]
 
 
 def _config_path(workspace: Workspace) -> Path:
@@ -67,6 +70,7 @@ def load_github_integration_config(
             "owner_login": str(data.get("owner_login") or ""),
             "owner_avatar_url": str(data.get("owner_avatar_url") or ""),
             "connected_at": str(data.get("connected_at") or ""),
+            "owner_user_id": _as_user_id(data.get("owner_user_id")),
         }
     except (OSError, json.JSONDecodeError, ValueError) as e:
         logger.warning(
@@ -91,6 +95,7 @@ def save_github_integration_config(
         "connected_at": str(
             config.get("connected_at") or datetime.now(timezone.utc).isoformat()
         ),
+        "owner_user_id": _as_user_id(config.get("owner_user_id")),
     }
     path = _config_path(workspace)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -108,6 +113,39 @@ def save_github_integration_config(
             pass
         raise
     return payload
+
+
+def _as_user_id(value: object) -> Optional[int]:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def resolve_background_pat(workspace: Workspace) -> Optional[str]:
+    """The GitHub PAT for work done outside any request (#1283).
+
+    Auto-close and reconciliation run with no principal. The PAT a user
+    connected in the web UI lives in *that user's* store (#790), so they read
+    the owner recorded at connect time first, store before environment so an
+    operator's ambient GITHUB_TOKEN cannot act for the user (#900). Then the
+    machine-wide store / GITHUB_TOKEN, for CLI-connected and legacy
+    workspaces. Never raises; None when there is no usable PAT.
+    """
+    from codeframe.core.credentials import CredentialManager, CredentialProvider
+
+    try:
+        config = load_github_integration_config(workspace)
+        owner = config.get("owner_user_id") if config else None
+        if owner is not None:
+            pat = CredentialManager(user_id=owner, migrate=False).get_credential(
+                CredentialProvider.GIT_GITHUB, prefer_stored=True
+            )
+            if pat:
+                return pat
+        return CredentialManager().get_credential(CredentialProvider.GIT_GITHUB)
+    except Exception:  # noqa: BLE001 - background callers must never break
+        logger.warning("GitHub PAT lookup failed", exc_info=True)
+        return None
 
 
 def clear_github_integration_config(workspace: Workspace) -> None:
