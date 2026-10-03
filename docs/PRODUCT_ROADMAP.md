@@ -105,7 +105,7 @@ These items are not part of a specific pipeline stage but are prerequisites for 
 
 **What to build**:
 
-- **Agent settings**: default model per agent type (Claude, Codex, OpenCode), max turns, max cost per task
+- **Agent settings**: max turns, max cost per task (a per-agent-type default model was removed in #1292: no engine read it)
 - **API keys**: input and verify `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, GitHub token — stored encrypted, never returned in plaintext
 - **PROOF9 defaults**: which gates are enabled by default for new projects, strictness level (fail on any open REQ vs. warn only)
 - **Workspace configuration**: workspace root path, default branch, auto-detection overrides
