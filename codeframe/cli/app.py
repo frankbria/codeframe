@@ -3046,14 +3046,15 @@ def work_start(
 
     path = workspace_path or Path.cwd()
 
-    # Resolve engine: CLI flag → env var → workspace config → default "react"
-    if engine is None:
-        import os
-        engine = os.environ.get("CODEFRAME_ENGINE")
-    if engine is None:
-        from codeframe.core.config import load_environment_config
-        env_config = load_environment_config(path)
-        engine = env_config.engine if env_config else "react"
+    # Resolve engine: CLI flag → env var → workspace config → default "react".
+    # One resolver for start, resume, retry and batch run (#1281).
+    from codeframe.core.engine_registry import resolve_workspace_engine
+
+    try:
+        engine = resolve_workspace_engine(engine, path)
+    except ValueError as exc:
+        print_error(exc)
+        raise typer.Exit(1)
 
     try:
         workspace = get_workspace(path)
@@ -3084,7 +3085,17 @@ def work_start(
 
         # Validate API key before creating run record (avoids dangling IN_PROGRESS state)
         if execute:
-            from codeframe.core.engine_registry import resolve_engine
+            from codeframe.core.engine_registry import (
+                refuse_dry_run_for_external_engine,
+                resolve_engine,
+            )
+
+            # An external engine would edit the repo regardless (#1281).
+            try:
+                refuse_dry_run_for_external_engine(engine, dry_run)
+            except ValueError as exc:
+                print_error(exc)
+                raise typer.Exit(1)
 
             # Same reason: execute_agent resolves the engine, and the gated
             # cloud engine (#966) raises there — after the run record exists.
@@ -3185,7 +3196,11 @@ def work_resume(
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without making changes"),
     verbose: bool = typer.Option(False, "--verbose", help="Show detailed progress"),
-    engine: str = typer.Option("react", "--engine", help="Execution engine: react or plan"),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Execution engine (default: CODEFRAME_ENGINE, then the workspace config, then react)",
+    ),
     workspace_path: Optional[Path] = typer.Option(
         None,
         "--workspace",
@@ -3224,6 +3239,23 @@ def work_resume(
             raise typer.Exit(1)
 
         task = matching[0]
+
+        # Same engine as start, resolved once and checked before any state
+        # changes (#1281): resume used to hard-default to react.
+        from codeframe.core.engine_registry import (
+            refuse_dry_run_for_external_engine,
+            resolve_workspace_engine,
+        )
+        from codeframe.cli.validators import require_keys_for_engine
+
+        try:
+            engine = resolve_workspace_engine(engine, workspace.repo_path)
+            refuse_dry_run_for_external_engine(engine, dry_run and execute)
+        except ValueError as exc:
+            print_error(exc)
+            raise typer.Exit(1)
+        if execute:
+            require_keys_for_engine(workspace.repo_path, engine=engine)
 
         # Resume the run
         run = runtime.resume_run(workspace, task.id)
@@ -3648,6 +3680,11 @@ def work_retry(
         "--dry-run",
         help="Preview changes without applying them",
     ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Execution engine (default: CODEFRAME_ENGINE, then the workspace config, then react)",
+    ),
 ) -> None:
     """Retry a failed task with context from previous attempts.
 
@@ -3683,11 +3720,24 @@ def work_retry(
 
         task = matching[0]
 
-        # Validate the key matching the resolved provider (env → config →
-        # anthropic) before any state modifications, #768
+        # Same engine as start, resolved once and checked before any state
+        # changes (#1281): resume used to hard-default to react.
+        from codeframe.core.engine_registry import (
+            refuse_dry_run_for_external_engine,
+            resolve_workspace_engine,
+        )
         from codeframe.cli.validators import require_keys_for_engine
 
-        require_keys_for_engine(workspace.repo_path)
+        try:
+            engine = resolve_workspace_engine(engine, workspace.repo_path)
+            refuse_dry_run_for_external_engine(engine, dry_run)
+        except ValueError as exc:
+            print_error(exc)
+            raise typer.Exit(1)
+
+        # Validate the key matching the resolved provider (env → config →
+        # anthropic) before any state modifications, #768
+        require_keys_for_engine(workspace.repo_path, engine=engine)
 
         # Reset task to READY if it's FAILED or BLOCKED
         if task.status in (TaskStatus.FAILED, TaskStatus.BLOCKED):
@@ -3723,7 +3773,9 @@ def work_retry(
         verbose_mode = " [dim](verbose)[/dim]" if verbose else ""
         console.print(f"\n[bold]Executing agent...{mode}{verbose_mode}[/bold]")
 
-        state = runtime.execute_agent(workspace, run, dry_run=dry_run, verbose=verbose)
+        state = runtime.execute_agent(
+            workspace, run, dry_run=dry_run, verbose=verbose, engine=engine
+        )
 
         if state.status == AgentStatus.COMPLETED:
             console.print("[bold green]Task completed successfully![/bold green]")
@@ -4457,14 +4509,15 @@ def batch_run(
 
     path = workspace_path or Path.cwd()
 
-    # Resolve engine: CLI flag → env var → workspace config → default "react"
-    if engine is None:
-        import os
-        engine = os.environ.get("CODEFRAME_ENGINE")
-    if engine is None:
-        from codeframe.core.config import load_environment_config
-        env_config = load_environment_config(path)
-        engine = env_config.engine if env_config else "react"
+    # Resolve engine: CLI flag → env var → workspace config → default "react".
+    # One resolver for start, resume, retry and batch run (#1281).
+    from codeframe.core.engine_registry import resolve_workspace_engine
+
+    try:
+        engine = resolve_workspace_engine(engine, path)
+    except ValueError as exc:
+        print_error(exc)
+        raise typer.Exit(1)
 
     try:
         workspace = get_workspace(path)
