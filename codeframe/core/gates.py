@@ -834,10 +834,17 @@ def _run_bandit(repo_path: Path, verbose: bool = False) -> GateCheck:
     try:
         # -x replaces bandit's defaults. `uv run` syncs the project into .venv
         # before it finds no bandit, and the fallback must not scan that (#1262).
+        # -s B101: `assert_used` only warns that `python -O` strips asserts. Every
+        # pytest test asserts, so with it the SEC gate failed in any workspace
+        # with tests, including the one whose SEC stub was just implemented
+        # (#1284). It is not a security finding.
         result = _run_tool(
             "bandit",
             prefix,
-            ["-r", ".", "-q", "-f", "txt", "-x", "./.venv,./venv,./.tox,./.nox,./.codeframe"],
+            [
+                "-r", ".", "-q", "-f", "txt", "-s", "B101",
+                "-x", "./.venv,./venv,./.tox,./.nox,./.codeframe",
+            ],
             repo_path,
             timeout=300,
         )
