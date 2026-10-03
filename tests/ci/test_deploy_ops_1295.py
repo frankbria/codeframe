@@ -306,4 +306,7 @@ def test_the_production_archive_is_never_world_readable_while_written():
     """The tar.gz lands at the top of /tmp with the ssh shell's umask and was
     chmod 600 only after the mv (GLM)."""
     run = next(s for s in _steps("deploy-production") if s.get("name") == "Create pre-deployment backup")["run"]
-    assert run.index("umask 077") < run.index("tar -czf")
+    import re
+
+    umask = re.search(r"^\s*umask 077\s*$", run, re.M)  # the command, not a comment
+    assert umask and umask.start() < run.index("tar -czf")
