@@ -52,6 +52,21 @@ class TestFollowEndsWithTheRun:
 
         assert time.monotonic() - start < 3
 
+    def test_tail_stops_on_a_quiet_log_that_exists(self, ws):
+        """The common case: the run wrote output, then fell silent and ended."""
+        _task, run = _running(ws)
+        log = streaming.RunOutputLogger(ws, run.id)
+        log.write("working\n")
+        log.close()
+        stop = threading.Event()
+        threading.Timer(0.5, stop.set).start()
+        start = time.monotonic()
+
+        lines = list(streaming.tail_run_output(ws, run.id, poll_interval=0.1, should_stop=stop.is_set))
+
+        assert lines == ["working\n"]
+        assert time.monotonic() - start < 3
+
     def test_lines_written_before_the_stop_are_still_yielded(self, ws):
         _task, run = _running(ws)
         log = streaming.RunOutputLogger(ws, run.id)
