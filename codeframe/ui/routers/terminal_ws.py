@@ -53,6 +53,10 @@ router = APIRouter()
 # Per-user concurrent terminal connection counter (in-process; resets on restart).
 # Key is the user_id, or None in no-auth mode (all local terminals share a bucket).
 _MAX_TERMINALS_PER_USER = 3
+#: Output chunks (4 KiB each) buffered between the PTY and the socket. When it
+#: is full the PTY reader pauses, the kernel buffer fills, and the shell blocks
+#: on write — backpressure instead of server memory (codex review on #1291).
+_OUTPUT_QUEUE_CHUNKS = 64
 _user_terminal_counts: dict[Optional[int], int] = {}
 
 
@@ -76,7 +80,7 @@ def _resize(master_fd: int, msg: dict) -> None:
     try:
         cols = max(1, min(int(msg.get("cols", 80)), 1000))
         rows = max(1, min(int(msg.get("rows", 24)), 1000))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # OverflowError: json's 1e999 -> inf
         return
     fcntl.ioctl(master_fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
@@ -192,6 +196,7 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
     process: asyncio.subprocess.Process | None = None
     ws_to_stdin_task: asyncio.Task | None = None
     stdout_to_ws_task: asyncio.Task | None = None
+    shell_exit_task: asyncio.Task | None = None
     master_fd: int | None = None
 
     try:
@@ -216,9 +221,11 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
             os.close(slave_fd)  # the shell holds its own copies
         os.set_blocking(master_fd, False)
         loop = asyncio.get_running_loop()
-        output: asyncio.Queue[bytes] = asyncio.Queue()
+        output: asyncio.Queue[bytes] = asyncio.Queue(maxsize=_OUTPUT_QUEUE_CHUNKS)
+        paused = False  # reader removed because the queue is full (not at EOF)
 
         def _on_readable() -> None:
+            nonlocal paused
             try:
                 chunk = os.read(master_fd, 4096)  # type: ignore[arg-type]
             except BlockingIOError:
@@ -228,9 +235,18 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
                 if exc.errno != errno.EIO:
                     logger.debug("Terminal PTY read error: %s", exc)
                 chunk = b""
+            output.put_nowait(chunk)
             if not chunk:
                 loop.remove_reader(master_fd)  # type: ignore[arg-type]
-            output.put_nowait(chunk)
+            elif output.full():
+                loop.remove_reader(master_fd)  # type: ignore[arg-type]
+                paused = True
+
+        def _resume() -> None:
+            nonlocal paused
+            if paused and not output.full():
+                paused = False
+                loop.add_reader(master_fd, _on_readable)  # type: ignore[arg-type]
 
         loop.add_reader(master_fd, _on_readable)
 
@@ -238,6 +254,7 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
         async def _stdout_relay() -> None:
             try:
                 while chunk := await output.get():
+                    _resume()
                     try:
                         await websocket.send_bytes(chunk)
                     except Exception:
@@ -265,7 +282,7 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
                 while True:
                     msg = await websocket.receive()
                     if msg.get("type") == "websocket.disconnect":
-                        raise WebSocketDisconnect(msg.get("code", 1000))
+                        return  # a raise here is never retrieved: one ERROR per close
                     if "text" in msg and msg["text"] is not None:
                         raw: bytes | str = msg["text"]
                     elif "bytes" in msg and msg["bytes"] is not None:
@@ -292,8 +309,12 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
         ws_to_stdin_task = asyncio.create_task(_stdin_relay())
 
         # Wait for either task to finish (disconnect or process exit)
+        # The shell's exit ends the session too: a background job that outlives
+        # bash keeps the PTY slave open, so the output relay never sees EOF
+        # (#1291 review). Teardown then closes the master, hanging the job up.
+        shell_exit_task = asyncio.create_task(process.wait())
         await asyncio.wait(
-            [stdout_to_ws_task, ws_to_stdin_task],
+            [stdout_to_ws_task, ws_to_stdin_task, shell_exit_task],
             return_when=asyncio.FIRST_COMPLETED,
         )
 
@@ -323,7 +344,7 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
             os.close(master_fd)
 
         # Cancel relay tasks
-        for task in [ws_to_stdin_task, stdout_to_ws_task]:
+        for task in [ws_to_stdin_task, stdout_to_ws_task, shell_exit_task]:
             if task and not task.done():
                 task.cancel()
                 try:
