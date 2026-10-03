@@ -359,7 +359,7 @@ class TestDegradesQuietly:
         # "resolve it lazily", which on a developer machine with a stored PAT
         # would find one and make the call this test says never happens.
         monkeypatch.setattr(
-            "codeframe.core.reconciliation._default_pat", lambda: None
+            "codeframe.core.reconciliation._default_pat", lambda *_: None
         )
         gh = FakeGitHub()
         checker = GitHubIssueState(fetch=gh)
@@ -372,7 +372,7 @@ class TestDegradesQuietly:
         lookups = []
         monkeypatch.setattr(
             "codeframe.core.reconciliation._default_pat",
-            lambda: lookups.append(1) or None,
+            lambda *_: lookups.append(1) or None,
         )
         checker = GitHubIssueState(fetch=FakeGitHub(), now=FakeClock())
 

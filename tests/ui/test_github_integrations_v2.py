@@ -204,7 +204,6 @@ class TestConnect:
         must restore the prior token rather than blindly deleting it.
         """
         from codeframe.core.credentials import CredentialProvider
-        from codeframe.ui.routers import github_integrations_v2
 
         prior = "ghp_preexisting9876543210"
         manager.set_credential(CredentialProvider.GIT_GITHUB, prior)
@@ -214,8 +213,12 @@ class TestConnect:
         def boom(*args, **kwargs):
             raise OSError("disk full")
 
+        # The router saves through core's save_connection (#1283), so the
+        # failure is injected where that call resolves it.
+        from codeframe.core import github_integration_config
+
         monkeypatch.setattr(
-            github_integrations_v2, "save_github_integration_config", boom
+            github_integration_config, "save_github_integration_config", boom
         )
 
         r = client.post(

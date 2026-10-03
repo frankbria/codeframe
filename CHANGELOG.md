@@ -145,6 +145,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **"Close the GitHub issue when the task is DONE" works for a repo connected
+  in the web UI (#1283).**
+  - Integrations → Connect stores the PAT in the connecting user's own
+    credential store, but auto-close and reconciliation read only the
+    machine-wide one. They logged "no stored PAT" and did nothing unless
+    `GITHUB_TOKEN` was also exported.
+  - Connect now records who connected the repo, in
+    `~/.codeframe/github_connection_owners.json`. This is deliberately
+    outside the workspace, because a workspace's `.codeframe/` can be written
+    by whatever runs there.
+  - Both background paths now use that user's stored PAT, then the
+    machine-wide store, then `GITHUB_TOKEN`. In hosted mode the operator's
+    `GITHUB_TOKEN` is never used for a user.
+
 - **Live output works for every engine, and ends when the run does (#1282).**
   - `cf work follow` used to check for completion only when a new line arrived,
     so it kept following a finished run that had stopped printing. It now
