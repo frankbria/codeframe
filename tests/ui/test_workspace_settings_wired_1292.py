@@ -160,3 +160,31 @@ def test_a_wrongly_typed_config_file_falls_back_to_defaults(client, workspace, s
     (workspace.state_dir / WORKSPACE_CONFIG_FILENAME).write_text(json.dumps(stored))
     resp = client.get("/api/v2/workspaces/config")
     assert resp.status_code == 200, resp.text
+
+
+def test_a_failed_apply_stays_retryable(client, workspace, monkeypatch):
+    """codex review: the config was written before the stack was applied, so
+    after a failure the retry saw 'no change', reported success, and never
+    repaired the workspace."""
+    from codeframe.core import workspace as ws_module
+
+    real = ws_module.update_workspace_tech_stack
+    calls = {"n": 0}
+
+    def fail_once(repo_path, tech_stack):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("disk full")
+        return real(repo_path, tech_stack)
+
+    monkeypatch.setattr(ws_module, "update_workspace_tech_stack", fail_once)
+    body = {
+        "workspace_root": "/ignored", "default_branch": "main",
+        "auto_detect_tech_stack": False, "tech_stack_override": "Go 1.22 with chi",
+    }
+    assert client.put("/api/v2/workspaces/config", json=body).status_code == 500
+    assert client.put("/api/v2/workspaces/config", json=body).status_code == 200
+
+    from codeframe.core.workspace import get_workspace
+
+    assert get_workspace(workspace.repo_path).tech_stack == "Go 1.22 with chi"

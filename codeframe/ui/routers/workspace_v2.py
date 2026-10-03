@@ -455,7 +455,6 @@ async def update_workspace_config(
     payload = body.model_dump(exclude={"workspace_root"})
     payload["workspace_root"] = str(workspace.repo_path)
     override = (body.tech_stack_override or "").strip() or None
-    atomic_write_json(workspace.state_dir / WORKSPACE_CONFIG_FILENAME, payload)
 
     # Only when the tech-stack controls changed: auto-detect is on by default,
     # so re-detecting on every save would replace a stack set with
@@ -471,6 +470,9 @@ async def update_workspace_config(
         )
         updated = ws.update_workspace_tech_stack(workspace.repo_path, tech_stack)
         _register_workspace(request, updated, auth.get("user_id"))  # registry cache (#601)
+    # Persisted only after it was applied: written first, a failed apply left
+    # the file saying "done", and the identical retry then changed nothing.
+    atomic_write_json(workspace.state_dir / WORKSPACE_CONFIG_FILENAME, payload)
     return WorkspaceConfigResponse(**payload)
 
 
