@@ -81,9 +81,9 @@ def _create(volume):
     _docker("run", "--rm", "-v", f"{volume}:/data", IMAGE, "chown", "10001:10001", "/data")
 
 
-def _run_script(volume, out: Path):
+def _run_script(volume, out: Path, state: Path | None = None):
     return subprocess.run(
-        ["bash", str(SCRIPT), str(out)],
+        ["bash", str(SCRIPT), str(out), str(state or out.parent / "state")],
         env={"PATH": "/usr/bin:/bin:/usr/local/bin", "CODEFRAME_DATA_VOLUME": volume},
         capture_output=True,
         text=True,
@@ -98,14 +98,123 @@ def test_no_volume_is_a_first_deploy_and_succeeds(volume, tmp_path):
     assert not out.exists()
 
 
+def _make_db(volume, rows=3):
+    _docker(
+        "run", "--rm", "--user", "10001:10001", "-v", f"{volume}:/data", IMAGE, "python", "-c",
+        "import sqlite3\n"
+        "c = sqlite3.connect('/data/codeframe.db')\n"
+        "c.execute('CREATE TABLE users (email TEXT)')\n"
+        f"c.executemany('INSERT INTO users VALUES (?)', [('u',)] * {rows})\n"
+        "c.commit()\n",
+    )
+
+
 @docker
-def test_a_volume_without_its_database_fails_the_deploy(volume, tmp_path):
+def test_a_volume_never_given_a_database_is_still_a_first_deploy(volume, tmp_path):
+    """A first deploy that crashed before creating the DB leaves an empty
+    volume; that must not block the deploy that fixes the config (review)."""
     _create(volume)
     out = tmp_path / "b.db"
     r = _run_script(volume, out)
-    assert r.returncode == 1
-    assert "database missing" in r.stderr
+    assert r.returncode == 0, r.stdout + r.stderr
     assert not out.exists() and not (tmp_path / "b.db.partial").exists()
+
+
+@docker
+def test_a_backup_records_that_this_host_has_a_database(volume, tmp_path):
+    _create(volume)
+    _make_db(volume)
+    assert _run_script(volume, tmp_path / "b.db").returncode == 0
+    assert (tmp_path / "state" / ".database-backed-up").exists()
+
+
+@docker
+def test_a_lost_database_on_a_host_that_had_one_fails_the_deploy(volume, tmp_path):
+    _create(volume)
+    _make_db(volume)
+    assert _run_script(volume, tmp_path / "first.db").returncode == 0
+    _docker("run", "--rm", "-v", f"{volume}:/data", IMAGE, "sh", "-c", "rm -f /data/codeframe.db*")
+    out = tmp_path / "b.db"
+    r = _run_script(volume, out)
+    assert r.returncode == 1
+    assert "data loss" in r.stdout
+    assert not out.exists() and not (tmp_path / "b.db.partial").exists()
+
+
+@docker
+def test_a_lost_volume_on_a_host_that_had_a_database_fails_the_deploy(volume, tmp_path):
+    _create(volume)
+    _make_db(volume)
+    assert _run_script(volume, tmp_path / "first.db").returncode == 0
+    _docker("volume", "rm", "-f", volume)
+    r = _run_script(volume, tmp_path / "b.db")
+    assert r.returncode == 1
+    assert "data loss" in r.stdout
+
+
+# --- the deploy steps as ssh runs them ------------------------------------
+
+
+def _remote_script(job: str, project: Path) -> str:
+    """The step's `ssh host "bash -s" << ENDSSH` body, as the runner hands it
+    to the remote shell: secrets substituted, then the unquoted heredoc's
+    client-side unescaping of \\$."""
+    run = next(s for s in _steps(job) if s.get("name") == "Create pre-deployment backup")["run"]
+    body = run.split("<< ENDSSH\n", 1)[1].rsplit("ENDSSH", 1)[0]
+    body = body.replace("${{ secrets.PROJECT_PATH }}", str(project))
+    assert "${{" not in body, "an unsubstituted expression would reach the shell"
+    return body.replace("\\$", "$")
+
+
+def _run_step(job: str, project: Path, volume: str):
+    project.mkdir(exist_ok=True)
+    shutil.copy(SCRIPT, project / "backup-db.sh")  # the step scp's it there
+    return subprocess.run(
+        ["bash", "-s"],
+        input=_remote_script(job, project),
+        env={"PATH": "/usr/bin:/bin:/usr/local/bin", "CODEFRAME_DATA_VOLUME": volume},
+        capture_output=True,
+        text=True,
+    )
+
+
+@docker
+def test_staging_step_lets_a_fresh_host_deploy(volume, tmp_path):
+    """No volume, no backups yet: ls finds nothing and exits 2, which
+    pipefail turned into a failed first deploy (codex)."""
+    r = _run_step("deploy-staging", tmp_path / "proj", volume)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@docker
+def test_staging_step_runs_to_completion_after_the_backup(volume, tmp_path):
+    """`docker run -i` read the rest of the ssh heredoc as its stdin, so
+    nothing after the backup ran and the step still exited 0 (review)."""
+    _create(volume)
+    _make_db(volume)
+    project = tmp_path / "proj"
+    r = _run_step("deploy-staging", project, volume)
+    assert r.returncode == 0, r.stdout + r.stderr
+    archives = list((project / "backups").glob("codeframe-*.db.gz"))
+    assert len(archives) == 1, r.stdout + r.stderr  # gzip ran: lines after the backup executed
+
+
+@docker
+def test_production_step_archives_the_database(volume, tmp_path):
+    import tarfile
+
+    _create(volume)
+    _make_db(volume, rows=7)
+    project = tmp_path / "proj"
+    r = _run_step("deploy-production", project, volume)
+    assert r.returncode == 0, r.stdout + r.stderr
+    archives = list((project / "backups").glob("backup-*.tar.gz"))
+    assert len(archives) == 1, r.stdout + r.stderr
+    with tarfile.open(archives[0]) as tar:
+        member = next(m for m in tar.getmembers() if m.name.endswith("/codeframe.db"))
+        tar.extract(member, tmp_path / "x", filter="data")
+    db = tmp_path / "x" / member.name
+    assert sqlite3.connect(db).execute("SELECT count(*) FROM users").fetchone()[0] == 7
 
 
 @docker

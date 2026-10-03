@@ -408,10 +408,12 @@ jobs:
             mkdir -p backups
             chmod 700 backups
             OUT="backups/codeframe-\$(date +%Y%m%d-%H%M%S).db"
-            bash backup-db.sh "\${OUT}"
+            bash backup-db.sh "\${OUT}" backups
             if [ -f "\${OUT}" ]; then gzip "\${OUT}"; fi
             # Keep the last 10, like production.
-            ls -t backups/codeframe-*.db.gz 2>/dev/null | tail -n +11 | xargs -r rm -f
+            # || true: on a first deploy there is nothing to list, ls exits 2,
+            # and pipefail would abort the deploy over it.
+            ls -t backups/codeframe-*.db.gz 2>/dev/null | tail -n +11 | xargs -r rm -f || true
           ENDSSH
 
       - name: Deploy to staging server
@@ -882,7 +884,7 @@ jobs:
             # .codeframe/state.db, which a container host does not have, so
             # it skipped silently. It now fails the deploy when this host has
             # a data volume but no database in it.
-            bash backup-db.sh "\${TMP_BACKUP}/codeframe.db"
+            bash backup-db.sh "\${TMP_BACKUP}/codeframe.db" "\${BACKUP_BASE}"
 
             # Backup config files
             if [ -d .codeframe ]; then
