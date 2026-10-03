@@ -92,6 +92,12 @@ RUN: dict[str, list[str]] = {
     "engines stats": [],
     "hooks show": [],
     "config telemetry": ["status"],
+    # #1290: external text — a Ralph export, a PRD diff, GitHub, an LLM.
+    "import ralph": ["{ralph}"],
+    "prd diff": ["{prd}", "1", "2"],
+    "pr list": [],
+    "pr get": ["1"],
+    "tasks generate": ["--llm-provider", "mock", "--overwrite"],
 }
 
 #: Commands deliberately not exercised, each with the reason. This is a
@@ -111,13 +117,11 @@ EXEMPT: dict[str, str] = {
     "prd update": "same store as `prd add`",
     "prd delete": "destroys the fixture the other prd commands render",
     "prd export": "writes a file; renders no user text",
-    "prd diff": "needs two stored versions; covered by `prd versions`",
     "prd generate": "LLM call",
     "prd stress-test": "LLM call",
     "prd templates show": "ships built-in templates, not user text",
     "prd templates export": "writes a file; renders no user text",
     "prd templates import": "reads a file argument",
-    "tasks generate": "LLM call",
     "tasks delete": "destroys the fixture the other task commands render",
     "work start": "runs an agent",
     "work resume": "runs an agent",
@@ -144,7 +148,6 @@ EXEMPT: dict[str, str] = {
     "proof capture": "covered by the seeded requirement",
     "proof run": "runs the 9 gates, i.e. the project's test suite",
     "proof waive": "mutates the seeded requirement `proof show` renders",
-    "import ralph": "reads an external Ralph export",
     "hooks run": "executes repo-configured shell hooks",
     "hooks set": "edits .codeframe/config.yaml",
     "hooks clear": "edits .codeframe/config.yaml",
@@ -157,8 +160,6 @@ EXEMPT: dict[str, str] = {
     "env install-missing": "installs packages",
     "env auto-install": "installs packages",
     "pr create": "GitHub network call",
-    "pr list": "GitHub network call",
-    "pr get": "GitHub network call",
     "pr merge": "GitHub network call",
     "pr close": "GitHub network call",
     "pr status": "GitHub network call",
@@ -217,6 +218,9 @@ def hostile_workspace(tmp_path, monkeypatch):
     prd_record = prd.store(
         workspace, content=f"# {HOSTILE}\n\n{HOSTILE}\n", title=HOSTILE
     )
+    prd.create_new_version(
+        workspace, prd_record.id, f"# {HOSTILE}\n\n{HOSTILE} v2\n", HOSTILE
+    )
     checkpoint = checkpoints.create(workspace, name=HOSTILE, include_git_ref=False)
     requirement, _ = proof_capture.capture_requirement(
         workspace,
@@ -227,6 +231,56 @@ def hostile_workspace(tmp_path, monkeypatch):
         source=Source.USER_REPORT,
     )
 
+    # A Ralph export whose plan items, sections and prompt are all hostile.
+    ralph_root = tmp_path / "ralph-export"
+    (ralph_root / ".ralph").mkdir(parents=True)
+    (ralph_root / ".ralph" / "fix_plan.md").write_text(
+        f"## {HOSTILE}\n- [ ] {HOSTILE}\n- [ ] route [/login], list[str] and arr[i]\n"
+        f"- [x] {HOSTILE} done\n"
+    )
+    (ralph_root / ".ralph" / "PROMPT.md").write_text(f"# {HOSTILE}\n")
+
+    # GitHub, stubbed at the client: every text field it returns is hostile.
+    from datetime import datetime, timezone
+
+    from codeframe.cli import pr_commands
+    from codeframe.git.github_integration import PRDetails
+
+    hostile_pr = PRDetails(
+        number=1, url="https://github.com/o/r/pull/1", state=f"draft {HOSTILE}",
+        title=HOSTILE, body=HOSTILE, created_at=datetime.now(timezone.utc),
+        merged_at=None, head_branch=HOSTILE, base_branch="main", author=HOSTILE,
+    )
+
+    class FakeGitHub:
+        def __init__(self, **kwargs):
+            pass
+
+        async def list_pull_requests(self, state="open"):
+            return [hostile_pr]
+
+        async def get_pull_request(self, pr_number):
+            return hostile_pr
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(pr_commands, "_get_github_config", lambda: ("token", "o/r"))
+    monkeypatch.setattr(pr_commands, "GitHubIntegration", FakeGitHub)
+
+    # The mock LLM answers task generation with hostile tasks.
+    import json
+
+    from codeframe.adapters.llm.mock import MockProvider
+
+    hostile_tasks = json.dumps([{"title": HOSTILE, "description": HOSTILE}])
+    original_init = MockProvider.__init__
+    monkeypatch.setattr(
+        MockProvider,
+        "__init__",
+        lambda self, *a, **k: original_init(self, *a, **{"default_response": hostile_tasks, **k}),
+    )
+
     monkeypatch.chdir(tmp_path)
     return {
         "workspace": workspace,
@@ -235,6 +289,7 @@ def hostile_workspace(tmp_path, monkeypatch):
         "prd": prd_record.id,
         "checkpoint": checkpoint.id,
         "req": requirement.id,
+        "ralph": str(ralph_root),
     }
 
 
@@ -303,6 +358,11 @@ class TestTheGuardActuallyGuards:
             ("checkpoint list", []),
             ("proof list", []),
             ("schedule show", []),
+            ("import ralph", ["{ralph}"]),
+            ("prd diff", ["{prd}", "1", "2"]),
+            ("pr list", []),
+            ("pr get", ["1"]),
+            ("tasks generate", ["--llm-provider", "mock", "--overwrite"]),
         ],
     )
     def test_the_hostile_text_reaches_the_output_literally(

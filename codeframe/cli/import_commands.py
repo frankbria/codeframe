@@ -9,7 +9,10 @@ from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
+
+from codeframe.cli.helpers import print_error
 
 console = Console()
 
@@ -57,7 +60,7 @@ def import_ralph(
             ralph_path, workspace_path=workspace, dry_run=dry_run
         )
     except RalphProjectNotFoundError as exc:
-        console.print(f"[red]Error:[/red] {exc}")
+        print_error(exc)
         raise typer.Exit(1)
 
     if dry_run:
@@ -69,7 +72,7 @@ def import_ralph(
         1 for t in report.tasks_created if t["status"] == TaskStatus.READY
     )
     backlog = len(report.tasks_created) - ready
-    summary = Table(title=f"Ralph import: {ralph_path}")
+    summary = Table(title=f"Ralph import: {escape(str(ralph_path))}")
     summary.add_column("Source", style="cyan")
     summary.add_column("Destination")
     summary.add_row(
@@ -102,7 +105,7 @@ def import_ralph(
             status = task["status"].value
             color = "green" if status == "READY" else "yellow"
             task_table.add_row(
-                task["title"], task["section"], f"[{color}]{status}[/{color}]"
+                escape(task["title"]), escape(task["section"]), f"[{color}]{status}[/{color}]"
             )
         console.print(task_table)
 
@@ -111,11 +114,11 @@ def import_ralph(
         skip_table.add_column("Title")
         skip_table.add_column("Reason", style="dim")
         for item in report.tasks_skipped:
-            skip_table.add_row(item["title"], item["reason"])
+            skip_table.add_row(escape(item["title"]), escape(item["reason"]))
         console.print(skip_table)
 
     if report.state_files_ignored:
-        ignored = ", ".join(report.state_files_ignored)
+        ignored = escape(", ".join(report.state_files_ignored))
         console.print(f"[dim]Ignored ralph state files: {ignored}[/dim]")
 
     if dry_run:
@@ -125,5 +128,5 @@ def import_ralph(
     else:
         console.print(
             f"\n[green]✓[/green] Imported into workspace at "
-            f"{report.workspace_path}"
+            f"{escape(str(report.workspace_path))}"
         )
