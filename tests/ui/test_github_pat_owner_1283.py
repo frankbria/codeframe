@@ -324,6 +324,15 @@ class TestOwnerMapPersistence:
 
         monkeypatch.setattr(github_integrations_v2, "validate_connection", valid)
         monkeypatch.setattr(gic, "_write_owner", fail_once)
+        # Another admin connects in the window between the failure and the
+        # rollback (fired from the rollback's own first statement).
+        real_error = github_integrations_v2.logger.error
+
+        def error_then_concurrent_connect(*a, **k):
+            real_error(*a, **k)
+            gic.save_connection(ws, {"repo": "acme/r3", "owner_login": "acme", "owner_avatar_url": ""}, 3)
+
+        monkeypatch.setattr(github_integrations_v2.logger, "error", error_then_concurrent_connect)
         app = FastAPI()
         app.include_router(github_integrations_v2.router)
         app.dependency_overrides[get_v2_workspace] = lambda: ws
@@ -336,8 +345,9 @@ class TestOwnerMapPersistence:
         )
 
         assert r.status_code == 500
-        assert gic.load_github_integration_config(ws)["repo"] == "acme/old"
-        assert connection_owner(ws) == 5
+        # Whatever the final state, the repo and its owner belong together.
+        repo = gic.load_github_integration_config(ws)["repo"]
+        assert (repo, connection_owner(ws)) in {("acme/old", 5), ("acme/r3", 3)}
 
     def test_a_disconnect_racing_a_connect_never_leaves_a_repo_without_its_owner(
         self, ws, monkeypatch
