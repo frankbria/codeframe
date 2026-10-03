@@ -66,10 +66,8 @@ from codeframe.ui.dependencies import (
     get_v2_workspace,
 )
 from codeframe.ui.models import (
-    AGENT_TYPES,
     KEY_PROVIDERS,
     AgentSettingsResponse,
-    AgentTypeModelConfig,
     KeyProvider,
     KeyStatusResponse,
     StoreKeyRequest,
@@ -87,18 +85,9 @@ router = APIRouter(prefix="/api/v2/settings", tags=["settings"])
 
 def _config_to_response(config: EnvironmentConfig) -> AgentSettingsResponse:
     """Map an EnvironmentConfig to the flat AgentSettings response shape."""
-    saved_models = config.agent_type_models or {}
-    agent_models = [
-        AgentTypeModelConfig(
-            agent_type=agent_type,
-            default_model=saved_models.get(agent_type, ""),
-        )
-        for agent_type in AGENT_TYPES
-    ]
     # Guard against legacy YAML where agent_budget may have been removed/nulled.
     budget = config.agent_budget or AgentBudgetConfig()
     return AgentSettingsResponse(
-        agent_models=agent_models,
         max_turns=budget.max_iterations,
         max_cost_usd=config.max_cost_usd,
     )
@@ -146,14 +135,6 @@ async def update_settings(
 
         config.agent_budget.max_iterations = body.max_turns
         config.max_cost_usd = body.max_cost_usd
-        # Skip empty model strings — they're equivalent to "key not present"
-        # in _config_to_response, so persisting them just adds yaml noise.
-        # AgentType Literal in the model already rejects unknown agent_type values.
-        config.agent_type_models = {
-            entry.agent_type: entry.default_model
-            for entry in body.agent_models
-            if entry.default_model
-        }
 
         save_environment_config(workspace.repo_path, config)
         return _config_to_response(config)

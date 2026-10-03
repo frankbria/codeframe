@@ -145,6 +145,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Every Settings control now does something (#1292).**
+  - **Workspace → default branch:** it is now the base for a PR created
+    without one, from the web UI or `cf pr create`.
+  - **Workspace → tech-stack auto-detect and override:** they now set the
+    workspace's tech stack, which the agent reads.
+  - **Agent → "default model per agent type":** removed. No engine ever read
+    it. An existing `config.yaml` that still has it keeps loading, and the key
+    is ignored.
+
 - **The session terminal runs what you type (#1291).** The terminal on
   `/sessions/[id]` connected but never ran a command: bash ran on pipes, so it
   never treated the web terminal's Enter (`\r`) as end of line. The shell now

@@ -8,6 +8,7 @@ A workspace represents a CodeFRAME-managed repository. Each workspace has:
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import json
 import logging
 import os
 import sqlite3
@@ -43,6 +44,44 @@ SCHEMA_VERSION = 5
 # Owned by the UI layer today; kept here so a future core consumer can
 # read it without importing from codeframe/ui/.
 WORKSPACE_CONFIG_FILENAME = "workspace_config.json"
+DEFAULT_BRANCH = "main"
+
+
+def load_workspace_config(workspace: "Workspace") -> dict:
+    """The Settings -> Workspace values, with defaults for anything unset.
+
+    ``workspace_config.json`` is written by the web UI; this is the one reader,
+    shared by the settings API and the PR commands that honour its
+    ``default_branch`` (#1292 — it used to be written and never read).
+    """
+    config: dict = {
+        "workspace_root": str(workspace.repo_path),
+        "default_branch": DEFAULT_BRANCH,
+        "auto_detect_tech_stack": True,
+        "tech_stack_override": None,
+    }
+    path = workspace.state_dir / WORKSPACE_CONFIG_FILENAME
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return config
+    except (OSError, ValueError) as e:
+        logger.warning("Invalid %s — using defaults: %s", path, e)
+        return config
+    if isinstance(stored, dict):
+        # Each field is taken only if it has the right type; a hand-edited
+        # `null` must fall back to the default, not 500 the Settings tab.
+        branch = stored.get("default_branch")
+        if isinstance(branch, str) and branch.strip():
+            config["default_branch"] = branch
+        if isinstance(stored.get("auto_detect_tech_stack"), bool):
+            config["auto_detect_tech_stack"] = stored["auto_detect_tech_stack"]
+        override = stored.get("tech_stack_override")
+        if override is None or isinstance(override, str):
+            config["tech_stack_override"] = override
+    # Display-only: always the live path, never a stored one that could drift.
+    config["workspace_root"] = str(workspace.repo_path)
+    return config
 
 
 @dataclass

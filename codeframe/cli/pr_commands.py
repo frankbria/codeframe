@@ -145,6 +145,24 @@ def _newest_commit_subject(repo_path: Path, base: str, head: str) -> str:
         return ""
 
 
+def _default_base_for_cwd() -> str:
+    """The workspace's default branch (Settings -> Workspace), else main (#1292)."""
+    from codeframe.core.workspace import (
+        DEFAULT_BRANCH,
+        find_workspace_root,
+        get_workspace,
+        load_workspace_config,
+    )
+
+    root = find_workspace_root(Path.cwd())
+    if root is None:
+        return DEFAULT_BRANCH
+    try:
+        return load_workspace_config(get_workspace(root))["default_branch"]
+    except FileNotFoundError:
+        return DEFAULT_BRANCH
+
+
 def _proof_report_for_cwd() -> str:
     """The PROOF9 report for the workspace in the cwd, or "" outside one (#1273)."""
     from codeframe.core.proof.ledger import init_proof_tables
@@ -231,8 +249,9 @@ def create_pr(
     body: Optional[str] = typer.Option(
         None, "--body", help="PR description body"
     ),
-    base: str = typer.Option(
-        "main", "--base", help="Base branch to merge into"
+    base: Optional[str] = typer.Option(
+        None, "--base",
+        help="Base branch to merge into (default: the workspace's default branch, else main)",
     ),
     auto_description: bool = typer.Option(
         True,
@@ -270,6 +289,8 @@ def create_pr(
             except RuntimeError as e:
                 print_error(e)
                 raise typer.Exit(1)
+
+        base = base or _default_base_for_cwd()
 
         # Validate not on base branch
         if branch == base:

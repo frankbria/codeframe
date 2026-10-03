@@ -140,10 +140,8 @@ def test_ui_models_keeps_only_the_live_settings_surface():
 
     # What settings_v2 imports must survive.
     for live in (
-        "AGENT_TYPES",
         "KEY_PROVIDERS",
         "AgentSettingsResponse",
-        "AgentTypeModelConfig",
         "KeyProvider",
         "KeyStatusResponse",
         "StoreKeyRequest",

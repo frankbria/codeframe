@@ -9,13 +9,12 @@ Routes:
     PATCH /api/v2/workspaces/current - Update workspace (e.g., tech stack)
 """
 
-import json
 import logging
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 from codeframe.core import workspace as ws
 from codeframe.lib.rate_limiter import rate_limit_standard
@@ -424,42 +423,14 @@ class UpdateWorkspaceConfigRequest(BaseModel):
     tech_stack_override: Optional[str] = None
 
 
-def _workspace_config_path(workspace: Workspace) -> Path:
-    return workspace.state_dir / WORKSPACE_CONFIG_FILENAME
-
-
-def _default_workspace_config(workspace: Workspace) -> dict:
-    return {
-        "workspace_root": str(workspace.repo_path),
-        "default_branch": "main",
-        "auto_detect_tech_stack": True,
-        "tech_stack_override": None,
-    }
-
-
 @router.get("/config", response_model=WorkspaceConfigResponse)
 @rate_limit_standard()
 async def get_workspace_config(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> WorkspaceConfigResponse:
-    """Load workspace configuration for this workspace.
-
-    Returns defaults sourced from the Workspace itself if no config file exists.
-    """
-    path = _workspace_config_path(workspace)
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            # workspace_root is display-only — always source it from the live
-            # workspace so a stored value can't drift from reality.
-            data["workspace_root"] = str(workspace.repo_path)
-            return WorkspaceConfigResponse(**data)
-        except (OSError, json.JSONDecodeError, ValueError, ValidationError) as e:
-            logger.warning(
-                "Invalid workspace_config.json — falling back to defaults: %s", e
-            )
-    return WorkspaceConfigResponse(**_default_workspace_config(workspace))
+    """Load workspace configuration for this workspace (defaults if unset)."""
+    return WorkspaceConfigResponse(**ws.load_workspace_config(workspace))
 
 
 @router.put("/config", response_model=WorkspaceConfigResponse)
@@ -468,17 +439,40 @@ async def update_workspace_config(
     request: Request,
     body: UpdateWorkspaceConfigRequest,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> WorkspaceConfigResponse:
-    """Persist workspace configuration to .codeframe/workspace_config.json.
+    """Persist workspace configuration, and apply what it controls (#1292).
 
-    Note: `workspace_root` is informational/display-only. The server resolves
-    the active workspace path from the `workspace_path` query parameter or
-    its default — editing this field does not relocate the workspace. The
-    value is replaced on write so PUT/GET stay consistent.
+    ``default_branch`` is the PR base when a PR is created without one. The
+    tech-stack choice becomes the workspace's ``tech_stack`` (what the agent
+    reads): re-detected from the repo when auto-detect is on, else the
+    override. Both used to be saved and never read.
+
+    ``workspace_root`` is display-only: the server resolves the workspace from
+    the ``workspace_path`` query parameter, so editing it relocates nothing.
     """
+    previous = ws.load_workspace_config(workspace)
     payload = body.model_dump(exclude={"workspace_root"})
     payload["workspace_root"] = str(workspace.repo_path)
-    atomic_write_json(_workspace_config_path(workspace), payload)
+    override = (body.tech_stack_override or "").strip() or None
+
+    # Only when the tech-stack controls changed: auto-detect is on by default,
+    # so re-detecting on every save would replace a stack set with
+    # `cf init --tech-stack` when the user only changed the branch. When they
+    # did change, apply in full, clearing included (codex review).
+    stack_changed = (
+        body.auto_detect_tech_stack != previous["auto_detect_tech_stack"]
+        or override != ((previous["tech_stack_override"] or "").strip() or None)
+    )
+    if stack_changed:
+        tech_stack = (
+            _detect_tech_stack(workspace.repo_path) if body.auto_detect_tech_stack else override
+        )
+        updated = ws.update_workspace_tech_stack(workspace.repo_path, tech_stack)
+        _register_workspace(request, updated, auth.get("user_id"))  # registry cache (#601)
+    # Persisted only after it was applied: written first, a failed apply left
+    # the file saying "done", and the identical retry then changed nothing.
+    atomic_write_json(workspace.state_dir / WORKSPACE_CONFIG_FILENAME, payload)
     return WorkspaceConfigResponse(**payload)
 
 
