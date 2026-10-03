@@ -145,6 +145,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Live output works for every engine, and ends when the run does (#1282).**
+  - `cf work follow` used to check for completion only when a new line arrived,
+    so it kept following a finished run that had stopped printing. It now
+    exits as soon as the run ends.
+  - Claude-code, codex, opencode and kilocode never wrote `output.log`, so
+    `follow` and the web UI's output view showed nothing for them. Their output
+    is now logged, including codex's agent messages.
+  - The task event stream in the web UI now notices a run that a batch
+    subprocess finished, instead of sending heartbeats forever.
+  - Agent output is printed literally, so a stray markup tag in it cannot crash
+    `follow`.
+
 - **`cf work resume` and `cf work retry` keep the task's engine, and
   `--dry-run` is no longer a real run on an external engine (#1281).**
   - Resume always fell back to the built-in engine, and retry had no
