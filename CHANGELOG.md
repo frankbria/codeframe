@@ -7,7 +7,41 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-10-02
+
 ### Changed
+
+- **The container deploy keeps the keys and GitHub token saved in Settings,
+  and now requires `CODEFRAME_CREDENTIAL_SECRET` (#1265).** The credential
+  store lives at `$HOME/.codeframe`, which was outside every volume, so each
+  deploy wiped it. Compose now sets `HOME=/data/home` on the `codeframe-data`
+  volume. The image also pins `/etc/machine-id` and sets
+  `CODEFRAME_DISABLE_KEYRING=1`, so the store's key stays the same when the
+  container is recreated. **Behavior change:** `docker compose` refuses to start
+  without `CODEFRAME_CREDENTIAL_SECRET`. Set it once per environment and never
+  rotate it: a new value makes every stored credential unreadable. Rolling
+  back to an image built before this change cannot read credentials stored
+  after it. See `deploy/README.md` → "The credential-store secret".
+
+- **The web UI disables admin-only actions for non-admin users and explains
+  why (#1255).** The new `GET /auth/me` returns the session's `scopes` and
+  `is_admin`. The auth-off operator counts as admin. Merge (the only way into
+  the override dialog), Create PR, and GitHub connect/disconnect are disabled,
+  each with a note saying why. GitHub-token Save/Remove are gated the same way;
+  LLM-key Save/Remove are not, since #1303 made those per-user. A control is
+  disabled only on an explicit `is_admin: false`. The server's 403 is still the
+  real check. The Review sidebar also scrolls now, instead of overflowing onto
+  PR History.
+
+- **The quickstart's first run executes one task, and its PROVE step reaches
+  a real pass (#1171, #1173).** The README told new users to promote every
+  generated task and run `cf work batch run --all-ready`. On a cold start that
+  was 25 serial agent runs and 19m37s. Step 6 is now
+  `cf work start <task-id> --execute` on one promoted task. The measured
+  walkthrough takes 5m59s. The full backlog run is still documented, marked
+  as long-running. PROVE used to end on `cf proof run` against an empty ledger,
+  which exits 2. It now shows the whole loop: capture, turn the draft stub
+  into a real test, then `cf proof run --full`. `docs/QUICKSTART.md` matches.
 
 - **`cf pr create` works as the README shows it (#1273).** It no longer needs
   `--title`: the title defaults to the branch's newest commit. The body now
@@ -145,6 +179,85 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **`cf pr merge` now scopes its PROOF9 gate to the PR's own files, like the
+  API (#1254).** The CLI still checked every requirement in the workspace, so
+  `cf pr merge` and the web UI could disagree about the same PR. The changed
+  files are fetched only when something would otherwise block, and they
+  include a rename's old path. Any failure falls back to the workspace-wide
+  check. A scope captured as `./x.py`, `src/../x.py` or `./` used to match no
+  file at all. Scope paths are now normalized in both gates and in
+  `cf proof run`, and a root scope covers every file.
+
+- **`cf proof capture --where` handles absolute paths correctly (#1258).** An
+  absolute path inside the workspace now becomes a repo-relative file scope.
+  Before, some absolute paths were stored as file scopes that could never
+  match, so a scoped merge gate let the PR through: paths with a space, a `+`
+  or a drive letter (`C:/…`), and `~/…`, `file://…` or `\…` paths. A path
+  that cannot be repo-relative is now stored as a tag, which blocks the gate
+  instead. The capture prints a warning naming that path. Routes such as
+  `/login` are still routes, even under a repo at `/app`.
+
+- **A dead OS keyring no longer hangs credential reads (#1181).** On a
+  headless box, container or SSH session with no D-Bus, SecretService can be
+  selected and then never answer. Every credential read blocked forever,
+  including `GET /api/v2/settings/keys`. Each keyring call now has a time
+  limit, `CODEFRAME_KEYRING_TIMEOUT` (default 2.0s). After a timeout, the store
+  falls back to the encrypted file for the rest of the process.
+  `CODEFRAME_DISABLE_KEYRING=1` skips the keyring entirely. The API's
+  credential calls now run off the event loop, so a slow keyring holds up only
+  its own request.
+
+- **The codex engine can run on an API key, and kilo 7.x stays logged in
+  (#1270).** `codex app-server` ignores API keys in its environment, so a
+  key-only setup failed with "401 Missing bearer". CodeFRAME now logs codex in
+  through its protocol with `CODEX_API_KEY`, or else the OpenAI key from the
+  environment or `cf auth setup`. The login runs in a private per-run
+  `CODEX_HOME`, and its `auth.json` is deleted right after login. An existing
+  `codex login` wins over a key, so a ChatGPT plan is not switched to metered
+  billing. kilo 7.x keeps its login in `~/.config/kilo` and
+  `~/.local/share/kilo`; both now pass through, and Anthropic/OpenAI keys
+  now reach it.
+
+- **Create PR in the web UI works again (#1272).** The Review page sent an
+  empty branch name, and the backend rejected it with a 422. It now sends the
+  checked-out branch, shows it in the panel ("From branch …") and checks it
+  again when you click. On a detached HEAD or a repo with no commits, the
+  button is disabled and says why.
+
+- **CLI commands no longer crash when an argument contains Rich markup
+  (#1054, #1206).** A value such as `[/b]` in a command argument or a stored
+  field raised `MarkupError`. In `except` handlers, that turned an error
+  CodeFRAME had already caught into a crash. Commands fixed include
+  `cf blocker list`, `cf prd show` and `cf hooks`. User text, including
+  arguments echoed in error messages, is now escaped before it is rendered.
+  CI tests every command against hostile markup, and a new command fails CI
+  until it is checked.
+
+- **Starting PRD discovery twice no longer leaves an orphaned session
+  (#1042, #1202).** Two concurrent `POST /api/v2/discovery/start` calls could
+  both create a session. The database now allows one active session per
+  workspace, and an upgrade closes all but the newest existing one. A reset
+  during a slow LLM call used to be undone by the save that followed. Now that
+  call returns 409. In `cf prd generate`, declining to resume closes the old
+  session. `--resume <id> --force` (`-f`) takes over a slot another session
+  holds. Reset in the web UI now closes the session it displays.
+
+- **`/health` reports the build that is actually running (#1160).** In a
+  container, `commit` was always `unknown`, and `deployed_at` was the time of
+  the request. `commit` is now the `GIT_COMMIT` stamped into the image at build
+  time. `deployed_at` is when the process started. The deploy workflow fails
+  if the reported commit is not the one it built. **Behavior change:**
+  `codeframe serve` from a source checkout reports `commit: "unknown"` unless
+  `GIT_COMMIT` is set.
+
+- **Saving AGENTS.md in place during a batch run no longer drops it from the
+  agent's instructions (#1219).** An editor that truncates and then writes the
+  file could be caught at zero bytes. The watcher then reloaded that file's
+  instructions as empty. A file that had content and now reads as empty is
+  treated as mid-write. The reload, including other files changed in the same
+  poll, waits until it settles. A file that stays empty for three polls is
+  taken as a deliberate clear and reloaded.
+
 - **Three ways the PROOF9 merge gate let a merge through (#1276).** Both `cf pr
   merge` and the web/API merge now block on:
   - a **lapsed waiver**: a requirement whose waiver expiry date has passed blocks
@@ -250,6 +363,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   executable, and no workflow may resolve this project's npm dependencies
   without the lockfile.
 
+### Security
+
+- **A GitHub issue-search label can no longer read another repo's issues
+  (#1275).** A `"` in the `label` filter closed the label phrase and could add
+  a `repo:` qualifier. That listed issues from any repo the stored PAT could
+  read. This is the #956 hole reached through a different field. Quotes and
+  backslashes are now removed from the label and from free-text search words.
+
+- **pytest is raised to 9.x to clear GHSA-6w46-j5rx-g56g (#1244).** pytest is
+  a runtime dependency, because the PROOF9 gate runs it and the generated
+  stubs import it. Versions below 9.0.3 have the advisory's vulnerable tmpdir
+  handling. The pin is now `pytest>=9.0.3,<10`, with `pytest-asyncio>=1.4.0`.
+
 ### Added
 
 - **`DESIGN_PARTNERS.md` — the beta design-partner program (#619).** #618 shipped
@@ -286,7 +412,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
-- **Self-correction token/cost records were silently dropped (#1168 follow-up).**
+- **Self-correction token/cost records were silently dropped (#1168 follow-up, #1176).**
   `ReactAgent` bills each verification-fix retry as `call_type="verification_fix"`
   (`react_agent.py:943`), but `CallType` never defined that member, so `TokenUsage`
   rejected every such record and `_persist_token_usage` swallowed it with only a
