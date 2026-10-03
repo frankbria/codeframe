@@ -630,7 +630,7 @@ class GlobalConfig(BaseSettings):
     blocker_webhook_url: Optional[str] = Field(None, alias="BLOCKER_WEBHOOK_URL")
 
     # Database configuration
-    database_path: str = Field(".codeframe/state.db", alias="DATABASE_PATH")
+    database_path: str = Field(".codeframe/platform.db", alias="DATABASE_PATH")
 
     # Status Server configuration
     # Loopback by default (#935): the API exposes SQLite state, workspace

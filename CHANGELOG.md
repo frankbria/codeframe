@@ -145,6 +145,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **`cf serve` no longer breaks the workspace it runs in (#1287).** Without
+  `DATABASE_PATH`, the server kept its accounts and API keys in
+  `.codeframe/state.db`, which is the workspace's own database. Serving before
+  `cf init` made init fail with "Workspace database exists but contains no
+  workspace record", and the only recovery deleted the accounts too. Serving
+  after `cf init` wrote users and keys into the repo's task data. The default is
+  now `.codeframe/platform.db`, resolved in one place for the server, auth and
+  `cf auth`. An install whose accounts already live in `state.db` keeps using
+  it, with a warning, until it moves the file or sets `DATABASE_PATH`.
+
 - **The web UI image builds again (#1364).** A `braces` advisory with no
   patched release (GHSA-vfj7-8cjw-p6xm) failed the in-image `npm audit` gate,
   so every staging deploy since 2026-10-03 failed. The only dependent,

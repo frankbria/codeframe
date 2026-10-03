@@ -72,11 +72,9 @@ collect_ignore: list[str] = []
 # SCOPE — what this guard does NOT cover. Several call sites build a
 # ``.codeframe`` path from cwd directly and never reach ``_get_state_dir``:
 #
-#   codeframe/ui/server.py:385,393       WORKSPACE_ROOT / DATABASE_PATH defaults
-#   codeframe/auth/manager.py:90         platform_store DB fallback
-#   codeframe/auth/dependencies.py:291   platform_store DB fallback
-#   codeframe/auth/api_key_router.py:121 platform_store DB fallback
-#   codeframe/cli/auth_commands.py:79    platform_store DB fallback
+#   platform_store.database.default_database_path   control-plane DB default
+#       (cwd/.codeframe/platform.db; used by ui/server.py, auth/manager.py and
+#       cli/auth_commands.py — #1287)
 #   codeframe/core/config.py:466,712     per-workspace config dir
 #
 # Those are the paths that *wrote* the ambient state.db in the first place.
