@@ -146,3 +146,25 @@ def test_a_corrupt_database_fails_and_leaves_no_file(volume, tmp_path):
     r = _run_script(volume, out)
     assert r.returncode == 1
     assert not out.exists() and not (tmp_path / "b.db.partial").exists()
+
+
+@docker
+def test_a_database_with_corrupt_pages_fails_the_integrity_check(volume, tmp_path):
+    """A valid header with damaged pages copies cleanly — only the check after
+    the backup catches it, so a deploy does not proceed on a bad backup."""
+    _create(volume)
+    _docker(
+        "run", "--rm", "--user", "10001:10001", "-v", f"{volume}:/data", IMAGE, "python", "-c",
+        "import sqlite3\n"
+        "c = sqlite3.connect('/data/codeframe.db')\n"
+        "c.execute('CREATE TABLE t (x TEXT)')\n"
+        "c.execute('CREATE INDEX ix ON t (x)')\n"
+        "c.executemany('INSERT INTO t VALUES (?)', [('v' * 200,)] * 400)\n"
+        "c.commit(); c.close()\n"
+        "f = open('/data/codeframe.db', 'r+b'); f.seek(4096 * 3); f.write(b'\\xff' * 4096); f.close()\n",
+    )
+    out = tmp_path / "b.db"
+    r = _run_script(volume, out)
+    assert r.returncode == 1
+    assert "integrity_check" in r.stderr
+    assert not out.exists()
