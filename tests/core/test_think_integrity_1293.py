@@ -465,3 +465,20 @@ def test_a_decoded_arrays_nested_arrays_are_never_candidates():
 
     with pytest.raises(LLMJsonError):
         extract_json_array('[1, [{"title": "x"}]]')
+
+
+def test_a_failed_container_past_its_first_element_is_not_rescued():
+    """codex: '[null, undefined, {..."children":[{"title":"Child"}]}]' failed
+    mid-text after an element, so it is a JSON container, not prose; resuming
+    inside it returned the nested child."""
+    from codeframe.core.llm_json import LLMJsonError, extract_json_array
+
+    with pytest.raises(LLMJsonError):
+        extract_json_array('[null, undefined, {"title":"Parent","children":[{"title":"Child"}]}]')
+
+
+@pytest.mark.parametrize("prose", ["[2 of them]", "[see a, b]", "[ok]"])
+def test_prose_brackets_before_the_array_are_still_skipped(prose):
+    from codeframe.core.llm_json import extract_json_array
+
+    assert extract_json_array(f'Tasks {prose}:\n[{{"title": "A"}}]') == [{"title": "A"}]

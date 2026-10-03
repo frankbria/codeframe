@@ -73,10 +73,11 @@ def extract_json_array(content: str, *, what: str = "response") -> list:
     because a retryable error is better than a persisted wrong plan (#1293
     reviews). The decoder's error position decides:
 
-    - an array of objects that fails to decode is malformed or cut off: raise;
-    - anything else that fails is prose (``[2 of them]``): resume the scan past
-      the error position, so nothing inside the failed text, such as the nested
-      arrays of a cut-off ``[null, {...}`` reaching the end, is a candidate.
+    - a failed array that holds objects, or got past its first element (a
+      comma before the error), is a malformed or cut-off JSON container: raise,
+      so none of its nested arrays can stand in for it;
+    - anything else is prose (``[2 of them]``, ``[see a, b]``), which fails at
+      its first token: resume the scan past the error position.
 
     A decoded array is skipped past, so its own nested arrays are never
     candidates. A list of scalars (``Tasks [1]:``) is skipped, and an empty
@@ -94,7 +95,7 @@ def extract_json_array(content: str, *, what: str = "response") -> list:
         try:
             value, end = decoder.raw_decode(text, start)
         except json.JSONDecodeError as exc:
-            if text[start + 1:].lstrip().startswith("{"):
+            if text[start + 1:].lstrip().startswith("{") or "," in text[start:exc.pos]:
                 raise LLMJsonError(
                     f"The JSON array in {what} is malformed or incomplete: {exc}"
                 ) from exc
