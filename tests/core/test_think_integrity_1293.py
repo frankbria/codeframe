@@ -283,3 +283,15 @@ def test_an_untagged_wrapper_around_a_prd_without_code_is_unwrapped():
     body = _PRD.replace("date", "relevance").strip()
     reply = f"Updated PRD:\n```\n{body}\n```"
     assert _refine(LLMResponse(content=reply, stop_reason="end_turn")) == body
+
+
+def test_a_titled_prd_with_markdown_example_blocks_is_not_unwrapped():
+    """Tagged blocks balance inside, so only the no-heading-in-preamble rule
+    keeps the title from being read as preamble and dropped."""
+    body = (
+        "# Docs site\n\n```markdown\n# Example page\n```\n\n"
+        + "Pages render from markdown. " * 40
+        + "\n\n```markdown\n## Another example\n```"
+    )
+    result = _refine(LLMResponse(content=body, stop_reason="end_turn"))
+    assert result == body.strip()
