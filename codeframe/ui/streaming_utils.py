@@ -149,7 +149,12 @@ async def event_stream_generator(
                 # A run finished by another process (a batch subprocess) never
                 # publishes here, so idle is also when to look again (#1282).
                 if after_subscribe is not None:
-                    terminal_event = after_subscribe()
+                    try:
+                        terminal_event = after_subscribe()
+                    except Exception:
+                        # A transient DB error must not end a live stream.
+                        logger.warning("Terminal re-check failed for %s", task_id, exc_info=True)
+                        terminal_event = None
                     if terminal_event is not None:
                         yield format_sse_event(terminal_event)
                         break

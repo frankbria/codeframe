@@ -160,3 +160,87 @@ class TestTheStreamNoticesAnOutOfProcessCompletion:
         chunks = asyncio.run(asyncio.wait_for(collect(), timeout=10))
 
         assert any("completion" in c for c in chunks), chunks
+
+
+# ---------------------------------------------------------------------------
+# Review findings
+# ---------------------------------------------------------------------------
+
+
+HOSTILE = "arr[/bold] and [red]not red[/red]"
+
+
+class TestReviewFindings:
+    def test_follow_prints_agent_output_literally(self, ws):
+        """Raw agent stdout now reaches output.log; a stray closing tag used to
+        raise MarkupError and kill the command."""
+        from codeframe.cli.app import app
+
+        task, run = _running(ws)
+        log = streaming.RunOutputLogger(ws, run.id)
+        log.write(HOSTILE + "\n")
+        log.close()
+        threading.Timer(0.3, lambda: runtime.complete_run(ws, run.id)).start()
+
+        result = CliRunner().invoke(app, ["work", "follow", task.id, "-w", str(ws.repo_path)])
+
+        assert result.exit_code == 0, result.output
+        assert HOSTILE in result.output
+
+    def test_a_write_after_close_is_dropped_not_raised(self, ws):
+        """A reader thread that outlives the run must keep draining its pipe."""
+        _task, run = _running(ws)
+        log = streaming.RunOutputLogger(ws, run.id)
+        log.close()
+
+        log.write("late line\n")  # must not raise
+
+    def test_a_failing_recheck_does_not_end_a_live_stream(self):
+        from codeframe.core.models import CompletionEvent
+        from codeframe.core.streaming import EventPublisher
+        from codeframe.ui.streaming_utils import event_stream_generator
+
+        checks = {"n": 0}
+
+        def flaky():
+            checks["n"] += 1
+            if checks["n"] == 2:
+                raise RuntimeError("database is locked")
+            if checks["n"] < 4:
+                return None
+            return CompletionEvent(task_id="t", status="completed", duration_seconds=1.0)
+
+        async def collect():
+            out = []
+            async for chunk in event_stream_generator(
+                "t", EventPublisher(), _Connected(), heartbeat_interval=0.1,
+                after_subscribe=flaky,
+            ):
+                out.append(chunk)
+            return out
+
+        chunks = asyncio.run(asyncio.wait_for(collect(), timeout=10))
+        assert any("completion" in c for c in chunks)
+
+    def test_codex_agent_messages_reach_output_log(self, ws, monkeypatch):
+        from codeframe.core import engine_registry
+        from codeframe.core.adapters.agent_adapter import AgentEvent, AgentResult
+
+        class StubCodex:
+            name = "codex"
+
+            def run(self, task_id, prompt, workspace_path, on_event=None):
+                on_event(AgentEvent(
+                    type="progress", message="Completed agentMessage",
+                    data={"type": "agentMessage", "text": "I added the search endpoint."},
+                ))
+                return AgentResult(status="failed", error="stub stops here")
+
+        monkeypatch.setattr(engine_registry, "get_external_adapter", lambda *a, **k: StubCodex())
+        _task, run = _running(ws)
+
+        runtime.execute_agent(ws, run, engine="codex")
+
+        text = streaming.get_run_output_path(ws, run.id).read_text(encoding="utf-8")
+        assert "I added the search endpoint." in text
+

@@ -98,6 +98,9 @@ class RunOutputLogger:
         self.run_id = run_id
         self.log_path = get_run_output_path(workspace, run_id)
         self._file = None  # Initialize before potential mkdir/open failure
+        # Adapter reader threads write here (#1282), and one can outlive the
+        # run when a descendant keeps its stdout open.
+        self._lock = threading.Lock()
 
         # Ensure directory exists
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,8 +116,13 @@ class RunOutputLogger:
         Args:
             message: Message to write (should include newline if desired)
         """
-        self._file.write(message)
-        self._file.flush()
+        with self._lock:
+            # A reader thread that outlived the run must keep draining its
+            # pipe, not die on a closed file and wedge the child (#1282 review).
+            if self._file is None or self._file.closed:
+                return
+            self._file.write(message)
+            self._file.flush()
 
     def write_timestamped(self, message: str) -> None:
         """Write a message with a timestamp prefix.
@@ -129,8 +137,12 @@ class RunOutputLogger:
 
     def close(self) -> None:
         """Close the log file."""
-        if hasattr(self, "_file") and self._file and not self._file.closed:
-            self._file.close()
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            return
+        with lock:
+            if self._file and not self._file.closed:
+                self._file.close()
 
     def __enter__(self) -> "RunOutputLogger":
         """Context manager entry."""

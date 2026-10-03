@@ -78,6 +78,8 @@ RUN: dict[str, list[str]] = {
     "work status": [],
     "work show": ["{task}"],
     "work diagnose": ["{task}"],
+    # Ends with the run since #1282, so it can run here.
+    "work follow": ["{task}"],
     "work update-description": ["{task}", HOSTILE],
     "work batch status": [],
     "patch list": [],
@@ -122,7 +124,6 @@ EXEMPT: dict[str, str] = {
     "work rerun": "runs an agent",
     "work retry": "runs an agent",
     "work stop": "signals a running agent",
-    "work follow": "blocks tailing a live run",
     "work replay": "needs a recorded trace",
     "work diff": "needs a recorded trace",
     "work export-trace": "needs a recorded trace",

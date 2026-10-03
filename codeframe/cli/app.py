@@ -3949,7 +3949,7 @@ def work_follow(
                     if tail and total > tail:
                         console.print(f"[dim](showing last {tail} of {total} lines)[/dim]")
                     for line in lines:
-                        console.print(line.rstrip())
+                        console.print(escape(line.rstrip()))  # agent output, not markup
                 else:
                     console.print("[dim]No output captured for this run.[/dim]")
 
@@ -3973,7 +3973,7 @@ def work_follow(
             if lines:
                 console.print(f"\n[dim]--- Buffered output (last {len(lines)} of {total} lines) ---[/dim]")
                 for line in lines:
-                    console.print(f"[dim]{line.rstrip()}[/dim]")
+                    console.print(f"[dim]{escape(line.rstrip())}[/dim]")
                 console.print("[dim]--- Live output ---[/dim]\n")
                 start_line = total  # Skip already-shown lines
 
@@ -4009,7 +4009,8 @@ def work_follow(
                 max_wait=max_wait,
                 should_stop=run_finished,
             ):
-                console.print(line.rstrip())
+                # Raw agent stdout (#1282): a stray `[/b]` must print, not crash.
+                console.print(escape(line.rstrip()))
 
             if "run" in finished:
                 current_run = finished["run"]

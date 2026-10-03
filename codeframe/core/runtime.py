@@ -934,6 +934,10 @@ def execute_agent(
                 text = event.data.get("line") if event.type == "output" else event.message
                 if text:
                     output_logger.write(str(text).rstrip("\n") + "\n")
+                # codex reports what its agent said as an item, not a line.
+                said = event.data.get("text") if event.data.get("type") == "agentMessage" else None
+                if isinstance(said, str) and said.strip():
+                    output_logger.write(said.rstrip("\n") + "\n")
 
         # Get adapter via registry and run
         # Tell the user when their stall flags will be dropped (#957).
