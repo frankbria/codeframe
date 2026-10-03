@@ -215,3 +215,35 @@ class TestRestart:
             assert runtime.start_task_run(ws, task.id).status == runtime.RunStatus.RUNNING
         finally:
             control.stop()  # unbind, or every later test on this thread reads "stopped"
+
+
+class TestExecuteAgentAfterAStop:
+    def test_the_run_is_not_transitioned_again(self, ws, monkeypatch):
+        """stop_run already failed the run; the agent finishing afterwards must
+        not complete, fail or block it a second time (complete_run used to
+        raise on a stopped run)."""
+        from codeframe.adapters.llm.mock import MockProvider
+
+        monkeypatch.setenv("CODEFRAME_LLM_PROVIDER", "mock")
+        task, run = _start(ws)
+        real_complete = MockProvider.complete
+
+        def complete(self, *args, **kwargs):
+            runtime.stop_run(ws, task.id)  # Stop lands during the LLM call
+            return real_complete(self, *args, **kwargs)  # text-only: "done"
+
+        monkeypatch.setattr(MockProvider, "complete", complete)
+        # Record, never assert, inside: execute_agent's `except Exception`
+        # would swallow an AssertionError and turn this test green (#1254).
+        transitions: list[str] = []
+        for name in ("complete_run", "fail_run", "block_run"):
+            monkeypatch.setattr(
+                runtime, name, lambda *a, _n=name, **k: transitions.append(_n)
+            )
+
+        state = runtime.execute_agent(ws, run)
+
+        assert transitions == []
+        assert state.status == AgentStatus.FAILED
+        assert tasks.get(ws, task.id).status == TaskStatus.READY
+

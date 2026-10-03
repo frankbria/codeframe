@@ -78,6 +78,45 @@ class TestNothingUnprovenIsSignalled:
             _real_kill(child.pid, 9)
             child.wait()
 
+    def test_a_group_leader_that_is_not_our_child(self, signals):
+        """A grandchild in its own session leads a group, but it is not ours to
+        verify: its pid could be recycled without us ever knowing."""
+        parent = subprocess.Popen(
+            [sys.executable, "-c",
+             "import subprocess,sys,time;"
+             "c=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'],"
+             "start_new_session=True);print(c.pid,flush=True);time.sleep(30)"],
+            stdout=subprocess.PIPE, text=True,
+        )
+        grandchild = int(parent.stdout.readline())
+        try:
+            assert os.getpgid(grandchild) == grandchild  # a leader, just not our child
+            run_control.terminate_tree(_fake(grandchild), grace_s=0.1)
+            assert signals == []
+        finally:
+            _real_kill(grandchild, 9)
+            _real_kill(parent.pid, 9)
+            parent.wait()
+
+    def test_a_child_inside_another_childs_group(self, signals):
+        """Ours and unreaped, in a group that is not ours, but it does not lead
+        that group, so signalling 'its' group would hit its leader's."""
+        # Its own group in our session: setpgid cannot join a group across sessions.
+        leader = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"], process_group=0
+        )
+        member = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"], process_group=leader.pid
+        )
+        try:
+            assert os.getpgid(member.pid) == leader.pid != member.pid
+            run_control.terminate_tree(member, grace_s=0.1)
+            assert not [s for s in signals if s[0] == "killpg"]
+        finally:
+            for p in (member, leader):
+                _real_kill(p.pid, 9)
+                p.wait()
+
     def test_a_child_that_was_already_reaped(self, signals):
         """Its pid may already belong to a stranger; nothing may be sent."""
         child = subprocess.Popen(
