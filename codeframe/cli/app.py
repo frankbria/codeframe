@@ -3087,7 +3087,6 @@ def work_start(
         if execute:
             from codeframe.core.engine_registry import (
                 refuse_dry_run_for_external_engine,
-                resolve_engine,
             )
 
             # An external engine would edit the repo regardless (#1281).
@@ -3095,14 +3094,6 @@ def work_start(
                 refuse_dry_run_for_external_engine(engine, dry_run)
             except ValueError as exc:
                 print_error(exc)
-                raise typer.Exit(1)
-
-            # Same reason: execute_agent resolves the engine, and the gated
-            # cloud engine (#966) raises there — after the run record exists.
-            try:
-                resolve_engine(engine)
-            except ValueError as exc:
-                console.print(f"[red]Error:[/red] {exc}")
                 raise typer.Exit(1)
 
             from codeframe.cli.validators import require_keys_for_engine
@@ -4574,17 +4565,8 @@ def batch_run(
         console.print(f"  Tasks: {len(ids_to_execute)}")
         console.print(f"  On failure: {escape(on_failure)}")
 
-        # Ahead of the dry-run return: a preview of an engine that would be
-        # refused is misleading, and this is also the pre-run guard that keeps
-        # the gate from raising after conductor.start_batch (#966).
-        from codeframe.core.engine_registry import resolve_engine
-
-        try:
-            resolve_engine(engine)
-        except ValueError as exc:
-            console.print(f"[red]Error:[/red] {exc}")
-            raise typer.Exit(1)
-
+        # The engine was resolved, and a refused one (#966) rejected, at the
+        # top of this command: before any preview and before start_batch.
         if dry_run:
             console.print("\n[dim]Dry run - showing tasks without executing:[/dim]")
             for i, tid in enumerate(ids_to_execute):
