@@ -454,38 +454,29 @@ def ambiguity_to_dict(amb: Ambiguity) -> dict[str, object]:
 #: examples stay inside it; ``strip_code_fence`` would return the first inner
 #: block instead and store a code snippet as the PRD.
 _OUTER_FENCE_RE = re.compile(
-    r"\A(?:[^`#\n][^`\n]*\n|\n){0,3}?[ \t]*```[ \t]*(markdown|md)?[ \t]*\n(.*)\n[ \t]*```[ \t]*\Z",
+    r"\A(?:[^`\n]*\n){0,3}?[ \t]*```[ \t]*(?:markdown|md)?[ \t]*\n(.*)\n[ \t]*```[ \t]*\Z",
     re.DOTALL | re.IGNORECASE,
 )
-_FENCE_LINE_RE = re.compile(r"^[ \t]*```", re.MULTILINE)
 
 
 def _first_line(text: str) -> str:
     return next((line.strip() for line in text.splitlines() if line.strip()), "")
 
 
-def _unwrap_outer_fence(content: str, original: str = "") -> str:
-    """Unwrap a reply that is one fenced block, never a PRD shaped like one.
+def _unwrap_outer_fence(content: str, original: str) -> str:
+    """Unwrap a reply that is one fenced block around the rewritten PRD.
 
-    A real PRD that opens with a code block and ends with another has this
-    shape too, and unwrapping it drops its first and last fences (#1293
-    review). So the preamble may not hold a heading; an untagged wrapper is
-    unwrapped only when nothing inside it is fenced; and a ``markdown``-tagged
-    one only when its inner fences balance.
+    A real PRD with code blocks at both ends has the same *shape* as a wrapped
+    reply, and syntax cannot tell a bare closing fence from a bare opening one,
+    so every structural rule left a variant that lost the PRD's first line and
+    outer fences (#1293 reviews). The positive test: a wrapper's payload is the
+    PRD itself, so it starts with the original PRD's first line, which a refine
+    does not rewrite. Anything else is stored as it came, as before.
     """
-    # A reply that opens like the PRD itself is the PRD echoed back, not a
-    # preamble: syntax alone can't tell a bare closer from a bare opener, so a
-    # PRD with a plain first line and code blocks at both ends looked wrapped.
-    if original and _first_line(content) == _first_line(original):
-        return content
     match = _OUTER_FENCE_RE.match(content)
-    if not match:
-        return content
-    tag, inner = match.group(1), match.group(2)
-    inner_fences = len(_FENCE_LINE_RE.findall(inner))
-    if (inner_fences if tag is None else inner_fences % 2):
-        return content
-    return inner.strip()
+    if match and _first_line(match.group(1)) == _first_line(original):
+        return match.group(1).strip()
+    return content
 
 
 def resolve_ambiguities_into_prd(

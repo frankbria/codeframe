@@ -347,3 +347,33 @@ def test_valid_json_that_is_not_an_array_says_so(workspace):
         workspace, LLMResponse(content='{"status": "no tasks needed"}', stop_reason="end_turn")
     )
     assert "did not return a JSON array" in message and "truncated" not in message
+
+
+def test_a_wrapper_preamble_glued_to_an_echoed_prd_is_not_unwrapped():
+    """One preamble line with no blank before the echoed PRD (GLM review):
+    the first-line echo guard misses it; the payload must start like the PRD."""
+    body = (
+        "My Project\n\n```markdown\n# Example page\n```\n\n"
+        + "Results are sorted by date. " * 40
+        + "\n\n```\nGET /search?q=x\n```"
+    )
+    from codeframe.core.prd_stress_test import Ambiguity, resolve_ambiguities_into_prd
+
+    provider = MockProvider()
+    edited = body.replace("date", "relevance")
+    provider.add_response(LLMResponse(content="Here is the updated PRD:\n" + edited, stop_reason="end_turn"))
+    amb = Ambiguity(id="a", label="Sort", source_node_title="S", questions=["?"],
+                    recommendation="", severity="blocking", resolved_answer="relevance")
+    stored = resolve_ambiguities_into_prd(body, [amb], provider)
+    assert "My Project" in stored and "```markdown\n# Example page\n```" in stored
+
+
+def test_fenced_task_json_with_a_code_example_in_a_description_parses(workspace):
+    """strip_code_fence stopped at the backticks inside a JSON string (codex)."""
+    task_list = [{"title": "Add search", "description": "Call it like:\n```python\nsearch(q)\n```"}]
+    provider = MockProvider()
+    provider.add_text_response(f"```json\n{json.dumps(task_list)}\n```")
+    record = prd.store(workspace, "# P\n\nBuild it.\n")
+    created = tasks.generate_from_prd(workspace, record, provider=provider)
+    assert [t.title for t in created] == ["Add search"]
+    assert "search(q)" in created[0].description

@@ -65,8 +65,8 @@ def parse_json_response(content: str, *, what: str = "response") -> Any:
 def extract_json_array(content: str, *, what: str = "response") -> list:
     """Return the first complete JSON array in an LLM response.
 
-    Unfences first, then decodes from each ``[`` in turn and stops at the end of
-    the first array that parses, so prose brackets before it ("[2 of them]")
+    Decodes from each ``[`` in turn, in the raw text and then unfenced, and
+    stops at the end of the first array that parses, so prose brackets before it ("[2 of them]")
     and prose after it ("These are the tasks.") are both tolerated. A greedy
     ``\\[...\\]`` search spanned those brackets and reported valid JSON as
     truncated (#1293).
@@ -74,17 +74,20 @@ def extract_json_array(content: str, *, what: str = "response") -> list:
     Raises:
         LLMJsonError: If no JSON array can be decoded from the content.
     """
-    text = strip_code_fence(content or "")
+    # The raw text first: the decoder knows JSON strings, so backticks inside a
+    # description (a code example) are inert there, while strip_code_fence would
+    # stop at them. The unfenced text is the fallback (#1293 review).
     decoder = json.JSONDecoder()
-    start = text.find("[")
-    while start != -1:
-        try:
-            value, _ = decoder.raw_decode(text, start)
-        except json.JSONDecodeError:
-            pass
-        else:
-            if isinstance(value, list):
-                return value
-        start = text.find("[", start + 1)
-    preview = text[:200].replace("\n", " ")
+    for text in (content or "", strip_code_fence(content or "")):
+        start = text.find("[")
+        while start != -1:
+            try:
+                value, _ = decoder.raw_decode(text, start)
+            except json.JSONDecodeError:
+                pass
+            else:
+                if isinstance(value, list):
+                    return value
+            start = text.find("[", start + 1)
+    preview = (content or "")[:200].replace("\n", " ")
     raise LLMJsonError(f"No JSON array in {what}. Content began: {preview!r}")
