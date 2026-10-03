@@ -108,7 +108,9 @@ def start_task_run(workspace: Workspace, task_id: str) -> Run:
 
     if run_control.previous_run_alive(workspace, task_id):
         raise ValueError(
-            f"Task {task_id}'s previous run is still stopping; try again in a few seconds."
+            f"Task {task_id}'s previous run is still stopping: its agent finishes "
+            "the step it is in (an LLM call, a command or a gate run) before it "
+            "exits. Try again once it has."
         )
 
     # Transition task to IN_PROGRESS (validates the transition)
@@ -959,6 +961,13 @@ def execute_agent(
             # Do not merge back a half-done tree or transition the run again
             # (complete_run would raise on a run that is no longer RUNNING).
             run_logger.info(LogCategory.STATE_CHANGE, "Run stopped by user")
+            if env_config and hook_ctx:
+                # A stopped run did not succeed; fire the same hook a failure does.
+                hook_ctx.task_status = "failed"
+                execute_hook(
+                    "after_task_failure", env_config, workspace.repo_path, hook_ctx,
+                    abort_on_failure=False,
+                )
             return AgentState(status=AgentStatus.FAILED)
 
         # Map AgentResult to AgentState for rest of runtime

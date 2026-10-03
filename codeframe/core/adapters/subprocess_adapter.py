@@ -266,6 +266,9 @@ class SubprocessAdapter:
                 # the CLI spawned, not only the CLI itself (#1279).
                 **run_control.new_session_kwargs(),
             )
+            # Its own session no longer hears the terminal's Ctrl+C or close;
+            # if this process exits first, the atexit hook stops it (#1279).
+            run_control.register_child(process)
 
             # Drain stderr in a background thread to prevent deadlock.
             # Without this, if the child fills the stderr pipe buffer (~64KB)
@@ -342,6 +345,7 @@ class SubprocessAdapter:
             # which closes its stdout and unblocks the reader thread.
             def _killed(error: str) -> AgentResult:
                 run_control.terminate_tree(process)
+                run_control.release_child(process)
                 stdin_thread.join(timeout=5)
                 stdout_thread.join(timeout=5)
                 stderr_thread.join(timeout=5)
@@ -369,9 +373,12 @@ class SubprocessAdapter:
                             return _killed(f"Process timed out after {self._timeout_s}s")
             except BaseException:
                 # SIGTERM to a batch worker arrives here as SystemExit
-                # (run_control.exit_on_sigterm): take the CLI's group down too.
+                # (run_control.exit_on_sigterm), Ctrl+C as KeyboardInterrupt:
+                # take the CLI's group down too.
                 run_control.terminate_tree(process)
+                run_control.release_child(process)
                 raise
+            run_control.release_child(process)
 
             # Process exited on its own; drain any buffered output.
             stdin_thread.join(timeout=10)

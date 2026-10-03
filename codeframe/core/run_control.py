@@ -25,6 +25,7 @@ adapter runs on the thread that called `execute_agent`.
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import contextvars
 import logging
@@ -46,6 +47,12 @@ logger = logging.getLogger(__name__)
 HEARTBEAT_INTERVAL_S = 5.0
 #: A heartbeat older than this belongs to a worker that died without cleanup.
 STALE_AFTER_S = 30.0
+#: How long a delegated CLI gets between SIGTERM and SIGKILL.
+CHILD_GRACE_S = 5.0
+#: A batch worker gets more: on SIGTERM it first tears down its own CLI, which
+#: can take a full CHILD_GRACE_S of TERM plus the KILL. A shorter outer grace
+#: would SIGKILL the worker mid-teardown and orphan a slow CLI (review).
+WORKER_GRACE_S = 2 * CHILD_GRACE_S + 2
 
 _HEARTBEAT_DIR = "run_heartbeats"
 _current: contextvars.ContextVar[Optional["RunControl"]] = contextvars.ContextVar(
@@ -69,7 +76,7 @@ class RunControl:
         self._done = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._token: Optional[contextvars.Token] = None
-        self._prev_sigterm: object = None
+        self._prev_handlers: Optional[dict] = None
 
     def cancelled(self, min_interval_s: float = 0.0) -> bool:
         """True once the run has been stopped. Sticky.
@@ -134,9 +141,10 @@ class RunControl:
         if self._token is not None:
             _current.reset(self._token)
             self._token = None
-        if self._prev_sigterm is not None:
-            signal.signal(signal.SIGTERM, self._prev_sigterm)  # type: ignore[arg-type]
-            self._prev_sigterm = None
+        if self._prev_handlers is not None:
+            for sig, handler in self._prev_handlers.items():
+                signal.signal(sig, handler)
+            self._prev_handlers = None
 
 
 def start(workspace: "Workspace", run: "Run") -> RunControl:
@@ -150,7 +158,7 @@ def start(workspace: "Workspace", run: "Run") -> RunControl:
     control._token = _current.set(control)
     # A batch worker (`cf work start --execute`) is stopped with SIGTERM. Let
     # it unwind, so the adapter's except-block takes its CLI's group down.
-    control._prev_sigterm = exit_on_sigterm()
+    control._prev_handlers = exit_on_sigterm()
     return control
 
 
@@ -260,7 +268,7 @@ def _leader_exited(pid: int) -> bool:
         return True  # reaped elsewhere; the caller re-verifies before SIGKILL
 
 
-def terminate_tree(proc: subprocess.Popen, grace_s: float = 5.0) -> None:
+def terminate_tree(proc: subprocess.Popen, grace_s: float = CHILD_GRACE_S) -> None:
     """Stop ``proc`` and everything in its process group.
 
     The child must have been started with `new_session_kwargs()`. Only a group
@@ -342,12 +350,14 @@ def _terminate_direct_child(proc: object, grace_s: float) -> None:
             logger.warning("Process %d did not exit after SIGKILL", pid)
 
 
-def exit_on_sigterm() -> object:
-    """Turn SIGTERM into SystemExit, so `finally`/`except BaseException`
-    blocks run and a delegated CLI's session is torn down with its worker.
+def exit_on_sigterm() -> Optional[dict]:
+    """Turn SIGTERM and SIGHUP into SystemExit, so `finally`/`except
+    BaseException` blocks run and a delegated CLI's session is torn down with
+    its worker. SIGHUP matters because a child in its own session no longer
+    hears the terminal close; the worker has to pass that on.
 
     Only valid on the main thread; elsewhere (the server's worker threads) it
-    is a no-op. Returns the previous handler, or None when nothing changed.
+    is a no-op. Returns the previous handlers, or None when nothing changed.
     """
     if os.name != "posix" or threading.current_thread() is not threading.main_thread():
         return None
@@ -355,4 +365,45 @@ def exit_on_sigterm() -> object:
     def _raise(signum, frame):  # noqa: ARG001
         raise SystemExit(128 + signum)
 
-    return signal.signal(signal.SIGTERM, _raise)
+    return {sig: signal.signal(sig, _raise) for sig in (signal.SIGTERM, signal.SIGHUP)}
+
+
+def terminate_trees(procs: list[subprocess.Popen], grace_s: float = CHILD_GRACE_S) -> None:
+    """`terminate_tree` for several processes at once, so the last one is not
+    left running while the first ones wait out their grace (review)."""
+    threads = [
+        threading.Thread(target=terminate_tree, args=(p, grace_s), daemon=True) for p in procs
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+
+# -- children that must not outlive this process ------------------------------
+#
+# A child in its own session does not receive the terminal's Ctrl+C or SIGHUP,
+# so an exiting CLI or server would leave it running. Spawners register their
+# children here; whatever is still registered at interpreter exit is stopped.
+
+_live_children: set = set()
+_live_lock = threading.Lock()
+
+
+def register_child(proc: subprocess.Popen) -> None:
+    with _live_lock:
+        _live_children.add(proc)
+
+
+def release_child(proc: subprocess.Popen) -> None:
+    with _live_lock:
+        _live_children.discard(proc)
+
+
+@atexit.register
+def _stop_live_children() -> None:
+    with _live_lock:
+        procs = list(_live_children)
+        _live_children.clear()
+    if procs:
+        terminate_trees(procs, grace_s=2.0)

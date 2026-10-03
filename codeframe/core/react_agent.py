@@ -548,6 +548,7 @@ class ReactAgent:
             # and the task, so just stop spending.
             if run_control.cancellation_requested():
                 self._verbose_print("[ReactAgent] Run stopped by user")
+                self._early_termination_reason = "stopped_by_user"
                 return AgentStatus.FAILED
 
             # Check for stall before each iteration

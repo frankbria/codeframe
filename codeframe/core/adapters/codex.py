@@ -349,6 +349,7 @@ class CodexAdapter:
             self._drop_login_home(env, login_key)
             return AgentResult(status="failed", error=f"Failed to start '{self._binary}': {e}")
 
+        run_control.register_child(process)  # stopped at exit if still alive (#1279)
         stderr_chunks: list[str] = []
 
         def _drain_stderr() -> None:
@@ -374,6 +375,7 @@ class CodexAdapter:
             result = AgentResult(status="failed", error=str(exc))
         finally:
             self._kill(process)
+            run_control.release_child(process)
             stderr_thread.join(timeout=5)
             self._drop_login_home(env, login_key)
 

@@ -281,3 +281,87 @@ class TestAStopDuringTheGates:
         assert len(runs) == 1, "a correction run started after Stop"
         assert result.status == "failed" and "stopped" in (result.error or "").lower()
 
+
+class TestNoChildOutlivesItsParent:
+    """Children run in their own session, so the terminal's Ctrl+C and close no
+    longer reach them; the parent has to pass them on (#1279 review)."""
+
+    @pytest.mark.parametrize("ending", ["sys.exit(0)", "raise KeyboardInterrupt"])
+    def test_a_registered_child_is_stopped_when_the_parent_exits(
+        self, tmp_path, pidfile, ending
+    ):
+        script = tmp_path / "parent.py"
+        script.write_text(textwrap.dedent(f"""
+            import os, subprocess, sys
+            from codeframe.core import run_control
+            p = subprocess.Popen(["sh", "-c", {_FORKS_A_GRANDCHILD!r}],
+                                 **run_control.new_session_kwargs())
+            run_control.register_child(p)
+            while not (os.path.exists(os.environ["PIDFILE"])
+                       and open(os.environ["PIDFILE"]).read().strip()):
+                pass
+            {ending}
+        """))
+        subprocess.run([sys.executable, str(script)], capture_output=True, timeout=60)
+        assert _gone_within(_wait_for_pid(pidfile), 5)
+
+    def test_sighup_to_a_worker_takes_its_delegated_cli_with_it(self, tmp_path, pidfile):
+        """Closing the terminal: the worker's own session never hears it."""
+        import signal
+
+        worker = tmp_path / "worker.py"
+        worker.write_text(textwrap.dedent(f"""
+            import os
+            from pathlib import Path
+            from codeframe.core import run_control
+            from codeframe.core.adapters.subprocess_adapter import SubprocessAdapter
+            run_control.exit_on_sigterm()
+            a = SubprocessAdapter("sh", cli_args=["-c", {_FORKS_A_GRANDCHILD!r}])
+            a.get_env = lambda _p: {{"PIDFILE": os.environ["PIDFILE"]}}
+            a.run("t", "", Path({str(tmp_path)!r}))
+        """))
+        proc = subprocess.Popen([sys.executable, str(worker)], **run_control.new_session_kwargs())
+        try:
+            grandchild = _wait_for_pid(pidfile)
+            os.kill(proc.pid, signal.SIGHUP)  # our own child, by pid
+            proc.wait(timeout=30)
+            assert _gone_within(grandchild, 5)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+
+
+class TestRetriesLeaveAStoppedTaskAlone:
+    def test_a_stopped_task_is_not_retried_but_a_failed_one_is(self, ws):
+        from codeframe.core import conductor
+
+        stopped, _ = _start(ws)
+        runtime.stop_run(ws, stopped.id)  # READY again
+        failed, failed_run = _start(ws)
+        runtime.fail_run(ws, failed_run.id)  # FAILED
+
+        assert conductor._stopped_by_user(ws, stopped.id) is True
+        assert conductor._stopped_by_user(ws, failed.id) is False
+
+
+class TestThePlanEngineStopsToo:
+    def test_no_step_starts_after_a_stop(self, ws):
+        from codeframe.core.agent import Agent
+        from codeframe.core.planner import ImplementationPlan, PlanStep, StepType
+
+        task, run = _start(ws)
+        events: list[str] = []
+        agent = Agent(ws, MagicMock(), on_event=lambda name, data: events.append(name))
+        agent.state.task_id = task.id
+        agent.state.plan = ImplementationPlan(
+            task_id=task.id, summary="s",
+            steps=[PlanStep(index=1, type=StepType.FILE_CREATE, description="d", target="a.py")],
+        )
+        runtime.stop_run(ws, task.id)
+        with run_control.supervise(ws, run):
+            agent._execute_plan()
+
+        assert "step_started" not in events
+        assert agent.state.status == AgentStatus.FAILED
+

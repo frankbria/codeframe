@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
 from codeframe.adapters.llm import LLMProvider, Purpose
-from codeframe.core import blockers, events
+from codeframe.core import blockers, events, run_control
 from codeframe.core.agent_env import build_agent_env
 from codeframe.core.path_safety import is_path_safe
 from codeframe.core.context import ContextLoader, TaskContext
@@ -485,6 +485,12 @@ class Agent:
 
         while self.state.current_step < len(self.state.plan.steps):
             step = self.state.plan.steps[self.state.current_step]
+
+            # Stopped by the user (#1279): stop before the next step's LLM call.
+            if run_control.cancellation_requested():
+                self._debug_log("Run stopped by user", level="INFO", always=True)
+                self.state.status = AgentStatus.FAILED
+                return
 
             # Stop the RUN, not just the step (#1004 review). Executor refuses a
             # capped step by returning FAILED — but FAILED is the trigger for

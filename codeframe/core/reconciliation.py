@@ -390,7 +390,7 @@ class ReconciliationEngine:
                     if proc is not None:
                         try:
                             # The worker and its delegated CLI's group (#1279).
-                            run_control.terminate_tree(proc)
+                            run_control.terminate_tree(proc, grace_s=run_control.WORKER_GRACE_S)
                         except OSError:
                             pass  # Process already dead
 
