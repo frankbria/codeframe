@@ -492,3 +492,50 @@ class TestTheConductorUnwindsOnTerminalClose:
         r = subprocess.run([sys.executable, str(script)], capture_output=True, timeout=60)
         assert r.returncode == 128 + 1, (r.returncode, r.stderr[-500:])  # SystemExit, not -SIGHUP
 
+
+class TestOnlyAnInterruptStopsTheParallelGroup:
+    """`_as_completed_or_stop` kills the batch's workers on Ctrl+C only. One
+    task's ordinary failure, raised in the loop body, closes the generator
+    with GeneratorExit and must not take its siblings down (claude-review)."""
+
+    def test_a_failing_task_does_not_kill_its_siblings(self, monkeypatch):
+        from concurrent.futures import Future
+
+        from codeframe.core import conductor
+
+        killed: list = []
+        monkeypatch.setattr(run_control, "terminate_trees", lambda procs, **k: killed.append(procs))
+        done = Future()
+        done.set_result(("t", "FAILED"))
+        with pytest.raises(ValueError):
+            for _future in conductor._as_completed_or_stop({done: "t"}, "b"):
+                raise ValueError("this task failed")
+        assert killed == []
+
+    def test_ctrl_c_while_waiting_does(self, monkeypatch):
+        from codeframe.core import conductor
+
+        def interrupted(_futures):
+            raise KeyboardInterrupt
+            yield  # pragma: no cover
+
+        killed: list = []
+        monkeypatch.setattr(conductor, "as_completed", interrupted)
+        monkeypatch.setattr(run_control, "terminate_trees", lambda procs, **k: killed.append(procs))
+        with pytest.raises(KeyboardInterrupt):
+            list(conductor._as_completed_or_stop({}, "b"))
+        assert len(killed) == 1
+
+
+class TestNestedSignalHandlers:
+    def test_restores_in_any_order_leave_the_original_handler(self):
+        """A second install must not record our own override as 'previous':
+        restored after the outer one, it would reinstall the override."""
+        import signal
+
+        original = signal.getsignal(signal.SIGTERM)
+        outer = run_control.exit_on_sigterm()
+        inner = run_control.exit_on_sigterm()
+        run_control.restore_signal_handlers(outer)  # outer finishes first
+        run_control.restore_signal_handlers(inner)
+        assert signal.getsignal(signal.SIGTERM) is original

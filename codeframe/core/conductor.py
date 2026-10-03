@@ -2805,7 +2805,10 @@ def _as_completed_or_stop(futures: dict, batch_id: str) -> Iterator:
     """
     try:
         yield from as_completed(futures)
-    except BaseException:
+    # Only an interrupt. A plain BaseException would also catch GeneratorExit,
+    # which arrives whenever the loop *body* raises (one task's ordinary
+    # failure) and would kill every sibling worker (claude-review, verified).
+    except (KeyboardInterrupt, SystemExit):
         with _active_processes_lock:
             procs = list(_active_processes.get(batch_id, {}).values())
         run_control.terminate_trees(procs, grace_s=run_control.WORKER_GRACE_S)

@@ -375,10 +375,16 @@ def exit_on_sigterm() -> Optional[dict]:
     """
     if os.name != "posix" or threading.current_thread() is not threading.main_thread():
         return None
+    if getattr(signal.getsignal(signal.SIGTERM), "_codeframe_unwind", False):
+        # Already installed by an outer caller (e.g. execute_batch around a run
+        # on the same thread). Capturing our own override as "previous" would
+        # leave it installed after the outer restore (review).
+        return None
 
     def _raise(signum, frame):  # noqa: ARG001
         raise SystemExit(128 + signum)
 
+    _raise._codeframe_unwind = True  # type: ignore[attr-defined]
     return {sig: signal.signal(sig, _raise) for sig in (signal.SIGTERM, signal.SIGHUP)}
 
 
