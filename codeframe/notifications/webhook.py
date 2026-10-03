@@ -27,6 +27,9 @@ from codeframe.core.notifications_config import (
 
 logger = logging.getLogger(__name__)
 
+#: In-flight async sends, strongly referenced until done (see send_event_background).
+_background_tasks: "set[asyncio.Task]" = set()
+
 
 class _PinnedResolver(aiohttp.abc.AbstractResolver):
     """Resolver that only ever answers with pre-vetted addresses for one host.
@@ -308,10 +311,12 @@ class WebhookNotificationService:
         * **Async** (FastAPI request handler): schedules the send on the
           current event loop via ``loop.create_task`` and returns
           immediately.
-        * **Sync** (CLI batch run, sync test): spawns a daemon thread that
-          runs the send in a fresh event loop. The thread is daemon so it
-          never blocks process exit; ``timeout`` still applies inside the
-          loop, so the thread lives at most ``self.timeout`` seconds.
+        * **Sync** (CLI batch run, batch-task subprocess): runs the send in a
+          fresh event loop on a **non-daemon** thread, so a process that
+          fires an event and then exits still delivers it (#1288) — a daemon
+          thread died at exit with the POST unsent. The interpreter waits for
+          it at exit, bounded by ``self.timeout`` (plus the OS resolver's own
+          timeout if DNS hangs), as ``tasks._close_issue_background`` does.
 
         Either way, the triggering operation never blocks on webhook
         delivery and never sees an exception from this method.
@@ -319,18 +324,21 @@ class WebhookNotificationService:
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            # No running loop — we're in sync context (CLI). Run the send
-            # in a daemon thread so we don't block the caller and so the
-            # process can exit cleanly even if the webhook hangs.
+            # No running loop — we're in sync context (CLI). Off the caller's
+            # path, but non-daemon so the process waits for delivery (#1288).
             thread = threading.Thread(
                 target=self._run_send_event_sync,
                 args=(payload, url),
-                daemon=True,
+                daemon=False,
                 name="webhook-send-event",
             )
             thread.start()
             return
         task = loop.create_task(self.send_event(payload, url=url))
+        # The loop holds only a weak reference to a task; keep a strong one
+        # until it finishes so it cannot be collected mid-send (#1288).
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
         # ``send_event`` already swallows all exceptions, but Python 3.11+
         # warns ``Task exception was never retrieved`` if a task ends with
         # an unhandled exception and nobody awaited / called .exception().
@@ -343,8 +351,7 @@ class WebhookNotificationService:
         """Run ``send_event`` to completion in a fresh event loop.
 
         Used only by the sync branch of ``send_event_background`` — never
-        raises into the calling thread (the daemon thread is meant to die
-        quietly).
+        raises into the calling thread.
         """
         try:
             asyncio.run(self.send_event(payload, url=url))

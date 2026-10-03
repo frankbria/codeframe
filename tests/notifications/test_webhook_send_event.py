@@ -129,7 +129,7 @@ async def test_send_event_handles_client_error():
 
 
 def test_send_event_background_outside_loop_runs_in_thread():
-    """In sync context (no running loop), dispatch spawns a daemon thread
+    """In sync context (no running loop), dispatch spawns a non-daemon thread
     and runs the send to completion. The caller must not block beyond the
     thread spawn cost.
 
@@ -154,7 +154,7 @@ def test_send_event_background_outside_loop_runs_in_thread():
                 break
             time.sleep(0.01)
 
-    assert mock_runner.called, "expected daemon thread to invoke the sync runner"
+    assert mock_runner.called, "expected the background thread to invoke the sync runner"
     # The thread spawns and dies — no leaked thread count. Give it up to a
     # second to clean up before asserting (the runner is mocked so this is
     # really just the thread overhead).
