@@ -364,8 +364,11 @@ the image by design.
 
 So a rollback does not undo a migration the newer image applied. For that, every
 deploy first takes an online SQLite backup of `/data/codeframe.db`
-(`deploy/backup-db.sh`, #1295), and the deploy fails if this host has a data
-volume with no database in it. Production keeps the last 10 in
+(`deploy/backup-db.sh`, #1295). The first successful backup leaves
+`backups/.database-backed-up`, and from then on the deploy **fails** if the
+database, or the whole data volume, is gone: on a host that has had one, that is
+data loss rather than a fresh install. After an intentional reset, delete that
+file. A host that has never had a database deploys normally. Production keeps the last 10 in
 `backups/backup-<ts>.tar.gz` (as `backup-<ts>/codeframe.db`, next to the env and
 compose files), and staging keeps them as `backups/codeframe-<ts>.db.gz`. To
 restore one, unpack it to `./restore/codeframe.db`, then:
