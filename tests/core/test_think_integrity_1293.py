@@ -312,6 +312,31 @@ def test_a_negated_composite_is_atomic(reply):
     assert classify_task(provider, "task", []) == "atomic"
 
 
+@pytest.mark.parametrize(
+    "reply,expected",
+    [("This is not a composite task.", "atomic"), ("Not an atomic task", "composite")],
+)
+def test_a_negation_with_an_article_still_flips(reply, expected):
+    """'not a composite' slipped past the adjacent-word rule and read as
+    composite (codex pass 9)."""
+    provider = MockProvider()
+    provider.add_text_response(reply)
+    assert classify_task(provider, "task", []) == expected
+
+
+@pytest.mark.parametrize(
+    "reply",
+    ["It isn't composite.", "Not really composite", "Never atomic, this one"],
+)
+def test_a_negation_the_normalizer_cannot_read_is_rejected(reply):
+    """A negation left over after the flip would read the answer backwards;
+    refuse it rather than guess."""
+    provider = MockProvider()
+    provider.add_text_response(reply)
+    with pytest.raises(tasks.TaskGenerationError):
+        classify_task(provider, "task", [])
+
+
 def test_a_prd_echoed_with_a_tagged_example_block_first_is_not_unwrapped():
     """The tagged twin of the plain-text-first case (GLM review): its inner
     fences balance, so only "the reply opens like the PRD itself" tells an

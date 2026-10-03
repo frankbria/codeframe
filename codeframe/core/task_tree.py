@@ -77,13 +77,16 @@ def classify_task(
     # parse failure into a whole-PRD task (#1293, the #1115 rule).
     # A negation means the other answer ("not atomic" is composite, and "non-
     # composite" atomic); matching the word alone read each one backwards.
+    # Any negation left after that flip ("isn't", "not really") is one we
+    # cannot read, so it is refused rather than guessed.
     answer = re.sub(
-        r"\b(?:not|non)[\s-]+(atomic|composite)\b",
+        r"\b(?:not|non)[\s-]+(?:an?\s+)?(atomic|composite)\b",
         lambda m: "composite" if m.group(1) == "atomic" else "atomic",
         response.content.lower(),
     )
     found = set(re.findall(r"\b(atomic|composite)\b", answer))
-    if len(found) == 1:
+    negated = re.search(r"\b(?:not|non|never|no)\b|n't\b", answer)
+    if len(found) == 1 and not negated:
         return found.pop()
     raise task_module.TaskGenerationError(
         f"Could not classify task {description[:60]!r}: the model answered "
