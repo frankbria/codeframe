@@ -922,9 +922,18 @@ def execute_agent(
             category = _event_type_to_category(event_type)
             run_logger.info(category, f"Agent event: {event_type}", data)
 
+        # Builtin engines write output.log themselves (they are handed
+        # output_logger). External engines were not, so `cf work follow` and
+        # GET /output showed nothing for them (#1282): write what they report.
+        external = is_external_engine(engine)
+
         # Bridge AgentEvent callbacks to workspace event system
         def on_adapter_event(event: AdapterEvent) -> None:
             on_agent_event(event.type, event.data)
+            if external:
+                text = event.data.get("line") if event.type == "output" else event.message
+                if text:
+                    output_logger.write(str(text).rstrip("\n") + "\n")
 
         # Get adapter via registry and run
         # Tell the user when their stall flags will be dropped (#957).

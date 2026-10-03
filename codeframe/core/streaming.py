@@ -198,6 +198,7 @@ def tail_run_output(
     poll_interval: float = 0.5,
     max_iterations: Optional[int] = None,
     max_wait: Optional[float] = None,
+    should_stop: Optional["Callable[[], bool]"] = None,
 ) -> Iterator[str]:
     """Tail a run's output log file, yielding new lines.
 
@@ -211,6 +212,9 @@ def tail_run_output(
         poll_interval: How often to check for new lines (seconds)
         max_iterations: Stop after this many poll iterations (for testing)
         max_wait: Maximum total wait time in seconds (for testing)
+        should_stop: Checked on every poll; once it returns True, lines already
+            in the file are yielded and the tail ends (#1282). Without it a
+            finished run that writes nothing more was tailed forever.
 
     Yields:
         Lines from the log file as they appear
@@ -228,8 +232,13 @@ def tail_run_output(
         if max_wait is not None and (time.time() - start_time) >= max_wait:
             break
 
+        # Decided before this poll's read, so the last lines still get out.
+        stopping = should_stop is not None and should_stop()
+
         # Check if file exists
         if not log_path.exists():
+            if stopping:
+                break
             time.sleep(poll_interval)
             iterations += 1
             continue
@@ -246,6 +255,8 @@ def tail_run_output(
         except Exception:
             pass  # File might be temporarily unavailable
 
+        if stopping:
+            break
         time.sleep(poll_interval)
         iterations += 1
 

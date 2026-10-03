@@ -146,6 +146,13 @@ async def event_stream_generator(
                     logger.info(f"Task {task_id} completed, closing stream")
                     break
             except asyncio.TimeoutError:
+                # A run finished by another process (a batch subprocess) never
+                # publishes here, so idle is also when to look again (#1282).
+                if after_subscribe is not None:
+                    terminal_event = after_subscribe()
+                    if terminal_event is not None:
+                        yield format_sse_event(terminal_event)
+                        break
                 yield format_sse_comment("heartbeat")
 
     except asyncio.CancelledError:
