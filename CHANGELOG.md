@@ -145,6 +145,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Container deploys back up the real database and can create their first account (#1295).**
+  - Every deploy, staging included, now takes an online SQLite backup of the
+    live `/data/codeframe.db` (`deploy/backup-db.sh`). The old step copied a
+    path that does not exist on a container host, skipped it silently and
+    reported success. Once a host has had a database, a deploy that finds the
+    database or its volume gone fails instead of carrying on.
+  - The deploy keeps an optional `CODEFRAME_BOOTSTRAP_TOKEN` secret. It used to
+    erase the token from the env file it regenerates.
+  - deploy/README.md registers the first account inside the backend container.
+    From the host it was always refused, because there the request arrives
+    from the Docker bridge, not loopback. The README also documents restoring
+    a backup.
 - **Large workspaces no longer lose tasks, blockers or events past a list limit (#1294).**
   - `cf tasks generate --overwrite` removes every old task. Past 100 tasks the
     rest survived, and `cf work batch run --all-ready` would run them.
