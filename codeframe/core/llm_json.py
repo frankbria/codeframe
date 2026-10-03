@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, Optional
 
 __all__ = ["LLMJsonError", "extract_json_array", "parse_json_response", "strip_code_fence"]
 
@@ -65,37 +65,50 @@ def parse_json_response(content: str, *, what: str = "response") -> Any:
 def extract_json_array(content: str, *, what: str = "response") -> list:
     """Return the top-level JSON array in an LLM response.
 
-    Decodes from each ``[`` in turn and stops at the first array that is a
-    plausible result, so prose and a markdown fence around it are tolerated, and
-    backticks inside a JSON string (a code example) are inert: the decoder knows
-    strings, where a fence stripper would stop at them. Two rules keep the scan
-    from settling on the wrong array (#1293 reviews):
+    Decodes from each ``[`` in turn, so prose and a markdown fence around the
+    array are tolerated, and backticks inside a JSON string (a code example) are
+    inert: the decoder knows strings, where a fence stripper would stop at them.
 
-    - an array of objects (``[`` then ``{``) that fails to decode means the
-      reply's array is malformed or cut off: raise, rather than let one of its
-      nested arrays stand in for the whole result;
-    - a list of scalars (prose like ``Tasks [1]:``) is skipped; only an empty
-      list or one holding an object counts.
+    It never returns a wrong array silently; when it cannot tell, it raises,
+    because a retryable error is better than a persisted wrong plan (#1293
+    reviews). The decoder's error position decides:
+
+    - an array that fails *at the end of the text* is cut off, so everything
+      after it is inside it: raise, and never let a nested array stand in;
+    - an array of objects that fails mid-text is malformed: raise;
+    - anything else that fails mid-text is prose (``[2 of them]``): resume the
+      scan past the error position.
+
+    A decoded array is skipped past, so its own nested arrays are never
+    candidates. A list of scalars (``Tasks [1]:``) is skipped, and an empty
+    ``[]`` is returned only if no array of objects follows it.
 
     Raises:
-        LLMJsonError: If no such array can be decoded from the content.
+        LLMJsonError: If no such array can be decoded, or the array is
+            malformed or incomplete.
     """
     text = content or ""
     decoder = json.JSONDecoder()
+    end_of_text = len(text.rstrip())
+    empty: Optional[list] = None
     start = text.find("[")
     while start != -1:
         try:
-            value, _ = decoder.raw_decode(text, start)
+            value, end = decoder.raw_decode(text, start)
         except json.JSONDecodeError as exc:
-            if text[start + 1:].lstrip().startswith("{"):
+            if exc.pos >= end_of_text or text[start + 1:].lstrip().startswith("{"):
                 raise LLMJsonError(
                     f"The JSON array in {what} is malformed or incomplete: {exc}"
                 ) from exc
-        else:
-            if isinstance(value, list) and (
-                not value or any(isinstance(item, dict) for item in value)
-            ):
+            start = text.find("[", max(start + 1, exc.pos))
+            continue
+        if isinstance(value, list):
+            if not value:
+                empty = value if empty is None else empty
+            elif any(isinstance(item, dict) for item in value):
                 return value
-        start = text.find("[", start + 1)
+        start = text.find("[", end)
+    if empty is not None:
+        return empty
     preview = text[:200].replace("\n", " ")
     raise LLMJsonError(f"No JSON array in {what}. Content began: {preview!r}")

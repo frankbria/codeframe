@@ -421,3 +421,47 @@ def test_a_prose_array_of_scalars_does_not_shadow_the_real_one():
 
     reply = 'Tasks [1]:\n```json\n[{"title": "A", "description": "d"}]\n```'
     assert extract_json_array(reply) == [{"title": "A", "description": "d"}]
+
+
+def test_a_truncated_array_starting_with_a_scalar_is_not_rescued_either():
+    """codex: '[null, {...,"children":[{"title":"Child"}]},' returned Child. The
+    decoder failing at the end of the text means the outer array is cut off,
+    whatever its first element, so everything after it is inside it."""
+    from codeframe.core.llm_json import LLMJsonError, extract_json_array
+
+    with pytest.raises(LLMJsonError):
+        extract_json_array('[null, {"title":"Parent","children":[{"title":"Child"}]},')
+
+
+def test_an_empty_prose_array_does_not_shadow_the_real_one():
+    """GLM: 'No setup needed: []' returned [] before the real array."""
+    from codeframe.core.llm_json import extract_json_array
+
+    reply = 'No setup needed: []\n\n[{"title": "A", "description": "d"}]'
+    assert extract_json_array(reply) == [{"title": "A", "description": "d"}]
+
+
+def test_an_empty_array_alone_is_still_returned():
+    from codeframe.core.llm_json import extract_json_array
+
+    assert extract_json_array("No tasks: []") == []
+
+
+def test_a_malformed_object_array_placeholder_is_rejected_not_guessed_past():
+    """A '[ {...} ]' placeholder before the real array is rejected: an array of
+    objects that fails mid-text cannot be told from a malformed result, and a
+    loud, retryable error beats silently picking a later array. Known
+    limitation, kept deliberately (GLM review)."""
+    from codeframe.core.llm_json import LLMJsonError, extract_json_array
+
+    with pytest.raises(LLMJsonError):
+        extract_json_array('Shape: [ {"title": "...", "deps": [...]} ]\n\n[{"title": "A"}]')
+
+
+def test_a_decoded_arrays_nested_arrays_are_never_candidates():
+    """[1, [{"title": "x"}]] is skipped as a scalar-led list; scanning resumes
+    after it, so its nested object array is not returned as the result."""
+    from codeframe.core.llm_json import LLMJsonError, extract_json_array
+
+    with pytest.raises(LLMJsonError):
+        extract_json_array('[1, [{"title": "x"}]]')
