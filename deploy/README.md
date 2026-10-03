@@ -419,6 +419,19 @@ stale PR refreshes it. Its diff is the artifact you want — surgical, and alrea
 proven to survive `npm ci`. Regenerating the lock yourself is also fine on a
 supported npm; verify it the same way.
 
+**When no patched version exists** (the advisory's `first_patched_version` is
+null, so there is nothing to bump to): remove the package from the tree instead.
+Find the one dependent that pulls it in (`npm ls <pkg>`), read how that dependent
+actually uses its dependency, and replace the dependency with a scoped
+`overrides` entry in `web-ui/package.json` pointing at an API-compatible package
+that does not depend on the vulnerable one. #1364 did this for `braces`
+(GHSA-vfj7-8cjw-p6xm, every version affected): `@next/eslint-plugin-next` calls
+only `fast-glob`'s `globSync`, so `fast-glob` became `npm:tinyglobby`, which
+has the same export and does not use `braces`. An `npm install` on a lock that already
+satisfies the nested dependency leaves it alone. Uninstall and re-add the
+dependent so npm re-resolves its subtree, then verify the same way as above.
+Remove the override once upstream stops depending on the package.
+
 Hand-editing `package-lock.json` is a last resort, and only defensible for a
 patch bump whose own dependency set is unchanged: bumping a package whose
 dependencies, engines, binaries or optional/platform packages moved leaves the

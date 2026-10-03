@@ -145,6 +145,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **The web UI image builds again (#1364).** A `braces` advisory with no
+  patched release (GHSA-vfj7-8cjw-p6xm) failed the in-image `npm audit` gate,
+  so every staging deploy since 2026-10-03 failed. The only dependent,
+  `@next/eslint-plugin-next`, gets `tinyglobby` in place of `fast-glob` through
+  a scoped npm `overrides` entry, which removes `braces` and `micromatch` from
+  the tree. The audit gate is unchanged.
+
 - **Following a PROOF9 stub can satisfy its gate (#1284).**
   - The E2E and DEMO stubs are now pytest files (`draft_test_*_e2e.py`,
     `draft_test_*_demo.py`). They used to be Playwright TypeScript and a
