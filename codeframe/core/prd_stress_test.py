@@ -10,6 +10,7 @@ This module is headless — no FastAPI or HTTP dependencies.
 
 import asyncio
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from enum import Enum
@@ -448,6 +449,21 @@ def ambiguity_to_dict(amb: Ambiguity) -> dict[str, object]:
     }
 
 
+#: A reply that is one fenced block, after at most a few lines of preamble
+#: ("Here is the updated PRD:"). Greedy to the *last* fence, so a PRD's own code
+#: examples stay inside it; ``strip_code_fence`` would return the first inner
+#: block instead and store a code snippet as the PRD.
+_OUTER_FENCE_RE = re.compile(
+    r"\A(?:[^`\n]*\n){0,3}?[ \t]*```[ \t]*(?:markdown|md)?[ \t]*\n(.*)\n[ \t]*```[ \t]*\Z",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _unwrap_outer_fence(content: str) -> str:
+    match = _OUTER_FENCE_RE.match(content)
+    return match.group(1).strip() if match else content
+
+
 def resolve_ambiguities_into_prd(
     prd_content: str,
     ambiguities: list[Ambiguity],
@@ -474,10 +490,20 @@ def resolve_ambiguities_into_prd(
         }],
         purpose=Purpose.PLANNING,
         system=AMBIGUITY_RESOLUTION_SYSTEM,
-        max_tokens=8192,
+        max_tokens=16000,
         temperature=0.0,
     )
-    updated = response.content.strip()
+    # Stored as a new PRD version, so a cut-off rewrite must never pass: the
+    # length check alone accepted any truncation past half the original
+    # (#1293). Anthropic reports max_tokens; OpenAI-compatible providers, length.
+    if response.stop_reason in ("max_tokens", "length"):
+        logger.warning(
+            "PRD rewrite was truncated at the token limit (stop_reason=%s), "
+            "returning original",
+            response.stop_reason,
+        )
+        return prd_content
+    updated = _unwrap_outer_fence(response.content.strip())
     if not updated or len(updated) < len(prd_content) // 2:
         logger.warning(
             "PRD rewrite looks truncated (%d chars vs original %d), returning original",

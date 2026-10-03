@@ -23,6 +23,7 @@ from codeframe.core.state_machine import (
     validate_transition,
 )
 from codeframe.core.workspace import Workspace, get_db_connection
+from codeframe.core.llm_json import strip_code_fence
 from codeframe.core.prd import PrdRecord
 
 logger = logging.getLogger(__name__)
@@ -1222,12 +1223,31 @@ def generate_from_prd(
     # update_depends_on replaces the stale one: it was being discarded, so
     # generate_from_prd returned tasks whose depends_on was empty even though
     # the row on disk had them (#1115).
+    #
+    # Model output is untrusted: a self-edge made update_depends_on raise after
+    # every task was created (a partial result, and a 500 in the web UI), and a
+    # cycle was saved silently and broke `cf schedule` later (#1293). Each edge
+    # is checked against the graph built so far; one that would close a cycle
+    # is dropped with a warning rather than failing the whole generation.
+    from codeframe.core.dependency_analyzer import _path_to
+
     title_to_id = {t.title: t.id for t in created_tasks}
+    graph: dict[str, list[str]] = {t.id: [] for t in created_tasks}
     for i, (task_data, task) in enumerate(zip(tasks_data, created_tasks)):
-        dep_titles = task_data.get("depends_on_titles", [])
-        dep_ids = [title_to_id[t] for t in dep_titles if t in title_to_id]
-        if dep_ids:
-            created_tasks[i] = update_depends_on(workspace, task.id, dep_ids)
+        for dep_title in dict.fromkeys(task_data.get("depends_on_titles", [])):
+            dep_id = title_to_id.get(dep_title)
+            if dep_id is None:
+                continue
+            cycle = _path_to(graph, dep_id, task.id)
+            if cycle is not None:
+                logger.warning(
+                    "Dropped generated dependency %r -> %r: it would close a cycle",
+                    task.title, dep_title,
+                )
+                continue
+            graph[task.id].append(dep_id)
+        if graph[task.id]:
+            created_tasks[i] = update_depends_on(workspace, task.id, graph[task.id])
 
     return created_tasks
 
@@ -1304,8 +1324,11 @@ PRD:
     # Extract JSON from response
     response_text = response.content.strip()
 
-    # Try to find JSON array in response
-    json_match = re.search(r"\[[\s\S]*\]", response_text)
+    # Unfence first: the greedy bracket search otherwise spans prose brackets
+    # around a fenced array ("[2 of them]: ```json [...] ``` See [docs]") and
+    # valid JSON was reported as truncated (#1293).
+    response_text = strip_code_fence(response_text)
+    json_match = None if response_text.startswith("[") else re.search(r"\[[\s\S]*\]", response_text)
     try:
         tasks_raw = json.loads(json_match.group() if json_match else response_text)
     except json.JSONDecodeError as e:

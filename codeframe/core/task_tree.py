@@ -13,6 +13,7 @@ from typing import Optional
 
 from codeframe.adapters.llm.base import Purpose
 from codeframe.core import tasks as task_module
+from codeframe.core.llm_json import strip_code_fence
 from codeframe.core.state_machine import TaskStatus
 from codeframe.core.workspace import Workspace
 
@@ -72,10 +73,17 @@ def classify_task(
         temperature=0.0,
     )
 
-    result = response.content.strip().lower()
-    if result in ("atomic", "composite"):
-        return result
-    return "atomic"
+    # Normalised, not exact: "Atomic." and "**composite**" are answers. A reply
+    # naming neither (or both) is not, and defaulting it to "atomic" turned a
+    # parse failure into a whole-PRD task (#1293, the #1115 rule).
+    found = set(re.findall(r"\b(atomic|composite)\b", response.content.lower()))
+    if len(found) == 1:
+        return found.pop()
+    raise task_module.TaskGenerationError(
+        f"Could not classify task {description[:60]!r}: the model answered "
+        f"{response.content.strip()[:80]!r}, not 'atomic' or 'composite'. "
+        + task_module._RETRY_HINT
+    )
 
 
 def decompose_task(
@@ -108,49 +116,40 @@ def decompose_task(
     )
 
     subtasks = _parse_subtasks(response.content)
-
-    # Clamp to 2-7 items
-    if len(subtasks) > 7:
-        subtasks = subtasks[:7]
-    while len(subtasks) < 2:
-        subtasks.append({
-            "title": f"Part {len(subtasks) + 1} of: {description[:60]}",
-            "description": f"Additional subtask for: {description}",
-        })
-
-    return subtasks
+    if not subtasks:
+        # Never pad with "Part N of: <description>" placeholders: their scope is
+        # the whole parent, so the user got tasks that each meant "do it all"
+        # (#1293). One real subtask is a real answer and is kept as is.
+        raise task_module.TaskGenerationError(
+            f"Could not decompose {description[:60]!r}: the model returned no "
+            "subtasks with a title. " + task_module._RETRY_HINT
+        )
+    return subtasks[:7]
 
 
 def _parse_subtasks(content: str) -> list[dict]:
-    """Parse LLM response into subtask list.
+    """Parse an LLM response into subtasks; ``[]`` only for a real empty list.
 
-    Handles JSON arrays directly or wrapped in markdown code blocks.
+    Accepts a bare or fenced JSON array, or an array inside prose.
 
-    Args:
-        content: Raw LLM response
-
-    Returns:
-        List of dicts with 'title' and 'description' keys
+    Raises:
+        TaskGenerationError: If no JSON array can be read from the response.
     """
-    # Try markdown-wrapped JSON first
-    json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
-    if json_match:
-        json_str = json_match.group(1)
-    else:
-        # Try raw JSON array
-        json_match = re.search(r"\[[\s\S]*\]", content)
-        if json_match:
-            json_str = json_match.group(0)
-        else:
-            return []
-
+    candidate = strip_code_fence(content)
+    if not candidate.startswith("["):
+        bracketed = re.search(r"\[[\s\S]*\]", candidate)
+        candidate = bracketed.group(0) if bracketed else candidate
     try:
-        raw = json.loads(json_str)
-    except json.JSONDecodeError:
-        return []
-
+        raw = json.loads(candidate)
+    except json.JSONDecodeError as e:
+        raise task_module.TaskGenerationError(
+            f"Could not parse the task decomposition as JSON ({e}). "
+            + task_module._RETRY_HINT
+        ) from e
     if not isinstance(raw, list):
-        return []
+        raise task_module.TaskGenerationError(
+            "The task decomposition was not a JSON array. " + task_module._RETRY_HINT
+        )
 
     result = []
     for item in raw:

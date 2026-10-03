@@ -252,6 +252,15 @@ def _external_url(section: str, title: str, seen: set[str]) -> str:
     return candidate
 
 
+#: Legal transitions from a status to DONE, for an item completed upstream.
+_PATH_TO_DONE = {
+    TaskStatus.BACKLOG: [TaskStatus.READY, TaskStatus.IN_PROGRESS, TaskStatus.DONE],
+    TaskStatus.READY: [TaskStatus.IN_PROGRESS, TaskStatus.DONE],
+    TaskStatus.BLOCKED: [TaskStatus.IN_PROGRESS, TaskStatus.DONE],
+    TaskStatus.FAILED: [TaskStatus.IN_PROGRESS, TaskStatus.DONE],
+}
+
+
 def map_tasks(project: RalphProject) -> tuple[list[dict], list[dict]]:
     """Map fix_plan items to task specs ready for ``tasks.create()``.
 
@@ -265,12 +274,17 @@ def map_tasks(project: RalphProject) -> tuple[list[dict], list[dict]]:
     seen_urls: set[str] = set()
 
     for item in project.fix_plan_items:
+        # Computed for checked items too: the key is what lets a re-import find
+        # the task an earlier import created, and skipping it shifted the
+        # ordinal of a later duplicate (#1293).
+        external_url = _external_url(item.section, item.title, seen_urls)
         if item.checked:
             skipped.append(
                 {
                     "title": item.title,
                     "section": item.section,
                     "reason": "already completed in fix_plan.md",
+                    "external_url": external_url,
                 }
             )
             continue
@@ -289,7 +303,7 @@ def map_tasks(project: RalphProject) -> tuple[list[dict], list[dict]]:
                 ),
                 "status": status,
                 "priority": len(mapped),
-                "external_url": _external_url(item.section, item.title, seen_urls),
+                "external_url": external_url,
                 "section": item.section,
             }
         )
@@ -525,6 +539,20 @@ def import_ralph_project(
                 )
                 continue
         report.tasks_created.append(spec)
+
+    # An item checked off upstream since the last import must not stay READY
+    # here (#1293). The state machine has no READY -> DONE edge, so walk the
+    # legal path; a task a local run holds IN_PROGRESS is left alone.
+    for item in mapping_skipped if workspace is not None else []:
+        existing = tasks.get_by_external_url(workspace, item["external_url"])
+        if existing is None or existing.status not in _PATH_TO_DONE:
+            if existing is not None and existing.status == TaskStatus.IN_PROGRESS:
+                item["reason"] = "completed in fix_plan.md; left IN_PROGRESS (a run is active)"
+            continue
+        if not dry_run:
+            for step in _PATH_TO_DONE[existing.status]:
+                tasks.update_status(workspace, existing.id, step, github_autoclose=False)
+        item["reason"] = "completed in fix_plan.md; marked DONE"
 
     if agents_mapping is not None:
         agents_path = target / "AGENTS.md"
