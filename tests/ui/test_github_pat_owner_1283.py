@@ -301,3 +301,74 @@ class TestOwnerMapPersistence:
         assert r.status_code == 500
         assert load_github_integration_config(ws)["repo"] == "acme/old"
 
+    def test_the_rollback_restores_the_previous_owner_with_the_repo(self, ws, monkeypatch):
+        """GLM: the restore ran outside the lock and without the owner, so it
+        could pair the old repo with another admin's owner record."""
+        from codeframe.auth.dependencies import require_auth
+        from codeframe.core import github_integration_config as gic
+        from codeframe.ui.dependencies import get_v2_workspace
+        from codeframe.ui.routers import github_integrations_v2
+
+        gic.save_connection(ws, {"repo": "acme/old", "owner_login": "acme", "owner_avatar_url": ""}, 5)
+        real_write = gic._write_owner
+        calls = {"n": 0}
+
+        def fail_once(workspace, user_id):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise OSError("disk full")
+            real_write(workspace, user_id)
+
+        async def valid(pat, repo, **kwargs):
+            return {"repo_full_name": repo, "owner_login": "acme", "owner_avatar_url": ""}
+
+        monkeypatch.setattr(github_integrations_v2, "validate_connection", valid)
+        monkeypatch.setattr(gic, "_write_owner", fail_once)
+        app = FastAPI()
+        app.include_router(github_integrations_v2.router)
+        app.dependency_overrides[get_v2_workspace] = lambda: ws
+        app.dependency_overrides[require_auth] = lambda: {
+            "user_id": OWNER, "scopes": ["read", "write", "admin"], "auth_type": "jwt",
+        }
+
+        r = TestClient(app).post(
+            "/api/v2/integrations/github/connect", json={"pat": OWNER_PAT, "repo": "acme/new"}
+        )
+
+        assert r.status_code == 500
+        assert gic.load_github_integration_config(ws)["repo"] == "acme/old"
+        assert connection_owner(ws) == 5
+
+    def test_a_disconnect_racing_a_connect_never_leaves_a_repo_without_its_owner(
+        self, ws, monkeypatch
+    ):
+        """GLM: the disconnect unlinked the config before taking the lock, so a
+        connect landing in between kept its repo while its owner was erased."""
+        import pathlib
+        import threading
+
+        from codeframe.core import github_integration_config as gic
+
+        gic.save_connection(ws, {"repo": "acme/old", "owner_login": "acme", "owner_avatar_url": ""}, 5)
+        config_path = gic._config_path(ws)
+        real_unlink = pathlib.Path.unlink
+        racers: list = []
+
+        def unlink_then_race(self, *a, **k):
+            real_unlink(self, *a, **k)
+            if self == config_path and not racers:
+                t = threading.Thread(target=gic.save_connection, args=(
+                    ws, {"repo": "acme/new", "owner_login": "acme", "owner_avatar_url": ""}, OWNER,
+                ))
+                t.start()
+                t.join(timeout=1.0)  # a locked disconnect makes the connect wait
+                racers.append(t)
+
+        monkeypatch.setattr(pathlib.Path, "unlink", unlink_then_race)
+        gic.clear_github_integration_config(ws)
+        racers[0].join(timeout=30)
+
+        config = gic.load_github_integration_config(ws)
+        if config is not None:
+            assert connection_owner(ws) == OWNER, "a connected repo was left with no owner"
+

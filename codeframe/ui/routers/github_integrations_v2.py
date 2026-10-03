@@ -54,8 +54,8 @@ from codeframe.core.github_issues_service import (
 from codeframe.core.github_integration_config import (
     clear_github_integration_config,
     load_github_integration_config,
+    connection_owner,
     save_connection,
-    save_github_integration_config,
 )
 from codeframe.core import tasks
 from codeframe.core.workspace import Workspace
@@ -320,6 +320,7 @@ async def connect(
         )
 
     prior_config = load_github_integration_config(workspace)
+    prior_owner = connection_owner(workspace)
     try:
         # The repo and whose store holds its PAT (for auto-close and
         # reconciliation, which run with no request), saved under one lock so
@@ -344,8 +345,10 @@ async def connect(
         # old repo back too, or it would pair with the wrong credential (codex).
         try:
             if prior_config is not None:
+                # Repo and owner back together, under the same lock, so a
+                # concurrent connect cannot be re-crossed by the restore (GLM).
                 await run_in_threadpool(
-                    save_github_integration_config, workspace, dict(prior_config)
+                    save_connection, workspace, dict(prior_config), prior_owner
                 )
             else:
                 await run_in_threadpool(clear_github_integration_config, workspace)

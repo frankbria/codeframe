@@ -237,15 +237,21 @@ def resolve_background_pat(workspace: Workspace) -> Optional[str]:
 
 def clear_github_integration_config(workspace: Workspace) -> None:
     """Remove the integration config. Idempotent — absence is a no-op."""
+    from codeframe.core.atomic_io import read_modify_write_lock
+
     path = _config_path(workspace)
-    try:
-        path.unlink(missing_ok=True)
-    except OSError as e:
-        logger.warning("Failed to remove github_integration.json: %s", e)
-    try:
-        record_connection_owner(workspace, None)
-    except OSError as e:
-        logger.warning("Failed to forget the GitHub connection owner: %s", e)
+    # Both halves under one hold of the owners lock, as save_connection does
+    # for its pair: a connect landing between the unlink and the forget left
+    # its fresh repo with no owner (GLM review).
+    with read_modify_write_lock(_owners_lock_path()):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning("Failed to remove github_integration.json: %s", e)
+        try:
+            _write_owner(workspace, None)
+        except OSError as e:
+            logger.warning("Failed to forget the GitHub connection owner: %s", e)
 
 
 class GitHubResolutionError(Exception):
