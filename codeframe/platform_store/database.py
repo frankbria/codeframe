@@ -98,7 +98,16 @@ def _legacy_kind(db_path: Path) -> Optional[str]:
             ).fetchone() is not None
         finally:
             conn.close()
-    except sqlite3.Error:
+    except sqlite3.Error as e:
+        # Never silently: if accounts are in this file, the server is about to
+        # start on an empty platform.db, and with no login-capable user the
+        # bootstrap registration route reopens (GLM review).
+        logger.error(
+            "Could not read %s to check for existing accounts (%s); using "
+            "platform.db. If your accounts live there, set DATABASE_PATH to it.",
+            db_path,
+            e,
+        )
         return None
     return "shared" if has_workspace else "control_plane"
 

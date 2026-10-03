@@ -173,3 +173,17 @@ def test_a_legacy_install_in_a_uri_special_directory_keeps_its_accounts(
     monkeypatch.chdir(repo)
 
     assert default_database_path() == str(legacy)
+
+
+def test_an_unreadable_legacy_db_is_reported_not_silently_skipped(repo, caplog):
+    """A probe failure falls back to platform.db, which reopens bootstrap
+    registration when the accounts were real: it must say so (GLM review)."""
+    from codeframe.platform_store.database import default_database_path
+
+    legacy = repo / ".codeframe" / "state.db"
+    legacy.parent.mkdir()
+    legacy.write_bytes(b"not a sqlite database" * 100)
+
+    with caplog.at_level(logging.ERROR):
+        assert default_database_path() == str(repo / ".codeframe" / "platform.db")
+    assert "DATABASE_PATH" in caplog.text and str(legacy) in caplog.text
