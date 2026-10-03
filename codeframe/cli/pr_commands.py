@@ -388,7 +388,7 @@ def list_prs(
             console.print(f"[yellow]No {escape(status)} pull requests found.[/yellow]")
             return
 
-        table = Table(title=f"Pull Requests ({status})")
+        table = Table(title=f"Pull Requests ({escape(status)})")  # titles are markup too
         table.add_column("PR #", style="cyan", no_wrap=True)
         table.add_column("Title", max_width=40)
         table.add_column("Branch", style="blue")

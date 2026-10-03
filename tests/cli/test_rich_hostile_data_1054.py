@@ -95,7 +95,7 @@ RUN: dict[str, list[str]] = {
     # #1290: external text — a Ralph export, a PRD diff, GitHub, an LLM.
     "import ralph": ["{ralph}"],
     "prd diff": ["{prd}", "1", "2"],
-    "pr list": [],
+    "pr list": ["--status", "{status}"],  # re-run with a hostile --status below
     "pr get": ["1"],
     "tasks generate": ["--llm-provider", "mock", "--overwrite"],
 }
@@ -290,6 +290,7 @@ def hostile_workspace(tmp_path, monkeypatch):
         "checkpoint": checkpoint.id,
         "req": requirement.id,
         "ralph": str(ralph_root),
+        "status": "open",
     }
 
 
@@ -360,7 +361,7 @@ class TestTheGuardActuallyGuards:
             ("schedule show", []),
             ("import ralph", ["{ralph}"]),
             ("prd diff", ["{prd}", "1", "2"]),
-            ("pr list", []),
+            ("pr list", ["--status", "{status}"]),
             ("pr get", ["1"]),
             ("tasks generate", ["--llm-provider", "mock", "--overwrite"]),
         ],
