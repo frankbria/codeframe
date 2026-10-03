@@ -171,3 +171,26 @@ def test_a_normal_disconnect_logs_no_unretrieved_task_exception(tmp_path, monkey
             _read_until(ws, "HI_2")
         gc.collect()
     assert "never retrieved" not in caplog.text
+
+
+def test_output_printed_just_before_exit_reaches_a_slow_client(terminal, monkeypatch):
+    """Shell exit used to tear down at once, dropping output still in the PTY
+    or the queue (codex review). A slow send makes the race deterministic."""
+    import asyncio
+
+    from starlette.websockets import WebSocket, WebSocketDisconnect
+
+    real_send = WebSocket.send_bytes
+
+    async def slow_send(self, data):
+        await asyncio.sleep(0.05)
+        await real_send(self, data)
+
+    monkeypatch.setattr(WebSocket, "send_bytes", slow_send)
+    terminal.send_text("seq 1 20000; exit\r")
+
+    out = ""
+    with pytest.raises(WebSocketDisconnect):
+        while True:
+            out += terminal.receive_bytes().decode(errors="replace")
+    assert "\n20000" in out.replace("\r", ""), out[-200:]

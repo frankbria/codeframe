@@ -57,6 +57,8 @@ _MAX_TERMINALS_PER_USER = 3
 #: is full the PTY reader pauses, the kernel buffer fills, and the shell blocks
 #: on write — backpressure instead of server memory (codex review on #1291).
 _OUTPUT_QUEUE_CHUNKS = 64
+#: How long a shell's final output may take to reach the client after it exits.
+_DRAIN_ON_EXIT_S = 5.0
 _user_terminal_counts: dict[Optional[int], int] = {}
 
 
@@ -317,6 +319,11 @@ async def session_terminal_ws(session_id: str, websocket: WebSocket) -> None:
             [stdout_to_ws_task, ws_to_stdin_task, shell_exit_task],
             return_when=asyncio.FIRST_COMPLETED,
         )
+        # The shell exited first: let what it printed reach the client. The
+        # relay ends at EOF once the PTY is drained; a background job holding
+        # the slave open would block that forever, hence the bound (codex).
+        if shell_exit_task.done() and not stdout_to_ws_task.done():
+            await asyncio.wait([stdout_to_ws_task], timeout=_DRAIN_ON_EXIT_S)
 
     except WebSocketDisconnect:
         logger.debug("Terminal WebSocket disconnected: session_id=%s", session_id)
