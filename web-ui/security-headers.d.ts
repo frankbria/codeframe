@@ -6,11 +6,11 @@
  * ESM syntax, which the lint gate requires.
  */
 export interface CspOptions {
-  /** Per-request nonce. Omit for the non-document fallback policy. */
-  nonce?: string;
+  /** Per-request nonce. Required: there is no unsafe-inline fallback (#1305). */
+  nonce: string;
 }
 
-export function buildCsp(env?: NodeJS.ProcessEnv, options?: CspOptions): string;
+export function buildCsp(env: NodeJS.ProcessEnv | Record<string, string | undefined>, options: CspOptions): string;
 export function buildConnectSrc(sources?: { apiUrl?: string; wsUrl?: string }): string;
-export function buildScriptSrc(options?: { nonce?: string; isDev?: boolean }): string;
+export function buildScriptSrc(options: { nonce: string; isDev?: boolean }): string;
 export function securityHeaders(): Array<{ key: string; value: string }>;

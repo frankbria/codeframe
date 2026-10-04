@@ -71,12 +71,11 @@ def _query_costs(db_path: str, days: int) -> Dict:
     Returns an empty summary if the DB can't be opened or the table is missing,
     rather than raising — keeps the endpoint safe for fresh workspaces.
 
-    TODO(schema-conflict): we open the connection directly rather than through
-    `Database(...).initialize()` because the v2 workspace schema in
-    `codeframe/core/workspace.py` and the global schema in
-    `persistence/schema_manager.py` define `blockers` incompatibly, and
-    `Database.initialize()` therefore crashes on existing workspace DBs.
-    Remove this workaround once the two schemas converge.
+    The connection is opened directly, never through ``Database(...)``: that is
+    the control-plane store, and initializing it on a workspace DB would write
+    the platform schema into it — the defect #943 fixed. ``token_usage`` is
+    part of the workspace schema (``core/workspace.py``), so a raw connection
+    is the correct access path, not a workaround.
     """
     try:
         conn = get_db_connection_by_path(db_path)
