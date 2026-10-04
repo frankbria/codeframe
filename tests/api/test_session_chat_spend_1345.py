@@ -98,3 +98,27 @@ def test_a_message_over_the_limit_is_refused_before_the_model_is_called(
     assert calls == []
     assert received[-1]["type"] == "error"
     assert received[-1]["code"] == "SPEND_LIMIT_EXCEEDED"
+
+
+def test_chat_without_a_ledger_is_refused_while_a_limit_is_on(api_client: TestClient, monkeypatch):
+    """A session in a directory that is not an initialised workspace has no
+    ledger, so its spend can be neither counted nor recorded. That failed
+    open: an over-budget user chatted on unlimited (both reviews)."""
+    monkeypatch.setenv(LIMIT_ENV, "1")
+    path = os.path.join(os.environ.get("WORKSPACE_ROOT", "/tmp"), "not-a-workspace-1345")
+    os.makedirs(path, exist_ok=True)
+    session_id = _create_session(api_client, path)
+    db = api_client.app.state.db
+    db.conn.execute("UPDATE interactive_sessions SET user_id = 1 WHERE id = ?", (session_id,))
+    db.conn.commit()
+
+    from unittest.mock import AsyncMock
+
+    with patch(
+        "codeframe.ui.routers.session_chat_ws._authenticate_websocket",
+        new=AsyncMock(return_value=(True, 1)),
+    ):
+        calls, received = _turn(api_client, session_id, [])
+
+    assert calls == []
+    assert received[-1]["code"] == "SPEND_LIMIT_EXCEEDED"

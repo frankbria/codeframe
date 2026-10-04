@@ -30,9 +30,13 @@ from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import prd
 
 from codeframe.core.prd import PrdHasDependentTasksError
-from fastapi.concurrency import run_in_threadpool
-
-from codeframe.ui.dependencies import check_spend_limit, get_v2_workspace
+from codeframe.core.spend_limit import SpendLimitExceeded
+from codeframe.ui.dependencies import (
+    get_v2_workspace,
+    release_planning_budget,
+    reserve_planning_budget,
+    spend_limit_http,
+)
 from codeframe.adapters.llm.base import LLMError
 from codeframe.ui.response_models import (
     ErrorCodes,
@@ -407,6 +411,8 @@ async def _stress_test_event_stream(
                 # but a typed provider error is arbitrary internals: core's
                 # str(exc) is logged under a correlation id, never sent (#934).
                 code = llm_error_code(event.get("error_type", ""))
+                if event.get("error_type") == "SpendLimitExceeded":
+                    code = ErrorCodes.SPEND_LIMIT_EXCEEDED
                 if code:
                     event = {"type": "error", "message": event.get("message", ""), "code": code}
                 else:
@@ -438,6 +444,24 @@ async def _stress_test_event_stream(
             watcher.cancel()
 
 
+async def _budgeted(
+    stream: AsyncGenerator[str, None], auth: dict, budget: Optional[float]
+) -> AsyncGenerator[str, None]:
+    """Run ``stream`` under its reserved planning budget, then release it.
+
+    The budget is set here, in the stream's own context: the endpoint's
+    context ends when it returns the StreamingResponse (#1345).
+    """
+    from codeframe.core.usage_recording import spend_budget
+
+    try:
+        with spend_budget(budget):
+            async for frame in stream:
+                yield frame
+    finally:
+        release_planning_budget(auth, budget)
+
+
 @router.get("/stress-test")
 # LLM route -> AI tier (#934). On the standard tier one tenant burned the
 # operator's provider budget five times faster than any other LLM endpoint.
@@ -466,11 +490,15 @@ async def stress_test_prd_stream_endpoint(
         - ``complete``: ambiguity count + rendered tech spec / ambiguity report
         - ``error``: no PRD, missing API key, or decomposition failure
     """
-    # The daily spend limit covers THINK-stage calls too (#1345): checked
-    # before the first LLM call, so a refusal spends nothing.
-    await run_in_threadpool(check_spend_limit, request, workspace, auth)
+    # Reserved for the whole stream and enforced between calls (#1345): a
+    # stress test is many calls. Released when the stream ends.
+    budget = await reserve_planning_budget(request, workspace, auth)
     return StreamingResponse(
-        _stress_test_event_stream(workspace, max_depth, request, auth.get("user_id")),
+        _budgeted(
+            _stress_test_event_stream(workspace, max_depth, request, auth.get("user_id")),
+            auth,
+            budget,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -511,9 +539,6 @@ async def refine_prd_from_stress_test(
             ),
         )
 
-    # The daily spend limit covers THINK-stage calls too (#1345): checked
-    # before the first LLM call, so a refusal spends nothing.
-    await run_in_threadpool(check_spend_limit, request, workspace, auth)
     try:
         provider = await asyncio.to_thread(
             _resolve_llm_provider, workspace, auth.get("user_id")
@@ -545,6 +570,8 @@ async def refine_prd_from_stress_test(
         for i, ans in enumerate(body.answers)
     ]
 
+    # Reserved and enforced for the call (#1345); released below.
+    budget = await reserve_planning_budget(request, workspace, auth)
     try:
         # resolve_ambiguities_into_prd makes a synchronous, blocking LLM call;
         # offload it to a thread so it does not stall the event loop (mirrors
@@ -585,6 +612,8 @@ async def refine_prd_from_stress_test(
         return _prd_to_response(new_record)
     except HTTPException:
         raise
+    except SpendLimitExceeded as e:
+        raise spend_limit_http(e)
     except LLMError as e:
         # A rejected key or a rate limit is the provider's answer, with an
         # actionable message, not an opaque server fault (#1328).
@@ -594,6 +623,8 @@ async def refine_prd_from_stress_test(
             status_code=500,
             detail=internal_error(e, operation="refine PRD", logger=logger),
         )
+    finally:
+        release_planning_budget(auth, budget)
 
 
 @router.get("/{prd_id}", response_model=PrdResponse)

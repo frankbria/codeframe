@@ -388,6 +388,21 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                     # The daily spend limit covers chat too (#1345). A socket
                     # has no 429, so the refusal is an error event, sent before
                     # the model is called.
+                    from codeframe.core.spend_limit import daily_limit_usd
+
+                    if chat_workspace is None and user_id is not None and daily_limit_usd() is not None:
+                        # No ledger means the spend can be neither counted nor
+                        # recorded: refuse rather than fail open (both reviews).
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": (
+                                "This session's directory is not a CodeFRAME workspace, so its "
+                                "spend cannot be counted against the daily spend limit. Run "
+                                "`cf init` there, or start the session in a workspace."
+                            ),
+                            "code": "SPEND_LIMIT_EXCEEDED",
+                        })
+                        continue
                     if chat_workspace is not None:
                         try:
                             await asyncio.to_thread(

@@ -102,3 +102,41 @@ def test_refine_records_its_spend_where_the_limit_reads_it(env, monkeypatch):
     finally:
         conn.close()
     assert rows == [(1000, 500, "planning")]
+
+
+def test_a_stress_test_stops_when_its_reserved_budget_is_spent(env, monkeypatch):
+    """Entry-only checking let a recursive stress test run on past the
+    ceiling (codex P1). Every call here costs $3 against a $5 limit."""
+    import json
+
+    client, ws, repo, other, record = env
+    monkeypatch.setenv(LIMIT_ENV, "5")
+    mock = MockProvider()
+    for _ in range(20):
+        mock.add_response(LLMResponse(content='["Goal A", "Goal B", "Goal C"]', model="claude-sonnet-4-5",
+                                      input_tokens=1_000_000, output_tokens=0, stop_reason="end_turn"))
+    monkeypatch.setattr("codeframe.core.llm_resolution.create_provider", lambda *a, **k: mock)
+
+    with client.stream("GET", f"/api/v2/prd/stress-test?{_q(repo)}") as resp:
+        text = "".join(resp.iter_text())
+
+    errors = [json.loads(ln[len("data: "):]) for ln in text.splitlines()
+              if ln.startswith("data:") and '"error"' in ln]
+    assert errors and errors[-1].get("code") == "SPEND_LIMIT_EXCEEDED", text[-600:]
+    from codeframe.core import spend_limit
+    assert spend_limit.spend_today_usd([repo]) <= 6.0  # at most two $3 calls
+    assert not spend_limit._held, "the stream's hold was not released"
+
+
+def test_refine_releases_its_hold_when_it_finishes(env, monkeypatch):
+    from codeframe.core import spend_limit
+
+    client, ws, repo, other, record = env
+    monkeypatch.setenv(LIMIT_ENV, "50")
+    mock = MockProvider()
+    mock.add_response(LLMResponse(content=PRD + "\n## Resolved\n", model="claude-sonnet-4-5",
+                                  input_tokens=10, output_tokens=10, stop_reason="end_turn"))
+    monkeypatch.setattr("codeframe.core.llm_resolution.create_provider", lambda *a, **k: mock)
+    resp = client.post(f"/api/v2/prd/stress-test/refine?{_q(repo)}", json={"prd_id": record.id, **REFINE})
+    assert resp.status_code in (200, 201), resp.text
+    assert not spend_limit._held

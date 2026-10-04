@@ -142,7 +142,7 @@ class TestGetActiveSessionResolvesProvider:
 
         session = prd_discovery.get_active_session(workspace)
         assert session is not None
-        assert "anthropic" in type(session._llm_provider).__name__.lower()
+        assert "anthropic" in type(session._llm_provider.inner).__name__.lower()
 
     def test_no_active_session_returns_none(self, tmp_path, monkeypatch) -> None:
         """An empty workspace must not raise about keys before finding nothing."""

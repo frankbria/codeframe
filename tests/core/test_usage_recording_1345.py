@@ -74,3 +74,55 @@ def test_an_unpriced_model_is_recorded_without_a_cost(ws):
     record_llm_usage(ws, model="model-nobody-priced", input_tokens=5, output_tokens=5, call_type=CallType.SESSION_CHAT)
     [(model, inp, out, cost, call_type, _)] = _rows(ws)
     assert (model, inp, out, call_type) == ("model-nobody-priced", 5, 5, "session_chat")
+
+
+# --- the reserved budget bounds a whole planning run (codex P1) ----------
+
+
+def _priced(inner, n, tokens=1_000_000):
+    for _ in range(n):
+        inner.add_response(LLMResponse(content="ok", model="claude-sonnet-4-5", input_tokens=tokens, output_tokens=0))
+
+
+def test_a_planning_run_stops_once_its_budget_is_spent(ws):
+    """A stress test is many calls; an entry-only check let it run on past
+    the ceiling. Each call costs $3 here; a $5 budget allows two."""
+    from codeframe.core.spend_limit import SpendLimitExceeded
+    from codeframe.core.usage_recording import spend_budget
+
+    inner = MockProvider()
+    _priced(inner, 3)
+    provider = UsageRecordingProvider(inner, ws, CallType.PLANNING)
+    with spend_budget(5.0):
+        provider.complete(messages=[])
+        provider.complete(messages=[])
+        with pytest.raises(SpendLimitExceeded):
+            provider.complete(messages=[])
+    assert len(_rows(ws)) == 2
+
+
+def test_an_unpriced_model_cannot_keep_spending_under_a_limit(ws):
+    """Unmetered spend is not countable, so under a limit it is refused after
+    the first call, as a delegated engine is (#1303)."""
+    from codeframe.core.spend_limit import SpendLimitExceeded
+    from codeframe.core.usage_recording import spend_budget
+
+    inner = MockProvider()
+    inner.add_response(LLMResponse(content="ok", model="model-nobody-priced", input_tokens=5, output_tokens=5))
+    inner.add_response(LLMResponse(content="ok", model="model-nobody-priced", input_tokens=5, output_tokens=5))
+    provider = UsageRecordingProvider(inner, ws, CallType.PLANNING)
+    with spend_budget(5.0):
+        provider.complete(messages=[])
+        with pytest.raises(SpendLimitExceeded, match="CODEFRAME_MODEL_PRICING"):
+            provider.complete(messages=[])
+
+
+def test_no_budget_means_no_ceiling(ws):
+    from codeframe.core.usage_recording import spend_budget
+
+    inner = MockProvider()
+    _priced(inner, 3)
+    provider = UsageRecordingProvider(inner, ws, CallType.PLANNING)
+    with spend_budget(None):
+        for _ in range(3):
+            provider.complete(messages=[])
