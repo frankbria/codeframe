@@ -128,6 +128,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Removed
 
+- **Dead code and decoys (#1305).**
+  - The audit log enumerated authorization, project and user-update events,
+    with three `log_*` methods, that nothing emits. That read as audit coverage
+    that did not exist, so they are gone, and the module lists only what is
+    logged.
+  - Also removed because nothing called them: `MetricsTracker`'s
+    agent/stats/timeseries queries, the repository base's async helpers,
+    `Database.close_all` and `get_scope_permissions`.
+  - The web UI's `buildCsp` now **requires** a nonce instead of falling back to
+    `script-src 'unsafe-inline'`, a branch only tests reached.
+  - A `costs_v2` TODO that pointed at a deleted module, and which would have
+    re-created #943 if followed, now gives the real reason for its raw
+    connection.
+
 - **Scripts that reported success without doing the work, and one operator's
   laptop, are out of the public repo (#969).** `scripts/deploy.sh` printed
   "Deployment simulation successful" and exited 0 without deploying — wired into a
@@ -155,6 +169,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   `--output-format=concise`, which ruff < 0.3 rejects with a usage error on
   every edit.
 
+- **The daily spend limit now counts THINK-stage and chat spend (#1345).**
+  #1303 limited task and batch runs only, and only ReactAgent wrote to the
+  `token_usage` table the limit sums. PRD stress-test and refine, discovery,
+  LLM task generation and interactive session chat spent tokens the limit
+  never saw. Each now records its usage (`call_type` `planning` or
+  `session_chat`), refuses with 429 `SPEND_LIMIT_EXCEEDED` once the user's
+  spend is used up, and reserves its share of what is left. That share is
+  enforced between calls, so a recursive stress test or a tool-calling chat
+  turn stops at the ceiling instead of running past it. An unpriced model's
+  spend cannot be counted, so a day with unpriced usage refuses, naming
+  `CODEFRAME_MODEL_PRICING`. Chat in a directory with no workspace ledger is
+  refused while a limit is on.
 - **Docs and deploy config match what ships (#1304).**
   - `docs/GOLDEN_PATH.md`, which CLAUDE.md tells agents to read first, listed
     an `IN_REVIEW` state and PR-driven task transitions that were never built,

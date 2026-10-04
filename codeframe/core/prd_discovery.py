@@ -329,8 +329,14 @@ class PrdDiscoverySession:
            ``LLMSettings.required_key_env``) and neither the environment nor
            the credential store has it (#1264), ``NoApiKeyError`` is raised.
         """
+        from codeframe.core.models import CallType
+        from codeframe.core.usage_recording import UsageRecordingProvider
+
+        # Recorded where the daily spend limit reads it (#1345).
         if self.api_key:
-            self._llm_provider = AnthropicProvider(api_key=self.api_key)
+            self._llm_provider = UsageRecordingProvider(
+                AnthropicProvider(api_key=self.api_key), self.workspace, CallType.PLANNING
+            )
             return
 
         from codeframe.core.llm_resolution import (
@@ -341,7 +347,9 @@ class PrdDiscoverySession:
 
         settings = resolve_llm_settings(self.workspace.repo_path)
         try:
-            self._llm_provider = create_provider(settings, user_id=self.user_id)
+            self._llm_provider = UsageRecordingProvider(
+                create_provider(settings, user_id=self.user_id), self.workspace, CallType.PLANNING
+            )
         except MissingApiKeyError as exc:
             raise NoApiKeyError(f"AI-driven discovery needs an API key. {exc}") from exc
 

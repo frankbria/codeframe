@@ -41,13 +41,3 @@ def has_scope(principal: dict, required_scope: str) -> bool:
     return False
 
 
-def get_scope_permissions(scope: str) -> List[str]:
-    """Get all permissions granted by a scope.
-
-    Args:
-        scope: The scope to check
-
-    Returns:
-        List of all permissions granted by this scope
-    """
-    return SCOPE_HIERARCHY.get(scope, [scope])
