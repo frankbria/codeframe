@@ -16,6 +16,7 @@ from typing import Optional
 
 from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core import events, tasks, blockers, prd
+from codeframe.core.state_machine import TaskStatus
 
 
 def _utc_now() -> datetime:
@@ -180,17 +181,29 @@ def list_all(workspace: Workspace, limit: int = 50) -> list[Checkpoint]:
     return [_row_to_checkpoint(row) for row in rows]
 
 
-def restore(workspace: Workspace, checkpoint_id: str) -> Checkpoint:
+@dataclass
+class RestoreResult:
+    checkpoint: Checkpoint
+    restored: int  # tasks whose status actually changed
+    skipped: list[str]  # task ids left alone: MERGED, or with a live run
+
+
+def restore(workspace: Workspace, checkpoint_id: str) -> RestoreResult:
     """Restore state from a checkpoint.
 
     Restores task statuses from the checkpoint. Does not modify files.
+
+    A MERGED task is left MERGED: it is terminal, and its work is already in
+    the main branch. A task with a RUNNING or BLOCKED run is left alone too:
+    rewinding it would strand that run under a status that says nothing is
+    running (#1306).
 
     Args:
         workspace: Target workspace
         checkpoint_id: Checkpoint ID or name
 
     Returns:
-        Restored Checkpoint
+        The checkpoint, how many tasks changed, and which were skipped
 
     Raises:
         ValueError: If checkpoint not found
@@ -202,18 +215,48 @@ def restore(workspace: Workspace, checkpoint_id: str) -> Checkpoint:
     snapshot = checkpoint.snapshot
 
     # Restore task statuses
+    restored = 0
+    skipped: list[str] = []
     conn = get_db_connection(workspace)
     try:
         cursor = conn.cursor()
         for task_data in snapshot.get("tasks", []):
+            task_id = task_data["id"]
+            # The guard is part of the UPDATE, so a run that starts between a
+            # check and the write cannot be rewound (#1306 review).
             cursor.execute(
                 """
                 UPDATE tasks
                 SET status = ?, updated_at = ?
-                WHERE id = ? AND workspace_id = ?
+                WHERE id = ? AND workspace_id = ? AND status != ? AND status != ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM runs
+                      WHERE runs.workspace_id = tasks.workspace_id
+                        AND runs.task_id = tasks.id
+                        AND runs.status IN ('RUNNING', 'BLOCKED'))
                 """,
-                (task_data["status"], _utc_now().isoformat(), task_data["id"], workspace.id),
+                (
+                    task_data["status"], _utc_now().isoformat(), task_id, workspace.id,
+                    task_data["status"], TaskStatus.MERGED.value,
+                ),
             )
+            if cursor.rowcount:
+                restored += 1
+                continue
+            # Not changed: deleted, already at that status, or guarded.
+            guarded = cursor.execute(
+                """
+                SELECT 1 FROM tasks
+                WHERE id = ? AND workspace_id = ? AND (status = ? OR EXISTS (
+                    SELECT 1 FROM runs
+                    WHERE runs.workspace_id = tasks.workspace_id
+                      AND runs.task_id = tasks.id
+                      AND runs.status IN ('RUNNING', 'BLOCKED')))
+                """,
+                (task_id, workspace.id, TaskStatus.MERGED.value),
+            ).fetchone()
+            if guarded:
+                skipped.append(task_id)
         conn.commit()
     finally:
         conn.close()
@@ -225,11 +268,13 @@ def restore(workspace: Workspace, checkpoint_id: str) -> Checkpoint:
         {
             "checkpoint_id": checkpoint.id,
             "name": checkpoint.name,
+            "restored": restored,
+            "skipped": skipped,
         },
         print_event=True,
     )
 
-    return checkpoint
+    return RestoreResult(checkpoint=checkpoint, restored=restored, skipped=skipped)
 
 
 def delete(workspace: Workspace, checkpoint_id: str) -> bool:

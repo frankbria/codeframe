@@ -25,3 +25,17 @@ def print_error(exc: object, prefix: str = "Error:", suffix: str = "") -> None:
     the migration would otherwise have reworded; only ``exc`` is escaped.
     """
     console.print(f"[red]{prefix}[/red] {escape(str(exc))}{suffix}")
+
+
+def cli_actor() -> str:
+    """Who to record for an audited CLI action: the OS user (#1306).
+
+    Waivers and merge overrides both bypass the merge gate, so both name the
+    same actor.
+    """
+    import getpass
+
+    try:
+        return getpass.getuser()
+    except (OSError, KeyError):  # KeyError: a uid with no passwd entry
+        return "cli"

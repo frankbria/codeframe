@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from codeframe.cli.helpers import print_error
+from codeframe.cli.helpers import cli_actor, print_error
 
 console = Console()
 
@@ -518,7 +518,7 @@ def waive(
             console.print(f"[red]Error:[/red] Invalid date format: {escape(str(expires))} (use YYYY-MM-DD)")
             raise typer.Exit(1)
 
-    waiver_obj = Waiver(reason=reason, expires=expiry_date, approved_by="cli-user")
+    waiver_obj = Waiver(reason=reason, expires=expiry_date, approved_by=cli_actor())
     updated = ledger.waive_requirement(workspace, req_id, waiver_obj)
 
     if updated:

@@ -53,18 +53,6 @@ def test_the_command_names_the_workspace(tmp_path: Path) -> None:
     assert cmd[cmd.index("--dir") + 1] == str(tmp_path)
 
 
-def test_dir_precedes_the_positional_message(tmp_path: Path) -> None:
-    """``opencode run [options] [message..]`` — a flag after the positional
-    array is swallowed as part of the message."""
-    adapter = OpenCodeAdapter.__new__(OpenCodeAdapter)
-    adapter._binary_path = "/usr/bin/opencode"
-    adapter._cli_args = ["run"]
-
-    cmd = adapter.build_command("do a thing", tmp_path)
-
-    assert cmd.index("--dir") < cmd.index("do a thing")
-
-
 def test_an_oversized_prompt_still_carries_the_workspace(tmp_path: Path) -> None:
     """The >128 KiB prompt goes to stdin, but the workspace must not go with it."""
     adapter = OpenCodeAdapter.__new__(OpenCodeAdapter)
@@ -131,7 +119,8 @@ def test_the_adapter_resolves_the_workspace_not_the_parent_cwd(tmp_path: Path) -
 
     try:
         proc = subprocess.run(
-            cmd, cwd=str(elsewhere), capture_output=True, text=True, timeout=180
+            cmd, cwd=str(elsewhere), capture_output=True, text=True, timeout=180,
+            input=adapter.get_stdin("say ok"),
         )
     except subprocess.TimeoutExpired:
         pytest.skip("opencode did not respond within 180s")

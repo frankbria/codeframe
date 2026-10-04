@@ -240,7 +240,8 @@ function CompletionBanner({
   gateRunning = false,
   gateError = false,
 }: CompletionBannerProps) {
-  const durationText = duration !== null ? `${Math.round(duration)}s` : '';
+  // 0 means the engine did not measure it, not a zero-second run (#1306).
+  const durationText = duration ? `${Math.round(duration)}s` : '';
 
   if (status === 'completed') {
     return (

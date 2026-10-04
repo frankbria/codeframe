@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import os
 import sqlite3
 import threading
@@ -284,6 +285,7 @@ class ReactAgent:
         """
         self._current_task_id = task_id
         self._early_termination_reason = None
+        self._run_started = time.monotonic()
         self._verbose_print(f"[ReactAgent] Starting task {task_id}")
         self._emit(EventType.AGENT_STARTED, {"task_id": task_id})
 
@@ -1411,7 +1413,7 @@ class ReactAgent:
                 CompletionEvent(
                     task_id=task_id,
                     status="completed",
-                    duration_seconds=0,
+                    duration_seconds=time.monotonic() - self._run_started,
                 ),
             )
         except Exception:

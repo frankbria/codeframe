@@ -265,7 +265,7 @@ class TestSupervisorBlockerResolution:
         assert resolved1 is True
 
         # Cache should have the decision
-        assert "venv_creation" in _decision_cache
+        assert (workspace.id, "venv_creation") in _decision_cache  # per workspace (#1306)
 
         # Resolve second task - should use cache
         resolved2 = supervisor.try_resolve_blocked_task(task2.id)
