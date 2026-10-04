@@ -151,6 +151,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   sessions kept their own stale price table. They now use the same
   `MODEL_PRICING` as everything else, `CODEFRAME_MODEL_PRICING` included. A
   session on a model with no price shows "Cost unknown" rather than $0.
+- **Two PROOF9 requirements with the same title can both be satisfied (#1372).**
+  Capturing a recurring glitch again under its old title, the normal LOOP
+  step, wrote stub files with the same name into both requirements' folders.
+  pytest then refused to collect either, so every obligation of **both**
+  requirements failed however the stubs were implemented. Stub files now carry
+  the requirement id (`test_req_0002_total_wrong_unit.py`). Requirements
+  captured before this release keep their old file names. If two of them share
+  a title, rename one of the two files by hand, keeping the `test_` function
+  inside it as it is.
 - **`cf work replay` works on real runs (#1300).** The built-in react engine now
   records an execution trace on every run. Before, no production path recorded
   one, so `cf work replay`, `diff`, `export-trace` and `rerun` always answered
