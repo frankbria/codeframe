@@ -17,7 +17,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from contextlib import aclosing
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -452,15 +451,13 @@ class StreamingChatAdapter:
         accumulated_text = ""
 
         try:
-            # aclosing: a cancelled turn must run _stream_turn's finally now,
-            # not whenever the abandoned generator is collected.
-            async with aclosing(
-                self._stream_turn(messages=messages, interrupt_event=interrupt_event)
-            ) as turn:
-                async for event in turn:
-                    if event.type == ChatEventType.TEXT_DELTA and event.content:
-                        accumulated_text += event.content
-                    yield event
+            async for event in self._stream_turn(
+                messages=messages,
+                interrupt_event=interrupt_event,
+            ):
+                if event.type == ChatEventType.TEXT_DELTA and event.content:
+                    accumulated_text += event.content
+                yield event
 
         except Exception as exc:
             logger.error("StreamingChatAdapter error: %s", exc, exc_info=True)

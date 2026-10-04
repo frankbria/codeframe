@@ -38,7 +38,6 @@ import functools
 import json
 import logging
 import os
-from contextlib import aclosing
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -166,11 +165,14 @@ async def _run_streaming_adapter(
             on_usage=_record,
             **adapter_kwargs,
         )
-        async with aclosing(
-            adapter.send_message(content=user_message, history=[], interrupt_event=interrupt_event)
-        ) as events:
-            async for event in events:
-                await token_queue.put(event.to_dict())
+        # The queue is unbounded, so put() never suspends: a cancel always
+        # lands inside the adapter's await chain and runs its cleanup there.
+        async for event in adapter.send_message(
+            content=user_message,
+            history=[],
+            interrupt_event=interrupt_event,
+        ):
+            await token_queue.put(event.to_dict())
     except Exception as exc:
         logger.error("_run_streaming_adapter error: %s", exc, exc_info=True)
         await token_queue.put({"type": "error", "message": str(exc)})
