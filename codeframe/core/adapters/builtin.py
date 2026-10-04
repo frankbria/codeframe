@@ -20,6 +20,7 @@ from codeframe.core.adapters.agent_adapter import (
 if TYPE_CHECKING:
     from codeframe.adapters.llm.base import LLMProvider
     from codeframe.core.conductor import GlobalFixCoordinator
+    from codeframe.core.replay import ExecutionRecorder
     from codeframe.core.stall_detector import StallAction
     from codeframe.core.streaming import EventPublisher, RunOutputLogger
     from codeframe.core.workspace import Workspace
@@ -104,10 +105,12 @@ class BuiltinReactAdapter:
         output_logger: Optional[RunOutputLogger] = None,
         fix_coordinator: Optional[GlobalFixCoordinator] = None,
         cost_ceiling_usd: Optional[float] = None,
+        execution_recorder: Optional[ExecutionRecorder] = None,
     ) -> None:
         self._workspace = workspace
         self._llm_provider = llm_provider
         self._cost_ceiling_usd = cost_ceiling_usd
+        self._execution_recorder = execution_recorder
         self._stall_timeout_s = stall_timeout_s
         self._stall_action = stall_action
         self._event_publisher = event_publisher
@@ -160,6 +163,9 @@ class BuiltinReactAdapter:
                 "output_logger": self._output_logger,
                 "fix_coordinator": self._fix_coordinator,
                 "cost_ceiling_usd": self._cost_ceiling_usd,
+                # The trace `cf work replay` reads (#1300). A stall retry
+                # builds a new agent; it keeps appending to the same run.
+                "execution_recorder": self._execution_recorder,
             }
             if self._stall_action is not None:
                 kwargs["stall_action"] = self._stall_action

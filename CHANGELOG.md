@@ -151,6 +151,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   sessions kept their own stale price table. They now use the same
   `MODEL_PRICING` as everything else, `CODEFRAME_MODEL_PRICING` included. A
   session on a model with no price shows "Cost unknown" rather than $0.
+- **`cf work replay` works on real runs (#1300).** The built-in react engine now
+  records an execution trace on every run. Before, no production path recorded
+  one, so `cf work replay`, `diff`, `export-trace` and `rerun` always answered
+  "No trace found". A run that is resumed after a blocker, or retried after a
+  stall, continues its step numbering instead of mixing two attempts together.
 - **Web UI accessibility baseline, enforced in CI (#1298).** An axe-core pass
   (WCAG 2.1 AA) over the ten core pages at laptop and phone width now runs with
   the PR smoke suite and fails on serious or critical violations. It started at
