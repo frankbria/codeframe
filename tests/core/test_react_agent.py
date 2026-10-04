@@ -1574,6 +1574,29 @@ class TestStreamCompletion:
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
     @patch("codeframe.core.react_agent.TaskContextPackager")
+    def test_completion_event_carries_the_real_duration(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """It was hardcoded to 0, so the execution page said 'complete in 0s' (#1306)."""
+        from codeframe.core.models import CompletionEvent
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load_context.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+        publisher = MockEventPublisher()
+        agent = ReactAgent(workspace=workspace, llm_provider=provider, event_publisher=publisher)
+
+        agent.run("task-1")
+
+        (completion,) = [e for _, e in publisher.events if isinstance(e, CompletionEvent)]
+        assert completion.duration_seconds > 0
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.TaskContextPackager")
     def test_error_event_and_stream_close_on_max_iterations(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
         workspace, provider, mock_context,

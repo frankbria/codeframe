@@ -15,6 +15,7 @@ import json
 import re
 import shlex
 import subprocess
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -374,6 +375,7 @@ class Agent:
             Final AgentState
         """
         self.state = AgentState(task_id=task_id, status=AgentStatus.IDLE)
+        self._run_started = time.monotonic()
         # "Max cost per TASK" — so spend from earlier runs of this same task
         # counts. Without it, answering a blocker and resuming would grant a
         # fresh full budget every time (#911 review, #1004).
@@ -2113,7 +2115,7 @@ Generate a single question OR a RESOLVE_AUTONOMOUSLY/TECHNICAL_FIX directive:"""
             event = CompletionEvent(
                 task_id=task_id,
                 status=sse_status,
-                duration_seconds=0,  # Could track this
+                duration_seconds=time.monotonic() - self._run_started,
                 files_modified=[c.path for c in (self.executor.changes if self.executor else [])],
             )
             self.event_publisher.publish_sync(task_id, event)
