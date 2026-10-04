@@ -6,6 +6,8 @@ records each completion into the workspace's token_usage, the ledger
 spend_limit sums.
 """
 
+import sqlite3
+
 import pytest
 
 from codeframe.adapters.llm.base import LLMResponse
@@ -241,3 +243,51 @@ def test_a_cancelled_handler_keeps_its_hold_until_the_worker_records(tmp_path, m
     go.set()
     worker.join(5)
     assert released == [1]
+
+
+def test_a_settled_budget_admits_no_new_call(tmp_path, monkeypatch):
+    """A cancelled discovery handler's worker went on to its next calls after
+    the hold was returned (codex P1, pass 7)."""
+    import contextvars
+
+    from codeframe.core.spend_limit import SpendLimitExceeded
+    from codeframe.core.usage_recording import begin_budget
+    from codeframe.ui.dependencies import release_planning_budget
+
+    monkeypatch.setattr(spend_limit, "release", lambda *a: None)
+    inner = MockProvider()
+    provider = UsageRecordingProvider(inner, create_or_load_workspace(tmp_path), CallType.PLANNING)
+
+    def handler():
+        begin_budget(5.0)
+        release_planning_budget({"user_id": 1}, 5.0)
+        with pytest.raises(SpendLimitExceeded):
+            provider.complete([{"role": "user", "content": "hi"}])
+
+    contextvars.copy_context().run(handler)
+    assert inner.calls == []
+
+
+def test_spend_that_could_not_be_recorded_keeps_its_hold(tmp_path, monkeypatch):
+    """A failed ledger write was logged and the hold returned, so the next
+    request got the same budget again (codex P1, pass 7). The hold is dated,
+    so it lapses at midnight."""
+    import contextvars
+
+    import codeframe.core.usage_recording as ur
+    from codeframe.ui.dependencies import release_planning_budget
+
+    released = []
+    monkeypatch.setattr(spend_limit, "release", lambda *a: released.append(a))
+    monkeypatch.setattr(ur, "record_llm_usage", lambda *a, **k: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")))
+    inner = MockProvider()
+    _priced(inner, 1, tokens=10)
+    provider = UsageRecordingProvider(inner, create_or_load_workspace(tmp_path), CallType.PLANNING)
+
+    def handler():
+        ur.begin_budget(5.0)
+        provider.complete([{"role": "user", "content": "hi"}])  # the answer still arrives
+        release_planning_budget({"user_id": 1}, 5.0)
+
+    contextvars.copy_context().run(handler)
+    assert released == []

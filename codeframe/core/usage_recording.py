@@ -36,9 +36,18 @@ class _Budget:
     inflight: int = 0
     on_settled: Optional[Callable[[], None]] = None
     lock: threading.Lock = field(default_factory=threading.Lock)
+    # Closed: its run is over (a cancelled handler's worker may still be
+    # going), so it admits no new call. Unrecorded: a call's usage could not
+    # be written, so the hold is kept; holds are dated and lapse at midnight.
+    closed: bool = False
+    unrecorded: bool = False
 
     def enter(self) -> None:
+        from codeframe.core.spend_limit import SpendLimitExceeded
+
         with self.lock:
+            if self.closed:
+                raise SpendLimitExceeded("This run has ended; it cannot start another model call.")
             self.inflight += 1
 
     def leave(self) -> None:
@@ -48,13 +57,20 @@ class _Budget:
             if settle:
                 self.on_settled = None
         if settle:
-            settle()
+            self._finish(settle)
 
     def close(self, on_settled: Callable[[], None]) -> None:
         with self.lock:
+            self.closed = True
             if self.inflight:
                 self.on_settled = on_settled
                 return
+        self._finish(on_settled)
+
+    def _finish(self, on_settled: Callable[[], None]) -> None:
+        if self.unrecorded:
+            logger.warning("Keeping a spend hold: some of its usage could not be recorded")
+            return
         on_settled()
 
 
@@ -111,6 +127,13 @@ def settle_budget(on_settled: Callable[[], None]) -> None:
         on_settled()
     else:
         budget.close(on_settled)
+
+
+def mark_unrecorded() -> None:
+    """Note that a call's usage could not be written: keep this run's hold."""
+    budget = _budget.get()
+    if budget is not None:
+        budget.unrecorded = True
 
 
 def check_budget() -> None:
@@ -194,11 +217,11 @@ class UsageRecordingProvider:
     def complete(self, *args: Any, **kwargs: Any) -> Any:
         from codeframe.lib.metrics_tracker import MetricsTracker
 
-        check_budget()
         budget = _budget.get()
         if budget is not None:
             budget.enter()
         try:
+            check_budget()
             response = self._inner.complete(*args, **kwargs)
             model = getattr(response, "model", "") or getattr(self._inner, "model", "") or ""
             input_tokens = getattr(response, "input_tokens", 0) or 0
@@ -216,6 +239,7 @@ class UsageRecordingProvider:
             except Exception:
                 # Bookkeeping must never cost the user the answer they paid for.
                 logger.warning("Could not record LLM usage", exc_info=True)
+                mark_unrecorded()
             return response
         finally:
             if budget is not None:

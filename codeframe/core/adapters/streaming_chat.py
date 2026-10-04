@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
 
 from codeframe.adapters.llm.base import LLMProvider, Tool, ToolCall, ToolResult
-from codeframe.core.usage_recording import charge_budget, check_budget
+from codeframe.core.usage_recording import charge_budget, check_budget, mark_unrecorded
 from codeframe.lib.metrics_tracker import MetricsTracker
 from codeframe.core.tools import (
     execute_tool,
@@ -409,6 +409,7 @@ class StreamingChatAdapter:
                 self._on_usage(self._model, input_tokens, output_tokens)
             except Exception:
                 logger.warning("Could not record chat usage", exc_info=True)
+                mark_unrecorded()
         return cost
 
     # ------------------------------------------------------------------

@@ -275,3 +275,39 @@ def test_a_new_message_replaces_a_turn_that_holds_the_whole_budget(api_client: T
 
     assert msg["type"] == "done", msg
     assert calls == ["first", "second"]
+
+
+def test_a_chat_turn_whose_spend_could_not_be_recorded_keeps_its_hold(
+    api_client: TestClient, chat_ws, monkeypatch
+):
+    """Real adapter, failing ledger write: the turn's hold must stay (codex P1,
+    pass 7), and it lapses at midnight because holds are dated."""
+    import asyncio
+    import sqlite3 as _sqlite3
+    from unittest.mock import AsyncMock
+
+    from codeframe.core import spend_limit
+    from codeframe.ui.routers import session_chat_ws as mod
+
+    def locked(*a, **k):
+        raise _sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(spend_limit, "_held", {})  # restored after: no leaked hold
+    monkeypatch.setenv(LIMIT_ENV, "50")
+    monkeypatch.setattr(mod, "record_llm_usage", locked)
+    monkeypatch.setattr("codeframe.core.llm_resolution.create_provider", lambda *a, **k: _Provider("finish"))
+    monkeypatch.setattr(mod.StreamingChatAdapter, "_load_history", lambda self: [])
+    monkeypatch.setattr(mod.StreamingChatAdapter, "_persist_turn", lambda self, *a: asyncio.sleep(0))
+    session_id = _create_session(api_client, str(chat_ws.repo_path))
+    db = api_client.app.state.db
+    db.conn.execute("UPDATE interactive_sessions SET user_id = 1 WHERE id = ?", (session_id,))
+    db.conn.commit()
+
+    with patch("codeframe.ui.routers.session_chat_ws._authenticate_websocket",
+               new=AsyncMock(return_value=(True, 1))):
+        with api_client.websocket_connect(_ws_url(session_id, mint_ticket(user_id=1))) as ws:
+            ws.send_json({"type": "message", "content": "Hi"})
+            while ws.receive_json()["type"] not in ("done", "error"):
+                pass
+
+    assert spend_limit._held.get(1), "the hold was returned with its spend unrecorded"

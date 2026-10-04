@@ -47,7 +47,11 @@ from codeframe.auth.dependencies import authenticate_websocket
 from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
 from codeframe.core.models import CallType
 from codeframe.core.usage_recording import record_llm_usage
-from codeframe.ui.dependencies import check_spend_limit, revalidate_workspace_path
+from codeframe.ui.dependencies import (
+    check_spend_limit,
+    release_planning_budget,
+    revalidate_workspace_path,
+)
 from codeframe.ui.shared import session_chat_manager
 
 logger = logging.getLogger(__name__)
@@ -477,10 +481,12 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                         )
                     )
                     if turn_budget is not None:
-                        from codeframe.core import spend_limit
-
+                        # Runs in this context, which holds the turn's budget:
+                        # spend the turn could not record keeps the hold.
                         adapter_task[0].add_done_callback(
-                            lambda _t, b=turn_budget: spend_limit.release(user_id, b)
+                            lambda _t, b=turn_budget: release_planning_budget(
+                                {"user_id": user_id}, b
+                            )
                         )
 
         relay = asyncio.create_task(_relay())
