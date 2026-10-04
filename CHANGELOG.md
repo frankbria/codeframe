@@ -166,6 +166,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   digests, with the restore image moved to the supported `alpine:3.22`. A test fails if one
   loses its digest, and deploy/README.md explains how to refresh them, since
   Dependabot does not scan shell scripts or workflow steps.
+- **The ruff gate no longer fails clean code over a config written for a
+  newer ruff (#1308).** When a project has no ruff of its own, CodeFRAME's
+  copy lints it against the project's config. If that config uses options
+  newer than CodeFRAME's ruff ("unknown field", an unknown rule or value), the
+  gate, per-edit lint and autofix now report **SKIPPED** with an explanation,
+  instead of FAILED. A config that is simply broken, or the project's own ruff
+  rejecting its own config, still fails. Per-edit lint also stops forcing
+  `--output-format=concise`, which ruff < 0.3 rejects with a usage error on
+  every edit.
 - **A batch of low-severity correctness fixes (#1306).**
   - `cf checkpoint restore` no longer revives MERGED tasks or rewinds a task
     whose run is still in progress. It reports how many tasks it actually
