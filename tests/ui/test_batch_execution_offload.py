@@ -28,9 +28,14 @@ pytestmark = pytest.mark.v2
 
 # Upper bound on how long the stand-in batch will block if a test forgets to
 # release it — keeps a regression from hanging the suite instead of failing.
-MAX_BLOCK_SECONDS = 10.0
-# The handler / a concurrent request must land far inside that. Generous for CI.
-MAX_CONCURRENT_SECONDS = 2.0
+# Also the budget the "batch still unfinished" checks implicitly get, so it is
+# a hang ceiling, not a speed bound: 10s was exceeded under CPU load (#1326).
+# Teardown releases the batch, so a passing test never waits for it.
+MAX_BLOCK_SECONDS = 60.0
+# No wall-clock budget for the handler (#1326/#1366): a 2.0s bound sized on a
+# fast disk failed on a slow one. The stand-in batch cannot finish until the
+# test releases it, so "the batch was still unfinished when the response
+# arrived" is the proof the handler did not wait — on any machine.
 
 
 @pytest.fixture
@@ -73,7 +78,7 @@ def slow_batch(monkeypatch):
     monkeypatch.setattr(tasks_v2.conductor, "execute_batch", _blocking_execute)
     yield state
     state["release"].set()
-    state["finished"].wait(timeout=5)
+    state["finished"].wait(timeout=MAX_BLOCK_SECONDS)
 
 
 @pytest.fixture
@@ -108,19 +113,16 @@ async def test_execute_returns_while_the_batch_is_still_running(app, slow_batch)
     """The handler must return batch_id immediately, not after the batch ends."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        start = time.monotonic()
         resp = await client.post(
             "/api/v2/tasks/execute", json={"task_ids": ["t1", "t2"]}
         )
-        elapsed = time.monotonic() - start
+        finished_before_response = slow_batch["finished"].is_set()
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["batch_id"], "handler must return a batch id"
-    assert elapsed < MAX_CONCURRENT_SECONDS, (
-        f"POST /tasks/execute took {elapsed:.2f}s — it waited for the batch"
-    )
+    assert not finished_before_response, "POST /tasks/execute waited for the batch"
     # The batch really is still running: the handler did not simply skip it.
-    assert slow_batch["started"].wait(timeout=5), "execution never started"
+    assert slow_batch["started"].wait(timeout=MAX_BLOCK_SECONDS), "execution never started"
     assert not slow_batch["finished"].is_set(), (
         "the batch finished before the handler returned — it was not detached"
     )
@@ -135,7 +137,6 @@ async def test_health_responds_while_a_batch_runs(app, slow_batch):
     """
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        start = time.monotonic()
         execute_task = asyncio.create_task(
             client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]})
         )
@@ -145,20 +146,18 @@ async def test_health_responds_while_a_batch_runs(app, slow_batch):
         # unfixed code the POST holds the loop and this times out, which is the
         # failure we want.
         await asyncio.get_running_loop().run_in_executor(
-            None, slow_batch["started"].wait, 5
+            None, slow_batch["started"].wait, MAX_BLOCK_SECONDS
         )
         assert slow_batch["started"].is_set(), "batch never started"
 
         health = await client.get("/health")
-        elapsed = time.monotonic() - start
+        finished_before_health = slow_batch["finished"].is_set()
 
         execute_response = await execute_task
 
     assert health.status_code == 200
     assert execute_response.status_code == 200, execute_response.text
-    assert elapsed < MAX_CONCURRENT_SECONDS, (
-        f"/health took {elapsed:.2f}s while a batch ran — the loop was blocked"
-    )
+    assert not finished_before_health, "/health was served only after the batch ended: the loop was blocked"
 
 
 async def test_execution_runs_off_the_event_loop_thread(app, slow_batch):
@@ -167,10 +166,10 @@ async def test_execution_runs_off_the_event_loop_thread(app, slow_batch):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]})
 
-    assert slow_batch["started"].wait(timeout=5)
+    assert slow_batch["started"].wait(timeout=MAX_BLOCK_SECONDS)
     assert slow_batch["thread"] is not threading.current_thread()
     slow_batch["release"].set()
-    assert slow_batch["finished"].wait(timeout=5), (
+    assert slow_batch["finished"].wait(timeout=MAX_BLOCK_SECONDS), (
         "the detached batch never completed"
     )
 
@@ -198,18 +197,15 @@ async def test_approve_with_execution_also_returns_immediately(
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        start = time.monotonic()
         resp = await client.post(
             "/api/v2/tasks/approve", json={"start_execution": True}
         )
-        elapsed = time.monotonic() - start
+        finished_before_response = slow_batch["finished"].is_set()
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["batch_id"]
-    assert elapsed < MAX_CONCURRENT_SECONDS, (
-        f"POST /tasks/approve took {elapsed:.2f}s — it waited for the batch"
-    )
-    assert slow_batch["started"].wait(timeout=5)
+    assert not finished_before_response, "POST /tasks/approve waited for the batch"
+    assert slow_batch["started"].wait(timeout=MAX_BLOCK_SECONDS)
 
 
 async def test_batch_is_visible_immediately_after_the_handler_returns(
@@ -242,7 +238,7 @@ class TestOneBatchPerWorkspace:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             first = await client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]})
             assert first.status_code == 200, first.text
-            assert slow_batch["started"].wait(timeout=5)
+            assert slow_batch["started"].wait(timeout=MAX_BLOCK_SECONDS)
 
             second = await client.post("/api/v2/tasks/execute", json={"task_ids": ["t2"]})
 
@@ -282,7 +278,7 @@ class TestOneBatchPerWorkspace:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             await client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]})
-            assert slow_batch["started"].wait(timeout=5)
+            assert slow_batch["started"].wait(timeout=MAX_BLOCK_SECONDS)
 
             resp = await client.post(
                 "/api/v2/tasks/approve", json={"start_execution": True}
@@ -294,9 +290,9 @@ class TestOneBatchPerWorkspace:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             await client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]})
-            assert slow_batch["started"].wait(timeout=5)
+            assert slow_batch["started"].wait(timeout=MAX_BLOCK_SECONDS)
             slow_batch["release"].set()
-            assert slow_batch["finished"].wait(timeout=5)
+            assert slow_batch["finished"].wait(timeout=MAX_BLOCK_SECONDS)
 
             # The stand-in returns the batch without finalizing it, so mark it
             # terminal the way a real run would before asserting the gate lifts.
@@ -335,7 +331,7 @@ class TestWedgedBatchIsFinalized:
             resp = await client.post("/api/v2/tasks/execute", json={"task_ids": ["t1"]})
 
         batch_id = resp.json()["batch_id"]
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + 60  # a hang ceiling; exits on success
         while time.monotonic() < deadline:
             batch = conductor.get_batch(test_workspace, batch_id)
             if batch and batch.status in conductor.TERMINAL_BATCH_STATUSES:
