@@ -649,6 +649,21 @@ def _tool_prefix(tool: str, use_uv: bool = True) -> Optional[list[str]]:
     return None
 
 
+class BundledToolConfigSkew(Exception):
+    """CodeFRAME's own copy of a tool cannot read the project's newer config.
+
+    The project has no copy of its own, so ours ran — and ours is older than
+    the config it was handed. That is unverifiable, not a lint failure: the
+    caller reports SKIPPED with this message (#1308).
+    """
+
+
+#: How ruff reports an option, rule or value it does not know — what an older
+#: ruff says about a config written for a newer one. A config that is simply
+#: broken (a missing ``extend`` file, bad TOML) does not match and stays FAILED.
+_RUFF_SKEW_MARKERS = ("unknown field", "unknown variant", "unknown rule selector")
+
+
 def _run_tool(
     tool: str, prefix: Optional[list[str]], args: list[str], repo_path: Path, timeout: int
 ) -> Optional[subprocess.CompletedProcess]:
@@ -665,11 +680,14 @@ def _run_tool(
     config, say) is the answer, even when its stderr says "No such file" —
     which is why this does not use ``_tool_is_missing``.
 
-    Returns None when no copy can be spawned.
+    Returns None when no copy can be spawned. Raises ``BundledToolConfigSkew``
+    when only CodeFRAME's ruff could run and it cannot read the project's
+    config; the project's own ruff failing on that config is returned as-is.
     """
+    bundled = [sys.executable, "-m", tool]
     prefixes = [prefix] if prefix else []
     if importlib.util.find_spec(tool) is not None:
-        prefixes.append([sys.executable, "-m", tool])
+        prefixes.append(bundled)
     for cmd in prefixes:
         try:
             result = subprocess.run(
@@ -687,6 +705,18 @@ def _run_tool(
         stderr = (result.stderr or "").lower()
         # uv's spawn failure, or a version-manager shim with no such version.
         if "failed to spawn" not in stderr and "command not found" not in stderr:
+            if (
+                cmd is bundled
+                and tool == "ruff"
+                and "failed to load configuration" in stderr
+                and any(marker in stderr for marker in _RUFF_SKEW_MARKERS)
+            ):
+                raise BundledToolConfigSkew(
+                    "The project's ruff config needs a newer ruff than the one "
+                    "CodeFRAME ships, and the project has no ruff of its own. "
+                    "Add ruff to the project's dev dependencies to lint it.\n\n"
+                    + (result.stderr or "").strip()
+                )
             return result
     return None
 
@@ -932,6 +962,8 @@ def _run_ruff(repo_path: Path, verbose: bool = False) -> GateCheck:
 
         return check
 
+    except BundledToolConfigSkew as e:
+        return GateCheck(name="ruff", status=GateStatus.SKIPPED, output=str(e))
     except subprocess.TimeoutExpired:
         return GateCheck(
             name="ruff",
@@ -1392,7 +1424,9 @@ LINTER_REGISTRY: list[LinterConfig] = [
     LinterConfig(
         name="ruff",
         extensions={".py", ".pyi"},
-        cmd=["ruff", "check", "--output-format=concise", "{file}"],
+        # No --output-format: ruff < 0.3 rejects "concise" (#1308), and
+        # _parse_ruff_errors reads both formats since #1307.
+        cmd=["ruff", "check", "{file}"],
         check_available="ruff",
         use_uv=True,
         parse_errors=_parse_ruff_errors,
@@ -1477,6 +1511,8 @@ def run_lint_on_file(
 
         return check
 
+    except BundledToolConfigSkew as e:
+        return GateCheck(name=cfg.name, status=GateStatus.SKIPPED, output=str(e))
     except subprocess.TimeoutExpired:
         return GateCheck(name=cfg.name, status=GateStatus.ERROR,
                          output=f"Timeout after {timeout}s")
@@ -1535,6 +1571,8 @@ def run_autofix_on_file(
             duration_ms=duration_ms,
         )
 
+    except BundledToolConfigSkew as e:
+        return GateCheck(name=f"autofix-{cfg.name}", status=GateStatus.SKIPPED, output=str(e))
     except subprocess.TimeoutExpired:
         return GateCheck(name=f"autofix-{cfg.name}", status=GateStatus.ERROR,
                          output=f"Timeout after {timeout}s")
