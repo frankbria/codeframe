@@ -31,7 +31,13 @@ from codeframe.core.prd_discovery import (
 )
 from codeframe.core.llm_resolution import UntrustedBaseURLError
 from codeframe.adapters.llm.base import LLMError
-from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.core.spend_limit import SpendLimitExceeded
+from codeframe.ui.dependencies import (
+    get_v2_workspace,
+    release_planning_budget,
+    reserve_planning_budget,
+    spend_limit_http,
+)
 from codeframe.ui.response_models import llm_error_http
 
 logger = logging.getLogger(__name__)
@@ -144,6 +150,9 @@ async def start_discovery(
             },
         )
 
+    # Reserved and enforced for this request's LLM calls (#1345): checked
+    # before the first one, so a refusal spends nothing. Released below.
+    budget = await reserve_planning_budget(request, workspace, auth)
     try:
         # Check for existing active session
         existing = await run_in_threadpool(
@@ -198,6 +207,8 @@ async def start_discovery(
         # the blanket handler re-raised it as a 500 with the structured detail
         # stringified, losing both the status and the session_id/hint (#928).
         raise
+    except SpendLimitExceeded as e:
+        raise spend_limit_http(e)
     except LLMError as e:
         # The provider's own answer, not a server fault (#1328).
         raise llm_error_http(e, operation="start discovery")
@@ -207,6 +218,8 @@ async def start_discovery(
             status_code=500,
             detail=f"Failed to start discovery: {e}",
         )
+    finally:
+        release_planning_budget(auth, budget)
 
 
 @router.get("/status", response_model=StatusResponse)
@@ -268,6 +281,9 @@ async def submit_answer(
             - 404: Session not found
             - 500: Processing error
     """
+    # Reserved and enforced for this request's LLM calls (#1345): checked
+    # before the first one, so a refusal spends nothing. Released below.
+    budget = await reserve_planning_budget(request, workspace, auth)
     try:
         # LLM round trip (#902).
         result = await run_in_threadpool(
@@ -291,12 +307,16 @@ async def submit_answer(
         # into the generic handler below and returned 500 with a stack trace.
         # Must come after ValidationError/NoApiKeyError, which subclass it.
         raise HTTPException(status_code=409, detail=str(e))
+    except SpendLimitExceeded as e:
+        raise spend_limit_http(e)
     except LLMError as e:
         # The provider's own answer, not a server fault (#1328).
         raise llm_error_http(e, operation="process the answer")
     except Exception as e:
         logger.error(f"Failed to process answer: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        release_planning_budget(auth, budget)
 
 
 @router.post("/{session_id}/generate-prd", response_model=GeneratePrdResponse)
@@ -328,6 +348,9 @@ async def generate_prd(
             - 404: Session not found
             - 500: Generation error
     """
+    # Reserved and enforced for this request's LLM calls (#1345): checked
+    # before the first one, so a refusal spends nothing. Released below.
+    budget = await reserve_planning_budget(request, workspace, auth)
     try:
         template_id = body.template_id if body else None
         # Offload: synchronous LLM call (#732).
@@ -358,12 +381,16 @@ async def generate_prd(
         )
     except NoApiKeyError as e:
         raise HTTPException(status_code=500, detail=str(e))
+    except SpendLimitExceeded as e:
+        raise spend_limit_http(e)
     except LLMError as e:
         # The provider's own answer, not a server fault (#1328).
         raise llm_error_http(e, operation="generate the PRD")
     except Exception as e:
         logger.error(f"Failed to generate PRD: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        release_planning_budget(auth, budget)
 
 
 @router.post("/reset")
@@ -441,6 +468,9 @@ async def generate_tasks_from_prd(
             - 404: PRD not found
             - 500: Generation error
     """
+    # Reserved and enforced for this request's LLM calls (#1345); generating
+    # without the LLM is not spend. Released below.
+    budget = await reserve_planning_budget(request, workspace, auth) if use_llm else None
     try:
         # Get PRD
         if prd_id:
@@ -468,10 +498,17 @@ async def generate_tasks_from_prd(
                 resolve_llm_settings,
             )
 
+            from codeframe.core.models import CallType
+            from codeframe.core.usage_recording import UsageRecordingProvider
+
             provider = await run_in_threadpool(
-                lambda: create_provider(
-                    resolve_llm_settings(workspace.repo_path),
-                    user_id=auth.get("user_id"),
+                lambda: UsageRecordingProvider(
+                    create_provider(
+                        resolve_llm_settings(workspace.repo_path),
+                        user_id=auth.get("user_id"),
+                    ),
+                    workspace,
+                    CallType.PLANNING,
                 )
             )
 
@@ -513,6 +550,8 @@ async def generate_tasks_from_prd(
         # unimplementable "tasks"; the caller could not tell it had failed.
         logger.warning(f"Task generation failed: {e}")
         raise HTTPException(status_code=502, detail=str(e))
+    except SpendLimitExceeded as e:
+        raise spend_limit_http(e)
     except LLMError as e:
         # The provider's own answer, not a server fault (#1328).
         raise llm_error_http(e, operation="generate tasks")
@@ -522,3 +561,5 @@ async def generate_tasks_from_prd(
             status_code=500,
             detail=f"Failed to generate tasks: {e}",
         )
+    finally:
+        release_planning_budget(auth, budget)

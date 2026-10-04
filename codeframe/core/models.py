@@ -170,6 +170,11 @@ class CallType(str, Enum):
     # _persist_token_usage dropped it with only a WARNING (#712) — caught by
     # the cold-start cleanroom run against published 0.9.3.
     VERIFICATION_FIX = "verification_fix"
+    # THINK-stage calls (PRD stress-test/refine, discovery, task generation)
+    # and interactive session chat: recorded so the daily spend limit counts
+    # them (#1345). Before, only ReactAgent wrote token_usage.
+    PLANNING = "planning"
+    SESSION_CHAT = "session_chat"
     OTHER = "other"
 
 

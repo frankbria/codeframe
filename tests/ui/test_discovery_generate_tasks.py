@@ -67,7 +67,8 @@ class TestGenerateTasksProviderResolution:
         assert response.status_code == 200, response.text
         assert response.json()["task_count"] == 1
         mock_create.assert_called_once()
-        assert mock_llm_gen.call_args.args[1] is fake_provider
+        # Wrapped to record spend (#1345); the resolved provider is inside.
+        assert mock_llm_gen.call_args.args[1].inner is fake_provider
 
     def test_no_llm_skips_provider_resolution(self, test_client, monkeypatch):
         """use_llm=false must not construct any provider."""
