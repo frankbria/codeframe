@@ -322,6 +322,19 @@ class TestWaive:
         assert req.waiver.reason == "No automated test yet"
         assert req.waiver.expires == date(2027, 1, 1)
 
+    def test_waive_records_the_os_user_like_a_merge_override(self, ws_with_req, monkeypatch):
+        """A waiver bypasses the merge gate like an override does; it recorded
+        a constant "cli-user" while the override recorded the OS user (#1306)."""
+        workspace, workspace_path = ws_with_req
+        monkeypatch.setattr("getpass.getuser", lambda: "alice")
+
+        result = runner.invoke(app, [
+            "proof", "waive", "REQ-0001", "-w", str(workspace_path), "--reason", "Accepted risk",
+        ])
+
+        assert result.exit_code == 0, result.output
+        assert ledger.get_requirement(workspace, "REQ-0001").waiver.approved_by == "alice"
+
     def test_waive_without_expiry(self, ws_with_req):
         """waive without --expires should still succeed."""
         workspace, workspace_path = ws_with_req

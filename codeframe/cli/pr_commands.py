@@ -18,7 +18,6 @@ Usage:
 """
 
 import asyncio
-import getpass
 import json
 import logging
 import os
@@ -35,7 +34,7 @@ import typer
 from rich.table import Table
 from rich.markup import escape
 
-from codeframe.cli.helpers import console, print_error
+from codeframe.cli.helpers import cli_actor, console, print_error
 from codeframe.git.github_integration import GitHubAPIError, GitHubIntegration
 
 logger = logging.getLogger(__name__)
@@ -720,10 +719,7 @@ def merge_pr(
                 # Audit only a merge that actually happened (#731).
                 from codeframe.core.proof.ledger import save_merge_override
 
-                try:
-                    actor = getpass.getuser()
-                except OSError:
-                    actor = "cli"
+                actor = cli_actor()
                 gate_workspace, bypassed = pending_override
                 save_merge_override(
                     gate_workspace,
