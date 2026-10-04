@@ -274,7 +274,8 @@ class TestRunGateEnforcement:
         )
         stubs = generate_stubs(req)
         for gate in (Gate.UNIT, Gate.SEC):
-            rule = suggest_evidence_rules(gate, title)[0]
+            # Built the way capture builds it: named by id and title (#1397).
+            rule = suggest_evidence_rules(gate, f"{req.id} {title}")[0]
             assert f"def {rule.test_id}(" in stubs[gate]
 
     @patch("codeframe.core.gates.run")

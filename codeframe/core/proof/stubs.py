@@ -195,7 +195,14 @@ def _stub_basename(req: Requirement, gate: Gate) -> str:
     test *function* keeps ``test_<gate>_<slug>``: that is the evidence rule's
     test_id, and ``-k`` matches on it.
     """
-    return f"test_{_slugify(req.id)}_{_slugify(req.title)}_{gate.value}"
+    return f"test_{_requirement_slug(req)}_{gate.value}"
+
+
+def _requirement_slug(req: Requirement) -> str:
+    """obligations.requirement_slug, imported lazily like _slugify."""
+    from codeframe.core.proof.obligations import requirement_slug
+
+    return requirement_slug(req.id, req.title)
 
 
 def _slugify(text: str) -> str:
@@ -263,7 +270,9 @@ def generate_stubs(req: Requirement) -> dict[Gate, str]:
     context each template drops them into (#952).
     """
     result: dict[Gate, str] = {}
-    slug = _slugify(req.title)
+    # The function name must equal the evidence rule's test_id (#729), which
+    # carries the requirement id since #1397.
+    slug = _requirement_slug(req)
 
     for obligation in req.obligations:
         gate = obligation.gate

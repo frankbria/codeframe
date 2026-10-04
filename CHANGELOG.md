@@ -173,6 +173,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   sessions kept their own stale price table. They now use the same
   `MODEL_PRICING` as everything else, `CODEFRAME_MODEL_PRICING` included. A
   session on a model with no price shows "Cost unknown" rather than $0.
+- **A requirement's proof checks only its own tests (#1397).** Same-title
+  requirements also shared their test *function* names, and `cf proof run`
+  selects tests by name, so a re-captured glitch whose regression was not fixed
+  yet failed the requirement already satisfied, and the merge gate blocked on
+  both. New requirements name their tests by id as well as title
+  (`test_unit_req_0002_total_wrong`). Requirements captured earlier keep the
+  names they have.
 - **Two PROOF9 requirements with the same title can both be satisfied (#1372).**
   Capturing a recurring glitch again under its old title, the normal LOOP
   step, wrote stub files with the same name into both requirements' folders.
