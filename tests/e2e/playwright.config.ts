@@ -24,7 +24,7 @@ const AUTH_SECRET = 'e2e-test-secret-not-a-real-credential';
 
 // Point ALL client transports at the test backend at build time (Next.js bakes
 // NEXT_PUBLIC_* into client code). Without SSE/WS, streaming hooks fall back to
-// :8000 and fail cross-origin.
+// the :8080 loopback default and fail cross-origin.
 const WS_URL = BACKEND_URL.replace(/^http/, 'ws');
 const FRONTEND_BUILD_ENV =
   `NEXT_PUBLIC_API_URL=${BACKEND_URL} NEXT_PUBLIC_SSE_URL=${BACKEND_URL} NEXT_PUBLIC_WS_URL=${WS_URL} PORT=${frontendPort}`;

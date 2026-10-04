@@ -10,18 +10,23 @@
  * Required by next.config.js (CommonJS) — keep this file dependency-free.
  */
 
-const DEFAULT_WS_URL = 'ws://localhost:8000';
+// The loopback backend the client falls back to when nothing is configured:
+// `cf serve`'s default port (#1296). Mirrors src/lib/{wsBase,sseBase}.ts.
+const LOCAL_BACKEND = 'http://localhost:8080';
 const AVATAR_HOST = 'https://avatars.githubusercontent.com';
 
 /**
  * Closed allow-list of origins the browser may talk to. 'self' covers the
- * same-origin REST/SSE traffic (NEXT_PUBLIC_API_URL defaults to '' = proxied);
- * the WebSocket hooks dial NEXT_PUBLIC_WS_URL (or the localhost default).
+ * proxied REST traffic. The streams and sockets dial the backend directly, so
+ * their origins are resolved exactly as sseBase/wsBase resolve them: the
+ * explicit URL, else the API origin, else the local backend (#1296).
  */
-function buildConnectSrc({ apiUrl, wsUrl } = {}) {
+function buildConnectSrc({ apiUrl, wsUrl, sseUrl } = {}) {
+  const backend = apiUrl || LOCAL_BACKEND;
   const sources = new Set(["'self'"]);
   if (apiUrl) sources.add(apiUrl);
-  sources.add(wsUrl || DEFAULT_WS_URL);
+  sources.add(sseUrl || backend);
+  sources.add(wsUrl || backend.replace(/^http/, 'ws'));
   return Array.from(sources).join(' ');
 }
 
@@ -56,6 +61,7 @@ function buildCsp(env = process.env, { nonce } = {}) {
   const connectSrc = buildConnectSrc({
     apiUrl: env.NEXT_PUBLIC_API_URL,
     wsUrl: env.NEXT_PUBLIC_WS_URL,
+    sseUrl: env.NEXT_PUBLIC_SSE_URL,
   });
   const scriptSrc = buildScriptSrc({
     nonce,
