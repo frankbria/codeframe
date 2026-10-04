@@ -69,9 +69,20 @@ def test_a_hosted_tenant_sent_no_key_is_told_so(store_dir, monkeypatch):
     monkeypatch.setenv("CODEFRAME_DEPLOYMENT_MODE", "hosted")
     message = _rejection(LLMSettings(provider_type="ollama", base_url="http://localhost:11434/v1"), user_id=7)
     assert "no key" in message.lower() and "hosted" in message.lower(), message
+    # And the advice fits: there is no key to replace (claude-review).
+    assert "Replace that key" not in message, message
+    assert "store" in message.lower() and "administrator" in message.lower(), message
 
 
 def test_a_stored_key_is_not_blamed_on_the_environment(store_dir):
     _keys._store(_keys.STORED)
     message = _rejection(LLMSettings(provider_type="anthropic"))
     assert "$ANTHROPIC_API_KEY" not in message, message
+
+
+def test_a_self_hosted_local_provider_with_no_key_keeps_its_own_wording(store_dir):
+    """No source to name (nothing was resolved), so the local-provider text,
+    which already says no key was sent, stays (claude-review gap)."""
+    message = _rejection(LLMSettings(provider_type="ollama", base_url="http://localhost:11434/v1"))
+    assert "was sent no API key" in message, message
+    assert "Key read from" not in message, message

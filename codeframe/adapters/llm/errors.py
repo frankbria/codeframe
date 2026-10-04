@@ -96,6 +96,11 @@ def _with_raw(message: str, exc: Exception) -> str:
     return f"{message}\n\n(set {VERBOSE_ENV}=1 to see the raw provider response)"
 
 
+#: ``key_source`` for a hosted tenant's endpoint that was sent no key (#1346):
+#: there is no key to replace, so it gets its own advice.
+NO_KEY_SENT = "no key: this hosted server does not send its own to your endpoint"
+
+
 def map_provider_error(
     exc: Exception,
     *,
@@ -146,7 +151,12 @@ def map_provider_error(
                 )
         lines.append(f"  Provider: {provider} (set CODEFRAME_LLM_PROVIDER or llm.provider in .codeframe/config.yaml)")
         lines.append("")
-        if key_source:
+        if key_source == NO_KEY_SENT:
+            lines.append(
+                "Store an API key for your account for this endpoint (an "
+                "administrator can, in Settings → API Keys), then re-run."
+            )
+        elif key_source:
             # Not "check $VAR": the key may not have come from the environment.
             lines.append("Replace that key with a current one, then re-run.")
         else:

@@ -294,6 +294,7 @@ def create_provider(settings: LLMSettings, user_id: Optional[int] = None):
     can fall back to reading the operator's environment itself.
     """
     from codeframe.adapters.llm import OPENAI_COMPATIBLE_PROVIDERS, get_provider
+    from codeframe.adapters.llm.errors import NO_KEY_SENT
 
     kwargs = settings.provider_kwargs()
     key, source = _require_api_key(settings, user_id)
@@ -305,7 +306,7 @@ def create_provider(settings: LLMSettings, user_id: Optional[int] = None):
             # Otherwise get_provider falls back to the env: the operator's key,
             # sent to a tenant's endpoint.
             key = "not-required"
-            source = "no key: this hosted server does not send its own to your endpoint"
+            source = NO_KEY_SENT
     if key:
         kwargs["api_key"] = key
     provider = get_provider(settings.provider_type, **kwargs)
