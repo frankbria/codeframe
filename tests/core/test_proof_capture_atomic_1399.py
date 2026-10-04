@@ -41,7 +41,18 @@ def _capture(ws, n):
     )
 
 
-def test_concurrent_captures_get_distinct_ids_rows_and_stub_dirs(ws):
+def test_concurrent_captures_get_distinct_ids_rows_and_stub_dirs(ws, monkeypatch):
+    import time
+
+    import codeframe.core.proof.capture as capture_mod
+
+    real_write = capture_mod.write_stub_files
+
+    def slow_write(*a, **k):
+        time.sleep(0.05)  # widen the read-to-save gap so the race is not luck
+        return real_write(*a, **k)
+
+    monkeypatch.setattr(capture_mod, "write_stub_files", slow_write)
     with ThreadPoolExecutor(max_workers=N) as pool:
         results = list(pool.map(lambda n: _capture(ws, n), range(N)))
 

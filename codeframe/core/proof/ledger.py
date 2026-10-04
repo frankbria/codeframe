@@ -411,10 +411,10 @@ def save_requirement(
     """Insert or replace a requirement in the ledger.
 
     Args:
-        create_only: Refuse to overwrite an existing id. Capture passes this so
-            a racing allocation cannot silently clobber another requirement —
-            INSERT OR REPLACE made that failure invisible (#923). The runner
-            leaves it False, since updating in place is exactly its job.
+        create_only: Refuse to overwrite an existing id — INSERT OR REPLACE
+            made a clobber invisible (#923). New requirements should come from
+            ``allocate_requirement`` instead; the runner leaves this False,
+            since updating in place is exactly its job.
     """
     _ensure_tables(workspace)
     conn = get_db_connection(workspace)
@@ -515,7 +515,9 @@ def list_requirements(
 def next_req_id(workspace: Workspace) -> str:
     """Generate the next sequential REQ-#### ID.
 
-    Uses MAX(id) to avoid collisions from deleted requirements.
+    Uses MAX(id) to avoid collisions from deleted requirements. Not for
+    creating requirements: the id is not reserved, so concurrent callers get
+    the same one. Use ``allocate_requirement`` (#1399).
     """
     _ensure_tables(workspace)
     conn = get_db_connection(workspace)
@@ -539,8 +541,8 @@ def allocate_requirement(
     then inserted on another. Two concurrent captures therefore read the same
     max, produced the same id, and the second silently replaced the first —
     sharing its stub directory. The allocate-and-insert now happens under one
-    IMMEDIATE transaction, and the retry covers the cross-process case where
-    another writer wins the id between attempts.
+    IMMEDIATE transaction, which holds the write lock from the MAX read to the
+    commit, across processes too.
 
     ``build(req_id)`` makes the requirement, and may write files named by the
     id (capture writes its stubs there). It runs inside the transaction, so
@@ -549,33 +551,22 @@ def allocate_requirement(
     """
     _ensure_tables(workspace)
 
-    for _ in range(_ALLOCATE_ATTEMPTS):
-        conn = get_db_connection(workspace)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            row = conn.execute(
-                "SELECT MAX(CAST(SUBSTR(id, 5) AS INTEGER)) FROM proof_requirements "
-                "WHERE workspace_id = ?",
-                (workspace.id,),
-            ).fetchone()
-            max_num = row[0] if row and row[0] is not None else 0
-            req = build(f"REQ-{max_num + 1:04d}")
-            conn.execute(f"INSERT {_INSERT_REQUIREMENT}", _requirement_row(workspace, req))
-            conn.commit()
-            return req
-        except sqlite3.IntegrityError:
-            # Another writer took this id between our read and insert.
-            conn.rollback()
-            continue
-        finally:
-            conn.close()  # uncommitted (build raised): rolled back
-
-    raise RuntimeError("Could not allocate a REQ id after repeated collisions")
-
-
-#: A handful of retries absorbs realistic contention; beyond that something is
-#: wrong and a loud failure beats a silent overwrite.
-_ALLOCATE_ATTEMPTS = 10
+    conn = get_db_connection(workspace)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT MAX(CAST(SUBSTR(id, 5) AS INTEGER)) FROM proof_requirements "
+            "WHERE workspace_id = ?",
+            (workspace.id,),
+        ).fetchone()
+        max_num = row[0] if row and row[0] is not None else 0
+        req = build(f"REQ-{max_num + 1:04d}")
+        # Plain INSERT: a clash fails loudly instead of replacing a row.
+        conn.execute(f"INSERT {_INSERT_REQUIREMENT}", _requirement_row(workspace, req))
+        conn.commit()
+        return req
+    finally:
+        conn.close()  # uncommitted (build raised): rolled back
 
 
 def mark_satisfied(workspace: Workspace, req: Requirement) -> None:
