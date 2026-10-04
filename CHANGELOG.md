@@ -145,6 +145,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Interactive-session cost is priced correctly, and unknown when it cannot be
+  (#1299).** Sessions on the web UI's default model, `claude-sonnet-4-6`, were
+  recorded at $0.00, and Opus 4.5 and Haiku 4.5 turns were mispriced, because
+  sessions kept their own stale price table. They now use the same
+  `MODEL_PRICING` as everything else, `CODEFRAME_MODEL_PRICING` included. A
+  session on a model with no price shows "Cost unknown" rather than $0.
 - **Web UI accessibility baseline, enforced in CI (#1298).** An axe-core pass
   (WCAG 2.1 AA) over the ten core pages at laptop and phone width now runs with
   the PR smoke suite and fails on serious or critical violations. It started at
