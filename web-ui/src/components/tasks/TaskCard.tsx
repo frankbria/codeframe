@@ -76,6 +76,7 @@ export function TaskCard({
     // screen readers never reached Execute or Stop (#1298). The title is the
     // keyboard and assistive-tech way in; the card stays clickable for a mouse.
     <Card
+      data-testid="task-card"
       className="cursor-pointer transition-colors focus-within:border-primary/50 hover:border-primary/50"
       onClick={() => onClick(task.id)}
     >

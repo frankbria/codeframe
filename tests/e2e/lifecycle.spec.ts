@@ -169,11 +169,15 @@ test.describe('@lifecycle Golden Path through the web UI', () => {
     });
 
     await goto(page, '/tasks');
-    const card = page.getByLabel(`View details for ${FIRST_TASK}`);
+    // The card is found by its title button: since #1298 the card itself is
+    // not a labelled role=button (it wrapped its own actions).
+    const card = page
+      .getByTestId('task-card')
+      .filter({ has: page.getByRole('button', { name: FIRST_TASK, exact: true }) });
     await expect(card).toBeVisible({ timeout: 30000 });
     // The decomposition has a real dependency edge, which is the thing the
     // prompt says an empty graph would mean it got wrong.
-    await expect(page.getByLabel(`View details for ${SECOND_TASK}`)).toBeVisible();
+    await expect(page.getByRole('button', { name: SECOND_TASK, exact: true })).toBeVisible();
 
     // ---- BUILD: approve one task ---------------------------------------
     // Scoped to the card, not the board: `.first()` would silently act on
