@@ -1,9 +1,10 @@
 /**
  * Content-Security-Policy + hardening headers for the web UI (#657).
  *
- * Defense-in-depth: the JWT lives in localStorage (streams authenticate with
- * single-use tickets, #745, never the JWT in a URL), so a CSP contains any
- * future XSS by locking down where injected JS can send data. connect-src is built from the
+ * Defense-in-depth: the JWT lives in localStorage, so a CSP contains any
+ * future XSS by locking down where injected JS can send data. (Streams
+ * authenticate with single-use tickets, #745, never the JWT in a URL.)
+ * connect-src is built from the
  * SAME build-time env the app uses for its API/WS calls, so it matches the
  * real backend without hardcoding a deploy URL.
  *
