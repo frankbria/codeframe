@@ -176,7 +176,8 @@ class TestPrdDiscoveryProviderResolution:
         ) as mock_create:
             session = PrdDiscoverySession(workspace)  # no api_key
 
-        assert session._llm_provider is fake_provider
+        # Wrapped to record spend (#1345); the resolved provider is inside.
+        assert session._llm_provider.inner is fake_provider
         mock_create.assert_called_once()
         settings = mock_create.call_args.args[0]
         assert settings.provider_type == "ollama"

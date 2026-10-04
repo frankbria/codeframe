@@ -350,7 +350,7 @@ cf blocker show <id>                  # Blocker details
 cf blocker answer <id> "answer"       # Unblock the agent
 
 # Diagnostics
-cf work diagnose <id>                 # AI-powered failure analysis
+cf work diagnose <id>                 # Pattern-based failure analysis
 cf env check                          # Validate environment
 cf env doctor                         # Comprehensive health check
 ```
@@ -385,7 +385,7 @@ resolved by waiving it with a justification.
 cf review                             # Run verification gates
 cf checkpoint create "milestone"      # Snapshot project state
 cf checkpoint list                    # List checkpoints
-cf checkpoint restore <id>            # Roll back to checkpoint
+cf checkpoint restore <id>            # Restore task statuses (files untouched)
 
 # Debugging
 cf work replay <run-id>               # Replay and debug a past run (built-in react engine)

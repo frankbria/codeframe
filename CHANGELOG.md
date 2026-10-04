@@ -162,6 +162,33 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   - `gitpython` is now `>=3.1.60,<4`. 3.1.59's Actor ReDoS was reachable
     through `/api/v2/git/commits`.
 
+- **The daily spend limit now counts THINK-stage and chat spend (#1345).**
+  #1303 limited task and batch runs only, and only ReactAgent wrote to the
+  `token_usage` table the limit sums. PRD stress-test and refine, discovery,
+  LLM task generation and interactive session chat spent tokens the limit
+  never saw. Each now records its usage (`call_type` `planning` or
+  `session_chat`), refuses with 429 `SPEND_LIMIT_EXCEEDED` once the user's
+  spend is used up, and reserves its share of what is left. That share is
+  enforced between calls, so a recursive stress test or a tool-calling chat
+  turn stops at the ceiling instead of running past it. An unpriced model's
+  spend cannot be counted, so a day with unpriced usage refuses, naming
+  `CODEFRAME_MODEL_PRICING`. Chat in a directory with no workspace ledger is
+  refused while a limit is on.
+- **Docs and deploy config match what ships (#1304).**
+  - `docs/GOLDEN_PATH.md`, which CLAUDE.md tells agents to read first, listed
+    an `IN_REVIEW` state and PR-driven task transitions that were never built,
+    and a status checklist claiming `prd generate`, the PR commands and
+    `cf auth` were missing. The state machine section now mirrors
+    `ALLOWED_TRANSITIONS`, and a test keeps the two equal. The checklist is
+    replaced by a pointer to the roadmap's Summary table.
+  - The production ports in `.env.production.example` and the Caddyfile
+    comment now match the compose defaults (14300/14400, not 3000/8000).
+  - `scripts/remote-setup.sh` installs Docker instead of PM2 and Node, and
+    names the compose deploy instead of a missing `deploy-staging.sh`.
+  - README: `cf checkpoint restore` restores task statuses, not files, and
+    `cf work diagnose` is pattern-based.
+  - A superseded legacy doc that carried the VPS's public IP is removed, and a
+    test fails on any routable IPv4 in tracked docs or deploy config.
 - **Concurrent `cf proof capture` runs no longer overwrite each other
   (#1399).** Capture read the next `REQ-####` id and saved the row later, on a
   separate connection with `INSERT OR REPLACE`. Two captures at once took the
