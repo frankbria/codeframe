@@ -71,8 +71,18 @@ describe('RunHistoryPanel', () => {
     const run = makeRun({ run_id: 'abc12345' });
     mockUseSWR.mockReturnValue({ data: [run], error: undefined, isLoading: false } as ReturnType<typeof useSWR>);
     render(<RunHistoryPanel workspacePath={WORKSPACE} onSelectRun={jest.fn()} selectedRunId="abc12345" />);
-    const rows = screen.getAllByRole('button');
-    expect(rows[0].className).toContain('bg-muted');
+    const button = screen.getAllByRole('button')[0];
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(button.closest('tr')!.className).toContain('bg-muted');
+  });
+
+  it('keeps table semantics: rows are rows, the control is a button in a cell (#1393)', () => {
+    const run = makeRun({ run_id: 'abc12345' });
+    mockUseSWR.mockReturnValue({ data: [run], error: undefined, isLoading: false } as ReturnType<typeof useSWR>);
+    render(<RunHistoryPanel workspacePath={WORKSPACE} onSelectRun={jest.fn()} selectedRunId={null} />);
+    expect(document.querySelector('tr[role]')).toBeNull();
+    expect(screen.getAllByRole('row')).toHaveLength(2); // header + one run
+    expect(screen.getByRole('button').closest('td')).not.toBeNull();
   });
 
   it('labels a vacuous pass distinctly instead of showing it as a pass (#1247)', () => {

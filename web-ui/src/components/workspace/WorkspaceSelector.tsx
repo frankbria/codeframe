@@ -43,8 +43,7 @@ export function WorkspaceSelector({
     await onSelectWorkspace(path);
   };
 
-  const handleRemoveRecent = async (workspaceId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleRemoveRecent = async (workspaceId: string) => {
     try {
       await removeWorkspace(workspaceId);
     } catch (err) {
@@ -144,22 +143,20 @@ export function WorkspaceSelector({
                     workspace.name ?? workspace.repo_path.split(/[\\/]/).pop() ?? workspace.repo_path;
                   const isStale = workspace.path_exists === false;
                   return (
-                  <li key={workspace.id}>
-                    <div
-                      role="button"
-                      tabIndex={isLoading ? -1 : 0}
-                      onClick={() => !isLoading && handleSelectRecent(workspace.repo_path)}
-                      onKeyDown={(e) => {
-                        if (e.target !== e.currentTarget) return;
-                        if ((e.key === 'Enter' || e.key === ' ') && !isLoading) {
-                          e.preventDefault();
-                          handleSelectRecent(workspace.repo_path);
-                        }
-                      }}
-                      className={`w-full flex items-center justify-between p-3 rounded-md border hover:bg-accent transition-colors text-left cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-ring aria-disabled:opacity-50 aria-disabled:cursor-not-allowed${
-                        isStale ? ' opacity-60' : ''
-                      }`}
-                      aria-disabled={isLoading}
+                  <li
+                    key={workspace.id}
+                    className={`flex items-center rounded-md border hover:bg-accent transition-colors${
+                      isStale ? ' opacity-60' : ''
+                    }`}
+                  >
+                    {/* Two sibling buttons, not a role=button row wrapping the
+                        remove button: nested interactive controls are an axe
+                        `nested-interactive` violation (#1393). */}
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleSelectRecent(workspace.repo_path)}
+                      className="flex-1 min-w-0 flex items-center justify-between p-3 rounded-md text-left cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <HugeiconsIcon icon={Folder01Icon} className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
@@ -181,26 +178,21 @@ export function WorkspaceSelector({
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                        {workspace.last_opened_at && (
-                          <span className="text-xs text-muted-foreground">
-                            {formatRelativeTime(workspace.last_opened_at)}
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={(e) => handleRemoveRecent(workspace.id, e)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
-                          }}
-                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive focus:outline-hidden focus:ring-2 focus:ring-ring"
-                          title="Remove from recent"
-                          aria-label={`Remove ${displayName} from recent projects`}
-                        >
-                          <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
+                      {workspace.last_opened_at && (
+                        <span className="text-xs text-muted-foreground flex-shrink-0 ml-4">
+                          {formatRelativeTime(workspace.last_opened_at)}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveRecent(workspace.id)}
+                      className="mr-3 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive focus:outline-hidden focus:ring-2 focus:ring-ring"
+                      title="Remove from recent"
+                      aria-label={`Remove ${displayName} from recent projects`}
+                    >
+                      <HugeiconsIcon icon={Cancel01Icon} className="h-4 w-4" />
+                    </button>
                   </li>
                   );
                 })}
