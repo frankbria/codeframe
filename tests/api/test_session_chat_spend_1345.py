@@ -54,17 +54,20 @@ def _turn(api_client: TestClient, session_id: str, events):
     return calls, received
 
 
-def test_chat_spend_is_recorded_where_the_limit_reads_it(api_client: TestClient, chat_ws):
+def test_the_socket_hands_the_producer_its_ledger(api_client: TestClient, chat_ws):
+    """The producer records (test below); the socket must give it the ledger."""
+    seen = {}
+
+    async def fake_adapter(session_id, user_message, token_queue, *a, **k):
+        seen.update(k)
+        await token_queue.put({"type": "done"})
+
     session_id = _create_session(api_client, str(chat_ws.repo_path))
-    _turn(api_client, session_id, [
-        {"type": "cost_update", "cost_usd": 0.5, "input_tokens": 1000, "output_tokens": 200},
-    ])
-    conn = sqlite3.connect(str(chat_ws.db_path))
-    try:
-        rows = conn.execute("SELECT input_tokens, output_tokens, call_type FROM token_usage").fetchall()
-    finally:
-        conn.close()
-    assert rows == [(1000, 200, "session_chat")]
+    with patch("codeframe.ui.routers.session_chat_ws._run_streaming_adapter", side_effect=fake_adapter):
+        with api_client.websocket_connect(_ws_url(session_id, mint_ticket(user_id=1))) as ws:
+            ws.send_json({"type": "message", "content": "Hi"})
+            assert ws.receive_json()["type"] == "done"
+    assert seen["usage_workspace"].repo_path == chat_ws.repo_path
 
 
 def test_a_message_over_the_limit_is_refused_before_the_model_is_called(
@@ -150,3 +153,68 @@ def test_a_chat_turn_releases_its_hold_when_it_ends(api_client: TestClient, chat
             break
         time.sleep(0.05)
     assert not spend_limit._held
+
+
+def test_chat_usage_is_recorded_by_the_producer_not_the_socket(chat_ws, monkeypatch):
+    """The turn's hold is released when the adapter task ends. Recording in
+    the relay let that happen before the rows were written, and a disconnect
+    dropped them entirely (codex P1). Nothing reads this queue."""
+    import asyncio
+
+    from codeframe.core.adapters.streaming_chat import ChatEvent, ChatEventType
+    from codeframe.ui.routers import session_chat_ws as mod
+
+    class FakeAdapter:
+        def __init__(self, **kw):
+            pass
+
+        async def send_message(self, **kw):
+            yield ChatEvent(type=ChatEventType.COST_UPDATE, cost_usd=0.5, input_tokens=1000, output_tokens=200)
+
+    monkeypatch.setattr(mod, "StreamingChatAdapter", FakeAdapter)
+    monkeypatch.setattr("codeframe.core.llm_resolution.create_provider", lambda *a, **k: object())
+
+    asyncio.run(mod._run_streaming_adapter(
+        "s1", "Hi", asyncio.Queue(), asyncio.Event(), None, chat_ws.repo_path,
+        usage_workspace=chat_ws,
+    ))
+
+    conn = sqlite3.connect(str(chat_ws.db_path))
+    try:
+        rows = conn.execute("SELECT input_tokens, output_tokens, call_type FROM token_usage").fetchall()
+    finally:
+        conn.close()
+    assert rows == [(1000, 200, "session_chat")]
+
+
+def test_a_new_message_replaces_a_turn_that_holds_the_whole_budget(api_client: TestClient, chat_ws, monkeypatch):
+    """An active turn holds all that is left, so reserving before cancelling it
+    refused every replacement message (codex P2)."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setenv(LIMIT_ENV, "50")
+    session_id = _create_session(api_client, str(chat_ws.repo_path))
+    db = api_client.app.state.db
+    db.conn.execute("UPDATE interactive_sessions SET user_id = 1 WHERE id = ?", (session_id,))
+    db.conn.commit()
+    calls = []
+
+    async def fake_adapter(session_id, user_message, token_queue, *a, **k):
+        calls.append(user_message)
+        if user_message == "first":
+            await asyncio.Event().wait()  # in flight until cancelled
+        await token_queue.put({"type": "done"})
+
+    with patch("codeframe.ui.routers.session_chat_ws._authenticate_websocket",
+               new=AsyncMock(return_value=(True, 1))), \
+         patch("codeframe.ui.routers.session_chat_ws._run_streaming_adapter", side_effect=fake_adapter):
+        with api_client.websocket_connect(_ws_url(session_id, mint_ticket(user_id=1))) as ws:
+            ws.send_json({"type": "message", "content": "first"})
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json()["type"] == "pong"  # the first turn is running
+            ws.send_json({"type": "message", "content": "second"})
+            msg = ws.receive_json()
+
+    assert msg["type"] == "done", msg
+    assert calls == ["first", "second"]
