@@ -240,7 +240,7 @@ class SupervisorResolver:
             return "asyncio_fixture_scope"
         if has("package manager", "pip", "npm"):
             return "package_manager"
-        if has("pytest") and re.search(r"(?<![a-z0-9])(fail|verification)", q):
+        if has("pytest") and has("fail", "fails", "failed", "failing", "failure", "failures", "verification"):
             return "pytest_failure"
         # Otherwise the whole question: a prefix let unrelated questions with
         # the same opening share an answer.

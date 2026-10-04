@@ -468,3 +468,15 @@ class TestClosedLoop:
 
         req = ledger.get_requirement(workspace, "REQ-0001")
         assert req.status == ReqStatus.SATISFIED
+
+
+def test_cli_actor_survives_a_uid_with_no_passwd_entry(monkeypatch):
+    """getpass.getuser raises KeyError (no passwd entry, no USER env), not only
+    OSError; an audited waive must not die on it (GLM review, #1306)."""
+    from codeframe.cli.helpers import cli_actor
+
+    def no_entry():
+        raise KeyError("getpwuid(): uid not found: 4242")
+
+    monkeypatch.setattr("getpass.getuser", no_entry)
+    assert cli_actor() == "cli"

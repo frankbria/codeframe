@@ -37,5 +37,5 @@ def cli_actor() -> str:
 
     try:
         return getpass.getuser()
-    except OSError:
+    except (OSError, KeyError):  # KeyError: a uid with no passwd entry
         return "cli"
