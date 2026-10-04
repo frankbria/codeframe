@@ -145,6 +145,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **The daily spend limit now counts THINK-stage and chat spend (#1345).**
+  #1303 limited task and batch runs only, and only ReactAgent wrote to the
+  `token_usage` table the limit sums. PRD stress-test and refine, discovery,
+  LLM task generation and interactive session chat spent tokens the limit
+  never saw. Each now records its usage (`call_type` `planning` or
+  `session_chat`), refuses with 429 `SPEND_LIMIT_EXCEEDED` once the user's
+  spend is used up, and reserves its share of what is left. That share is
+  enforced between calls, so a recursive stress test or a tool-calling chat
+  turn stops at the ceiling instead of running past it. An unpriced model's
+  spend cannot be counted, so a day with unpriced usage refuses, naming
+  `CODEFRAME_MODEL_PRICING`. Chat in a directory with no workspace ledger is
+  refused while a limit is on.
+
 - **A rejected LLM key is reported as one on the PRD and discovery routes (#1328).**
   Refine, discovery start, answer and PRD/task generation returned an opaque 500
   "internal error" when the provider rejected the key. They now return
