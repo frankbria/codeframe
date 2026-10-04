@@ -88,13 +88,13 @@ def test_the_adapter_command_actually_writes_a_file(repo: Path) -> None:
     whole false-completion class here.
     """
     adapter = OpenCodeAdapter()
-    cmd = adapter.build_command(
-        "Create a file named smoke.txt containing exactly the word: works", repo
-    )
+    prompt = "Create a file named smoke.txt containing exactly the word: works"
+    cmd = adapter.build_command(prompt, repo)
 
     try:
         proc = subprocess.run(
-            cmd, cwd=repo, capture_output=True, text=True, timeout=_TIMEOUT_S
+            cmd, cwd=repo, capture_output=True, text=True, timeout=_TIMEOUT_S,
+            input=adapter.get_stdin(prompt),
         )
     except subprocess.TimeoutExpired:
         pytest.skip(f"opencode did not complete within {_TIMEOUT_S}s")
