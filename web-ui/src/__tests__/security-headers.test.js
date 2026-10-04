@@ -38,7 +38,26 @@ describe('security headers (#657)', () => {
     const cs = buildConnectSrc({ apiUrl: '', wsUrl: '' });
     expect(cs).not.toContain('*');
     expect(cs).toContain("'self'");
-    expect(cs).toContain('ws://localhost:8000');
+    // The same loopback defaults the streams dial (#1296): cf serve's port.
+    expect(cs).toContain('ws://localhost:8080');
+    expect(cs).toContain('http://localhost:8080');
+    expect(cs).not.toContain(':8000');
+  });
+
+  test('connect-src allows the SSE origin the streams dial (#1296)', () => {
+    // An explicit SSE origin is dialled directly, so the CSP must list it.
+    const cs = buildConnectSrc({
+      apiUrl: 'https://app.example.com',
+      sseUrl: 'https://events.example.com',
+    });
+    expect(cs).toContain('https://events.example.com');
+  });
+
+  test('with only an API URL, the derived socket origin is allowed (#1296)', () => {
+    // wsBase derives wss://<api host>; the CSP used to add ws://localhost:8000.
+    const cs = buildConnectSrc({ apiUrl: 'https://app.example.com' });
+    expect(cs).toContain('wss://app.example.com');
+    expect(cs).not.toContain('localhost');
   });
 
   test('production CSP does not allow eval (#783)', () => {
@@ -151,5 +170,24 @@ describe('the nonce requires dynamic rendering (#936)', () => {
     expect(proxy).toMatch(/requestHeaders\.set\(\s*'Content-Security-Policy'/);
     expect(proxy).toMatch(/response\.headers\.set\(\s*'Content-Security-Policy'/);
     expect(proxy).toContain('getRandomValues');
+  });
+});
+
+describe('proxy.ts feeds the CSP the build-time origins (#1296)', () => {
+  // proxy.ts used to call buildCsp(process.env). Next inlines only the literal
+  // `process.env.NEXT_PUBLIC_X` form, and the image's runner stage has no
+  // NEXT_PUBLIC_* at all, so the shipped CSP always fell back to loopback
+  // while the client dialled the origin baked in at build.
+  const source = fs.readFileSync(path.join(process.cwd(), 'src/proxy.ts'), 'utf8');
+
+  test.each(['NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_WS_URL', 'NEXT_PUBLIC_SSE_URL'])(
+    'reads %s as a literal process.env expression',
+    (key) => {
+      expect(source).toContain(`process.env.${key}`);
+    }
+  );
+
+  test('never hands buildCsp the env object itself', () => {
+    expect(source).not.toMatch(/buildCsp\(\s*process\.env\s*[,)]/);
   });
 });

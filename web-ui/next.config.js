@@ -15,11 +15,11 @@ const nextConfig = {
     // BACKEND_ORIGIN is a BUILD-TIME env, not a runtime one. Standalone output
     // snapshots this config into .next/required-server-files.json during
     // `next build`, so setting it on the container has no effect — verified by
-    // watching the container still dial localhost:8000 (#1121). It is a
+    // watching the container still dial the localhost default (#1121). It is a
     // build arg in web-ui/Dockerfile alongside NEXT_PUBLIC_*, for the same
     // reason and with the same consequence: one image per environment.
-    // Default unchanged for local dev.
-    const backendOrigin = process.env.BACKEND_ORIGIN || 'http://localhost:8000';
+    // The local default is `cf serve`'s port (#1296).
+    const backendOrigin = process.env.BACKEND_ORIGIN || 'http://localhost:8080';
     // Refuse to proxy a request that already names a client address (#1274).
     // Next's rewrite proxy keeps a client-sent X-Forwarded-For as is, so the
     // backend (which trusts loopback as a proxy) would let the client pick its
