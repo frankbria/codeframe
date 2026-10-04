@@ -207,12 +207,15 @@ async def restore_checkpoint(
         HTTPException: 404 if checkpoint not found
     """
     try:
-        checkpoint = checkpoints.restore(workspace, checkpoint_id)
+        result = checkpoints.restore(workspace, checkpoint_id)
+        checkpoint = result.checkpoint
         return {
             "success": True,
             "checkpoint_id": checkpoint.id,
             "checkpoint_name": checkpoint.name,
             "message": f"Restored state from checkpoint '{checkpoint.name}'",
+            "restored": result.restored,
+            "skipped": result.skipped,
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

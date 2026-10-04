@@ -5977,13 +5977,17 @@ def checkpoint_restore(
 
     try:
         workspace = get_workspace(path)
-        checkpoint = checkpoints.restore(workspace, name_or_id)
-
-        summary = checkpoint.snapshot.get("summary", {})
+        result = checkpoints.restore(workspace, name_or_id)
 
         console.print("\n[bold green]Checkpoint restored[/bold green]")
-        console.print(f"  Name: {escape(checkpoint.name)}")
-        console.print(f"  Tasks restored: {summary.get('total_tasks', 0)}")
+        console.print(f"  Name: {escape(result.checkpoint.name)}")
+        console.print(f"  Tasks restored: {result.restored}")
+        if result.skipped:
+            console.print(
+                f"  [yellow]Left as they are ({len(result.skipped)}):[/yellow] "
+                "MERGED, or with a run in progress — "
+                + ", ".join(escape(t[:8]) for t in result.skipped)
+            )
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
