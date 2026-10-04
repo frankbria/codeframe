@@ -159,6 +159,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Two more `role="button"` wrappers are real buttons (#1393).** A recent
+  project on the workspace selector was a `div role="button"` that wrapped its
+  own remove button (axe `nested-interactive`). It is now two sibling buttons.
+  Proof run history made each `<tr>` a `role="button"`, which hid the table's
+  row and column relationships from screen readers. The row keeps its table
+  semantics, with a pressed button in its first cell. The a11y smoke spec now
+  also scans the workspace selector and a proof page with run history.
+
 - **The daily spend limit now counts THINK-stage and chat spend (#1345).**
   #1303 limited task and batch runs only, and only ReactAgent wrote to the
   `token_usage` table the limit sums. PRD stress-test and refine, discovery,
