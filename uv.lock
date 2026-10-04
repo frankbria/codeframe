@@ -592,7 +592,6 @@ dependencies = [
     { name = "anthropic" },
     { name = "bandit" },
     { name = "bcrypt" },
-    { name = "click" },
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "fastapi-users", extra = ["sqlalchemy"] },
@@ -672,7 +671,6 @@ requires-dist = [
     { name = "bandit", specifier = ">=1.8.6" },
     { name = "bcrypt", specifier = ">=4.2.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.3.1" },
-    { name = "click", specifier = ">=8.1,<8.5" },
     { name = "cryptography", specifier = ">=46.0.7" },
     { name = "e2b", marker = "extra == 'cloud'", specifier = ">=2.0.0" },
     { name = "e2b", marker = "extra == 'dev'", specifier = ">=2.0.0" },
@@ -723,7 +721,7 @@ requires-dist = [
     { name = "tree-sitter-javascript", specifier = ">=0.20.3" },
     { name = "tree-sitter-python", specifier = ">=0.20.4" },
     { name = "tree-sitter-typescript", specifier = ">=0.20.3" },
-    { name = "typer", specifier = ">=0.9.0,<0.20" },
+    { name = "typer", specifier = ">=0.27,<0.28" },
     { name = "urllib3", specifier = ">=2.7.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27.0" },
     { name = "websockets", specifier = ">=12.0" },
@@ -3263,17 +3261,17 @@ wheels = [
 
 [[package]]
 name = "typer"
-version = "0.19.2"
+version = "0.27.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click" },
+    { name = "annotated-doc" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "rich" },
     { name = "shellingham" },
-    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/21/ca/950278884e2ca20547ff3eb109478c6baf6b8cf219318e6bc4f666fad8e8/typer-0.19.2.tar.gz", hash = "sha256:9ad824308ded0ad06cc716434705f691d4ee0bfd0fb081839d2e426860e7fdca", size = 104755, upload-time = "2025-09-23T09:47:48.256Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/16/f7/57713ba479fd405eb76de31404b2c744c289e336b2d999511ebf51e496f7/typer-0.27.2.tar.gz", hash = "sha256:269b7eb9d3c202ca84b4bc9618cb04ebb43d3d4d1e567e4c768607232c05f945", size = 204045, upload-time = "2026-08-28T10:26:55.046Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/00/22/35617eee79080a5d071d0f14ad698d325ee6b3bf824fc0467c03b30e7fa8/typer-0.19.2-py3-none-any.whl", hash = "sha256:755e7e19670ffad8283db353267cb81ef252f595aa6834a0d1ca9312d9326cb9", size = 46748, upload-time = "2025-09-23T09:47:46.777Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/bf/205d0004930ede8f542fb58f601526fccf4ae7626075ca1e6c4de5d3d652/typer-0.27.2-py3-none-any.whl", hash = "sha256:b3a5fc4342d5fc8fda8fc3010b1cf117e9249aab7fae800c2eff62fd3842d97d", size = 123130, upload-time = "2026-08-28T10:26:53.752Z" },
 ]
 
 [[package]]
