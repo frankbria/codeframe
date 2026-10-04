@@ -74,3 +74,28 @@ def test_per_edit_lint_still_parses_errors_in_the_default_format(readme_install_
     assert check.status == GateStatus.FAILED, check.output
     assert any(e.get("code") == "F401" for e in check.detailed_errors), check.output
     assert "F401" in check.output  # what the agent reads
+
+
+def test_the_agent_sees_every_finding_not_the_first_few(readme_install_path, repo):
+    """Without --output-format=concise, ruff's full format spends ~7 lines a
+    finding, and the agent's tool result is capped at 2000 chars: only the
+    first handful of 15 findings reached it (GLM review). The agent now gets
+    one line per parsed finding."""
+    from codeframe.adapters.llm.mock import MockProvider
+    from codeframe.core.react_agent import ReactAgent
+    from codeframe.core.workspace import create_or_load_workspace
+
+    (repo / "app.py").write_text("".join(f"import mod{i}\n" for i in range(15)))
+    agent = ReactAgent(workspace=create_or_load_workspace(repo), llm_provider=MockProvider())
+
+    feedback = agent._run_lint_on_file("app.py")
+
+    assert feedback.count("F401") == 15, feedback
+
+
+def test_autofix_with_bundled_ruff_and_a_newer_config_skips(readme_install_path, repo):
+    (repo / "ruff.toml").write_text(NEWER_CONFIGS["unknown-field"])
+
+    check = core_gates.run_autofix_on_file(repo / "app.py", repo)
+
+    assert check.status == GateStatus.SKIPPED, check.output
