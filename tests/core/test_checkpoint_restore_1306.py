@@ -29,7 +29,8 @@ def test_restore_skips_merged_and_running_tasks_and_counts_real_updates(ws):
     merged = tasks.create(ws, title="merged")
     running = tasks.create(ws, title="running")
     gone = tasks.create(ws, title="deleted later")
-    for t in (plain, merged, running, gone):
+    same = tasks.create(ws, title="unchanged since")
+    for t in (plain, merged, running, gone, same):
         _walk(ws, t.id, TaskStatus.READY)
     cp = checkpoints.create(ws, "before", include_git_ref=False)
 
@@ -43,5 +44,6 @@ def test_restore_skips_merged_and_running_tasks_and_counts_real_updates(ws):
     assert tasks.get(ws, plain.id).status == TaskStatus.READY
     assert tasks.get(ws, merged.id).status == TaskStatus.MERGED
     assert tasks.get(ws, running.id).status == TaskStatus.IN_PROGRESS
-    assert result.restored == 1
+    assert tasks.get(ws, same.id).status == TaskStatus.READY
+    assert result.restored == 1  # `same` matched but did not change
     assert set(result.skipped) == {merged.id, running.id}

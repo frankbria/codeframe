@@ -184,7 +184,7 @@ def list_all(workspace: Workspace, limit: int = 50) -> list[Checkpoint]:
 @dataclass
 class RestoreResult:
     checkpoint: Checkpoint
-    restored: int  # task rows actually changed
+    restored: int  # tasks whose status actually changed
     skipped: list[str]  # task ids left alone: MERGED, or with a live run
 
 
@@ -222,29 +222,41 @@ def restore(workspace: Workspace, checkpoint_id: str) -> RestoreResult:
         cursor = conn.cursor()
         for task_data in snapshot.get("tasks", []):
             task_id = task_data["id"]
-            current = cursor.execute(
-                "SELECT status FROM tasks WHERE id = ? AND workspace_id = ?",
-                (task_id, workspace.id),
-            ).fetchone()
-            if current is None:
-                continue  # deleted since the checkpoint
-            live_run = cursor.execute(
-                "SELECT 1 FROM runs WHERE workspace_id = ? AND task_id = ? "
-                "AND status IN ('RUNNING', 'BLOCKED') LIMIT 1",
-                (workspace.id, task_id),
-            ).fetchone()
-            if current[0] == TaskStatus.MERGED.value or live_run:
-                skipped.append(task_id)
-                continue
+            # The guard is part of the UPDATE, so a run that starts between a
+            # check and the write cannot be rewound (#1306 review).
             cursor.execute(
                 """
                 UPDATE tasks
                 SET status = ?, updated_at = ?
-                WHERE id = ? AND workspace_id = ?
+                WHERE id = ? AND workspace_id = ? AND status != ? AND status != ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM runs
+                      WHERE runs.workspace_id = tasks.workspace_id
+                        AND runs.task_id = tasks.id
+                        AND runs.status IN ('RUNNING', 'BLOCKED'))
                 """,
-                (task_data["status"], _utc_now().isoformat(), task_id, workspace.id),
+                (
+                    task_data["status"], _utc_now().isoformat(), task_id, workspace.id,
+                    task_data["status"], TaskStatus.MERGED.value,
+                ),
             )
-            restored += cursor.rowcount
+            if cursor.rowcount:
+                restored += 1
+                continue
+            # Not changed: deleted, already at that status, or guarded.
+            guarded = cursor.execute(
+                """
+                SELECT 1 FROM tasks
+                WHERE id = ? AND workspace_id = ? AND (status = ? OR EXISTS (
+                    SELECT 1 FROM runs
+                    WHERE runs.workspace_id = tasks.workspace_id
+                      AND runs.task_id = tasks.id
+                      AND runs.status IN ('RUNNING', 'BLOCKED')))
+                """,
+                (task_id, workspace.id, TaskStatus.MERGED.value),
+            ).fetchone()
+            if guarded:
+                skipped.append(task_id)
         conn.commit()
     finally:
         conn.close()

@@ -428,6 +428,7 @@ class Agent:
         Returns:
             Final AgentState
         """
+        self._run_started = time.monotonic()  # the completion event reads it
         self.state = state
         # Resume is exactly the bypass the prior-cost lookup exists to close: a
         # blocked task answered and resumed would otherwise start again at $0
