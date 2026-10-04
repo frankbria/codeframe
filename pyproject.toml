@@ -59,7 +59,7 @@ dependencies = [
     # vendoring its own click, which broke `cf proof capture`, --help and
     # telemetry on a fresh install. The installed-click objects that broke are
     # gone, but raise this only together with a run of tests/cli against it.
-    "typer>=0.9.0,<0.20",
+    "typer>=0.9.0,<0.28",
     # Not imported directly; capped because the typer above is. typer 0.19
     # imports click.utils.get_binary_stream, which click 8.5 deprecates and
     # click 9 removes, so an uncapped click is a fresh install whose `cf` dies
