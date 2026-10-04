@@ -34,7 +34,7 @@ function lineNumberClassName(type: DiffHunkLine['type']): string {
     case 'addition':
       return 'text-green-700 bg-green-500/5';
     case 'deletion':
-      return 'text-red-600 bg-red-500/5';
+      return 'text-red-700 bg-red-500/5';
     default:
       return 'text-muted-foreground';
   }
@@ -45,7 +45,7 @@ function contentClassName(type: DiffHunkLine['type']): string {
     case 'addition':
       return 'text-green-700';
     case 'deletion':
-      return 'text-red-600';
+      return 'text-red-700';
     default:
       return 'text-foreground';
   }
@@ -171,12 +171,12 @@ export function DiffViewer({ diffFiles, selectedFile, tasks, contextTask, change
                   </span>
                   <span className="ml-auto flex shrink-0 gap-2 text-xs">
                     {file.insertions > 0 && (
-                      <span className="font-mono text-green-600">
+                      <span className="font-mono text-green-700">
                         +{file.insertions}
                       </span>
                     )}
                     {file.deletions > 0 && (
-                      <span className="font-mono text-red-600">
+                      <span className="font-mono text-red-700">
                         -{file.deletions}
                       </span>
                     )}

@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { Loading03Icon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface MarkdownEditorProps {
   content: string;
@@ -38,14 +38,14 @@ export function MarkdownEditor({
   }, [draft, changeSummary, hasChanges, onSave]);
 
   return (
-    <div className="space-y-3">
+    // One Tabs around triggers AND panels: with the panels outside it, each
+    // trigger's aria-controls named a tabpanel that never existed (#1298).
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
       <div className="flex items-center justify-between">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="edit">Edit</TabsTrigger>
-            <TabsTrigger value="preview">Preview</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <TabsList>
+          <TabsTrigger value="edit">Edit</TabsTrigger>
+          <TabsTrigger value="preview">Preview</TabsTrigger>
+        </TabsList>
 
         {hasChanges && (
           <div className="flex items-center gap-2">
@@ -70,16 +70,17 @@ export function MarkdownEditor({
         )}
       </div>
 
-      {activeTab === 'edit' && (
+      <TabsContent value="edit">
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           className="min-h-[400px] w-full rounded-md border bg-background px-4 py-3 font-mono text-sm leading-relaxed placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
           placeholder="Write your PRD in markdown..."
+          aria-label="PRD markdown"
         />
-      )}
+      </TabsContent>
 
-      {activeTab === 'preview' && (
+      <TabsContent value="preview">
         <div className="min-h-[400px] rounded-md border px-4 py-3">
           {draft.trim() ? (
             <div className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:text-sm prose-pre:bg-muted prose-pre:text-foreground">
@@ -91,7 +92,7 @@ export function MarkdownEditor({
             </p>
           )}
         </div>
-      )}
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }

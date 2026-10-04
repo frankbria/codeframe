@@ -39,7 +39,7 @@ export function ReviewHeader({
             </span>
           </span>
           <span className="font-mono text-green-700">+{insertions}</span>
-          <span className="font-mono text-red-600">-{deletions}</span>
+          <span className="font-mono text-red-700">-{deletions}</span>
         </div>
 
         {/* Center: Quality gate badges */}

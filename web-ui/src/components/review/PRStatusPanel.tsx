@@ -280,7 +280,7 @@ export function PRStatusPanel({ prNumber, workspacePath }: PRStatusPanelProps) {
                   <Link
                     key={req.id}
                     href={`/proof/${req.id}`}
-                    className="text-xs text-red-600 hover:underline"
+                    className="text-xs text-red-700 hover:underline"
                   >
                     {req.title}
                   </Link>

@@ -28,7 +28,7 @@ export function TopTasksTable({ tasks, isLoading }: TopTasksTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
+    <div tabIndex={0} role="region" aria-label="Top tasks by cost" className="overflow-x-auto rounded-lg border">
       <table
         data-testid="top-tasks-table"
         className="w-full text-sm"
