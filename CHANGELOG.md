@@ -166,6 +166,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A provider's 400 says the request was rejected, and why (#1349).** Any
+  status without its own mapping was reported as "The … API call failed", a
+  connection error, and the provider's reason appeared only with
+  `CODEFRAME_VERBOSE=1`. A model rejecting a parameter therefore sent users to
+  check their network. A 400 now raises `LLMRequestRejectedError`, which names
+  HTTP 400, quotes the provider's own message, and points at the model or
+  request rather than the network. Transport failures with no HTTP status are
+  still connection errors.
+
 - **A rejected API key's error says where that key came from (#1346).** The
   401 message guessed: "$ANTHROPIC_API_KEY, or when unset the stored key".
   For OpenAI-compatible providers it read the environment itself. It now names
