@@ -43,8 +43,7 @@ export function WorkspaceSelector({
     await onSelectWorkspace(path);
   };
 
-  const handleRemoveRecent = async (workspaceId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleRemoveRecent = async (workspaceId: string) => {
     try {
       await removeWorkspace(workspaceId);
     } catch (err) {
@@ -187,7 +186,7 @@ export function WorkspaceSelector({
                     </button>
                     <button
                       type="button"
-                      onClick={(e) => handleRemoveRecent(workspace.id, e)}
+                      onClick={() => handleRemoveRecent(workspace.id)}
                       className="mr-3 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive focus:outline-hidden focus:ring-2 focus:ring-ring"
                       title="Remove from recent"
                       aria-label={`Remove ${displayName} from recent projects`}
