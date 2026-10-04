@@ -337,6 +337,36 @@ class TestSessionChatWSProtocol:
                 deltas = [e for e in events if e["type"] == "text_delta"]
                 assert len(deltas) < 10
 
+    def _run_turns(self, api_client, session_id, costs):
+        """One websocket turn per entry in ``costs`` (None = an unpriced turn)."""
+        ticket = mint_ticket(user_id=1)
+        turns = iter(costs)
+
+        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None, user_id=None):
+            await token_queue.put({"type": "cost_update", "cost_usd": next(turns), "input_tokens": 100, "output_tokens": 50})
+            await token_queue.put({"type": "done"})
+
+        with patch("codeframe.ui.routers.session_chat_ws._run_streaming_adapter", side_effect=fake_adapter):
+            with api_client.websocket_connect(_ws_url(session_id, ticket)) as ws:
+                for _ in costs:
+                    ws.send_json({"type": "message", "content": "Hi"})
+                    while ws.receive_json()["type"] != "done":
+                        pass
+        return api_client.get(f"/api/v2/sessions/{session_id}").json()
+
+    def test_an_unpriced_turn_makes_the_session_cost_unknown_not_zero(self, api_client: TestClient):
+        """#1299: an unpriced model's turns were stored as $0.00."""
+        data = self._run_turns(api_client, _create_session(api_client), [None])
+        assert data["cost_usd"] is None
+        assert data["input_tokens"] == 100
+
+    def test_an_unknown_session_cost_stays_unknown(self, api_client: TestClient):
+        """A total that includes unpriced spend is unknown, so a later priced
+        turn must not turn it back into a number."""
+        data = self._run_turns(api_client, _create_session(api_client), [None, 0.005])
+        assert data["cost_usd"] is None
+        assert data["input_tokens"] == 200
+
     def test_cost_update_written_to_db(self, api_client: TestClient):
         """Cost/token update from adapter is persisted to DB after each turn."""
         session_id = _create_session(api_client)

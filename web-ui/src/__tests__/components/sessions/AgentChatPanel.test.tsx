@@ -280,6 +280,12 @@ describe('AgentChatPanel', () => {
     expect(screen.getByText('$0.0031')).toBeInTheDocument();
   });
 
+  it('says the cost is unknown when the session model is unpriced (#1299)', () => {
+    setupMock(makeState({ costUsd: null }));
+    render(<AgentChatPanel sessionId="sess-1" />);
+    expect(screen.getByText(/cost unknown/i)).toBeInTheDocument();
+  });
+
   it('shows green status dot when connected and idle', () => {
     setupMock(makeState({ status: 'idle', connected: true }));
     render(<AgentChatPanel sessionId="sess-1" />);

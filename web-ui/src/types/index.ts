@@ -589,7 +589,8 @@ export interface Session {
   model: string;
   created_at: string;
   ended_at: string | null;
-  cost_usd: number;
+  /** null when a turn used an unpriced model: unknown, never $0 (#1299). */
+  cost_usd: number | null;
   agent_name: string | null;
 }
 
@@ -633,7 +634,7 @@ export type AgentChatStatus =
 export interface AgentChatState {
   messages: ChatMessage[];
   status: AgentChatStatus;
-  costUsd: number;
+  costUsd: number | null;
   inputTokens: number;
   outputTokens: number;
   error: string | null;
