@@ -64,7 +64,7 @@ dependencies = [
     # imports click.utils.get_binary_stream, which click 8.5 deprecates and
     # click 9 removes, so an uncapped click is a fresh install whose `cf` dies
     # at import. Lift together with typer (#1268).
-    "click>=8.1,<8.5",
+    "click>=8.1,<8.6",
     "rich>=13.7.0",
     "textual>=0.86.0",
     "requests>=2.33.0",
