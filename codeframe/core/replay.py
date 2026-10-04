@@ -130,6 +130,11 @@ class ExecutionRecorder:
         self._step_buffer: list[ExecutionStep] = []
         self._llm_buffer: list[LLMInteraction] = []
         self._file_op_buffer: list[FileOperation] = []
+        # The recorder numbers steps, not the agent: a stall retry builds a
+        # new agent and `cf work resume` re-executes the same run id, and each
+        # restarts its iteration count at 1. Agent numbers would interleave
+        # two attempts under one run in replay, jump and diff (#1300).
+        self._last_step = _max_step_number(workspace, run_id)
 
     def record_iteration(
         self,
@@ -140,7 +145,9 @@ class ExecutionRecorder:
         """Record one iteration of the react loop as an ExecutionStep.
 
         Args:
-            step_number: 1-based iteration number.
+            step_number: The agent's 1-based iteration number. Kept for the
+                caller's record only: the stored step number continues the
+                run's sequence (see ``__init__``).
             tool_names: Names of tools called in this iteration.
             llm_response_summary: Short summary of the LLM response.
 
@@ -149,13 +156,14 @@ class ExecutionRecorder:
         """
         step_id = str(uuid.uuid4())
         now = _utc_now()
+        self._last_step += 1
         description = (
             f"Tools: {', '.join(tool_names)}" if tool_names else llm_response_summary
         )
         step = ExecutionStep(
             id=step_id,
             run_id=self.run_id,
-            step_number=step_number,
+            step_number=self._last_step,
             step_type="tool_call",
             description=description,
             started_at=now,
@@ -297,6 +305,19 @@ def save_execution_step(workspace: Workspace, step: ExecutionStep) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def _max_step_number(workspace: Workspace, run_id: str) -> int:
+    """The highest step number already stored for ``run_id`` (0 if none)."""
+    conn = get_db_connection(workspace)
+    try:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(step_number), 0) FROM execution_steps WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return int(row[0])
 
 
 def get_execution_steps(

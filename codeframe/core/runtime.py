@@ -994,8 +994,15 @@ def execute_agent(
             }
             # Stall detection is only relevant for the react engine
             if engine in _STALL_AWARE_ENGINES:
+                from codeframe.core.replay import ExecutionRecorder
+
                 builtin_kwargs["stall_timeout_s"] = stall_timeout_s
                 builtin_kwargs["stall_action"] = resolved_action
+                # Without this no production run recorded a trace, so `cf
+                # work replay/diff/export-trace/rerun` always found none
+                # (#1300). State lives on the main workspace, as for every
+                # other run record, even when the run is in a worktree.
+                builtin_kwargs["execution_recorder"] = ExecutionRecorder(workspace, run.id)
             else:
                 # The plan engine's supervisor resolves its own provider (#1264).
                 builtin_kwargs["user_id"] = user_id
