@@ -63,6 +63,39 @@ def spend_budget(amount_usd: Optional[float]) -> Iterator[None]:
         _budget.reset(token)
 
 
+def check_budget() -> None:
+    """Raise ``SpendLimitExceeded`` if this context's budget is used up.
+
+    Called before every billable model call made under a reserved budget.
+    """
+    from codeframe.core.spend_limit import SpendLimitExceeded
+
+    budget = _budget.get()
+    if budget is None:
+        return
+    if budget.unmetered:
+        raise SpendLimitExceeded(
+            "This model has no price, so its spend cannot be counted against "
+            "the daily spend limit. Price it with CODEFRAME_MODEL_PRICING."
+        )
+    if budget.spent >= budget.limit:
+        raise SpendLimitExceeded(
+            f"This run used its ${budget.limit:.2f} share of today's spend "
+            "limit. It resets at midnight UTC."
+        )
+
+
+def charge_budget(cost_usd: Optional[float]) -> None:
+    """Count one call's cost against this context's budget (``None``: unpriced)."""
+    budget = _budget.get()
+    if budget is None:
+        return
+    if cost_usd is None:
+        budget.unmetered = True
+    else:
+        budget.spent += cost_usd
+
+
 def record_llm_usage(
     workspace: Workspace,
     *,
@@ -109,32 +142,15 @@ class UsageRecordingProvider:
         return self._inner
 
     def complete(self, *args: Any, **kwargs: Any) -> Any:
-        from codeframe.core.spend_limit import SpendLimitExceeded
         from codeframe.lib.metrics_tracker import MetricsTracker
 
-        budget = _budget.get()
-        if budget is not None:
-            if budget.unmetered:
-                raise SpendLimitExceeded(
-                    "This model has no price, so its spend cannot be counted against "
-                    "the daily spend limit. Price it with CODEFRAME_MODEL_PRICING."
-                )
-            if budget.spent >= budget.limit:
-                raise SpendLimitExceeded(
-                    f"This run used its ${budget.limit:.2f} share of today's spend "
-                    "limit. It resets at midnight UTC."
-                )
-
+        check_budget()
         response = self._inner.complete(*args, **kwargs)
         model = getattr(response, "model", "") or getattr(self._inner, "model", "") or ""
         input_tokens = getattr(response, "input_tokens", 0) or 0
         output_tokens = getattr(response, "output_tokens", 0) or 0
-        if budget is not None:
-            cost = MetricsTracker.calculate_cost(model, input_tokens, output_tokens)
-            if cost is None:
-                budget.unmetered = True
-            else:
-                budget.spent += cost
+        if _budget.get() is not None:
+            charge_budget(MetricsTracker.calculate_cost(model, input_tokens, output_tokens))
         try:
             record_llm_usage(
                 self._workspace,

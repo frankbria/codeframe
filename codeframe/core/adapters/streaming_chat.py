@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import AsyncIterator, Optional
 
 from codeframe.adapters.llm.base import LLMProvider, Tool, ToolCall, ToolResult
+from codeframe.core.usage_recording import charge_budget, check_budget
 from codeframe.lib.metrics_tracker import MetricsTracker
 from codeframe.core.tools import (
     execute_tool,
@@ -475,6 +476,9 @@ class StreamingChatAdapter:
         use_extended_thinking = self._provider.supports("extended_thinking")
 
         while True:
+            # Each tool continuation is another billable call; a turn runs
+            # under the budget the caller reserved for it (#1345).
+            check_budget()
             pending_tool_calls: list[dict] = []  # {id, name, input}
             assistant_text = ""  # text emitted by the model this API turn
             stop_reason = "end_turn"
@@ -519,17 +523,19 @@ class StreamingChatAdapter:
                             if tc["id"] in chunk.tool_inputs_by_id:
                                 tc["input"] = chunk.tool_inputs_by_id[tc["id"]]
 
+                    turn_cost = MetricsTracker.calculate_cost(
+                        self._model,
+                        chunk.input_tokens or 0,
+                        chunk.output_tokens or 0,
+                    )
+                    charge_budget(turn_cost)
                     yield ChatEvent(
                         type=ChatEventType.COST_UPDATE,
                         input_tokens=chunk.input_tokens,
                         output_tokens=chunk.output_tokens,
                         # The one price table, overrides included; None means
                         # unpriced, never $0 (#1299, the #932 rule).
-                        cost_usd=MetricsTracker.calculate_cost(
-                            self._model,
-                            chunk.input_tokens or 0,
-                            chunk.output_tokens or 0,
-                        ),
+                        cost_usd=turn_cost,
                     )
 
                 # tool_use_stop is informational only — no ChatEvent needed

@@ -34,6 +34,7 @@ would be redundant. Revisit if multi-tenant workspace isolation is required.
 """
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -403,10 +404,20 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             "code": "SPEND_LIMIT_EXCEEDED",
                         })
                         continue
+                    turn_budget = None
                     if chat_workspace is not None:
                         try:
-                            await asyncio.to_thread(
-                                check_spend_limit, websocket, chat_workspace, {"user_id": user_id}
+                            # Reserved for this turn and enforced between its
+                            # model calls (tool continuations); released when
+                            # the turn's task ends, however it ends.
+                            _scope, turn_budget = await asyncio.to_thread(
+                                functools.partial(
+                                    check_spend_limit,
+                                    websocket,
+                                    chat_workspace,
+                                    {"user_id": user_id},
+                                    reserve=True,
+                                )
                             )
                         except HTTPException as exc:
                             detail = exc.detail if isinstance(exc.detail, dict) else {}
@@ -443,6 +454,11 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             session_id,
                         )
                     workspace_path = validated_workspace or Path(".")
+                    # create_task copies the current context, so the adapter's
+                    # calls run under this turn's budget.
+                    from codeframe.core.usage_recording import begin_budget
+
+                    begin_budget(turn_budget)
                     adapter_task[0] = asyncio.create_task(
                         _run_streaming_adapter(
                             session_id,
@@ -456,6 +472,12 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             user_id=user_id,
                         )
                     )
+                    if turn_budget is not None:
+                        from codeframe.core import spend_limit
+
+                        adapter_task[0].add_done_callback(
+                            lambda _t, b=turn_budget: spend_limit.release(user_id, b)
+                        )
 
         relay = asyncio.create_task(_relay())
         await _receive()

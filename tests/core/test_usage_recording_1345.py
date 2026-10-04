@@ -126,3 +126,51 @@ def test_no_budget_means_no_ceiling(ws):
     with spend_budget(None):
         for _ in range(3):
             provider.complete(messages=[])
+
+
+# --- codex pass 2: chat tool loops, and unpriced spend across requests ----
+
+
+async def test_a_chat_turn_stops_calling_the_model_once_its_budget_is_spent(ws, tmp_path):
+    """One user message can make several model calls (tool continuations);
+    the turn's budget is enforced between them. $3 per call, $5 budget."""
+    from unittest.mock import MagicMock
+
+    from codeframe.adapters.llm.base import StreamChunk
+    from codeframe.core.adapters.streaming_chat import ChatEventType, StreamingChatAdapter
+    from codeframe.core.usage_recording import spend_budget
+
+    (tmp_path / "a.py").write_text("x = 1\n")
+    provider = MockProvider()
+    for i in range(3):
+        tool_id, tool_input = f"t{i}", {"path": "a.py"}
+        provider.add_stream_chunks([
+            StreamChunk(type="tool_use_start", tool_id=tool_id, tool_name="read_file", tool_input=tool_input),
+            StreamChunk(type="tool_use_stop"),
+            StreamChunk(type="message_stop", stop_reason="tool_use", input_tokens=1_000_000,
+                        output_tokens=0, tool_inputs_by_id={tool_id: tool_input}),
+        ])
+    repo = MagicMock()
+    repo.get_messages.return_value = []
+    repo.get_recent_messages.return_value = []
+    adapter = StreamingChatAdapter(session_id="s", db_repo=repo, workspace_path=tmp_path,
+                                   model="claude-sonnet-4-5", provider=provider)
+    with spend_budget(5.0):
+        events = [e async for e in adapter.send_message("go", [])]
+
+    assert [e.type for e in events].count(ChatEventType.COST_UPDATE) == 2
+    assert events[-1].type == ChatEventType.ERROR
+    assert "spend limit" in (events[-1].content or "")
+
+
+def test_unpriced_spend_today_refuses_new_work_while_a_limit_is_on(ws, monkeypatch):
+    """The unmetered flag lived in one request, so the next one started fresh
+    and NULL-cost rows never counted: repeated single-call requests spent
+    without limit (codex). An unpriced call recorded today now refuses."""
+    from codeframe.core.spend_limit import SpendLimitExceeded, remaining_today_usd
+
+    record_llm_usage(ws, model="model-nobody-priced", input_tokens=5, output_tokens=5, call_type=CallType.PLANNING)
+    assert remaining_today_usd([ws.repo_path]) is None  # no limit: unaffected
+    monkeypatch.setenv("CODEFRAME_USER_DAILY_COST_LIMIT_USD", "10")
+    with pytest.raises(SpendLimitExceeded, match="CODEFRAME_MODEL_PRICING"):
+        remaining_today_usd([ws.repo_path])

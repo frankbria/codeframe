@@ -122,3 +122,31 @@ def test_chat_without_a_ledger_is_refused_while_a_limit_is_on(api_client: TestCl
 
     assert calls == []
     assert received[-1]["code"] == "SPEND_LIMIT_EXCEEDED"
+
+
+def test_a_chat_turn_releases_its_hold_when_it_ends(api_client: TestClient, chat_ws, monkeypatch):
+    """Each turn reserves a budget; a hold left behind would shrink every
+    later turn's share until midnight."""
+    import time
+
+    from codeframe.core import spend_limit
+
+    monkeypatch.setenv(LIMIT_ENV, "50")
+    session_id = _create_session(api_client, str(chat_ws.repo_path))
+    db = api_client.app.state.db
+    db.conn.execute("UPDATE interactive_sessions SET user_id = 1 WHERE id = ?", (session_id,))
+    db.conn.commit()
+
+    from unittest.mock import AsyncMock
+
+    with patch(
+        "codeframe.ui.routers.session_chat_ws._authenticate_websocket",
+        new=AsyncMock(return_value=(True, 1)),
+    ):
+        calls, _ = _turn(api_client, session_id, [])
+    assert calls == ["Hi"]
+    for _ in range(50):  # the done-callback runs as the task finishes
+        if not spend_limit._held:
+            break
+        time.sleep(0.05)
+    assert not spend_limit._held

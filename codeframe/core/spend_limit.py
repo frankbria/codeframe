@@ -15,7 +15,7 @@ import logging
 import os
 import sqlite3
 import threading
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -80,6 +80,47 @@ def spend_today_usd(repo_paths: Iterable[Path]) -> float:
     return total
 
 
+def _refuse_unpriced_today(repo_paths: Iterable[Path]) -> None:
+    """Refuse when today's ledger holds a call with no price (#1345).
+
+    Its spend is unknown, so it cannot be counted: under a limit that makes it
+    unbounded, and a refusal kept only in one request's state let the next
+    request start fresh. Read from the ledger, it lasts the day.
+
+    Raises:
+        SpendLimitExceeded: an unpriced call was recorded today, or a ledger
+            that exists cannot be read (fail closed, as spend_today_usd).
+    """
+    from codeframe.core.workspace import CODEFRAME_DIR, STATE_DB_NAME
+
+    today = datetime.now(timezone.utc).date()
+    start = today.strftime("%Y-%m-%d %H:%M:%S")
+    end = (today + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    for db_path in {(Path(p) / CODEFRAME_DIR / STATE_DB_NAME).resolve() for p in repo_paths}:
+        if not db_path.is_file():
+            continue
+        conn = sqlite3.connect(str(db_path))
+        try:
+            (unpriced,) = conn.execute(
+                "SELECT COUNT(*) FROM token_usage WHERE estimated_cost_usd IS NULL "
+                "AND timestamp >= ? AND timestamp < ?",
+                (start, end),
+            ).fetchone()
+        except sqlite3.Error as exc:
+            raise SpendLimitExceeded(
+                f"Today's spend in {db_path.parent.parent.name} could not be read, "
+                "so no new work can start until it can."
+            ) from exc
+        finally:
+            conn.close()
+        if unpriced:
+            raise SpendLimitExceeded(
+                "A model with no price was used today, so today's spend cannot be "
+                "counted against the daily spend limit. Price it with "
+                "CODEFRAME_MODEL_PRICING; the limit resets at midnight UTC."
+            )
+
+
 # Budget handed to runs still in flight, per principal and UTC day. A run's
 # spend reaches token_usage only as it happens, so without this every
 # concurrent start would be handed the same remainder (#1303 review). A run's
@@ -129,6 +170,8 @@ def remaining_today_usd(
     limit = daily_limit_usd()
     if limit is None:
         return None
+    repo_paths = list(repo_paths)
+    _refuse_unpriced_today(repo_paths)
     spent = spend_today_usd(repo_paths)  # disk I/O stays outside the lock
     with _held_lock:
         return _free_today(user_id, spent, limit)
@@ -155,6 +198,8 @@ def reserve_today_usd(
         return None
     # Read outside the lock: recorded spend only grows through runs, and those
     # are covered by holds, which are what the lock protects.
+    repo_paths = list(repo_paths)
+    _refuse_unpriced_today(repo_paths)
     spent = spend_today_usd(repo_paths)
     with _held_lock:
         holds = _held.setdefault(user_id, [])
