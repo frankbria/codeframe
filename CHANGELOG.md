@@ -159,6 +159,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **`cf auth rotate` on an unreadable credential store says so (#1320).** Its
+  "is there anything to rotate?" check reads an undecryptable store as empty,
+  so it answered "No existing credential … run setup", which hid the real error
+  and its recovery steps (the store is intact, so restore the original secret).
+  It now reports the unreadable store. The test that should have caught this
+  passed in CI only because an earlier test leaked `ANTHROPIC_API_KEY`. It is
+  now hermetic.
+
 - **The deploy's database helper images are pinned by digest (#1390).**
   `deploy/backup-db.sh` (`python:3.12-alpine`) and the PM2 migration and
   restore steps (`alpine:3.20`, past upstream support) mount the production
