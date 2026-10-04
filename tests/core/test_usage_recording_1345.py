@@ -174,3 +174,33 @@ def test_unpriced_spend_today_refuses_new_work_while_a_limit_is_on(ws, monkeypat
     monkeypatch.setenv("CODEFRAME_USER_DAILY_COST_LIMIT_USD", "10")
     with pytest.raises(SpendLimitExceeded, match="CODEFRAME_MODEL_PRICING"):
         remaining_today_usd([ws.repo_path])
+
+
+def test_a_budget_is_settled_only_after_its_last_call_records(tmp_path):
+    """An SSE disconnect ended the stream while its worker thread was still in
+    a model call, and the hold was released before that call was recorded
+    (codex P1)."""
+    import contextvars
+    import threading
+
+    from codeframe.core.usage_recording import spend_budget
+
+    ws = create_or_load_workspace(tmp_path)
+    entered, go = threading.Event(), threading.Event()
+
+    class Slow:
+        def complete(self, *a, **k):
+            entered.set()
+            go.wait(5)
+            return LLMResponse(content="ok", model="claude-sonnet-4-5", input_tokens=10, output_tokens=10)
+
+    provider = UsageRecordingProvider(Slow(), ws, CallType.PLANNING)
+    settled = []
+    with spend_budget(5.0, on_settled=lambda: settled.append(len(_rows(ws)))):
+        worker = threading.Thread(target=contextvars.copy_context().run, args=(provider.complete,))
+        worker.start()
+        entered.wait(5)
+    assert settled == []  # the stream is gone, but its call is not
+    go.set()
+    worker.join(5)
+    assert settled == [1]  # released once, after the call was recorded

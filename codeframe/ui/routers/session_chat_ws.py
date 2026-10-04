@@ -38,17 +38,14 @@ import functools
 import json
 import logging
 import os
+from contextlib import aclosing
 from pathlib import Path
 from typing import Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from codeframe.auth.dependencies import authenticate_websocket
-from codeframe.core.adapters.streaming_chat import (
-    _DEFAULT_MODEL,
-    ChatEventType,
-    StreamingChatAdapter,
-)
+from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
 from codeframe.core.models import CallType
 from codeframe.core.usage_recording import record_llm_usage
 from codeframe.ui.dependencies import check_spend_limit, revalidate_workspace_path
@@ -109,8 +106,9 @@ async def _run_streaming_adapter(
         model: Session's stored model; honored instead of the adapter default.
         user_id: Authenticated principal whose stored key to use (#1264).
         usage_workspace: Workspace whose ``token_usage`` gets each call's spend
-            (#1345). Recorded here, not in the relay: the turn's spend hold is
-            released when this task ends, and a disconnect drops queued events.
+            (#1345). Recorded by the adapter as each call ends, not in the
+            relay: the turn's spend hold is released when this task ends, a
+            disconnect drops queued events, and a call cut short emits none.
     """
     try:
         provider_type = _AGENT_TYPE_TO_PROVIDER.get((agent_type or "claude").lower())
@@ -147,31 +145,32 @@ async def _run_streaming_adapter(
         # Honor the session's stored model; fall back to the adapter default only
         # when unset, instead of always using the hardcoded default (#764).
         adapter_kwargs = {"model": model} if model else {}
+
+        def _record(used_model: str, input_tokens: int, output_tokens: int) -> None:
+            # Synchronous on purpose: it must also run in a cancelled turn's
+            # cleanup, where awaiting a thread is not reliable.
+            if usage_workspace is not None:
+                record_llm_usage(
+                    usage_workspace,
+                    model=used_model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    call_type=CallType.SESSION_CHAT,
+                )
+
         adapter = StreamingChatAdapter(
             session_id=session_id,
             db_repo=db_repo,
             workspace_path=workspace_path,
             provider=provider,
+            on_usage=_record,
             **adapter_kwargs,
         )
-        async for event in adapter.send_message(
-            content=user_message,
-            history=[],
-            interrupt_event=interrupt_event,
-        ):
-            if event.type is ChatEventType.COST_UPDATE and usage_workspace is not None:
-                try:
-                    await asyncio.to_thread(
-                        record_llm_usage,
-                        usage_workspace,
-                        model=model or _DEFAULT_MODEL,
-                        input_tokens=event.input_tokens or 0,
-                        output_tokens=event.output_tokens or 0,
-                        call_type=CallType.SESSION_CHAT,
-                    )
-                except Exception:
-                    logger.warning("session_id=%s could not record chat spend", session_id, exc_info=True)
-            await token_queue.put(event.to_dict())
+        async with aclosing(
+            adapter.send_message(content=user_message, history=[], interrupt_event=interrupt_event)
+        ) as events:
+            async for event in events:
+                await token_queue.put(event.to_dict())
     except Exception as exc:
         logger.error("_run_streaming_adapter error: %s", exc, exc_info=True)
         await token_queue.put({"type": "error", "message": str(exc)})

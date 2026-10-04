@@ -15,11 +15,13 @@ Supports:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from contextlib import aclosing
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Callable, Optional
 
 from codeframe.adapters.llm.base import LLMProvider, Tool, ToolCall, ToolResult
 from codeframe.core.usage_recording import charge_budget, check_budget
@@ -218,6 +220,7 @@ class StreamingChatAdapter:
         model: str = _DEFAULT_MODEL,
         api_key: Optional[str] = None,
         provider: Optional[LLMProvider] = None,
+        on_usage: Optional[Callable[[str, int, int], None]] = None,
     ) -> None:
         """Initialise the adapter.
 
@@ -237,6 +240,8 @@ class StreamingChatAdapter:
                 shared ``llm_resolution`` chain (#861):
                 ``CODEFRAME_LLM_PROVIDER`` → ``.codeframe/config.yaml`` →
                 anthropic.
+            on_usage: Called with ``(model, input_tokens, output_tokens)`` for
+                every model call, including one cut short (#1345).
 
         Raises:
             ValueError: If no provider is given, no ``api_key`` is given, and
@@ -265,6 +270,7 @@ class StreamingChatAdapter:
         self._db_repo = db_repo
         self._workspace_path = workspace_path
         self._model = model
+        self._on_usage = on_usage
         self._provider = provider
 
     # ------------------------------------------------------------------
@@ -395,6 +401,17 @@ class StreamingChatAdapter:
         )
         return result.content
 
+    def _account(self, input_tokens: int, output_tokens: int) -> Optional[float]:
+        """Charge one model call to the turn's budget and report its usage."""
+        cost = MetricsTracker.calculate_cost(self._model, input_tokens, output_tokens)
+        charge_budget(cost)
+        if self._on_usage is not None:
+            try:
+                self._on_usage(self._model, input_tokens, output_tokens)
+            except Exception:
+                logger.warning("Could not record chat usage", exc_info=True)
+        return cost
+
     # ------------------------------------------------------------------
     # Main streaming entry point
     # ------------------------------------------------------------------
@@ -435,13 +452,15 @@ class StreamingChatAdapter:
         accumulated_text = ""
 
         try:
-            async for event in self._stream_turn(
-                messages=messages,
-                interrupt_event=interrupt_event,
-            ):
-                if event.type == ChatEventType.TEXT_DELTA and event.content:
-                    accumulated_text += event.content
-                yield event
+            # aclosing: a cancelled turn must run _stream_turn's finally now,
+            # not whenever the abandoned generator is collected.
+            async with aclosing(
+                self._stream_turn(messages=messages, interrupt_event=interrupt_event)
+            ) as turn:
+                async for event in turn:
+                    if event.type == ChatEventType.TEXT_DELTA and event.content:
+                        accumulated_text += event.content
+                    yield event
 
         except Exception as exc:
             logger.error("StreamingChatAdapter error: %s", exc, exc_info=True)
@@ -482,63 +501,74 @@ class StreamingChatAdapter:
             pending_tool_calls: list[dict] = []  # {id, name, input}
             assistant_text = ""  # text emitted by the model this API turn
             stop_reason = "end_turn"
+            # A call cut short (interrupt, replacement message, disconnect)
+            # never reaches message_stop, so it reports no usage (#1345).
+            started = finished = False
+            streamed_chars = 0
 
-            async for chunk in self._provider.async_stream(
-                messages=current_messages,
-                system=system_prompt,
-                tools=_TOOLS_FOR_API,
-                model=self._model,
-                max_tokens=4096,
-                interrupt_event=interrupt_event,
-                extended_thinking=use_extended_thinking,
-            ):
-                if interrupt_event and interrupt_event.is_set():
-                    return
+            try:
+                async for chunk in self._provider.async_stream(
+                    messages=current_messages,
+                    system=system_prompt,
+                    tools=_TOOLS_FOR_API,
+                    model=self._model,
+                    max_tokens=4096,
+                    interrupt_event=interrupt_event,
+                    extended_thinking=use_extended_thinking,
+                ):
+                    started = True
+                    if interrupt_event and interrupt_event.is_set():
+                        return
 
-                if chunk.type == "text_delta":
-                    assistant_text += chunk.text or ""
-                    yield ChatEvent(type=ChatEventType.TEXT_DELTA, content=chunk.text)
+                    if chunk.type == "text_delta":
+                        assistant_text += chunk.text or ""
+                        streamed_chars += len(chunk.text or "")
+                        yield ChatEvent(type=ChatEventType.TEXT_DELTA, content=chunk.text)
 
-                elif chunk.type == "thinking_delta":
-                    yield ChatEvent(type=ChatEventType.THINKING, content=chunk.text)
+                    elif chunk.type == "thinking_delta":
+                        streamed_chars += len(chunk.text or "")
+                        yield ChatEvent(type=ChatEventType.THINKING, content=chunk.text)
 
-                elif chunk.type == "tool_use_start":
-                    pending_tool_calls.append({
-                        "id": chunk.tool_id,
-                        "name": chunk.tool_name,
-                        "input": chunk.tool_input or {},
-                    })
-                    yield ChatEvent(
-                        type=ChatEventType.TOOL_USE_START,
-                        tool_name=chunk.tool_name,
-                        tool_input=chunk.tool_input or {},
-                    )
+                    elif chunk.type == "tool_use_start":
+                        pending_tool_calls.append({
+                            "id": chunk.tool_id,
+                            "name": chunk.tool_name,
+                            "input": chunk.tool_input or {},
+                        })
+                        yield ChatEvent(
+                            type=ChatEventType.TOOL_USE_START,
+                            tool_name=chunk.tool_name,
+                            tool_input=chunk.tool_input or {},
+                        )
 
-                elif chunk.type == "message_stop":
-                    stop_reason = chunk.stop_reason or "end_turn"
+                    elif chunk.type == "message_stop":
+                        stop_reason = chunk.stop_reason or "end_turn"
 
-                    # Back-fill tool inputs from final message (more reliable)
-                    if chunk.tool_inputs_by_id and pending_tool_calls:
-                        for tc in pending_tool_calls:
-                            if tc["id"] in chunk.tool_inputs_by_id:
-                                tc["input"] = chunk.tool_inputs_by_id[tc["id"]]
+                        # Back-fill tool inputs from final message (more reliable)
+                        if chunk.tool_inputs_by_id and pending_tool_calls:
+                            for tc in pending_tool_calls:
+                                if tc["id"] in chunk.tool_inputs_by_id:
+                                    tc["input"] = chunk.tool_inputs_by_id[tc["id"]]
 
-                    turn_cost = MetricsTracker.calculate_cost(
-                        self._model,
-                        chunk.input_tokens or 0,
-                        chunk.output_tokens or 0,
-                    )
-                    charge_budget(turn_cost)
-                    yield ChatEvent(
-                        type=ChatEventType.COST_UPDATE,
-                        input_tokens=chunk.input_tokens,
-                        output_tokens=chunk.output_tokens,
-                        # The one price table, overrides included; None means
-                        # unpriced, never $0 (#1299, the #932 rule).
-                        cost_usd=turn_cost,
-                    )
+                        finished = True
+                        turn_cost = self._account(chunk.input_tokens or 0, chunk.output_tokens or 0)
+                        yield ChatEvent(
+                            type=ChatEventType.COST_UPDATE,
+                            input_tokens=chunk.input_tokens,
+                            output_tokens=chunk.output_tokens,
+                            # The one price table, overrides included; None means
+                            # unpriced, never $0 (#1299, the #932 rule).
+                            cost_usd=turn_cost,
+                        )
 
-                # tool_use_stop is informational only — no ChatEvent needed
+                    # tool_use_stop is informational only — no ChatEvent needed
+            finally:
+                if started and not finished:
+                    # ponytail: an estimate at ~3 chars/token (real text runs
+                    # nearer 4, so this over-counts). Exact partial usage needs
+                    # the provider to surface its stream snapshot on interrupt.
+                    prompt_chars = len(system_prompt) + len(json.dumps(current_messages, default=str))
+                    self._account(prompt_chars // 3, streamed_chars // 3 + 1)
 
             if stop_reason == "end_turn" or not pending_tool_calls:
                 yield ChatEvent(type=ChatEventType.DONE)

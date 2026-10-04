@@ -155,36 +155,79 @@ def test_a_chat_turn_releases_its_hold_when_it_ends(api_client: TestClient, chat
     assert not spend_limit._held
 
 
+class _Provider:
+    """Streams one text chunk, then finishes, stops (interrupt) or hangs."""
+
+    def __init__(self, end):
+        self.end = end
+
+    def supports(self, _feature):
+        return False
+
+    async def async_stream(self, **kw):
+        import asyncio
+
+        from codeframe.adapters.llm.base import StreamChunk
+
+        yield StreamChunk(type="text_delta", text="x" * 300)
+        if self.end == "finish":
+            yield StreamChunk(type="message_stop", stop_reason="end_turn", input_tokens=1000, output_tokens=200)
+        elif self.end == "hang":
+            await asyncio.Event().wait()
+        # "stop": return early, as AnthropicProvider does when interrupted
+
+
+def _rows(ws):
+    conn = sqlite3.connect(str(ws.db_path))
+    try:
+        return conn.execute("SELECT input_tokens, output_tokens, call_type FROM token_usage").fetchall()
+    finally:
+        conn.close()
+
+
+def _drive(chat_ws, monkeypatch, end, cancel=False):
+    """Run the real producer + StreamingChatAdapter; nothing reads the queue."""
+    import asyncio
+
+    from codeframe.ui.routers import session_chat_ws as mod
+
+    monkeypatch.setattr("codeframe.core.llm_resolution.create_provider", lambda *a, **k: _Provider(end))
+    monkeypatch.setattr(mod.StreamingChatAdapter, "_load_history", lambda self: [])
+    monkeypatch.setattr(mod.StreamingChatAdapter, "_persist_turn", lambda self, *a: asyncio.sleep(0))
+
+    async def go():
+        task = asyncio.create_task(mod._run_streaming_adapter(
+            "s1", "Hi", asyncio.Queue(), asyncio.Event(), None, chat_ws.repo_path,
+            usage_workspace=chat_ws,
+        ))
+        if cancel:
+            await asyncio.sleep(0.2)
+            task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        # Read here, as the task ends (when its hold is released): after
+        # asyncio.run, shutdown would have finalized any abandoned generator.
+        return _rows(chat_ws)
+
+    return asyncio.run(go())
+
+
 def test_chat_usage_is_recorded_by_the_producer_not_the_socket(chat_ws, monkeypatch):
     """The turn's hold is released when the adapter task ends. Recording in
     the relay let that happen before the rows were written, and a disconnect
-    dropped them entirely (codex P1). Nothing reads this queue."""
-    import asyncio
+    dropped them entirely (codex P1)."""
+    assert _drive(chat_ws, monkeypatch, "finish") == [(1000, 200, "session_chat")]
 
-    from codeframe.core.adapters.streaming_chat import ChatEvent, ChatEventType
-    from codeframe.ui.routers import session_chat_ws as mod
 
-    class FakeAdapter:
-        def __init__(self, **kw):
-            pass
-
-        async def send_message(self, **kw):
-            yield ChatEvent(type=ChatEventType.COST_UPDATE, cost_usd=0.5, input_tokens=1000, output_tokens=200)
-
-    monkeypatch.setattr(mod, "StreamingChatAdapter", FakeAdapter)
-    monkeypatch.setattr("codeframe.core.llm_resolution.create_provider", lambda *a, **k: object())
-
-    asyncio.run(mod._run_streaming_adapter(
-        "s1", "Hi", asyncio.Queue(), asyncio.Event(), None, chat_ws.repo_path,
-        usage_workspace=chat_ws,
-    ))
-
-    conn = sqlite3.connect(str(chat_ws.db_path))
-    try:
-        rows = conn.execute("SELECT input_tokens, output_tokens, call_type FROM token_usage").fetchall()
-    finally:
-        conn.close()
-    assert rows == [(1000, 200, "session_chat")]
+@pytest.mark.parametrize("end,cancel", [("stop", False), ("hang", True)], ids=["interrupted", "cancelled"])
+def test_a_call_cut_short_is_still_counted(chat_ws, monkeypatch, end, cancel):
+    """An interrupted or cancelled call reports no usage, so it went
+    uncounted and repeated interrupts spent past the limit (codex P1)."""
+    rows = _drive(chat_ws, monkeypatch, end, cancel)
+    assert len(rows) == 1 and rows[0][2] == "session_chat", rows
+    assert rows[0][0] > 0 and rows[0][1] >= 100, rows  # 300 streamed chars
 
 
 def test_a_new_message_replaces_a_turn_that_holds_the_whole_budget(api_client: TestClient, chat_ws, monkeypatch):

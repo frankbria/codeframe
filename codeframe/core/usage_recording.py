@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
-from typing import Any, Iterator, Optional
+from dataclasses import dataclass, field
+from typing import Any, Callable, Iterator, Optional
 
 from codeframe.core.models import CallType
 from codeframe.core.workspace import Workspace
@@ -30,6 +31,31 @@ class _Budget:
     limit: float
     spent: float = 0.0
     unmetered: bool = False
+    # Calls still running, and what to do once the last one has recorded.
+    # A cancelled SSE stream leaves its worker thread mid-call (#1345 review).
+    inflight: int = 0
+    on_settled: Optional[Callable[[], None]] = None
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def enter(self) -> None:
+        with self.lock:
+            self.inflight += 1
+
+    def leave(self) -> None:
+        with self.lock:
+            self.inflight -= 1
+            settle = self.on_settled if self.inflight == 0 else None
+            if settle:
+                self.on_settled = None
+        if settle:
+            settle()
+
+    def close(self, on_settled: Callable[[], None]) -> None:
+        with self.lock:
+            if self.inflight:
+                self.on_settled = on_settled
+                return
+        on_settled()
 
 
 # The budget a route reserved for this request's planning calls. A context
@@ -49,18 +75,28 @@ def begin_budget(amount_usd: Optional[float]) -> None:
 
 
 @contextmanager
-def spend_budget(amount_usd: Optional[float]) -> Iterator[None]:
+def spend_budget(
+    amount_usd: Optional[float], on_settled: Optional[Callable[[], None]] = None
+) -> Iterator[None]:
     """Bound the planning calls made inside this block to ``amount_usd``.
 
     ``None`` (no limit configured, or an exempt principal) means unbounded.
     An entry-only check let a many-call run, like a recursive stress test,
-    spend on past the ceiling (#1345 review).
+    spend on past the ceiling (#1345 review). ``on_settled`` runs once the
+    block has exited *and* no call it started is still running, so a hold is
+    never returned before the spend it covers is recorded.
     """
-    token = _budget.set(_Budget(amount_usd) if amount_usd is not None else None)
+    budget = _Budget(amount_usd) if amount_usd is not None else None
+    token = _budget.set(budget)
     try:
         yield
     finally:
         _budget.reset(token)
+        if on_settled is not None:
+            if budget is None:
+                on_settled()
+            else:
+                budget.close(on_settled)
 
 
 def check_budget() -> None:
@@ -145,24 +181,31 @@ class UsageRecordingProvider:
         from codeframe.lib.metrics_tracker import MetricsTracker
 
         check_budget()
-        response = self._inner.complete(*args, **kwargs)
-        model = getattr(response, "model", "") or getattr(self._inner, "model", "") or ""
-        input_tokens = getattr(response, "input_tokens", 0) or 0
-        output_tokens = getattr(response, "output_tokens", 0) or 0
-        if _budget.get() is not None:
-            charge_budget(MetricsTracker.calculate_cost(model, input_tokens, output_tokens))
+        budget = _budget.get()
+        if budget is not None:
+            budget.enter()
         try:
-            record_llm_usage(
-                self._workspace,
-                model=model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                call_type=self._call_type,
-            )
-        except Exception:
-            # Bookkeeping must never cost the user the answer they paid for.
-            logger.warning("Could not record LLM usage", exc_info=True)
-        return response
+            response = self._inner.complete(*args, **kwargs)
+            model = getattr(response, "model", "") or getattr(self._inner, "model", "") or ""
+            input_tokens = getattr(response, "input_tokens", 0) or 0
+            output_tokens = getattr(response, "output_tokens", 0) or 0
+            if budget is not None:
+                charge_budget(MetricsTracker.calculate_cost(model, input_tokens, output_tokens))
+            try:
+                record_llm_usage(
+                    self._workspace,
+                    model=model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    call_type=self._call_type,
+                )
+            except Exception:
+                # Bookkeeping must never cost the user the answer they paid for.
+                logger.warning("Could not record LLM usage", exc_info=True)
+            return response
+        finally:
+            if budget is not None:
+                budget.leave()
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)

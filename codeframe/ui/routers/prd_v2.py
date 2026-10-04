@@ -450,16 +450,15 @@ async def _budgeted(
     """Run ``stream`` under its reserved planning budget, then release it.
 
     The budget is set here, in the stream's own context: the endpoint's
-    context ends when it returns the StreamingResponse (#1345).
+    context ends when it returns the StreamingResponse (#1345). A client
+    disconnect cancels the stream but not its worker thread's model call, so
+    the hold is returned only once that call has recorded its spend.
     """
     from codeframe.core.usage_recording import spend_budget
 
-    try:
-        with spend_budget(budget):
-            async for frame in stream:
-                yield frame
-    finally:
-        release_planning_budget(auth, budget)
+    with spend_budget(budget, on_settled=lambda: release_planning_budget(auth, budget)):
+        async for frame in stream:
+            yield frame
 
 
 @router.get("/stress-test")
