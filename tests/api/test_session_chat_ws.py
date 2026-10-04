@@ -343,7 +343,10 @@ class TestSessionChatWSProtocol:
         turns = iter(costs)
 
         async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None, user_id=None):
-            await token_queue.put({"type": "cost_update", "cost_usd": next(turns), "input_tokens": 100, "output_tokens": 50})
+            # A turn may emit several cost updates (one per tool-loop step).
+            turn = next(turns)
+            for cost in turn if isinstance(turn, list) else [turn]:
+                await token_queue.put({"type": "cost_update", "cost_usd": cost, "input_tokens": 100, "output_tokens": 50})
             await token_queue.put({"type": "done"})
 
         with patch("codeframe.ui.routers.session_chat_ws._run_streaming_adapter", side_effect=fake_adapter):
@@ -364,6 +367,13 @@ class TestSessionChatWSProtocol:
         """A total that includes unpriced spend is unknown, so a later priced
         turn must not turn it back into a number."""
         data = self._run_turns(api_client, _create_session(api_client), [None, 0.005])
+        assert data["cost_usd"] is None
+        assert data["input_tokens"] == 200
+
+    def test_an_unpriced_step_makes_its_whole_turn_unknown(self, api_client: TestClient):
+        """Within one turn the relay sums the tool-loop steps; an unpriced
+        step must not be dropped from that sum and leave a number."""
+        data = self._run_turns(api_client, _create_session(api_client), [[None, 0.005]])
         assert data["cost_usd"] is None
         assert data["input_tokens"] == 200
 
