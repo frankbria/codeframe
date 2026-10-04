@@ -32,7 +32,7 @@ function lineClassName(type: DiffHunkLine['type']): string {
 function lineNumberClassName(type: DiffHunkLine['type']): string {
   switch (type) {
     case 'addition':
-      return 'text-green-600 bg-green-500/5';
+      return 'text-green-700 bg-green-500/5';
     case 'deletion':
       return 'text-red-600 bg-red-500/5';
     default:
@@ -43,7 +43,7 @@ function lineNumberClassName(type: DiffHunkLine['type']): string {
 function contentClassName(type: DiffHunkLine['type']): string {
   switch (type) {
     case 'addition':
-      return 'text-green-600';
+      return 'text-green-700';
     case 'deletion':
       return 'text-red-600';
     default:

@@ -22,7 +22,7 @@ import type {
 function proofBadgeClasses(snapshot: ProofSnapshot | null): string {
   if (!snapshot) return 'text-muted-foreground bg-muted';
   if (snapshot.gates_total > 0 && snapshot.gates_passed === snapshot.gates_total) {
-    return 'text-green-600 bg-green-50';
+    return 'text-green-700 bg-green-50';
   }
   return 'text-yellow-600 bg-yellow-50';
 }

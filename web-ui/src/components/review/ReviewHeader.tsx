@@ -38,7 +38,7 @@ export function ReviewHeader({
               {filesChanged} {filesChanged === 1 ? 'file' : 'files'} changed
             </span>
           </span>
-          <span className="font-mono text-green-600">+{insertions}</span>
+          <span className="font-mono text-green-700">+{insertions}</span>
           <span className="font-mono text-red-600">-{deletions}</span>
         </div>
 

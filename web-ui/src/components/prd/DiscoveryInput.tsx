@@ -49,6 +49,7 @@ export function DiscoveryInput({
           onClick={handleSubmit}
           disabled={disabled || !value.trim()}
           className="shrink-0 self-end"
+          aria-label="Send"
         >
           <HugeiconsIcon icon={SentIcon} className="h-4 w-4" />
         </Button>

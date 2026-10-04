@@ -122,17 +122,11 @@ describe('TaskCard', () => {
     expect(defaultHandlers.onClick).not.toHaveBeenCalled();
   });
 
-  it('has accessible role, tabindex, and aria-label', () => {
-    renderCard();
-    const card = screen.getByRole('button', { name: /view details for implement login/i });
-    expect(card).toBeInTheDocument();
-    expect(card).toHaveAttribute('tabindex', '0');
-  });
-
   it('triggers onClick on Enter key press', async () => {
     const user = userEvent.setup();
     renderCard();
-    const card = screen.getByRole('button', { name: /view details for implement login/i });
+    // The title is the card's native button since #1298.
+    const card = screen.getByRole('button', { name: 'Implement login' });
     card.focus();
     await user.keyboard('{Enter}');
     expect(defaultHandlers.onClick).toHaveBeenCalledWith('task-1');
@@ -141,7 +135,8 @@ describe('TaskCard', () => {
   it('triggers onClick on Space key press', async () => {
     const user = userEvent.setup();
     renderCard();
-    const card = screen.getByRole('button', { name: /view details for implement login/i });
+    // The title is the card's native button since #1298.
+    const card = screen.getByRole('button', { name: 'Implement login' });
     card.focus();
     await user.keyboard(' ');
     expect(defaultHandlers.onClick).toHaveBeenCalledWith('task-1');
@@ -311,5 +306,28 @@ describe('TaskCard Stop (#1297)', () => {
     // React bubbles portal events through the component tree: a click in the
     // dialog must not reach the card and open its detail view.
     expect(onClick).not.toHaveBeenCalled();
+  });
+});
+
+describe('TaskCard structure (#1298)', () => {
+  it('opens through a real button named by the title, not a role=button wrapper', async () => {
+    const user = userEvent.setup();
+    renderCard({ status: 'READY' });
+    // A role=button around the checkbox, links and actions hid Execute and
+    // Stop from screen readers (axe nested-interactive).
+    const open = screen.getByRole('button', { name: 'Implement login' });
+    expect(open.tagName).toBe('BUTTON');
+    await user.click(open);
+    expect(defaultHandlers.onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps every action outside any other interactive element', () => {
+    renderCard({ status: 'READY' }, { selectionMode: true });
+    for (const control of [
+      screen.getByRole('button', { name: /execute/i }),
+      screen.getByRole('checkbox'),
+    ]) {
+      expect(control.parentElement?.closest('button, a, [role="button"]')).toBeNull();
+    }
   });
 });

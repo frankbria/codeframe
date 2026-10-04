@@ -72,19 +72,12 @@ export function TaskCard({
   const costEntry = costMap?.get(task.id);
   const showCostBadge = costEntry !== undefined && costEntry.total_cost_usd > 0;
   return (
+    // Not role=button: it wrapped the checkbox, links and action buttons, so
+    // screen readers never reached Execute or Stop (#1298). The title is the
+    // keyboard and assistive-tech way in; the card stays clickable for a mouse.
     <Card
-      className="cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
+      className="cursor-pointer transition-colors focus-within:border-primary/50 hover:border-primary/50"
       onClick={() => onClick(task.id)}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick(task.id);
-        }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={`View details for ${task.title}`}
     >
       <CardContent className="p-3">
         {/* Single TooltipProvider for the entire card to avoid per-tooltip provider overhead */}
@@ -127,8 +120,19 @@ export function TaskCard({
           )}
         </div>
 
-        {/* Title */}
-        <h4 className="truncate text-sm font-medium">{task.title}</h4>
+        {/* Title: the card's real button */}
+        <h4 className="truncate text-sm font-medium">
+          <button
+            type="button"
+            className="w-full truncate rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick(task.id);
+            }}
+          >
+            {task.title}
+          </button>
+        </h4>
 
         {/* Description snippet */}
         {task.description && (
