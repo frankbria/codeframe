@@ -266,7 +266,7 @@ class TestSessionChatWSProtocol:
         session_id = _create_session(api_client)
         ticket = mint_ticket(user_id=1)
 
-        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None, user_id=None):
+        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None, user_id=None, usage_workspace=None):
             await token_queue.put({"type": "text_delta", "content": "Hello"})
             await token_queue.put({"type": "text_delta", "content": " world"})
             await token_queue.put({"type": "cost_update", "cost_usd": 0.001, "input_tokens": 10, "output_tokens": 5})
@@ -303,7 +303,7 @@ class TestSessionChatWSProtocol:
         session_id = _create_session(api_client)
         ticket = mint_ticket(user_id=1)
 
-        async def slow_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None, user_id=None):
+        async def slow_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None, user_id=None, usage_workspace=None):
             for i in range(10):
                 if interrupt_event.is_set():
                     await token_queue.put({"type": "done"})
@@ -342,7 +342,7 @@ class TestSessionChatWSProtocol:
         ticket = mint_ticket(user_id=1)
         turns = iter(costs)
 
-        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None, user_id=None):
+        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None, user_id=None, usage_workspace=None):
             # A turn may emit several cost updates (one per tool-loop step).
             turn = next(turns)
             for cost in turn if isinstance(turn, list) else [turn]:
@@ -382,7 +382,7 @@ class TestSessionChatWSProtocol:
         session_id = _create_session(api_client)
         ticket = mint_ticket(user_id=1)
 
-        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None, user_id=None):
+        async def fake_adapter(session_id, user_message, token_queue, interrupt_event, db_repo, workspace_path, agent_type=None, model=None, user_id=None, usage_workspace=None):
             await token_queue.put(
                 {"type": "cost_update", "cost_usd": 0.005, "input_tokens": 100, "output_tokens": 50}
             )
