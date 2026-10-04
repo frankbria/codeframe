@@ -30,7 +30,9 @@ from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import prd
 
 from codeframe.core.prd import PrdHasDependentTasksError
-from codeframe.ui.dependencies import get_v2_workspace
+from fastapi.concurrency import run_in_threadpool
+
+from codeframe.ui.dependencies import check_spend_limit, get_v2_workspace
 from codeframe.adapters.llm.base import LLMError
 from codeframe.ui.response_models import (
     ErrorCodes,
@@ -301,8 +303,15 @@ def _resolve_llm_provider(workspace: Workspace, user_id: Optional[int] = None):
             missing or the provider cannot be constructed.
     """
     from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+    from codeframe.core.models import CallType
+    from codeframe.core.usage_recording import UsageRecordingProvider
 
-    return create_provider(resolve_llm_settings(workspace.repo_path), user_id=user_id)
+    # Recorded where the daily spend limit reads it (#1345).
+    return UsageRecordingProvider(
+        create_provider(resolve_llm_settings(workspace.repo_path), user_id=user_id),
+        workspace,
+        CallType.PLANNING,
+    )
 
 
 async def _stress_test_event_stream(
@@ -457,6 +466,9 @@ async def stress_test_prd_stream_endpoint(
         - ``complete``: ambiguity count + rendered tech spec / ambiguity report
         - ``error``: no PRD, missing API key, or decomposition failure
     """
+    # The daily spend limit covers THINK-stage calls too (#1345): checked
+    # before the first LLM call, so a refusal spends nothing.
+    await run_in_threadpool(check_spend_limit, request, workspace, auth)
     return StreamingResponse(
         _stress_test_event_stream(workspace, max_depth, request, auth.get("user_id")),
         media_type="text/event-stream",
@@ -499,6 +511,9 @@ async def refine_prd_from_stress_test(
             ),
         )
 
+    # The daily spend limit covers THINK-stage calls too (#1345): checked
+    # before the first LLM call, so a refusal spends nothing.
+    await run_in_threadpool(check_spend_limit, request, workspace, auth)
     try:
         provider = await asyncio.to_thread(
             _resolve_llm_provider, workspace, auth.get("user_id")

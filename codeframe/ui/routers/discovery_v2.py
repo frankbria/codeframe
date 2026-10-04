@@ -31,7 +31,7 @@ from codeframe.core.prd_discovery import (
 )
 from codeframe.core.llm_resolution import UntrustedBaseURLError
 from codeframe.adapters.llm.base import LLMError
-from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.dependencies import check_spend_limit, get_v2_workspace
 from codeframe.ui.response_models import llm_error_http
 
 logger = logging.getLogger(__name__)
@@ -144,6 +144,9 @@ async def start_discovery(
             },
         )
 
+    # The daily spend limit covers THINK-stage calls too (#1345): checked
+    # before the first LLM call, so a refusal spends nothing.
+    await run_in_threadpool(check_spend_limit, request, workspace, auth)
     try:
         # Check for existing active session
         existing = await run_in_threadpool(
@@ -268,6 +271,9 @@ async def submit_answer(
             - 404: Session not found
             - 500: Processing error
     """
+    # The daily spend limit covers THINK-stage calls too (#1345): checked
+    # before the first LLM call, so a refusal spends nothing.
+    await run_in_threadpool(check_spend_limit, request, workspace, auth)
     try:
         # LLM round trip (#902).
         result = await run_in_threadpool(
@@ -328,6 +334,9 @@ async def generate_prd(
             - 404: Session not found
             - 500: Generation error
     """
+    # The daily spend limit covers THINK-stage calls too (#1345): checked
+    # before the first LLM call, so a refusal spends nothing.
+    await run_in_threadpool(check_spend_limit, request, workspace, auth)
     try:
         template_id = body.template_id if body else None
         # Offload: synchronous LLM call (#732).
@@ -441,6 +450,10 @@ async def generate_tasks_from_prd(
             - 404: PRD not found
             - 500: Generation error
     """
+    if use_llm:
+        # The daily spend limit covers THINK-stage calls too (#1345):
+        # checked before the first LLM call, so a refusal spends nothing.
+        await run_in_threadpool(check_spend_limit, request, workspace, auth)
     try:
         # Get PRD
         if prd_id:
@@ -468,10 +481,17 @@ async def generate_tasks_from_prd(
                 resolve_llm_settings,
             )
 
+            from codeframe.core.models import CallType
+            from codeframe.core.usage_recording import UsageRecordingProvider
+
             provider = await run_in_threadpool(
-                lambda: create_provider(
-                    resolve_llm_settings(workspace.repo_path),
-                    user_id=auth.get("user_id"),
+                lambda: UsageRecordingProvider(
+                    create_provider(
+                        resolve_llm_settings(workspace.repo_path),
+                        user_id=auth.get("user_id"),
+                    ),
+                    workspace,
+                    CallType.PLANNING,
                 )
             )
 

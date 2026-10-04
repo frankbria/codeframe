@@ -40,11 +40,11 @@ import os
 from pathlib import Path
 from typing import Optional, Tuple
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from codeframe.auth.dependencies import authenticate_websocket
 from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
-from codeframe.ui.dependencies import revalidate_workspace_path
+from codeframe.ui.dependencies import check_spend_limit, revalidate_workspace_path
 from codeframe.ui.shared import session_chat_manager
 
 logger = logging.getLogger(__name__)
@@ -206,6 +206,24 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
             await websocket.close(code=1008, reason="Workspace path no longer permitted")
             return
 
+    # The workspace whose ledger the daily spend limit reads (#1345): chat
+    # spend is recorded there and checked against it. None when the session's
+    # directory is not an initialised workspace -- then there is no ledger.
+    chat_workspace = None
+    if validated_workspace is not None:
+        from codeframe.core.workspace import get_workspace
+
+        try:
+            chat_workspace = await asyncio.to_thread(get_workspace, validated_workspace)
+        except Exception:
+            logger.warning(
+                "session_id=%s: %s is not a CodeFRAME workspace; chat spend is "
+                "not recorded or limited", session_id, validated_workspace,
+            )
+    from codeframe.core.adapters.streaming_chat import _DEFAULT_MODEL
+
+    chat_model = session.get("model") or _DEFAULT_MODEL
+
     # --- Accept connection; everything after this point must run inside the
     #     try/finally so unregister() and close() always execute even if
     #     update_state, register, or get_token_queue raises. ---
@@ -235,6 +253,25 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                 while True:
                     event = await token_queue.get()
                     event_type = event.get("type")
+
+                    if event_type == "cost_update" and chat_workspace is not None:
+                        # Where the daily spend limit reads it (#1345).
+                        try:
+                            from codeframe.core.models import CallType
+                            from codeframe.core.usage_recording import record_llm_usage
+
+                            await asyncio.to_thread(
+                                record_llm_usage,
+                                chat_workspace,
+                                model=chat_model,
+                                input_tokens=event.get("input_tokens", 0) or 0,
+                                output_tokens=event.get("output_tokens", 0) or 0,
+                                call_type=CallType.SESSION_CHAT,
+                            )
+                        except Exception:
+                            logger.warning(
+                                "session_id=%s could not record chat spend", session_id, exc_info=True
+                            )
 
                     if event_type == "cost_update":
                         # None = unpriced. Unknown is sticky: a total that
@@ -347,6 +384,23 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
 
                 elif msg_type == "message":
                     content = msg.get("content", "")
+
+                    # The daily spend limit covers chat too (#1345). A socket
+                    # has no 429, so the refusal is an error event, sent before
+                    # the model is called.
+                    if chat_workspace is not None:
+                        try:
+                            await asyncio.to_thread(
+                                check_spend_limit, websocket, chat_workspace, {"user_id": user_id}
+                            )
+                        except HTTPException as exc:
+                            detail = exc.detail if isinstance(exc.detail, dict) else {}
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": detail.get("error") or str(exc.detail),
+                                "code": detail.get("code"),
+                            })
+                            continue
 
                     # Cancel any in-flight adapter
                     if adapter_task[0] and not adapter_task[0].done():

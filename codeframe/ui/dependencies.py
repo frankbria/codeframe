@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from fastapi import Depends, HTTPException, Query, Request
+from starlette.requests import HTTPConnection
 
 from codeframe.auth.dependencies import require_auth
 
@@ -299,7 +300,7 @@ def get_credential_manager_readonly(
 
 
 def check_spend_limit(
-    request: Request,
+    request: HTTPConnection,
     workspace: Workspace,
     auth: Dict[str, Any],
     *,
