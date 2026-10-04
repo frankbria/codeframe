@@ -65,6 +65,10 @@ MODEL_PRICING = {
     "claude-opus-4-5": {"input": 5.00, "output": 25.00},
     "claude-haiku-4": {"input": 0.80, "output": 4.00},
     "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+    # The interactive-session models the web UI offers (#1299): an entry
+    # missing here records every turn of such a session as unpriced.
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    "claude-opus-4-6": {"input": 5.00, "output": 25.00},
     # OpenAI (advertised as a supported provider)
     "gpt-4o": {"input": 2.50, "output": 10.00},
     "gpt-4o-mini": {"input": 0.15, "output": 0.60},

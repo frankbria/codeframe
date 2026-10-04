@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import AsyncIterator, Optional
 
 from codeframe.adapters.llm.base import LLMProvider, Tool, ToolCall, ToolResult
+from codeframe.lib.metrics_tracker import MetricsTracker
 from codeframe.core.tools import (
     execute_tool,
     _READ_FILE_SCHEMA,
@@ -90,7 +91,9 @@ class ChatEvent:
             d["tool_name"] = self.tool_name
         if self.tool_input is not None:
             d["tool_input"] = self.tool_input
-        if self.cost_usd is not None:
+        if self.cost_usd is not None or self.type is ChatEventType.COST_UPDATE:
+            # An explicit null on a cost update means "unpriced": the client
+            # shows unknown rather than a stale or zero figure (#1299).
             d["cost_usd"] = self.cost_usd
         if self.input_tokens is not None:
             d["input_tokens"] = self.input_tokens
@@ -520,10 +523,12 @@ class StreamingChatAdapter:
                         type=ChatEventType.COST_UPDATE,
                         input_tokens=chunk.input_tokens,
                         output_tokens=chunk.output_tokens,
-                        cost_usd=_estimate_cost(
+                        # The one price table, overrides included; None means
+                        # unpriced, never $0 (#1299, the #932 rule).
+                        cost_usd=MetricsTracker.calculate_cost(
+                            self._model,
                             chunk.input_tokens or 0,
                             chunk.output_tokens or 0,
-                            self._model,
                         ),
                     )
 
@@ -562,30 +567,3 @@ class StreamingChatAdapter:
                 tool_calls=pending_tool_calls,
                 tool_results=tool_result_blocks,
             )
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
-    """Rough cost estimate in USD.
-
-    Uses approximate pricing for claude-sonnet-4-5. Returns 0.0 for unknown models
-    rather than raising — cost tracking is best-effort.
-    """
-    # Per-million-token pricing (input, output) in USD.
-    # Last verified: 2026-06-21. Anthropic pricing changes without notice —
-    # treat these as best-effort estimates, not billing-accurate figures.
-    _PRICING: dict[str, tuple[float, float]] = {
-        "claude-sonnet-4-5": (3.0, 15.0),
-        "claude-opus-4-5": (15.0, 75.0),
-        "claude-haiku-4-5": (0.8, 4.0),
-        "claude-3-5-haiku-20241022": (0.8, 4.0),
-    }
-    # Match by prefix to handle minor model variant suffixes
-    for prefix, (in_price, out_price) in _PRICING.items():
-        if model.startswith(prefix):
-            return (input_tokens * in_price + output_tokens * out_price) / 1_000_000
-    return 0.0

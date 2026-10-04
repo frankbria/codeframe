@@ -61,6 +61,12 @@ describe('SessionCard', () => {
     expect(screen.getByText('$0.0120')).toBeInTheDocument();
   });
 
+  it('says the cost is unknown for an unpriced session, not $0 (#1299)', () => {
+    renderCard({ cost_usd: null });
+    expect(screen.getByText(/cost unknown/i)).toBeInTheDocument();
+    expect(screen.queryByText('$0.0000')).not.toBeInTheDocument();
+  });
+
   it('shows green state dot for active sessions', () => {
     renderCard({ state: 'active' });
     const dot = screen.getByTestId('session-state-dot');
