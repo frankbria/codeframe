@@ -159,6 +159,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A rejected API key's error says where that key came from (#1346).** The
+  401 message guessed: "$ANTHROPIC_API_KEY, or when unset the stored key".
+  For OpenAI-compatible providers it read the environment itself. It now names
+  the actual source: the environment variable, the key stored for your account,
+  the machine-wide stored key, or, for a hosted tenant's endpoint, that no key
+  was sent. It no longer tells someone with a stored key to check an
+  environment variable.
+
 - **The ruff gate no longer fails clean code over a config written for a
   newer ruff (#1308).** When a project has no ruff of its own, CodeFRAME's
   copy lints it against the project's config. If that config uses options
