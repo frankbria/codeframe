@@ -205,11 +205,6 @@ class Database:
             await self._async_conn.close()
             self._async_conn = None
 
-    async def close_all(self) -> None:
-        """Close both sync and async database connections."""
-        self.close()
-        await self.close_async()
-
     def __del__(self) -> None:
         """Destructor with warning for unclosed connections."""
         if self._async_conn is not None:
