@@ -204,3 +204,40 @@ def test_a_budget_is_settled_only_after_its_last_call_records(tmp_path):
     go.set()
     worker.join(5)
     assert settled == [1]  # released once, after the call was recorded
+
+
+def test_a_cancelled_handler_keeps_its_hold_until_the_worker_records(tmp_path, monkeypatch):
+    """Refine/discovery release in a finally; a cancelled handler ran it while
+    its worker thread was still in a billable call (codex P1, pass 6)."""
+    import contextvars
+    import threading
+
+    from codeframe.core.usage_recording import begin_budget
+    from codeframe.ui.dependencies import release_planning_budget
+
+    ws = create_or_load_workspace(tmp_path)
+    entered, go = threading.Event(), threading.Event()
+    released = []
+    monkeypatch.setattr(spend_limit, "release", lambda user, amount: released.append(len(_rows(ws))))
+
+    class Slow:
+        def complete(self, *a, **k):
+            entered.set()
+            go.wait(5)
+            return LLMResponse(content="ok", model="claude-sonnet-4-5", input_tokens=10, output_tokens=10)
+
+    provider = UsageRecordingProvider(Slow(), ws, CallType.PLANNING)
+
+    def handler():
+        begin_budget(5.0)
+        worker = threading.Thread(target=contextvars.copy_context().run, args=(provider.complete,))
+        worker.start()
+        entered.wait(5)
+        release_planning_budget({"user_id": 1}, 5.0)  # the handler's finally
+        return worker
+
+    worker = contextvars.copy_context().run(handler)
+    assert released == []
+    go.set()
+    worker.join(5)
+    assert released == [1]

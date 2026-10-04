@@ -99,6 +99,20 @@ def spend_budget(
                 budget.close(on_settled)
 
 
+def settle_budget(on_settled: Callable[[], None]) -> None:
+    """Run ``on_settled`` once no call under this context's budget is running.
+
+    A handler's ``finally`` can run while its worker thread is still in a
+    billable call (a cancelled request does not stop the thread), so the hold
+    must outlive the handler until that call has recorded (#1345 review).
+    """
+    budget = _budget.get()
+    if budget is None:
+        on_settled()
+    else:
+        budget.close(on_settled)
+
+
 def check_budget() -> None:
     """Raise ``SpendLimitExceeded`` if this context's budget is used up.
 

@@ -388,10 +388,15 @@ async def reserve_planning_budget(
 
 
 def release_planning_budget(auth: Dict[str, Any], budget: Optional[float]) -> None:
-    """Return a ``reserve_planning_budget`` hold; its real spend is recorded."""
-    from codeframe.core import spend_limit
+    """Return a ``reserve_planning_budget`` hold once its spend is recorded.
 
-    spend_limit.release(auth.get("user_id"), budget)
+    Call it from the handler's own context: a call still running in a worker
+    thread keeps the hold until it finishes and records.
+    """
+    from codeframe.core import spend_limit
+    from codeframe.core.usage_recording import settle_budget
+
+    settle_budget(lambda: spend_limit.release(auth.get("user_id"), budget))
 
 
 def spend_limit_http(exc: Exception) -> HTTPException:
