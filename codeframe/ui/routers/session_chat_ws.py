@@ -237,7 +237,13 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                     event_type = event.get("type")
 
                     if event_type == "cost_update":
-                        turn_cost["cost_usd"] += event.get("cost_usd", 0.0)
+                        # None = unpriced. Unknown is sticky: a total that
+                        # includes unpriced spend is not a number (#1299).
+                        event_cost = event.get("cost_usd")
+                        if event_cost is None or turn_cost["cost_usd"] is None:
+                            turn_cost["cost_usd"] = None
+                        else:
+                            turn_cost["cost_usd"] += event_cost
                         turn_cost["input_tokens"] += event.get("input_tokens", 0)
                         turn_cost["output_tokens"] += event.get("output_tokens", 0)
                         try:
@@ -252,7 +258,8 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                         # Persist cost BEFORE sending "done" so clients that
                         # immediately fetch session stats observe accurate totals.
                         if (
-                            turn_cost["cost_usd"]
+                            turn_cost["cost_usd"] is None
+                            or turn_cost["cost_usd"]
                             or turn_cost["input_tokens"]
                             or turn_cost["output_tokens"]
                         ):
@@ -294,7 +301,8 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
             finally:
                 # Flush any cost accumulated during a cancelled/aborted turn
                 if (
-                    turn_cost["cost_usd"]
+                    turn_cost["cost_usd"] is None
+                    or turn_cost["cost_usd"]
                     or turn_cost["input_tokens"]
                     or turn_cost["output_tokens"]
                 ):

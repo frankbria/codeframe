@@ -240,7 +240,9 @@ export function useAgentChat(sessionId: string | null): UseAgentChat {
 
       if (type === 'cost_update') {
         updateState({
-          costUsd: (msg.cost_usd as number) ?? stateRef.current.costUsd,
+          // An explicit null is an unpriced turn (#1299): unknown, not the
+          // previous figure. An absent field keeps the previous figure.
+          costUsd: 'cost_usd' in msg ? (msg.cost_usd as number | null) : stateRef.current.costUsd,
           inputTokens: (msg.input_tokens as number) ?? stateRef.current.inputTokens,
           outputTokens: (msg.output_tokens as number) ?? stateRef.current.outputTokens,
         });

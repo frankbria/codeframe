@@ -96,6 +96,14 @@ export function formatUsd(
   });
 }
 
+/**
+ * A session cost, where null means "unpriced": the server had no price for
+ * the session's model. Never shown as $0, which reads as free (#1299).
+ */
+export function formatSessionCost(value: number | null): string {
+  return value === null ? 'Cost unknown' : formatUsd(value);
+}
+
 /** Format a plain count (tokens, rows) with thousands separators. */
 export function formatCount(n: number): string {
   return n.toLocaleString(LOCALE);

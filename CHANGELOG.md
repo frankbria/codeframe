@@ -145,6 +145,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Interactive-session cost is priced correctly, and unknown when it cannot be
+  (#1299).** Sessions on the web UI's default model, `claude-sonnet-4-6`, were
+  recorded at $0.00, and Opus 4.5 and Haiku 4.5 turns were mispriced, because
+  sessions kept their own stale price table. They now use the same
+  `MODEL_PRICING` as everything else, `CODEFRAME_MODEL_PRICING` included. A
+  session on a model with no price shows "Cost unknown" rather than $0.
 - **`cf work replay` works on real runs (#1300).** The built-in react engine now
   records an execution trace on every run. Before, no production path recorded
   one, so `cf work replay`, `diff`, `export-trace` and `rerun` always answered
