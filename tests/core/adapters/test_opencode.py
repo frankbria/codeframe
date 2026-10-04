@@ -50,19 +50,18 @@ class TestOpenCodeAdapter:
 
         # --dir because opencode resolves its project directory from the parent
         # process and ignores the subprocess cwd (#1007).
-        assert cmd == ["/usr/bin/opencode", "run", "--dir", "/tmp", "prompt"]
+        assert cmd == ["/usr/bin/opencode", "run", "--dir", "/tmp"]  # prompt on stdin (#1306)
         assert "--non-interactive" not in cmd
 
-    def test_the_prompt_is_an_argument_not_stdin(self) -> None:
-        """`opencode run` declares `message` as a positional.
-
-        Returning the prompt from get_stdin as well would send it twice.
-        """
+    def test_the_prompt_goes_on_stdin_never_argv(self) -> None:
+        """argv is readable by every user on the machine via ``ps``, so a prompt
+        there was on display for the whole run. #955 fixed this for kilocode;
+        opencode still put every normal-sized prompt in argv (#1306)."""
         with patch("shutil.which", return_value="/usr/bin/opencode"):
             adapter = OpenCodeAdapter()
 
-        assert adapter.get_stdin("my prompt") is None
-        assert adapter.build_command("my prompt", Path("/tmp"))[-1] == "my prompt"
+        assert adapter.get_stdin("my prompt") == "my prompt"
+        assert "my prompt" not in adapter.build_command("my prompt", Path("/tmp"))
 
     def test_an_oversized_prompt_moves_to_stdin(self) -> None:
         """Linux caps one argv entry at 128 KiB, well under the 100K-token budget.
