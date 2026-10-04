@@ -1175,6 +1175,14 @@ class ReactAgent:
         # Only surface actionable lint failures to the LLM — not
         # infrastructure errors (ERROR) or skipped checks (SKIPPED).
         if failed:
+            if check.detailed_errors:
+                # One line per finding, whatever format the linter printed:
+                # ruff's default spends ~7 lines each, and only the first few
+                # fit in the cap (#1308 review).
+                return "\n".join(
+                    f"{e['file']}:{e['line']}:{e['col']}: {e['code']} {e['message']}"
+                    for e in check.detailed_errors
+                )[:2000]
             return check.output[:2000]
 
         return ""
