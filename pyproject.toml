@@ -55,16 +55,12 @@ dependencies = [
     # host aiohttp dials). Major capped like every SDK whose API we call.
     "yarl>=1.22,<2",
     "httpx>=0.27.0",
-    # Capped at the tested MINOR (#1268): typer is pre-1.0, and 0.27 started
-    # vendoring its own click, which broke `cf proof capture`, --help and
-    # telemetry on a fresh install. The installed-click objects that broke are
-    # gone, but raise this only together with a run of tests/cli against it.
-    "typer>=0.9.0,<0.20",
-    # Not imported directly; capped because the typer above is. typer 0.19
-    # imports click.utils.get_binary_stream, which click 8.5 deprecates and
-    # click 9 removes, so an uncapped click is a fresh install whose `cf` dies
-    # at import. Lift together with typer (#1268).
-    "click>=8.1,<8.5",
+    # Capped at the tested MINOR (#1268, #1351): typer is pre-1.0. 0.27
+    # vendors its own click, so the old typer<0.20 + click<8.5 pair (which
+    # existed because typer 0.19 imported a click API that click 9 removes) is
+    # gone. Raise this only together with a run of tests/cli against it.
+    # click is no longer pinned: nothing here imports it.
+    "typer>=0.27,<0.28",
     "rich>=13.7.0",
     "textual>=0.86.0",
     "requests>=2.33.0",
