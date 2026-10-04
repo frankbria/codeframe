@@ -168,6 +168,22 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   rejecting its own config, still fails. Per-edit lint also stops forcing
   `--output-format=concise`, which ruff < 0.3 rejects with a usage error on
   every edit.
+- **A batch of low-severity correctness fixes (#1306).**
+  - `cf checkpoint restore` no longer revives MERGED tasks or rewinds a task
+    whose run is still in progress. It reports how many tasks it actually
+    changed and which it left alone, rather than the snapshot's size.
+  - The batch supervisor caches its decisions per workspace, and matches
+    topics by whole word: "pip" no longer matches "pipeline", and a question
+    is no longer keyed by its first 50 characters. Before, one workspace's
+    decision could auto-answer an unrelated blocker in another.
+  - `cf proof waive` records the OS user as the approver, as
+    `pr merge --override` does, instead of the constant `cli-user`.
+  - The opencode adapter always sends the prompt on stdin. In argv, `ps`
+    showed it to every user on the machine, the same leak #955 closed for
+    kilocode.
+  - The execution page reports the real run time instead of "complete in 0s".
+  - `gitpython` is now `>=3.1.60,<4`. 3.1.59's Actor ReDoS was reachable
+    through `/api/v2/git/commits`.
 
 - **The daily spend limit now counts THINK-stage and chat spend (#1345).**
   #1303 limited task and batch runs only, and only ReactAgent wrote to the
