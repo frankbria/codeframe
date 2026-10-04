@@ -102,8 +102,13 @@ def map_provider_error(
     provider: str,
     model: str,
     purpose: Optional[Purpose] = None,
+    key_source: Optional[str] = None,
 ) -> LLMError:
     """Translate a provider SDK exception into an actionable typed LLMError.
+
+    ``key_source`` says where the sent key came from (``create_provider``
+    knows; #1346). Without it the 401 text falls back to describing the
+    resolution order, which cannot say which source actually supplied it.
 
     Returns the error rather than raising it, so call sites read
     ``raise map_provider_error(...) from exc`` and keep the original traceback.
@@ -113,7 +118,9 @@ def map_provider_error(
 
     if status == 401 or "authentication" in str(exc).lower():
         lines = [f"The {provider} API rejected the API key."]
-        if key_env:
+        if key_source:
+            lines.append(f"  Key read from: {key_source}")
+        elif key_env:
             # The env wins; when it is unset the key is the stored one (#1264).
             lines.append(
                 f"  Key read from: ${key_env}, or when unset the key stored "
@@ -139,8 +146,12 @@ def map_provider_error(
                 )
         lines.append(f"  Provider: {provider} (set CODEFRAME_LLM_PROVIDER or llm.provider in .codeframe/config.yaml)")
         lines.append("")
-        lines.append(f"Check that ${key_env} is set to a current key, then re-run." if key_env
-                     else "Check the provider credentials, then re-run.")
+        if key_source:
+            # Not "check $VAR": the key may not have come from the environment.
+            lines.append("Replace that key with a current one, then re-run.")
+        else:
+            lines.append(f"Check that ${key_env} is set to a current key, then re-run." if key_env
+                         else "Check the provider credentials, then re-run.")
         lines.append("`cf env check` verifies your setup.")
         return LLMAuthError(_with_raw("\n".join(lines), exc))
 
