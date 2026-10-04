@@ -28,6 +28,7 @@ from codeframe.core.proof.models import (
     Gate,
     GlitchType,
     Obligation,
+    ProofRun,
     Requirement,
     RequirementScope,
     ReqStatus,
@@ -261,6 +262,14 @@ def seed_workspace(ws_dir: str, central_db_path: str) -> dict:
     )
     ledger.save_requirement(ws, req)
     print(f"✓ PROOF9 requirement {req.id}")
+
+    # One recorded run, so the run-history table renders and a11y can scan it
+    # (#1393). Not vacuous: it reports a real failed run.
+    ledger.save_run(ws, ProofRun(
+        run_id="e2e-run-0001", workspace_id=ws.id, started_at=_now(), completed_at=_now(),
+        triggered_by="human", overall_passed=False, duration_ms=1234,
+    ))
+    print("✓ PROOF9 run history")
 
     batch_id = seed_batch(ws, created)
     print(f"✓ Batch {batch_id}")
