@@ -160,6 +160,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
     `cf work diagnose` is pattern-based.
   - A superseded legacy doc that carried the VPS's public IP is removed, and a
     test fails on any routable IPv4 in tracked docs or deploy config.
+- **Concurrent `cf proof capture` runs no longer overwrite each other
+  (#1399).** Capture read the next `REQ-####` id and saved the row later, on a
+  separate connection with `INSERT OR REPLACE`. Two captures at once took the
+  same id, so the second silently replaced the first and both shared one stub
+  directory: six parallel captures left five requirements. The id is now
+  reserved and the row inserted in one `BEGIN IMMEDIATE` transaction, through
+  #923's `allocate_requirement`, which had no callers. Stubs are still written
+  before the row commits, so a failed write takes no id.
 
 - **A rejected LLM key is reported as one on the PRD and discovery routes (#1328).**
   Refine, discovery start, answer and PRD/task generation returned an opaque 500
