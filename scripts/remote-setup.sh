@@ -34,62 +34,25 @@ fi
 echo "Updating package lists..."
 sudo apt update
 
-# Install Node.js 20.x if not already installed
-if ! command -v node &> /dev/null || ! node --version | grep -q "v20"; then
-    echo "Installing Node.js 20.x..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt install -y nodejs
-    echo -e "${GREEN}✓ Node.js installed${NC}"
+# Install Docker Engine + the compose plugin. The app ships as containers
+# (#1121): the runtimes live in the images, so the host needs no Node, Python
+# or process manager of its own.
+if ! command -v docker &> /dev/null; then
+    echo "Installing Docker Engine..."
+    curl -fsSL https://get.docker.com | sudo sh
+    sudo usermod -aG docker "$USER"
+    echo -e "${GREEN}✓ Docker installed (log out and back in to use it without sudo)${NC}"
 else
-    echo -e "${GREEN}✓ Node.js already installed${NC}"
+    echo -e "${GREEN}✓ Docker already installed${NC}"
 fi
 
-# Verify Node.js version
-NODE_VERSION=$(node --version)
-echo "  Node.js version: $NODE_VERSION"
-
-# Install Python 3.11+ if not already installed
-if ! command -v python3.11 &> /dev/null; then
-    echo "Installing Python 3.11..."
-    sudo apt install -y python3.11 python3.11-venv python3-pip
-    echo -e "${GREEN}✓ Python 3.11 installed${NC}"
-else
-    echo -e "${GREEN}✓ Python 3.11 already installed${NC}"
+# Verify Docker + compose
+DOCKER_VERSION=$(docker --version 2>/dev/null || echo "not found")
+echo "  Docker version: $DOCKER_VERSION"
+if ! docker compose version &> /dev/null && ! sudo docker compose version &> /dev/null; then
+    echo -e "${RED}✗ The docker compose plugin is missing${NC}"
+    exit 1
 fi
-
-# Verify Python version
-PYTHON_VERSION=$(python3.11 --version)
-echo "  Python version: $PYTHON_VERSION"
-
-# Install uv if not already installed
-if ! command -v uv &> /dev/null; then
-    echo "Installing uv (Python package manager)..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-
-    # Add uv to PATH for current session
-    export PATH="$HOME/.cargo/bin:$PATH"
-
-    echo -e "${GREEN}✓ uv installed${NC}"
-else
-    echo -e "${GREEN}✓ uv already installed${NC}"
-fi
-
-# Verify uv installation
-UV_VERSION=$(uv --version 2>/dev/null || echo "not found")
-echo "  uv version: $UV_VERSION"
-
-# Install PM2 globally if not already installed
-if ! command -v pm2 &> /dev/null; then
-    echo "Installing PM2 (process manager)..."
-    sudo npm install -g pm2
-    echo -e "${GREEN}✓ PM2 installed${NC}"
-else
-    echo -e "${GREEN}✓ PM2 already installed${NC}"
-fi
-
-# Verify PM2 installation
-PM2_VERSION=$(pm2 --version)
-echo "  PM2 version: $PM2_VERSION"
 
 # Install lsof for port checking
 if ! command -v lsof &> /dev/null; then
@@ -260,10 +223,7 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 
 echo -e "${BLUE}System Dependencies Installed:${NC}"
-echo "  ✓ Node.js $NODE_VERSION"
-echo "  ✓ Python $PYTHON_VERSION"
-echo "  ✓ uv $UV_VERSION"
-echo "  ✓ PM2 $PM2_VERSION"
+echo "  ✓ $DOCKER_VERSION"
 echo "  ✓ lsof"
 echo ""
 
@@ -283,17 +243,18 @@ echo "   sudo \$EDITOR /etc/caddy/Caddyfile   # set your domain"
 echo "   sudo systemctl reload caddy"
 echo "   (See deploy/README.md for details.)"
 echo ""
-echo "3. Run the deployment script:"
+echo "3. Start the containers (CI's deploy job does this on each push; by hand:"
+echo "   see deploy/README.md -> Deploying by hand):"
 echo "   cd ~/projects/codeframe"
-echo "   ./scripts/deploy-staging.sh"
+echo "   export IMAGE_TAG=<commit-sha>"
+echo "   docker compose --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml pull"
+echo "   docker compose --env-file .env.staging -f docker-compose.yml -f docker-compose.staging.yml up -d"
 echo ""
 echo "4. After deployment, access the dashboard over TLS via Caddy:"
 echo "   https://your-domain"
 echo "   (The app ports 14100/14200 are loopback-only — not public.)"
 echo ""
-echo "5. (Optional) Enable auto-start on boot:"
-echo "   pm2 save"
-echo "   pm2 startup"
+echo "The containers restart on boot on their own (restart: unless-stopped)."
 echo ""
 
 echo -e "${BLUE}Documentation:${NC}"
