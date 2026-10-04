@@ -291,3 +291,37 @@ def test_spend_that_could_not_be_recorded_keeps_its_hold(tmp_path, monkeypatch):
 
     contextvars.copy_context().run(handler)
     assert released == []
+
+
+def test_a_chat_turn_stopped_mid_turn_says_why(tmp_path):
+    """A tool continuation that trips the budget went out as a generic error
+    under `content` with no code, and the web UI (which reads `message`)
+    showed 'Unknown error' (claude-review)."""
+    import asyncio
+
+    from codeframe.adapters.llm.base import StreamChunk
+    from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
+    from codeframe.core.usage_recording import spend_budget
+
+    class ToolLooping:
+        def supports(self, _f):
+            return False
+
+        async def async_stream(self, **kw):
+            yield StreamChunk(type="tool_use_start", tool_id="t1", tool_name="list_files", tool_input={"path": "."})
+            yield StreamChunk(type="message_stop", stop_reason="tool_use", input_tokens=1_000_000, output_tokens=0,
+                              tool_inputs_by_id={"t1": {"path": "."}})
+
+    adapter = StreamingChatAdapter(session_id="s", db_repo=None, workspace_path=tmp_path,
+                                   model="claude-sonnet-4-5", provider=ToolLooping())
+    adapter._load_history = lambda: []
+
+    async def turn():
+        with spend_budget(1.0):  # the first call costs $3
+            return [e.to_dict() async for e in adapter.send_message(content="hi", history=[{"role": "user", "content": "x"}])]
+
+    events = asyncio.run(turn())
+    error = events[-1]
+    assert error["type"] == "error", events
+    assert error.get("code") == "SPEND_LIMIT_EXCEEDED", error
+    assert "spend limit" in error.get("message", ""), error

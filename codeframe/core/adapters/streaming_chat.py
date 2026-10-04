@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
 
 from codeframe.adapters.llm.base import LLMProvider, Tool, ToolCall, ToolResult
+from codeframe.core.spend_limit import SpendLimitExceeded
 from codeframe.core.usage_recording import charge_budget, check_budget, mark_unrecorded
 from codeframe.lib.metrics_tracker import MetricsTracker
 from codeframe.core.tools import (
@@ -83,6 +84,7 @@ class ChatEvent:
     cost_usd: Optional[float] = None
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
+    code: Optional[str] = None  # machine-readable error code, e.g. SPEND_LIMIT_EXCEEDED
 
     def to_dict(self) -> dict:
         """Serialise to a dict suitable for JSON transmission."""
@@ -101,6 +103,12 @@ class ChatEvent:
             d["input_tokens"] = self.input_tokens
         if self.output_tokens is not None:
             d["output_tokens"] = self.output_tokens
+        if self.type is ChatEventType.ERROR:
+            # The web UI and the socket's own error events read `message`;
+            # under `content` alone a mid-turn error showed as "Unknown error".
+            d["message"] = self.content
+        if self.code is not None:
+            d["code"] = self.code
         return d
 
 
@@ -460,6 +468,11 @@ class StreamingChatAdapter:
                     accumulated_text += event.content
                 yield event
 
+        except SpendLimitExceeded as exc:
+            # A turn that used its budget between tool calls: say so, with the
+            # same code as the refusal before the turn started (#1345).
+            yield ChatEvent(type=ChatEventType.ERROR, content=str(exc), code="SPEND_LIMIT_EXCEEDED")
+            return
         except Exception as exc:
             logger.error("StreamingChatAdapter error: %s", exc, exc_info=True)
             yield ChatEvent(type=ChatEventType.ERROR, content=str(exc))
