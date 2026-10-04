@@ -145,6 +145,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **The ruff gate no longer fails clean code over a config written for a
+  newer ruff (#1308).** When a project has no ruff of its own, CodeFRAME's
+  copy lints it against the project's config. If that config uses options
+  newer than CodeFRAME's ruff ("unknown field", an unknown rule or value), the
+  gate, per-edit lint and autofix now report **SKIPPED** with an explanation,
+  instead of FAILED. A config that is simply broken, or the project's own ruff
+  rejecting its own config, still fails. Per-edit lint also stops forcing
+  `--output-format=concise`, which ruff < 0.3 rejects with a usage error on
+  every edit.
+
 - **Docs and deploy config match what ships (#1304).**
   - `docs/GOLDEN_PATH.md`, which CLAUDE.md tells agents to read first, listed
     an `IN_REVIEW` state and PR-driven task transitions that were never built,
