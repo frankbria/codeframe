@@ -145,6 +145,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Web UI accessibility baseline, enforced in CI (#1298).** An axe-core pass
+  (WCAG 2.1 AA) over the ten core pages at laptop and phone width now runs with
+  the PR smoke suite and fails on serious or critical violations. It started at
+  138 failing elements. The fixes:
+  - **Names:** sidebar links keep their names below 1024px, and the discovery
+    Send button and the execution progress bar are named.
+  - **Task card:** opens from a real button, so screen readers reach its Execute
+    and Stop actions.
+  - **Live regions:** the stress test announces its progress and failures.
+  - **PRD editor:** its tabs point at real tab panels.
+  - **Contrast:** muted text, destructive red and diff colours meet AA.
+  - **Costs:** its scrolling chart and table can be scrolled from the keyboard.
 - **Web UI: confirmations, visible failures, and pages that fit the screen (#1297).**
   - Removing an API key, disconnecting GitHub, and Stop on a task card now ask
     first. Each one used to delete a credential or stop a running agent on a

@@ -121,7 +121,9 @@ export function AppSidebar() {
               }`}
             >
               <HugeiconsIcon icon={navIcon} className="h-5 w-5 shrink-0" />
-              <span className="hidden lg:inline">{label}</span>
+              {/* sr-only, not hidden: below lg the icon-only link still needs
+                  its name, and an aria-label would drop the badge count (#1298). */}
+              <span className="sr-only lg:not-sr-only">{label}</span>
               {label === 'Sessions' && activeSessionCount > 0 && (
                 <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-bold text-foreground">
                   {activeSessionCount}

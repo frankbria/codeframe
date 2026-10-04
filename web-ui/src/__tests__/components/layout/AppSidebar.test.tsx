@@ -44,3 +44,16 @@ describe('AppSidebar logout control', () => {
     expect(logoutMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('AppSidebar nav names (#1298)', () => {
+  it('keeps every nav label in the accessibility tree at every width', () => {
+    // 'hidden lg:inline' removed the label below 1024px, leaving 10 links with
+    // no accessible name on every page (axe link-name). sr-only keeps it.
+    render(<AppSidebar />);
+    for (const name of ['Workspace', 'PRD', 'Tasks', 'Execution', 'Settings']) {
+      const label = screen.getByRole('link', { name: new RegExp(name) }).querySelector('span');
+      expect(label?.className).toMatch(/\bsr-only\b/);
+      expect(label?.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+    }
+  });
+});

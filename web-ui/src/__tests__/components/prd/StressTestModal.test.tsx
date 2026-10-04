@@ -274,3 +274,27 @@ describe('StressTestModal', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
+
+describe('StressTestModal live regions (#1298)', () => {
+  it('announces progress in a status region and streams lines into a log', () => {
+    mockHook({ status: 'streaming', lines: ['✓ Extracted 3 goals'] });
+    renderModal();
+    expect(screen.getByRole('status')).toHaveTextContent('Analyzing PRD...');
+    expect(screen.getByRole('log')).toHaveTextContent('✓ Extracted 3 goals');
+  });
+
+  it('announces the outcome through the same status region', () => {
+    mockHook({
+      status: 'complete',
+      result: { ambiguityCount: 0, ambiguities: [], techSpecMarkdown: '', ambiguityReport: '' },
+    });
+    renderModal();
+    expect(screen.getByRole('status')).toHaveTextContent(/well-specified/);
+  });
+
+  it('raises a failure as an alert', () => {
+    mockHook({ status: 'error', error: 'boom' });
+    renderModal();
+    expect(screen.getByRole('alert')).toHaveTextContent(/Stress test failed/);
+  });
+});

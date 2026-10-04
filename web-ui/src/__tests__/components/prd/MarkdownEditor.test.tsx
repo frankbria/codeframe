@@ -96,3 +96,16 @@ describe('MarkdownEditor', () => {
     expect(screen.getByRole('textbox')).toBeInTheDocument();
   });
 });
+
+describe('MarkdownEditor tabs a11y (#1298)', () => {
+  it('points the active tab at a tabpanel that exists', () => {
+    // The panels were rendered outside <Tabs>, so aria-controls named an id
+    // that never existed (axe aria-valid-attr-value, critical).
+    render(<MarkdownEditor content="# Hello" onSave={jest.fn()} />);
+    const tab = screen.getByRole('tab', { name: 'Edit' });
+    const panel = document.getElementById(tab.getAttribute('aria-controls') ?? '');
+    expect(panel).not.toBeNull();
+    expect(panel).toHaveAttribute('role', 'tabpanel');
+    expect(panel).toContainElement(screen.getByRole('textbox', { name: 'PRD markdown' }));
+  });
+});

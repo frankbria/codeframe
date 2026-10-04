@@ -37,6 +37,11 @@ export function SpendBarChart({ daily, days }: SpendBarChartProps) {
   return (
     <div
       data-testid="spend-chart"
+      // Scrolls sideways at phone width: focusable and named, or a keyboard
+      // user cannot scroll it (axe scrollable-region-focusable, #1298).
+      tabIndex={0}
+      role="region"
+      aria-label="Daily spend chart"
       className="w-full overflow-x-auto rounded-md border bg-card p-4"
     >
       <div className="flex">

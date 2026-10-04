@@ -38,7 +38,7 @@ export function ProgressIndicator({
           <span className="tabular-nums text-muted-foreground">{percentage}%</span>
         )}
       </div>
-      <Progress value={percentage} className="h-1.5" />
+      <Progress value={percentage} className="h-1.5" aria-label="Execution progress" />
     </div>
   );
 }
