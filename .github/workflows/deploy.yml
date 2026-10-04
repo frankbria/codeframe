@@ -497,7 +497,7 @@ jobs:
                 -e SRC="/legacy/\$(basename "\${LEGACY_DB}")" \
                 -v codeframe_codeframe-data:/data \
                 -v "\$(dirname "\${LEGACY_DB}")":/legacy:ro \
-                alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc sh -c '
+                alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 sh -c '
                   if [ -f /data/codeframe.db ]; then
                     echo "   volume already has a database — left alone"
                   else

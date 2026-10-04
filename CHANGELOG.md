@@ -147,8 +147,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - **The deploy's database helper images are pinned by digest (#1390).**
   `deploy/backup-db.sh` (`python:3.12-alpine`) and the PM2 migration and
-  restore steps (`alpine:3.20`) mount the production volume read-write, and ran
-  mutable Docker Hub tags. They now use `@sha256:` digests. A test fails if one
+  restore steps (`alpine:3.20`, past upstream support) mount the production
+  volume read-write, and ran mutable Docker Hub tags. They now use `@sha256:`
+  digests, with the restore image moved to the supported `alpine:3.22`. A test fails if one
   loses its digest, and deploy/README.md explains how to refresh them, since
   Dependabot does not scan shell scripts or workflow steps.
 
