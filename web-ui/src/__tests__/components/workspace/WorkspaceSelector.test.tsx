@@ -307,7 +307,7 @@ describe('WorkspaceSelector', () => {
 
       const projectA = screen
         .getByText('project-a')
-        .closest<HTMLElement>('[role="button"]');
+        .closest<HTMLElement>('button');
       await userEvent.click(projectA!);
 
       expect(mockOnSelectWorkspace).toHaveBeenCalledWith(
@@ -326,9 +326,9 @@ describe('WorkspaceSelector', () => {
 
       const projectA = screen
         .getByText('project-a')
-        .closest<HTMLElement>('[role="button"]');
+        .closest<HTMLElement>('button');
       projectA?.focus();
-      fireEvent.keyDown(projectA!, { key: 'Enter' });
+      await userEvent.keyboard('{Enter}');
 
       await waitFor(() => {
         expect(mockOnSelectWorkspace).toHaveBeenCalledWith(
@@ -348,9 +348,9 @@ describe('WorkspaceSelector', () => {
 
       const projectA = screen
         .getByText('project-a')
-        .closest<HTMLElement>('[role="button"]');
+        .closest<HTMLElement>('button');
       projectA?.focus();
-      fireEvent.keyDown(projectA!, { key: ' ' });
+      await userEvent.keyboard(' ');
 
       await waitFor(() => {
         expect(mockOnSelectWorkspace).toHaveBeenCalledWith(
@@ -405,6 +405,17 @@ describe('WorkspaceSelector', () => {
       expect(mockOnSelectWorkspace).not.toHaveBeenCalled();
     });
 
+    it('a recent row holds no control inside another (#1393)', () => {
+      render(
+        <WorkspaceSelector onSelectWorkspace={mockOnSelectWorkspace} isLoading={false} error={null} />
+      );
+      // nested-interactive: the remove button used to sit inside a role=button row.
+      const select = screen.getByText('project-a').closest<HTMLElement>('button')!;
+      expect(select.querySelector('button, [role="button"], a, input')).toBeNull();
+      expect(document.querySelector('[role="button"]')).toBeNull();
+      expect(screen.getByRole('button', { name: /Remove project-a from recent projects/ })).toBeInTheDocument();
+    });
+
     it('disables recent workspace selection when loading', async () => {
       render(
         <WorkspaceSelector
@@ -416,8 +427,8 @@ describe('WorkspaceSelector', () => {
 
       const projectA = screen
         .getByText('project-a')
-        .closest<HTMLElement>('[role="button"]');
-      expect(projectA).toHaveAttribute('aria-disabled', 'true');
+        .closest<HTMLElement>('button');
+      expect(projectA).toBeDisabled();
 
       await userEvent.click(projectA!);
       expect(mockOnSelectWorkspace).not.toHaveBeenCalled();
