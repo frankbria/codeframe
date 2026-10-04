@@ -59,24 +59,29 @@ export function RunHistoryPanel({ workspacePath, onSelectRun, selectedRunId }: R
               {data.map((run) => {
                 const isSelected = run.run_id === selectedRunId;
                 return (
+                  // The row keeps its table semantics; the control is a real
+                  // button in the first cell. A role=button <tr> hid the row
+                  // and column relationships from screen readers (#1393).
+                  // Clicking anywhere on the row still selects, for the mouse.
                   <tr
                     key={run.run_id}
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={isSelected}
                     onClick={() => onSelectRun(run.run_id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onSelectRun(run.run_id);
-                      }
-                    }}
-                    className={`cursor-pointer border-b last:border-0 hover:bg-muted/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset${
+                    className={`cursor-pointer border-b last:border-0 hover:bg-muted/30${
                       isSelected ? ' bg-muted/60' : ''
                     }`}
                   >
                     <td className="px-4 py-2 text-muted-foreground">
-                      {formatDateTime(run.started_at)}
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectRun(run.run_id);
+                        }}
+                        className="rounded-sm text-left underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {formatDateTime(run.started_at)}
+                      </button>
                     </td>
                     <td className="px-4 py-2">
                       {/* A run that passed having executed nothing is not a
