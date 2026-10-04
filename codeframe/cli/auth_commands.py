@@ -824,6 +824,13 @@ def rotate_credential(
     # Check if credential exists
     source = manager.get_credential_source(provider_enum)
     if source == CredentialSource.NOT_FOUND:
+        # The lookup reads an undecryptable store as empty; "nothing to rotate,
+        # run setup" would hide the real problem and its recovery steps (#1320).
+        try:
+            manager.ensure_store_readable()
+        except CredentialStoreUnreadableError as e:
+            print_error(e)
+            raise typer.Exit(1)
         console.print(f"[yellow]Note:[/yellow] No existing credential for {provider_enum.display_name}")
         console.print("Use 'codeframe auth setup' to create a new credential.")
         raise typer.Exit(1)

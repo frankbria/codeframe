@@ -593,6 +593,11 @@ def test_auth_commands_report_an_unreadable_store_instead_of_crashing(
     from codeframe.cli.app import app
     from codeframe.core.credentials import CredentialStore
 
+    # Hermetic (#1320): no ambient key (an env credential let `rotate` skip
+    # its "is there anything to rotate?" check, which is the path that hid the
+    # unreadable store), and no OS keyring standing in for the file store.
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("CODEFRAME_DISABLE_KEYRING", "1")
     # Leave an undecryptable store where the manager will look.
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(
