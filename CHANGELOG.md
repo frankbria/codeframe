@@ -159,6 +159,45 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A rejected API key's error says where that key came from (#1346).** The
+  401 message guessed: "$ANTHROPIC_API_KEY, or when unset the stored key".
+  For OpenAI-compatible providers it read the environment itself. It now names
+  the actual source: the environment variable, the key stored for your account,
+  the machine-wide stored key, or, for a hosted tenant's endpoint, that no key
+  was sent. It no longer tells someone with a stored key to check an
+  environment variable.
+
+- **`cf auth rotate` on an unreadable credential store says so (#1320).** Its
+  "is there anything to rotate?" check reads an undecryptable store as empty,
+  so it answered "No existing credential … run setup", which hid the real error
+  and its recovery steps (the store is intact, so restore the original secret).
+  It now reports the unreadable store. The test that should have caught this
+  passed in CI only because an earlier test leaked `ANTHROPIC_API_KEY`. It is
+  now hermetic.
+
+- **The deploy's database helper images are pinned by digest (#1390).**
+  `deploy/backup-db.sh` (`python:3.12-alpine`) and the PM2 migration and
+  restore steps (`alpine:3.20`, past upstream support) mount the production
+  volume read-write, and ran mutable Docker Hub tags. They now use `@sha256:`
+  digests, with the restore image moved to the supported `alpine:3.22`. A test fails if one
+  loses its digest, and deploy/README.md explains how to refresh them, since
+  Dependabot does not scan shell scripts or workflow steps.
+- **Two more `role="button"` wrappers are real buttons (#1393).** A recent
+  project on the workspace selector was a `div role="button"` that wrapped its
+  own remove button (axe `nested-interactive`). It is now two sibling buttons.
+  Proof run history made each `<tr>` a `role="button"`, which hid the table's
+  row and column relationships from screen readers. The row keeps its table
+  semantics, with a pressed button in its first cell. The a11y smoke spec now
+  also scans the workspace selector and a proof page with run history.
+- **The ruff gate no longer fails clean code over a config written for a
+  newer ruff (#1308).** When a project has no ruff of its own, CodeFRAME's
+  copy lints it against the project's config. If that config uses options
+  newer than CodeFRAME's ruff ("unknown field", an unknown rule or value), the
+  gate, per-edit lint and autofix now report **SKIPPED** with an explanation,
+  instead of FAILED. A config that is simply broken, or the project's own ruff
+  rejecting its own config, still fails. Per-edit lint also stops forcing
+  `--output-format=concise`, which ruff < 0.3 rejects with a usage error on
+  every edit.
 - **A batch of low-severity correctness fixes (#1306).**
   - `cf checkpoint restore` no longer revives MERGED tasks or rewinds a task
     whose run is still in progress. It reports how many tasks it actually

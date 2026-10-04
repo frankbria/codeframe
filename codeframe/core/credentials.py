@@ -1054,6 +1054,15 @@ class CredentialManager:
             return None
         return credential.value
 
+    def ensure_store_readable(self) -> None:
+        """Raise ``CredentialStoreUnreadableError`` if the file store cannot be read.
+
+        Lookups deliberately treat an unreadable store as empty, so a command
+        that found nothing can call this to tell "nothing stored" apart from
+        "stored but unreadable" (#1320). A missing file is fine.
+        """
+        self._store._load_encrypted_store()
+
     def get_credential_source(
         self,
         provider: CredentialProvider,

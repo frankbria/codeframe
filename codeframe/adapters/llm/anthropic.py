@@ -169,7 +169,8 @@ class AnthropicProvider(LLMProvider):
             response = self.client.messages.create(**kwargs)
         except Exception as exc:
             raise map_provider_error(
-                exc, provider="anthropic", model=model, purpose=purpose
+                exc, provider="anthropic", model=model, purpose=purpose,
+                key_source=self.key_source,
             ) from exc
 
         # Parse response
@@ -216,7 +217,8 @@ class AnthropicProvider(LLMProvider):
             # Same mapping as the sync path — the async path previously produced
             # typed errors but stringified the raw SDK body into them (#1110).
             raise map_provider_error(
-                exc, provider="anthropic", model=model, purpose=purpose
+                exc, provider="anthropic", model=model, purpose=purpose,
+                key_source=self.key_source,
             ) from exc
 
     def supports(self, capability: str) -> bool:

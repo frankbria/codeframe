@@ -202,6 +202,7 @@ class OpenAIProvider(LLMProvider):
                 provider=self.provider_name,
                 model=kwargs["model"],
                 purpose=purpose,
+                key_source=self.key_source,
             ) from exc
 
         return self._parse_response(response)
@@ -251,6 +252,7 @@ class OpenAIProvider(LLMProvider):
                 provider=self.provider_name,
                 model=kwargs["model"],
                 purpose=purpose,
+                key_source=self.key_source,
             ) from exc
 
     async def async_stream(
