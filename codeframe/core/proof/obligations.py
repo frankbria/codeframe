@@ -114,6 +114,17 @@ def slugify(text: str) -> str:
     return slug or "unnamed"
 
 
+def requirement_slug(req_id: str, title: str) -> str:
+    """The slug a requirement's tests are named by: its id, then its title.
+
+    The id is what keeps it unique. Two captures of one glitch share a title,
+    and the runner enforces a rule as ``pytest -k <test_id>`` over the whole
+    project, so a title-only slug made each requirement's rule run the other
+    one's test as well (#1397). Rules and stub function names both use this.
+    """
+    return slugify(f"{req_id} {title}")
+
+
 def suggest_evidence_rules(gate: Gate, description: str) -> list[EvidenceRule]:
     """Generate starter evidence rules for an obligation gate."""
     prefix = TEST_ID_PREFIXES.get(gate, "test_")

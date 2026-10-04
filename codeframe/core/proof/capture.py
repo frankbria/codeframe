@@ -53,13 +53,14 @@ def capture_requirement(
     # guessed at (#1258).
     scope = build_scope_from_capture(where, workspace=workspace, on_warning=on_warning)
 
-    # 4. Generate evidence rules for each obligation
+    # 4. Generate evidence rules for each obligation, named by the new id so
+    # a re-capture under the same title does not share them (#1397).
+    req_id = ledger.next_req_id(workspace)
     evidence_rules = []
     for obl in obligations:
-        evidence_rules.extend(suggest_evidence_rules(obl.gate, title))
+        evidence_rules.extend(suggest_evidence_rules(obl.gate, f"{req_id} {title}"))
 
     # 5. Create the requirement
-    req_id = ledger.next_req_id(workspace)
     req = Requirement(
         id=req_id,
         title=title,
