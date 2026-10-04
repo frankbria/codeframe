@@ -57,3 +57,10 @@ describe('TopTasksTable', () => {
     expect(link).toHaveAttribute('href', '/tasks?selected=abc-123');
   });
 });
+
+describe('TopTasksTable a11y (#1298)', () => {
+  it('is a named, focusable region so a keyboard can scroll it', () => {
+    render(<TopTasksTable tasks={[makeEntry({ task_id: 't-1', task_title: 'Foo', total_cost_usd: 0.5 })]} />);
+    expect(screen.getByRole('region', { name: 'Top tasks by cost' })).toHaveAttribute('tabindex', '0');
+  });
+});

@@ -48,3 +48,10 @@ describe('SpendBarChart', () => {
     expect(bar.getAttribute('title')).toContain('$1.2345');
   });
 });
+
+describe('SpendBarChart a11y (#1298)', () => {
+  it('is a named, focusable region so a keyboard can scroll it', () => {
+    render(<SpendBarChart daily={[{ date: '2026-05-01', cost_usd: 0.5 }]} days={7} />);
+    expect(screen.getByRole('region', { name: 'Daily spend chart' })).toHaveAttribute('tabindex', '0');
+  });
+});

@@ -25,7 +25,7 @@ const changeTypeIcon: Record<FileChange['change_type'], IconSvgElement> = {
 };
 
 const changeTypeColor: Record<FileChange['change_type'], string> = {
-  added: 'text-green-600',
+  added: 'text-green-700',
   deleted: 'text-red-600',
   modified: 'text-amber-600',
   renamed: 'text-blue-600',
@@ -149,7 +149,7 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                         <HugeiconsIcon icon={ArrowDown01Icon} className="h-3 w-3 shrink-0" />
                       )}
                       <span className="truncate font-mono">{dir}</span>
-                      <span className="ml-auto text-[10px] text-muted-foreground/70">
+                      <span className="ml-auto text-[10px] text-muted-foreground">
                         {dirFiles.length}
                       </span>
                     </button>
@@ -186,10 +186,10 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                               )}
                               <span className="ml-auto flex shrink-0 gap-1 font-mono text-[10px]">
                                 {file.insertions > 0 && (
-                                  <span className="text-green-600">+{file.insertions}</span>
+                                  <span className="text-green-700">+{file.insertions}</span>
                                 )}
                                 {file.deletions > 0 && (
-                                  <span className="text-red-600">-{file.deletions}</span>
+                                  <span className="text-red-700">-{file.deletions}</span>
                                 )}
                               </span>
                             </button>
@@ -219,7 +219,7 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                       )}
                       <span className="h-2 w-2 rounded-full bg-amber-500" />
                       <span className="truncate">{taskTitle}</span>
-                      <span className="ml-auto text-[10px] text-muted-foreground/70">
+                      <span className="ml-auto text-[10px] text-muted-foreground">
                         {taskFiles.length}
                       </span>
                     </button>
@@ -251,10 +251,10 @@ export function FileTreePanel({ files, selectedFile, onFileSelect, tasks, contex
                               </span>
                               <span className="ml-auto flex shrink-0 gap-1 font-mono text-[10px]">
                                 {file.insertions > 0 && (
-                                  <span className="text-green-600">+{file.insertions}</span>
+                                  <span className="text-green-700">+{file.insertions}</span>
                                 )}
                                 {file.deletions > 0 && (
-                                  <span className="text-red-600">-{file.deletions}</span>
+                                  <span className="text-red-700">-{file.deletions}</span>
                                 )}
                               </span>
                             </button>
