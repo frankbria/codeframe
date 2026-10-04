@@ -336,7 +336,7 @@ docker volume create codeframe_codeframe-data
 docker run --rm \
   -v codeframe_codeframe-data:/data \
   -v /opt/codeframe/.codeframe:/legacy:ro \
-  alpine:3.20 sh -c 'cp /legacy/state.db /data/codeframe.db && chown -R 10001:10001 /data'
+  alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc sh -c 'cp /legacy/state.db /data/codeframe.db && chown -R 10001:10001 /data'
 ```
 
 `WORKSPACE_ROOT` is not migrated: it holds cloned repositories and worktrees,
@@ -376,7 +376,7 @@ restore one, unpack it to `./restore/codeframe.db`, then:
 ```bash
 $COMPOSE stop backend
 docker run --rm -v codeframe_codeframe-data:/data -v "$PWD/restore":/restore:ro \
-  alpine:3.20 sh -c 'cp /restore/codeframe.db /data/codeframe.db &&
+  alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc sh -c 'cp /restore/codeframe.db /data/codeframe.db &&
     rm -f /data/codeframe.db-wal /data/codeframe.db-shm &&
     chown 10001:10001 /data/codeframe.db'
 $COMPOSE start backend
@@ -488,3 +488,20 @@ a re-run of the audit.
   binaries are absent from the container, so those engines will not work on a
   containerised host. The built-in ReAct engine is unaffected. This was true of
   the PM2 host only where those CLIs happened to be installed.
+
+### Refreshing the helper image digests
+
+`deploy/backup-db.sh` (`python:3.12-alpine`) and the PM2 migration and restore
+steps (`alpine:3.20`) mount the production data volume read-write, so they are
+pinned by `@sha256:` digest rather than a mutable tag (#1390). Dependabot's
+docker ecosystem does not read shell scripts or workflow steps, so refresh
+them by hand when you want a newer base. Keep the tag and replace the digest
+with the multi-arch index digest:
+
+```bash
+docker buildx imagetools inspect python:3.12-alpine --format '{{json .Manifest.Digest}}'
+docker buildx imagetools inspect alpine:3.20 --format '{{json .Manifest.Digest}}'
+```
+
+`tests/ci/test_deploy_image_digests_1390.py` fails if any of them loses its
+digest.

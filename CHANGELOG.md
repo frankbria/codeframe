@@ -145,6 +145,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **The deploy's database helper images are pinned by digest (#1390).**
+  `deploy/backup-db.sh` (`python:3.12-alpine`) and the PM2 migration and
+  restore steps (`alpine:3.20`) mount the production volume read-write, and ran
+  mutable Docker Hub tags. They now use `@sha256:` digests. A test fails if one
+  loses its digest, and deploy/README.md explains how to refresh them, since
+  Dependabot does not scan shell scripts or workflow steps.
+
 - **The daily spend limit now counts THINK-stage and chat spend (#1345).**
   #1303 limited task and batch runs only, and only ReactAgent wrote to the
   `token_usage` table the limit sums. PRD stress-test and refine, discovery,
