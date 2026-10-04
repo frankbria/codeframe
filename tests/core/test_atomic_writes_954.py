@@ -699,3 +699,22 @@ def test_get_installation_history_still_reads_a_good_file(installer):
     )
 
     assert installer.get_installation_history() == {"black": {"status": "success"}}
+
+
+def test_rotate_with_no_store_at_all_still_says_nothing_to_rotate(tmp_path, monkeypatch):
+    """#1320's unreadable-store check must not turn a plain empty store into an
+    error: no file at all is still 'no existing credential'."""
+    from typer.testing import CliRunner
+
+    from codeframe.cli.app import app
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("CODEFRAME_DISABLE_KEYRING", "1")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr("codeframe.core.credentials.DEFAULT_STORAGE_DIR", tmp_path / ".codeframe")
+
+    result = CliRunner().invoke(app, ["auth", "rotate", "anthropic", "-v", "sk-ant-api03-abcdefghijklmnop", "--force"])
+
+    assert result.exit_code == 1
+    assert "No existing credential" in result.output
+    assert "Error:" not in result.output
