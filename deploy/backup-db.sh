@@ -29,7 +29,9 @@ umask 077
 OUT="${1:?usage: backup-db.sh <output-file> <state-dir>}"
 STATE_DIR="${2:?usage: backup-db.sh <output-file> <state-dir>}"
 VOLUME="${CODEFRAME_DATA_VOLUME:-codeframe_codeframe-data}"
-IMAGE="${CODEFRAME_BACKUP_IMAGE:-python:3.12-alpine}"
+# Pinned by digest (#1390): this image mounts the production volume read-write.
+# Refresh: deploy/README.md -> "Refreshing the helper image digests".
+IMAGE="${CODEFRAME_BACKUP_IMAGE:-python:3.12-alpine@sha256:0687a6bc9716edc2a6ee0fbfb0f87e7ee358b262b67c9215de91bc9b2d38ba71}"
 MARKER="$STATE_DIR/.database-backed-up"
 
 no_database() {

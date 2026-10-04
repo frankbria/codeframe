@@ -293,6 +293,10 @@ class LLMProvider(ABC):
     Model selection is handled via the purpose parameter.
     """
 
+    #: Where the API key came from, for a rejected-key error (#1346). Set by
+    #: ``llm_resolution.create_provider``; None means "the adapter resolved it".
+    key_source: Optional[str] = None
+
     def __init__(self, model_selector: Optional[ModelSelector] = None):
         """Initialize the provider.
 
