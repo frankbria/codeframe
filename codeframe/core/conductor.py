@@ -92,8 +92,10 @@ SUPERVISOR_TACTICAL_PATTERNS = [
     "overwrite", "existing file",
 ]
 
-# Cache of resolved decisions to avoid duplicate LLM calls
-_decision_cache: dict[str, str] = {}
+# Cache of resolved decisions to avoid duplicate LLM calls, keyed by
+# (workspace id, topic): a decision made for one workspace's blocker must never
+# answer another's (#1306).
+_decision_cache: dict[tuple[str, str], str] = {}
 
 # Track running subprocesses for force stop capability
 # Structure: {batch_id: {task_id: Popen}}
@@ -188,7 +190,7 @@ class SupervisorResolver:
         question = blocker.question.lower()
 
         # Check cache first
-        cache_key = self._get_cache_key(question)
+        cache_key = (self.workspace.id, self._get_cache_key(question))
         if cache_key in _decision_cache:
             logger.debug("[Supervisor] Using cached decision for similar question")
             self._auto_answer_blocker(blocker, _decision_cache[cache_key])
@@ -225,18 +227,24 @@ class SupervisorResolver:
 
         Normalizes similar questions to the same key.
         """
-        # Simple normalization - could be improved with embeddings
+        # Whole words only: "pip" must not match "pipeline" (#1306). Letters
+        # and digits bound a word; "_" does not, so asyncio_default_... counts.
         q = question.lower()
-        if "virtual environment" in q or "venv" in q or "virtualenv" in q:
+
+        def has(*words: str) -> bool:
+            return any(re.search(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", q) for w in words)
+
+        if has("virtual environment", "venv", "virtualenv"):
             return "venv_creation"
-        if "fixture scope" in q or "asyncio" in q:
+        if has("fixture scope", "asyncio"):
             return "asyncio_fixture_scope"
-        if "package manager" in q or "pip" in q or "npm" in q:
+        if has("package manager", "pip", "npm"):
             return "package_manager"
-        if "pytest" in q and ("fail" in q or "verification" in q):
+        if has("pytest") and re.search(r"(?<![a-z0-9])(fail|verification)", q):
             return "pytest_failure"
-        # Fallback to hash of first 50 chars
-        return f"blocker_{hash(q[:50])}"
+        # Otherwise the whole question: a prefix let unrelated questions with
+        # the same opening share an answer.
+        return f"blocker_{' '.join(q.split())}"
 
     def _classify_with_supervision(self, question: str) -> str:
         """Use supervision model to classify the blocker question."""
