@@ -8,7 +8,7 @@ import json
 import sqlite3
 from datetime import date, datetime, timezone
 import logging
-from typing import Any, Optional
+from typing import Callable, Optional
 
 from codeframe.core.proof.models import (
     Evidence,
@@ -427,28 +427,32 @@ def save_requirement(
         if existing:
             conn.close()
             raise ValueError(f"Requirement {req.id} already exists")
-    cursor.execute(
-        """INSERT OR REPLACE INTO proof_requirements
+    cursor.execute(f"INSERT OR REPLACE {_INSERT_REQUIREMENT}", _requirement_row(workspace, req))
+    conn.commit()
+    conn.close()
+
+
+_INSERT_REQUIREMENT = """INTO proof_requirements
            (id, title, description, severity, source, scope, obligations,
             evidence_rules, status, waiver, created_at, satisfied_at,
             created_by, source_issue, related_reqs, glitch_type, workspace_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            req.id, req.title, req.description, req.severity.value,
-            req.source.value, _scope_to_json(req.scope),
-            _obligations_to_json(req.obligations),
-            _evidence_rules_to_json(req.evidence_rules),
-            req.status.value, _waiver_to_json(req.waiver),
-            (req.created_at or _utc_now()).isoformat(),
-            req.satisfied_at.isoformat() if req.satisfied_at else None,
-            req.created_by, req.source_issue,
-            json.dumps(req.related_reqs),
-            req.glitch_type.value if req.glitch_type else None,
-            workspace.id,
-        ),
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+
+def _requirement_row(workspace: Workspace, req: Requirement) -> tuple:
+    return (
+        req.id, req.title, req.description, req.severity.value,
+        req.source.value, _scope_to_json(req.scope),
+        _obligations_to_json(req.obligations),
+        _evidence_rules_to_json(req.evidence_rules),
+        req.status.value, _waiver_to_json(req.waiver),
+        (req.created_at or _utc_now()).isoformat(),
+        req.satisfied_at.isoformat() if req.satisfied_at else None,
+        req.created_by, req.source_issue,
+        json.dumps(req.related_reqs),
+        req.glitch_type.value if req.glitch_type else None,
+        workspace.id,
     )
-    conn.commit()
-    conn.close()
 
 
 def get_requirement(workspace: Workspace, req_id: str) -> Optional[Requirement]:
@@ -526,7 +530,9 @@ def next_req_id(workspace: Workspace) -> str:
     return f"REQ-{max_num + 1:04d}"
 
 
-def allocate_requirement(workspace: Workspace, **kwargs: Any) -> str:
+def allocate_requirement(
+    workspace: Workspace, build: Callable[[str], Requirement]
+) -> Requirement:
     """Reserve the next REQ id and insert the row in one transaction (#923).
 
     ``next_req_id`` computed MAX+1 and closed its connection; ``save_requirement``
@@ -535,15 +541,12 @@ def allocate_requirement(workspace: Workspace, **kwargs: Any) -> str:
     sharing its stub directory. The allocate-and-insert now happens under one
     IMMEDIATE transaction, and the retry covers the cross-process case where
     another writer wins the id between attempts.
-    """
-    from codeframe.core.proof.models import (
-        Obligation,
-        ReqStatus,
-        RequirementScope,
-        Severity,
-        Source,
-    )
 
+    ``build(req_id)`` makes the requirement, and may write files named by the
+    id (capture writes its stubs there). It runs inside the transaction, so
+    the files land before the row commits, and if it raises, the id is never
+    taken (#1399).
+    """
     _ensure_tables(workspace)
 
     for _ in range(_ALLOCATE_ATTEMPTS):
@@ -556,42 +559,16 @@ def allocate_requirement(workspace: Workspace, **kwargs: Any) -> str:
                 (workspace.id,),
             ).fetchone()
             max_num = row[0] if row and row[0] is not None else 0
-            req_id = f"REQ-{max_num + 1:04d}"
-
-            conn.execute(
-                "INSERT INTO proof_requirements (id, title, description, severity, "
-                "source, scope, obligations, evidence_rules, status, waiver, "
-                "created_at, satisfied_at, created_by, source_issue, related_reqs, "
-                "glitch_type, workspace_id) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    req_id,
-                    kwargs.get("title", ""),
-                    kwargs.get("description", ""),
-                    kwargs.get("severity", Severity.HIGH).value,
-                    kwargs.get("source", Source.QA).value,
-                    _scope_to_json(kwargs.get("scope") or RequirementScope()),
-                    _obligations_to_json(kwargs.get("obligations") or [Obligation(gate=Gate.UNIT)]),
-                    _evidence_rules_to_json(kwargs.get("evidence_rules") or []),
-                    ReqStatus.OPEN.value,
-                    None,
-                    datetime.now(timezone.utc).isoformat(),
-                    None,
-                    kwargs.get("created_by", "human"),
-                    kwargs.get("source_issue"),
-                    json.dumps(kwargs.get("related_reqs") or []),
-                    kwargs.get("glitch_type"),
-                    workspace.id,
-                ),
-            )
+            req = build(f"REQ-{max_num + 1:04d}")
+            conn.execute(f"INSERT {_INSERT_REQUIREMENT}", _requirement_row(workspace, req))
             conn.commit()
-            return req_id
+            return req
         except sqlite3.IntegrityError:
             # Another writer took this id between our read and insert.
             conn.rollback()
             continue
         finally:
-            conn.close()
+            conn.close()  # uncommitted (build raised): rolled back
 
     raise RuntimeError("Could not allocate a REQ id after repeated collisions")
 
