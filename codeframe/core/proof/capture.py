@@ -18,6 +18,7 @@ from codeframe.core.proof.models import (
 from codeframe.core.proof.obligations import (
     classify_glitch,
     get_obligations,
+    requirement_slug,
     suggest_evidence_rules,
 )
 from codeframe.core.proof.scope import build_scope_from_capture
@@ -58,7 +59,7 @@ def capture_requirement(
     req_id = ledger.next_req_id(workspace)
     evidence_rules = []
     for obl in obligations:
-        evidence_rules.extend(suggest_evidence_rules(obl.gate, f"{req_id} {title}"))
+        evidence_rules.extend(suggest_evidence_rules(obl.gate, requirement_slug(req_id, title)))
 
     # 5. Create the requirement
     req = Requirement(
