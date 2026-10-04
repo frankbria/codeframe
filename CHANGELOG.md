@@ -9,6 +9,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **typer 0.27 (#1351).** `typer` is now `>=0.27,<0.28`, and the `click<8.5`
+  pin is gone. typer 0.27 vendors its own click and nothing here imports click,
+  so the #1268 pair of typer and click caps is no longer needed. On a fresh
+  install `cf --help`, interactive `cf proof capture` with a typo, and
+  telemetry command names work as before. Choice metavars now render as
+  `<a|b>` instead of `[a|b]`.
+
 - **`cf pr create` works as the README shows it (#1273).** It no longer needs
   `--title`: the title defaults to the branch's newest commit. The body now
   ends with the workspace's PROOF9 status (requirement counts, the open ones by
