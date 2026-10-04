@@ -1,9 +1,10 @@
 /**
  * Content-Security-Policy + hardening headers for the web UI (#657).
  *
- * Defense-in-depth: the JWT lives in localStorage (the EventSource header
- * limitation drove the `?token=` design), so a CSP contains any future XSS by
- * locking down where injected JS can send data. connect-src is built from the
+ * Defense-in-depth: the JWT lives in localStorage, so a CSP contains any
+ * future XSS by locking down where injected JS can send data. (Streams
+ * authenticate with single-use tickets, #745, never the JWT in a URL.)
+ * connect-src is built from the
  * SAME build-time env the app uses for its API/WS calls, so it matches the
  * real backend without hardcoding a deploy URL.
  *
@@ -43,18 +44,18 @@ function buildConnectSrc({ apiUrl, wsUrl, sseUrl } = {}) {
  * kept for older ones, which then fall back to a host allow-list rather than
  * to nothing.
  *
- * Without a nonce we cannot serve a working App Router page, so the nonce-less
- * form keeps 'unsafe-inline'. That form must only ever reach responses that are
- * not HTML documents — see next.config.js.
+ * A nonce is required. The nonce-less form had to keep 'unsafe-inline' and was
+ * reachable only from tests, so it is refused rather than left for a future
+ * caller to ship (#1305).
  */
 function buildScriptSrc({ nonce, isDev } = {}) {
   // unsafe-eval is only needed by the Next.js dev runtime (React Refresh /
   // eval source maps); production bundles never eval, so it ships dev-only.
   const devEval = isDev ? " 'unsafe-eval'" : '';
-  if (nonce) {
-    return `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${devEval}`;
+  if (!nonce) {
+    throw new Error('buildCsp needs a per-request nonce; there is no unsafe-inline fallback');
   }
-  return `script-src 'self' 'unsafe-inline'${devEval}`;
+  return `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${devEval}`;
 }
 
 function buildCsp(env = process.env, { nonce } = {}) {

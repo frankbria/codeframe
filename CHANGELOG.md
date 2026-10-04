@@ -128,6 +128,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Removed
 
+- **Dead code and decoys (#1305).**
+  - The audit log enumerated authorization, project and user-update events,
+    with three `log_*` methods, that nothing emits. That read as audit coverage
+    that did not exist, so they are gone, and the module lists only what is
+    logged.
+  - Also removed because nothing called them: `MetricsTracker`'s
+    agent/stats/timeseries queries, the repository base's async helpers,
+    `Database.close_all` and `get_scope_permissions`.
+  - The web UI's `buildCsp` now **requires** a nonce instead of falling back to
+    `script-src 'unsafe-inline'`, a branch only tests reached.
+  - A `costs_v2` TODO that pointed at a deleted module, and which would have
+    re-created #943 if followed, now gives the real reason for its raw
+    connection.
+
 - **Scripts that reported success without doing the work, and one operator's
   laptop, are out of the public repo (#969).** `scripts/deploy.sh` printed
   "Deployment simulation successful" and exited 0 without deploying — wired into a

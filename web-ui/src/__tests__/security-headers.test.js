@@ -12,7 +12,7 @@ import { buildCsp, buildConnectSrc, securityHeaders } from '../../security-heade
 
 describe('security headers (#657)', () => {
   test('CSP locks down the exfil-relevant directives', () => {
-    const csp = buildCsp({});
+    const csp = buildCsp({}, { nonce: 'n' });
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("base-uri 'self'");
@@ -63,12 +63,12 @@ describe('security headers (#657)', () => {
   test('production CSP does not allow eval (#783)', () => {
     // unsafe-eval is only needed by the Next.js dev runtime (React Refresh);
     // shipping it in production widens the XSS surface for no benefit.
-    expect(buildCsp({})).not.toContain("'unsafe-eval'");
-    expect(buildCsp({ NODE_ENV: 'production' })).not.toContain("'unsafe-eval'");
+    expect(buildCsp({}, { nonce: 'n' })).not.toContain("'unsafe-eval'");
+    expect(buildCsp({ NODE_ENV: 'production' }, { nonce: 'n' })).not.toContain("'unsafe-eval'");
   });
 
   test('dev CSP allows eval for the Next.js dev runtime', () => {
-    expect(buildCsp({ NODE_ENV: 'development' })).toContain("'unsafe-eval'");
+    expect(buildCsp({ NODE_ENV: 'development' }, { nonce: 'n' })).toContain("'unsafe-eval'");
   });
 
   test('securityHeaders ships the hardening header set', () => {
@@ -139,12 +139,12 @@ describe('production CSP carries a nonce, not unsafe-inline (#936)', () => {
     expect(keys).toContain('X-Content-Type-Options');
   });
 
-  test('a missing nonce still produces a working policy', () => {
-    // Non-document responses fall back to this; it must not be empty or broken.
-    const scriptSrc = buildCsp(PROD)
-      .split('; ')
-      .find((d) => d.startsWith('script-src'));
-    expect(scriptSrc).toContain("'self'");
+  test('a missing nonce is refused, never served as unsafe-inline (#1305)', () => {
+    // The nonce-less 'unsafe-inline' form was reachable only from tests; the
+    // one caller (proxy.ts) always mints a nonce. Refusing it means a future
+    // caller cannot quietly ship the policy that lets injected scripts run.
+    expect(() => buildCsp(PROD)).toThrow(/nonce/);
+    expect(() => buildCsp(PROD, { nonce: '' })).toThrow(/nonce/);
   });
 });
 
