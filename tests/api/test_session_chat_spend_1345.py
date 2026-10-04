@@ -169,6 +169,12 @@ class _Provider:
 
         from codeframe.adapters.llm.base import StreamChunk
 
+        if self.end == "silent":
+            return  # interrupted after the request was accepted, before any chunk
+            yield  # pragma: no cover - makes this an async generator
+        if self.end == "error":
+            raise RuntimeError("401 invalid x-api-key")
+            yield  # pragma: no cover
         yield StreamChunk(type="text_delta", text="x" * 300)
         if self.end == "finish":
             yield StreamChunk(type="message_stop", stop_reason="end_turn", input_tokens=1000, output_tokens=200)
@@ -221,13 +227,21 @@ def test_chat_usage_is_recorded_by_the_producer_not_the_socket(chat_ws, monkeypa
     assert _drive(chat_ws, monkeypatch, "finish") == [(1000, 200, "session_chat")]
 
 
-@pytest.mark.parametrize("end,cancel", [("stop", False), ("hang", True)], ids=["interrupted", "cancelled"])
-def test_a_call_cut_short_is_still_counted(chat_ws, monkeypatch, end, cancel):
+@pytest.mark.parametrize("end,cancel,min_out", [
+    ("stop", False, 100), ("hang", True, 100), ("silent", False, 1),
+], ids=["interrupted", "cancelled", "interrupted-before-first-chunk"])
+def test_a_call_cut_short_is_still_counted(chat_ws, monkeypatch, end, cancel, min_out):
     """An interrupted or cancelled call reports no usage, so it went
-    uncounted and repeated interrupts spent past the limit (codex P1)."""
+    uncounted and repeated interrupts spent past the limit (codex P1). The
+    prompt is billed once the request is accepted, before any chunk."""
     rows = _drive(chat_ws, monkeypatch, end, cancel)
     assert len(rows) == 1 and rows[0][2] == "session_chat", rows
-    assert rows[0][0] > 0 and rows[0][1] >= 100, rows  # 300 streamed chars
+    assert rows[0][0] > 0 and rows[0][1] >= min_out, rows  # min_out: 300 streamed chars
+
+
+def test_a_call_the_provider_refused_is_not_counted(chat_ws, monkeypatch):
+    """A rejected key bills nothing; an estimate there would be phantom spend."""
+    assert _drive(chat_ws, monkeypatch, "error") == []
 
 
 def test_a_new_message_replaces_a_turn_that_holds_the_whole_budget(api_client: TestClient, chat_ws, monkeypatch):

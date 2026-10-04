@@ -500,7 +500,7 @@ class StreamingChatAdapter:
             stop_reason = "end_turn"
             # A call cut short (interrupt, replacement message, disconnect)
             # never reaches message_stop, so it reports no usage (#1345).
-            started = finished = False
+            started = finished = refused = False
             streamed_chars = 0
 
             try:
@@ -559,8 +559,13 @@ class StreamingChatAdapter:
                         )
 
                     # tool_use_stop is informational only — no ChatEvent needed
+            except Exception:
+                # A provider error before any output (bad key, connection)
+                # billed nothing. A cancel is BaseException: still counted.
+                refused = not started
+                raise
             finally:
-                if started and not finished:
+                if not finished and not refused:
                     # ponytail: an estimate at ~3 chars/token (real text runs
                     # nearer 4, so this over-counts). Exact partial usage needs
                     # the provider to surface its stream snapshot on interrupt.
