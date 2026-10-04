@@ -593,6 +593,11 @@ def test_auth_commands_report_an_unreadable_store_instead_of_crashing(
     from codeframe.cli.app import app
     from codeframe.core.credentials import CredentialStore
 
+    # Hermetic (#1320): no ambient key (an env credential let `rotate` skip
+    # its "is there anything to rotate?" check, which is the path that hid the
+    # unreadable store), and no OS keyring standing in for the file store.
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("CODEFRAME_DISABLE_KEYRING", "1")
     # Leave an undecryptable store where the manager will look.
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(
@@ -694,3 +699,22 @@ def test_get_installation_history_still_reads_a_good_file(installer):
     )
 
     assert installer.get_installation_history() == {"black": {"status": "success"}}
+
+
+def test_rotate_with_no_store_at_all_still_says_nothing_to_rotate(tmp_path, monkeypatch):
+    """#1320's unreadable-store check must not turn a plain empty store into an
+    error: no file at all is still 'no existing credential'."""
+    from typer.testing import CliRunner
+
+    from codeframe.cli.app import app
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("CODEFRAME_DISABLE_KEYRING", "1")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr("codeframe.core.credentials.DEFAULT_STORAGE_DIR", tmp_path / ".codeframe")
+
+    result = CliRunner().invoke(app, ["auth", "rotate", "anthropic", "-v", "sk-ant-api03-abcdefghijklmnop", "--force"])
+
+    assert result.exit_code == 1
+    assert "No existing credential" in result.output
+    assert "Error:" not in result.output
