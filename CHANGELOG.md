@@ -145,6 +145,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A rejected LLM key is reported as one on the PRD and discovery routes (#1328).**
+  Refine, discovery start, answer and PRD/task generation returned an opaque 500
+  "internal error" when the provider rejected the key. They now return
+  **502 `UPSTREAM_AUTH_FAILED`** with the message that says which key was read
+  and how to fix it (never 401, which the web UI treats as an expired session).
+  A provider rate limit is **429 `RATE_LIMITED`** and an overloaded provider is
+  503. The stress-test stream's error event carries the same code. An
+  unexpected stream failure no longer sends its internal exception text: the
+  client gets a correlation id, as other routes already do.
 - **Interactive-session cost is priced correctly, and unknown when it cannot be
   (#1299).** Sessions on the web UI's default model, `claude-sonnet-4-6`, were
   recorded at $0.00, and Opus 4.5 and Haiku 4.5 turns were mispriced, because

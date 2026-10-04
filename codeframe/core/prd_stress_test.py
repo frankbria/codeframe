@@ -648,4 +648,5 @@ async def stress_test_prd_stream(
         }
     except Exception as exc:  # noqa: BLE001 — surface any failure to the client
         logger.warning("Stress test stream failed: %s", exc, exc_info=True)
-        yield {"type": "error", "message": str(exc)}
+        # error_type lets a caller tell a rejected key from a bug (#1328).
+        yield {"type": "error", "message": str(exc), "error_type": type(exc).__name__}

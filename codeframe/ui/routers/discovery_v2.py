@@ -30,7 +30,9 @@ from codeframe.core.prd_discovery import (
     IncompleteSessionError,
 )
 from codeframe.core.llm_resolution import UntrustedBaseURLError
+from codeframe.adapters.llm.base import LLMError
 from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.response_models import llm_error_http
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +198,9 @@ async def start_discovery(
         # the blanket handler re-raised it as a 500 with the structured detail
         # stringified, losing both the status and the session_id/hint (#928).
         raise
+    except LLMError as e:
+        # The provider's own answer, not a server fault (#1328).
+        raise llm_error_http(e, operation="start discovery")
     except Exception as e:
         logger.error(f"Failed to start discovery: {e}", exc_info=True)
         raise HTTPException(
@@ -286,6 +291,9 @@ async def submit_answer(
         # into the generic handler below and returned 500 with a stack trace.
         # Must come after ValidationError/NoApiKeyError, which subclass it.
         raise HTTPException(status_code=409, detail=str(e))
+    except LLMError as e:
+        # The provider's own answer, not a server fault (#1328).
+        raise llm_error_http(e, operation="process the answer")
     except Exception as e:
         logger.error(f"Failed to process answer: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -350,6 +358,9 @@ async def generate_prd(
         )
     except NoApiKeyError as e:
         raise HTTPException(status_code=500, detail=str(e))
+    except LLMError as e:
+        # The provider's own answer, not a server fault (#1328).
+        raise llm_error_http(e, operation="generate the PRD")
     except Exception as e:
         logger.error(f"Failed to generate PRD: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -502,6 +513,9 @@ async def generate_tasks_from_prd(
         # unimplementable "tasks"; the caller could not tell it had failed.
         logger.warning(f"Task generation failed: {e}")
         raise HTTPException(status_code=502, detail=str(e))
+    except LLMError as e:
+        # The provider's own answer, not a server fault (#1328).
+        raise llm_error_http(e, operation="generate tasks")
     except Exception as e:
         logger.error(f"Failed to generate tasks: {e}", exc_info=True)
         raise HTTPException(
