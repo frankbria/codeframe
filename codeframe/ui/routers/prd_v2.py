@@ -31,7 +31,14 @@ from codeframe.core import prd
 
 from codeframe.core.prd import PrdHasDependentTasksError
 from codeframe.ui.dependencies import get_v2_workspace
-from codeframe.ui.response_models import api_error, internal_error, ErrorCodes
+from codeframe.adapters.llm.base import LLMError
+from codeframe.ui.response_models import (
+    ErrorCodes,
+    api_error,
+    internal_error,
+    llm_error_code,
+    llm_error_http,
+)
 
 # Payload caps (#934). Every value below is fed into an LLM prompt, so an
 # uncapped request body is an unbounded provider bill and a DoS vector. Pydantic
@@ -385,6 +392,12 @@ async def _stress_test_event_stream(
                 logger.info("Client disconnected from stress-test stream; aborting")
                 disconnected = True
                 break
+            if event.get("type") == "error":
+                # Core names the exception class; the code is HTTP vocabulary,
+                # so it is attached here, from the same table (#1328).
+                code = llm_error_code(event.get("error_type", ""))
+                if code:
+                    event = {**event, "code": code}
             yield _sse(event)
     except Exception as exc:  # noqa: BLE001 - the stream is already 200 OK
         # There was no except here at all: an unexpected failure mid-stream
@@ -544,6 +557,10 @@ async def refine_prd_from_stress_test(
         return _prd_to_response(new_record)
     except HTTPException:
         raise
+    except LLMError as e:
+        # A rejected key or a rate limit is the provider's answer, with an
+        # actionable message, not an opaque server fault (#1328).
+        raise llm_error_http(e, operation="refine PRD")
     except Exception as e:
         raise HTTPException(
             status_code=500,
