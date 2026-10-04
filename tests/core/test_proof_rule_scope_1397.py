@@ -82,3 +82,17 @@ def test_a_failing_recapture_does_not_fail_the_fixed_requirement(ws):
 
     assert ledger.get_requirement(ws, fixed.id).status == ReqStatus.SATISFIED
     assert ledger.get_requirement(ws, recurring.id).status != ReqStatus.SATISFIED
+
+
+def test_a_title_quoting_another_requirements_test_id_does_not_select_it(ws):
+    """pytest -k is substring matching: a re-capture titled with the earlier
+    requirement's test name (pasted from CI output) made the earlier rule
+    select the new test too (GLM review)."""
+    first, _ = _capture(ws)
+    second, _ = capture_requirement(
+        ws, title=f"{first.evidence_rules[0].test_id} failing again", description=DESCRIPTION,
+        where="app.py", severity=Severity.HIGH, source=Source.QA,
+    )
+    for older in first.evidence_rules:
+        for newer in second.evidence_rules:
+            assert older.test_id not in newer.test_id, (older.test_id, newer.test_id)
