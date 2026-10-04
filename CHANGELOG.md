@@ -159,6 +159,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A rejected API key's error says where that key came from (#1346).** The
+  401 message guessed: "$ANTHROPIC_API_KEY, or when unset the stored key".
+  For OpenAI-compatible providers it read the environment itself. It now names
+  the actual source: the environment variable, the key stored for your account,
+  the machine-wide stored key, or, for a hosted tenant's endpoint, that no key
+  was sent. It no longer tells someone with a stored key to check an
+  environment variable.
+
 - **`cf auth rotate` on an unreadable credential store says so (#1320).** Its
   "is there anything to rotate?" check reads an undecryptable store as empty,
   so it answered "No existing credential … run setup", which hid the real error
