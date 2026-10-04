@@ -8,7 +8,7 @@ import json
 import sqlite3
 from datetime import date, datetime, timezone
 import logging
-from typing import Any, Optional
+from typing import Callable, Optional
 
 from codeframe.core.proof.models import (
     Evidence,
@@ -411,10 +411,10 @@ def save_requirement(
     """Insert or replace a requirement in the ledger.
 
     Args:
-        create_only: Refuse to overwrite an existing id. Capture passes this so
-            a racing allocation cannot silently clobber another requirement —
-            INSERT OR REPLACE made that failure invisible (#923). The runner
-            leaves it False, since updating in place is exactly its job.
+        create_only: Refuse to overwrite an existing id — INSERT OR REPLACE
+            made a clobber invisible (#923). New requirements should come from
+            ``allocate_requirement`` instead; the runner leaves this False,
+            since updating in place is exactly its job.
     """
     _ensure_tables(workspace)
     conn = get_db_connection(workspace)
@@ -427,28 +427,32 @@ def save_requirement(
         if existing:
             conn.close()
             raise ValueError(f"Requirement {req.id} already exists")
-    cursor.execute(
-        """INSERT OR REPLACE INTO proof_requirements
+    cursor.execute(f"INSERT OR REPLACE {_INSERT_REQUIREMENT}", _requirement_row(workspace, req))
+    conn.commit()
+    conn.close()
+
+
+_INSERT_REQUIREMENT = """INTO proof_requirements
            (id, title, description, severity, source, scope, obligations,
             evidence_rules, status, waiver, created_at, satisfied_at,
             created_by, source_issue, related_reqs, glitch_type, workspace_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            req.id, req.title, req.description, req.severity.value,
-            req.source.value, _scope_to_json(req.scope),
-            _obligations_to_json(req.obligations),
-            _evidence_rules_to_json(req.evidence_rules),
-            req.status.value, _waiver_to_json(req.waiver),
-            (req.created_at or _utc_now()).isoformat(),
-            req.satisfied_at.isoformat() if req.satisfied_at else None,
-            req.created_by, req.source_issue,
-            json.dumps(req.related_reqs),
-            req.glitch_type.value if req.glitch_type else None,
-            workspace.id,
-        ),
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+
+def _requirement_row(workspace: Workspace, req: Requirement) -> tuple:
+    return (
+        req.id, req.title, req.description, req.severity.value,
+        req.source.value, _scope_to_json(req.scope),
+        _obligations_to_json(req.obligations),
+        _evidence_rules_to_json(req.evidence_rules),
+        req.status.value, _waiver_to_json(req.waiver),
+        (req.created_at or _utc_now()).isoformat(),
+        req.satisfied_at.isoformat() if req.satisfied_at else None,
+        req.created_by, req.source_issue,
+        json.dumps(req.related_reqs),
+        req.glitch_type.value if req.glitch_type else None,
+        workspace.id,
     )
-    conn.commit()
-    conn.close()
 
 
 def get_requirement(workspace: Workspace, req_id: str) -> Optional[Requirement]:
@@ -511,7 +515,9 @@ def list_requirements(
 def next_req_id(workspace: Workspace) -> str:
     """Generate the next sequential REQ-#### ID.
 
-    Uses MAX(id) to avoid collisions from deleted requirements.
+    Uses MAX(id) to avoid collisions from deleted requirements. Not for
+    creating requirements: the id is not reserved, so concurrent callers get
+    the same one. Use ``allocate_requirement`` (#1399).
     """
     _ensure_tables(workspace)
     conn = get_db_connection(workspace)
@@ -526,79 +532,41 @@ def next_req_id(workspace: Workspace) -> str:
     return f"REQ-{max_num + 1:04d}"
 
 
-def allocate_requirement(workspace: Workspace, **kwargs: Any) -> str:
+def allocate_requirement(
+    workspace: Workspace, build: Callable[[str], Requirement]
+) -> Requirement:
     """Reserve the next REQ id and insert the row in one transaction (#923).
 
     ``next_req_id`` computed MAX+1 and closed its connection; ``save_requirement``
     then inserted on another. Two concurrent captures therefore read the same
     max, produced the same id, and the second silently replaced the first —
     sharing its stub directory. The allocate-and-insert now happens under one
-    IMMEDIATE transaction, and the retry covers the cross-process case where
-    another writer wins the id between attempts.
-    """
-    from codeframe.core.proof.models import (
-        Obligation,
-        ReqStatus,
-        RequirementScope,
-        Severity,
-        Source,
-    )
+    IMMEDIATE transaction, which holds the write lock from the MAX read to the
+    commit, across processes too.
 
+    ``build(req_id)`` makes the requirement, and may write files named by the
+    id (capture writes its stubs there). It runs inside the transaction, so
+    the files land before the row commits, and if it raises, the id is never
+    taken (#1399).
+    """
     _ensure_tables(workspace)
 
-    for _ in range(_ALLOCATE_ATTEMPTS):
-        conn = get_db_connection(workspace)
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            row = conn.execute(
-                "SELECT MAX(CAST(SUBSTR(id, 5) AS INTEGER)) FROM proof_requirements "
-                "WHERE workspace_id = ?",
-                (workspace.id,),
-            ).fetchone()
-            max_num = row[0] if row and row[0] is not None else 0
-            req_id = f"REQ-{max_num + 1:04d}"
-
-            conn.execute(
-                "INSERT INTO proof_requirements (id, title, description, severity, "
-                "source, scope, obligations, evidence_rules, status, waiver, "
-                "created_at, satisfied_at, created_by, source_issue, related_reqs, "
-                "glitch_type, workspace_id) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    req_id,
-                    kwargs.get("title", ""),
-                    kwargs.get("description", ""),
-                    kwargs.get("severity", Severity.HIGH).value,
-                    kwargs.get("source", Source.QA).value,
-                    _scope_to_json(kwargs.get("scope") or RequirementScope()),
-                    _obligations_to_json(kwargs.get("obligations") or [Obligation(gate=Gate.UNIT)]),
-                    _evidence_rules_to_json(kwargs.get("evidence_rules") or []),
-                    ReqStatus.OPEN.value,
-                    None,
-                    datetime.now(timezone.utc).isoformat(),
-                    None,
-                    kwargs.get("created_by", "human"),
-                    kwargs.get("source_issue"),
-                    json.dumps(kwargs.get("related_reqs") or []),
-                    kwargs.get("glitch_type"),
-                    workspace.id,
-                ),
-            )
-            conn.commit()
-            return req_id
-        except sqlite3.IntegrityError:
-            # Another writer took this id between our read and insert.
-            conn.rollback()
-            continue
-        finally:
-            conn.close()
-
-    raise RuntimeError("Could not allocate a REQ id after repeated collisions")
-
-
-#: A handful of retries absorbs realistic contention; beyond that something is
-#: wrong and a loud failure beats a silent overwrite.
-_ALLOCATE_ATTEMPTS = 10
+    conn = get_db_connection(workspace)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT MAX(CAST(SUBSTR(id, 5) AS INTEGER)) FROM proof_requirements "
+            "WHERE workspace_id = ?",
+            (workspace.id,),
+        ).fetchone()
+        max_num = row[0] if row and row[0] is not None else 0
+        req = build(f"REQ-{max_num + 1:04d}")
+        # Plain INSERT: a clash fails loudly instead of replacing a row.
+        conn.execute(f"INSERT {_INSERT_REQUIREMENT}", _requirement_row(workspace, req))
+        conn.commit()
+        return req
+    finally:
+        conn.close()  # uncommitted (build raised): rolled back
 
 
 def mark_satisfied(workspace: Workspace, req: Requirement) -> None:

@@ -159,6 +159,30 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Docs and deploy config match what ships (#1304).**
+  - `docs/GOLDEN_PATH.md`, which CLAUDE.md tells agents to read first, listed
+    an `IN_REVIEW` state and PR-driven task transitions that were never built,
+    and a status checklist claiming `prd generate`, the PR commands and
+    `cf auth` were missing. The state machine section now mirrors
+    `ALLOWED_TRANSITIONS`, and a test keeps the two equal. The checklist is
+    replaced by a pointer to the roadmap's Summary table.
+  - The production ports in `.env.production.example` and the Caddyfile
+    comment now match the compose defaults (14300/14400, not 3000/8000).
+  - `scripts/remote-setup.sh` installs Docker instead of PM2 and Node, and
+    names the compose deploy instead of a missing `deploy-staging.sh`.
+  - README: `cf checkpoint restore` restores task statuses, not files, and
+    `cf work diagnose` is pattern-based.
+  - A superseded legacy doc that carried the VPS's public IP is removed, and a
+    test fails on any routable IPv4 in tracked docs or deploy config.
+- **Concurrent `cf proof capture` runs no longer overwrite each other
+  (#1399).** Capture read the next `REQ-####` id and saved the row later, on a
+  separate connection with `INSERT OR REPLACE`. Two captures at once took the
+  same id, so the second silently replaced the first and both shared one stub
+  directory: six parallel captures left five requirements. The id is now
+  reserved and the row inserted in one `BEGIN IMMEDIATE` transaction, through
+  #923's `allocate_requirement`, which had no callers. Stubs are still written
+  before the row commits, so a failed write takes no id.
+
 - **A rejected LLM key is reported as one on the PRD and discovery routes (#1328).**
   Refine, discovery start, answer and PRD/task generation returned an opaque 500
   "internal error" when the provider rejected the key. They now return

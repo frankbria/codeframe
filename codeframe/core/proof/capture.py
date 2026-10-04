@@ -54,36 +54,39 @@ def capture_requirement(
     # guessed at (#1258).
     scope = build_scope_from_capture(where, workspace=workspace, on_warning=on_warning)
 
-    # 4. Generate evidence rules for each obligation, named by the new id so
-    # a re-capture under the same title does not share them (#1397).
-    req_id = ledger.next_req_id(workspace)
-    evidence_rules = []
-    for obl in obligations:
-        evidence_rules.extend(suggest_evidence_rules(obl.gate, requirement_slug(req_id, title)))
+    stub_paths: dict[Gate, Path] = {}
 
-    # 5. Create the requirement
-    req = Requirement(
-        id=req_id,
-        title=title,
-        description=description,
-        severity=severity,
-        source=source,
-        scope=scope,
-        obligations=obligations,
-        evidence_rules=evidence_rules,
-        created_at=datetime.now(timezone.utc),
-        created_by=created_by,
-        source_issue=source_issue,
-        glitch_type=glitch_type,
-    )
+    def build(req_id: str) -> Requirement:
+        # 4. Evidence rules are named by the new id, so a re-capture under
+        # the same title does not share them (#1397).
+        evidence_rules = []
+        for obl in obligations:
+            evidence_rules.extend(suggest_evidence_rules(obl.gate, requirement_slug(req_id, title)))
 
-    # 6. Generate test stubs and write them to disk BEFORE persisting the
-    # requirement: if the write fails, no REQ id is burned (next_req_id is
-    # MAX-based) and a retry reuses the same id + files (skip-if-exists).
-    stubs = generate_stubs(req)
-    stub_paths = write_stub_files(workspace, req, stubs)
+        # 5. Create the requirement
+        req = Requirement(
+            id=req_id,
+            title=title,
+            description=description,
+            severity=severity,
+            source=source,
+            scope=scope,
+            obligations=obligations,
+            evidence_rules=evidence_rules,
+            created_at=datetime.now(timezone.utc),
+            created_by=created_by,
+            source_issue=source_issue,
+            glitch_type=glitch_type,
+        )
 
-    # 7. Persist
-    ledger.save_requirement(workspace, req)
+        # 6. Write the test stubs BEFORE the row commits: if the write fails,
+        # no REQ id is taken and a retry reuses the same id + files
+        # (skip-if-exists).
+        stub_paths.update(write_stub_files(workspace, req, generate_stubs(req)))
+        return req
+
+    # 7. Reserve the id and persist in one transaction, so concurrent
+    # captures cannot take the same id (#1399).
+    req = ledger.allocate_requirement(workspace, build)
 
     return req, stub_paths
