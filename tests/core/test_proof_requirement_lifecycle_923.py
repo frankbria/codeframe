@@ -153,8 +153,7 @@ class TestReqIdAllocation:
         from codeframe.core.proof import ledger
 
         def _capture(n: int) -> str:
-            req_id = ledger.allocate_requirement(workspace, title=f"t{n}")
-            return req_id
+            return ledger.allocate_requirement(workspace, lambda rid: _requirement(rid, title=f"t{n}")).id
 
         with ThreadPoolExecutor(max_workers=8) as pool:
             ids = list(pool.map(_capture, range(8)))
