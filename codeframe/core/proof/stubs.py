@@ -185,6 +185,19 @@ Attach screenshots or notes below when complete.
 }
 
 
+def _stub_basename(req: Requirement, gate: Gate) -> str:
+    """The stub's file stem, unique per requirement (#1372).
+
+    The REQ-* directories are not packages, so under pytest's default
+    ``prepend`` import mode two stubs with the same basename collide ("import
+    file mismatch") and fail collection for both requirements. Two captures of
+    the same glitch share a title, so the requirement id goes in the name. The
+    test *function* keeps ``test_<gate>_<slug>``: that is the evidence rule's
+    test_id, and ``-k`` matches on it.
+    """
+    return f"test_{_slugify(req.id)}_{_slugify(req.title)}_{gate.value}"
+
+
 def _slugify(text: str) -> str:
     """Create a safe identifier from text.
 
@@ -264,7 +277,7 @@ def generate_stubs(req: Requirement) -> dict[Gate, str]:
             title=escape(req.title),
             description=escape(req.description),
             slug=slug,
-            filename=f"test_{slug}_{gate.value}",
+            filename=_stub_basename(req, gate),
         )
         result[gate] = content
 
@@ -290,12 +303,11 @@ def write_stub_files(
     target = out_dir or workspace.repo_path / "tests" / "proof" / req.id
     target.mkdir(parents=True, exist_ok=True)
 
-    slug = _slugify(req.title)
     paths: dict[Gate, Path] = {}
     for gate, content in stubs.items():
         ext = _EXTENSIONS.get(gate, _DEFAULT_EXTENSION)
         prefix = "draft_" if ext == ".py" else ""
-        path = target / f"{prefix}test_{slug}_{gate.value}{ext}"
+        path = target / f"{prefix}{_stub_basename(req, gate)}{ext}"
         if path.exists():
             logger.debug("stub already exists, not overwriting: %s", path)
         else:
