@@ -394,10 +394,23 @@ async def _stress_test_event_stream(
                 break
             if event.get("type") == "error":
                 # Core names the exception class; the code is HTTP vocabulary,
-                # so it is attached here, from the same table (#1328).
+                # so it is attached here, from the same table (#1328). Anything
+                # but a typed provider error is arbitrary internals: core's
+                # str(exc) is logged under a correlation id, never sent (#934).
                 code = llm_error_code(event.get("error_type", ""))
                 if code:
-                    event = {**event, "code": code}
+                    event = {"type": "error", "message": event.get("message", ""), "code": code}
+                else:
+                    _err = internal_error(
+                        RuntimeError(event.get("message", "")),
+                        operation="run the stress test",
+                        logger=logger,
+                    )
+                    event = {
+                        "type": "error",
+                        "message": _err["detail"],
+                        "correlation_id": _err["correlation_id"],
+                    }
             yield _sse(event)
     except Exception as exc:  # noqa: BLE001 - the stream is already 200 OK
         # There was no except here at all: an unexpected failure mid-stream

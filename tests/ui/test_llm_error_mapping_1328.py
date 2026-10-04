@@ -122,3 +122,22 @@ def test_the_stress_test_stream_carries_the_actionable_message(client):
     assert error_lines, text
     assert "rejected the API key" in error_lines[-1]
     assert "UPSTREAM_AUTH_FAILED" in error_lines[-1]
+
+
+def test_an_unexpected_stream_failure_reaches_the_client_without_its_internals(client, monkeypatch):
+    """Core's stream yields str(exc) for ANY failure; for anything but a typed
+    provider error that is arbitrary internals (paths, SQL), which #934 keeps
+    off the wire. The client gets a generic message and a correlation id."""
+    from codeframe.core import prd_stress_test
+
+    def boom(*_a, **_k):
+        raise RuntimeError("sqlite3 failed at /srv/secret/state.db")
+
+    monkeypatch.setattr(prd_stress_test, "extract_goals", boom)
+    prd_module.store(client.workspace, PRD, "Invoice SaaS", {})
+    with client.stream("GET", "/api/v2/prd/stress-test") as resp:
+        text = "".join(resp.iter_text())
+    assert "/srv/secret" not in text
+    error = json.loads([ln for ln in text.splitlines() if '"error"' in ln][-1][len("data: "):])
+    assert error["correlation_id"]
+    assert "code" not in error
