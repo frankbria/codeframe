@@ -174,6 +174,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Deleting a workspace forgets who connected its GitHub repo (#1370).**
+  `DELETE /api/v2/workspaces/{id}` left the workspace's entry in
+  `~/.codeframe/github_connection_owners.json`. A later workspace at the same
+  path inherited it, and background auto-close or reconciliation would have
+  used the previous owner's stored PAT. That entry is now removed with the
+  workspace. A refused delete (another tenant's workspace) removes nothing.
+
 - **A stopped or failed worktree run can be started again (#1363).** A run
   with `--isolation worktree` that ends before merge-back keeps its
   `cf/<task>` branch and worktree, so the agent's work is never discarded. The
