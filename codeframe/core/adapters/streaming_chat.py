@@ -517,6 +517,14 @@ class StreamingChatAdapter:
             started = finished = refused = False
             streamed_chars = 0
 
+            def _estimate() -> tuple[int, int]:
+                # ponytail: ~3 chars/token (real text runs nearer 4, so this
+                # over-counts), for a call with no reported usage: cut off
+                # before message_stop (#1345), or an endpoint that sends none
+                # (#1432). Exact partial usage needs a stream snapshot.
+                prompt_chars = len(system_prompt) + len(json.dumps(current_messages, default=str))
+                return prompt_chars // 3, streamed_chars // 3 + 1
+
             try:
                 async for chunk in self._provider.async_stream(
                     messages=current_messages,
@@ -565,11 +573,17 @@ class StreamingChatAdapter:
                                     tc["input"] = chunk.tool_inputs_by_id[tc["id"]]
 
                         finished = True
-                        turn_cost = self._account(chunk.input_tokens or 0, chunk.output_tokens or 0)
+                        if chunk.input_tokens is None and chunk.output_tokens is None:
+                            # The endpoint reported no usage at all (#1432):
+                            # bill the same estimate as a cut-off call.
+                            in_tok, out_tok = _estimate()
+                        else:
+                            in_tok, out_tok = chunk.input_tokens or 0, chunk.output_tokens or 0
+                        turn_cost = self._account(in_tok, out_tok)
                         yield ChatEvent(
                             type=ChatEventType.COST_UPDATE,
-                            input_tokens=chunk.input_tokens,
-                            output_tokens=chunk.output_tokens,
+                            input_tokens=in_tok,
+                            output_tokens=out_tok,
                             # The one price table, overrides included; None means
                             # unpriced, never $0 (#1299, the #932 rule).
                             cost_usd=turn_cost,
@@ -583,11 +597,7 @@ class StreamingChatAdapter:
                 raise
             finally:
                 if not finished and not refused:
-                    # ponytail: an estimate at ~3 chars/token (real text runs
-                    # nearer 4, so this over-counts). Exact partial usage needs
-                    # the provider to surface its stream snapshot on interrupt.
-                    prompt_chars = len(system_prompt) + len(json.dumps(current_messages, default=str))
-                    self._account(prompt_chars // 3, streamed_chars // 3 + 1)
+                    self._account(*_estimate())
 
             if stop_reason == "end_turn" or not pending_tool_calls:
                 yield ChatEvent(type=ChatEventType.DONE)
