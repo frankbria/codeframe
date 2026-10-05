@@ -770,8 +770,13 @@ def _run_pytest(
             # only the tests with exactly this name, and run those node ids.
             # --verbosity=-1, not -q: it is absolute, so a project's own -v or
             # -qq in addopts cannot turn the node-id list into a tree or a
-            # per-file count (codex review).
-            collected = _pytest(base + ["--collect-only", "--verbosity=-1", "-k", test_selector])
+            # per-file count; and verbosity_test_cases, which overrides it for
+            # this output when a project sets it (codex review).
+            collected = _pytest(
+                base
+                + ["--collect-only", "--verbosity=-1", "-o", "verbosity_test_cases=-1"]
+                + ["-k", test_selector]
+            )
             if collected.returncode not in (0, 5) or _tool_is_missing(
                 collected.returncode, collected.stderr, {"pytest"}
             ):

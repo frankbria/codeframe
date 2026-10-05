@@ -70,16 +70,19 @@ def test_unit_colons(v):
 '''
 
 
-@pytest.fixture(params=[None, "-v", "-qq"], ids=["no-addopts", "addopts-v", "addopts-qq"])
+@pytest.fixture(
+    params=[None, "addopts = -v", "addopts = -qq", "verbosity_test_cases = 2"],
+    ids=["no-config", "addopts-v", "addopts-qq", "verbosity-test-cases"],
+)
 def ws(tmp_path, request):
-    """A project's own verbosity in addopts changes what --collect-only prints;
-    -v turned the node-id list into a tree and every named test read as
-    missing (codex review)."""
+    """A project's own verbosity (addopts, or the per-test-case ini option)
+    changes what --collect-only prints; -v turned the node-id list into a tree
+    and every named test read as missing (codex review)."""
     repo = tmp_path / "repo"
     (repo / "tests").mkdir(parents=True)
     (repo / "tests" / "test_rules.py").write_text(TESTS, encoding="utf-8")
     if request.param:
-        (repo / "pytest.ini").write_text(f"[pytest]\naddopts = {request.param}\n", encoding="utf-8")
+        (repo / "pytest.ini").write_text(f"[pytest]\n{request.param}\n", encoding="utf-8")
     w = create_or_load_workspace(repo)
     init_proof_tables(w)
     return w
