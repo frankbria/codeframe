@@ -890,8 +890,10 @@ def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) 
             # failure path, so a normal load pays nothing for it.
             from codeframe.platform_store.database import migrate_legacy_control_plane
 
-            if not migrate_legacy_control_plane(state_dir):
-                raise
+            if not migrate_legacy_control_plane(state_dir) and db_path.exists():
+                # Not ours to move, or a concurrent init already did and has
+                # since created the workspace: one more load decides.
+                return get_workspace(repo_path)
 
     # Create .codeframe/ directory
     state_dir.mkdir(exist_ok=True)

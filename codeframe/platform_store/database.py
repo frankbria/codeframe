@@ -91,58 +91,64 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
     operator-driven moment — never from the resolver, which runs on every
     auth lookup while a server may hold the file open.
     """
-    legacy = state_dir / "state.db"
-    platform_db = state_dir / "platform.db"
-    if platform_db.exists() or _legacy_kind(legacy) != "control_plane":
-        return False
+    # Serialized across processes, with every check redone under the lock: two
+    # concurrent inits could otherwise both pass them and the second would
+    # replace the first's platform.db and preserved original (codex review).
+    from codeframe.core.atomic_io import read_modify_write_lock
 
-    # An operator who pointed DATABASE_PATH at this file would, after a move,
-    # restart onto the workspace DB that replaces it: accounts unreachable.
-    env = os.getenv("DATABASE_PATH")
-    if env and Path(env).resolve() == legacy.resolve():
-        raise LegacyControlPlaneError(
-            f"DATABASE_PATH points at {legacy}, which holds your accounts, not a "
-            "workspace. Stop the server, move it (with any -wal/-shm files) out "
-            ".codeframe/, set DATABASE_PATH to the new location, then run "
-            "`cf init` again."
-        )
+    with read_modify_write_lock(state_dir / ".control-plane-migration.lock"):
+        legacy = state_dir / "state.db"
+        platform_db = state_dir / "platform.db"
+        if platform_db.exists() or _legacy_kind(legacy) != "control_plane":
+            return False
 
-    # In use? Closing the last connection checkpoints and deletes the -wal and
-    # -shm, so if they survive ours, a server still has the file open, and a
-    # copy now would miss its later writes (codex review).
-    probe = sqlite3.connect(legacy)
-    try:
-        probe.execute("SELECT 1 FROM users LIMIT 1").fetchone()
-    finally:
-        probe.close()
-    if any((state_dir / f"state.db{s}").exists() for s in ("-wal", "-shm")):
-        raise LegacyControlPlaneError(
-            f"{legacy} holds this install's accounts and is still open — a server "
-            "is probably running from this directory. Stop it, then run `cf init` "
-            "again to move the accounts to platform.db."
-        )
+        # An operator who pointed DATABASE_PATH at this file would, after a move,
+        # restart onto the workspace DB that replaces it: accounts unreachable.
+        env = os.getenv("DATABASE_PATH")
+        if env and Path(env).resolve() == legacy.resolve():
+            raise LegacyControlPlaneError(
+                f"DATABASE_PATH points at {legacy}, which holds your accounts, not a "
+                "workspace. Stop the server, move it (with any -wal/-shm files) out "
+                ".codeframe/, set DATABASE_PATH to the new location, then run "
+                "`cf init` again."
+            )
 
-    tmp = state_dir / f".platform.db.{os.getpid()}.tmp"
-    src = sqlite3.connect(legacy)
-    try:
-        dst = sqlite3.connect(tmp)
+        # In use? Closing the last connection checkpoints and deletes the -wal and
+        # -shm, so if they survive ours, a server still has the file open, and a
+        # copy now would miss its later writes (codex review).
+        probe = sqlite3.connect(legacy)
         try:
-            src.backup(dst)
+            probe.execute("SELECT 1 FROM users LIMIT 1").fetchone()
         finally:
-            dst.close()
-    finally:
-        src.close()
-    os.replace(tmp, platform_db)
-    for suffix in ("", "-wal", "-shm"):
-        part = state_dir / f"state.db{suffix}"
-        if part.exists():
-            os.replace(part, state_dir / f"state.db{suffix}.pre-1287")
-    logger.warning(
-        "Moved the legacy control-plane DB %s to %s (#1376); the original is kept "
-        "as %s.",
-        legacy, platform_db, state_dir / "state.db.pre-1287",
-    )
-    return True
+            probe.close()
+        if any((state_dir / f"state.db{s}").exists() for s in ("-wal", "-shm")):
+            raise LegacyControlPlaneError(
+                f"{legacy} holds this install's accounts and is still open — a server "
+                "is probably running from this directory. Stop it, then run `cf init` "
+                "again to move the accounts to platform.db."
+            )
+
+        tmp = state_dir / f".platform.db.{os.getpid()}.tmp"
+        src = sqlite3.connect(legacy)
+        try:
+            dst = sqlite3.connect(tmp)
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+        os.replace(tmp, platform_db)
+        for suffix in ("", "-wal", "-shm"):
+            part = state_dir / f"state.db{suffix}"
+            if part.exists():
+                os.replace(part, state_dir / f"state.db{suffix}.pre-1287")
+        logger.warning(
+            "Moved the legacy control-plane DB %s to %s (#1376); the original is kept "
+            "as %s.",
+            legacy, platform_db, state_dir / "state.db.pre-1287",
+        )
+        return True
 
 
 def _legacy_kind(db_path: Path) -> Optional[str]:

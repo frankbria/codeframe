@@ -148,3 +148,20 @@ def test_cf_init_reports_a_new_workspace_not_an_existing_one(repo):
 
     assert result.exit_code == 0, result.output
     assert "already initialized" not in result.output.lower(), result.output
+
+
+def test_concurrent_migrations_move_the_file_once(repo):
+    """Two inits racing must not replace each other's platform.db or the
+    preserved original (codex review)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from codeframe.platform_store.database import migrate_legacy_control_plane
+
+    _legacy_control_plane(repo)
+    state_dir = repo / ".codeframe"
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        moved = list(pool.map(lambda _: migrate_legacy_control_plane(state_dir), range(4)))
+
+    assert moved.count(True) == 1, moved
+    assert _emails(state_dir / "platform.db") == ["op@x.co"]
+    assert _emails(state_dir / "state.db.pre-1287") == ["op@x.co"]
