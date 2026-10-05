@@ -634,6 +634,16 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         conn.close()
         return
 
+    # A pre-#1287 serve-first control plane (accounts, no workspace table) is
+    # not a workspace to upgrade: stamping it would make SchemaManager skip
+    # its own migrations once it moves to platform.db (#1376). Every loader
+    # (cf init, the v2 init route, the per-request cwd fallback) goes through
+    # here, and only on this not-yet-current path, so a workspace pays nothing.
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "users" in tables and "workspace" not in tables:
+        conn.close()
+        raise FileNotFoundError("Workspace database exists but contains no workspace record")
+
     cursor = conn.cursor()
 
     # Every table, from the SAME definition the fresh path uses, so the two
@@ -877,6 +887,16 @@ def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) 
 
     state_dir = _get_state_dir(repo_path)
     db_path = state_dir / STATE_DB_NAME
+
+    # A serve-first install under the pre-#1287 default left the control plane
+    # (accounts, API keys) in state.db with no workspace row. Move it to
+    # platform.db once (#1376) BEFORE anything loads it as a workspace:
+    # get_workspace's schema upgrade would stamp the workspace user_version
+    # over the control plane's and SchemaManager would then skip its own
+    # migrations on the copy (GLM review).
+    from codeframe.platform_store.database import migrate_legacy_control_plane
+
+    migrate_legacy_control_plane(state_dir)
 
     # Check if workspace already exists
     if state_dir.exists() and db_path.exists():

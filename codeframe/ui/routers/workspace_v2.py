@@ -21,6 +21,7 @@ from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.auth.dependencies import require_auth
 from codeframe.ui.dependencies import enforce_workspace_allowlist, get_v2_workspace
 from codeframe.core.workspace import WORKSPACE_CONFIG_FILENAME, Workspace
+from codeframe.platform_store.database import LegacyControlPlaneError
 from codeframe.ui.response_models import api_error, ErrorCodes
 from codeframe.ui.routers._helpers import atomic_write_json
 
@@ -292,16 +293,22 @@ async def init_workspace(
         if body.detect and not tech_stack:
             tech_stack = _detect_tech_stack(repo_path)
 
-        # Check if workspace already exists
-        already_existed = ws.workspace_exists(repo_path)
-
-        if already_existed:
+        # A state.db with no workspace row (a pre-#1287 serve-first control
+        # plane) is not an existing workspace: create_or_load_workspace moves
+        # it to platform.db first (#1376), as `cf init` does.
+        try:
             workspace = ws.get_workspace(repo_path)
             # Update tech stack if provided for existing workspace
             if tech_stack:
                 workspace = ws.update_workspace_tech_stack(repo_path, tech_stack)
-        else:
-            workspace = ws.create_or_load_workspace(repo_path, tech_stack=tech_stack)
+        except FileNotFoundError:
+            try:
+                workspace = ws.create_or_load_workspace(repo_path, tech_stack=tech_stack)
+            except LegacyControlPlaneError as e:
+                raise HTTPException(
+                    status_code=409,
+                    detail=api_error("Workspace holds this install's accounts", ErrorCodes.CONFLICT, str(e)),
+                )
 
         # Register (or refresh) the workspace in the server-side registry (#601).
         _register_workspace(request, workspace, auth.get("user_id"))

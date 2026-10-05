@@ -174,6 +174,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **`cf init` works in a directory a pre-#1287 `cf serve` left behind
+  (#1376).** Serving first with no `DATABASE_PATH` used to put the accounts
+  and API keys in `.codeframe/state.db` with no workspace row. `cf init` there
+  then failed with "contains no workspace record" until someone renamed the
+  file by hand. Init now moves that control plane to `.codeframe/platform.db`
+  itself. It uses SQLite's backup API, so rows still in the `-wal` come too.
+  The original is kept as `state.db.pre-1287`, and init then creates the
+  workspace. It never overwrites an existing `platform.db`, and it runs only
+  when init would otherwise fail.
+
 - **Deleting a workspace forgets who connected its GitHub repo (#1370).**
   `DELETE /api/v2/workspaces/{id}` left the workspace's entry in
   `~/.codeframe/github_connection_owners.json`. A later workspace at the same

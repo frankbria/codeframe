@@ -13,6 +13,8 @@ operations.
 import contextlib
 import os
 import sqlite3
+import stat
+import tempfile
 import threading
 from pathlib import Path
 from typing import Optional
@@ -71,6 +73,141 @@ def default_database_path() -> str:
             "Using the legacy control-plane DB %s (#1287). " + advice, legacy, platform_db
         )
     return str(legacy)
+
+
+class LegacyControlPlaneError(RuntimeError):
+    """The legacy control-plane ``state.db`` cannot be moved safely right now."""
+
+
+def _move_legacy_aside(state_dir: Path) -> None:
+    for suffix in ("", "-wal", "-shm"):
+        part = state_dir / f"state.db{suffix}"
+        if part.exists():
+            os.replace(part, state_dir / f"state.db{suffix}.pre-1287")
+
+
+def _refuse_unsafe_move(state_dir: Path, legacy: Path) -> None:
+    # An operator who pointed DATABASE_PATH at this file would, after a move,
+    # restart onto the workspace DB that replaces it: accounts unreachable.
+    # A relative value resolves against the server's cwd, which need not be
+    # init's: check the workspace root's spelling too (GLM review).
+    env = os.getenv("DATABASE_PATH")
+    if env and any(
+        base.joinpath(env).resolve() == legacy.resolve()
+        for base in (Path.cwd(), state_dir.parent)
+    ):
+        raise LegacyControlPlaneError(
+            f"DATABASE_PATH points at {legacy}, which holds your accounts, not a "
+            "workspace. Stop the server, move it (with any -wal/-shm files) out "
+            ".codeframe/, set DATABASE_PATH to the new location, then run "
+            "`cf init` again."
+        )
+
+    # In use? Closing the last connection checkpoints and deletes the -wal and
+    # -shm, so if they survive ours, a server still has the file open, and a
+    # copy now would miss its later writes (codex review).
+    probe = sqlite3.connect(legacy)
+    try:
+        probe.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+    finally:
+        probe.close()
+    if any((state_dir / f"state.db{s}").exists() for s in ("-wal", "-shm")):
+        raise LegacyControlPlaneError(
+            f"{legacy} holds this install's accounts and is still open — a server "
+            "is probably running from this directory. Stop it, then run `cf init` "
+            "again to move the accounts to platform.db."
+        )
+
+
+def migrate_legacy_control_plane(state_dir: Path) -> bool:
+    """Move a serve-first control-plane ``state.db`` to ``platform.db`` (#1376).
+
+    Only when ``state.db`` holds login-capable accounts and no workspace
+    (``_legacy_kind == "control_plane"``) and there is no ``platform.db`` yet,
+    so nothing is ever overwritten. The copy uses SQLite's backup API, which
+    is consistent and includes rows still in the ``-wal``; it lands under a
+    temp name and is renamed into place, then the original and its sidecars
+    move aside to ``*.pre-1287``. Returns True when it moved the file.
+
+    Called from ``cf init`` (``create_or_load_workspace``), before anything
+    loads the file as a workspace — one explicit,
+    operator-driven moment — never from the resolver, which runs on every
+    auth lookup while a server may hold the file open.
+    """
+    # Serialized across processes, with every check redone under the lock: two
+    # concurrent inits could otherwise both pass them and the second would
+    # replace the first's platform.db and preserved original (codex review).
+    from codeframe.core.atomic_io import fsync_directory, read_modify_write_lock
+
+    # Cheap, read-only and lock-free, so a normal workspace load pays one
+    # open and leaves no lock file behind.
+    if (
+        not (state_dir / ".control-plane-migration.pending").exists()
+        and _legacy_kind(state_dir / "state.db") != "control_plane"
+    ):
+        return False
+
+    with read_modify_write_lock(state_dir / ".control-plane-migration.lock"):
+        legacy = state_dir / "state.db"
+        platform_db = state_dir / "platform.db"
+        # Set before platform.db is published, cleared once the original has
+        # moved aside: a run that dies in between is finished by the next one,
+        # instead of leaving a platform.db that blocks every retry (codex).
+        marker = state_dir / ".control-plane-migration.pending"
+        if marker.exists() and platform_db.exists():
+            moved = _legacy_kind(legacy) == "control_plane"
+            if moved:  # never move a workspace DB aside
+                _refuse_unsafe_move(state_dir, legacy)  # same guards as a first run
+                _move_legacy_aside(state_dir)
+                fsync_directory(state_dir)
+            marker.unlink()  # only once nothing is left to finish
+            return moved
+        if platform_db.exists() or _legacy_kind(legacy) != "control_plane":
+            return False
+
+        _refuse_unsafe_move(state_dir, legacy)
+
+        # Unique, created 0600 before any account data goes in, then given the
+        # source's exact mode, so a 0600 file never becomes a 0644 copy; removed
+        # if the copy fails, so a retry is not blocked by it (codex review).
+        fd, tmp_name = tempfile.mkstemp(prefix=".platform.db.", suffix=".tmp", dir=state_dir)
+        os.close(fd)
+        tmp = Path(tmp_name)
+        try:
+            os.chmod(tmp, stat.S_IMODE(legacy.stat().st_mode))
+            src = sqlite3.connect(legacy)
+            try:
+                dst = sqlite3.connect(tmp)
+                try:
+                    src.backup(dst)
+                    # The source may already carry the *workspace* user_version
+                    # (main's failing cf init stamped it) and SchemaManager
+                    # would then skip every control-plane migration at or
+                    # below it. Its true version is unknowable; the migrations
+                    # are idempotent, so let them all replay (GLM review).
+                    dst.execute("PRAGMA user_version = 0")
+                finally:
+                    dst.close()
+            finally:
+                src.close()
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+        # Each step durable before the next, so a power loss cannot keep
+        # platform.db while losing the marker that finishes the job (codex).
+        marker.touch()
+        fsync_directory(state_dir)
+        os.replace(tmp, platform_db)
+        fsync_directory(state_dir)
+        _move_legacy_aside(state_dir)
+        fsync_directory(state_dir)
+        marker.unlink()
+        logger.warning(
+            "Moved the legacy control-plane DB %s to %s (#1376); the original is kept "
+            "as %s.",
+            legacy, platform_db, state_dir / "state.db.pre-1287",
+        )
+        return True
 
 
 def _legacy_kind(db_path: Path) -> Optional[str]:
