@@ -174,6 +174,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A lapsed waiver shows as expired, not waived (#1360).** Since #1276 the
+  merge gate blocks on a WAIVED requirement whose waiver has expired. The
+  `/proof` page, the dashboard widget and `GET /api/v2/proof/status` still
+  counted it as waived, so a user could see "0 open" and have a merge refused
+  for that very requirement. They now count it as `waiver_expired` and badge
+  it "waiver expired". The check is read-only and uses the gate's own
+  predicate. `cf proof status` already reverted such waivers to open.
+
 - **`cf engines check kilocode` tells you whether kilo can actually run
   (#1353).** It checked only the binary, so a never-logged-in kilo passed and
   then failed every task with "You need to sign in to use this model". It now
