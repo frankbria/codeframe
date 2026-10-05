@@ -179,6 +179,9 @@ class RequirementResponse(BaseModel):
     source_issue: Optional[str]
     related_reqs: list[str]
     scope: Optional[ScopeOut] = None
+    # WAIVED, but the waiver's expiry has passed: the merge gate already blocks
+    # on it (#1276), so it must not read as waived (#1360).
+    waiver_expired: bool = False
 
 
 class CaptureRequirementResponse(RequirementResponse):
@@ -236,7 +239,8 @@ class ProofStatusResponse(BaseModel):
     total: int
     open: int
     satisfied: int
-    waived: int
+    waived: int  # live waivers only
+    waiver_expired: int = 0  # WAIVED past expiry: blocks merges (#1360)
     requirements: list[RequirementResponse]
 
 
@@ -321,6 +325,7 @@ def _req_to_response(req) -> RequirementResponse:
         created_by=req.created_by,
         source_issue=req.source_issue,
         related_reqs=req.related_reqs,
+        waiver_expired=_waiver_lapsed(req),
         scope=ScopeOut(
             routes=req.scope.routes,
             components=req.scope.components,
@@ -331,11 +336,28 @@ def _req_to_response(req) -> RequirementResponse:
     )
 
 
+def _waiver_lapsed(req) -> bool:
+    """WAIVED with an expired waiver, by the merge gate's own predicate.
+
+    Read-only: reverting the status stays ``check_expired_waivers``'s job.
+    """
+    from codeframe.core.proof.ledger import waiver_expired
+
+    return req.status == ReqStatus.WAIVED and waiver_expired(req)
+
+
 def _count_by_status(reqs) -> dict[str, int]:
-    """Aggregate requirement counts by status value."""
+    """Aggregate requirement counts by status value.
+
+    A lapsed waiver counts as ``waiver_expired``, not ``waived``: the merge
+    gate blocks on it, so "0 open, N waived" would contradict the refusal
+    (#1360).
+    """
     counts: dict[str, int] = {s.value: 0 for s in ReqStatus}
+    counts["waiver_expired"] = 0
     for req in reqs:
-        counts[req.status.value] = counts.get(req.status.value, 0) + 1
+        key = "waiver_expired" if _waiver_lapsed(req) else req.status.value
+        counts[key] = counts.get(key, 0) + 1
     return counts
 
 
@@ -625,6 +647,7 @@ async def proof_status_endpoint(
         open=counts.get("open", 0),
         satisfied=counts.get("satisfied", 0),
         waived=counts.get("waived", 0),
+        waiver_expired=counts["waiver_expired"],
         requirements=[_req_to_response(r) for r in reqs],
     )
 

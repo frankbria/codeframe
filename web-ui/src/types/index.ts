@@ -399,12 +399,15 @@ export interface ProofRequirement {
   source_issue: string | null;
   related_reqs: string[];
   scope: ProofScope | null;
+  /** WAIVED with a lapsed waiver (#1360). */
+  waiver_expired?: boolean;
 }
 
 export interface ProofRequirementListResponse {
   requirements: ProofRequirement[];
   total: number;
-  by_status: Partial<Record<ProofReqStatus, number>>;
+  // waiver_expired: WAIVED past expiry, counted apart from `waived` (#1360).
+  by_status: Partial<Record<ProofReqStatus | 'waiver_expired', number>>;
 }
 
 export interface ProofEvidence {
@@ -430,6 +433,8 @@ export interface ProofStatusResponse {
   open: number;
   satisfied: number;
   waived: number;
+  /** WAIVED past expiry; counted here, not in `waived` (#1360). */
+  waiver_expired?: number;
   requirements: ProofRequirement[];
 }
 
