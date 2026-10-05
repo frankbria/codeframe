@@ -63,23 +63,57 @@ def test_init_after_an_old_default_serve_succeeds_and_keeps_the_accounts(repo):
     assert (repo / ".codeframe" / "state.db.pre-1287").exists()  # the original, kept
 
 
-def test_wal_only_data_survives_the_move(repo):
-    """A file copy would miss rows still in the -wal; the backup API does not."""
+def test_wal_only_data_left_by_a_crash_survives_the_move(repo):
+    """A server that died mid-flight leaves rows only in the -wal; a file copy
+    would miss them, the backup does not."""
+    import subprocess as sp
+    import sys
+    import textwrap
+
     state = _legacy_control_plane(repo)
-    conn = sqlite3.connect(state)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA wal_autocheckpoint=0")
-    conn.execute(
-        "INSERT INTO users (id, email, name, hashed_password, is_active, is_superuser, is_verified, email_verified) "
-        "VALUES (8, 'late@x.co', 'Late', ?, 1, 0, 1, 1)", (REAL_HASH,),
-    )
-    conn.commit()  # held open: the row lives only in state.db-wal
-    try:
-        create_or_load_workspace(repo)
-    finally:
-        conn.close()
+    sp.run([sys.executable, "-c", textwrap.dedent(f"""
+        import os, sqlite3
+        c = sqlite3.connect({str(state)!r})
+        c.execute("PRAGMA journal_mode=WAL"); c.execute("PRAGMA wal_autocheckpoint=0")
+        c.execute("INSERT INTO users (id,email,name,hashed_password,is_active,is_superuser,is_verified,email_verified) "
+                  "VALUES (8,'late@x.co','Late',{REAL_HASH!r},1,0,1,1)")
+        c.commit()
+        os._exit(0)  # no close: the row stays in state.db-wal
+    """)], check=True)
+    assert (state.parent / "state.db-wal").exists()
+
+    create_or_load_workspace(repo)
 
     assert sorted(_emails(repo / ".codeframe" / "platform.db")) == ["late@x.co", "op@x.co"]
+
+
+def test_a_db_still_open_by_a_server_is_not_moved(repo):
+    """A copy taken while a server writes would lose its later writes (codex)."""
+    from codeframe.platform_store.database import LegacyControlPlaneError
+
+    state = _legacy_control_plane(repo)
+    live = sqlite3.connect(state)
+    live.execute("PRAGMA journal_mode=WAL")
+    live.execute("SELECT 1").fetchone()
+    try:
+        with pytest.raises(LegacyControlPlaneError, match="Stop it"):
+            create_or_load_workspace(repo)
+    finally:
+        live.close()
+    assert not (repo / ".codeframe" / "platform.db").exists()
+    assert _emails(state) == ["op@x.co"]
+
+
+def test_an_explicit_database_path_to_the_legacy_file_is_not_moved(repo, monkeypatch):
+    """The server would restart on DATABASE_PATH, now a workspace DB (codex)."""
+    from codeframe.platform_store.database import LegacyControlPlaneError
+
+    state = _legacy_control_plane(repo)
+    monkeypatch.setenv("DATABASE_PATH", str(state))
+    with pytest.raises(LegacyControlPlaneError, match="DATABASE_PATH"):
+        create_or_load_workspace(repo)
+    assert _emails(state) == ["op@x.co"]
+    assert not (repo / ".codeframe" / "platform.db").exists()
 
 
 def test_an_existing_platform_db_is_never_overwritten(repo):
