@@ -723,6 +723,10 @@ def _run_tool(
     return None
 
 
+# Why an exact-named evidence test that only skipped fails its rule (#1430).
+SKIPPED_NOT_EVIDENCE = "skipped, not run: a skip is not evidence"
+
+
 def _exact_cases_verdict(report: Path, name: str) -> Optional[str]:
     """From a pytest JUnit report, for the cases named exactly ``name``
     (parameters ignored): None when there are none, else ``"failed"`` if any
@@ -869,14 +873,17 @@ def _run_pytest(
                 passed = exact == "passed"
                 status = GateStatus.PASSED if passed else GateStatus.FAILED
                 exit_code = 0 if passed else 1
-                if exact == "skipped":
-                    output = f"{test_selector} was skipped, not run: a skip is not evidence\n" + output
+
+        output = output if verbose else _summarize_pytest_output(output)
+        if test_selector and exact == "skipped":
+            # After summarising, which would drop it; the runner keys on it (#1430).
+            output = f"{test_selector}: {SKIPPED_NOT_EVIDENCE}\n{output}"
 
         return GateCheck(
             name="pytest",
             status=status,
             exit_code=exit_code,
-            output=output if verbose else _summarize_pytest_output(output),
+            output=output,
             duration_ms=duration_ms,
         )
 

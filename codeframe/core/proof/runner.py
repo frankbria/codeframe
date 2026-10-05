@@ -302,6 +302,9 @@ def _run_gate(
             elif check.exit_code == 5:
                 lines.append(f"{rule.test_id}: FAILED — named test missing (not collected)")
                 all_passed = False
+            elif core_gates.SKIPPED_NOT_EVIDENCE in (check.output or ""):
+                lines.append(f"{rule.test_id}: FAILED — {core_gates.SKIPPED_NOT_EVIDENCE}")
+                all_passed = False
             elif check.status == core_gates.GateStatus.PASSED:
                 lines.append(f"{rule.test_id}: passed")
             else:

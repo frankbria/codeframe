@@ -60,3 +60,16 @@ def test_a_test_that_only_skipped_does_not_satisfy_its_rule(ws, test_id):
 
 def test_one_passing_case_with_a_skipped_one_still_satisfies_it(ws):
     assert _unit_outcome(ws, "test_unit_half_skipped") == GateOutcome.PASSED
+
+
+def test_the_recorded_evidence_says_it_was_skipped(ws):
+    """The verdict's reason must reach what is persisted and shown: it was
+    summarised away and the runner recorded "FAILED (failed)", the same as an
+    assertion failure (GLM review)."""
+    from codeframe.core.proof.models import EvidenceRule, Gate
+    from codeframe.core.proof.runner import _run_gate
+
+    outcome, output = _run_gate(ws, Gate.UNIT, [EvidenceRule(test_id="test_unit_skipped", gate=Gate.UNIT)])
+
+    assert outcome == GateOutcome.FAILED
+    assert "test_unit_skipped: FAILED — skipped, not run: a skip is not evidence" in output, output

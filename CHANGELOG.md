@@ -179,8 +179,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   (`@pytest.mark.skip`, `skipif`, `pytest.skip()`, or an `xfail`, which JUnit
   reports as skipped) counted as passing, so marking the generated stub `skip`
   satisfied the requirement and unblocked the merge gate. A rule now needs at
-  least one case that actually ran and passed; an all-skipped rule fails with
-  "was skipped, not run: a skip is not evidence". A parametrized test with one
+  least one case that actually ran and passed; an all-skipped rule fails, and
+  its recorded evidence says `<test>: FAILED — skipped, not run: a skip is not
+  evidence` rather than a bare failure. A parametrized test with one
   passing case and one skipped case still passes.
 
 - **A server started while `cf init` moves a legacy `state.db` waits for it
