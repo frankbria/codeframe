@@ -306,8 +306,10 @@ class OpenAIProvider(LLMProvider):
         # Track partial tool calls across chunks (OpenAI streams them incrementally).
         # key: index → {id, name, arguments_parts, emitted_start}
         partial_tool_calls: dict[int, dict] = {}
-        usage_input: int = 0
-        usage_output: int = 0
+        # None until a usage chunk arrives: some OpenAI-compatible servers
+        # ignore include_usage, and 0 would bill the call as free (#1432).
+        usage_input: Optional[int] = None
+        usage_output: Optional[int] = None
         stop_reason: str = "end_turn"
 
         try:
