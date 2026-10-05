@@ -218,10 +218,11 @@ class TestDocsStateWhatIsEnforced:
 def _passing_result():
     from codeframe.core import gates as core_gates
 
-    class _Check:
+    class _Check:  # mirrors GateCheck, which always has output (#1430 reads it)
         name = "pytest"
         status = core_gates.GateStatus.PASSED
         exit_code = 0
+        output = ""
 
     class _Result:
         checks = [_Check()]
