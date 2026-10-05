@@ -322,7 +322,11 @@ class AnthropicProvider(LLMProvider):
                         yield StreamChunk(type="text_delta", text=delta.text)
                     elif delta.type == "thinking_delta":
                         yield StreamChunk(type="thinking_delta", text=delta.thinking)
-                    # input_json_delta: final inputs are rebuilt from message_stop
+                    elif delta.type == "input_json_delta":
+                        # Final inputs are rebuilt from message_stop; this is
+                        # yielded so a call cut off mid-arguments is still
+                        # charged for them (#1405).
+                        yield StreamChunk(type="tool_input_delta", text=delta.partial_json)
 
                 elif event_type == "content_block_stop":
                     if active_tool_id is not None:

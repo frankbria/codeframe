@@ -540,6 +540,9 @@ class StreamingChatAdapter:
                         streamed_chars += len(chunk.text or "")
                         yield ChatEvent(type=ChatEventType.THINKING, content=chunk.text)
 
+                    elif chunk.type == "tool_input_delta":
+                        streamed_chars += len(chunk.text or "")  # billed output (#1405)
+
                     elif chunk.type == "tool_use_start":
                         pending_tool_calls.append({
                             "id": chunk.tool_id,
