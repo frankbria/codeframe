@@ -276,11 +276,6 @@ class OpenAIProvider(LLMProvider):
         do not support Anthropic extended thinking.
         """
         import openai as _openai
-        from codeframe.adapters.llm.base import (
-            LLMAuthError,
-            LLMConnectionError,
-            LLMRateLimitError,
-        )
 
         if self._async_client is None:
             self._async_client = _openai.AsyncOpenAI(
@@ -371,12 +366,14 @@ class OpenAIProvider(LLMProvider):
                             )
                             tc_info["emitted_start"] = True
 
-        except _openai.AuthenticationError as exc:
-            raise LLMAuthError(str(exc)) from exc
-        except _openai.RateLimitError as exc:
-            raise LLMRateLimitError(str(exc)) from exc
-        except _openai.APIConnectionError as exc:
-            raise LLMConnectionError(str(exc)) from exc
+        except Exception as exc:
+            # The same actionable mapping as complete(); this used to map only
+            # auth/rate/connection, with the raw SDK string (#1434).
+            from codeframe.adapters.llm.errors import map_provider_error
+
+            raise map_provider_error(
+                exc, provider=self.provider_name, model=model, key_source=self.key_source,
+            ) from exc
 
         # Build tool_inputs_by_id from accumulated partial tool calls
         tool_inputs_by_id: dict = {}

@@ -174,6 +174,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Interactive chat shows a provider error's actionable message, not the raw
+  SDK string (#1434).** `map_provider_error` turns provider failures into typed
+  errors with readable text (#1110, #1349, #1418), but the streaming path chat
+  uses bypassed it: Anthropic's `async_stream` mapped nothing and OpenAI's only
+  auth/rate-limit/connection, so a 413 or a retired model reached the browser
+  as `Error code: 413 - {'type': 'error', ...}`. Both streaming paths now use
+  the same mapping as `complete()`.
+
 - **A chat call to an endpoint that reports no usage is billed an estimate,
   not zero (#1432).** Some OpenAI-compatible servers (local ollama/vllm, some
   proxies) ignore `include_usage`, and the adapter's counters started at 0, so
