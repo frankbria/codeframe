@@ -174,6 +174,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A chat call to an endpoint that reports no usage is billed an estimate,
+  not zero (#1432).** Some OpenAI-compatible servers (local ollama/vllm, some
+  proxies) ignore `include_usage`, and the adapter's counters started at 0, so
+  a finished call was recorded as (0, 0): less than the same call cut off
+  mid-stream, and invisible to the daily spend limit. Missing usage is now
+  reported as unknown, and the chat adapter bills the same estimate it uses for
+  a cut-off call (~3 chars/token). Reported usage is still billed exactly.
+
 - **A skipped PROOF9 evidence test no longer satisfies its requirement
   (#1430).** A test named by an evidence rule that only skipped
   (`@pytest.mark.skip`, `skipif`, `pytest.skip()`, or an `xfail`, which JUnit
