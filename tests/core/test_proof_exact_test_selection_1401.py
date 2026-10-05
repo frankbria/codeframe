@@ -71,13 +71,14 @@ def test_unit_colons(v):
 
 
 @pytest.fixture(
-    params=[None, "addopts = -v", "addopts = -qq", "verbosity_test_cases = 2"],
-    ids=["no-config", "addopts-v", "addopts-qq", "verbosity-test-cases"],
+    params=[None, "addopts = -v", "addopts = -qq", "verbosity_test_cases = 2", "addopts = tests"],
+    ids=["no-config", "addopts-v", "addopts-qq", "verbosity-test-cases", "addopts-path"],
 )
 def ws(tmp_path, request):
-    """A project's own verbosity (addopts, or the per-test-case ini option)
-    changes what --collect-only prints; -v turned the node-id list into a tree
-    and every named test read as missing (codex review)."""
+    """A project's own pytest config must not change what runs: verbosity in
+    addopts (or the per-test-case ini option) turned the node-id list into a
+    tree, and a test path in addopts is collected on top of explicit node
+    ids, so unrelated tests ran unfiltered (codex review)."""
     repo = tmp_path / "repo"
     (repo / "tests").mkdir(parents=True)
     (repo / "tests" / "test_rules.py").write_text(TESTS, encoding="utf-8")

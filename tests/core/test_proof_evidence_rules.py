@@ -105,8 +105,8 @@ class TestPytestSelector:
     @patch("codeframe.core.gates.subprocess.run")
     @patch("codeframe.core.gates.shutil.which", return_value="/usr/bin/uv")
     def test_selector_runs_only_the_exactly_named_tests(self, _which, mock_run):
-        """The selector is an exact name since #1401: `-k` only prefilters the
-        collection, and the run gets node ids, never a substring expression."""
+        """The selector is an exact name since #1401: the run repeats the
+        collection's `-k` with every other-named match deselected."""
         from subprocess import CompletedProcess
 
         from codeframe.core.gates import _run_pytest
@@ -118,8 +118,8 @@ class TestPytestSelector:
         ]
         check = _run_pytest(Path("/tmp"), test_selector="test_unit_foo")
         run_cmd = mock_run.call_args_list[1][0][0]
-        assert "-k" not in run_cmd
-        assert run_cmd[-2:] == ["t.py::test_unit_foo", "t.py::test_unit_foo[1]"]
+        assert run_cmd[run_cmd.index("-k") + 1] == "test_unit_foo"
+        assert run_cmd[-2:] == ["--deselect", "t.py::test_unit_foo_bar"]
         assert check.status == GateStatus.PASSED
 
     @patch("codeframe.core.gates.subprocess.run")

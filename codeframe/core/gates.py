@@ -766,8 +766,10 @@ def _run_pytest(
         if test_selector:
             # `-k` is substring matching: `test_unit_total` also ran
             # `test_unit_total_wrong`, and a missing test passed through any
-            # longer-named one (#1401). Collect with `-k` as a prefilter, keep
-            # only the tests with exactly this name, and run those node ids.
+            # longer-named one (#1401). Collect with the same `-k`, then run it
+            # again with every collected test of another name deselected. Not
+            # explicit node ids: a test path in the project's addopts is
+            # collected on top of them and would run unfiltered (codex review).
             # --verbosity=-1, not -q: it is absolute, so a project's own -v or
             # -qq in addopts cannot turn the node-id list into a tree or a
             # per-file count; and verbosity_test_cases, which overrides it for
@@ -783,11 +785,10 @@ def _run_pytest(
                 result = collected  # a collection error or a missing tool, below
             else:
                 node_ids = [
-                    line.strip()
-                    for line in collected.stdout.splitlines()
-                    if "::" in line and _test_name(line.strip()) == test_selector
+                    line.strip() for line in collected.stdout.splitlines() if "::" in line
                 ]
-                if not node_ids:
+                others = [n for n in node_ids if _test_name(n) != test_selector]
+                if len(others) == len(node_ids):
                     return GateCheck(
                         name="pytest",
                         status=GateStatus.FAILED,
@@ -795,7 +796,8 @@ def _run_pytest(
                         output=f"no test named {test_selector} was collected",
                         duration_ms=int((time.time() - start) * 1000),
                     )
-                result = _pytest(cmd + node_ids)
+                deselect = [arg for n in others for arg in ("--deselect", n)]
+                result = _pytest(cmd + ["-k", test_selector] + deselect)
         else:
             result = _pytest(cmd)
 
