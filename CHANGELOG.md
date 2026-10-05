@@ -174,6 +174,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Security: PyJWT, urllib3 and virtualenv are on patched versions.** 24 open
+  Dependabot alerts (1 critical, 12 high, 11 moderate) covered three locked
+  packages:
+  - PyJWT 2.13.0: key-confusion bypasses (PEM, DER, JWK and BOM accepted as
+    HMAC secrets), empty-key and RecursionError DoS;
+  - urllib3 2.7.0: unbounded chunk buffering, ignored proxy TLS config;
+  - virtualenv 20.36.1, a pre-commit dev dependency: activation-script command
+    injection and unverified seed wheels.
+
+  The lock now has PyJWT 2.15.1, urllib3 2.8.0 and virtualenv 21.7.13. The
+  security floors in `pyproject.toml` rise to `pyjwt>=2.15.0` and
+  `urllib3>=2.8.0`, so an unlocked install cannot resolve a vulnerable
+  version.
+
 - **A lapsed waiver shows as expired, not waived (#1360).** Since #1276 the
   merge gate blocks on a WAIVED requirement whose waiver has expired. The
   `/proof` page, the dashboard widget and `GET /api/v2/proof/status` still

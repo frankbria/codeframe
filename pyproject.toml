@@ -96,9 +96,9 @@ dependencies = [
     # `uv lock` resolves to non-vulnerable versions regardless of the parents' lower bounds.
     "starlette>=1.0.1",       # Range-header FileResponse O(n^2) DoS (forces a compatible fastapi)
     "python-multipart>=0.0.27",  # arbitrary file write + DoS in multipart parsing
-    "pyjwt>=2.12.0",          # accepts unknown `crit` header extensions
+    "pyjwt>=2.15.0",          # crit headers; PEM/JWK/BOM HMAC-key confusion, empty-key + RecursionError DoS
     "cryptography>=46.0.7",   # subgroup attack on SECT curves
-    "urllib3>=2.7.0",         # header leak across redirects, decompression bombs
+    "urllib3>=2.8.0",         # redirect header leak, decompression bombs; unbounded chunk buffering, proxy TLS
     "mcp>=1.23.0",            # DNS-rebinding protection off by default
     "idna>=3.15",             # DoS in IDNA processing
 ]
