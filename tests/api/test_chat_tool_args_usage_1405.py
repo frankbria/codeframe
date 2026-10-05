@@ -24,6 +24,12 @@ pytestmark = pytest.mark.v2
 
 ARGS = '{"path": "' + "a" * 3000 + '"}'  # ~3000 chars of tool input
 CHUNK = 100
+_streamed: dict[str, asyncio.Event] = {}  # "all": set once every argument chunk is out
+
+
+async def _hang():
+    _streamed["all"].set()
+    await asyncio.Event().wait()  # cut off before message_stop
 
 
 class _AnthropicStream:
@@ -43,7 +49,7 @@ class _AnthropicStream:
         for i in range(0, len(ARGS), CHUNK):
             yield NS(type="content_block_delta",
                      delta=NS(type="input_json_delta", partial_json=ARGS[i:i + CHUNK]))
-        await asyncio.Event().wait()  # cut off before message_stop
+        await _hang()
 
 
 def _anthropic():
@@ -59,7 +65,7 @@ def _openai():
             tc = NS(index=0, id="c1" if i == 0 else None,
                     function=NS(name="read_file" if i == 0 else None, arguments=ARGS[i:i + CHUNK]))
             yield NS(usage=None, choices=[NS(finish_reason=None, delta=NS(content=None, tool_calls=[tc]))])
-        await asyncio.Event().wait()
+        await _hang()
 
     async def create(**kw):
         return chunks()
@@ -78,11 +84,12 @@ def test_a_call_cut_off_mid_tool_arguments_is_charged_for_them(chat_ws, monkeypa
     monkeypatch.setattr(mod.StreamingChatAdapter, "_persist_turn", lambda self, *a: asyncio.sleep(0))
 
     async def go():
+        _streamed["all"] = asyncio.Event()  # one per event loop
         task = asyncio.create_task(mod._run_streaming_adapter(
             "s1", "Hi", asyncio.Queue(), asyncio.Event(), None, chat_ws.repo_path,
             usage_workspace=chat_ws,
         ))
-        await asyncio.sleep(0.3)
+        await asyncio.wait_for(_streamed["all"].wait(), timeout=30)  # not a fixed sleep (review)
         task.cancel()
         try:
             await task
