@@ -27,6 +27,7 @@ from codeframe.adapters.llm.base import (
     LLMModelNotFoundError,
     LLMOverloadedError,
     LLMRateLimitError,
+    LLMRequestRejectedError,
     Purpose,
 )
 
@@ -101,6 +102,21 @@ def _with_raw(message: str, exc: Exception) -> str:
 NO_KEY_SENT = "no key: this hosted server does not send its own to your endpoint"
 
 
+def _provider_message(exc: Exception) -> Optional[str]:
+    """The provider's ``error.message`` from an SDK status error, if it has one.
+
+    Both SDKs keep the parsed JSON on ``.body``: Anthropic as
+    ``{"type": "error", "error": {...}}``, OpenAI as the inner ``{...}`` or the
+    whole envelope depending on version.
+    """
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error", body)
+        if isinstance(error, dict) and isinstance(error.get("message"), str):
+            return error["message"]
+    return None
+
+
 def map_provider_error(
     exc: Exception,
     *,
@@ -164,6 +180,21 @@ def map_provider_error(
                          else "Check the provider credentials, then re-run.")
         lines.append("`cf env check` verifies your setup.")
         return LLMAuthError(_with_raw("\n".join(lines), exc))
+
+    if status == 400:
+        # The provider's own reason is a sentence about the request, never a
+        # secret, so it is shown without CODEFRAME_VERBOSE (#1349).
+        reason = _provider_message(exc)
+        lines = [f"The {provider} API rejected the request (HTTP 400) for model {model!r}."]
+        if reason:
+            lines += ["", f"  {reason}"]
+        lines += [
+            "",
+            "This is the request's shape (a parameter or field the model does not "
+            "accept), not the network. A different model, or llm.model in "
+            ".codeframe/config.yaml, usually fixes it.",
+        ]
+        return LLMRequestRejectedError(_with_raw("\n".join(lines), exc))
 
     if status == 404:
         env_var = _model_override_env(purpose)

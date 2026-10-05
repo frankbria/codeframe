@@ -33,6 +33,11 @@ class LLMConnectionError(LLMError):
     """Network or connection error."""
 
 
+class LLMRequestRejectedError(LLMError):
+    """The provider refused the request's shape (HTTP 400, #1349): a parameter
+    or field the model does not accept. Reconfigure, don't check the network."""
+
+
 class LLMModelNotFoundError(LLMError):
     """The provider does not recognise the configured model (#1110).
 

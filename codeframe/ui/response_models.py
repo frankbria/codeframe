@@ -145,6 +145,7 @@ def _llm_error_status() -> list:
         LLMModelNotFoundError,
         LLMOverloadedError,
         LLMRateLimitError,
+        LLMRequestRejectedError,
     )
 
     return [
@@ -152,6 +153,7 @@ def _llm_error_status() -> list:
         (LLMRateLimitError, 429, ErrorCodes.RATE_LIMITED),
         (LLMOverloadedError, 503, ErrorCodes.SERVICE_UNAVAILABLE),
         (LLMModelNotFoundError, 502, ErrorCodes.EXECUTION_FAILED),
+        (LLMRequestRejectedError, 502, ErrorCodes.EXECUTION_FAILED),
         (LLMConnectionError, 502, ErrorCodes.SERVICE_UNAVAILABLE),
         (LLMError, 502, ErrorCodes.EXECUTION_FAILED),
     ]
