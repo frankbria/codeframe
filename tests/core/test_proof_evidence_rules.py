@@ -104,16 +104,22 @@ class TestEvidenceRuleGateField:
 class TestPytestSelector:
     @patch("codeframe.core.gates.subprocess.run")
     @patch("codeframe.core.gates.shutil.which", return_value="/usr/bin/uv")
-    def test_selector_appended_to_command(self, _which, mock_run):
+    def test_selector_runs_only_the_exactly_named_tests(self, _which, mock_run):
+        """The selector is an exact name since #1401: `-k` only prefilters the
+        collection, and the run gets node ids, never a substring expression."""
+        from subprocess import CompletedProcess
+
         from codeframe.core.gates import _run_pytest
 
-        mock_run.return_value.returncode = 0
-        mock_run.return_value.stdout = "1 passed"
-        mock_run.return_value.stderr = ""
+        collected = "t.py::test_unit_foo\nt.py::test_unit_foo_bar\nt.py::test_unit_foo[1]\n"
+        mock_run.side_effect = [
+            CompletedProcess([], 0, stdout=collected, stderr=""),
+            CompletedProcess([], 0, stdout="2 passed", stderr=""),
+        ]
         check = _run_pytest(Path("/tmp"), test_selector="test_unit_foo")
-        cmd = mock_run.call_args[0][0]
-        assert "-k" in cmd
-        assert cmd[cmd.index("-k") + 1] == "test_unit_foo"
+        run_cmd = mock_run.call_args_list[1][0][0]
+        assert "-k" not in run_cmd
+        assert run_cmd[-2:] == ["t.py::test_unit_foo", "t.py::test_unit_foo[1]"]
         assert check.status == GateStatus.PASSED
 
     @patch("codeframe.core.gates.subprocess.run")

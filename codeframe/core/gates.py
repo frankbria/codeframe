@@ -430,8 +430,8 @@ def run(
         gates: Specific gates to run (None = all available)
         verbose: Whether to capture full output
         auto_install_deps: Whether to auto-install missing dependencies before test gates (default: True)
-        test_selector: Optional pytest ``-k`` keyword expression; only applies to
-            the pytest gate. With a selector, "no tests matched" is a failure.
+        test_selector: Optional exact test function name; only applies to the
+            pytest gate. With a selector, "no test of that name" is a failure.
 
     Returns:
         GateResult with all check results
@@ -721,10 +721,15 @@ def _run_tool(
     return None
 
 
+def _test_name(node_id: str) -> str:
+    """``tests/x.py::TestC::test_a[1]`` -> ``test_a``."""
+    return node_id.rsplit("::", 1)[-1].split("[", 1)[0]
+
+
 def _run_pytest(
     repo_path: Path, verbose: bool = False, test_selector: Optional[str] = None
 ) -> GateCheck:
-    """Run pytest, optionally scoped to a ``-k`` keyword expression."""
+    """Run pytest, optionally scoped to the tests named exactly ``test_selector``."""
     import time
 
     start = time.time()
@@ -739,23 +744,48 @@ def _run_pytest(
 
     try:
         # Try uv run pytest first, fall back to pytest
-        if shutil.which("uv"):
-            cmd = ["uv", "run", "pytest", "-v", "--tb=short"]
-        else:
-            cmd = ["pytest", "-v", "--tb=short"]
-        if test_selector:
-            cmd += ["-k", test_selector]
+        base = ["uv", "run", "pytest"] if shutil.which("uv") else ["pytest"]
+        cmd = base + ["-v", "--tb=short"]
 
-        result = subprocess.run(
-            cmd,
-            cwd=repo_path,
-            env=build_agent_env(repo_path),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=300,  # 5 minute timeout
-        )
+        def _pytest(args: list[str]) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                args,
+                cwd=repo_path,
+                env=build_agent_env(repo_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,  # 5 minute timeout
+            )
+
+        if test_selector:
+            # `-k` is substring matching: `test_unit_total` also ran
+            # `test_unit_total_wrong`, and a missing test passed through any
+            # longer-named one (#1401). Collect with `-k` as a prefilter, keep
+            # only the tests with exactly this name, and run those node ids.
+            collected = _pytest(base + ["--collect-only", "-q", "-k", test_selector])
+            if collected.returncode not in (0, 5) or _tool_is_missing(
+                collected.returncode, collected.stderr, {"pytest"}
+            ):
+                result = collected  # a collection error or a missing tool, below
+            else:
+                node_ids = [
+                    line.strip()
+                    for line in collected.stdout.splitlines()
+                    if "::" in line and _test_name(line.strip()) == test_selector
+                ]
+                if not node_ids:
+                    return GateCheck(
+                        name="pytest",
+                        status=GateStatus.FAILED,
+                        exit_code=5,
+                        output=f"no test named {test_selector} was collected",
+                        duration_ms=int((time.time() - start) * 1000),
+                    )
+                result = _pytest(cmd + node_ids)
+        else:
+            result = _pytest(cmd)
 
         duration_ms = int((time.time() - start) * 1000)
 

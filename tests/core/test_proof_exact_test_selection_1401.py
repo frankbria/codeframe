@@ -1,0 +1,103 @@
+"""#1401: an evidence rule runs exactly the test it names.
+
+The runner used to enforce a rule as ``pytest -k <test_id>``, and ``-k`` is
+substring matching. #1397 made new ids unique, but an id that is a prefix of
+another still selected both: a legacy title-only ``test_unit_total`` ran
+``test_unit_total_wrong`` too, and ``test_unit_req_1000`` (empty title slug)
+ran ``test_unit_req_10000``. Worse, a rule whose test does not exist passed
+whenever a longer-named test containing it did. (The issue's own example,
+``test_unit_total_wrong`` vs ``test_unit_req_0007_total_wrong``, is not a
+substring pair; verified, so the tests use the prefix shapes that are.)
+
+Through ``run_proof``, against a real pytest run.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+import pytest
+
+from codeframe.core.proof.ledger import init_proof_tables, save_requirement
+from codeframe.core.proof.models import (
+    EvidenceRule,
+    Gate,
+    GateOutcome,
+    Obligation,
+    ReqStatus,
+    Requirement,
+    RequirementScope,
+    Severity,
+    Source,
+)
+from codeframe.core.proof.runner import run_proof
+from codeframe.core.workspace import create_or_load_workspace
+
+pytestmark = [pytest.mark.v2, pytest.mark.timeout(300)]
+
+TESTS = '''\
+import pytest
+
+
+def test_unit_total():
+    assert True
+
+
+def test_unit_total_wrong():
+    assert False, "a different requirement, still failing"
+
+
+def test_unit_req_1000():
+    assert True
+
+
+def test_unit_req_10000():
+    assert False, "REQ-10000, still failing"
+
+
+def test_unit_absent_but_longer():
+    assert True
+
+
+@pytest.mark.parametrize("n", [1, 2])
+def test_unit_param(n):
+    assert n
+'''
+
+
+@pytest.fixture
+def ws(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_rules.py").write_text(TESTS, encoding="utf-8")
+    w = create_or_load_workspace(repo)
+    init_proof_tables(w)
+    return w
+
+
+def _unit_outcome(ws, test_id):
+    save_requirement(ws, Requirement(
+        id="REQ-0001", title="t", description="d",
+        severity=Severity.MEDIUM, source=Source.QA,
+        scope=RequirementScope(files=["app.py"]),
+        obligations=[Obligation(gate=Gate.UNIT)],
+        evidence_rules=[EvidenceRule(test_id=test_id, gate=Gate.UNIT)],
+        status=ReqStatus.OPEN, created_at=datetime.now(timezone.utc),
+    ))
+    return dict(run_proof(ws, full=True)["REQ-0001"])[Gate.UNIT]
+
+
+def test_a_legacy_rule_does_not_run_another_test_its_name_prefixes(ws):
+    assert _unit_outcome(ws, "test_unit_total") == GateOutcome.PASSED
+
+
+def test_req_1000_does_not_run_req_10000(ws):
+    assert _unit_outcome(ws, "test_unit_req_1000") == GateOutcome.PASSED
+
+
+def test_a_missing_test_is_not_satisfied_by_a_longer_named_one(ws):
+    assert _unit_outcome(ws, "test_unit_absent") == GateOutcome.FAILED
+
+
+def test_a_parametrized_test_is_selected_by_its_name(ws):
+    assert _unit_outcome(ws, "test_unit_param") == GateOutcome.PASSED
