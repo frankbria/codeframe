@@ -62,3 +62,15 @@ def test_the_cli_and_the_web_ui_agree_on_the_same_repo(tmp_path, monkeypatch):
 
     assert get_workspace(web_repo).tech_stack == get_workspace(cli_repo).tech_stack
     assert get_workspace(web_repo).tech_stack == "Python 3.12 with pip, ruff for linting"
+
+
+@pytest.mark.parametrize(
+    "package_json",
+    ["[]", "null", '"x"', '{"dependencies": ["react"]}', '{"devDependencies": null}'],
+)
+def test_a_package_json_that_is_not_an_object_does_not_crash(tmp_path, package_json):
+    """The web UI's old detector never parsed package.json; the shared one
+    does, and must not turn valid-but-odd JSON into a 500 (GLM review)."""
+    (tmp_path / "package.json").write_text(package_json, encoding="utf-8")
+
+    assert detect_tech_stack(tmp_path) == "JavaScript with npm"

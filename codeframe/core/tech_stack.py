@@ -66,6 +66,8 @@ def detect_tech_stack(repo_path: Path) -> str:
         except (json.JSONDecodeError, FileNotFoundError):
             pkg_json = {}
             pkg_json_text = ""
+        if not isinstance(pkg_json, dict):  # valid JSON, but not an object
+            pkg_json = {}
 
         # Detect Node version
         node_version = None
@@ -89,8 +91,10 @@ def detect_tech_stack(repo_path: Path) -> str:
         node_part = f"{lang}{' (Node ' + node_version + ')' if node_version else ''} with {pkg_mgr}"
 
         # Detect framework
-        deps = pkg_json.get("dependencies", {})
-        dev_deps = pkg_json.get("devDependencies", {})
+        deps = pkg_json.get("dependencies")
+        dev_deps = pkg_json.get("devDependencies")
+        deps = deps if isinstance(deps, dict) else {}
+        dev_deps = dev_deps if isinstance(dev_deps, dict) else {}
         all_deps = {**deps, **dev_deps}
 
         if "next" in all_deps:
