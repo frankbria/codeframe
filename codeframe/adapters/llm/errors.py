@@ -181,21 +181,6 @@ def map_provider_error(
         lines.append("`cf env check` verifies your setup.")
         return LLMAuthError(_with_raw("\n".join(lines), exc))
 
-    if status == 400:
-        # The provider's own reason is a sentence about the request, never a
-        # secret, so it is shown without CODEFRAME_VERBOSE (#1349).
-        reason = _provider_message(exc)
-        lines = [f"The {provider} API rejected the request (HTTP 400) for model {model!r}."]
-        if reason:
-            lines += ["", f"  {reason}"]
-        lines += [
-            "",
-            "This is the request's shape (a parameter or field the model does not "
-            "accept), not the network. A different model, or llm.model in "
-            ".codeframe/config.yaml, usually fixes it.",
-        ]
-        return LLMRequestRejectedError(_with_raw("\n".join(lines), exc))
-
     if status == 404:
         env_var = _model_override_env(purpose)
         lines = [
@@ -230,6 +215,29 @@ def map_provider_error(
                 exc,
             )
         )
+
+    if status is not None and 400 <= status < 500:
+        # Every 4xx not mapped above (400, 409, 413, 422, ...) is the provider
+        # refusing this request, not the network (#1349, #1418). Its reason is
+        # a sentence about the request, never a secret, so it is shown
+        # without CODEFRAME_VERBOSE.
+        reason = _provider_message(exc)
+        lines = [f"The {provider} API rejected the request (HTTP {status}) for model {model!r}."]
+        if reason:
+            lines += ["", f"  {reason}"]
+        lines.append("")
+        if status == 413:
+            lines.append(
+                "The request is larger than the provider accepts, not a network "
+                "problem. A shorter prompt or fewer files in context usually fixes it."
+            )
+        else:
+            lines.append(
+                "This is the request's shape (a parameter or field the model does not "
+                "accept), not the network. A different model, or llm.model in "
+                ".codeframe/config.yaml, usually fixes it."
+            )
+        return LLMRequestRejectedError(_with_raw("\n".join(lines), exc))
 
     if status in (500, 502, 503, 529):
         return LLMOverloadedError(
