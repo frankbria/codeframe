@@ -165,8 +165,9 @@ def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     orphan cleanup keyed on process liveness would force-delete a *preserved*
     branch once this process exits, defeating the failure/conflict preservation
     the acceptance criteria require. The old ``WorktreeRegistry`` was therefore
-    never written to, and was deleted in #958; a leftover worktree surfaces as
-    the actionable error raised below on the next run instead.
+    never written to, and was deleted in #958. A leftover worktree of this task
+    is resumed on the next run (#1363); only something in its place that is not
+    that worktree raises the actionable error below.
     """
     import subprocess
 
@@ -188,10 +189,15 @@ def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     base_branch = get_base_branch(repo_path)
     worktree = TaskWorktree()
 
+    listing = _git("worktree", "list", "--porcelain") if branch_exists else None
+    if listing is not None and listing.returncode != 0:
+        # Fails closed below (the refusal), but say why, or a transient git
+        # failure reads as "not a worktree of that branch".
+        logger.warning("git worktree list failed: %s", (listing.stderr or "").strip()[:300])
     if (
-        branch_exists
+        listing is not None
         and worktree_dir.exists()  # rm -rf leaves the registration behind
-        and _registered_on(_git("worktree", "list", "--porcelain").stdout, worktree_dir, branch_name)
+        and _registered_on(listing.stdout, worktree_dir, branch_name)
     ):
         worktree_path = worktree_dir
         logger.info("Resuming preserved worktree for %s at %s", task_id, worktree_path)
