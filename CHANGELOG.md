@@ -174,6 +174,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A stopped or failed worktree run can be started again (#1363).** A run
+  with `--isolation worktree` that ends before merge-back keeps its
+  `cf/<task>` branch and worktree, so the agent's work is never discarded. The
+  next `cf work start` used to refuse with "a worktree or branch ... still
+  exists", so pressing Start after Stop needed manual git surgery. Start now
+  resumes on the preserved worktree. Committed and uncommitted work carries
+  over, and merge-back lands all of it. If only the worktree directory was
+  removed, the branch is reattached. A directory that is not that branch's
+  worktree still refuses rather than being overwritten.
+
 - **Security: PyJWT, urllib3 and virtualenv are on patched versions.** 24 open
   Dependabot alerts (1 critical, 12 high, 11 moderate) covered three locked
   packages:
