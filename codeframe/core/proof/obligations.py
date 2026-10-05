@@ -121,7 +121,8 @@ def requirement_slug(req_id: str, title: str) -> str:
     and the runner used to enforce a rule as ``pytest -k <test_id>`` (substring
     matching) over the whole project, so a title-only slug made each
     requirement's rule run the other one's test as well (#1397). Since #1401 it
-    runs exactly the named test; the unique slug still keeps rules distinct. Rules and stub function names both use this.
+    runs exactly the named test; the unique slug still keeps rules distinct.
+    Rules and stub function names both use this.
 
     The id alone is not enough: ``-k`` is substring matching, so a title that
     quotes another requirement's test name (pasted from CI output) would make
