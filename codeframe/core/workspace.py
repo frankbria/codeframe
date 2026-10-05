@@ -880,7 +880,18 @@ def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) 
 
     # Check if workspace already exists
     if state_dir.exists() and db_path.exists():
-        return get_workspace(repo_path)
+        try:
+            return get_workspace(repo_path)
+        except FileNotFoundError:
+            # A serve-first install under the pre-#1287 default left the
+            # control plane (accounts, API keys) in state.db with no workspace
+            # row. Move it to platform.db once, then initialize normally
+            # (#1376); anything else is still the error it was. Only on this
+            # failure path, so a normal load pays nothing for it.
+            from codeframe.platform_store.database import migrate_legacy_control_plane
+
+            if not migrate_legacy_control_plane(state_dir):
+                raise
 
     # Create .codeframe/ directory
     state_dir.mkdir(exist_ok=True)

@@ -73,6 +73,48 @@ def default_database_path() -> str:
     return str(legacy)
 
 
+def migrate_legacy_control_plane(state_dir: Path) -> bool:
+    """Move a serve-first control-plane ``state.db`` to ``platform.db`` (#1376).
+
+    Only when ``state.db`` holds login-capable accounts and no workspace
+    (``_legacy_kind == "control_plane"``) and there is no ``platform.db`` yet,
+    so nothing is ever overwritten. The copy uses SQLite's backup API, which
+    is consistent and includes rows still in the ``-wal``; it lands under a
+    temp name and is renamed into place, then the original and its sidecars
+    move aside to ``*.pre-1287``. Returns True when it moved the file.
+
+    Called from ``cf init`` (``create_or_load_workspace``) — one explicit,
+    operator-driven moment — never from the resolver, which runs on every
+    auth lookup while a server may hold the file open.
+    """
+    legacy = state_dir / "state.db"
+    platform_db = state_dir / "platform.db"
+    if platform_db.exists() or _legacy_kind(legacy) != "control_plane":
+        return False
+
+    tmp = state_dir / f".platform.db.{os.getpid()}.tmp"
+    src = sqlite3.connect(legacy)
+    try:
+        dst = sqlite3.connect(tmp)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+    os.replace(tmp, platform_db)
+    for suffix in ("", "-wal", "-shm"):
+        part = state_dir / f"state.db{suffix}"
+        if part.exists():
+            os.replace(part, state_dir / f"state.db{suffix}.pre-1287")
+    logger.warning(
+        "Moved the legacy control-plane DB %s to %s (#1376); the original is kept "
+        "as %s. Restart any server running from this directory.",
+        legacy, platform_db, state_dir / "state.db.pre-1287",
+    )
+    return True
+
+
 def _legacy_kind(db_path: Path) -> Optional[str]:
     """``"shared"`` / ``"control_plane"`` when ``db_path`` holds a login-capable
     account, else ``None``. The seeded ``!DISABLED!`` admin alone does not count:

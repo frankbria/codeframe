@@ -1,0 +1,99 @@
+"""`cf init` migrates a serve-first legacy state.db to platform.db (#1376).
+
+Before #1287, `cf serve` with no DATABASE_PATH wrote the control plane
+(accounts, API keys) into `.codeframe/state.db`, the workspace's own file.
+#1287 keeps such an install on state.db and warns, but `cf init` there still
+failed with "Workspace database exists but contains no workspace record" until
+the operator renamed the file by hand. Init now does that move itself, once,
+consistently (sqlite backup, WAL included), and the accounts stay reachable.
+"""
+
+import sqlite3
+
+import pytest
+
+from codeframe.core.workspace import create_or_load_workspace
+from codeframe.platform_store.database import Database, default_database_path
+
+pytestmark = pytest.mark.v2
+
+REAL_HASH = "$argon2id$v=19$m=65536,t=3,p=4$real"
+
+
+def _legacy_control_plane(repo):
+    """What the old default left behind: the control plane in state.db."""
+    state = repo / ".codeframe" / "state.db"
+    state.parent.mkdir(parents=True)
+    db = Database(state)
+    db.initialize()
+    db.conn.execute(
+        "INSERT INTO users (id, email, name, hashed_password, is_active, is_superuser, is_verified, email_verified) "
+        "VALUES (7, 'op@x.co', 'Op', ?, 1, 1, 1, 1)",
+        (REAL_HASH,),
+    )
+    db.conn.commit()
+    db.close()
+    return state
+
+
+def _emails(db_path):
+    conn = sqlite3.connect(db_path)
+    try:
+        return [r[0] for r in conn.execute("SELECT email FROM users WHERE hashed_password = ?", (REAL_HASH,))]
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def repo(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_PATH", raising=False)
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+def test_init_after_an_old_default_serve_succeeds_and_keeps_the_accounts(repo):
+    _legacy_control_plane(repo)
+
+    ws = create_or_load_workspace(repo)  # raised "contains no workspace record"
+
+    platform = repo / ".codeframe" / "platform.db"
+    assert _emails(platform) == ["op@x.co"]
+    assert default_database_path() == str(platform)  # the server now finds them
+    assert ws.db_path == repo / ".codeframe" / "state.db"
+    assert (repo / ".codeframe" / "state.db.pre-1287").exists()  # the original, kept
+
+
+def test_wal_only_data_survives_the_move(repo):
+    """A file copy would miss rows still in the -wal; the backup API does not."""
+    state = _legacy_control_plane(repo)
+    conn = sqlite3.connect(state)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA wal_autocheckpoint=0")
+    conn.execute(
+        "INSERT INTO users (id, email, name, hashed_password, is_active, is_superuser, is_verified, email_verified) "
+        "VALUES (8, 'late@x.co', 'Late', ?, 1, 0, 1, 1)", (REAL_HASH,),
+    )
+    conn.commit()  # held open: the row lives only in state.db-wal
+    try:
+        create_or_load_workspace(repo)
+    finally:
+        conn.close()
+
+    assert sorted(_emails(repo / ".codeframe" / "platform.db")) == ["late@x.co", "op@x.co"]
+
+
+def test_an_existing_platform_db_is_never_overwritten(repo):
+    _legacy_control_plane(repo)
+    platform = repo / ".codeframe" / "platform.db"
+    platform.write_bytes(b"")  # someone already set one up
+
+    with pytest.raises(FileNotFoundError, match="no workspace record"):
+        create_or_load_workspace(repo)
+    assert platform.read_bytes() == b""
+
+
+def test_a_workspace_db_is_left_alone(repo):
+    ws = create_or_load_workspace(repo)
+    again = create_or_load_workspace(repo)
+    assert again.id == ws.id
+    assert not (repo / ".codeframe" / "platform.db").exists()
