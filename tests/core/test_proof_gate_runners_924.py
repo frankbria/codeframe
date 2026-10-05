@@ -88,11 +88,14 @@ class TestRunnerlessGatesUseTheirRules:
             raising=False,
         )
 
-        outcome, _ = _run_gate(
+        outcome, output = _run_gate(
             workspace, Gate.A11Y, rules=[_rule("test_a11y_contrast", Gate.A11Y)]
         )
 
         assert outcome == GateOutcome.FAILED
+        # The branch it is about, not _run_gate's fail-closed handler, which
+        # turned an AttributeError on the fake into the same FAILED (#1430).
+        assert "test_a11y_contrast: FAILED (FAILED)" in output, output
 
     def test_a_missing_named_test_fails_rather_than_passes(
         self, workspace, monkeypatch
@@ -235,10 +238,11 @@ def _passing_result():
 def _failing_result(code: int = 1):
     from codeframe.core import gates as core_gates
 
-    class _Check:
+    class _Check:  # mirrors GateCheck, which always has output (#1430 reads it)
         name = "pytest"
         status = core_gates.GateStatus.FAILED
         exit_code = code
+        output = ""
 
     class _Result:
         checks = [_Check()]
