@@ -218,7 +218,8 @@ class KilocodeAdapter(SubprocessAdapter):
         """True when kilo can reach a model: its own login, or a provider key.
 
         kilo 7.x keeps logins in ``~/.local/share/kilo/auth.json`` as
-        ``{provider: {"type", "key"}}``, so at least one entry is a login. A
+        ``{provider: {"type", "key"}}`` (or OAuth tokens), so an entry holding
+        a non-empty credential is a login. A
         provider key counts because ``credential_env_vars`` forwards it (#1270);
         ``cf auth setup``'s stored key counts too (#1264). The 0.22 CLI's
         ``~/.kilocode`` is not used as evidence: it can hold only installed
@@ -229,7 +230,13 @@ class KilocodeAdapter(SubprocessAdapter):
             logins = json.loads(auth.read_text())
         except (OSError, ValueError):
             logins = None
-        if isinstance(logins, dict) and logins:
+        if isinstance(logins, dict) and any(
+            isinstance(entry, dict)
+            and any(isinstance(v, str) and v for k, v in entry.items() if k != "type")
+            for entry in logins.values()
+        ):
+            # An entry with an actual credential (an API key or OAuth token);
+            # {"anthropic": {}} or a blank key is not a login (codex review).
             return True
 
         from codeframe.core.llm_resolution import resolve_api_key

@@ -40,8 +40,12 @@ def _auth(home: Path, payload) -> None:
     path.write_text(json.dumps(payload) if not isinstance(payload, str) else payload)
 
 
-def test_a_7x_login_counts(home):
-    _auth(home, {"anthropic": {"type": "api", "key": "k"}})
+@pytest.mark.parametrize("entry", [
+    {"type": "api", "key": "k"},
+    {"type": "oauth", "access": "at", "refresh": "rt"},
+], ids=["api-key", "oauth"])
+def test_a_7x_login_counts(home, entry):
+    _auth(home, {"anthropic": entry})
     assert KilocodeAdapter.is_authenticated()
 
 
@@ -50,7 +54,10 @@ def test_no_login_and_no_key_is_not_ready(home):
     assert KilocodeAdapter.check_ready()["authenticated"] is False
 
 
-@pytest.mark.parametrize("payload", [{}, "", "not json"], ids=["empty-object", "empty-file", "garbage"])
+@pytest.mark.parametrize("payload", [
+    {}, "", "not json", {"anthropic": {}}, {"anthropic": {"type": "api", "key": ""}},
+    {"anthropic": "sk-x"}, [{"key": "k"}],
+], ids=["empty-object", "empty-file", "garbage", "empty-entry", "blank-key", "non-dict-entry", "list"])
 def test_an_empty_or_broken_auth_file_is_not_a_login(home, payload):
     _auth(home, payload)
     assert not KilocodeAdapter.is_authenticated()
