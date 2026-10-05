@@ -166,6 +166,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **`cf engines check kilocode` tells you whether kilo can actually run
+  (#1353).** It checked only the binary, so a never-logged-in kilo passed and
+  then failed every task with "You need to sign in to use this model". It now
+  reports `authenticated`: a kilo login, or a provider key kilo receives. It
+  also listed the optional `KILOCODE_PATH` as a requirement, so kilo was never
+  reported ready even when installed and logged in. That requirement is gone,
+  as it went for codex in #1010.
+
 - **A provider's 400 says the request was rejected, and why (#1349).** Any
   status without its own mapping was reported as "The … API call failed", a
   connection error, and the provider's reason appeared only with
