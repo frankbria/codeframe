@@ -174,6 +174,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A server started while `cf init` moves a legacy `state.db` waits for it
+  (#1427).** The #1376 migration refuses a file a server has open, but a
+  server that opened it after that check and before the move kept writing
+  accounts into the copy being moved aside; the next start used `platform.db`
+  without them. The server's first open of the control-plane DB now takes the
+  migration's lock (only when a `state.db` is present, so a normal start pays
+  nothing), and either opens first, so the migration refuses, or opens the
+  published `platform.db`.
+
 - **`cf engines check opencode` reports ready on one provider key or an
   opencode login (#1419).** Both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` were
   listed as requirements and every unset one counts as unmet, so opencode was
