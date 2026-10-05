@@ -397,7 +397,7 @@ def init(
     """
     from codeframe.core.workspace import (
         create_or_load_workspace,
-        workspace_exists,
+        get_workspace,
         update_workspace_tech_stack,
     )
     from codeframe.core.events import emit_for_workspace, EventType
@@ -409,7 +409,14 @@ def init(
         raise typer.Exit(1)
 
     try:
-        already_existed = workspace_exists(repo_path)
+        # A state.db with no workspace row (a pre-#1287 serve-first control
+        # plane, migrated by create_or_load_workspace, #1376) is not an
+        # existing workspace, so only a loadable one counts.
+        try:
+            get_workspace(repo_path)
+            already_existed = True
+        except FileNotFoundError:
+            already_existed = False
 
         # Determine tech stack value
         final_tech_stack = None

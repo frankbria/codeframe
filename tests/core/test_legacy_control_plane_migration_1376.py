@@ -97,3 +97,20 @@ def test_a_workspace_db_is_left_alone(repo):
     again = create_or_load_workspace(repo)
     assert again.id == ws.id
     assert not (repo / ".codeframe" / "platform.db").exists()
+
+
+def test_cf_init_reports_a_new_workspace_not_an_existing_one(repo):
+    """The file existed, but no workspace did: say 'Initialized', not 'already'."""
+    import subprocess as sp
+
+    from typer.testing import CliRunner
+
+    from codeframe.cli.app import app
+
+    _legacy_control_plane(repo)
+    sp.run(["git", "init", "-q"], cwd=repo, check=True)
+
+    result = CliRunner().invoke(app, ["init", str(repo)])
+
+    assert result.exit_code == 0, result.output
+    assert "already initialized" not in result.output.lower(), result.output
