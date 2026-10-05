@@ -723,9 +723,16 @@ def _run_tool(
     return None
 
 
-def _exact_cases_passed(report: Path, name: str) -> Optional[bool]:
-    """From a pytest JUnit report: None when no case is named exactly ``name``
-    (parameters ignored), else whether every such case passed."""
+# Why an exact-named evidence test that only skipped fails its rule (#1430).
+SKIPPED_NOT_EVIDENCE = "skipped, not run: a skip is not evidence"
+
+
+def _exact_cases_verdict(report: Path, name: str) -> Optional[str]:
+    """From a pytest JUnit report, for the cases named exactly ``name``
+    (parameters ignored): None when there are none, else ``"failed"`` if any
+    failed or errored, ``"skipped"`` if none actually ran (a skip, or an xfail,
+    which JUnit reports as skipped, executed nothing and is not evidence,
+    #1430), else ``"passed"``."""
     try:
         cases = [
             c for c in ET.parse(report).getroot().iter("testcase")
@@ -735,7 +742,11 @@ def _exact_cases_passed(report: Path, name: str) -> Optional[bool]:
         return None
     if not cases:
         return None
-    return not any(c.find("failure") is not None or c.find("error") is not None for c in cases)
+    if any(c.find("failure") is not None or c.find("error") is not None for c in cases):
+        return "failed"
+    if all(c.find("skipped") is not None for c in cases):
+        return "skipped"
+    return "passed"
 
 
 def _run_pytest(
@@ -778,7 +789,7 @@ def _run_pytest(
         # `-k` drags in still run but cannot decide it. A report, not console
         # output or --deselect: a project's verbosity settings reshaped the
         # output and --deselect matches node-id prefixes (codex review).
-        exact: Optional[bool] = None
+        exact: Optional[str] = None
         if test_selector:
             with tempfile.TemporaryDirectory() as tmp:
                 report = Path(tmp) / "report.xml"
@@ -789,7 +800,7 @@ def _run_pytest(
                     cmd + ["-k", test_selector, "--maxfail=0", f"--junitxml={report}"]
                 )
                 if result.returncode in (0, 1, 5):
-                    exact = _exact_cases_passed(report, test_selector)
+                    exact = _exact_cases_verdict(report, test_selector)
         else:
             result = _pytest(cmd)
 
@@ -859,14 +870,20 @@ def _run_pytest(
                 status, exit_code = GateStatus.FAILED, 5  # named test missing
                 output = f"no test named {test_selector} was collected\n" + output
             else:
-                status = GateStatus.PASSED if exact else GateStatus.FAILED
-                exit_code = 0 if exact else 1
+                passed = exact == "passed"
+                status = GateStatus.PASSED if passed else GateStatus.FAILED
+                exit_code = 0 if passed else 1
+
+        output = output if verbose else _summarize_pytest_output(output)
+        if test_selector and exact == "skipped":
+            # After summarising, which would drop it; the runner keys on it (#1430).
+            output = f"{test_selector}: {SKIPPED_NOT_EVIDENCE}\n{output}"
 
         return GateCheck(
             name="pytest",
             status=status,
             exit_code=exit_code,
-            output=output if verbose else _summarize_pytest_output(output),
+            output=output,
             duration_ms=duration_ms,
         )
 
