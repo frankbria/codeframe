@@ -71,6 +71,28 @@ class CreatePRRequest(BaseModel):
         None,
         description="Target branch to merge into (default: the workspace's default branch, else main)",
     )
+    proof_report: bool = Field(
+        True,
+        description="Append the workspace's PROOF9 report to the body, as `cf pr create` does (#1358)",
+    )
+
+
+def _with_proof_report(workspace: Workspace, body: str) -> str:
+    """``body`` with the PROOF9 report appended; ``body`` alone if it fails.
+
+    A reviewer on GitHub should see the proof status, but a report that cannot
+    be built must never be the reason a PR is not created.
+    """
+    try:
+        from codeframe.core.proof.ledger import init_proof_tables
+        from codeframe.core.proof.report import pr_proof_report
+
+        init_proof_tables(workspace)
+        report = pr_proof_report(workspace)
+    except Exception as exc:
+        logger.warning("Could not build the PROOF9 report for the PR body: %s", exc)
+        return body
+    return f"{body}\n\n{report}" if body else report
 
 
 class MergePRRequest(BaseModel):
@@ -649,10 +671,11 @@ async def create_pull_request(
     _refuse_mutating_pr_in_hosted_mode()
     client = _get_github_client(workspace, auth)
     try:
+        pr_body = _with_proof_report(workspace, body.body) if body.proof_report else body.body
         pr = await client.create_pull_request(
             branch=body.branch,
             title=body.title,
-            body=body.body,
+            body=pr_body,
             base=body.base or load_workspace_config(workspace)["default_branch"],
         )
 
