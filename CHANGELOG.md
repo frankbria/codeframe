@@ -174,6 +174,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **`cf engines check opencode` reports ready on one provider key or an
+  opencode login (#1419).** Both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` were
+  listed as requirements and every unset one counts as unmet, so opencode was
+  only ever ready with both set, and never on an `opencode auth login` alone.
+  Like codex (#1010) and kilo (#1353), it now checks the binary and
+  `authenticated`: an opencode login or either key (env or `cf auth setup`).
+
 - **A provider's 413, 422 or 409 is reported as a rejected request, not a
   network failure (#1418).** #1349 did this for 400 only; every other unmapped
   4xx still said "The … API call failed." with the provider's reason hidden

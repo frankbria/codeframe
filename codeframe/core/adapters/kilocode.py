@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import shlex
@@ -225,23 +224,9 @@ class KilocodeAdapter(SubprocessAdapter):
         ``~/.kilocode`` is not used as evidence: it can hold only installed
         skills, which is not a login.
         """
-        auth = Path.home() / ".local" / "share" / "kilo" / "auth.json"
-        try:
-            logins = json.loads(auth.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            logins = None
-        if isinstance(logins, dict) and any(
-            isinstance(entry, dict)
-            and any(isinstance(v, str) and v for k, v in entry.items() if k != "type")
-            for entry in logins.values()
-        ):
-            # An entry with an actual credential (an API key or OAuth token);
-            # {"anthropic": {}} or a blank key is not a login (codex review).
-            return True
+        from codeframe.core.adapters.opencode import has_login_or_provider_key
 
-        from codeframe.core.llm_resolution import resolve_api_key
-
-        return bool(resolve_api_key("anthropic") or resolve_api_key("openai"))
+        return has_login_or_provider_key(Path.home() / ".local" / "share" / "kilo" / "auth.json")
 
     def _surface(self) -> str:
         """Which kilo CLI this adapter is talking to."""
