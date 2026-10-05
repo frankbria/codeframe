@@ -506,3 +506,32 @@ class Database:
     def create_audit_log(self, *args, **kwargs):
         """Delegate to audit_logs.create_audit_log()."""
         return self.audit_logs.create_audit_log(*args, **kwargs)
+
+
+def open_control_plane_db() -> Database:
+    """Resolve and open the control-plane DB, as the server does on start.
+
+    Under the migration's lock when a legacy ``state.db`` is present (#1427):
+    the migration checks that no server has the file open and then moves it,
+    and a server that opened it between the two kept writing accounts into the
+    copy being moved aside. Waiting here, the server either opens the file
+    first (and the migration's live-use check refuses) or opens the
+    ``platform.db`` the migration published. Only a file the migration could
+    move takes the lock: a workspace's own ``state.db`` (every ``cf init``ed
+    repo) or a "shared" one is never moved, so a normal start pays nothing
+    (review). The same test the migration's own fast path uses.
+    """
+    state_dir = Path.cwd() / ".codeframe"
+    movable = (state_dir / ".control-plane-migration.pending").exists() or (
+        _legacy_kind(state_dir / "state.db") == "control_plane"
+    )
+    if os.getenv("DATABASE_PATH") or not movable:
+        lock: contextlib.AbstractContextManager = contextlib.nullcontext()
+    else:
+        from codeframe.core.atomic_io import read_modify_write_lock
+
+        lock = read_modify_write_lock(state_dir / ".control-plane-migration.lock")
+    with lock:
+        db = Database(default_database_path())
+        db.initialize()
+    return db

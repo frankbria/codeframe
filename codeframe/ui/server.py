@@ -42,7 +42,7 @@ from codeframe.ui.routers import (
 )
 from codeframe.auth import router as auth_router
 from codeframe.auth.dependencies import require_method_scope
-from codeframe.platform_store.database import Database, default_database_path
+from codeframe.platform_store.database import open_control_plane_db
 from codeframe.lib.rate_limiter import (
     get_rate_limiter,
     rate_limit_exceeded_handler,
@@ -451,8 +451,7 @@ async def lifespan(app: FastAPI):
     _validate_workspace_allowlist_config()
 
     # Initialize global persistent DB (used by interactive_sessions and auth)
-    db = Database(default_database_path())
-    db.initialize()
+    db = open_control_plane_db()  # waits out a `cf init` migration (#1427)
     app.state.db = db
 
     # Log the effective auth mode (#336: env-gated, secure by default)
