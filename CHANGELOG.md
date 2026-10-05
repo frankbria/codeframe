@@ -174,6 +174,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **The CLI and the web UI describe a repo's tech stack the same way
+  (#1381).** `cf init --detect` and the web UI (workspace init, the Settings
+  auto-detect toggle) had separate detectors, and the web UI's reported
+  "Python with uv" for any `pyproject.toml` that mentioned `uvicorn`. The agent
+  reads this text, so the same repo was described differently depending on
+  where it was detected. Both now call one detector in
+  `codeframe/core/tech_stack.py` (the CLI's, which reads `uv.lock`,
+  `.python-version`, Node versions and package managers).
+
 - **`cf init` works in a directory a pre-#1287 `cf serve` left behind
   (#1376).** Serving first with no `DATABASE_PATH` used to put the accounts
   and API keys in `.codeframe/state.db` with no workspace row. `cf init` there

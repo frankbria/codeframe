@@ -20,6 +20,7 @@ from codeframe.core import workspace as ws
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.auth.dependencies import require_auth
 from codeframe.ui.dependencies import enforce_workspace_allowlist, get_v2_workspace
+from codeframe.core.tech_stack import detect_tech_stack
 from codeframe.core.workspace import WORKSPACE_CONFIG_FILENAME, Workspace
 from codeframe.platform_store.database import LegacyControlPlaneError
 from codeframe.ui.response_models import api_error, ErrorCodes
@@ -93,55 +94,6 @@ def _workspace_to_response(workspace: Workspace) -> WorkspaceResponse:
         tech_stack=workspace.tech_stack,
         created_at=workspace.created_at.isoformat(),
     )
-
-
-def _detect_tech_stack(repo_path: Path) -> Optional[str]:
-    """Auto-detect tech stack from project files.
-
-    Looks for common project files and infers the tech stack.
-    """
-    tech_parts = []
-
-    # Python detection
-    pyproject = repo_path / "pyproject.toml"
-    if pyproject.exists():
-        content = pyproject.read_text(encoding="utf-8", errors="replace")
-        if "uv" in content or "[tool.uv]" in content:
-            tech_parts.append("Python with uv")
-        elif "poetry" in content:
-            tech_parts.append("Python with poetry")
-        else:
-            tech_parts.append("Python")
-
-        if "pytest" in content:
-            tech_parts.append("pytest")
-        if "ruff" in content:
-            tech_parts.append("ruff for linting")
-        if "fastapi" in content.lower():
-            tech_parts.append("FastAPI")
-
-    # Node.js detection
-    package_json = repo_path / "package.json"
-    if package_json.exists():
-        content = package_json.read_text(encoding="utf-8", errors="replace")
-        if "next" in content:
-            tech_parts.append("Next.js")
-        elif "react" in content:
-            tech_parts.append("React")
-        if "typescript" in content:
-            tech_parts.append("TypeScript")
-
-    # Rust detection
-    cargo_toml = repo_path / "Cargo.toml"
-    if cargo_toml.exists():
-        tech_parts.append("Rust with cargo")
-
-    # Go detection
-    go_mod = repo_path / "go.mod"
-    if go_mod.exists():
-        tech_parts.append("Go")
-
-    return ", ".join(tech_parts) if tech_parts else None
 
 
 def _get_registry(request: Request):
@@ -291,7 +243,7 @@ async def init_workspace(
         # Determine tech stack
         tech_stack = body.tech_stack
         if body.detect and not tech_stack:
-            tech_stack = _detect_tech_stack(repo_path)
+            tech_stack = detect_tech_stack(repo_path) or None
 
         # A state.db with no workspace row (a pre-#1287 serve-first control
         # plane) is not an existing workspace: create_or_load_workspace moves
@@ -473,7 +425,7 @@ async def update_workspace_config(
     )
     if stack_changed:
         tech_stack = (
-            _detect_tech_stack(workspace.repo_path) if body.auto_detect_tech_stack else override
+            (detect_tech_stack(workspace.repo_path) or None) if body.auto_detect_tech_stack else override
         )
         updated = ws.update_workspace_tech_stack(workspace.repo_path, tech_stack)
         _register_workspace(request, updated, auth.get("user_id"))  # registry cache (#601)
