@@ -370,3 +370,24 @@ def test_a_relative_database_path_is_refused_from_another_cwd(repo, tmp_path_fac
     with pytest.raises(LegacyControlPlaneError, match="DATABASE_PATH"):
         create_or_load_workspace(repo)
     assert _emails(state) == ["op@x.co"]
+
+
+def test_the_v2_init_route_migrates_instead_of_failing(repo):
+    """POST /api/v2/workspaces took the file-exists fast path straight into
+    get_workspace and 500'd on a legacy control plane (GLM review)."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from codeframe.ui.routers import workspace_v2
+
+    _legacy_control_plane(repo)
+    app = FastAPI()
+    app.include_router(workspace_v2.router)
+    app.state.db = Database(":memory:")
+    app.state.db.initialize()
+
+    with TestClient(app) as client:
+        resp = client.post("/api/v2/workspaces", json={"repo_path": str(repo)})
+
+    assert resp.status_code in (200, 201), resp.text
+    assert _emails(repo / ".codeframe" / "platform.db") == ["op@x.co"]
