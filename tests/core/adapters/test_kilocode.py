@@ -179,9 +179,9 @@ class TestKilocodeAdapter:
             result = KilocodeAdapter.check_ready()
         assert result["kilo_binary"] is False
 
-    def test_requirements_returns_kilocode_path_key(self) -> None:
-        reqs = KilocodeAdapter.requirements()
-        assert "KILOCODE_PATH" in reqs
+    def test_requirements_lists_no_required_env_var(self) -> None:
+        """KILOCODE_PATH is optional; check_ready resolves it (#1353)."""
+        assert KilocodeAdapter.requirements() == {}
 
     def test_successful_execution(self) -> None:
         with patch(_WHICH, return_value="/usr/bin/kilo"):

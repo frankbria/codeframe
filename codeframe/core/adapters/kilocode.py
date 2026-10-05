@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shlex
@@ -171,10 +172,15 @@ class KilocodeAdapter(SubprocessAdapter):
 
     @classmethod
     def requirements(cls) -> dict[str, str]:
-        """Return environment variables recognised by ``cf engines check``."""
-        return {
-            "KILOCODE_PATH": "Path to kilo binary (optional — defaults to 'kilo' on $PATH)",
-        }
+        """No *required* environment variables (#1353), like codex (#1010).
+
+        ``KILOCODE_PATH`` was listed here, documented as optional, but
+        ``cf engines check`` counts every unset entry as unmet, so a kilo on
+        PATH and logged in was never reported ready. ``check_ready`` already
+        resolves the binary through ``KILOCODE_PATH`` and answers the real
+        questions: is there a kilo, and can it reach a model.
+        """
+        return {}
 
     @classmethod
     def credential_env_vars(cls) -> tuple[str, ...]:
@@ -196,8 +202,46 @@ class KilocodeAdapter(SubprocessAdapter):
 
     @classmethod
     def check_ready(cls) -> dict[str, bool]:
-        """Check if the kilo binary is available on PATH."""
-        return {"kilo_binary": shutil.which(cls._resolve_binary()) is not None}
+        """What ``cf engines check`` reports for kilo: the binary, and a login.
+
+        Without ``authenticated`` a never-logged-in kilo passed the check and
+        then failed every task with "You need to sign in to use this model"
+        (#1353).
+        """
+        return {
+            "kilo_binary": shutil.which(cls._resolve_binary()) is not None,
+            "authenticated": cls.is_authenticated(),
+        }
+
+    @classmethod
+    def is_authenticated(cls) -> bool:
+        """True when kilo can reach a model: its own login, or a provider key.
+
+        kilo 7.x keeps logins in ``~/.local/share/kilo/auth.json`` as
+        ``{provider: {"type", "key"}}`` (or OAuth tokens), so an entry holding
+        a non-empty credential is a login. A
+        provider key counts because ``credential_env_vars`` forwards it (#1270);
+        ``cf auth setup``'s stored key counts too (#1264). The 0.22 CLI's
+        ``~/.kilocode`` is not used as evidence: it can hold only installed
+        skills, which is not a login.
+        """
+        auth = Path.home() / ".local" / "share" / "kilo" / "auth.json"
+        try:
+            logins = json.loads(auth.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            logins = None
+        if isinstance(logins, dict) and any(
+            isinstance(entry, dict)
+            and any(isinstance(v, str) and v for k, v in entry.items() if k != "type")
+            for entry in logins.values()
+        ):
+            # An entry with an actual credential (an API key or OAuth token);
+            # {"anthropic": {}} or a blank key is not a login (codex review).
+            return True
+
+        from codeframe.core.llm_resolution import resolve_api_key
+
+        return bool(resolve_api_key("anthropic") or resolve_api_key("openai"))
 
     def _surface(self) -> str:
         """Which kilo CLI this adapter is talking to."""
