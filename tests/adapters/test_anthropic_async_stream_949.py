@@ -165,9 +165,11 @@ class TestTextAndThinkingDeltas:
         assert [c.text for c in thinking] == ["hmm"]
 
     @pytest.mark.asyncio
-    async def test_input_json_deltas_are_dropped(self):
-        """Deliberate: final inputs come from message_stop, so forwarding these
-        would double-report partial JSON to the UI."""
+    async def test_input_json_deltas_are_forwarded_as_tool_input_deltas(self):
+        """Since #1405 they are forwarded so a call cut off mid-arguments is
+        charged for them. Final inputs still come from message_stop, and the
+        chat adapter shows the UI no partial JSON (test_streaming_chat pins
+        that, where it was this test's reason to drop them)."""
         provider = _provider(
             [input_json_delta('{"pa'), input_json_delta('th":1}'), message_stop()],
             final_message(),
@@ -175,7 +177,8 @@ class TestTextAndThinkingDeltas:
 
         chunks = await _collect(provider)
 
-        assert [c.type for c in chunks] == ["message_stop"]
+        assert [c.type for c in chunks] == ["tool_input_delta", "tool_input_delta", "message_stop"]
+        assert "".join(c.text for c in chunks[:2]) == '{"path":1}'
 
     @pytest.mark.asyncio
     async def test_a_text_content_block_start_emits_nothing(self):
@@ -433,6 +436,8 @@ class TestAFullRealisticTurn:
             "text_delta",
             "text_delta",
             "tool_use_start",
+            "tool_input_delta",
+            "tool_input_delta",
             "tool_use_stop",
             "message_stop",
         ]
