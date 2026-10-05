@@ -9,6 +9,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **Create PR from the web UI attaches the PROOF9 report (#1358).** `cf pr
+  create` has appended the workspace's proof report (requirement counts, the
+  open ones, and the latest run's verdict) to the PR body since #1273. A PR
+  opened from the review page carried only the typed text, so reviewers on
+  GitHub never saw it. `POST /api/v2/pr` now appends the same report (opt out
+  with `"proof_report": false`), and a report that fails to build never
+  blocks the PR.
+
 - **typer 0.27 (#1351).** `typer` is now `>=0.27,<0.28`, and the `click<8.5`
   pin is gone. typer 0.27 vendors its own click and nothing here imports click,
   so the #1268 pair of typer and click caps is no longer needed. On a fresh
