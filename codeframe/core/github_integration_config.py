@@ -152,7 +152,7 @@ def save_connection(
 
     with read_modify_write_lock(_owners_lock_path()):
         saved = save_github_integration_config(workspace, config)
-        _write_owner(workspace, user_id)
+        _write_owner(_workspace_key(workspace), user_id)
     return saved
 
 
@@ -161,12 +161,12 @@ def _owners_lock_path() -> Path:
     return path.with_name(f".{path.name}.lock")
 
 
-def _write_owner(workspace: Workspace, user_id: Optional[int]) -> None:
-    """The owner-map read-modify-write. Callers hold the owners lock."""
+def _write_owner(key: str, user_id: Optional[int]) -> None:
+    """The owner-map read-modify-write for ``key`` (a resolved repo path).
+    Callers hold the owners lock."""
     from codeframe.core.atomic_io import atomic_write_bytes
 
     owners = _read_owners()
-    key = _workspace_key(workspace)
     if user_id is None:
         if owners.pop(key, None) is None:
             return
@@ -185,7 +185,19 @@ def record_connection_owner(workspace: Workspace, user_id: Optional[int]) -> Non
     from codeframe.core.atomic_io import read_modify_write_lock
 
     with read_modify_write_lock(_owners_lock_path()):
-        _write_owner(workspace, user_id)
+        _write_owner(_workspace_key(workspace), user_id)
+
+
+def forget_connection_owner(repo_path: Path) -> None:
+    """Forget who connected the workspace at ``repo_path`` (#1370).
+
+    For deregistration, which knows only the path: a later workspace at the
+    same path must not inherit the previous owner's stored PAT.
+    """
+    from codeframe.core.atomic_io import read_modify_write_lock
+
+    with read_modify_write_lock(_owners_lock_path()):
+        _write_owner(str(Path(repo_path).resolve()), None)
 
 
 def connection_owner(workspace: Workspace) -> Optional[int]:
@@ -249,7 +261,7 @@ def clear_github_integration_config(workspace: Workspace) -> None:
         except OSError as e:
             logger.warning("Failed to remove github_integration.json: %s", e)
         try:
-            _write_owner(workspace, None)
+            _write_owner(_workspace_key(workspace), None)
         except OSError as e:
             logger.warning("Failed to forget the GitHub connection owner: %s", e)
 

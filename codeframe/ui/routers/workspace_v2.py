@@ -538,7 +538,17 @@ async def deregister_workspace(
 
     # Owner-scope the delete (#720): a tenant cannot deregister another's entry.
     # auth off → user_id None → no owner filter (unchanged local behavior).
+    entry = registry.get_by_id(workspace_id)
     deleted = registry.delete(workspace_id, owner_user_id=auth.get("user_id"))
+    if deleted and entry:
+        # A later workspace at this path must not inherit who connected its
+        # GitHub repo, and with it that user's stored PAT (#1370).
+        try:
+            from codeframe.core.github_integration_config import forget_connection_owner
+
+            forget_connection_owner(Path(entry["repo_path"]))
+        except Exception as exc:
+            logger.warning("Could not forget the GitHub connection owner for %s: %s", workspace_id, exc)
     if not deleted:
         raise HTTPException(
             status_code=404,
