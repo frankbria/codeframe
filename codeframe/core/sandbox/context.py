@@ -188,7 +188,11 @@ def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     base_branch = get_base_branch(repo_path)
     worktree = TaskWorktree()
 
-    if branch_exists and _registered_on(_git("worktree", "list", "--porcelain").stdout, worktree_dir, branch_name):
+    if (
+        branch_exists
+        and worktree_dir.exists()  # rm -rf leaves the registration behind
+        and _registered_on(_git("worktree", "list", "--porcelain").stdout, worktree_dir, branch_name)
+    ):
         worktree_path = worktree_dir
         logger.info("Resuming preserved worktree for %s at %s", task_id, worktree_path)
     elif branch_exists and not worktree_dir.exists():

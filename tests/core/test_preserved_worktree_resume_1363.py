@@ -79,3 +79,17 @@ def test_a_stray_directory_that_is_not_the_tasks_worktree_still_refuses(git_repo
     with pytest.raises(ValueError, match="from a previous run"):
         create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
     assert (stray / "someone_elses.txt").exists()
+
+
+def test_a_worktree_dir_deleted_outside_git_is_reattached_too(git_repo):
+    """`rm -rf` leaves git's registration behind (listed as prunable): resuming
+    it would hand back a directory that does not exist (codex review)."""
+    import shutil
+
+    path = _stopped_run(git_repo)
+    shutil.rmtree(path)
+
+    ctx = create_execution_context("task-abc", IsolationLevel.WORKTREE, git_repo)
+
+    assert ctx.workspace_path.exists()
+    assert (ctx.workspace_path / "committed.txt").read_text() == "step one"
