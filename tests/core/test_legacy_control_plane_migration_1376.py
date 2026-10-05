@@ -202,6 +202,8 @@ def test_a_migration_interrupted_after_publishing_completes_on_retry(repo, monke
     with pytest.raises(OSError):
         create_or_load_workspace(repo)
     assert (repo / ".codeframe" / "platform.db").exists()  # published, then stuck
+    with pytest.raises(OSError):  # the first retry fails the same way (codex)
+        create_or_load_workspace(repo)
 
     monkeypatch.setattr(db_mod.os, "replace", real_replace)
     ws = create_or_load_workspace(repo)  # the retry finishes the job

@@ -112,11 +112,11 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
         # instead of leaving a platform.db that blocks every retry (codex).
         marker = state_dir / ".control-plane-migration.pending"
         if marker.exists() and platform_db.exists():
-            marker.unlink()
-            if _legacy_kind(legacy) != "control_plane":
-                return False  # already moved; never move a workspace DB aside
-            _move_legacy_aside(state_dir)
-            return True
+            moved = _legacy_kind(legacy) == "control_plane"
+            if moved:  # never move a workspace DB aside
+                _move_legacy_aside(state_dir)
+            marker.unlink()  # only once nothing is left to finish
+            return moved
         if platform_db.exists() or _legacy_kind(legacy) != "control_plane":
             return False
 
