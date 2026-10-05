@@ -21,10 +21,13 @@ subprocess path (conductor) stays rejected at the CLI: a spawned child runs with
 from __future__ import annotations
 
 import dataclasses
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from codeframe.core.workspace import Workspace
@@ -145,6 +148,16 @@ def create_execution_context(
     raise ValueError(f"Unknown isolation level: {isolation}")
 
 
+def _registered_on(porcelain: str, path: Path, branch: str) -> bool:
+    """Whether ``git worktree list --porcelain`` lists ``path`` on ``branch``."""
+    target = path.resolve()
+    for block in porcelain.split("\n\n"):
+        lines = dict(line.split(" ", 1) for line in block.splitlines() if " " in line)
+        if lines.get("worktree") and Path(lines["worktree"]).resolve() == target:
+            return lines.get("branch") == f"refs/heads/{branch}"
+    return False
+
+
 def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     """Create a git worktree and wire its merge-back / cleanup / preserve hooks.
 
@@ -152,38 +165,65 @@ def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     orphan cleanup keyed on process liveness would force-delete a *preserved*
     branch once this process exits, defeating the failure/conflict preservation
     the acceptance criteria require. The old ``WorktreeRegistry`` was therefore
-    never written to, and was deleted in #958; a leftover worktree surfaces as
-    the actionable error raised below on the next run instead.
+    never written to, and was deleted in #958. A leftover worktree of this task
+    is resumed on the next run (#1363); only something in its place that is not
+    that worktree raises the actionable error below.
     """
     import subprocess
 
     from codeframe.core.worktrees import WORKTREE_DIR, TaskWorktree, get_base_branch
 
-    # A preserved cf/<task_id> branch or worktree dir from a prior failed/conflicted
-    # run would make `git worktree add -b` fail. Surface an actionable error instead
-    # of a raw git traceback (runtime creates this inside its try, so this becomes a
-    # handled failure rather than a stranded IN_PROGRESS run).
-    branch_name = f"cf/{task_id}"
-    existing = subprocess.run(
-        ["git", "branch", "--list", branch_name],
-        cwd=str(repo_path),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    worktree_dir = repo_path / WORKTREE_DIR / task_id
-    if branch_name in existing.stdout or worktree_dir.exists():
-        raise ValueError(
-            f"a worktree or branch '{branch_name}' from a previous run of this task "
-            "still exists (preserved for recovery). Recover or discard it, then "
-            f"retry — e.g. `git worktree remove --force {worktree_dir}` and "
-            f"`git branch -D {branch_name}`."
+    def _git(*args: str) -> "subprocess.CompletedProcess[str]":
+        return subprocess.run(
+            ["git", *args], cwd=str(repo_path), capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
         )
 
+    # A run that ended before merge-back (stopped, failed, conflicted) leaves
+    # cf/<task_id> and its worktree preserved so no agent work is lost. The next
+    # start resumes on it rather than refusing (#1363): committed and
+    # uncommitted work carries over, and merge-back at the end lands it all.
+    branch_name = f"cf/{task_id}"
+    worktree_dir = repo_path / WORKTREE_DIR / task_id
+    branch_exists = branch_name in _git("branch", "--list", branch_name).stdout
     base_branch = get_base_branch(repo_path)
     worktree = TaskWorktree()
-    worktree_path = worktree.create(repo_path, task_id, base_branch=base_branch)
+
+    listing = _git("worktree", "list", "--porcelain") if branch_exists else None
+    if listing is not None and listing.returncode != 0:
+        # Fails closed below (the refusal), but say why, or a transient git
+        # failure reads as "not a worktree of that branch".
+        logger.warning("git worktree list failed: %s", (listing.stderr or "").strip()[:300])
+    if (
+        listing is not None
+        and worktree_dir.exists()  # rm -rf leaves the registration behind
+        and _registered_on(listing.stdout, worktree_dir, branch_name)
+    ):
+        worktree_path = worktree_dir
+        logger.info("Resuming preserved worktree for %s at %s", task_id, worktree_path)
+    elif branch_exists and not worktree_dir.exists():
+        # The worktree dir was removed but the branch (the work) survives.
+        _git("worktree", "prune")
+        added = _git("worktree", "add", str(worktree_dir), branch_name)
+        if added.returncode != 0:
+            raise ValueError(
+                f"could not reattach the preserved branch '{branch_name}': "
+                f"{(added.stderr or added.stdout).strip()[:300]}"
+            )
+        worktree_path = worktree_dir
+        logger.info("Reattached preserved branch %s at %s", branch_name, worktree_path)
+    elif branch_exists or worktree_dir.exists():
+        # Something is in the way that is provably not this task's worktree:
+        # surface it rather than overwrite it (runtime turns this into a handled
+        # failure, not a stranded IN_PROGRESS run).
+        raise ValueError(
+            f"a worktree or branch '{branch_name}' from a previous run of this task "
+            "still exists but is not a worktree of that branch. Recover or discard "
+            f"it, then retry — e.g. `git worktree remove --force {worktree_dir}` "
+            f"and `git branch -D {branch_name}`."
+        )
+    else:
+        worktree_path = worktree.create(repo_path, task_id, base_branch=base_branch)
 
     def _merge_back() -> "MergeResult":
         worktree.auto_commit(worktree_path, task_id)
