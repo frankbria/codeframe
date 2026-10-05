@@ -13,6 +13,8 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -721,13 +723,19 @@ def _run_tool(
     return None
 
 
-def _test_name(node_id: str) -> str:
-    """``tests/x.py::TestC::test_a[1]`` -> ``test_a``.
-
-    Parameters are stripped first: an id like ``[a::b]`` would otherwise be
-    split on its own ``::`` (codex review). Paths never contain ``::``.
-    """
-    return node_id.split("::", 1)[-1].split("[", 1)[0].rsplit("::", 1)[-1]
+def _exact_cases_passed(report: Path, name: str) -> Optional[bool]:
+    """From a pytest JUnit report: None when no case is named exactly ``name``
+    (parameters ignored), else whether every such case passed."""
+    try:
+        cases = [
+            c for c in ET.parse(report).getroot().iter("testcase")
+            if c.get("name", "").split("[", 1)[0] == name
+        ]
+    except (OSError, ET.ParseError):
+        return None
+    if not cases:
+        return None
+    return not any(c.find("failure") is not None or c.find("error") is not None for c in cases)
 
 
 def _run_pytest(
@@ -763,41 +771,20 @@ def _run_pytest(
                 timeout=300,  # 5 minute timeout
             )
 
+        # `-k` is substring matching: `test_unit_total` also ran
+        # `test_unit_total_wrong`, and a missing test passed through any
+        # longer-named one (#1401). The verdict is taken from a JUnit report,
+        # counting only the cases named exactly `test_selector`; the others the
+        # `-k` drags in still run but cannot decide it. A report, not console
+        # output or --deselect: a project's verbosity settings reshaped the
+        # output and --deselect matches node-id prefixes (codex review).
+        exact: Optional[bool] = None
         if test_selector:
-            # `-k` is substring matching: `test_unit_total` also ran
-            # `test_unit_total_wrong`, and a missing test passed through any
-            # longer-named one (#1401). Collect with the same `-k`, then run it
-            # again with every collected test of another name deselected. Not
-            # explicit node ids: a test path in the project's addopts is
-            # collected on top of them and would run unfiltered (codex review).
-            # --verbosity=-1, not -q: it is absolute, so a project's own -v or
-            # -qq in addopts cannot turn the node-id list into a tree or a
-            # per-file count; and verbosity_test_cases, which overrides it for
-            # this output when a project sets it (codex review).
-            collected = _pytest(
-                base
-                + ["--collect-only", "--verbosity=-1", "-o", "verbosity_test_cases=-1"]
-                + ["-k", test_selector]
-            )
-            if collected.returncode not in (0, 5) or _tool_is_missing(
-                collected.returncode, collected.stderr, {"pytest"}
-            ):
-                result = collected  # a collection error or a missing tool, below
-            else:
-                node_ids = [
-                    line.strip() for line in collected.stdout.splitlines() if "::" in line
-                ]
-                others = [n for n in node_ids if _test_name(n) != test_selector]
-                if len(others) == len(node_ids):
-                    return GateCheck(
-                        name="pytest",
-                        status=GateStatus.FAILED,
-                        exit_code=5,
-                        output=f"no test named {test_selector} was collected",
-                        duration_ms=int((time.time() - start) * 1000),
-                    )
-                deselect = [arg for n in others for arg in ("--deselect", n)]
-                result = _pytest(cmd + ["-k", test_selector] + deselect)
+            with tempfile.TemporaryDirectory() as tmp:
+                report = Path(tmp) / "report.xml"
+                result = _pytest(cmd + ["-k", test_selector, f"--junitxml={report}"])
+                if result.returncode in (0, 1, 5):
+                    exact = _exact_cases_passed(report, test_selector)
         else:
             result = _pytest(cmd)
 
@@ -861,10 +848,19 @@ def _run_pytest(
             # Unknown exit code - treat as FAILED
             status = GateStatus.FAILED
 
+        exit_code = result.returncode
+        if test_selector and result.returncode in (0, 1, 5):
+            if exact is None:
+                status, exit_code = GateStatus.FAILED, 5  # named test missing
+                output = f"no test named {test_selector} was collected\n" + output
+            else:
+                status = GateStatus.PASSED if exact else GateStatus.FAILED
+                exit_code = 0 if exact else 1
+
         return GateCheck(
             name="pytest",
             status=status,
-            exit_code=result.returncode,
+            exit_code=exit_code,
             output=output if verbose else _summarize_pytest_output(output),
             duration_ms=duration_ms,
         )

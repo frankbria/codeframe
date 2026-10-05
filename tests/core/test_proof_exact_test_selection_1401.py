@@ -121,3 +121,18 @@ def test_a_failing_case_whose_param_id_contains_colons_is_not_skipped(ws):
     """Splitting on the last `::` before stripping `[...]` read `b]` as the
     name, dropped that case, and let the passing case satisfy the rule (codex)."""
     assert _unit_outcome(ws, "test_unit_colons") == GateOutcome.FAILED
+
+
+def test_a_test_whose_node_id_prefixes_the_named_one_does_not_hide_it(tmp_path):
+    """`--deselect` is prefix matching: deselecting `test_unit_total.py::test_unit`
+    also removed the required `test_unit_total.py::test_unit_total` (codex)."""
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_unit_total.py").write_text(
+        "def test_unit():\n    assert False\n\n\ndef test_unit_total():\n    assert True\n",
+        encoding="utf-8",
+    )
+    w = create_or_load_workspace(repo)
+    init_proof_tables(w)
+
+    assert _unit_outcome(w, "test_unit_total") == GateOutcome.PASSED
