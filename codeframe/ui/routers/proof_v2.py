@@ -341,9 +341,7 @@ def _waiver_lapsed(req) -> bool:
 
     Read-only: reverting the status stays ``check_expired_waivers``'s job.
     """
-    from codeframe.core.proof.ledger import waiver_expired
-
-    return req.status == ReqStatus.WAIVED and waiver_expired(req)
+    return req.status == ReqStatus.WAIVED and proof_ledger.waiver_expired(req)
 
 
 def _count_by_status(reqs) -> dict[str, int]:
