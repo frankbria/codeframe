@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -68,6 +69,31 @@ def _permission_config_path() -> Path:
 
 
 
+def has_login_or_provider_key(auth_file: Path) -> bool:
+    """True when an opencode-family CLI can reach a model.
+
+    Its own login: ``auth_file`` holds ``{provider: {"type", "key"}}`` (or
+    OAuth tokens), and an entry with a non-empty credential is a login;
+    ``{"anthropic": {}}`` or a blank key is not. Or a provider key, which
+    ``credential_env_vars`` forwards: the env, or ``cf auth setup``'s stored
+    key (#1264). Shared by opencode (#1419) and its fork kilo (#1353).
+    """
+    try:
+        logins = json.loads(auth_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        logins = None
+    if isinstance(logins, dict) and any(
+        isinstance(entry, dict)
+        and any(isinstance(v, str) and v for k, v in entry.items() if k != "type")
+        for entry in logins.values()
+    ):
+        return True
+
+    from codeframe.core.llm_resolution import resolve_api_key
+
+    return bool(resolve_api_key("anthropic") or resolve_api_key("openai"))
+
+
 class OpenCodeAdapter(SubprocessAdapter):
     """Adapter that delegates code execution to OpenCode CLI.
 
@@ -123,10 +149,24 @@ class OpenCodeAdapter(SubprocessAdapter):
 
     @classmethod
     def requirements(cls) -> dict[str, str]:
-        """Environment variables ``cf engines check`` reports on."""
+        """No *required* environment variables (#1419), like codex and kilo.
+
+        Both provider keys were listed, and ``cf engines check`` counts every
+        unset entry as unmet, so opencode was only ever ready with both set,
+        although it needs one, or none when logged in. ``check_ready`` answers
+        the real question.
+        """
+        return {}
+
+    @classmethod
+    def check_ready(cls) -> dict[str, bool]:
+        """What ``cf engines check`` reports for opencode: the binary, and a
+        login or a provider key."""
         return {
-            "ANTHROPIC_API_KEY": "Anthropic API key (or `opencode auth login`)",
-            "OPENAI_API_KEY": "OpenAI API key (or `opencode auth login`)",
+            "opencode_binary": shutil.which("opencode") is not None,
+            "authenticated": has_login_or_provider_key(
+                Path.home() / ".local" / "share" / "opencode" / "auth.json"
+            ),
         }
 
     @classmethod
