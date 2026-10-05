@@ -174,6 +174,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A provider's 413, 422 or 409 is reported as a rejected request, not a
+  network failure (#1418).** #1349 did this for 400 only; every other unmapped
+  4xx still said "The … API call failed." with the provider's reason hidden
+  behind `CODEFRAME_VERBOSE`. Any 4xx other than 401/403/404/429 now raises
+  `LLMRequestRejectedError` naming its own status and quoting the provider's
+  reason, and a 413 says the request is too large.
+
 - **A chat call cut off mid tool arguments is charged for them (#1405).** A
   call interrupted before it finished reports no usage, so #1345 charges an
   estimate from the prompt plus the streamed text. Neither provider passed tool
