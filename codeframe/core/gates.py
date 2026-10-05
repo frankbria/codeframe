@@ -722,8 +722,12 @@ def _run_tool(
 
 
 def _test_name(node_id: str) -> str:
-    """``tests/x.py::TestC::test_a[1]`` -> ``test_a``."""
-    return node_id.rsplit("::", 1)[-1].split("[", 1)[0]
+    """``tests/x.py::TestC::test_a[1]`` -> ``test_a``.
+
+    Parameters are stripped first: an id like ``[a::b]`` would otherwise be
+    split on its own ``::`` (codex review). Paths never contain ``::``.
+    """
+    return node_id.split("::", 1)[-1].split("[", 1)[0].rsplit("::", 1)[-1]
 
 
 def _run_pytest(
@@ -764,7 +768,10 @@ def _run_pytest(
             # `test_unit_total_wrong`, and a missing test passed through any
             # longer-named one (#1401). Collect with `-k` as a prefilter, keep
             # only the tests with exactly this name, and run those node ids.
-            collected = _pytest(base + ["--collect-only", "-q", "-k", test_selector])
+            # --verbosity=-1, not -q: it is absolute, so a project's own -v or
+            # -qq in addopts cannot turn the node-id list into a tree or a
+            # per-file count (codex review).
+            collected = _pytest(base + ["--collect-only", "--verbosity=-1", "-k", test_selector])
             if collected.returncode not in (0, 5) or _tool_is_missing(
                 collected.returncode, collected.stderr, {"pytest"}
             ):

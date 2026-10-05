@@ -62,14 +62,24 @@ def test_unit_absent_but_longer():
 @pytest.mark.parametrize("n", [1, 2])
 def test_unit_param(n):
     assert n
+
+
+@pytest.mark.parametrize("v", ["ok", "a::b"])
+def test_unit_colons(v):
+    assert v == "ok", "the case whose id contains :: still fails"
 '''
 
 
-@pytest.fixture
-def ws(tmp_path):
+@pytest.fixture(params=[None, "-v", "-qq"], ids=["no-addopts", "addopts-v", "addopts-qq"])
+def ws(tmp_path, request):
+    """A project's own verbosity in addopts changes what --collect-only prints;
+    -v turned the node-id list into a tree and every named test read as
+    missing (codex review)."""
     repo = tmp_path / "repo"
     (repo / "tests").mkdir(parents=True)
     (repo / "tests" / "test_rules.py").write_text(TESTS, encoding="utf-8")
+    if request.param:
+        (repo / "pytest.ini").write_text(f"[pytest]\naddopts = {request.param}\n", encoding="utf-8")
     w = create_or_load_workspace(repo)
     init_proof_tables(w)
     return w
@@ -101,3 +111,9 @@ def test_a_missing_test_is_not_satisfied_by_a_longer_named_one(ws):
 
 def test_a_parametrized_test_is_selected_by_its_name(ws):
     assert _unit_outcome(ws, "test_unit_param") == GateOutcome.PASSED
+
+
+def test_a_failing_case_whose_param_id_contains_colons_is_not_skipped(ws):
+    """Splitting on the last `::` before stripping `[...]` read `b]` as the
+    name, dropped that case, and let the passing case satisfy the rule (codex)."""
+    assert _unit_outcome(ws, "test_unit_colons") == GateOutcome.FAILED
