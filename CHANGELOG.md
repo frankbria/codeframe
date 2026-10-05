@@ -174,6 +174,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A skipped PROOF9 evidence test no longer satisfies its requirement
+  (#1430).** A test named by an evidence rule that only skipped
+  (`@pytest.mark.skip`, `skipif`, `pytest.skip()`, or an `xfail`, which JUnit
+  reports as skipped) counted as passing, so marking the generated stub `skip`
+  satisfied the requirement and unblocked the merge gate. A rule now needs at
+  least one case that actually ran and passed; an all-skipped rule fails with
+  "was skipped, not run: a skip is not evidence". A parametrized test with one
+  passing case and one skipped case still passes.
+
 - **A server started while `cf init` moves a legacy `state.db` waits for it
   (#1427).** The #1376 migration refuses a file a server has open, but a
   server that opened it after that check and before the move kept writing
