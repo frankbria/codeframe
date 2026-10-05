@@ -8,6 +8,7 @@ the operator renamed the file by hand. Init now does that move itself, once,
 consistently (sqlite backup, WAL included), and the accounts stay reachable.
 """
 
+import re
 import sqlite3
 
 import pytest
@@ -291,11 +292,35 @@ def _schema_of(db_path):
     return version, tables
 
 
+def _stale_and_stamped(repo):
+    """A pre-#655 control plane (interactive_sessions without user_id) that
+    main's failing ``cf init`` has already stamped with the workspace
+    user_version, as every real #1376 directory is by the time it upgrades."""
+    state = _legacy_control_plane(repo)
+    conn = sqlite3.connect(state)
+    ddl = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE name = 'interactive_sessions'"
+    ).fetchone()[0]
+    conn.execute("DROP TABLE interactive_sessions")
+    conn.execute(re.sub(r",\s*(--[^\n]*\n\s*)*user_id[^\n]*", "", ddl))  # pre-#655
+    conn.execute("PRAGMA user_version = 5")
+    conn.commit()
+    conn.close()
+    return state
+
+
+def _columns(db_path, table):
+    conn = sqlite3.connect(db_path)
+    try:
+        return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+    finally:
+        conn.close()
+
+
 @pytest.mark.parametrize("via", ["core", "cli"])
-def test_the_copy_keeps_the_control_plane_schema_version(repo, via):
-    """Loading the file as a workspace first stamped the workspace user_version
-    over the control plane's, so SchemaManager skipped its own migrations on
-    platform.db and it gained empty workspace tables (GLM review)."""
+def test_the_migrated_db_still_gets_its_control_plane_migrations(repo, via):
+    """A copy that kept the workspace user_version made SchemaManager skip
+    every control-plane migration at or below it, forever (GLM review)."""
     import subprocess as sp
 
     from typer.testing import CliRunner
@@ -303,16 +328,34 @@ def test_the_copy_keeps_the_control_plane_schema_version(repo, via):
     from codeframe.cli.app import app
     from codeframe.platform_store.schema_manager import SchemaManager
 
-    _legacy_control_plane(repo)
+    _stale_and_stamped(repo)
     if via == "core":
         create_or_load_workspace(repo)
     else:
         sp.run(["git", "init", "-q"], cwd=repo, check=True)
         assert CliRunner().invoke(app, ["init", str(repo)]).exit_code == 0
 
-    version, tables = _schema_of(repo / ".codeframe" / "platform.db")
-    assert version == SchemaManager.SCHEMA_VERSION
-    assert not tables & {"workspace", "tasks", "prds"}
+    platform = repo / ".codeframe" / "platform.db"
+    db = Database(platform)
+    db.initialize()  # what the server does on start
+    db.close()
+
+    assert "user_id" in _columns(platform, "interactive_sessions")
+    assert _schema_of(platform)[0] == SchemaManager.SCHEMA_VERSION
+
+
+def test_loading_a_control_plane_db_as_a_workspace_does_not_stamp_it(repo):
+    """The v2 init route and the per-request cwd fallback call get_workspace on
+    the legacy file directly; that must not write the workspace schema into it."""
+    from codeframe.core.workspace import get_workspace
+
+    state = _legacy_control_plane(repo)
+    before = _schema_of(state)
+
+    with pytest.raises(FileNotFoundError, match="no workspace record"):
+        get_workspace(repo)
+
+    assert _schema_of(state) == before
 
 
 def test_a_relative_database_path_is_refused_from_another_cwd(repo, tmp_path_factory, monkeypatch):

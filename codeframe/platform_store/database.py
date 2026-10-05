@@ -180,6 +180,12 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
                 dst = sqlite3.connect(tmp)
                 try:
                     src.backup(dst)
+                    # The source may already carry the *workspace* user_version
+                    # (main's failing cf init stamped it) and SchemaManager
+                    # would then skip every control-plane migration at or
+                    # below it. Its true version is unknowable; the migrations
+                    # are idempotent, so let them all replay (GLM review).
+                    dst.execute("PRAGMA user_version = 0")
                 finally:
                     dst.close()
             finally:

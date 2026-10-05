@@ -634,6 +634,16 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         conn.close()
         return
 
+    # A pre-#1287 serve-first control plane (accounts, no workspace table) is
+    # not a workspace to upgrade: stamping it would make SchemaManager skip
+    # its own migrations once it moves to platform.db (#1376). Every loader
+    # (cf init, the v2 init route, the per-request cwd fallback) goes through
+    # here, and only on this not-yet-current path, so a workspace pays nothing.
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "users" in tables and "workspace" not in tables:
+        conn.close()
+        raise FileNotFoundError("Workspace database exists but contains no workspace record")
+
     cursor = conn.cursor()
 
     # Every table, from the SAME definition the fresh path uses, so the two
