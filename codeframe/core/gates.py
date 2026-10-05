@@ -13,6 +13,8 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -430,8 +432,8 @@ def run(
         gates: Specific gates to run (None = all available)
         verbose: Whether to capture full output
         auto_install_deps: Whether to auto-install missing dependencies before test gates (default: True)
-        test_selector: Optional pytest ``-k`` keyword expression; only applies to
-            the pytest gate. With a selector, "no tests matched" is a failure.
+        test_selector: Optional exact test function name; only applies to the
+            pytest gate. With a selector, "no test of that name" is a failure.
 
     Returns:
         GateResult with all check results
@@ -721,10 +723,25 @@ def _run_tool(
     return None
 
 
+def _exact_cases_passed(report: Path, name: str) -> Optional[bool]:
+    """From a pytest JUnit report: None when no case is named exactly ``name``
+    (parameters ignored), else whether every such case passed."""
+    try:
+        cases = [
+            c for c in ET.parse(report).getroot().iter("testcase")
+            if c.get("name", "").split("[", 1)[0] == name
+        ]
+    except (OSError, ET.ParseError):
+        return None
+    if not cases:
+        return None
+    return not any(c.find("failure") is not None or c.find("error") is not None for c in cases)
+
+
 def _run_pytest(
     repo_path: Path, verbose: bool = False, test_selector: Optional[str] = None
 ) -> GateCheck:
-    """Run pytest, optionally scoped to a ``-k`` keyword expression."""
+    """Run pytest, optionally scoped to the tests named exactly ``test_selector``."""
     import time
 
     start = time.time()
@@ -739,23 +756,42 @@ def _run_pytest(
 
     try:
         # Try uv run pytest first, fall back to pytest
-        if shutil.which("uv"):
-            cmd = ["uv", "run", "pytest", "-v", "--tb=short"]
-        else:
-            cmd = ["pytest", "-v", "--tb=short"]
-        if test_selector:
-            cmd += ["-k", test_selector]
+        base = ["uv", "run", "pytest"] if shutil.which("uv") else ["pytest"]
+        cmd = base + ["-v", "--tb=short"]
 
-        result = subprocess.run(
-            cmd,
-            cwd=repo_path,
-            env=build_agent_env(repo_path),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=300,  # 5 minute timeout
-        )
+        def _pytest(args: list[str]) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                args,
+                cwd=repo_path,
+                env=build_agent_env(repo_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,  # 5 minute timeout
+            )
+
+        # `-k` is substring matching: `test_unit_total` also ran
+        # `test_unit_total_wrong`, and a missing test passed through any
+        # longer-named one (#1401). The verdict is taken from a JUnit report,
+        # counting only the cases named exactly `test_selector`; the others the
+        # `-k` drags in still run but cannot decide it. A report, not console
+        # output or --deselect: a project's verbosity settings reshaped the
+        # output and --deselect matches node-id prefixes (codex review).
+        exact: Optional[bool] = None
+        if test_selector:
+            with tempfile.TemporaryDirectory() as tmp:
+                report = Path(tmp) / "report.xml"
+                # --maxfail=0 (no limit) overrides a project's -x/--maxfail:
+                # stopping on an unrelated match left exact cases unrun, and
+                # the report then held only the ones that passed (codex review).
+                result = _pytest(
+                    cmd + ["-k", test_selector, "--maxfail=0", f"--junitxml={report}"]
+                )
+                if result.returncode in (0, 1, 5):
+                    exact = _exact_cases_passed(report, test_selector)
+        else:
+            result = _pytest(cmd)
 
         duration_ms = int((time.time() - start) * 1000)
 
@@ -817,10 +853,19 @@ def _run_pytest(
             # Unknown exit code - treat as FAILED
             status = GateStatus.FAILED
 
+        exit_code = result.returncode
+        if test_selector and result.returncode in (0, 1, 5):
+            if exact is None:
+                status, exit_code = GateStatus.FAILED, 5  # named test missing
+                output = f"no test named {test_selector} was collected\n" + output
+            else:
+                status = GateStatus.PASSED if exact else GateStatus.FAILED
+                exit_code = 0 if exact else 1
+
         return GateCheck(
             name="pytest",
             status=status,
-            exit_code=result.returncode,
+            exit_code=exit_code,
             output=output if verbose else _summarize_pytest_output(output),
             duration_ms=duration_ms,
         )

@@ -174,6 +174,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A PROOF9 evidence rule runs exactly the test it names (#1401).** Rules
+  were enforced as `pytest -k <test_id>`, which is substring matching. So
+  `test_unit_total` also ran `test_unit_total_wrong`, and `test_unit_req_1000`
+  also ran `test_unit_req_10000`, failing a requirement on another one's test.
+  Worse, a rule whose test did not exist **passed** whenever a longer-named
+  test containing its name passed. The verdict now comes from a JUnit report
+  of the `-k` run, counting only the cases named exactly (parametrized cases
+  included); no exact case is "named test missing". It holds whatever the
+  project's pytest config says: verbosity, a test path in `addopts`, and
+  `-x`/`--maxfail` (overridden with `--maxfail=0`) cannot change the result.
+
 - **The CLI and the web UI describe a repo's tech stack the same way
   (#1381).** `cf init --detect` and the web UI (workspace init, the Settings
   auto-detect toggle) had separate detectors, and the web UI's reported

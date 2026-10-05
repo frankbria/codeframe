@@ -14,7 +14,8 @@ from codeframe.core.workspace import Workspace
 logger = logging.getLogger(__name__)
 
 # Per-gate file extension for written stubs. Every gate the runner can verify
-# is enforced as `pytest -k test_<gate>_<slug>` (runner._run_gate), so its stub
+# is enforced by running the test named exactly `test_<gate>_<slug>`
+# (runner._run_gate, #1401), so its stub
 # must be a pytest file with that function name. E2E and DEMO were Playwright
 # TypeScript and showboat markdown, which the runner could never see: following
 # them to the letter left both gates FAILED (#1284). Only MANUAL, which no
@@ -67,7 +68,7 @@ def test_contract_{slug}():
 Draft stub — rename this file to {filename}.py once implemented so pytest
 collects it (draft_* files are deliberately outside pytest discovery).
 
-PROOF9 runs this as `pytest -k test_e2e_{slug}`, so it must stay a pytest test
+PROOF9 runs the test named exactly `test_e2e_{slug}`, so it must stay a pytest test
 with this name. Drive the real flow from here: a browser through the
 pytest-playwright `page` fixture, an HTTP client against a running server, or
 the CLI through subprocess.
@@ -153,7 +154,7 @@ def test_sec_{slug}():
 Draft stub — rename this file to {filename}.py once implemented so pytest
 collects it (draft_* files are deliberately outside pytest discovery).
 
-PROOF9 runs this as `pytest -k test_demo_{slug}`, so it must stay a pytest test
+PROOF9 runs the test named exactly `test_demo_{slug}`, so it must stay a pytest test
 with this name. A demo here is the scripted walkthrough a person would show:
 run it (CLI through subprocess, or an HTTP call) and assert on what it shows.
 """
@@ -303,7 +304,7 @@ def write_stub_files(
 
     Pytest stubs get a ``draft_`` filename prefix so plain ``pytest`` never
     collects their placeholder ``assert False`` bodies; the proof runner's
-    scoped ``-k test_id`` run then reports "named test missing" (FAILED) until
+    run of the test named ``test_id`` then reports "named test missing" (FAILED) until
     the developer implements the stub and renames it to ``test_*.py``.
 
     Existing files are never overwritten (they may hold developer edits).
