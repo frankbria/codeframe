@@ -13,6 +13,7 @@ operations.
 import contextlib
 import os
 import sqlite3
+import stat
 import threading
 from pathlib import Path
 from typing import Optional
@@ -129,6 +130,11 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
             )
 
         tmp = state_dir / f".platform.db.{os.getpid()}.tmp"
+        # Created empty with the source's exact mode before any account data
+        # goes in, so a 0600 file never becomes a 0644 copy (codex review).
+        mode = stat.S_IMODE(legacy.stat().st_mode)
+        os.close(os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode))
+        os.chmod(tmp, mode)  # O_CREAT's mode is reduced by the umask
         src = sqlite3.connect(legacy)
         try:
             dst = sqlite3.connect(tmp)

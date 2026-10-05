@@ -165,3 +165,19 @@ def test_concurrent_migrations_move_the_file_once(repo):
     assert moved.count(True) == 1, moved
     assert _emails(state_dir / "platform.db") == ["op@x.co"]
     assert _emails(state_dir / "state.db.pre-1287") == ["op@x.co"]
+
+
+def test_the_copy_keeps_the_original_permissions(repo):
+    """Password hashes in a 0600 file must not land in a 0644 one (codex)."""
+    import os
+    import stat
+
+    state = _legacy_control_plane(repo)
+    os.chmod(state, 0o600)
+    old = os.umask(0o022)
+    try:
+        create_or_load_workspace(repo)
+    finally:
+        os.umask(old)
+
+    assert stat.S_IMODE(os.stat(repo / ".codeframe" / "platform.db").st_mode) == 0o600
