@@ -78,6 +78,13 @@ class LegacyControlPlaneError(RuntimeError):
     """The legacy control-plane ``state.db`` cannot be moved safely right now."""
 
 
+def _move_legacy_aside(state_dir: Path) -> None:
+    for suffix in ("", "-wal", "-shm"):
+        part = state_dir / f"state.db{suffix}"
+        if part.exists():
+            os.replace(part, state_dir / f"state.db{suffix}.pre-1287")
+
+
 def migrate_legacy_control_plane(state_dir: Path) -> bool:
     """Move a serve-first control-plane ``state.db`` to ``platform.db`` (#1376).
 
@@ -100,6 +107,16 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
     with read_modify_write_lock(state_dir / ".control-plane-migration.lock"):
         legacy = state_dir / "state.db"
         platform_db = state_dir / "platform.db"
+        # Set before platform.db is published, cleared once the original has
+        # moved aside: a run that dies in between is finished by the next one,
+        # instead of leaving a platform.db that blocks every retry (codex).
+        marker = state_dir / ".control-plane-migration.pending"
+        if marker.exists() and platform_db.exists():
+            marker.unlink()
+            if _legacy_kind(legacy) != "control_plane":
+                return False  # already moved; never move a workspace DB aside
+            _move_legacy_aside(state_dir)
+            return True
         if platform_db.exists() or _legacy_kind(legacy) != "control_plane":
             return False
 
@@ -144,11 +161,10 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
                 dst.close()
         finally:
             src.close()
+        marker.touch()
         os.replace(tmp, platform_db)
-        for suffix in ("", "-wal", "-shm"):
-            part = state_dir / f"state.db{suffix}"
-            if part.exists():
-                os.replace(part, state_dir / f"state.db{suffix}.pre-1287")
+        _move_legacy_aside(state_dir)
+        marker.unlink()
         logger.warning(
             "Moved the legacy control-plane DB %s to %s (#1376); the original is kept "
             "as %s.",

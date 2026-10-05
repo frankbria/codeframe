@@ -181,3 +181,31 @@ def test_the_copy_keeps_the_original_permissions(repo):
         os.umask(old)
 
     assert stat.S_IMODE(os.stat(repo / ".codeframe" / "platform.db").st_mode) == 0o600
+
+
+def test_a_migration_interrupted_after_publishing_completes_on_retry(repo, monkeypatch):
+    """Dying between publishing platform.db and moving state.db aside left a
+    state no later init could leave (codex review)."""
+    import os
+
+    from codeframe.platform_store import database as db_mod
+
+    _legacy_control_plane(repo)
+    real_replace = os.replace
+
+    def fail_moving_aside(src, dst, *a, **k):
+        if str(dst).endswith(".pre-1287"):
+            raise OSError("disk went away")
+        return real_replace(src, dst, *a, **k)
+
+    monkeypatch.setattr(db_mod.os, "replace", fail_moving_aside)
+    with pytest.raises(OSError):
+        create_or_load_workspace(repo)
+    assert (repo / ".codeframe" / "platform.db").exists()  # published, then stuck
+
+    monkeypatch.setattr(db_mod.os, "replace", real_replace)
+    ws = create_or_load_workspace(repo)  # the retry finishes the job
+
+    assert ws.db_path.exists()
+    assert _emails(repo / ".codeframe" / "platform.db") == ["op@x.co"]
+    assert _emails(repo / ".codeframe" / "state.db.pre-1287") == ["op@x.co"]
