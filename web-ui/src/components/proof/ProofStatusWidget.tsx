@@ -49,6 +49,9 @@ export function ProofStatusWidget({ workspacePath }: ProofStatusWidgetProps) {
               {data.waived > 0 && (
                 <Badge variant={PROOF_STATUS_VARIANT.waived}>{data.waived} waived</Badge>
               )}
+              {(data.waiver_expired ?? 0) > 0 && (
+                <Badge variant={PROOF_STATUS_VARIANT.open}>{data.waiver_expired} waiver expired</Badge>
+              )}
             </div>
             <Link
               href="/proof"
