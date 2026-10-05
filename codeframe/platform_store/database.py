@@ -14,6 +14,7 @@ import contextlib
 import os
 import sqlite3
 import stat
+import tempfile
 import threading
 from pathlib import Path
 from typing import Optional
@@ -85,6 +86,34 @@ def _move_legacy_aside(state_dir: Path) -> None:
             os.replace(part, state_dir / f"state.db{suffix}.pre-1287")
 
 
+def _refuse_unsafe_move(state_dir: Path, legacy: Path) -> None:
+    # An operator who pointed DATABASE_PATH at this file would, after a move,
+    # restart onto the workspace DB that replaces it: accounts unreachable.
+    env = os.getenv("DATABASE_PATH")
+    if env and Path(env).resolve() == legacy.resolve():
+        raise LegacyControlPlaneError(
+            f"DATABASE_PATH points at {legacy}, which holds your accounts, not a "
+            "workspace. Stop the server, move it (with any -wal/-shm files) out "
+            ".codeframe/, set DATABASE_PATH to the new location, then run "
+            "`cf init` again."
+        )
+
+    # In use? Closing the last connection checkpoints and deletes the -wal and
+    # -shm, so if they survive ours, a server still has the file open, and a
+    # copy now would miss its later writes (codex review).
+    probe = sqlite3.connect(legacy)
+    try:
+        probe.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+    finally:
+        probe.close()
+    if any((state_dir / f"state.db{s}").exists() for s in ("-wal", "-shm")):
+        raise LegacyControlPlaneError(
+            f"{legacy} holds this install's accounts and is still open — a server "
+            "is probably running from this directory. Stop it, then run `cf init` "
+            "again to move the accounts to platform.db."
+        )
+
+
 def migrate_legacy_control_plane(state_dir: Path) -> bool:
     """Move a serve-first control-plane ``state.db`` to ``platform.db`` (#1376).
 
@@ -114,53 +143,35 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
         if marker.exists() and platform_db.exists():
             moved = _legacy_kind(legacy) == "control_plane"
             if moved:  # never move a workspace DB aside
+                _refuse_unsafe_move(state_dir, legacy)  # same guards as a first run
                 _move_legacy_aside(state_dir)
             marker.unlink()  # only once nothing is left to finish
             return moved
         if platform_db.exists() or _legacy_kind(legacy) != "control_plane":
             return False
 
-        # An operator who pointed DATABASE_PATH at this file would, after a move,
-        # restart onto the workspace DB that replaces it: accounts unreachable.
-        env = os.getenv("DATABASE_PATH")
-        if env and Path(env).resolve() == legacy.resolve():
-            raise LegacyControlPlaneError(
-                f"DATABASE_PATH points at {legacy}, which holds your accounts, not a "
-                "workspace. Stop the server, move it (with any -wal/-shm files) out "
-                ".codeframe/, set DATABASE_PATH to the new location, then run "
-                "`cf init` again."
-            )
+        _refuse_unsafe_move(state_dir, legacy)
 
-        # In use? Closing the last connection checkpoints and deletes the -wal and
-        # -shm, so if they survive ours, a server still has the file open, and a
-        # copy now would miss its later writes (codex review).
-        probe = sqlite3.connect(legacy)
+        # Unique, created 0600 before any account data goes in, then given the
+        # source's exact mode, so a 0600 file never becomes a 0644 copy; removed
+        # if the copy fails, so a retry is not blocked by it (codex review).
+        fd, tmp_name = tempfile.mkstemp(prefix=".platform.db.", suffix=".tmp", dir=state_dir)
+        os.close(fd)
+        tmp = Path(tmp_name)
         try:
-            probe.execute("SELECT 1 FROM users LIMIT 1").fetchone()
-        finally:
-            probe.close()
-        if any((state_dir / f"state.db{s}").exists() for s in ("-wal", "-shm")):
-            raise LegacyControlPlaneError(
-                f"{legacy} holds this install's accounts and is still open — a server "
-                "is probably running from this directory. Stop it, then run `cf init` "
-                "again to move the accounts to platform.db."
-            )
-
-        tmp = state_dir / f".platform.db.{os.getpid()}.tmp"
-        # Created empty with the source's exact mode before any account data
-        # goes in, so a 0600 file never becomes a 0644 copy (codex review).
-        mode = stat.S_IMODE(legacy.stat().st_mode)
-        os.close(os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode))
-        os.chmod(tmp, mode)  # O_CREAT's mode is reduced by the umask
-        src = sqlite3.connect(legacy)
-        try:
-            dst = sqlite3.connect(tmp)
+            os.chmod(tmp, stat.S_IMODE(legacy.stat().st_mode))
+            src = sqlite3.connect(legacy)
             try:
-                src.backup(dst)
+                dst = sqlite3.connect(tmp)
+                try:
+                    src.backup(dst)
+                finally:
+                    dst.close()
             finally:
-                dst.close()
-        finally:
-            src.close()
+                src.close()
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
         marker.touch()
         os.replace(tmp, platform_db)
         _move_legacy_aside(state_dir)

@@ -211,3 +211,50 @@ def test_a_migration_interrupted_after_publishing_completes_on_retry(repo, monke
     assert ws.db_path.exists()
     assert _emails(repo / ".codeframe" / "platform.db") == ["op@x.co"]
     assert _emails(repo / ".codeframe" / "state.db.pre-1287") == ["op@x.co"]
+
+
+def test_resuming_an_interrupted_migration_keeps_the_safety_checks(repo, monkeypatch):
+    """DATABASE_PATH set between attempts must still stop the move (codex)."""
+    import os
+
+    from codeframe.platform_store import database as db_mod
+    from codeframe.platform_store.database import LegacyControlPlaneError
+
+    state = _legacy_control_plane(repo)
+    real_replace = os.replace
+    monkeypatch.setattr(
+        db_mod.os, "replace",
+        lambda s, d, *a, **k: (_ for _ in ()).throw(OSError("x")) if str(d).endswith(".pre-1287")
+        else real_replace(s, d, *a, **k),
+    )
+    with pytest.raises(OSError):
+        create_or_load_workspace(repo)
+    monkeypatch.setattr(db_mod.os, "replace", real_replace)
+
+    monkeypatch.setenv("DATABASE_PATH", str(state))
+    with pytest.raises(LegacyControlPlaneError, match="DATABASE_PATH"):
+        create_or_load_workspace(repo)
+    assert _emails(state) == ["op@x.co"]  # still where DATABASE_PATH says
+
+
+def test_a_failed_copy_leaves_no_temp_file_and_a_retry_succeeds(repo, monkeypatch):
+    """A leftover copy of the accounts blocked the next attempt (codex)."""
+    from codeframe.platform_store import database as db_mod
+
+    _legacy_control_plane(repo)
+    real_connect = sqlite3.connect
+    calls = {"n": 0}
+
+    def flaky_connect(path, *a, **k):
+        if str(path).endswith(".tmp") and calls["n"] == 0:
+            calls["n"] += 1
+            raise sqlite3.OperationalError("disk I/O error")
+        return real_connect(path, *a, **k)
+
+    monkeypatch.setattr(db_mod.sqlite3, "connect", flaky_connect)
+    with pytest.raises(sqlite3.OperationalError):
+        create_or_load_workspace(repo)
+    assert not list((repo / ".codeframe").glob("*.tmp"))
+
+    create_or_load_workspace(repo)
+    assert _emails(repo / ".codeframe" / "platform.db") == ["op@x.co"]
