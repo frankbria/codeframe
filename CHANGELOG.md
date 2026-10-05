@@ -179,9 +179,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   server that opened it after that check and before the move kept writing
   accounts into the copy being moved aside; the next start used `platform.db`
   without them. The server's first open of the control-plane DB now takes the
-  migration's lock (only when a `state.db` is present, so a normal start pays
-  nothing), and either opens first, so the migration refuses, or opens the
-  published `platform.db`.
+  migration's lock, and either opens first, so the migration refuses, or opens
+  the published `platform.db`. Only a legacy control-plane `state.db` (one the
+  migration could move) takes the lock; a workspace's own `state.db` does not,
+  so a normal start pays nothing.
 
 - **`cf engines check opencode` reports ready on one provider key or an
   opencode login (#1419).** Both `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` were
