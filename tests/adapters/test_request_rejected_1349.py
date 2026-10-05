@@ -85,3 +85,17 @@ def test_a_transport_failure_is_still_a_connection_error():
 
     with pytest.raises(LLMConnectionError):
         _anthropic(refused).complete([{"role": "user", "content": "hi"}])
+
+
+def test_a_400_with_no_parseable_reason_still_names_the_rejection():
+    """Not every 400 carries a JSON error body (a proxy's HTML page, say):
+    the reason line is omitted, the classification is not."""
+    from codeframe.adapters.llm.errors import map_provider_error
+
+    class BareBadRequest(Exception):
+        status_code = 400
+        body = "<html>Bad Request</html>"
+
+    err = map_provider_error(BareBadRequest("Error code: 400"), provider="anthropic", model="m")
+    assert isinstance(err, LLMRequestRejectedError)
+    assert "HTTP 400" in str(err)
