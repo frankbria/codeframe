@@ -174,6 +174,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A chat call cut off mid tool arguments is charged for them (#1405).** A
+  call interrupted before it finished reports no usage, so #1345 charges an
+  estimate from the prompt plus the streamed text. Neither provider passed tool
+  arguments through (Anthropic dropped `input_json_delta`, OpenAI only
+  accumulated the fragments), so a call cut off while writing 3,000 characters
+  of tool input was charged 1 output token. Both now emit a `tool_input_delta`
+  chunk and the estimate counts it: the same call is charged ~1,000.
+
 - **A PROOF9 evidence rule runs exactly the test it names (#1401).** Rules
   were enforced as `pytest -k <test_id>`, which is substring matching. So
   `test_unit_total` also ran `test_unit_total_wrong`, and `test_unit_req_1000`

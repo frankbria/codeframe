@@ -146,8 +146,12 @@ class StreamChunk:
 
     Attributes:
         type: Event type — one of ``"text_delta"``, ``"thinking_delta"``,
-            ``"tool_use_start"``, ``"tool_use_stop"``, ``"message_stop"``.
-        text: Text content for ``text_delta`` and ``thinking_delta`` types.
+            ``"tool_input_delta"``, ``"tool_use_start"``, ``"tool_use_stop"``,
+            ``"message_stop"``.
+        text: Text content for ``text_delta`` and ``thinking_delta`` types; a
+            fragment of a tool call's JSON arguments for ``tool_input_delta``
+            (informational: final inputs come from ``message_stop``; it lets a
+            call cut off mid-arguments be charged for them, #1405).
         tool_id: Tool call ID for ``tool_use_start``.
         tool_name: Tool name for ``tool_use_start``.
         tool_input: Tool input dict for ``tool_use_start`` (may be empty;

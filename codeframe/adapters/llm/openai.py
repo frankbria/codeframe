@@ -353,6 +353,10 @@ class OpenAIProvider(LLMProvider):
                             partial_tool_calls[idx]["arguments_parts"].append(
                                 tc_delta.function.arguments
                             )
+                            # Counted toward a cut-off call's charge (#1405).
+                            yield StreamChunk(
+                                type="tool_input_delta", text=tc_delta.function.arguments
+                            )
 
                         # Defer tool_use_start until both id and name are known
                         tc_info = partial_tool_calls[idx]

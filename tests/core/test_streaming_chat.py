@@ -226,6 +226,21 @@ class TestSendMessageTextOnly:
         assert ChatEventType.COST_UPDATE in types
         assert ChatEventType.DONE in types
 
+    async def test_tool_argument_fragments_reach_no_ui_event(self, tmp_path):
+        """tool_input_delta exists only to bill a cut-off call (#1405); the UI
+        never sees partial JSON, and a finished call bills reported usage."""
+        provider = MockProvider()
+        provider.add_stream_chunks([
+            StreamChunk(type="tool_input_delta", text='{"pa'),
+            StreamChunk(type="tool_input_delta", text='th":1}'),
+            _stop_chunk(input_tokens=10, output_tokens=20),
+        ])
+        adapter = _make_adapter(workspace_path=tmp_path, provider=provider)
+
+        events = [e async for e in adapter.send_message("hi", [])]
+        assert [e.type for e in events] == [ChatEventType.COST_UPDATE, ChatEventType.DONE]
+        assert (events[0].input_tokens, events[0].output_tokens) == (10, 20)
+
     async def test_text_delta_content(self, tmp_path):
         provider = MockProvider()
         provider.add_stream_chunks([
