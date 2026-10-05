@@ -136,3 +136,25 @@ def test_a_test_whose_node_id_prefixes_the_named_one_does_not_hide_it(tmp_path):
     init_proof_tables(w)
 
     assert _unit_outcome(w, "test_unit_total") == GateOutcome.PASSED
+
+
+@pytest.mark.parametrize("stop_early", ["-x", "--maxfail=1"])
+def test_a_project_that_stops_early_cannot_leave_an_exact_case_unrun(tmp_path, stop_early):
+    """With -x in addopts, a failing substring match stopped pytest before a
+    later, failing exact case ran, and the report held only the passing one
+    (codex review)."""
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "pytest.ini").write_text(f"[pytest]\naddopts = {stop_early}\n", encoding="utf-8")
+    (repo / "tests" / "test_a.py").write_text(
+        "def test_unit_total():\n    assert True\n\n\ndef test_unit_total_wrong():\n    assert False\n",
+        encoding="utf-8",
+    )
+    (repo / "tests" / "test_b.py").write_text(
+        "def test_unit_total():\n    assert False, 'the exact case that must decide'\n",
+        encoding="utf-8",
+    )
+    w = create_or_load_workspace(repo)
+    init_proof_tables(w)
+
+    assert _unit_outcome(w, "test_unit_total") == GateOutcome.FAILED

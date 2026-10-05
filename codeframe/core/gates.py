@@ -782,7 +782,12 @@ def _run_pytest(
         if test_selector:
             with tempfile.TemporaryDirectory() as tmp:
                 report = Path(tmp) / "report.xml"
-                result = _pytest(cmd + ["-k", test_selector, f"--junitxml={report}"])
+                # --maxfail=0 (no limit) overrides a project's -x/--maxfail:
+                # stopping on an unrelated match left exact cases unrun, and
+                # the report then held only the ones that passed (codex review).
+                result = _pytest(
+                    cmd + ["-k", test_selector, "--maxfail=0", f"--junitxml={report}"]
+                )
                 if result.returncode in (0, 1, 5):
                     exact = _exact_cases_passed(report, test_selector)
         else:
