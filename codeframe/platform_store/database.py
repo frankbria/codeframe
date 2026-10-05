@@ -89,8 +89,13 @@ def _move_legacy_aside(state_dir: Path) -> None:
 def _refuse_unsafe_move(state_dir: Path, legacy: Path) -> None:
     # An operator who pointed DATABASE_PATH at this file would, after a move,
     # restart onto the workspace DB that replaces it: accounts unreachable.
+    # A relative value resolves against the server's cwd, which need not be
+    # init's: check the workspace root's spelling too (GLM review).
     env = os.getenv("DATABASE_PATH")
-    if env and Path(env).resolve() == legacy.resolve():
+    if env and any(
+        base.joinpath(env).resolve() == legacy.resolve()
+        for base in (Path.cwd(), state_dir.parent)
+    ):
         raise LegacyControlPlaneError(
             f"DATABASE_PATH points at {legacy}, which holds your accounts, not a "
             "workspace. Stop the server, move it (with any -wal/-shm files) out "
@@ -124,7 +129,8 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
     temp name and is renamed into place, then the original and its sidecars
     move aside to ``*.pre-1287``. Returns True when it moved the file.
 
-    Called from ``cf init`` (``create_or_load_workspace``) — one explicit,
+    Called from ``cf init`` (``create_or_load_workspace``), before anything
+    loads the file as a workspace — one explicit,
     operator-driven moment — never from the resolver, which runs on every
     auth lookup while a server may hold the file open.
     """
@@ -132,6 +138,14 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
     # concurrent inits could otherwise both pass them and the second would
     # replace the first's platform.db and preserved original (codex review).
     from codeframe.core.atomic_io import fsync_directory, read_modify_write_lock
+
+    # Cheap, read-only and lock-free, so a normal workspace load pays one
+    # open and leaves no lock file behind.
+    if (
+        not (state_dir / ".control-plane-migration.pending").exists()
+        and _legacy_kind(state_dir / "state.db") != "control_plane"
+    ):
+        return False
 
     with read_modify_write_lock(state_dir / ".control-plane-migration.lock"):
         legacy = state_dir / "state.db"

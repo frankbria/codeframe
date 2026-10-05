@@ -279,3 +279,51 @@ def test_the_marker_is_durable_before_platform_db_is_published(repo, monkeypatch
     create_or_load_workspace(repo)
 
     assert synced_with_marker_before_publish == [state_dir]
+
+
+def _schema_of(db_path):
+    conn = sqlite3.connect(db_path)
+    try:
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        conn.close()
+    return version, tables
+
+
+@pytest.mark.parametrize("via", ["core", "cli"])
+def test_the_copy_keeps_the_control_plane_schema_version(repo, via):
+    """Loading the file as a workspace first stamped the workspace user_version
+    over the control plane's, so SchemaManager skipped its own migrations on
+    platform.db and it gained empty workspace tables (GLM review)."""
+    import subprocess as sp
+
+    from typer.testing import CliRunner
+
+    from codeframe.cli.app import app
+    from codeframe.platform_store.schema_manager import SchemaManager
+
+    _legacy_control_plane(repo)
+    if via == "core":
+        create_or_load_workspace(repo)
+    else:
+        sp.run(["git", "init", "-q"], cwd=repo, check=True)
+        assert CliRunner().invoke(app, ["init", str(repo)]).exit_code == 0
+
+    version, tables = _schema_of(repo / ".codeframe" / "platform.db")
+    assert version == SchemaManager.SCHEMA_VERSION
+    assert not tables & {"workspace", "tasks", "prds"}
+
+
+def test_a_relative_database_path_is_refused_from_another_cwd(repo, tmp_path_factory, monkeypatch):
+    """The server resolves a relative DATABASE_PATH against its own cwd, the
+    repo root; init run from elsewhere must still see it names this file (GLM)."""
+    from codeframe.platform_store.database import LegacyControlPlaneError
+
+    state = _legacy_control_plane(repo)
+    monkeypatch.setenv("DATABASE_PATH", ".codeframe/state.db")
+    monkeypatch.chdir(tmp_path_factory.mktemp("elsewhere"))
+
+    with pytest.raises(LegacyControlPlaneError, match="DATABASE_PATH"):
+        create_or_load_workspace(repo)
+    assert _emails(state) == ["op@x.co"]

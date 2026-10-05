@@ -410,8 +410,11 @@ def init(
 
     try:
         # A state.db with no workspace row (a pre-#1287 serve-first control
-        # plane, migrated by create_or_load_workspace, #1376) is not an
-        # existing workspace, so only a loadable one counts.
+        # plane) is not an existing workspace. Migrate it first (#1376), before
+        # the probe below loads it as one and stamps its schema version.
+        from codeframe.platform_store.database import migrate_legacy_control_plane
+
+        migrate_legacy_control_plane(repo_path / ".codeframe")
         try:
             get_workspace(repo_path)
             already_existed = True
