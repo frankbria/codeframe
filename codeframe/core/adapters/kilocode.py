@@ -227,7 +227,7 @@ class KilocodeAdapter(SubprocessAdapter):
         """
         auth = Path.home() / ".local" / "share" / "kilo" / "auth.json"
         try:
-            logins = json.loads(auth.read_text())
+            logins = json.loads(auth.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             logins = None
         if isinstance(logins, dict) and any(
