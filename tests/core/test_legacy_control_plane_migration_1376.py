@@ -258,3 +258,24 @@ def test_a_failed_copy_leaves_no_temp_file_and_a_retry_succeeds(repo, monkeypatc
 
     create_or_load_workspace(repo)
     assert _emails(repo / ".codeframe" / "platform.db") == ["op@x.co"]
+
+
+def test_the_marker_is_durable_before_platform_db_is_published(repo, monkeypatch):
+    """A power loss must not keep platform.db and lose the marker (codex): the
+    directory is fsynced with the marker in it before publication."""
+    from codeframe.core import atomic_io
+
+    _legacy_control_plane(repo)
+    state_dir = repo / ".codeframe"
+    synced_with_marker_before_publish = []
+    real = atomic_io.fsync_directory
+
+    def spy(path):
+        if (state_dir / ".control-plane-migration.pending").exists() and not (state_dir / "platform.db").exists():
+            synced_with_marker_before_publish.append(path)
+        real(path)
+
+    monkeypatch.setattr(atomic_io, "fsync_directory", spy)
+    create_or_load_workspace(repo)
+
+    assert synced_with_marker_before_publish == [state_dir]

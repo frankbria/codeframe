@@ -131,7 +131,7 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
     # Serialized across processes, with every check redone under the lock: two
     # concurrent inits could otherwise both pass them and the second would
     # replace the first's platform.db and preserved original (codex review).
-    from codeframe.core.atomic_io import read_modify_write_lock
+    from codeframe.core.atomic_io import fsync_directory, read_modify_write_lock
 
     with read_modify_write_lock(state_dir / ".control-plane-migration.lock"):
         legacy = state_dir / "state.db"
@@ -145,6 +145,7 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
             if moved:  # never move a workspace DB aside
                 _refuse_unsafe_move(state_dir, legacy)  # same guards as a first run
                 _move_legacy_aside(state_dir)
+                fsync_directory(state_dir)
             marker.unlink()  # only once nothing is left to finish
             return moved
         if platform_db.exists() or _legacy_kind(legacy) != "control_plane":
@@ -172,9 +173,14 @@ def migrate_legacy_control_plane(state_dir: Path) -> bool:
         except BaseException:
             tmp.unlink(missing_ok=True)
             raise
+        # Each step durable before the next, so a power loss cannot keep
+        # platform.db while losing the marker that finishes the job (codex).
         marker.touch()
+        fsync_directory(state_dir)
         os.replace(tmp, platform_db)
+        fsync_directory(state_dir)
         _move_legacy_aside(state_dir)
+        fsync_directory(state_dir)
         marker.unlink()
         logger.warning(
             "Moved the legacy control-plane DB %s to %s (#1376); the original is kept "
