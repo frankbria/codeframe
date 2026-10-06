@@ -240,7 +240,7 @@ def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     """
     import subprocess
 
-    from codeframe.core.worktrees import WORKTREE_DIR, TaskWorktree, get_base_branch
+    from codeframe.core.worktrees import TaskWorktree, get_base_branch
 
     def _git(*args: str) -> "subprocess.CompletedProcess[str]":
         return subprocess.run(
@@ -252,8 +252,7 @@ def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     # cf/<task_id> and its worktree preserved so no agent work is lost. The next
     # start resumes on it rather than refusing (#1363): committed and
     # uncommitted work carries over, and merge-back at the end lands it all.
-    branch_name = f"cf/{task_id}"
-    worktree_dir = repo_path / WORKTREE_DIR / task_id
+    branch_name, worktree_dir = _leftover_paths(task_id, repo_path)  # one naming source
     branch_exists = branch_name in _git("branch", "--list", branch_name).stdout
     base_branch = get_base_branch(repo_path)
     worktree = TaskWorktree()

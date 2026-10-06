@@ -2996,6 +2996,14 @@ def work_start(
                 "so it needs --isolation worktree"
             )
             raise typer.Exit(1)
+        if fresh and not execute:
+            # The discard happens when execution starts; without it --fresh
+            # would silently do nothing and leave an active run behind (review).
+            console.print(
+                "[red]Error:[/red] --fresh discards work when execution starts, "
+                "so it needs --execute"
+            )
+            raise typer.Exit(1)
         if fresh and dry_run:
             # A preview must not destroy work (codex review).
             console.print("[red]Error:[/red] --fresh deletes work, so it cannot be combined with --dry-run")

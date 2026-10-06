@@ -186,3 +186,23 @@ def test_fresh_does_not_discard_while_the_task_has_a_live_run(task_repo):
     assert "leftover" not in seen
     left = leftover_run(task_id, repo)
     assert left is not None and (left.commits, left.uncommitted) == (1, 1), result.output
+
+
+def test_fresh_without_execute_is_refused_and_creates_no_run(task_repo):
+    """The discard happens when execution starts; without --execute, --fresh
+    was a silent no-op that still left an active run behind (review)."""
+    from codeframe.cli.app import app
+    from codeframe.core import runtime
+    from codeframe.core.workspace import get_workspace
+
+    repo, task_id = task_repo
+    _stopped_run(repo, task_id)
+
+    result = CliRunner().invoke(
+        app, ["work", "start", task_id[:8], "--isolation", "worktree", "--fresh", "-w", str(repo)],
+    )
+
+    assert result.exit_code != 0
+    assert "--execute" in " ".join(result.output.split()), result.output
+    assert runtime.get_active_run(get_workspace(repo), task_id) is None
+    assert leftover_run(task_id, repo) is not None
