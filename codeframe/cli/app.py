@@ -2905,6 +2905,14 @@ def work_start(
         help="Task execution isolation: none (default) or worktree",
         case_sensitive=False,
     ),
+    fresh: bool = typer.Option(
+        False,
+        "--fresh",
+        help=(
+            "With --isolation worktree: discard work left by a stopped or failed "
+            "run of this task and start from the base branch (default: resume it)"
+        ),
+    ),
     cloud_timeout: int = typer.Option(
         30,
         "--cloud-timeout",
@@ -2978,6 +2986,28 @@ def work_start(
             console.print(f"[red]Error:[/red] {exc}")
             raise typer.Exit(1)
 
+        # A worktree run left by Stop or a failure is resumed and merged back
+        # (#1363). Say so before building on it, or discard it with --fresh: a
+        # run stopped because the agent was going wrong should not be (#1440).
+        worktree = IsolationLevel(isolation) == IsolationLevel.WORKTREE
+        if fresh and not worktree:
+            console.print(
+                "[red]Error:[/red] --fresh discards a leftover worktree run, "
+                "so it needs --isolation worktree"
+            )
+            raise typer.Exit(1)
+        if fresh and not execute:
+            # The discard happens when execution starts; without it --fresh
+            # would silently do nothing and leave an active run behind (review).
+            console.print(
+                "[red]Error:[/red] --fresh discards work when execution starts, "
+                "so it needs --execute"
+            )
+            raise typer.Exit(1)
+        if fresh and dry_run:
+            # A preview must not destroy work (codex review).
+            console.print("[red]Error:[/red] --fresh deletes work, so it cannot be combined with --dry-run")
+            raise typer.Exit(1)
         # Validate API key before creating run record (avoids dangling IN_PROGRESS state)
         if execute:
             from codeframe.core.engine_registry import (
@@ -2999,6 +3029,33 @@ def work_start(
 
         # Start the run
         run = runtime.start_task_run(workspace, task.id)
+
+        # Only now, after start_task_run's liveness checks: discarding first could
+        # destroy a still-running agent's work and then refuse to start (codex).
+        if execute and worktree:
+            from codeframe.core.sandbox.context import discard_leftover_run, leftover_run
+
+            left = leftover_run(task.id, workspace.repo_path)
+            if left and fresh:
+                try:
+                    discarded = discard_leftover_run(task.id, workspace.repo_path)
+                except ValueError as exc:
+                    runtime.fail_run(workspace, run.id, f"--fresh could not discard the leftover run: {exc}")
+                    print_error(exc)
+                    raise typer.Exit(1)
+                if discarded:
+                    console.print(
+                        f"[yellow]Discarded the leftover run on {escape(left.branch)}[/yellow] "
+                        "(--fresh); starting from the base branch."
+                    )
+            elif left:
+                commits = f"{left.commits} commit{'s' if left.commits != 1 else ''}"
+                files = f"{left.uncommitted} uncommitted file{'s' if left.uncommitted != 1 else ''}"
+                console.print(
+                    f"[yellow]Resuming a stopped or failed run on {escape(left.branch)}[/yellow]: "
+                    f"{commits} and {files} will be built on and merged back. "
+                    "To discard them and start from the base branch, re-run with --fresh."
+                )
 
         console.print("\n[bold green]Run started[/bold green]")
         console.print(f"  Task: {escape(task.title)}")

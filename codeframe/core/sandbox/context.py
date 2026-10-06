@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import subprocess
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -158,6 +159,74 @@ def _registered_on(porcelain: str, path: Path, branch: str) -> bool:
     return False
 
 
+@dataclass
+class LeftoverRun:
+    """A worktree run that ended before merge-back (#1363, #1440)."""
+
+    branch: str
+    commits: int  # ahead of the base branch
+    uncommitted: int  # changed or new files in the preserved worktree (0 if gone)
+
+
+def _leftover_paths(task_id: str, repo_path: Path) -> tuple[str, Path]:
+    from codeframe.core.worktrees import WORKTREE_DIR
+
+    return f"cf/{task_id}", repo_path / WORKTREE_DIR / task_id
+
+
+def _git_in(cwd: Path, *args: str) -> "subprocess.CompletedProcess[str]":
+    return subprocess.run(
+        ["git", *args], cwd=str(cwd), capture_output=True,
+        text=True, encoding="utf-8", errors="replace",
+    )
+
+
+def leftover_run(task_id: str, repo_path: Path) -> Optional[LeftoverRun]:
+    """What a worktree start would resume for this task, or None (#1440).
+
+    The next ``--isolation worktree`` start builds on it and merges it all
+    back, so the CLI shows this before executing.
+    """
+    from codeframe.core.worktrees import get_base_branch
+
+    branch, worktree_dir = _leftover_paths(task_id, repo_path)
+    if branch not in _git_in(repo_path, "branch", "--list", branch).stdout:
+        return None
+    ahead = _git_in(repo_path, "rev-list", "--count", f"{get_base_branch(repo_path)}..{branch}")
+    commits = int(ahead.stdout.strip() or 0) if ahead.returncode == 0 else 0
+    uncommitted = 0
+    if worktree_dir.is_dir():
+        status = _git_in(worktree_dir, "status", "--porcelain")
+        if status.returncode == 0:
+            uncommitted = len([line for line in status.stdout.splitlines() if line.strip()])
+    return LeftoverRun(branch=branch, commits=commits, uncommitted=uncommitted)
+
+
+def discard_leftover_run(task_id: str, repo_path: Path) -> bool:
+    """Throw away this task's preserved worktree and branch (``--fresh``, #1440).
+
+    Only what is provably this task's run: a directory in the worktree slot
+    that is not registered on ``cf/<task_id>`` is left alone, as #1363's
+    refusal leaves it, so nothing that is not the agent's work is deleted.
+    Returns True when something was discarded.
+    """
+    branch, worktree_dir = _leftover_paths(task_id, repo_path)
+    if branch not in _git_in(repo_path, "branch", "--list", branch).stdout:
+        return False
+    listing = _git_in(repo_path, "worktree", "list", "--porcelain")
+    if worktree_dir.exists():
+        if listing.returncode != 0 or not _registered_on(listing.stdout, worktree_dir, branch):
+            return False
+        removed = _git_in(repo_path, "worktree", "remove", "--force", str(worktree_dir))
+        if removed.returncode != 0:
+            raise ValueError(f"could not remove {worktree_dir}: {removed.stderr.strip()[:300]}")
+    _git_in(repo_path, "worktree", "prune")
+    deleted = _git_in(repo_path, "branch", "-D", branch)
+    if deleted.returncode != 0:
+        raise ValueError(f"could not delete {branch}: {deleted.stderr.strip()[:300]}")
+    return True
+
+
 def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     """Create a git worktree and wire its merge-back / cleanup / preserve hooks.
 
@@ -171,7 +240,7 @@ def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     """
     import subprocess
 
-    from codeframe.core.worktrees import WORKTREE_DIR, TaskWorktree, get_base_branch
+    from codeframe.core.worktrees import TaskWorktree, get_base_branch
 
     def _git(*args: str) -> "subprocess.CompletedProcess[str]":
         return subprocess.run(
@@ -183,8 +252,7 @@ def _create_worktree_context(task_id: str, repo_path: Path) -> ExecutionContext:
     # cf/<task_id> and its worktree preserved so no agent work is lost. The next
     # start resumes on it rather than refusing (#1363): committed and
     # uncommitted work carries over, and merge-back at the end lands it all.
-    branch_name = f"cf/{task_id}"
-    worktree_dir = repo_path / WORKTREE_DIR / task_id
+    branch_name, worktree_dir = _leftover_paths(task_id, repo_path)  # one naming source
     branch_exists = branch_name in _git("branch", "--list", branch_name).stdout
     base_branch = get_base_branch(repo_path)
     worktree = TaskWorktree()
