@@ -155,3 +155,34 @@ def test_fresh_without_worktree_isolation_is_refused(task_repo):
 
     assert result.exit_code != 0
     assert "--isolation worktree" in " ".join(result.output.split()), result.output
+
+
+def test_fresh_with_dry_run_is_refused_and_deletes_nothing(task_repo):
+    """A preview must not destroy work (codex review)."""
+    repo, task_id = task_repo
+    _stopped_run(repo, task_id)
+
+    result, seen = _start(repo, task_id, "--fresh", "--dry-run")
+
+    assert result.exit_code != 0
+    assert "--dry-run" in " ".join(result.output.split()), result.output
+    assert leftover_run(task_id, repo) is not None  # still there
+    assert "leftover" not in seen  # never executed
+
+
+def test_fresh_does_not_discard_while_the_task_has_a_live_run(task_repo):
+    """Discarding before start_task_run's liveness checks destroyed a running
+    agent's worktree, then refused to start anyway (codex review)."""
+    from codeframe.core import runtime
+    from codeframe.core.workspace import get_workspace
+
+    repo, task_id = task_repo
+    _stopped_run(repo, task_id)
+    runtime.start_task_run(get_workspace(repo), task_id)  # a run is active
+
+    result, seen = _start(repo, task_id, "--fresh")
+
+    assert result.exit_code != 0, result.output
+    assert "leftover" not in seen
+    left = leftover_run(task_id, repo)
+    assert left is not None and (left.commits, left.uncommitted) == (1, 1), result.output
