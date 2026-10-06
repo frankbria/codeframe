@@ -251,7 +251,7 @@ def list_all(
     workspace: Workspace,
     status: Optional[BlockerStatus] = None,
     task_id: Optional[str] = None,
-    limit: int = 100,
+    limit: Optional[int] = None,
     conn: Optional[sqlite3.Connection] = None,
 ) -> list[Blocker]:
     """List blockers with optional filters.
@@ -260,7 +260,8 @@ def list_all(
         workspace: Workspace to query
         status: Optional status filter
         task_id: Optional task filter
-        limit: Maximum blockers to return
+        limit: Maximum blockers to return; ``None`` (the default) returns all.
+            Only the paginated API passes one (#1294).
         conn: Optional borrowed connection (caller keeps ownership; not closed)
 
     Returns:
@@ -288,8 +289,10 @@ def list_all(
             query += " AND task_id = ?"
             params.append(task_id)
 
-        query += " ORDER BY created_at ASC LIMIT ?"
-        params.append(limit)
+        query += " ORDER BY created_at ASC"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
 
         cursor.execute(query, params)
         rows = cursor.fetchall()

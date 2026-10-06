@@ -743,7 +743,6 @@ class TestTasksV2Execution:
         ReAct agent complete on the first iteration (react_agent.py:518).
         """
         import threading
-        import time
 
         from codeframe.core import runtime, streaming
 
@@ -766,22 +765,19 @@ class TestTasksV2Execution:
         assert data["status"] == "executing"
         run_id = data["run_id"]
 
-        # execute_agent runs in a background daemon thread; poll the run until it
-        # leaves RUNNING (terminal = COMPLETED / FAILED / BLOCKED).
-        deadline = time.monotonic() + 30.0
-        status = "RUNNING"
-        while time.monotonic() < deadline:
-            run_resp = test_client_with_task.get(f"/api/v2/tasks/{task_id}/run")
-            assert run_resp.status_code == 200
-            status = run_resp.json()["status"]
-            if status != runtime.RunStatus.RUNNING.value:
-                break
-            time.sleep(0.2)
-
-        # Let the worker thread finish its tail work (logging/recording) before
-        # assertions and fixture teardown remove the workspace out from under it.
+        # execute_agent runs in a background thread. Wait for that thread to
+        # finish rather than polling against a wall-clock budget: under CPU
+        # load the mock run (gates included) took up to ~45s, past the old 30s
+        # poll, and a worker still writing the workspace DB while the test and
+        # teardown touched it is how this test met "database is locked" (#1323).
+        # The ceiling only turns a hung worker into a failure instead of a hang.
         for thread in set(threading.enumerate()) - threads_before:
-            thread.join(timeout=10.0)
+            thread.join(timeout=180.0)
+            assert not thread.is_alive(), f"worker {thread.name} still running after 180s"
+
+        run_resp = test_client_with_task.get(f"/api/v2/tasks/{task_id}/run")
+        assert run_resp.status_code == 200
+        status = run_resp.json()["status"]
 
         assert status != runtime.RunStatus.RUNNING.value, (
             f"Run {run_id} never reached a terminal status (stuck at {status})"

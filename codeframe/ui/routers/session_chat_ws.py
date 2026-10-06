@@ -34,17 +34,24 @@ would be redundant. Revisit if multi-tenant workspace isolation is required.
 """
 
 import asyncio
+import functools
 import json
 import logging
 import os
 from pathlib import Path
 from typing import Optional, Tuple
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from codeframe.auth.dependencies import authenticate_websocket
 from codeframe.core.adapters.streaming_chat import StreamingChatAdapter
-from codeframe.ui.dependencies import revalidate_workspace_path
+from codeframe.core.models import CallType
+from codeframe.core.usage_recording import record_llm_usage
+from codeframe.ui.dependencies import (
+    check_spend_limit,
+    release_planning_budget,
+    revalidate_workspace_path,
+)
 from codeframe.ui.shared import session_chat_manager
 
 logger = logging.getLogger(__name__)
@@ -86,6 +93,7 @@ async def _run_streaming_adapter(
     agent_type: Optional[str] = None,
     model: Optional[str] = None,
     user_id: Optional[int] = None,
+    usage_workspace=None,
 ) -> None:
     """Drive the StreamingChatAdapter and forward ChatEvents into the token queue.
 
@@ -100,6 +108,10 @@ async def _run_streaming_adapter(
             (#764). Defaults to ``"claude"`` when unset (legacy rows).
         model: Session's stored model; honored instead of the adapter default.
         user_id: Authenticated principal whose stored key to use (#1264).
+        usage_workspace: Workspace whose ``token_usage`` gets each call's spend
+            (#1345). Recorded by the adapter as each call ends, not in the
+            relay: the turn's spend hold is released when this task ends, a
+            disconnect drops queued events, and a call cut short emits none.
     """
     try:
         provider_type = _AGENT_TYPE_TO_PROVIDER.get((agent_type or "claude").lower())
@@ -136,13 +148,29 @@ async def _run_streaming_adapter(
         # Honor the session's stored model; fall back to the adapter default only
         # when unset, instead of always using the hardcoded default (#764).
         adapter_kwargs = {"model": model} if model else {}
+
+        def _record(used_model: str, input_tokens: int, output_tokens: int) -> None:
+            # Synchronous on purpose: it must also run in a cancelled turn's
+            # cleanup, where awaiting a thread is not reliable.
+            if usage_workspace is not None:
+                record_llm_usage(
+                    usage_workspace,
+                    model=used_model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    call_type=CallType.SESSION_CHAT,
+                )
+
         adapter = StreamingChatAdapter(
             session_id=session_id,
             db_repo=db_repo,
             workspace_path=workspace_path,
             provider=provider,
+            on_usage=_record,
             **adapter_kwargs,
         )
+        # The queue is unbounded, so put() never suspends: a cancel always
+        # lands inside the adapter's await chain and runs its cleanup there.
         async for event in adapter.send_message(
             content=user_message,
             history=[],
@@ -206,6 +234,22 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
             await websocket.close(code=1008, reason="Workspace path no longer permitted")
             return
 
+    # The workspace whose ledger the daily spend limit reads (#1345): chat
+    # spend is recorded there and checked against it. None when the session's
+    # directory is not an initialised workspace -- then there is no ledger.
+    chat_workspace = None
+    if validated_workspace is not None:
+        from codeframe.core.workspace import get_workspace
+
+        try:
+            chat_workspace = await asyncio.to_thread(get_workspace, validated_workspace)
+        except Exception:
+            logger.warning(
+                "session_id=%s: %s is not a CodeFRAME workspace; chat spend is "
+                "not recorded or limited", session_id, validated_workspace,
+            )
+
+
     # --- Accept connection; everything after this point must run inside the
     #     try/finally so unregister() and close() always execute even if
     #     update_state, register, or get_token_queue raises. ---
@@ -237,7 +281,13 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                     event_type = event.get("type")
 
                     if event_type == "cost_update":
-                        turn_cost["cost_usd"] += event.get("cost_usd", 0.0)
+                        # None = unpriced. Unknown is sticky: a total that
+                        # includes unpriced spend is not a number (#1299).
+                        event_cost = event.get("cost_usd")
+                        if event_cost is None or turn_cost["cost_usd"] is None:
+                            turn_cost["cost_usd"] = None
+                        else:
+                            turn_cost["cost_usd"] += event_cost
                         turn_cost["input_tokens"] += event.get("input_tokens", 0)
                         turn_cost["output_tokens"] += event.get("output_tokens", 0)
                         try:
@@ -252,7 +302,8 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                         # Persist cost BEFORE sending "done" so clients that
                         # immediately fetch session stats observe accurate totals.
                         if (
-                            turn_cost["cost_usd"]
+                            turn_cost["cost_usd"] is None
+                            or turn_cost["cost_usd"]
                             or turn_cost["input_tokens"]
                             or turn_cost["output_tokens"]
                         ):
@@ -294,7 +345,8 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
             finally:
                 # Flush any cost accumulated during a cancelled/aborted turn
                 if (
-                    turn_cost["cost_usd"]
+                    turn_cost["cost_usd"] is None
+                    or turn_cost["cost_usd"]
                     or turn_cost["input_tokens"]
                     or turn_cost["output_tokens"]
                 ):
@@ -340,7 +392,8 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                 elif msg_type == "message":
                     content = msg.get("content", "")
 
-                    # Cancel any in-flight adapter
+                    # Cancel any in-flight adapter first: it holds its spend
+                    # reservation until it ends, and that can be all that is left.
                     if adapter_task[0] and not adapter_task[0].done():
                         adapter_task[0].cancel()
                         try:
@@ -349,6 +402,48 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             logger.debug(
                                 "session_id=%s adapter cancelled: %s", session_id, exc
                             )
+
+                    # The daily spend limit covers chat too (#1345). A socket
+                    # has no 429, so the refusal is an error event, sent before
+                    # the model is called.
+                    from codeframe.core.spend_limit import daily_limit_usd
+
+                    if chat_workspace is None and user_id is not None and daily_limit_usd() is not None:
+                        # No ledger means the spend can be neither counted nor
+                        # recorded: refuse rather than fail open (both reviews).
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": (
+                                "This session's directory is not a CodeFRAME workspace, so its "
+                                "spend cannot be counted against the daily spend limit. Run "
+                                "`cf init` there, or start the session in a workspace."
+                            ),
+                            "code": "SPEND_LIMIT_EXCEEDED",
+                        })
+                        continue
+                    turn_budget = None
+                    if chat_workspace is not None:
+                        try:
+                            # Reserved for this turn and enforced between its
+                            # model calls (tool continuations); released when
+                            # the turn's task ends, however it ends.
+                            _scope, turn_budget = await asyncio.to_thread(
+                                functools.partial(
+                                    check_spend_limit,
+                                    websocket,
+                                    chat_workspace,
+                                    {"user_id": user_id},
+                                    reserve=True,
+                                )
+                            )
+                        except HTTPException as exc:
+                            detail = exc.detail if isinstance(exc.detail, dict) else {}
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": detail.get("error") or str(exc.detail),
+                                "code": detail.get("code"),
+                            })
+                            continue
 
                     # Reset interrupt and drain stale queue items
                     await session_chat_manager.reset_interrupt(session_id)
@@ -366,6 +461,11 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             session_id,
                         )
                     workspace_path = validated_workspace or Path(".")
+                    # create_task copies the current context, so the adapter's
+                    # calls run under this turn's budget.
+                    from codeframe.core.usage_recording import begin_budget
+
+                    begin_budget(turn_budget)
                     adapter_task[0] = asyncio.create_task(
                         _run_streaming_adapter(
                             session_id,
@@ -377,8 +477,17 @@ async def session_chat_ws(session_id: str, websocket: WebSocket) -> None:
                             session.get("agent_type"),
                             session.get("model"),
                             user_id=user_id,
+                            usage_workspace=chat_workspace,
                         )
                     )
+                    if turn_budget is not None:
+                        # Runs in this context, which holds the turn's budget:
+                        # spend the turn could not record keeps the hold.
+                        adapter_task[0].add_done_callback(
+                            lambda _t, b=turn_budget: release_planning_budget(
+                                {"user_id": user_id}, b
+                            )
+                        )
 
         relay = asyncio.create_task(_relay())
         await _receive()

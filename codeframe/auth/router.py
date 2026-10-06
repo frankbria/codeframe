@@ -69,7 +69,8 @@ _BOOTSTRAP_DENIED_DETAIL = (
     "Bootstrap registration is not permitted from this client. Set "
     "CODEFRAME_BOOTSTRAP_TOKEN on the server and send it as the "
     f"{BOOTSTRAP_TOKEN_HEADER} header (the web UI's sign-up form has a field for "
-    "it), or run `codeframe auth register` on the server host itself."
+    "it), or run `codeframe auth register` on the server host itself — in a "
+    "container deploy, inside the backend container (deploy/README.md)."
 )
 
 

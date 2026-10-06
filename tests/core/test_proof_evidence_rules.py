@@ -104,15 +104,28 @@ class TestEvidenceRuleGateField:
 class TestPytestSelector:
     @patch("codeframe.core.gates.subprocess.run")
     @patch("codeframe.core.gates.shutil.which", return_value="/usr/bin/uv")
-    def test_selector_appended_to_command(self, _which, mock_run):
+    def test_selector_runs_only_the_exactly_named_tests(self, _which, mock_run):
+        """The selector is an exact name since #1401: `-k` still selects, but
+        only the JUnit cases named exactly decide; a failing longer-named
+        match that `-k` dragged in does not."""
+        from subprocess import CompletedProcess
+
         from codeframe.core.gates import _run_pytest
 
-        mock_run.return_value.returncode = 0
-        mock_run.return_value.stdout = "1 passed"
-        mock_run.return_value.stderr = ""
+        def fake_pytest(cmd, **_kw):
+            report = next(a.split("=", 1)[1] for a in cmd if a.startswith("--junitxml="))
+            Path(report).write_text(
+                "<testsuites><testsuite>"
+                '<testcase classname="t" name="test_unit_foo"/>'
+                '<testcase classname="t" name="test_unit_foo[1]"/>'
+                '<testcase classname="t" name="test_unit_foo_bar"><failure/></testcase>'
+                "</testsuite></testsuites>"
+            )
+            return CompletedProcess(cmd, 1, stdout="1 failed, 2 passed", stderr="")
+
+        mock_run.side_effect = fake_pytest
         check = _run_pytest(Path("/tmp"), test_selector="test_unit_foo")
         cmd = mock_run.call_args[0][0]
-        assert "-k" in cmd
         assert cmd[cmd.index("-k") + 1] == "test_unit_foo"
         assert check.status == GateStatus.PASSED
 
@@ -274,7 +287,8 @@ class TestRunGateEnforcement:
         )
         stubs = generate_stubs(req)
         for gate in (Gate.UNIT, Gate.SEC):
-            rule = suggest_evidence_rules(gate, title)[0]
+            # Built the way capture builds it: named by id and title (#1397).
+            rule = suggest_evidence_rules(gate, f"{req.id} {title}")[0]
             assert f"def {rule.test_id}(" in stubs[gate]
 
     @patch("codeframe.core.gates.run")

@@ -6,7 +6,7 @@ import { ArtificialIntelligence01Icon, ArrowRight01Icon, Alert01Icon, Idea01Icon
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAgentChat } from '@/hooks/useAgentChat';
-import { formatUsd } from '@/lib/format';
+import { formatSessionCost } from '@/lib/format';
 import type { ChatMessage, AgentChatStatus } from '@/types';
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -271,7 +271,7 @@ export function AgentChatPanel({
           </Badge>
         </div>
         <span className="font-mono text-xs text-muted-foreground">
-          {formatUsd(costUsd)}
+          {formatSessionCost(costUsd)}
         </span>
       </div>
 

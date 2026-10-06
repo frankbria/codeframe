@@ -350,7 +350,7 @@ cf blocker show <id>                  # Blocker details
 cf blocker answer <id> "answer"       # Unblock the agent
 
 # Diagnostics
-cf work diagnose <id>                 # AI-powered failure analysis
+cf work diagnose <id>                 # Pattern-based failure analysis
 cf env check                          # Validate environment
 cf env doctor                         # Comprehensive health check
 ```
@@ -385,10 +385,10 @@ resolved by waiving it with a justification.
 cf review                             # Run verification gates
 cf checkpoint create "milestone"      # Snapshot project state
 cf checkpoint list                    # List checkpoints
-cf checkpoint restore <id>            # Roll back to checkpoint
+cf checkpoint restore <id>            # Restore task statuses (files untouched)
 
 # Debugging
-cf work replay <id>                   # Replay and debug a past execution
+cf work replay <run-id>               # Replay and debug a past run (built-in react engine)
 cf dashboard                          # Launch TUI dashboard
 ```
 
@@ -412,7 +412,7 @@ cf patch export                       # Export changes as patch
 CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser:
 
 - **THINK**: Socratic PRD generation with recursive stress-testing, LLM-powered task decomposition with dependency graphs, 5 PRD templates, 7 task templates, CPM-based scheduling
-- **BUILD**: ReAct agent with 7 tools, self-correction with loop prevention, verification gates (ruff/pytest/BUILD), stall detection with configurable recovery (retry/blocker/fail), batch execution (serial/parallel/auto), human-in-the-loop blockers, checkpointing, state persistence, replay/debug mode (`cf work replay`), dynamic config reload, TUI dashboard (`cf dashboard`)
+- **BUILD**: ReAct agent with 7 tools, self-correction with loop prevention, verification gates (ruff/pytest/BUILD), stall detection with configurable recovery (retry/blocker/fail), batch execution (serial/parallel/auto), human-in-the-loop blockers, checkpointing, state persistence, replay/debug mode for built-in react runs (`cf work replay`), dynamic config reload, TUI dashboard (`cf dashboard`)
 - **PROVE**: PROOF9 quality memory system — 9-gate evidence-based verification (`cf proof run/capture/list/status/show/waive`), every glitch becomes a permanent proof obligation
 - **SHIP**: GitHub PR workflow, environment validation, task self-diagnosis
 - **Engine adapters**: Claude Code, Codex, OpenCode, Kilocode, and built-in ReAct — all via `--engine` flag
@@ -434,7 +434,7 @@ CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser
 - [x] Agent adapter architecture -- delegate to Claude Code, Codex, OpenCode, Kilocode via workspace hooks
 - [x] Worktree isolation for parallel agent execution
 - [x] Reconciliation layer for multi-agent output
-- [x] Replay/debug mode (`cf work replay`)
+- [x] Replay/debug mode (`cf work replay`, built-in react engine)
 - [x] TUI dashboard (`cf dashboard`)
 - [x] Dynamic config reload during batch execution
 - [x] Multi-provider LLM -- Anthropic, OpenAI, or any OpenAI-compatible endpoint
@@ -480,7 +480,7 @@ export OPENAI_BASE_URL=http://localhost:11434/v1  # for Ollama, vLLM, LM Studio,
 # Per-workspace: .codeframe/config.yaml supports an `llm:` block for the same options
 
 # Optional
-export DATABASE_PATH=./codeframe.db         # Default: ./.codeframe/state.db
+export DATABASE_PATH=./codeframe.db         # Server accounts/keys; default ./.codeframe/platform.db
 export RATE_LIMIT_ENABLED=true              # API rate limiting
 export RATE_LIMIT_DEFAULT=100/minute        # Default limit
 ```

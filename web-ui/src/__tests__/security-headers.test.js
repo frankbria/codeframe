@@ -12,7 +12,7 @@ import { buildCsp, buildConnectSrc, securityHeaders } from '../../security-heade
 
 describe('security headers (#657)', () => {
   test('CSP locks down the exfil-relevant directives', () => {
-    const csp = buildCsp({});
+    const csp = buildCsp({}, { nonce: 'n' });
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("base-uri 'self'");
@@ -38,18 +38,37 @@ describe('security headers (#657)', () => {
     const cs = buildConnectSrc({ apiUrl: '', wsUrl: '' });
     expect(cs).not.toContain('*');
     expect(cs).toContain("'self'");
-    expect(cs).toContain('ws://localhost:8000');
+    // The same loopback defaults the streams dial (#1296): cf serve's port.
+    expect(cs).toContain('ws://localhost:8080');
+    expect(cs).toContain('http://localhost:8080');
+    expect(cs).not.toContain(':8000');
+  });
+
+  test('connect-src allows the SSE origin the streams dial (#1296)', () => {
+    // An explicit SSE origin is dialled directly, so the CSP must list it.
+    const cs = buildConnectSrc({
+      apiUrl: 'https://app.example.com',
+      sseUrl: 'https://events.example.com',
+    });
+    expect(cs).toContain('https://events.example.com');
+  });
+
+  test('with only an API URL, the derived socket origin is allowed (#1296)', () => {
+    // wsBase derives wss://<api host>; the CSP used to add ws://localhost:8000.
+    const cs = buildConnectSrc({ apiUrl: 'https://app.example.com' });
+    expect(cs).toContain('wss://app.example.com');
+    expect(cs).not.toContain('localhost');
   });
 
   test('production CSP does not allow eval (#783)', () => {
     // unsafe-eval is only needed by the Next.js dev runtime (React Refresh);
     // shipping it in production widens the XSS surface for no benefit.
-    expect(buildCsp({})).not.toContain("'unsafe-eval'");
-    expect(buildCsp({ NODE_ENV: 'production' })).not.toContain("'unsafe-eval'");
+    expect(buildCsp({}, { nonce: 'n' })).not.toContain("'unsafe-eval'");
+    expect(buildCsp({ NODE_ENV: 'production' }, { nonce: 'n' })).not.toContain("'unsafe-eval'");
   });
 
   test('dev CSP allows eval for the Next.js dev runtime', () => {
-    expect(buildCsp({ NODE_ENV: 'development' })).toContain("'unsafe-eval'");
+    expect(buildCsp({ NODE_ENV: 'development' }, { nonce: 'n' })).toContain("'unsafe-eval'");
   });
 
   test('securityHeaders ships the hardening header set', () => {
@@ -120,12 +139,12 @@ describe('production CSP carries a nonce, not unsafe-inline (#936)', () => {
     expect(keys).toContain('X-Content-Type-Options');
   });
 
-  test('a missing nonce still produces a working policy', () => {
-    // Non-document responses fall back to this; it must not be empty or broken.
-    const scriptSrc = buildCsp(PROD)
-      .split('; ')
-      .find((d) => d.startsWith('script-src'));
-    expect(scriptSrc).toContain("'self'");
+  test('a missing nonce is refused, never served as unsafe-inline (#1305)', () => {
+    // The nonce-less 'unsafe-inline' form was reachable only from tests; the
+    // one caller (proxy.ts) always mints a nonce. Refusing it means a future
+    // caller cannot quietly ship the policy that lets injected scripts run.
+    expect(() => buildCsp(PROD)).toThrow(/nonce/);
+    expect(() => buildCsp(PROD, { nonce: '' })).toThrow(/nonce/);
   });
 });
 
@@ -151,5 +170,24 @@ describe('the nonce requires dynamic rendering (#936)', () => {
     expect(proxy).toMatch(/requestHeaders\.set\(\s*'Content-Security-Policy'/);
     expect(proxy).toMatch(/response\.headers\.set\(\s*'Content-Security-Policy'/);
     expect(proxy).toContain('getRandomValues');
+  });
+});
+
+describe('proxy.ts feeds the CSP the build-time origins (#1296)', () => {
+  // proxy.ts used to call buildCsp(process.env). Next inlines only the literal
+  // `process.env.NEXT_PUBLIC_X` form, and the image's runner stage has no
+  // NEXT_PUBLIC_* at all, so the shipped CSP always fell back to loopback
+  // while the client dialled the origin baked in at build.
+  const source = fs.readFileSync(path.join(process.cwd(), 'src/proxy.ts'), 'utf8');
+
+  test.each(['NEXT_PUBLIC_API_URL', 'NEXT_PUBLIC_WS_URL', 'NEXT_PUBLIC_SSE_URL'])(
+    'reads %s as a literal process.env expression',
+    (key) => {
+      expect(source).toContain(`process.env.${key}`);
+    }
+  );
+
+  test('never hands buildCsp the env object itself', () => {
+    expect(source).not.toMatch(/buildCsp\(\s*process\.env\s*[,)]/);
   });
 });

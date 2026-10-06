@@ -33,16 +33,19 @@ jest.mock('@/components/prd', () => ({
     onGenerateTasks,
     isGeneratingTasks,
     onStressTest,
+    onSavePrd,
   }: {
     onGenerateTasks: () => void;
     isGeneratingTasks: boolean;
     onStressTest?: () => void;
+    onSavePrd?: (content: string, summary: string) => void;
   }) => (
     <div>
       <button onClick={onGenerateTasks} disabled={isGeneratingTasks}>
         Generate Tasks
       </button>
       <button onClick={onStressTest}>Stress Test</button>
+      <button onClick={() => onSavePrd?.('# Edited', 'my edit')}>Save PRD</button>
     </div>
   ),
 }));
@@ -189,5 +192,23 @@ describe('PrdPage — Stress Test wiring', () => {
       expect(screen.getByText('stress-test-modal-open')).toBeInTheDocument();
     });
     expect(stressTestModalProps.open).toBe(true);
+  });
+});
+
+describe('PrdPage — handleSavePrd (#1297)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetSelectedWorkspacePath.mockReturnValue(WORKSPACE);
+    setupSWR();
+  });
+
+  it('tells the user when a save fails, instead of only logging it', async () => {
+    const { prdApi } = jest.requireMock('@/lib/api');
+    prdApi.createVersion.mockRejectedValueOnce({ detail: 'disk full', status_code: 500 });
+
+    render(<PrdPage />);
+    fireEvent.click(screen.getByRole('button', { name: /save prd/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('disk full')));
   });
 });

@@ -202,6 +202,7 @@ class OpenAIProvider(LLMProvider):
                 provider=self.provider_name,
                 model=kwargs["model"],
                 purpose=purpose,
+                key_source=self.key_source,
             ) from exc
 
         return self._parse_response(response)
@@ -251,6 +252,7 @@ class OpenAIProvider(LLMProvider):
                 provider=self.provider_name,
                 model=kwargs["model"],
                 purpose=purpose,
+                key_source=self.key_source,
             ) from exc
 
     async def async_stream(
@@ -274,11 +276,6 @@ class OpenAIProvider(LLMProvider):
         do not support Anthropic extended thinking.
         """
         import openai as _openai
-        from codeframe.adapters.llm.base import (
-            LLMAuthError,
-            LLMConnectionError,
-            LLMRateLimitError,
-        )
 
         if self._async_client is None:
             self._async_client = _openai.AsyncOpenAI(
@@ -304,8 +301,10 @@ class OpenAIProvider(LLMProvider):
         # Track partial tool calls across chunks (OpenAI streams them incrementally).
         # key: index → {id, name, arguments_parts, emitted_start}
         partial_tool_calls: dict[int, dict] = {}
-        usage_input: int = 0
-        usage_output: int = 0
+        # None until a usage chunk arrives: some OpenAI-compatible servers
+        # ignore include_usage, and 0 would bill the call as free (#1432).
+        usage_input: Optional[int] = None
+        usage_output: Optional[int] = None
         stop_reason: str = "end_turn"
 
         try:
@@ -351,6 +350,10 @@ class OpenAIProvider(LLMProvider):
                             partial_tool_calls[idx]["arguments_parts"].append(
                                 tc_delta.function.arguments
                             )
+                            # Counted toward a cut-off call's charge (#1405).
+                            yield StreamChunk(
+                                type="tool_input_delta", text=tc_delta.function.arguments
+                            )
 
                         # Defer tool_use_start until both id and name are known
                         tc_info = partial_tool_calls[idx]
@@ -363,12 +366,14 @@ class OpenAIProvider(LLMProvider):
                             )
                             tc_info["emitted_start"] = True
 
-        except _openai.AuthenticationError as exc:
-            raise LLMAuthError(str(exc)) from exc
-        except _openai.RateLimitError as exc:
-            raise LLMRateLimitError(str(exc)) from exc
-        except _openai.APIConnectionError as exc:
-            raise LLMConnectionError(str(exc)) from exc
+        except Exception as exc:
+            # The same actionable mapping as complete(); this used to map only
+            # auth/rate/connection, with the raw SDK string (#1434).
+            from codeframe.adapters.llm.errors import map_provider_error
+
+            raise map_provider_error(
+                exc, provider=self.provider_name, model=model, key_source=self.key_source,
+            ) from exc
 
         # Build tool_inputs_by_id from accumulated partial tool calls
         tool_inputs_by_id: dict = {}

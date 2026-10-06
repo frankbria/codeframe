@@ -15,6 +15,7 @@ import json
 import re
 import shlex
 import subprocess
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -22,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
 from codeframe.adapters.llm import LLMProvider, Purpose
-from codeframe.core import blockers, events
+from codeframe.core import blockers, events, run_control
 from codeframe.core.agent_env import build_agent_env
 from codeframe.core.path_safety import is_path_safe
 from codeframe.core.context import ContextLoader, TaskContext
@@ -251,6 +252,10 @@ from codeframe.core.blocker_detection import (  # noqa: E402
 )
 
 
+class _RunStopped(Exception):
+    """The user stopped the run (#1279); unwinds the plan loop to _execute_plan_until_stopped."""
+
+
 class Agent:
     """Orchestrates task execution through the full agent loop.
 
@@ -370,6 +375,7 @@ class Agent:
             Final AgentState
         """
         self.state = AgentState(task_id=task_id, status=AgentStatus.IDLE)
+        self._run_started = time.monotonic()
         # "Max cost per TASK" — so spend from earlier runs of this same task
         # counts. Without it, answering a blocker and resuming would grant a
         # fresh full budget every time (#911 review, #1004).
@@ -398,7 +404,7 @@ class Agent:
 
             # Execute plan
             self.state.status = AgentStatus.EXECUTING
-            self._execute_plan()
+            self._execute_plan_until_stopped()
 
             # Run final verification if execution succeeded
             if self.state.status == AgentStatus.EXECUTING:
@@ -422,6 +428,7 @@ class Agent:
         Returns:
             Final AgentState
         """
+        self._run_started = time.monotonic()  # the completion event reads it
         self.state = state
         # Resume is exactly the bypass the prior-cost lookup exists to close: a
         # blocked task answered and resumed would otherwise start again at $0
@@ -439,7 +446,7 @@ class Agent:
                 # Blockers resolved, continue execution
                 self.state.status = AgentStatus.EXECUTING
                 self.state.blocker = None
-                self._execute_plan()
+                self._execute_plan_until_stopped()
             else:
                 # Still blocked
                 return self.state
@@ -460,6 +467,19 @@ class Agent:
         """Create implementation plan from context."""
         planner = Planner(self.llm)
         return planner.create_plan(self.context)
+
+    def _execute_plan_until_stopped(self) -> None:
+        """`_execute_plan`, ending quietly when the user stops the run (#1279).
+        No blocker: a stop needs no answer."""
+        try:
+            self._execute_plan()
+        except _RunStopped:
+            self._debug_log("Run stopped by user", level="INFO", always=True)
+            self.state.status = AgentStatus.FAILED
+
+    def _raise_if_stopped(self) -> None:
+        if run_control.cancellation_requested():
+            raise _RunStopped
 
     def _execute_plan(self) -> None:
         """Execute the implementation plan step by step."""
@@ -485,6 +505,9 @@ class Agent:
 
         while self.state.current_step < len(self.state.plan.steps):
             step = self.state.plan.steps[self.state.current_step]
+
+            # Stopped by the user (#1279): stop before the next step's LLM call.
+            self._raise_if_stopped()
 
             # Stop the RUN, not just the step (#1004 review). Executor refuses a
             # capped step by returning FAILED — but FAILED is the trigger for
@@ -540,6 +563,8 @@ class Agent:
 
             # Execute the step
             result = self.executor.execute_step(step, self.context)
+            # A stop during the step must not lead into self-correction (codex review).
+            self._raise_if_stopped()
             self.state.step_results.append(result)
 
             self._debug_log(
@@ -862,6 +887,10 @@ class Agent:
         )
 
         while self.state.attempt_count < self.state.max_attempts:
+            # Stopped by the user (#1279): no more gate runs or fixes.
+            if run_control.cancellation_requested():
+                self.state.status = AgentStatus.FAILED
+                return
             attempt_num = self.state.attempt_count + 1
             self._verbose_print(f"[VERIFY] Attempt {attempt_num}/{self.state.max_attempts}")
             self._debug_log(
@@ -872,6 +901,10 @@ class Agent:
             try:
                 result = run_gates(self.workspace, verbose=False)
                 self.state.gate_results.append(result)
+
+                if not result.passed and run_control.cancellation_requested():
+                    self.state.status = AgentStatus.FAILED  # stopped during the gates
+                    return
 
                 if result.passed:
                     self.state.status = AgentStatus.COMPLETED
@@ -1595,6 +1628,8 @@ IMPORTANT:
         Returns:
             New StepResult if correction was attempted, None if can't correct
         """
+        # Every self-correction path starts here: one check covers them all.
+        self._raise_if_stopped()
         # A cap the correction loop ignores is not a cap (#911 review, #1004).
         # This loop is the expensive one: it steps UP to the CORRECTION model
         # and runs up to MAX_SELF_CORRECTION_ATTEMPTS times per failed step.
@@ -2081,7 +2116,7 @@ Generate a single question OR a RESOLVE_AUTONOMOUSLY/TECHNICAL_FIX directive:"""
             event = CompletionEvent(
                 task_id=task_id,
                 status=sse_status,
-                duration_seconds=0,  # Could track this
+                duration_seconds=time.monotonic() - self._run_started,
                 files_modified=[c.path for c in (self.executor.changes if self.executor else [])],
             )
             self.event_publisher.publish_sync(task_id, event)

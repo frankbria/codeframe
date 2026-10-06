@@ -105,7 +105,7 @@ These items are not part of a specific pipeline stage but are prerequisites for 
 
 **What to build**:
 
-- **Agent settings**: default model per agent type (Claude, Codex, OpenCode), max turns, max cost per task
+- **Agent settings**: max turns, max cost per task (a per-agent-type default model was removed in #1292: no engine read it)
 - **API keys**: input and verify `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, GitHub token — stored encrypted, never returned in plaintext
 - **PROOF9 defaults**: which gates are enabled by default for new projects, strictness level (fail on any open REQ vs. warn only)
 - **Workspace configuration**: workspace root path, default branch, auto-detection overrides
@@ -172,7 +172,7 @@ Without a settings page, a new user who cannot find the env vars cannot use the 
 
 ### 5. External Issue Import (GitHub Issues → Tasks)
 
-**Current state**: Shipped (#563–565). Settings → Integrations connects a repo with a PAT, the Tasks page's **Import from GitHub** modal browses and multi-selects open issues, and imported tasks link back to their issue with optional auto-close on DONE. Known limitation: auto-close uses the single machine-wide GitHub PAT, so closing an issue in a repo imported before reconnecting to a different repo can fail if that PAT lacks access.
+**Current state**: Shipped (#563–565). Settings → Integrations connects a repo with a PAT, the Tasks page's **Import from GitHub** modal browses and multi-selects open issues, and imported tasks link back to their issue with optional auto-close on DONE. Auto-close uses the PAT of the user who connected the repo in the web UI (#1283). Known limitation: after reconnecting to a different repo, an older imported task's issue is closed with the current connection's PAT, which can fail if that PAT lacks access to the older repo.
 
 **Original gap**: The THINK phase starts from "I have an idea" (PRD generation). The vision acknowledges that some users start from an existing issue tracker: "If you already have issues in a tracker, CodeFRAME can potentially consume them (future integration)."
 

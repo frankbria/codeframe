@@ -2,9 +2,12 @@
 
 Stores only **non-secret** repo metadata for a connected GitHub repository under
 ``.codeframe/github_integration.json``. The PAT itself is stored in the
-caller-scoped ``CredentialManager`` (``CredentialProvider.GIT_GITHUB``; issue
-#790 — per-user when authenticated, machine-wide when auth is disabled) — never
-in this file.
+connecting principal's own ``CredentialManager`` store
+(``CredentialProvider.GIT_GITHUB``; #790, and every principal has a user_id
+since #963), never in this file. *Who* connected is recorded outside the
+workspace, in ``~/.codeframe/github_connection_owners.json``
+(``record_connection_owner``, #1283): anything running in the workspace can
+write ``.codeframe/``.
 
 Headless — no FastAPI or HTTP imports (architecture rule #1). Mirrors the
 shape of ``codeframe/core/notifications_config.py``.
@@ -110,13 +113,157 @@ def save_github_integration_config(
     return payload
 
 
+#: Which user connected each workspace's repo, and so whose credential store
+#: holds its PAT (#1283). Kept beside the credential store, NOT in the
+#: workspace: ``.codeframe/`` is writable by whatever runs in the workspace, and
+#: a forged owner id there would make the background paths use another
+#: account's PAT (codex review). Only the authenticated connect route writes it.
+_OWNERS_FILENAME = "github_connection_owners.json"
+
+
+def _owners_path() -> Path:
+    from codeframe.core import credentials
+
+    return Path(credentials.DEFAULT_STORAGE_DIR) / _OWNERS_FILENAME
+
+
+def _workspace_key(workspace: Workspace) -> str:
+    return str(Path(workspace.repo_path).resolve())
+
+
+def _read_owners() -> dict:
+    try:
+        data = json.loads(_owners_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_connection(
+    workspace: Workspace, config: dict, user_id: Optional[int]
+) -> GitHubIntegrationConfig:
+    """Save the repo config and record its owner as one step (#1283 review).
+
+    Each write is atomic on its own; holding the owner-map lock across both
+    stops two concurrent connects to the same workspace from pairing one
+    admin's repo with the other admin's PAT.
+    """
+    from codeframe.core.atomic_io import read_modify_write_lock
+
+    with read_modify_write_lock(_owners_lock_path()):
+        saved = save_github_integration_config(workspace, config)
+        _write_owner(_workspace_key(workspace), user_id)
+    return saved
+
+
+def _owners_lock_path() -> Path:
+    path = _owners_path()
+    return path.with_name(f".{path.name}.lock")
+
+
+def _write_owner(key: str, user_id: Optional[int]) -> None:
+    """The owner-map read-modify-write for ``key`` (a resolved repo path).
+    Callers hold the owners lock."""
+    from codeframe.core.atomic_io import atomic_write_bytes
+
+    owners = _read_owners()
+    if user_id is None:
+        if owners.pop(key, None) is None:
+            return
+    else:
+        owners[key] = user_id
+    atomic_write_bytes(_owners_path(), json.dumps(owners, indent=2).encode("utf-8"), mode=0o600)
+
+
+def record_connection_owner(workspace: Workspace, user_id: Optional[int]) -> None:
+    """Record (or with ``None`` forget) who connected this workspace's repo.
+
+    The read-modify-write holds a cross-process lock (several server workers
+    can connect different workspaces at once) and the write is atomic with
+    0600 permissions on every platform (codex review).
+    """
+    from codeframe.core.atomic_io import read_modify_write_lock
+
+    with read_modify_write_lock(_owners_lock_path()):
+        _write_owner(_workspace_key(workspace), user_id)
+
+
+def forget_connection_owner(repo_path: Path) -> None:
+    """Forget who connected the workspace at ``repo_path`` (#1370).
+
+    For deregistration, which knows only the path: a later workspace at the
+    same path must not inherit the previous owner's stored PAT.
+    """
+    from codeframe.core.atomic_io import read_modify_write_lock
+
+    with read_modify_write_lock(_owners_lock_path()):
+        _write_owner(str(Path(repo_path).resolve()), None)
+
+
+def connection_owner(workspace: Workspace) -> Optional[int]:
+    """The user who connected this workspace's repo through the web UI, if any."""
+    value = _read_owners().get(_workspace_key(workspace))
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def resolve_background_pat(workspace: Workspace) -> Optional[str]:
+    """The GitHub PAT for work done outside any request (#1283).
+
+    Auto-close and reconciliation run with no principal. In order:
+
+    1. The PAT that the user recorded as having connected this workspace
+       stored in their own store (#790). Store only: an operator's ambient
+       ``GITHUB_TOKEN`` never stands in for a user's connection (#900).
+    2. The machine-wide store, then ``GITHUB_TOKEN``, for CLI-connected and
+       legacy workspaces. In hosted mode only the machine-wide store: the
+       process environment belongs to the operator (#900).
+
+    Each step is guarded on its own, so an unreadable per-user store still
+    falls through. Never raises; None when there is no usable PAT.
+    """
+    from codeframe.core.credentials import CredentialManager, CredentialProvider
+    from codeframe.core.llm_resolution import is_hosted
+
+    try:
+        owner = connection_owner(workspace)
+        if owner is not None:
+            pat = CredentialManager(user_id=owner, migrate=False).get_stored_credential(
+                CredentialProvider.GIT_GITHUB
+            )
+            if pat:
+                return pat
+    except Exception:  # noqa: BLE001 - fall through to the machine-wide store
+        logger.warning("Per-user GitHub PAT lookup failed", exc_info=True)
+
+    try:
+        manager = CredentialManager()
+        if is_hosted():
+            return manager.get_stored_credential(CredentialProvider.GIT_GITHUB)
+        return manager.get_credential(CredentialProvider.GIT_GITHUB)
+    except Exception:  # noqa: BLE001 - background callers must never break
+        logger.warning("GitHub PAT lookup failed", exc_info=True)
+        return None
+
+
 def clear_github_integration_config(workspace: Workspace) -> None:
     """Remove the integration config. Idempotent — absence is a no-op."""
+    from codeframe.core.atomic_io import read_modify_write_lock
+
     path = _config_path(workspace)
-    try:
-        path.unlink(missing_ok=True)
-    except OSError as e:
-        logger.warning("Failed to remove github_integration.json: %s", e)
+    # Both halves under one hold of the owners lock, as save_connection does
+    # for its pair: a connect landing between the unlink and the forget left
+    # its fresh repo with no owner (GLM review).
+    with read_modify_write_lock(_owners_lock_path()):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning("Failed to remove github_integration.json: %s", e)
+        try:
+            _write_owner(_workspace_key(workspace), None)
+        except OSError as e:
+            logger.warning("Failed to forget the GitHub connection owner: %s", e)
 
 
 class GitHubResolutionError(Exception):

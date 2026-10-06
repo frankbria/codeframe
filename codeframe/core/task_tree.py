@@ -6,13 +6,13 @@ using LLM-powered analysis. Also handles tree display and status propagation.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
-import json
 import logging
 import re
 from typing import Optional
 
 from codeframe.adapters.llm.base import Purpose
 from codeframe.core import tasks as task_module
+from codeframe.core.llm_json import LLMJsonError, extract_json_array
 from codeframe.core.state_machine import TaskStatus
 from codeframe.core.workspace import Workspace
 
@@ -72,16 +72,33 @@ def classify_task(
         temperature=0.0,
     )
 
-    result = response.content.strip().lower()
-    if result in ("atomic", "composite"):
-        return result
-    return "atomic"
+    # Normalised, not exact: "Atomic." and "**composite**" are answers. A reply
+    # naming neither (or both) is not, and defaulting it to "atomic" turned a
+    # parse failure into a whole-PRD task (#1293, the #1115 rule).
+    # A negation means the other answer ("not atomic" is composite, and "non-
+    # composite" atomic); matching the word alone read each one backwards.
+    # Any negation left after that flip ("isn't", "not really") is one we
+    # cannot read, so it is refused rather than guessed.
+    answer = re.sub(
+        r"\b(?:not|non)[\s-]+(?:an?\s+)?(atomic|composite)\b",
+        lambda m: "composite" if m.group(1) == "atomic" else "atomic",
+        response.content.lower(),
+    )
+    found = set(re.findall(r"\b(atomic|composite)\b", answer))
+    negated = re.search(r"\b(?:not|non|never|no)\b|n't\b", answer)
+    if len(found) == 1 and not negated:
+        return found.pop()
+    raise task_module.TaskGenerationError(
+        f"Could not classify task {description[:60]!r}: the model answered "
+        f"{response.content.strip()[:80]!r}, not 'atomic' or 'composite'. "
+        + task_module._RETRY_HINT
+    )
 
 
 def decompose_task(
     provider, description: str, lineage: list[str]
 ) -> list[dict]:
-    """Decompose a task into 2-7 subtasks using LLM.
+    """Decompose a task into 1-7 subtasks using LLM.
 
     Args:
         provider: LLM provider instance
@@ -89,7 +106,10 @@ def decompose_task(
         lineage: List of ancestor task descriptions for context
 
     Returns:
-        List of dicts with 'title' and 'description' keys (2-7 items)
+        List of dicts with 'title' and 'description' keys (1-7 items)
+
+    Raises:
+        TaskGenerationError: If the reply holds no subtask with a title.
     """
     lineage_context = ""
     if lineage:
@@ -108,49 +128,31 @@ def decompose_task(
     )
 
     subtasks = _parse_subtasks(response.content)
-
-    # Clamp to 2-7 items
-    if len(subtasks) > 7:
-        subtasks = subtasks[:7]
-    while len(subtasks) < 2:
-        subtasks.append({
-            "title": f"Part {len(subtasks) + 1} of: {description[:60]}",
-            "description": f"Additional subtask for: {description}",
-        })
-
-    return subtasks
+    if not subtasks:
+        # Never pad with "Part N of: <description>" placeholders: their scope is
+        # the whole parent, so the user got tasks that each meant "do it all"
+        # (#1293). One real subtask is a real answer and is kept as is.
+        raise task_module.TaskGenerationError(
+            f"Could not decompose {description[:60]!r}: the model returned no "
+            "subtasks with a title. " + task_module._RETRY_HINT
+        )
+    return subtasks[:7]
 
 
 def _parse_subtasks(content: str) -> list[dict]:
-    """Parse LLM response into subtask list.
+    """Parse an LLM response into subtasks; ``[]`` only for a real empty list.
 
-    Handles JSON arrays directly or wrapped in markdown code blocks.
+    Accepts a bare or fenced JSON array, or an array inside prose.
 
-    Args:
-        content: Raw LLM response
-
-    Returns:
-        List of dicts with 'title' and 'description' keys
+    Raises:
+        TaskGenerationError: If no JSON array can be read from the response.
     """
-    # Try markdown-wrapped JSON first
-    json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
-    if json_match:
-        json_str = json_match.group(1)
-    else:
-        # Try raw JSON array
-        json_match = re.search(r"\[[\s\S]*\]", content)
-        if json_match:
-            json_str = json_match.group(0)
-        else:
-            return []
-
     try:
-        raw = json.loads(json_str)
-    except json.JSONDecodeError:
-        return []
-
-    if not isinstance(raw, list):
-        return []
+        raw = extract_json_array(content, what="task decomposition")
+    except LLMJsonError as e:
+        raise task_module.TaskGenerationError(
+            f"Could not read the task decomposition: {e}. " + task_module._RETRY_HINT
+        ) from e
 
     result = []
     for item in raw:

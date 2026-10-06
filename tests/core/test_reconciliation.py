@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+from codeframe.core import run_control
+
 import pytest
 
 pytestmark = pytest.mark.v2
@@ -225,9 +227,11 @@ class TestApplyChanges:
         batch = MagicMock()
         batch.results = {}
 
-        engine.apply_changes(result, batch, active_processes)
+        # The worker and its delegated CLI's group (#1279).
+        with patch("codeframe.core.run_control.terminate_tree") as kill_tree:
+            engine.apply_changes(result, batch, active_processes)
 
-        mock_proc.terminate.assert_called_once()
+        kill_tree.assert_called_once_with(mock_proc, grace_s=run_control.WORKER_GRACE_S)
         assert "t1" in result.tasks_skipped
 
     def test_closed_change_terminates_process(self) -> None:
@@ -249,9 +253,11 @@ class TestApplyChanges:
         batch = MagicMock()
         batch.results = {}
 
-        engine.apply_changes(result, batch, active_processes)
+        # The worker and its delegated CLI's group (#1279).
+        with patch("codeframe.core.run_control.terminate_tree") as kill_tree:
+            engine.apply_changes(result, batch, active_processes)
 
-        mock_proc.terminate.assert_called_once()
+        kill_tree.assert_called_once_with(mock_proc, grace_s=run_control.WORKER_GRACE_S)
         assert "t1" in result.tasks_skipped
 
     def test_blocker_resolved_requeues_task(self) -> None:
@@ -289,16 +295,19 @@ class TestApplyChanges:
             ],
         )
 
-        # Process that raises on terminate
         mock_proc = MagicMock()
-        mock_proc.terminate.side_effect = OSError("already dead")
         active_processes = {"t1": mock_proc}
         batch = MagicMock()
         batch.results = {}
 
-        # Should not raise
-        engine.apply_changes(result, batch, active_processes)
-        assert len(result.errors) >= 0  # Error may or may not be logged
+        # A kill that fails (the process already died) must not stop the skip.
+        with patch(
+            "codeframe.core.run_control.terminate_tree", side_effect=OSError("already dead")
+        ) as kill_tree:
+            engine.apply_changes(result, batch, active_processes)
+
+        kill_tree.assert_called_once_with(mock_proc, grace_s=run_control.WORKER_GRACE_S)
+        assert "t1" in result.tasks_skipped
 
 
 # ---------------------------------------------------------------------------

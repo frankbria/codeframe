@@ -213,7 +213,7 @@ def stats(
         return
 
     if output_format == "json":
-        console.print(_json.dumps(data, indent=2))
+        typer.echo(_json.dumps(data, indent=2))  # not Rich: it wraps, colours and parses markup
         return
 
     table = _build_stats_table(data, title="Engine Performance Stats")

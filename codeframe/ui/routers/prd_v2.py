@@ -30,8 +30,21 @@ from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import prd
 
 from codeframe.core.prd import PrdHasDependentTasksError
-from codeframe.ui.dependencies import get_v2_workspace
-from codeframe.ui.response_models import api_error, internal_error, ErrorCodes
+from codeframe.core.spend_limit import SpendLimitExceeded
+from codeframe.ui.dependencies import (
+    get_v2_workspace,
+    release_planning_budget,
+    reserve_planning_budget,
+    spend_limit_http,
+)
+from codeframe.adapters.llm.base import LLMError
+from codeframe.ui.response_models import (
+    ErrorCodes,
+    api_error,
+    internal_error,
+    llm_error_code,
+    llm_error_http,
+)
 
 # Payload caps (#934). Every value below is fed into an LLM prompt, so an
 # uncapped request body is an unbounded provider bill and a DoS vector. Pydantic
@@ -294,8 +307,15 @@ def _resolve_llm_provider(workspace: Workspace, user_id: Optional[int] = None):
             missing or the provider cannot be constructed.
     """
     from codeframe.core.llm_resolution import create_provider, resolve_llm_settings
+    from codeframe.core.models import CallType
+    from codeframe.core.usage_recording import UsageRecordingProvider
 
-    return create_provider(resolve_llm_settings(workspace.repo_path), user_id=user_id)
+    # Recorded where the daily spend limit reads it (#1345).
+    return UsageRecordingProvider(
+        create_provider(resolve_llm_settings(workspace.repo_path), user_id=user_id),
+        workspace,
+        CallType.PLANNING,
+    )
 
 
 async def _stress_test_event_stream(
@@ -385,6 +405,27 @@ async def _stress_test_event_stream(
                 logger.info("Client disconnected from stress-test stream; aborting")
                 disconnected = True
                 break
+            if event.get("type") == "error":
+                # Core names the exception class; the code is HTTP vocabulary,
+                # so it is attached here, from the same table (#1328). Anything
+                # but a typed provider error is arbitrary internals: core's
+                # str(exc) is logged under a correlation id, never sent (#934).
+                code = llm_error_code(event.get("error_type", ""))
+                if event.get("error_type") == "SpendLimitExceeded":
+                    code = ErrorCodes.SPEND_LIMIT_EXCEEDED
+                if code:
+                    event = {"type": "error", "message": event.get("message", ""), "code": code}
+                else:
+                    _err = internal_error(
+                        RuntimeError(event.get("message", "")),
+                        operation="run the stress test",
+                        logger=logger,
+                    )
+                    event = {
+                        "type": "error",
+                        "message": _err["detail"],
+                        "correlation_id": _err["correlation_id"],
+                    }
             yield _sse(event)
     except Exception as exc:  # noqa: BLE001 - the stream is already 200 OK
         # There was no except here at all: an unexpected failure mid-stream
@@ -401,6 +442,23 @@ async def _stress_test_event_stream(
         if watcher is not None:
             disconnected = True  # stops the poll loop on the normal path too
             watcher.cancel()
+
+
+async def _budgeted(
+    stream: AsyncGenerator[str, None], auth: dict, budget: Optional[float]
+) -> AsyncGenerator[str, None]:
+    """Run ``stream`` under its reserved planning budget, then release it.
+
+    The budget is set here, in the stream's own context: the endpoint's
+    context ends when it returns the StreamingResponse (#1345). A client
+    disconnect cancels the stream but not its worker thread's model call, so
+    the hold is returned only once that call has recorded its spend.
+    """
+    from codeframe.core.usage_recording import spend_budget
+
+    with spend_budget(budget, on_settled=lambda: release_planning_budget(auth, budget)):
+        async for frame in stream:
+            yield frame
 
 
 @router.get("/stress-test")
@@ -431,8 +489,15 @@ async def stress_test_prd_stream_endpoint(
         - ``complete``: ambiguity count + rendered tech spec / ambiguity report
         - ``error``: no PRD, missing API key, or decomposition failure
     """
+    # Reserved for the whole stream and enforced between calls (#1345): a
+    # stress test is many calls. Released when the stream ends.
+    budget = await reserve_planning_budget(request, workspace, auth)
     return StreamingResponse(
-        _stress_test_event_stream(workspace, max_depth, request, auth.get("user_id")),
+        _budgeted(
+            _stress_test_event_stream(workspace, max_depth, request, auth.get("user_id")),
+            auth,
+            budget,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -504,6 +569,8 @@ async def refine_prd_from_stress_test(
         for i, ans in enumerate(body.answers)
     ]
 
+    # Reserved and enforced for the call (#1345); released below.
+    budget = await reserve_planning_budget(request, workspace, auth)
     try:
         # resolve_ambiguities_into_prd makes a synchronous, blocking LLM call;
         # offload it to a thread so it does not stall the event loop (mirrors
@@ -544,11 +611,19 @@ async def refine_prd_from_stress_test(
         return _prd_to_response(new_record)
     except HTTPException:
         raise
+    except SpendLimitExceeded as e:
+        raise spend_limit_http(e)
+    except LLMError as e:
+        # A rejected key or a rate limit is the provider's answer, with an
+        # actionable message, not an opaque server fault (#1328).
+        raise llm_error_http(e, operation="refine PRD")
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=internal_error(e, operation="refine PRD", logger=logger),
         )
+    finally:
+        release_planning_budget(auth, budget)
 
 
 @router.get("/{prd_id}", response_model=PrdResponse)

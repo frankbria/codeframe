@@ -55,9 +55,10 @@ def test_the_pages_payload_reaches_github(client):
 
     assert resp.status_code == 201, resp.text
     assert resp.json()["number"] == 7
-    gh.create_pull_request.assert_awaited_once_with(
-        branch="feature/x", title="T", body="B", base="main"
-    )
+    gh.create_pull_request.assert_awaited_once()
+    sent = gh.create_pull_request.await_args.kwargs
+    assert (sent["branch"], sent["title"], sent["base"]) == ("feature/x", "T", "main")
+    assert sent["body"].startswith("B")  # + the PROOF9 report since #1358
 
 
 def test_the_old_empty_branch_payload_is_the_422_the_page_used_to_get(client):

@@ -51,21 +51,20 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "aiosqlite>=0.19.0",
     "aiohttp>=3.14.0",
+    # Direct import since #1288: webhook pinning keys on URL.raw_host (the IDNA
+    # host aiohttp dials). Major capped like every SDK whose API we call.
+    "yarl>=1.22,<2",
     "httpx>=0.27.0",
-    # Capped at the tested MINOR (#1268): typer is pre-1.0, and 0.27 started
-    # vendoring its own click, which broke `cf proof capture`, --help and
-    # telemetry on a fresh install. The installed-click objects that broke are
-    # gone, but raise this only together with a run of tests/cli against it.
-    "typer>=0.9.0,<0.20",
-    # Not imported directly; capped because the typer above is. typer 0.19
-    # imports click.utils.get_binary_stream, which click 8.5 deprecates and
-    # click 9 removes, so an uncapped click is a fresh install whose `cf` dies
-    # at import. Lift together with typer (#1268).
-    "click>=8.1,<8.5",
+    # Capped at the tested MINOR (#1268, #1351): typer is pre-1.0. 0.27
+    # vendors its own click, so the old typer<0.20 + click<8.5 pair (which
+    # existed because typer 0.19 imported a click API that click 9 removes) is
+    # gone. Raise this only together with a run of tests/cli against it.
+    # click is no longer pinned: nothing here imports it.
+    "typer>=0.27,<0.28",
     "rich>=13.7.0",
     "textual>=0.86.0",
     "requests>=2.33.0",
-    "gitpython>=3.1.50",
+    "gitpython>=3.1.60,<4",
     "pyyaml>=6.0.0",
     "tree-sitter>=0.20.4",
     "tree-sitter-python>=0.20.4",
@@ -97,9 +96,9 @@ dependencies = [
     # `uv lock` resolves to non-vulnerable versions regardless of the parents' lower bounds.
     "starlette>=1.0.1",       # Range-header FileResponse O(n^2) DoS (forces a compatible fastapi)
     "python-multipart>=0.0.27",  # arbitrary file write + DoS in multipart parsing
-    "pyjwt>=2.12.0",          # accepts unknown `crit` header extensions
+    "pyjwt>=2.15.0",          # crit headers; PEM/JWK/BOM HMAC-key confusion, empty-key + RecursionError DoS
     "cryptography>=46.0.7",   # subgroup attack on SECT curves
-    "urllib3>=2.7.0",         # header leak across redirects, decompression bombs
+    "urllib3>=2.8.0",         # redirect header leak, decompression bombs; unbounded chunk buffering, proxy TLS
     "mcp>=1.23.0",            # DNS-rebinding protection off by default
     "idna>=3.15",             # DoS in IDNA processing
 ]
@@ -107,6 +106,11 @@ dependencies = [
 [project.optional-dependencies]
 cloud = [
     "e2b>=2.0.0",
+]
+# Shared rate-limit counters for multi-worker servers: RATE_LIMIT_STORAGE=redis
+# (#1289). limits' own extra, so it keeps choosing the redis range it supports.
+redis = [
+    "limits[redis]",
 ]
 dev = [
     "pytest>=9.0.3,<10",
@@ -121,6 +125,7 @@ dev = [
     "hypothesis>=6.0.0",
     "e2b>=2.0.0",
     "jsonschema>=4.0.0",  # codex app-server protocol contract test (#914)
+    "limits[redis]",  # imports the server with RATE_LIMIT_STORAGE=redis (#1289)
 ]
 
 [project.scripts]

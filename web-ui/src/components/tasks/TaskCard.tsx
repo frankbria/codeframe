@@ -6,6 +6,17 @@ import { PlayCircleIcon, CheckmarkCircle01Icon, LinkCircleIcon, Cancel01Icon, Ar
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { STATUS_INFO, STATUS_BADGE_VARIANT, STATUS_LABEL } from '@/lib/taskStatusInfo';
@@ -61,19 +72,13 @@ export function TaskCard({
   const costEntry = costMap?.get(task.id);
   const showCostBadge = costEntry !== undefined && costEntry.total_cost_usd > 0;
   return (
+    // Not role=button: it wrapped the checkbox, links and action buttons, so
+    // screen readers never reached Execute or Stop (#1298). The title is the
+    // keyboard and assistive-tech way in; the card stays clickable for a mouse.
     <Card
-      className="cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
+      data-testid="task-card"
+      className="cursor-pointer transition-colors focus-within:border-primary/50 hover:border-primary/50"
       onClick={() => onClick(task.id)}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick(task.id);
-        }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={`View details for ${task.title}`}
     >
       <CardContent className="p-3">
         {/* Single TooltipProvider for the entire card to avoid per-tooltip provider overhead */}
@@ -116,8 +121,19 @@ export function TaskCard({
           )}
         </div>
 
-        {/* Title */}
-        <h4 className="truncate text-sm font-medium">{task.title}</h4>
+        {/* Title: the card's real button */}
+        <h4 className="truncate text-sm font-medium">
+          <button
+            type="button"
+            className="w-full truncate rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick(task.id);
+            }}
+          >
+            {task.title}
+          </button>
+        </h4>
 
         {/* Description snippet */}
         {task.description && (
@@ -215,18 +231,35 @@ export function TaskCard({
                   </Button>
                 )}
                 {task.status === 'IN_PROGRESS' && onStop && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 gap-1 px-2 text-xs text-destructive"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStop(task.id);
-                    }}
-                  >
-                    <HugeiconsIcon icon={Cancel01Icon} className="h-3.5 w-3.5" />
-                    Stop
-                  </Button>
+                  // Confirmed like every other Stop (#1297). React bubbles
+                  // portal events through the component tree, so the dialog
+                  // stops propagation or its clicks would open the card.
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 gap-1 px-2 text-xs text-destructive"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <HugeiconsIcon icon={Cancel01Icon} className="h-3.5 w-3.5" />
+                        Stop
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Stop this task?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This stops the agent working on <strong>{task.title}</strong>. Any
+                          in-progress file changes may be left incomplete.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => onStop(task.id)}>Stop task</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 )}
                 {task.status === 'FAILED' && onReset && (
                   <Button

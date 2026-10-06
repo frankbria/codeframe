@@ -6,7 +6,6 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, UTC
 from enum import Enum
-from pathlib import Path
 
 # Third-party imports
 from fastapi import Depends, FastAPI
@@ -43,7 +42,7 @@ from codeframe.ui.routers import (
 )
 from codeframe.auth import router as auth_router
 from codeframe.auth.dependencies import require_method_scope
-from codeframe.platform_store.database import Database
+from codeframe.platform_store.database import open_control_plane_db
 from codeframe.lib.rate_limiter import (
     get_rate_limiter,
     rate_limit_exceeded_handler,
@@ -420,8 +419,9 @@ def _per_worker_rate_limit_warning(
         f"⚠️  Rate limiting uses in-memory storage with {worker_count} workers: "
         f"counters are per-worker, so limits (including auth brute-force "
         f"protection) are effectively multiplied by ~{worker_count}x. "
-        f"Set RATE_LIMIT_STORAGE=redis (with REDIS_URL) for shared, "
-        f"cross-worker rate limiting."
+        f"Set RATE_LIMIT_STORAGE=redis (with REDIS_URL, and the "
+        f"codeframe-ai[redis] extra installed) for shared, cross-worker rate "
+        f"limiting."
     )
 
 
@@ -451,12 +451,7 @@ async def lifespan(app: FastAPI):
     _validate_workspace_allowlist_config()
 
     # Initialize global persistent DB (used by interactive_sessions and auth)
-    db_path = os.environ.get(
-        "DATABASE_PATH",
-        str(Path.cwd() / ".codeframe" / "state.db"),
-    )
-    db = Database(db_path)
-    db.initialize()
+    db = open_control_plane_db()  # waits out a `cf init` migration (#1427)
     app.state.db = db
 
     # Log the effective auth mode (#336: env-gated, secure by default)

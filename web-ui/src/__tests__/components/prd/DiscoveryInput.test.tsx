@@ -86,3 +86,10 @@ describe('DiscoveryInput', () => {
     expect(screen.getByRole('button')).toBeDisabled();
   });
 });
+
+describe('DiscoveryInput a11y (#1298)', () => {
+  it('names the icon-only Send button', () => {
+    render(<DiscoveryInput onSubmit={jest.fn()} disabled={false} />);
+    expect(screen.getByRole('button', { name: /send/i })).toBeInTheDocument();
+  });
+});

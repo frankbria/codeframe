@@ -341,6 +341,11 @@ function ProofPageContent() {
               <span>{data.by_status?.open ?? 0} open</span>
               <span>{data.by_status?.satisfied ?? 0} satisfied</span>
               <span>{data.by_status?.waived ?? 0} waived</span>
+              {(data.by_status?.waiver_expired ?? 0) > 0 && (
+                <span className="text-destructive">
+                  {data.by_status?.waiver_expired} waiver expired (blocks merges until `cf proof run` reopens it)
+                </span>
+              )}
               <span className="font-medium text-foreground">{data.total} total</span>
               {gateFilter && (
                 <span className="flex items-center gap-1.5 rounded-full border bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground">
@@ -508,7 +513,7 @@ function ProofPageContent() {
                         {req.obligations.length}
                       </td>
                       <td className="px-4 py-3">
-                        <ProofStatusBadge status={req.status} />
+                        <ProofStatusBadge status={req.status} waiverExpired={req.waiver_expired} />
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {req.created_at ? formatDate(req.created_at) : '—'}

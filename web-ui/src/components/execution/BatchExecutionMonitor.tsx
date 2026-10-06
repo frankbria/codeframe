@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { IconSvgElement } from '@hugeicons/react';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { CheckmarkCircle01Icon, Cancel01Icon, Loading03Icon, Alert02Icon, StopIcon } from '@hugeicons/core-free-icons';
+import { CheckmarkCircle01Icon, Cancel01Icon, Loading03Icon, Alert02Icon, StopIcon, MinusSignCircleIcon } from '@hugeicons/core-free-icons';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -30,6 +30,9 @@ const statusConfig: Record<string, { icon: IconSvgElement; className: string; la
   FAILED: { icon: Cancel01Icon, className: 'text-red-600', label: 'Failed' },
   IN_PROGRESS: { icon: Loading03Icon, className: 'text-blue-600 animate-spin', label: 'Running' },
   BLOCKED: { icon: Alert02Icon, className: 'text-amber-600', label: 'Blocked' },
+  // Not run because an in-batch dependency did not complete (#1280). Not a
+  // blocker: nothing waits on the user, and it runs on resume or --retry.
+  SKIPPED: { icon: MinusSignCircleIcon, className: 'text-gray-500', label: 'Skipped (dependency)' },
   READY: { icon: Loading03Icon, className: 'text-gray-400', label: 'Waiting' },
 };
 

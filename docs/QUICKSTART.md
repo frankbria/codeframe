@@ -59,6 +59,54 @@ equivalent executables, `cf` and `codeframe`. This guide spells out `codeframe`;
    export CODEFRAME_BOOTSTRAP_TOKEN=$(openssl rand -hex 32)
    ```
    See `deploy/README.md` → "Creating the first account".
+5. **`WORKSPACE_ROOT` (required to run the server)** — the directories the
+   server may open workspaces and terminal sessions in. With auth on, the
+   server **refuses to start** without it, because an empty allowlist lets any
+   signed-in user open a shell anywhere on the host. Separate several roots
+   with `:`:
+   ```bash
+   export WORKSPACE_ROOT=$HOME/projects
+   ```
+   On a single-user local machine, `CODEFRAME_ALLOW_UNRESTRICTED_WORKSPACES=1`
+   starts it without one, with a loud warning. Never set it on a server others
+   can reach.
+
+## Run the web UI locally
+
+The web UI is a separate Next.js app that talks to `codeframe serve`. In one
+terminal, start the server (it binds `127.0.0.1:8080`):
+
+```bash
+export AUTH_SECRET=$(openssl rand -hex 32) WORKSPACE_ROOT=$HOME/projects
+codeframe serve
+```
+
+In a second terminal, start the UI on <http://localhost:3000>:
+
+```bash
+cd web-ui
+npm ci
+npm run dev
+```
+
+Its defaults already point at `localhost:8080`. If the server runs elsewhere,
+set these in `web-ui/.env.local` and restart `npm run dev`:
+
+| Variable | What it does |
+|---|---|
+| `BACKEND_ORIGIN` | Where Next proxies `/api` and `/auth` (default `http://localhost:8080`) |
+| `NEXT_PUBLIC_API_URL` | The backend origin the browser dials directly for streams and sockets |
+| `NEXT_PUBLIC_SSE_URL`, `NEXT_PUBLIC_WS_URL` | Only if streams or sockets live on a different origin than the API |
+
+Create the first account from the same machine, then sign in at
+<http://localhost:3000/login>:
+
+```bash
+codeframe auth register --email you@example.com
+```
+
+The sign-up form in the browser needs `CODEFRAME_BOOTSTRAP_TOKEN` (item 4),
+because it reaches the server through Next's proxy.
 
 ## Coming from ralph?
 
@@ -408,7 +456,10 @@ protection. The storage backend is selected by `RATE_LIMIT_STORAGE` (default
 > with more than one worker (e.g. `uvicorn --workers 4`) multiplies the effective
 > limit by the worker count and silently weakens auth brute-force protection. For
 > any multi-worker deployment, set `RATE_LIMIT_STORAGE=redis` and `REDIS_URL` for
-> shared, cross-worker buckets. The server logs a `WARNING` at startup when it
+> shared, cross-worker buckets, and install the redis client with the extra:
+> `uv tool install 'codeframe-ai[redis]'` (or `pip install 'codeframe-ai[redis]'`).
+> Without it the server refuses to start and names the extra, rather than quietly
+> falling back to per-worker counters. The server logs a `WARNING` at startup when it
 > detects in-memory storage with multiple workers (via the `WEB_CONCURRENCY` /
 > `UVICORN_WORKERS` env vars).
 

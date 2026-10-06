@@ -128,3 +128,61 @@ def internal_error(exc: BaseException, *, operation: str, logger=None) -> dict:
         "detail": f"An internal error occurred. Reference: {correlation_id}",
         "correlation_id": correlation_id,
     }
+
+
+def _llm_error_status() -> list:
+    """(error class, HTTP status, code), most specific first.
+
+    Auth is 502, never 401: the web UI treats any 401 as CodeFRAME session
+    expiry and logs the user out (#734); this is the provider rejecting OUR
+    key. A 403 from the provider is also an LLMAuthError (key valid, access
+    denied), and the same reasoning applies.
+    """
+    from codeframe.adapters.llm.base import (
+        LLMAuthError,
+        LLMConnectionError,
+        LLMError,
+        LLMModelNotFoundError,
+        LLMOverloadedError,
+        LLMRateLimitError,
+        LLMRequestRejectedError,
+    )
+
+    return [
+        (LLMAuthError, 502, ErrorCodes.UPSTREAM_AUTH_FAILED),
+        (LLMRateLimitError, 429, ErrorCodes.RATE_LIMITED),
+        (LLMOverloadedError, 503, ErrorCodes.SERVICE_UNAVAILABLE),
+        (LLMModelNotFoundError, 502, ErrorCodes.EXECUTION_FAILED),
+        (LLMRequestRejectedError, 502, ErrorCodes.EXECUTION_FAILED),
+        (LLMConnectionError, 502, ErrorCodes.SERVICE_UNAVAILABLE),
+        (LLMError, 502, ErrorCodes.EXECUTION_FAILED),
+    ]
+
+
+def llm_error_code(error_type: str) -> Optional[str]:
+    """The code for an LLM error class name, or None for anything else.
+
+    For streams, whose error events carry the exception's class name rather
+    than the exception.
+    """
+    for cls, _status, code in _llm_error_status():
+        if cls.__name__ == error_type:
+            return code
+    return None
+
+
+def llm_error_http(exc: BaseException, *, operation: str):
+    """An HTTPException for a typed provider failure (#1328).
+
+    The message is the adapter's own (``map_provider_error``): actionable, and
+    built to name where a key came from, never the key. A route used to send
+    these through ``internal_error`` as an opaque 500, so a rejected key read
+    as a server fault.
+    """
+    from fastapi import HTTPException
+
+    for cls, status, code in _llm_error_status():
+        if isinstance(exc, cls):
+            return HTTPException(status_code=status, detail=api_error(f"Failed to {operation}", code, str(exc)))
+    raise TypeError(f"not an LLM error: {type(exc).__name__}")
+

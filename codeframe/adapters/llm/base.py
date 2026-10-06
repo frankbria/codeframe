@@ -33,6 +33,11 @@ class LLMConnectionError(LLMError):
     """Network or connection error."""
 
 
+class LLMRequestRejectedError(LLMError):
+    """The provider refused the request's shape (HTTP 400, #1349): a parameter
+    or field the model does not accept. Reconfigure, don't check the network."""
+
+
 class LLMModelNotFoundError(LLMError):
     """The provider does not recognise the configured model (#1110).
 
@@ -141,8 +146,12 @@ class StreamChunk:
 
     Attributes:
         type: Event type — one of ``"text_delta"``, ``"thinking_delta"``,
-            ``"tool_use_start"``, ``"tool_use_stop"``, ``"message_stop"``.
-        text: Text content for ``text_delta`` and ``thinking_delta`` types.
+            ``"tool_input_delta"``, ``"tool_use_start"``, ``"tool_use_stop"``,
+            ``"message_stop"``.
+        text: Text content for ``text_delta`` and ``thinking_delta`` types; a
+            fragment of a tool call's JSON arguments for ``tool_input_delta``
+            (informational: final inputs come from ``message_stop``; it lets a
+            call cut off mid-arguments be charged for them, #1405).
         tool_id: Tool call ID for ``tool_use_start``.
         tool_name: Tool name for ``tool_use_start``.
         tool_input: Tool input dict for ``tool_use_start`` (may be empty;
@@ -292,6 +301,10 @@ class LLMProvider(ABC):
     Implementations must provide complete() and optionally stream().
     Model selection is handled via the purpose parameter.
     """
+
+    #: Where the API key came from, for a rejected-key error (#1346). Set by
+    #: ``llm_resolution.create_provider``; None means "the adapter resolved it".
+    key_source: Optional[str] = None
 
     def __init__(self, model_selector: Optional[ModelSelector] = None):
         """Initialize the provider.

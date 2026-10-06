@@ -515,7 +515,9 @@ class TestStubs:
             assert path.exists()
             assert req.id in path.read_text(encoding="utf-8")
         assert paths[Gate.UNIT].suffix == ".py"
-        assert paths[Gate.E2E].suffix == ".ts"
+        # A pytest stub since #1284: the runner enforces it as pytest -k test_e2e_*.
+        assert paths[Gate.E2E].suffix == ".py"
+        assert paths[Gate.E2E].name.startswith("draft_")
         assert paths[Gate.MANUAL].suffix == ".md"
 
         # Pytest stubs must stay outside pytest discovery (test_*.py /

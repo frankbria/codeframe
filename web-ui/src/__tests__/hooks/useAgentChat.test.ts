@@ -389,6 +389,19 @@ describe('useAgentChat', () => {
       expect(result.current.state.outputTokens).toBe(500);
     });
 
+    it('marks the cost unknown when a turn is unpriced (#1299)', async () => {
+      const { result } = await renderConnected('session-1');
+      act(() => { getLatestWs().simulateOpen(); });
+      act(() => {
+        getLatestWs().simulateMessage({ type: 'cost_update', cost_usd: 0.05, input_tokens: 1, output_tokens: 1 });
+      });
+      act(() => {
+        getLatestWs().simulateMessage({ type: 'cost_update', cost_usd: null, input_tokens: 2, output_tokens: 2 });
+      });
+      // Not the stale 0.05, and not /bin/bash: the server could not price it.
+      expect(result.current.state.costUsd).toBeNull();
+    });
+
     it('sets error status on error event', async () => {
       const { result } = await renderConnected('session-1');
       act(() => { getLatestWs().simulateOpen(); });

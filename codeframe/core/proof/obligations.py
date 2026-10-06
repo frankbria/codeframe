@@ -114,6 +114,27 @@ def slugify(text: str) -> str:
     return slug or "unnamed"
 
 
+def requirement_slug(req_id: str, title: str) -> str:
+    """The slug a requirement's tests are named by: its id, then its title.
+
+    The id is what keeps it unique. Two captures of one glitch share a title,
+    and the runner used to enforce a rule as ``pytest -k <test_id>`` (substring
+    matching) over the whole project, so a title-only slug made each
+    requirement's rule run the other one's test as well (#1397). Since #1401 it
+    runs exactly the named test; the unique slug still keeps rules distinct.
+    Rules and stub function names both use this.
+
+    The id alone is not enough: ``-k`` is substring matching, so a title that
+    quotes another requirement's test name (pasted from CI output) would make
+    that requirement's rule select this test too. ``req_<digit>`` in the title
+    part is folded to ``req<digit>``, so the only ``req_NNNN`` in the name is
+    this requirement's own.
+    """
+    slug = slugify(f"{req_id} {title}")
+    head = slugify(req_id)
+    return head + re.sub(r"req_(?=\d)", "req", slug[len(head):])
+
+
 def suggest_evidence_rules(gate: Gate, description: str) -> list[EvidenceRule]:
     """Generate starter evidence rules for an obligation gate."""
     prefix = TEST_ID_PREFIXES.get(gate, "test_")

@@ -6,6 +6,17 @@ import { toast } from 'sonner';
 import { useAdminDenied } from '@/hooks/useAdminDenied';
 import { settingsApi } from '@/lib/api';
 import type { ApiError, KeyProvider, KeyStatusResponse } from '@/types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -135,14 +146,27 @@ export function KeySlot({
           </Button>
         )}
         {status.stored && status.source === 'stored' && (
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={handleRemove}
-            disabled={working || adminDenied}
-          >
-            Remove
-          </Button>
+          // One click used to delete the stored credential (#1297).
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="destructive" disabled={working || adminDenied}>
+                Remove
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove the {displayName} key?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  The stored key is deleted. Anything that uses it stops working until a key is
+                  stored again.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleRemove}>Remove key</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </div>
 

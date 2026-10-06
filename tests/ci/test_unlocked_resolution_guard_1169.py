@@ -101,7 +101,9 @@ def test_it_uses_the_unlocked_interpreter_by_absolute_path():
     assert not any("activate" in r for r in runs)
 
 
-@pytest.mark.parametrize("package", ["anthropic", "openai", "typer", "click", "pytest"])
+# click is not listed since #1351: typer 0.27 vendors its own and nothing here
+# imports click, so it is no longer an SDK the CLI calls into.
+@pytest.mark.parametrize("package", ["anthropic", "openai", "typer", "pytest"])
 def test_sdks_the_cli_calls_into_have_a_ceiling(package):
     """The #1168 lesson: a floor-only pin is a latent dead-on-arrival release."""
     import tomllib

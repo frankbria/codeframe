@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskCard } from '@/components/tasks/TaskCard';
 import type { Task, TaskCostEntry } from '@/types';
@@ -122,17 +122,11 @@ describe('TaskCard', () => {
     expect(defaultHandlers.onClick).not.toHaveBeenCalled();
   });
 
-  it('has accessible role, tabindex, and aria-label', () => {
-    renderCard();
-    const card = screen.getByRole('button', { name: /view details for implement login/i });
-    expect(card).toBeInTheDocument();
-    expect(card).toHaveAttribute('tabindex', '0');
-  });
-
   it('triggers onClick on Enter key press', async () => {
     const user = userEvent.setup();
     renderCard();
-    const card = screen.getByRole('button', { name: /view details for implement login/i });
+    // The title is the card's native button since #1298.
+    const card = screen.getByRole('button', { name: 'Implement login' });
     card.focus();
     await user.keyboard('{Enter}');
     expect(defaultHandlers.onClick).toHaveBeenCalledWith('task-1');
@@ -141,7 +135,8 @@ describe('TaskCard', () => {
   it('triggers onClick on Space key press', async () => {
     const user = userEvent.setup();
     renderCard();
-    const card = screen.getByRole('button', { name: /view details for implement login/i });
+    // The title is the card's native button since #1298.
+    const card = screen.getByRole('button', { name: 'Implement login' });
     card.focus();
     await user.keyboard(' ');
     expect(defaultHandlers.onClick).toHaveBeenCalledWith('task-1');
@@ -174,6 +169,8 @@ describe('TaskCard', () => {
     const user = userEvent.setup();
     renderCard({ status: 'IN_PROGRESS' });
     await user.click(screen.getByRole('button', { name: /stop/i }));
+    // Confirmed first (#1297).
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /stop task/i }));
     expect(defaultHandlers.onStop).toHaveBeenCalledWith('task-1');
     expect(defaultHandlers.onClick).not.toHaveBeenCalled();
   });
@@ -290,5 +287,47 @@ describe('TaskCard', () => {
     const text = screen.getByTestId('cost-badge').textContent ?? '';
     expect(text).toContain('$0.0042');
     expect(text).not.toMatch(/\$0\.00\b/);
+  });
+});
+
+describe('TaskCard Stop (#1297)', () => {
+  it('asks before stopping a running agent, and never opens the card', async () => {
+    const user = userEvent.setup();
+    const onStop = jest.fn();
+    const onClick = jest.fn();
+    renderCard({ status: 'IN_PROGRESS' }, { onStop, onClick });
+
+    await user.click(screen.getByRole('button', { name: /^stop$/i }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(onStop).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: /stop/i }));
+    expect(onStop).toHaveBeenCalledTimes(1);
+    // React bubbles portal events through the component tree: a click in the
+    // dialog must not reach the card and open its detail view.
+    expect(onClick).not.toHaveBeenCalled();
+  });
+});
+
+describe('TaskCard structure (#1298)', () => {
+  it('opens through a real button named by the title, not a role=button wrapper', async () => {
+    const user = userEvent.setup();
+    renderCard({ status: 'READY' });
+    // A role=button around the checkbox, links and actions hid Execute and
+    // Stop from screen readers (axe nested-interactive).
+    const open = screen.getByRole('button', { name: 'Implement login' });
+    expect(open.tagName).toBe('BUTTON');
+    await user.click(open);
+    expect(defaultHandlers.onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps every action outside any other interactive element', () => {
+    renderCard({ status: 'READY' }, { selectionMode: true });
+    for (const control of [
+      screen.getByRole('button', { name: /execute/i }),
+      screen.getByRole('checkbox'),
+    ]) {
+      expect(control.parentElement?.closest('button, a, [role="button"]')).toBeNull();
+    }
   });
 });

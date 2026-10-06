@@ -72,11 +72,9 @@ collect_ignore: list[str] = []
 # SCOPE — what this guard does NOT cover. Several call sites build a
 # ``.codeframe`` path from cwd directly and never reach ``_get_state_dir``:
 #
-#   codeframe/ui/server.py:385,393       WORKSPACE_ROOT / DATABASE_PATH defaults
-#   codeframe/auth/manager.py:90         platform_store DB fallback
-#   codeframe/auth/dependencies.py:291   platform_store DB fallback
-#   codeframe/auth/api_key_router.py:121 platform_store DB fallback
-#   codeframe/cli/auth_commands.py:79    platform_store DB fallback
+#   platform_store.database.default_database_path   control-plane DB default
+#       (cwd/.codeframe/platform.db; used by ui/server.py, auth/manager.py and
+#       cli/auth_commands.py — #1287)
 #   codeframe/core/config.py:466,712     per-workspace config dir
 #
 # Those are the paths that *wrote* the ambient state.db in the first place.
@@ -422,6 +420,44 @@ def _workspace_db_template(tmp_path_factory):
 
 
 # Markers for test organization
+_real_os_kill = os.kill
+_real_os_killpg = getattr(os, "killpg", None)
+
+
+@pytest.fixture(autouse=True)
+def _no_broadcast_signals(request, monkeypatch):
+    """No test may signal everything the user owns, or its own process group.
+
+    `os.killpg(1, sig)` is `kill(-1, sig)`, which signals every process the user
+    owns, and a MagicMock's pid coerces to 1. That killed every terminal and
+    agent session on the machine during #1279. `os.kill(0)` and
+    `os.killpg(getpgrp())` hit pytest's own group. A test that really means it
+    opts in with `@pytest.mark.allow_dangerous_signals`. Real children (pid > 1,
+    in their own group) pass straight through.
+    """
+    if request.node.get_closest_marker("allow_dangerous_signals"):
+        yield
+        return
+
+    def _kill(pid, sig):
+        if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 1:
+            raise AssertionError(f"test tried os.kill({pid!r}, {sig}): broadcast or group signal")
+        return _real_os_kill(pid, sig)
+
+    monkeypatch.setattr(os, "kill", _kill)
+    if _real_os_killpg is not None:
+        def _killpg(pgid, sig):
+            if (
+                not isinstance(pgid, int) or isinstance(pgid, bool)
+                or pgid <= 1 or pgid == os.getpgrp()
+            ):
+                raise AssertionError(f"test tried os.killpg({pgid!r}, {sig}): not a child's group")
+            return _real_os_killpg(pgid, sig)
+
+        monkeypatch.setattr(os, "killpg", _killpg)
+    yield
+
+
 def pytest_configure(config):
     """Configure pytest with custom markers."""
     # --basetemp can point tmp_path outside the OS temp root; still isolated.
@@ -433,6 +469,10 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: mark test as slow running")
     config.addinivalue_line("markers", "requires_api_key: mark test as requiring real API keys")
     config.addinivalue_line("markers", "requires_db: mark test as requiring database")
+    config.addinivalue_line(
+        "markers",
+        "allow_dangerous_signals: let the test os.kill/killpg pid <= 1 or its own group",
+    )
 
 
 # Test collection customization

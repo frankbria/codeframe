@@ -249,7 +249,7 @@ def _run_gate(
     checked, which is distinct from running and failing.
 
     For pytest-backed gates, each ``must_pass`` evidence rule is enforced
-    individually: pytest runs scoped to the rule's ``test_id`` (via ``-k``),
+    individually: pytest runs exactly the tests named the rule's ``test_id`` (#1401),
     and a named test that doesn't exist is a FAILED obligation — a green
     whole-suite run proves nothing about a test that was never written.
     Rules with ``must_pass=False`` are informational only.
@@ -301,6 +301,9 @@ def _run_gate(
                 all_passed = False
             elif check.exit_code == 5:
                 lines.append(f"{rule.test_id}: FAILED — named test missing (not collected)")
+                all_passed = False
+            elif core_gates.SKIPPED_NOT_EVIDENCE in (check.output or ""):
+                lines.append(f"{rule.test_id}: FAILED — {core_gates.SKIPPED_NOT_EVIDENCE}")
                 all_passed = False
             elif check.status == core_gates.GateStatus.PASSED:
                 lines.append(f"{rule.test_id}: passed")

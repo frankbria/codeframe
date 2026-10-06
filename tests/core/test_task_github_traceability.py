@@ -237,8 +237,9 @@ class TestAutoCloseDispatch:
         assert calls == []
 
     def test_done_ignores_per_user_stored_pat(self, workspace, tmp_path, monkeypatch):
-        """Autoclose uses the machine-wide store / env; per-user stored PATs
-        are not picked up (#790 known limitation).
+        """A per-user PAT is used only for the user recorded as having connected
+        this workspace (#1283). Here nobody connected it, so a stray per-user
+        store is not consulted and the machine-wide one is empty.
         """
         from codeframe.core import credentials as creds_mod
         from codeframe.core.credentials import (

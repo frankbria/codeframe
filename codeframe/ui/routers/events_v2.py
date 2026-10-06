@@ -40,7 +40,13 @@ async def list_events(
     request: Request,  # Required for rate limiting
     workspace: Workspace = Depends(get_v2_workspace),
     limit: int = Query(20, ge=1, le=100, description="Maximum events to return"),
-    since_id: Optional[int] = Query(None, description="Only return events after this ID"),
+    since_id: Optional[int] = Query(
+        None,
+        description=(
+            "Page forward: the `limit` events immediately after this ID "
+            "(0 = from the first event), still newest-first"
+        ),
+    ),
 ):
     """List recent events for a workspace.
 

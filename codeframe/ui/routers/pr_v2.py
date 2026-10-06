@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from codeframe.auth.api_keys import SCOPE_ADMIN
 from codeframe.auth.dependencies import require_auth, require_scope
-from codeframe.core.workspace import Workspace
+from codeframe.core.workspace import Workspace, load_workspace_config
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.git.github_integration import GitHubIntegration, GitHubAPIError, PRDetails
 from codeframe.ui.dependencies import get_v2_workspace
@@ -67,7 +67,32 @@ class CreatePRRequest(BaseModel):
     branch: str = Field(..., min_length=1, description="Head branch with changes")
     title: str = Field(..., min_length=1, description="PR title")
     body: str = Field("", description="PR description/body")
-    base: str = Field("main", description="Target branch to merge into")
+    base: Optional[str] = Field(
+        None,
+        description="Target branch to merge into (default: the workspace's default branch, else main)",
+    )
+    proof_report: bool = Field(
+        True,
+        description="Append the workspace's PROOF9 report to the body, as `cf pr create` does (#1358)",
+    )
+
+
+def _with_proof_report(workspace: Workspace, body: str) -> str:
+    """``body`` with the PROOF9 report appended; ``body`` alone if it fails.
+
+    A reviewer on GitHub should see the proof status, but a report that cannot
+    be built must never be the reason a PR is not created.
+    """
+    try:
+        from codeframe.core.proof.ledger import init_proof_tables
+        from codeframe.core.proof.report import pr_proof_report
+
+        init_proof_tables(workspace)
+        report = pr_proof_report(workspace)
+    except Exception as exc:
+        logger.warning("Could not build the PROOF9 report for the PR body: %s", exc)
+        return body
+    return f"{body}\n\n{report}" if body else report
 
 
 class MergePRRequest(BaseModel):
@@ -646,11 +671,12 @@ async def create_pull_request(
     _refuse_mutating_pr_in_hosted_mode()
     client = _get_github_client(workspace, auth)
     try:
+        pr_body = _with_proof_report(workspace, body.body) if body.proof_report else body.body
         pr = await client.create_pull_request(
             branch=body.branch,
             title=body.title,
-            body=body.body,
-            base=body.base,
+            body=pr_body,
+            base=body.base or load_workspace_config(workspace)["default_branch"],
         )
 
         # Capture proof snapshot at PR creation time.

@@ -105,12 +105,8 @@ class TestSettingsV2Get:
         # Maps to EnvironmentConfig.agent_budget.max_iterations (default 100)
         assert data["max_turns"] == 100
         assert data["max_cost_usd"] is None
-
-        agent_types = {entry["agent_type"] for entry in data["agent_models"]}
-        assert agent_types == {"claude_code", "codex", "opencode", "react"}
-
-        for entry in data["agent_models"]:
-            assert entry["default_model"] == ""
+        # The per-agent-type default model was saved and never read (#1292).
+        assert "agent_models" not in data
 
     def test_returns_existing_config(self, test_client, test_workspace):
         """GET returns saved settings from .codeframe/config.yaml."""
@@ -121,7 +117,6 @@ class TestSettingsV2Get:
 
         config = EnvironmentConfig()
         config.max_cost_usd = 5.50
-        config.agent_type_models = {"claude_code": "claude-opus-4"}
         config.agent_budget.max_iterations = 42
         save_environment_config(test_workspace.repo_path, config)
 
@@ -131,10 +126,6 @@ class TestSettingsV2Get:
 
         assert data["max_turns"] == 42
         assert data["max_cost_usd"] == 5.50
-        cc_entry = next(
-            e for e in data["agent_models"] if e["agent_type"] == "claude_code"
-        )
-        assert cc_entry["default_model"] == "claude-opus-4"
 
 
 class TestSettingsV2Put:
@@ -143,12 +134,6 @@ class TestSettingsV2Put:
     def test_put_persists_settings(self, test_client, test_workspace):
         """PUT saves settings to .codeframe/config.yaml."""
         body = {
-            "agent_models": [
-                {"agent_type": "claude_code", "default_model": "claude-sonnet-4"},
-                {"agent_type": "codex", "default_model": "gpt-4o"},
-                {"agent_type": "opencode", "default_model": ""},
-                {"agent_type": "react", "default_model": "claude-opus-4"},
-            ],
             "max_turns": 30,
             "max_cost_usd": 10.0,
         }
@@ -166,19 +151,10 @@ class TestSettingsV2Put:
         assert loaded is not None
         assert loaded.agent_budget.max_iterations == 30
         assert loaded.max_cost_usd == 10.0
-        assert loaded.agent_type_models["claude_code"] == "claude-sonnet-4"
-        assert loaded.agent_type_models["codex"] == "gpt-4o"
-        assert loaded.agent_type_models["react"] == "claude-opus-4"
 
     def test_put_round_trip(self, test_client):
         """GET after PUT returns the saved settings."""
         body = {
-            "agent_models": [
-                {"agent_type": "claude_code", "default_model": "claude-opus-4"},
-                {"agent_type": "codex", "default_model": ""},
-                {"agent_type": "opencode", "default_model": ""},
-                {"agent_type": "react", "default_model": ""},
-            ],
             "max_turns": 25,
             "max_cost_usd": 7.5,
         }
@@ -190,8 +166,6 @@ class TestSettingsV2Put:
         data = get_resp.json()
         assert data["max_turns"] == 25
         assert data["max_cost_usd"] == 7.5
-        cc = next(e for e in data["agent_models"] if e["agent_type"] == "claude_code")
-        assert cc["default_model"] == "claude-opus-4"
 
     def test_put_preserves_unrelated_config(self, test_client, test_workspace):
         """PUT does not destroy other EnvironmentConfig fields like package_manager."""
@@ -208,12 +182,6 @@ class TestSettingsV2Put:
         save_environment_config(test_workspace.repo_path, existing)
 
         body = {
-            "agent_models": [
-                {"agent_type": "claude_code", "default_model": "claude-opus-4"},
-                {"agent_type": "codex", "default_model": ""},
-                {"agent_type": "opencode", "default_model": ""},
-                {"agent_type": "react", "default_model": ""},
-            ],
             "max_turns": 50,
             "max_cost_usd": None,
         }
@@ -228,50 +196,32 @@ class TestSettingsV2Put:
     def test_put_validates_max_turns_positive(self, test_client):
         """PUT rejects max_turns <= 0."""
         body = {
-            "agent_models": [
-                {"agent_type": "claude_code", "default_model": ""},
-                {"agent_type": "codex", "default_model": ""},
-                {"agent_type": "opencode", "default_model": ""},
-                {"agent_type": "react", "default_model": ""},
-            ],
             "max_turns": 0,
             "max_cost_usd": None,
         }
         response = test_client.put("/api/v2/settings", json=body)
         assert response.status_code == 422
 
-    def test_put_rejects_unknown_agent_type(self, test_client):
-        """Pydantic Literal rejects agent_types outside the supported set."""
+    def test_put_from_an_older_client_still_sending_agent_models(self, test_client):
+        """A cached web UI may still send the removed field; it is ignored."""
         body = {
-            "agent_models": [
-                {"agent_type": "evil_bot", "default_model": "anything"},
-            ],
-            "max_turns": 20,
-            "max_cost_usd": None,
-        }
-        response = test_client.put("/api/v2/settings", json=body)
-        assert response.status_code == 422
-
-    def test_put_skips_empty_model_strings(self, test_client, test_workspace):
-        """PUT does not persist empty default_model entries to the YAML."""
-        body = {
-            "agent_models": [
-                {"agent_type": "claude_code", "default_model": "claude-opus-4"},
-                {"agent_type": "codex", "default_model": ""},
-                {"agent_type": "opencode", "default_model": ""},
-                {"agent_type": "react", "default_model": ""},
-            ],
+            "agent_models": [{"agent_type": "claude_code", "default_model": "x"}],
             "max_turns": 20,
             "max_cost_usd": None,
         }
         response = test_client.put("/api/v2/settings", json=body)
         assert response.status_code == 200
+        assert "agent_models" not in response.json()
 
-        from codeframe.core.config import load_environment_config
-
-        loaded = load_environment_config(test_workspace.repo_path)
-        # Only the non-empty entry is persisted.
-        assert loaded.agent_type_models == {"claude_code": "claude-opus-4"}
+    def test_a_config_yaml_from_before_the_removal_still_loads(self, test_client, test_workspace):
+        """agent_type_models in an existing config.yaml is dropped, not fatal."""
+        config_path = test_workspace.repo_path / ".codeframe" / "config.yaml"
+        config_path.write_text(
+            "agent_type_models:\n  claude_code: claude-opus-4\nmax_cost_usd: 3.0\n"
+        )
+        response = test_client.get("/api/v2/settings")
+        assert response.status_code == 200
+        assert response.json()["max_cost_usd"] == 3.0
 
     def test_get_handles_null_agent_budget(self, test_client, test_workspace):
         """GET tolerates legacy YAML that drops or nulls agent_budget."""

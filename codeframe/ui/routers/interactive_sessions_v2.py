@@ -60,7 +60,8 @@ class SessionResponse(BaseModel):
     state: str
     agent_type: str
     model: Optional[str]
-    cost_usd: float
+    # None when any turn used an unpriced model: unknown, never $0 (#1299).
+    cost_usd: Optional[float]
     input_tokens: int
     output_tokens: int
     created_at: str
@@ -140,7 +141,7 @@ def _session_to_response(row: dict) -> SessionResponse:
         state=row["state"],
         agent_type=row["agent_type"],
         model=row.get("model"),
-        cost_usd=row.get("cost_usd", 0.0),
+        cost_usd=row.get("cost_usd"),
         input_tokens=row.get("input_tokens", 0),
         output_tokens=row.get("output_tokens", 0),
         created_at=row["created_at"],

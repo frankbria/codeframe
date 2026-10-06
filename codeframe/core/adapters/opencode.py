@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -66,12 +67,31 @@ def _permission_config_path() -> Path:
     atexit.register(_PERMISSION_CONFIG.unlink, missing_ok=True)
     return _PERMISSION_CONFIG
 
-#: Linux caps a *single* argv entry at MAX_ARG_STRLEN — 32 pages, 128 KiB —
-#: independently of the much larger total ARG_MAX. CodeFrame's context packager
-#: budgets 100K tokens (~400 KB of prompt), so a large task prompt passed as a
-#: positional raises OSError(E2BIG) before opencode ever starts. Verified:
-#: ``subprocess.run(["/bin/true", "x" * 200_000])`` → "Argument list too long".
-_MAX_ARG_BYTES = 128 * 1024
+
+
+def has_login_or_provider_key(auth_file: Path) -> bool:
+    """True when an opencode-family CLI can reach a model.
+
+    Its own login: ``auth_file`` holds ``{provider: {"type", "key"}}`` (or
+    OAuth tokens), and an entry with a non-empty credential is a login;
+    ``{"anthropic": {}}`` or a blank key is not. Or a provider key, which
+    ``credential_env_vars`` forwards: the env, or ``cf auth setup``'s stored
+    key (#1264). Shared by opencode (#1419) and its fork kilo (#1353).
+    """
+    try:
+        logins = json.loads(auth_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        logins = None
+    if isinstance(logins, dict) and any(
+        isinstance(entry, dict)
+        and any(isinstance(v, str) and v for k, v in entry.items() if k != "type")
+        for entry in logins.values()
+    ):
+        return True
+
+    from codeframe.core.llm_resolution import resolve_api_key
+
+    return bool(resolve_api_key("anthropic") or resolve_api_key("openai"))
 
 
 class OpenCodeAdapter(SubprocessAdapter):
@@ -129,10 +149,24 @@ class OpenCodeAdapter(SubprocessAdapter):
 
     @classmethod
     def requirements(cls) -> dict[str, str]:
-        """Environment variables ``cf engines check`` reports on."""
+        """No *required* environment variables (#1419), like codex and kilo.
+
+        Both provider keys were listed, and ``cf engines check`` counts every
+        unset entry as unmet, so opencode was only ever ready with both set,
+        although it needs one, or none when logged in. ``check_ready`` answers
+        the real question.
+        """
+        return {}
+
+    @classmethod
+    def check_ready(cls) -> dict[str, bool]:
+        """What ``cf engines check`` reports for opencode: the binary, and a
+        login or a provider key."""
         return {
-            "ANTHROPIC_API_KEY": "Anthropic API key (or `opencode auth login`)",
-            "OPENAI_API_KEY": "OpenAI API key (or `opencode auth login`)",
+            "opencode_binary": shutil.which("opencode") is not None,
+            "authenticated": has_login_or_provider_key(
+                Path.home() / ".local" / "share" / "opencode" / "auth.json"
+            ),
         }
 
     @classmethod
@@ -145,20 +179,16 @@ class OpenCodeAdapter(SubprocessAdapter):
         """`opencode auth login` writes to both — config and stored credentials."""
         return (".config/opencode", ".local/share/opencode")
 
-    @staticmethod
-    def _prompt_exceeds_argv(prompt: str) -> bool:
-        """True when the prompt is too large to survive as a single argv entry."""
-        return len(prompt.encode("utf-8")) >= _MAX_ARG_BYTES
-
     def build_command(self, prompt: str, workspace_path: Path) -> list[str]:
         """Build the opencode CLI command.
 
-        ``opencode run`` declares ``message`` as a positional array, and that is
-        the form verified end-to-end against the CLI. An oversized prompt cannot
-        go that way (see ``_MAX_ARG_BYTES``), so it is omitted from argv and sent
-        on stdin instead — ``opencode run`` with no positional reads the message
-        from stdin, confirmed by its own ``prompt_submit`` log carrying the piped
-        text verbatim.
+        The prompt is never in argv: ``ps`` shows argv to every user on the
+        machine, so the task description and assembled context were on display
+        for the whole run (#1306, as #955 fixed for kilocode). It goes on stdin
+        — ``opencode run`` with no positional reads the message from there,
+        confirmed by its own ``prompt_submit`` log carrying the piped text
+        verbatim. That also sidesteps Linux's 128 KiB cap on one argv entry,
+        which a large prompt used to hit with E2BIG.
 
         ``--dir`` is **required**, not belt-and-braces: opencode resolves its
         project directory from the *parent* process and ignores the ``cwd=``
@@ -177,10 +207,7 @@ class OpenCodeAdapter(SubprocessAdapter):
         Returns:
             Command list for subprocess.Popen.
         """
-        cmd = [self._binary_path, *self._cli_args, "--dir", str(workspace_path)]
-        if not self._prompt_exceeds_argv(prompt):
-            cmd.append(prompt)
-        return cmd
+        return [self._binary_path, *self._cli_args, "--dir", str(workspace_path)]
 
     def get_env(self, workspace_path: Path) -> dict[str, str] | None:
         """Point opencode at the deny-list config when auto-approval is on (#916).
@@ -200,11 +227,5 @@ class OpenCodeAdapter(SubprocessAdapter):
         return {"OPENCODE_CONFIG": str(_permission_config_path())}
 
     def get_stdin(self, prompt: str) -> str | None:
-        """The prompt, but only when it did not fit in argv.
-
-        Returns:
-            None for a normal prompt — it is already a positional argument, and
-            sending it twice would duplicate the instruction. The prompt itself
-            when it was too large for argv.
-        """
-        return prompt if self._prompt_exceeds_argv(prompt) else None
+        """The prompt — always on stdin, never in argv (see ``build_command``)."""
+        return prompt

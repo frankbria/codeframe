@@ -176,13 +176,29 @@ class MissingApiKeyError(ValueError):
     """The resolved provider needs a key and none was found (#1264)."""
 
 
-def _is_hosted() -> bool:
-    # Mirrors ui.server.is_hosted_mode, which core cannot import.
+def is_hosted() -> bool:
+    """Hosted (multi-tenant) deployment? Mirrors ui.server.is_hosted_mode,
+    which core cannot import."""
     return os.getenv("CODEFRAME_DEPLOYMENT_MODE", "").strip().lower() == "hosted"
 
 
+_is_hosted = is_hosted  # the name this module's own callers use
+
+
 def resolve_api_key(provider_type: str, user_id: Optional[int] = None) -> Optional[str]:
-    """The API key for ``provider_type``: environment first, then the store (#1264).
+    """The API key for ``provider_type``; see ``resolve_api_key_with_source``."""
+    return resolve_api_key_with_source(provider_type, user_id)[0]
+
+
+def resolve_api_key_with_source(
+    provider_type: str, user_id: Optional[int] = None
+) -> tuple[Optional[str], Optional[str]]:
+    """The API key for ``provider_type`` and where it came from (#1346).
+
+    The source is phrased for a "Key read from:" line, so a rejected key's
+    error names the thing to fix instead of guessing from the environment.
+
+    Environment first, then the store (#1264).
 
     ``cf auth setup`` and Settings → API Keys write to the credential store, and
     nothing used to read it — every LLM path checked the environment only.
@@ -202,12 +218,12 @@ def resolve_api_key(provider_type: str, user_id: Optional[int] = None) -> Option
 
     env_var = REQUIRED_KEY_ENV.get(provider_type)
     if env_var is None:
-        return None
+        return None, None
     provider = next(p for p in CredentialProvider if p.env_var == env_var)
     hosted_tenant = user_id is not None and _is_hosted()
 
     if not hosted_tenant and os.getenv(env_var):
-        return os.environ[env_var]
+        return os.environ[env_var], f"${env_var}"
 
     scopes = [user_id] if hosted_tenant else list(dict.fromkeys([user_id, None]))
     for scope in scopes:
@@ -219,8 +235,10 @@ def resolve_api_key(provider_type: str, user_id: Optional[int] = None) -> Option
             logger.warning("Ignoring unreadable credential store: %s", exc)
             continue
         if key:
-            return key
-    return None
+            if scope is None:
+                return key, "the machine-wide stored key (`cf auth setup`)"
+            return key, "the key stored for your account (Settings → API Keys)"
+    return None, None
 
 
 def resolve_key_env(env_var: str) -> Optional[str]:
@@ -241,12 +259,18 @@ def require_api_key(settings: LLMSettings, user_id: Optional[int] = None) -> Opt
     Raises:
         MissingApiKeyError: naming both ways to supply the key.
     """
+    return _require_api_key(settings, user_id)[0]
+
+
+def _require_api_key(
+    settings: LLMSettings, user_id: Optional[int] = None
+) -> tuple[Optional[str], Optional[str]]:
     env_var = settings.required_key_env
     if env_var is None:
-        return None
-    key = resolve_api_key(settings.provider_type, user_id)
+        return None, None
+    key, source = resolve_api_key_with_source(settings.provider_type, user_id)
     if key:
-        return key
+        return key, source
     if user_id is not None and _is_hosted():
         # Not "add one in Settings": storing a key needs the admin scope, which
         # an ordinary tenant does not hold (#898).
@@ -270,17 +294,23 @@ def create_provider(settings: LLMSettings, user_id: Optional[int] = None):
     can fall back to reading the operator's environment itself.
     """
     from codeframe.adapters.llm import OPENAI_COMPATIBLE_PROVIDERS, get_provider
+    from codeframe.adapters.llm.errors import NO_KEY_SENT
 
     kwargs = settings.provider_kwargs()
-    key = require_api_key(settings, user_id)
+    key, source = _require_api_key(settings, user_id)
     if not key and settings.provider_type in OPENAI_COMPATIBLE_PROVIDERS:
         # A keyless provider still sends OPENAI_API_KEY when there is one (an
         # OpenAI-compatible gateway may need it), so a stored key counts too.
-        key = resolve_api_key("openai", user_id)
+        key, source = resolve_api_key_with_source("openai", user_id)
         if not key and user_id is not None and _is_hosted():
             # Otherwise get_provider falls back to the env: the operator's key,
             # sent to a tenant's endpoint.
             key = "not-required"
+            source = NO_KEY_SENT
     if key:
         kwargs["api_key"] = key
-    return get_provider(settings.provider_type, **kwargs)
+    provider = get_provider(settings.provider_type, **kwargs)
+    # What a 401 should name as the key's origin (#1346). Left None when the
+    # adapter resolves a key itself, which keeps its own wording.
+    provider.key_source = source
+    return provider

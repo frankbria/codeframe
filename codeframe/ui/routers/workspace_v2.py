@@ -9,19 +9,20 @@ Routes:
     PATCH /api/v2/workspaces/current - Update workspace (e.g., tech stack)
 """
 
-import json
 import logging
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 from codeframe.core import workspace as ws
 from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.auth.dependencies import require_auth
 from codeframe.ui.dependencies import enforce_workspace_allowlist, get_v2_workspace
+from codeframe.core.tech_stack import detect_tech_stack
 from codeframe.core.workspace import WORKSPACE_CONFIG_FILENAME, Workspace
+from codeframe.platform_store.database import LegacyControlPlaneError
 from codeframe.ui.response_models import api_error, ErrorCodes
 from codeframe.ui.routers._helpers import atomic_write_json
 
@@ -93,55 +94,6 @@ def _workspace_to_response(workspace: Workspace) -> WorkspaceResponse:
         tech_stack=workspace.tech_stack,
         created_at=workspace.created_at.isoformat(),
     )
-
-
-def _detect_tech_stack(repo_path: Path) -> Optional[str]:
-    """Auto-detect tech stack from project files.
-
-    Looks for common project files and infers the tech stack.
-    """
-    tech_parts = []
-
-    # Python detection
-    pyproject = repo_path / "pyproject.toml"
-    if pyproject.exists():
-        content = pyproject.read_text(encoding="utf-8", errors="replace")
-        if "uv" in content or "[tool.uv]" in content:
-            tech_parts.append("Python with uv")
-        elif "poetry" in content:
-            tech_parts.append("Python with poetry")
-        else:
-            tech_parts.append("Python")
-
-        if "pytest" in content:
-            tech_parts.append("pytest")
-        if "ruff" in content:
-            tech_parts.append("ruff for linting")
-        if "fastapi" in content.lower():
-            tech_parts.append("FastAPI")
-
-    # Node.js detection
-    package_json = repo_path / "package.json"
-    if package_json.exists():
-        content = package_json.read_text(encoding="utf-8", errors="replace")
-        if "next" in content:
-            tech_parts.append("Next.js")
-        elif "react" in content:
-            tech_parts.append("React")
-        if "typescript" in content:
-            tech_parts.append("TypeScript")
-
-    # Rust detection
-    cargo_toml = repo_path / "Cargo.toml"
-    if cargo_toml.exists():
-        tech_parts.append("Rust with cargo")
-
-    # Go detection
-    go_mod = repo_path / "go.mod"
-    if go_mod.exists():
-        tech_parts.append("Go")
-
-    return ", ".join(tech_parts) if tech_parts else None
 
 
 def _get_registry(request: Request):
@@ -291,18 +243,24 @@ async def init_workspace(
         # Determine tech stack
         tech_stack = body.tech_stack
         if body.detect and not tech_stack:
-            tech_stack = _detect_tech_stack(repo_path)
+            tech_stack = detect_tech_stack(repo_path) or None
 
-        # Check if workspace already exists
-        already_existed = ws.workspace_exists(repo_path)
-
-        if already_existed:
+        # A state.db with no workspace row (a pre-#1287 serve-first control
+        # plane) is not an existing workspace: create_or_load_workspace moves
+        # it to platform.db first (#1376), as `cf init` does.
+        try:
             workspace = ws.get_workspace(repo_path)
             # Update tech stack if provided for existing workspace
             if tech_stack:
                 workspace = ws.update_workspace_tech_stack(repo_path, tech_stack)
-        else:
-            workspace = ws.create_or_load_workspace(repo_path, tech_stack=tech_stack)
+        except FileNotFoundError:
+            try:
+                workspace = ws.create_or_load_workspace(repo_path, tech_stack=tech_stack)
+            except LegacyControlPlaneError as e:
+                raise HTTPException(
+                    status_code=409,
+                    detail=api_error("Workspace holds this install's accounts", ErrorCodes.CONFLICT, str(e)),
+                )
 
         # Register (or refresh) the workspace in the server-side registry (#601).
         _register_workspace(request, workspace, auth.get("user_id"))
@@ -424,42 +382,14 @@ class UpdateWorkspaceConfigRequest(BaseModel):
     tech_stack_override: Optional[str] = None
 
 
-def _workspace_config_path(workspace: Workspace) -> Path:
-    return workspace.state_dir / WORKSPACE_CONFIG_FILENAME
-
-
-def _default_workspace_config(workspace: Workspace) -> dict:
-    return {
-        "workspace_root": str(workspace.repo_path),
-        "default_branch": "main",
-        "auto_detect_tech_stack": True,
-        "tech_stack_override": None,
-    }
-
-
 @router.get("/config", response_model=WorkspaceConfigResponse)
 @rate_limit_standard()
 async def get_workspace_config(
     request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> WorkspaceConfigResponse:
-    """Load workspace configuration for this workspace.
-
-    Returns defaults sourced from the Workspace itself if no config file exists.
-    """
-    path = _workspace_config_path(workspace)
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            # workspace_root is display-only — always source it from the live
-            # workspace so a stored value can't drift from reality.
-            data["workspace_root"] = str(workspace.repo_path)
-            return WorkspaceConfigResponse(**data)
-        except (OSError, json.JSONDecodeError, ValueError, ValidationError) as e:
-            logger.warning(
-                "Invalid workspace_config.json — falling back to defaults: %s", e
-            )
-    return WorkspaceConfigResponse(**_default_workspace_config(workspace))
+    """Load workspace configuration for this workspace (defaults if unset)."""
+    return WorkspaceConfigResponse(**ws.load_workspace_config(workspace))
 
 
 @router.put("/config", response_model=WorkspaceConfigResponse)
@@ -468,17 +398,40 @@ async def update_workspace_config(
     request: Request,
     body: UpdateWorkspaceConfigRequest,
     workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
 ) -> WorkspaceConfigResponse:
-    """Persist workspace configuration to .codeframe/workspace_config.json.
+    """Persist workspace configuration, and apply what it controls (#1292).
 
-    Note: `workspace_root` is informational/display-only. The server resolves
-    the active workspace path from the `workspace_path` query parameter or
-    its default — editing this field does not relocate the workspace. The
-    value is replaced on write so PUT/GET stay consistent.
+    ``default_branch`` is the PR base when a PR is created without one. The
+    tech-stack choice becomes the workspace's ``tech_stack`` (what the agent
+    reads): re-detected from the repo when auto-detect is on, else the
+    override. Both used to be saved and never read.
+
+    ``workspace_root`` is display-only: the server resolves the workspace from
+    the ``workspace_path`` query parameter, so editing it relocates nothing.
     """
+    previous = ws.load_workspace_config(workspace)
     payload = body.model_dump(exclude={"workspace_root"})
     payload["workspace_root"] = str(workspace.repo_path)
-    atomic_write_json(_workspace_config_path(workspace), payload)
+    override = (body.tech_stack_override or "").strip() or None
+
+    # Only when the tech-stack controls changed: auto-detect is on by default,
+    # so re-detecting on every save would replace a stack set with
+    # `cf init --tech-stack` when the user only changed the branch. When they
+    # did change, apply in full, clearing included (codex review).
+    stack_changed = (
+        body.auto_detect_tech_stack != previous["auto_detect_tech_stack"]
+        or override != ((previous["tech_stack_override"] or "").strip() or None)
+    )
+    if stack_changed:
+        tech_stack = (
+            (detect_tech_stack(workspace.repo_path) or None) if body.auto_detect_tech_stack else override
+        )
+        updated = ws.update_workspace_tech_stack(workspace.repo_path, tech_stack)
+        _register_workspace(request, updated, auth.get("user_id"))  # registry cache (#601)
+    # Persisted only after it was applied: written first, a failed apply left
+    # the file saying "done", and the identical retry then changed nothing.
+    atomic_write_json(workspace.state_dir / WORKSPACE_CONFIG_FILENAME, payload)
     return WorkspaceConfigResponse(**payload)
 
 
@@ -544,7 +497,17 @@ async def deregister_workspace(
 
     # Owner-scope the delete (#720): a tenant cannot deregister another's entry.
     # auth off → user_id None → no owner filter (unchanged local behavior).
+    entry = registry.get_by_id(workspace_id)
     deleted = registry.delete(workspace_id, owner_user_id=auth.get("user_id"))
+    if deleted and entry:
+        # A later workspace at this path must not inherit who connected its
+        # GitHub repo, and with it that user's stored PAT (#1370).
+        try:
+            from codeframe.core.github_integration_config import forget_connection_owner
+
+            forget_connection_owner(Path(entry["repo_path"]))
+        except Exception as exc:
+            logger.warning("Could not forget the GitHub connection owner for %s: %s", workspace_id, exc)
     if not deleted:
         raise HTTPException(
             status_code=404,

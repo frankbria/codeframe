@@ -4,7 +4,6 @@ Generates skeleton test files for each proof gate obligation.
 Uses inline templates (no Jinja2 dependency for simplicity).
 """
 
-import json
 import logging
 from pathlib import Path
 from typing import Optional
@@ -14,11 +13,14 @@ from codeframe.core.workspace import Workspace
 
 logger = logging.getLogger(__name__)
 
-# Per-gate file extension for written stubs. Pytest gates default to .py;
-# E2E stubs are Playwright TypeScript, DEMO/MANUAL are markdown-ish scripts.
+# Per-gate file extension for written stubs. Every gate the runner can verify
+# is enforced by running the test named exactly `test_<gate>_<slug>`
+# (runner._run_gate, #1401), so its stub
+# must be a pytest file with that function name. E2E and DEMO were Playwright
+# TypeScript and showboat markdown, which the runner could never see: following
+# them to the letter left both gates FAILED (#1284). Only MANUAL, which no
+# runner verifies, stays a markdown checklist.
 _EXTENSIONS: dict[Gate, str] = {
-    Gate.E2E: ".ts",
-    Gate.DEMO: ".md",
     Gate.MANUAL: ".md",
 }
 _DEFAULT_EXTENSION = ".py"
@@ -61,19 +63,25 @@ def test_contract_{slug}():
     assert False, "Not implemented yet — replace with real assertions"
 ''',
     Gate.E2E: '''\
-// E2E test for {req_id}: {title}
-//
-// Draft stub — rename to {filename}.spec.ts once implemented so Playwright
-// collects it, then run: npx playwright test tests/proof/{req_id}/{filename}.spec.ts
-import {{ test, expect }} from '@playwright/test';
+"""End-to-end test for {req_id}: {title}
 
-test({title_js}, async ({{ page }}) => {{
-  // {description}
-  // TODO: Navigate to the relevant page
-  // TODO: Interact with the UI
-  // TODO: Assert the expected outcome
-  await expect(page).toHaveTitle(/TODO/);
-}});
+Draft stub — rename this file to {filename}.py once implemented so pytest
+collects it (draft_* files are deliberately outside pytest discovery).
+
+PROOF9 runs the test named exactly `test_e2e_{slug}`, so it must stay a pytest test
+with this name. Drive the real flow from here: a browser through the
+pytest-playwright `page` fixture, an HTTP client against a running server, or
+the CLI through subprocess.
+"""
+import pytest
+
+
+def test_e2e_{slug}():
+    """Proves end to end: {description}"""
+    # TODO: Start from the user's entry point (page, endpoint or command)
+    # TODO: Perform the steps that triggered the glitch
+    # TODO: Assert the outcome the user should see
+    assert False, "Not implemented yet — drive the real flow and assert the outcome"
 ''',
     Gate.VISUAL: '''\
 """Visual snapshot test for {req_id}: {title}
@@ -117,6 +125,9 @@ import time
 
 def test_perf_{slug}():
     """Proves performance budget: {description}"""
+    # Timing an empty block passes the moment this file is renamed, which would
+    # record evidence for work nobody did (#1284). Fails until filled in.
+    assert False, "Not implemented yet — run the operation inside the timed block, then delete this line"
     start = time.monotonic()
     # TODO: Run the operation under test
     elapsed = time.monotonic() - start
@@ -138,16 +149,24 @@ def test_sec_{slug}():
     assert False, "Not implemented yet — add security assertions"
 ''',
     Gate.DEMO: '''\
-# Demo walkthrough for {req_id}: {title}
+"""Demo for {req_id}: {title}
 
-An automated demo script that proves the feature works.
-Run with: showboat exec tests/proof/{req_id}/{filename}.md
+Draft stub — rename this file to {filename}.py once implemented so pytest
+collects it (draft_* files are deliberately outside pytest discovery).
 
-## Steps
-1. TODO: Navigate to the feature
-2. TODO: Perform the action
-3. TODO: Capture screenshot/output as evidence
-4. TODO: Verify expected outcome
+PROOF9 runs the test named exactly `test_demo_{slug}`, so it must stay a pytest test
+with this name. A demo here is the scripted walkthrough a person would show:
+run it (CLI through subprocess, or an HTTP call) and assert on what it shows.
+"""
+import pytest
+
+
+def test_demo_{slug}():
+    """Demonstrates: {description}"""
+    # TODO: Run the walkthrough the way a user would
+    # TODO: Capture its output
+    # TODO: Assert the output shows the fixed behaviour
+    assert False, "Not implemented yet — run the walkthrough and assert on its output"
 ''',
     Gate.MANUAL: '''\
 # Manual Verification Checklist: {req_id}
@@ -167,6 +186,26 @@ Attach screenshots or notes below when complete.
 }
 
 
+def _stub_basename(req: Requirement, gate: Gate) -> str:
+    """The stub's file stem, unique per requirement (#1372).
+
+    The REQ-* directories are not packages, so under pytest's default
+    ``prepend`` import mode two stubs with the same basename collide ("import
+    file mismatch") and fail collection for both requirements. Two captures of
+    the same glitch share a title, so the requirement id goes in the name. The
+    test *function* keeps ``test_<gate>_<slug>``: that is the evidence rule's
+    test_id, and ``-k`` matches on it.
+    """
+    return f"test_{_requirement_slug(req)}_{gate.value}"
+
+
+def _requirement_slug(req: Requirement) -> str:
+    """obligations.requirement_slug, imported lazily like _slugify."""
+    from codeframe.core.proof.obligations import requirement_slug
+
+    return requirement_slug(req.id, req.title)
+
+
 def _slugify(text: str) -> str:
     """Create a safe identifier from text.
 
@@ -178,11 +217,10 @@ def _slugify(text: str) -> str:
 
 
 #: Gates whose template is not Python, so ``{title}``/``{description}`` need
-#: only line-collapsing: DEMO/MANUAL render the text as markdown prose, and
-#: E2E puts it in ``//`` comments. Backslash-doubling would show up verbatim in
-#: all three. (E2E's ``{title_js}`` is separate — that one is a real string
-#: literal and gets ``_js_string``.)
-_NON_PYTHON_GATES = frozenset({Gate.DEMO, Gate.MANUAL, Gate.E2E})
+#: only line-collapsing: MANUAL renders the text as markdown prose, where
+#: backslash-doubling would show up verbatim. E2E and DEMO are pytest since
+#: #1284 and get the Python escaping.
+_NON_PYTHON_GATES = frozenset({Gate.MANUAL})
 
 
 def _collapse(text: str) -> str:
@@ -224,23 +262,6 @@ def _inline(text: str) -> str:
     return collapsed + " " if collapsed.endswith('"') else collapsed
 
 
-def _js_string(text: str) -> str:
-    """Render text as a complete, escaped JavaScript string literal.
-
-    ``test('{title}')`` broke on any apostrophe and let a crafted title close
-    the literal and append statements. JSON string syntax is a subset of
-    JavaScript's, so ``json.dumps`` produces a correct literal — quotes
-    included, which is why the template no longer supplies its own.
-
-    Takes the *collapsed* text, never ``_inline``'s output: that is already
-    backslash-doubled for a Python docstring, and ``json.dumps`` would escape
-    those doubles again — so a title of ``\\d+`` reached the .ts source as four
-    backslashes and read back as ``\\\\d+`` (CI review on #952). Escaping is per
-    context, applied once, never stacked.
-    """
-    return json.dumps(_collapse(text))
-
-
 def generate_stubs(req: Requirement) -> dict[Gate, str]:
     """Generate test stub content for each obligation in a requirement.
 
@@ -250,23 +271,23 @@ def generate_stubs(req: Requirement) -> dict[Gate, str]:
     context each template drops them into (#952).
     """
     result: dict[Gate, str] = {}
-    slug = _slugify(req.title)
+    # The function name must equal the evidence rule's test_id (#729), which
+    # carries the requirement id since #1397.
+    slug = _requirement_slug(req)
 
     for obligation in req.obligations:
         gate = obligation.gate
         template = _TEMPLATES.get(gate, _TEMPLATES[Gate.UNIT])
         # Escaping is chosen by the template's language and applied exactly
         # once. Only the Python templates need backslash-doubling; markdown
-        # prose and JS comments would show it verbatim. ``title_js`` always
-        # starts from the raw title for the same reason.
+        # prose would show it verbatim.
         escape = _collapse if gate in _NON_PYTHON_GATES else _inline
         content = template.format(
             req_id=req.id,
             title=escape(req.title),
-            title_js=_js_string(req.title),
             description=escape(req.description),
             slug=slug,
-            filename=f"test_{slug}_{gate.value}",
+            filename=_stub_basename(req, gate),
         )
         result[gate] = content
 
@@ -283,7 +304,7 @@ def write_stub_files(
 
     Pytest stubs get a ``draft_`` filename prefix so plain ``pytest`` never
     collects their placeholder ``assert False`` bodies; the proof runner's
-    scoped ``-k test_id`` run then reports "named test missing" (FAILED) until
+    run of the test named ``test_id`` then reports "named test missing" (FAILED) until
     the developer implements the stub and renames it to ``test_*.py``.
 
     Existing files are never overwritten (they may hold developer edits).
@@ -292,12 +313,11 @@ def write_stub_files(
     target = out_dir or workspace.repo_path / "tests" / "proof" / req.id
     target.mkdir(parents=True, exist_ok=True)
 
-    slug = _slugify(req.title)
     paths: dict[Gate, Path] = {}
     for gate, content in stubs.items():
         ext = _EXTENSIONS.get(gate, _DEFAULT_EXTENSION)
         prefix = "draft_" if ext == ".py" else ""
-        path = target / f"{prefix}test_{slug}_{gate.value}{ext}"
+        path = target / f"{prefix}{_stub_basename(req, gate)}{ext}"
         if path.exists():
             logger.debug("stub already exists, not overwriting: %s", path)
         else:

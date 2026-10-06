@@ -965,11 +965,10 @@ def _spawn_agent_worker(
         except Exception as exc:
             logger.error(f"Background agent failed for task {task_id}: {exc}", exc_info=True)
             # Reset the run so the task doesn't stay IN_PROGRESS forever
-            # (#722). execute_agent handles errors raised inside its own
-            # try, but common misconfig (missing ANTHROPIC_API_KEY /
-            # unknown provider) raises up front, before that try — this
-            # is the only place that can fail the run. Guarded so an
-            # already-FAILED run (double-fail) can't break the handler.
+            # (#722). execute_agent now fails a still-RUNNING run on any
+            # error itself (#1280); this stays as a backstop for an error
+            # raised before it was called. Guarded so an already-FAILED run
+            # (double-fail) can't break the handler.
             try:
                 runtime.fail_run(workspace, run.id, reason=str(exc))
             except Exception:
@@ -1276,6 +1275,17 @@ async def stream_task_output_lines(
         run_id = run.id
         current_line = 0
 
+        async def _client_gone_or_run_over() -> bool:
+            # The run finishing ends the stream too, not only the client
+            # leaving: it used to poll a finished run for up to 5 minutes
+            # (#1282 review, matching `cf work follow`).
+            if await request.is_disconnected():
+                return True
+            latest = runtime.get_run(workspace, run_id)
+            return latest is not None and latest.status in (
+                RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.BLOCKED,
+            )
+
         # Check if output exists
         if not streaming.run_output_exists(workspace, run_id):
             yield "event: info\ndata: Waiting for output...\n\n"
@@ -1301,7 +1311,7 @@ async def stream_task_output_lines(
             since_line=current_line,
             poll_interval=0.5,
             max_wait=300.0,  # 5 minute timeout
-            should_stop=request.is_disconnected,
+            should_stop=_client_gone_or_run_over,
         ):
             yield f"event: line\ndata: {line.rstrip()}\n\n"
 

@@ -108,28 +108,40 @@ with `codeframe auth user-create --admin`, or by setting `is_superuser = 1` on
 its `users` row in the control-plane DB; there is no in-product promotion flow
 yet.
 
-**Set the token before the first deploy** — it is in `.env.production.example` /
-`.env.staging.example`:
+**Set the token before the first deploy.** The CI deploy rewrites
+`.env.<stage>` from GitHub secrets on every run, so a value written into that
+file by hand is erased by the next deploy. Set the secret in each environment
+instead:
 
 ```bash
-openssl rand -hex 32          # → CODEFRAME_BOOTSTRAP_TOKEN in your .env.<stage>
+gh secret set CODEFRAME_BOOTSTRAP_TOKEN --env production --body "$(openssl rand -hex 32)"
+gh secret set CODEFRAME_BOOTSTRAP_TOKEN --env staging    --body "$(openssl rand -hex 32)"
 ```
+
+(For a deploy by hand, put it in `.env.<stage>`; it is in
+`.env.production.example` / `.env.staging.example`.)
 
 Then create the account one of two ways.
 
-**From the server host** (simplest — the CLI reads the env var):
+**From the server host**, inside the backend container. Run from the host
+itself, `codeframe auth register` cannot pass the host-local gate: its request
+reaches the container from the Docker bridge gateway (`172.17.0.1`), not from
+loopback, so it is refused with 403 unless it also carries the token. Inside
+the container the backend is on loopback, so this works with or without one:
 
 ```bash
 ssh your-server
 cd /path/to/codeframe
-set -a; . ./.env.production; set +a          # exports CODEFRAME_BOOTSTRAP_TOKEN
-# Point the CLI at the loopback backend — its default is :8080, not your
-# BACKEND_PORT. This hits the app directly, bypassing Caddy.
-CODEFRAME_API_URL="http://127.0.0.1:${BACKEND_PORT:-8000}" \
-  codeframe auth register --email you@example.com
+docker compose --env-file .env.production \
+  -f docker-compose.yml -f docker-compose.production.yml \
+  exec -e CODEFRAME_API_URL=http://127.0.0.1:14200 \
+  backend codeframe auth register --email you@example.com
 ```
 
-(`--bootstrap-token` overrides the env var if you would rather pass it inline.)
+`14200` is the port inside the container for both stages, not the published
+`BACKEND_PORT` (14400 in production). For staging, use `.env.staging` and
+`docker-compose.staging.yml`. Add `--bootstrap-token "$TOKEN"` if the token is
+set: once it is set, it is required even on loopback.
 
 **From your browser**, at `https://your-domain/login` → *"First time here? Create
 the first account"*: fill in email, password, and paste the token into
@@ -140,8 +152,8 @@ The password must be at least 12 characters and must not be the email address
 password or email later through `PATCH /users/me`, send the current one in
 `current_password`. A token alone is not enough.
 
-After the account exists, remove `CODEFRAME_BOOTSTRAP_TOKEN` from the
-environment if you like — the route is closed either way, and a token left in
+After the account exists, delete the `CODEFRAME_BOOTSTRAP_TOKEN` secret if
+you like — the route is closed either way, and a token left in
 place has no further use.
 
 ### Adding more accounts
@@ -324,7 +336,7 @@ docker volume create codeframe_codeframe-data
 docker run --rm \
   -v codeframe_codeframe-data:/data \
   -v /opt/codeframe/.codeframe:/legacy:ro \
-  alpine:3.20 sh -c 'cp /legacy/state.db /data/codeframe.db && chown -R 10001:10001 /data'
+  alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 sh -c 'cp /legacy/state.db /data/codeframe.db && chown -R 10001:10001 /data'
 ```
 
 `WORKSPACE_ROOT` is not migrated: it holds cloned repositories and worktrees,
@@ -349,6 +361,29 @@ check that distinguishes the two.
 
 Volumes are untouched by a rollback — the database and workspaces are outside
 the image by design.
+
+So a rollback does not undo a migration the newer image applied. For that, every
+deploy first takes an online SQLite backup of `/data/codeframe.db`
+(`deploy/backup-db.sh`, #1295). The first successful backup leaves
+`backups/.database-backed-up`, and from then on the deploy **fails** if the
+database, or the whole data volume, is gone: on a host that has had one, that is
+data loss rather than a fresh install. After an intentional reset, delete that
+file. A host that has never had a database deploys normally. Production keeps the last 10 in
+`backups/backup-<ts>.tar.gz` (as `backup-<ts>/codeframe.db`, next to the env and
+compose files), and staging keeps them as `backups/codeframe-<ts>.db.gz`. To
+restore one, unpack it to `./restore/codeframe.db`, then:
+
+```bash
+$COMPOSE stop backend
+docker run --rm -v codeframe_codeframe-data:/data -v "$PWD/restore":/restore:ro \
+  alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 sh -c 'cp /restore/codeframe.db /data/codeframe.db &&
+    rm -f /data/codeframe.db-wal /data/codeframe.db-shm &&
+    chown 10001:10001 /data/codeframe.db'
+$COMPOSE start backend
+```
+
+Delete the `-wal`/`-shm` files: left beside a restored DB, SQLite would replay
+the old WAL onto it.
 
 ### Diagnosing a failed deploy
 
@@ -419,6 +454,19 @@ stale PR refreshes it. Its diff is the artifact you want — surgical, and alrea
 proven to survive `npm ci`. Regenerating the lock yourself is also fine on a
 supported npm; verify it the same way.
 
+**When no patched version exists** (the advisory's `first_patched_version` is
+null, so there is nothing to bump to): remove the package from the tree instead.
+Find the one dependent that pulls it in (`npm ls <pkg>`), read how that dependent
+actually uses its dependency, and replace the dependency with a scoped
+`overrides` entry in `web-ui/package.json` pointing at an API-compatible package
+that does not depend on the vulnerable one. #1364 did this for `braces`
+(GHSA-vfj7-8cjw-p6xm, every version affected): `@next/eslint-plugin-next` calls
+only `fast-glob`'s `globSync`, so `fast-glob` became `npm:tinyglobby`, which
+has the same export and does not use `braces`. An `npm install` on a lock that already
+satisfies the nested dependency leaves it alone. Uninstall and re-add the
+dependent so npm re-resolves its subtree, then verify the same way as above.
+Remove the override once upstream stops depending on the package.
+
 Hand-editing `package-lock.json` is a last resort, and only defensible for a
 patch bump whose own dependency set is unchanged: bumping a package whose
 dependencies, engines, binaries or optional/platform packages moved leaves the
@@ -440,3 +488,24 @@ a re-run of the audit.
   binaries are absent from the container, so those engines will not work on a
   containerised host. The built-in ReAct engine is unaffected. This was true of
   the PM2 host only where those CLIs happened to be installed.
+
+### Refreshing the helper image digests
+
+`deploy/backup-db.sh` (`python:3.12-alpine`) and the PM2 migration and restore
+steps (`alpine:3.22`) mount the production data volume read-write, so they are
+pinned by `@sha256:` digest rather than a mutable tag (#1390). Dependabot's
+docker ecosystem does not read shell scripts or workflow steps, so refresh
+them by hand when you want a newer base. Keep the tag and replace the digest
+with the multi-arch index digest, which is what `RepoDigests` records for an
+image pulled by tag (checked against the registry's own index digest):
+
+```bash
+docker pull python:3.12-alpine && docker inspect --format '{{index .RepoDigests 0}}' python:3.12-alpine
+docker pull alpine:3.22 && docker inspect --format '{{index .RepoDigests 0}}' alpine:3.22
+```
+
+Move the tag itself when its release line leaves upstream support: a digest
+pins whatever that tag last pointed at, so an end-of-life tag never gets fixes.
+
+`tests/ci/test_deploy_image_digests_1390.py` fails if any of them loses its
+digest.

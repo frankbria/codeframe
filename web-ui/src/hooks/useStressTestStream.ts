@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useEventSource } from './useEventSource';
 import { withStreamTicket } from '@/lib/auth';
 import { fetchStreamTicket } from '@/lib/api';
+import { sseBase } from '@/lib/sseBase';
 import type { StressTestEvent, StressTestAmbiguity } from '@/types';
 
 // ── Hook state ────────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ function classificationIcon(classification: string): string {
  * `GET /api/v2/prd/stress-test`, parsing JSON events into a small state
  * machine (idle → streaming → complete | error) plus human-readable lines.
  *
- * Mirrors `useTaskStream`: connects directly to `NEXT_PUBLIC_SSE_URL`
+ * Mirrors `useTaskStream`: connects directly to the backend (`sseBase`)
  * because the Next.js rewrite proxy buffers chunked responses and would
  * prevent SSE events from streaming incrementally.
  */
@@ -64,7 +65,8 @@ export function useStressTestStream(
   // is not misreported as a connection failure.
   const terminalRef = useRef(false);
 
-  const sseBase = process.env.NEXT_PUBLIC_SSE_URL || 'http://localhost:8000';
+  // SSE_URL, then the API origin, then loopback (#1296).
+  const streamBase = sseBase();
   const enabled = active && Boolean(workspacePath);
   // `runId` (bumped on every start()) forces a fresh (re)connect even when a
   // retry-after-error keeps `enabled` at `true` throughout. `workspacePath` is
@@ -77,9 +79,9 @@ export function useStressTestStream(
   // initial connect AND every retry — useEventSource calls it fresh each time.
   const buildUrl = useCallback(async (): Promise<string | null> => {
     if (!workspacePath) return null;
-    const base = `${sseBase}/api/v2/prd/stress-test?workspace_path=${encodeURIComponent(workspacePath)}&run=${runId}`;
+    const base = `${streamBase}/api/v2/prd/stress-test?workspace_path=${encodeURIComponent(workspacePath)}&run=${runId}`;
     return withStreamTicket(base, fetchStreamTicket);
-  }, [workspacePath, sseBase, runId]);
+  }, [workspacePath, streamBase, runId]);
 
   const handleMessage = useCallback((data: string) => {
     let event: StressTestEvent;

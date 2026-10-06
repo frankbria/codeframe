@@ -133,21 +133,25 @@ export function StressTestModal({
           </DialogDescription>
         </DialogHeader>
 
-        {status === 'streaming' && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
-            Analyzing PRD...
-          </div>
-        )}
+        {/* One persistent live region for progress and outcome: a region
+            inserted together with its text is not reliably announced (#1298). */}
+        <div role="status">
+          {status === 'streaming' && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <HugeiconsIcon icon={Loading03Icon} className="h-4 w-4 animate-spin" />
+              Analyzing PRD...
+            </div>
+          )}
 
-        {status === 'complete' && (
-          <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-500">
-            <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-4 w-4" />
-            {result && result.ambiguityCount > 0
-              ? `Found ${result.ambiguityCount} ambiguit${result.ambiguityCount === 1 ? 'y' : 'ies'}`
-              : 'No ambiguities found — PRD is well-specified'}
-          </div>
-        )}
+          {status === 'complete' && (
+            <div className="flex items-center gap-2 text-sm font-medium text-green-700 dark:text-green-500">
+              <HugeiconsIcon icon={CheckmarkCircle01Icon} className="h-4 w-4" />
+              {result && result.ambiguityCount > 0
+                ? `Found ${result.ambiguityCount} ambiguit${result.ambiguityCount === 1 ? 'y' : 'ies'}`
+                : 'No ambiguities found — PRD is well-specified'}
+            </div>
+          )}
+        </div>
 
         {/* Streaming log — shown while streaming, or on completion when there
             are no answerable ambiguities to render. Single scroll container so
@@ -156,6 +160,8 @@ export function StressTestModal({
           lines.length > 0 && (
             <div
               ref={scrollRef}
+              role="log"
+              aria-label="Stress test progress"
               className="max-h-[40vh] overflow-y-auto rounded-md bg-muted p-4 font-mono text-xs"
             >
               {lines.map((line, i) => (
@@ -195,7 +201,7 @@ export function StressTestModal({
 
         {/* Error state */}
         {status === 'error' && (
-          <div className="rounded-md border border-destructive bg-destructive/10 p-4">
+          <div role="alert" className="rounded-md border border-destructive bg-destructive/10 p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-destructive">
               <HugeiconsIcon icon={Alert01Icon} className="h-4 w-4" />
               Stress test failed

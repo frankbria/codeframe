@@ -224,7 +224,6 @@ class EnvironmentConfig:
 
     # Settings page (issue #554) — UI-managed agent settings
     max_cost_usd: Optional[float] = None
-    agent_type_models: dict[str, str] = dataclass_field(default_factory=dict)
 
     def validate(self) -> list[str]:
         """Validate configuration values.
@@ -284,14 +283,6 @@ class EnvironmentConfig:
 
         if self.max_cost_usd is not None and self.max_cost_usd < 0:
             errors.append("max_cost_usd must be >= 0")
-
-        valid_agent_types = {"claude_code", "codex", "opencode", "react"}
-        invalid_agent_types = sorted(set(self.agent_type_models) - valid_agent_types)
-        if invalid_agent_types:
-            errors.append(
-                "agent_type_models contains unsupported agent types: "
-                + ", ".join(invalid_agent_types)
-            )
 
         return errors
 
@@ -630,7 +621,7 @@ class GlobalConfig(BaseSettings):
     blocker_webhook_url: Optional[str] = Field(None, alias="BLOCKER_WEBHOOK_URL")
 
     # Database configuration
-    database_path: str = Field(".codeframe/state.db", alias="DATABASE_PATH")
+    database_path: str = Field(".codeframe/platform.db", alias="DATABASE_PATH")
 
     # Status Server configuration
     # Loopback by default (#935): the API exposes SQLite state, workspace

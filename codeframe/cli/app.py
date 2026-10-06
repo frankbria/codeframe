@@ -24,6 +24,7 @@ import typer
 from enum import StrEnum
 from rich.console import Console
 from rich.markup import escape
+from rich.text import Text
 
 # Import auth subapp for credential management
 from codeframe.cli.helpers import print_error
@@ -396,10 +397,11 @@ def init(
     """
     from codeframe.core.workspace import (
         create_or_load_workspace,
-        workspace_exists,
+        get_workspace,
         update_workspace_tech_stack,
     )
     from codeframe.core.events import emit_for_workspace, EventType
+    from codeframe.core.tech_stack import detect_tech_stack
 
     # Validate mutually exclusive options
     options_set = sum([bool(tech_stack), detect, tech_stack_interactive])
@@ -408,7 +410,17 @@ def init(
         raise typer.Exit(1)
 
     try:
-        already_existed = workspace_exists(repo_path)
+        # A state.db with no workspace row (a pre-#1287 serve-first control
+        # plane) is not an existing workspace. Migrate it first (#1376), before
+        # the probe below loads it as one and stamps its schema version.
+        from codeframe.platform_store.database import migrate_legacy_control_plane
+
+        migrate_legacy_control_plane(repo_path / ".codeframe")
+        try:
+            get_workspace(repo_path)
+            already_existed = True
+        except FileNotFoundError:
+            already_existed = False
 
         # Determine tech stack value
         final_tech_stack = None
@@ -416,7 +428,7 @@ def init(
         if tech_stack:
             final_tech_stack = tech_stack
         elif detect:
-            final_tech_stack = _detect_tech_stack(repo_path)
+            final_tech_stack = detect_tech_stack(repo_path)
         elif tech_stack_interactive:
             final_tech_stack = _interactive_tech_stack()
 
@@ -490,127 +502,6 @@ def init(
     except Exception as e:
         print_error(e)
         raise typer.Exit(1)
-
-
-def _detect_tech_stack(repo_path: Path) -> str:
-    """Auto-detect tech stack from project files and return a description.
-
-    Returns a natural language description of the detected tech stack.
-    """
-    detected_parts = []
-
-    # Python detection
-    if (repo_path / "pyproject.toml").exists():
-        pyproject = (repo_path / "pyproject.toml").read_text(encoding="utf-8", errors="replace")
-
-        # Detect Python version
-        python_version = None
-        if (repo_path / ".python-version").exists():
-            python_version = (repo_path / ".python-version").read_text(encoding="utf-8", errors="replace").strip()
-
-        # Detect package manager
-        if "[tool.poetry]" in pyproject:
-            pkg_mgr = "poetry"
-        elif "[tool.uv]" in pyproject or (repo_path / "uv.lock").exists():
-            pkg_mgr = "uv"
-        else:
-            pkg_mgr = "pip"
-
-        python_part = f"Python{' ' + python_version if python_version else ''} with {pkg_mgr}"
-
-        # Detect test framework
-        if "pytest" in pyproject:
-            python_part += ", pytest"
-
-        # Detect lint tools
-        lint_parts = []
-        if "[tool.ruff]" in pyproject:
-            lint_parts.append("ruff")
-        if "[tool.mypy]" in pyproject:
-            lint_parts.append("mypy")
-        if lint_parts:
-            python_part += f", {'/'.join(lint_parts)} for linting"
-
-        detected_parts.append(python_part)
-
-    elif (repo_path / "requirements.txt").exists():
-        python_version = None
-        if (repo_path / ".python-version").exists():
-            python_version = (repo_path / ".python-version").read_text(encoding="utf-8", errors="replace").strip()
-        detected_parts.append(f"Python{' ' + python_version if python_version else ''} with pip")
-
-    # Node.js/TypeScript detection
-    if (repo_path / "package.json").exists():
-        try:
-            pkg_json_text = (repo_path / "package.json").read_text(encoding="utf-8", errors="replace")
-            import json
-            pkg_json = json.loads(pkg_json_text)
-        except (json.JSONDecodeError, FileNotFoundError):
-            pkg_json = {}
-            pkg_json_text = ""
-
-        # Detect Node version
-        node_version = None
-        if (repo_path / ".nvmrc").exists():
-            node_version = (repo_path / ".nvmrc").read_text(encoding="utf-8", errors="replace").strip()
-        elif (repo_path / ".node-version").exists():
-            node_version = (repo_path / ".node-version").read_text(encoding="utf-8", errors="replace").strip()
-
-        # Detect package manager
-        if (repo_path / "pnpm-lock.yaml").exists():
-            pkg_mgr = "pnpm"
-        elif (repo_path / "yarn.lock").exists():
-            pkg_mgr = "yarn"
-        else:
-            pkg_mgr = "npm"
-
-        # Detect if TypeScript
-        is_ts = (repo_path / "tsconfig.json").exists() or "typescript" in pkg_json_text
-
-        lang = "TypeScript" if is_ts else "JavaScript"
-        node_part = f"{lang}{' (Node ' + node_version + ')' if node_version else ''} with {pkg_mgr}"
-
-        # Detect framework
-        deps = pkg_json.get("dependencies", {})
-        dev_deps = pkg_json.get("devDependencies", {})
-        all_deps = {**deps, **dev_deps}
-
-        if "next" in all_deps:
-            node_part += ", Next.js"
-        elif "react" in all_deps:
-            node_part += ", React"
-        elif "vue" in all_deps:
-            node_part += ", Vue"
-        elif "svelte" in all_deps:
-            node_part += ", Svelte"
-
-        # Detect test framework
-        if "jest" in all_deps:
-            node_part += ", jest"
-        elif "vitest" in all_deps:
-            node_part += ", vitest"
-        elif "mocha" in all_deps:
-            node_part += ", mocha"
-
-        detected_parts.append(node_part)
-
-    # Rust detection
-    if (repo_path / "Cargo.toml").exists():
-        detected_parts.append("Rust with cargo")
-
-    # Go detection
-    if (repo_path / "go.mod").exists():
-        detected_parts.append("Go")
-
-    # Build the final description
-    if not detected_parts:
-        return ""
-
-    if len(detected_parts) == 1:
-        return detected_parts[0]
-
-    # Multiple languages/stacks (monorepo)
-    return "Monorepo: " + "; ".join(detected_parts)
 
 
 def _interactive_tech_stack() -> str:
@@ -794,7 +685,7 @@ def status(
         console.print()  # Final newline for cleaner output
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         console.print("Run 'codeframe init <path>' to initialize.")
         raise typer.Exit(1)
     except Exception as e:
@@ -868,7 +759,7 @@ def summary(
         )
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -951,7 +842,7 @@ def review(
             raise typer.Exit(1)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         console.print("Run 'codeframe init' to initialize a workspace first.")
         raise typer.Exit(1)
 
@@ -1523,7 +1414,7 @@ def prd_versions(
             console.print(f"    [dim]ID: {v.id[:8]}...[/dim]")
             console.print(f"    [dim]Date: {v.created_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
             if v.change_summary:
-                console.print(f"    [dim]Changes: {v.change_summary}[/dim]")
+                console.print(f"    [dim]Changes: {escape(v.change_summary)}[/dim]")
             console.print()
 
     except FileNotFoundError as e:
@@ -1580,15 +1471,17 @@ def prd_diff(
 
         console.print(f"\n[bold]Diff: v{version1} → v{version2}[/bold]\n")
         # Color the diff output
+        # Diff lines are PRD text: style them, never parse them (#1290).
         for line in diff.splitlines():
             if line.startswith("+") and not line.startswith("+++"):
-                console.print(f"[green]{line}[/green]")
+                style = "green"
             elif line.startswith("-") and not line.startswith("---"):
-                console.print(f"[red]{line}[/red]")
+                style = "red"
             elif line.startswith("@@"):
-                console.print(f"[cyan]{line}[/cyan]")
+                style = "cyan"
             else:
-                console.print(line)
+                style = None
+            console.print(line, style=style, markup=False, highlight=False)
 
     except FileNotFoundError as e:
         print_error(e)
@@ -2153,7 +2046,7 @@ def prd_stress_test(
         # run, so it is one of the likelier ways the command ends.
         console.print(
             f"[red]Error:[/red] PRD stress test failed while calling the LLM "
-            f"provider: {e}"
+            f"provider: {escape(str(e))}"
         )
         console.print(
             "[dim]Check your API key and network connection, then retry. "
@@ -2238,13 +2131,15 @@ def prd_stress_test(
         else:
             console.print("[yellow]Warning:[/yellow] Failed to create new PRD version.")
 
-    # Show tech spec
-    console.print(Panel(result.tech_spec_markdown[:2000], title="Technical Specification", border_style="blue"))
-
-    # Write to file
+    # Written before anything renders it: this is a paid multi-call result, and
+    # a render failure used to lose it (#1290).
     if output:
         output.write_text(result.tech_spec_markdown)
-        console.print(f"\n[green]✓[/green] Tech spec written to [bold]{output}[/bold]")
+
+    # Show tech spec — LLM text, so a Text, never parsed as markup.
+    console.print(Panel(Text(result.tech_spec_markdown[:2000]), title="Technical Specification", border_style="blue"))
+    if output:
+        console.print(f"\n[green]✓[/green] Tech spec written to [bold]{escape(str(output))}[/bold]")
 
     # Summary
     node_count = _count_nodes(result.tree)
@@ -2432,7 +2327,7 @@ def tasks_generate(
             if task.description:
                 # Show first line of description
                 desc_preview = task.description.split("\n")[0][:60]
-                console.print(f"     [dim]{desc_preview}[/dim]")
+                console.print(f"     [dim]{escape(desc_preview)}[/dim]")
 
         console.print()
         console.print("Next steps:")
@@ -2607,7 +2502,7 @@ def tasks_show(
     try:
         workspace = get_workspace(workspace_path)
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {workspace_path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(workspace_path))}")
         console.print("Run 'codeframe init' to initialize a workspace first.")
         raise typer.Exit(1)
 
@@ -3010,6 +2905,14 @@ def work_start(
         help="Task execution isolation: none (default) or worktree",
         case_sensitive=False,
     ),
+    fresh: bool = typer.Option(
+        False,
+        "--fresh",
+        help=(
+            "With --isolation worktree: discard work left by a stopped or failed "
+            "run of this task and start from the base branch (default: resume it)"
+        ),
+    ),
     cloud_timeout: int = typer.Option(
         30,
         "--cloud-timeout",
@@ -3046,14 +2949,15 @@ def work_start(
 
     path = workspace_path or Path.cwd()
 
-    # Resolve engine: CLI flag → env var → workspace config → default "react"
-    if engine is None:
-        import os
-        engine = os.environ.get("CODEFRAME_ENGINE")
-    if engine is None:
-        from codeframe.core.config import load_environment_config
-        env_config = load_environment_config(path)
-        engine = env_config.engine if env_config else "react"
+    # Resolve engine: CLI flag → env var → workspace config → default "react".
+    # One resolver for start, resume, retry and batch run (#1281).
+    from codeframe.core.engine_registry import resolve_workspace_engine
+
+    try:
+        engine = resolve_workspace_engine(engine, path)
+    except ValueError as exc:
+        print_error(exc)
+        raise typer.Exit(1)
 
     try:
         workspace = get_workspace(path)
@@ -3082,16 +2986,39 @@ def work_start(
             console.print(f"[red]Error:[/red] {exc}")
             raise typer.Exit(1)
 
+        # A worktree run left by Stop or a failure is resumed and merged back
+        # (#1363). Say so before building on it, or discard it with --fresh: a
+        # run stopped because the agent was going wrong should not be (#1440).
+        worktree = IsolationLevel(isolation) == IsolationLevel.WORKTREE
+        if fresh and not worktree:
+            console.print(
+                "[red]Error:[/red] --fresh discards a leftover worktree run, "
+                "so it needs --isolation worktree"
+            )
+            raise typer.Exit(1)
+        if fresh and not execute:
+            # The discard happens when execution starts; without it --fresh
+            # would silently do nothing and leave an active run behind (review).
+            console.print(
+                "[red]Error:[/red] --fresh discards work when execution starts, "
+                "so it needs --execute"
+            )
+            raise typer.Exit(1)
+        if fresh and dry_run:
+            # A preview must not destroy work (codex review).
+            console.print("[red]Error:[/red] --fresh deletes work, so it cannot be combined with --dry-run")
+            raise typer.Exit(1)
         # Validate API key before creating run record (avoids dangling IN_PROGRESS state)
         if execute:
-            from codeframe.core.engine_registry import resolve_engine
+            from codeframe.core.engine_registry import (
+                refuse_dry_run_for_external_engine,
+            )
 
-            # Same reason: execute_agent resolves the engine, and the gated
-            # cloud engine (#966) raises there — after the run record exists.
+            # An external engine would edit the repo regardless (#1281).
             try:
-                resolve_engine(engine)
+                refuse_dry_run_for_external_engine(engine, dry_run)
             except ValueError as exc:
-                console.print(f"[red]Error:[/red] {exc}")
+                print_error(exc)
                 raise typer.Exit(1)
 
             from codeframe.cli.validators import require_keys_for_engine
@@ -3102,6 +3029,33 @@ def work_start(
 
         # Start the run
         run = runtime.start_task_run(workspace, task.id)
+
+        # Only now, after start_task_run's liveness checks: discarding first could
+        # destroy a still-running agent's work and then refuse to start (codex).
+        if execute and worktree:
+            from codeframe.core.sandbox.context import discard_leftover_run, leftover_run
+
+            left = leftover_run(task.id, workspace.repo_path)
+            if left and fresh:
+                try:
+                    discarded = discard_leftover_run(task.id, workspace.repo_path)
+                except ValueError as exc:
+                    runtime.fail_run(workspace, run.id, f"--fresh could not discard the leftover run: {exc}")
+                    print_error(exc)
+                    raise typer.Exit(1)
+                if discarded:
+                    console.print(
+                        f"[yellow]Discarded the leftover run on {escape(left.branch)}[/yellow] "
+                        "(--fresh); starting from the base branch."
+                    )
+            elif left:
+                commits = f"{left.commits} commit{'s' if left.commits != 1 else ''}"
+                files = f"{left.uncommitted} uncommitted file{'s' if left.uncommitted != 1 else ''}"
+                console.print(
+                    f"[yellow]Resuming a stopped or failed run on {escape(left.branch)}[/yellow]: "
+                    f"{commits} and {files} will be built on and merged back. "
+                    "To discard them and start from the base branch, re-run with --fresh."
+                )
 
         console.print("\n[bold green]Run started[/bold green]")
         console.print(f"  Task: {escape(task.title)}")
@@ -3165,7 +3119,7 @@ def work_start(
             console.print("[green]Run completed (stub)[/green]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except InvalidTransitionError as e:
         print_error(e)
@@ -3185,7 +3139,11 @@ def work_resume(
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without making changes"),
     verbose: bool = typer.Option(False, "--verbose", help="Show detailed progress"),
-    engine: str = typer.Option("react", "--engine", help="Execution engine: react or plan"),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Execution engine (default: CODEFRAME_ENGINE, then the workspace config, then react)",
+    ),
     workspace_path: Optional[Path] = typer.Option(
         None,
         "--workspace",
@@ -3225,6 +3183,23 @@ def work_resume(
 
         task = matching[0]
 
+        # Same engine as start, resolved once and checked before any state
+        # changes (#1281): resume used to hard-default to react.
+        from codeframe.core.engine_registry import (
+            refuse_dry_run_for_external_engine,
+            resolve_workspace_engine,
+        )
+        from codeframe.cli.validators import require_keys_for_engine
+
+        try:
+            engine = resolve_workspace_engine(engine, workspace.repo_path)
+            refuse_dry_run_for_external_engine(engine, dry_run and execute)
+        except ValueError as exc:
+            print_error(exc)
+            raise typer.Exit(1)
+        if execute:
+            require_keys_for_engine(workspace.repo_path, engine=engine)
+
         # Resume the run
         run = runtime.resume_run(workspace, task.id)
 
@@ -3243,12 +3218,9 @@ def work_resume(
                     workspace, run, dry_run=dry_run, verbose=verbose, engine=engine
                 )
             except Exception as exc:
-                # resume_run already flipped the run to RUNNING. A misconfig
-                # (missing ANTHROPIC_API_KEY, unknown provider) raises *before*
-                # execute_agent's own try, so without this the run stays RUNNING
-                # with no worker and `work start` refuses the task — the very
-                # wedge this command is being fixed for. Mirrors the web
-                # worker's #722 recovery.
+                # resume_run already flipped the run to RUNNING. execute_agent
+                # now fails a still-RUNNING run on any error itself (#1280);
+                # this remains a backstop, and the double-fail below is a no-op.
                 try:
                     runtime.fail_run(workspace, run.id, reason=str(exc))
                 except Exception:
@@ -3283,7 +3255,7 @@ def work_resume(
             )
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -3339,7 +3311,7 @@ def work_stop(
         console.print("  Task returned to: [blue]READY[/blue]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -3402,7 +3374,7 @@ def work_status(
                 console.print("[dim]No active runs[/dim]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -3476,7 +3448,7 @@ def work_show(
                 console.print(tbl)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -3565,7 +3537,7 @@ def work_diagnose(
         _display_diagnostic_report(report, task.title, verbose, workspace, latest_run.id)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -3651,6 +3623,11 @@ def work_retry(
         "--dry-run",
         help="Preview changes without applying them",
     ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help="Execution engine (default: CODEFRAME_ENGINE, then the workspace config, then react)",
+    ),
 ) -> None:
     """Retry a failed task with context from previous attempts.
 
@@ -3686,11 +3663,24 @@ def work_retry(
 
         task = matching[0]
 
-        # Validate the key matching the resolved provider (env → config →
-        # anthropic) before any state modifications, #768
+        # Same engine as start, resolved once and checked before any state
+        # changes (#1281): retry had no --engine option and always ran react.
+        from codeframe.core.engine_registry import (
+            refuse_dry_run_for_external_engine,
+            resolve_workspace_engine,
+        )
         from codeframe.cli.validators import require_keys_for_engine
 
-        require_keys_for_engine(workspace.repo_path)
+        try:
+            engine = resolve_workspace_engine(engine, workspace.repo_path)
+            refuse_dry_run_for_external_engine(engine, dry_run)
+        except ValueError as exc:
+            print_error(exc)
+            raise typer.Exit(1)
+
+        # Validate the key matching the resolved provider (env → config →
+        # anthropic) before any state modifications, #768
+        require_keys_for_engine(workspace.repo_path, engine=engine)
 
         # Reset task to READY if it's FAILED or BLOCKED
         if task.status in (TaskStatus.FAILED, TaskStatus.BLOCKED):
@@ -3726,7 +3716,9 @@ def work_retry(
         verbose_mode = " [dim](verbose)[/dim]" if verbose else ""
         console.print(f"\n[bold]Executing agent...{mode}{verbose_mode}[/bold]")
 
-        state = runtime.execute_agent(workspace, run, dry_run=dry_run, verbose=verbose)
+        state = runtime.execute_agent(
+            workspace, run, dry_run=dry_run, verbose=verbose, engine=engine
+        )
 
         if state.status == AgentStatus.COMPLETED:
             console.print("[bold green]Task completed successfully![/bold green]")
@@ -3743,7 +3735,7 @@ def work_retry(
             raise typer.Exit(1)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except InvalidTransitionError as e:
         print_error(e)
@@ -3810,7 +3802,7 @@ def work_update_description(
         console.print(f"  codeframe work retry {task.id[:8]}  # Retry with updated description")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -3909,7 +3901,7 @@ def work_follow(
                     if tail and total > tail:
                         console.print(f"[dim](showing last {tail} of {total} lines)[/dim]")
                     for line in lines:
-                        console.print(line.rstrip())
+                        console.print(escape(line.rstrip()))  # agent output, not markup
                 else:
                     console.print("[dim]No output captured for this run.[/dim]")
 
@@ -3933,7 +3925,7 @@ def work_follow(
             if lines:
                 console.print(f"\n[dim]--- Buffered output (last {len(lines)} of {total} lines) ---[/dim]")
                 for line in lines:
-                    console.print(f"[dim]{line.rstrip()}[/dim]")
+                    console.print(f"[dim]{escape(line.rstrip())}[/dim]")
                 console.print("[dim]--- Live output ---[/dim]\n")
                 start_line = total  # Skip already-shown lines
 
@@ -3948,10 +3940,17 @@ def work_follow(
         }
 
         try:
-            import time
+            finished: dict = {}
 
-            last_status_check = time.time()
-            STATUS_CHECK_INTERVAL = 1.0  # Check status every 1 second
+            def run_finished() -> bool:
+                # Checked on every poll, not only when a line arrives: a run
+                # that finishes without writing more was followed forever
+                # (#1282).
+                current_run = runtime.get_run(workspace, active_run.id)
+                if current_run and current_run.status in TERMINAL_STATUSES:
+                    finished["run"] = current_run
+                    return True
+                return False
 
             # Stream output
             for line in tail_run_output(
@@ -3960,26 +3959,21 @@ def work_follow(
                 since_line=start_line,
                 poll_interval=0.3,
                 max_wait=max_wait,
+                should_stop=run_finished,
             ):
-                console.print(line.rstrip())
+                # Raw agent stdout (#1282): a stray `[/b]` must print, not crash.
+                console.print(escape(line.rstrip()))
 
-                # Check run status periodically (not on every line)
-                current_time = time.time()
-                if current_time - last_status_check >= STATUS_CHECK_INTERVAL:
-                    last_status_check = current_time
-                    current_run = runtime.get_run(workspace, active_run.id)
-                    if current_run and current_run.status in TERMINAL_STATUSES:
-                        # Show completion message
-                        status_color = {
-                            runtime.RunStatus.COMPLETED: "green",
-                            runtime.RunStatus.FAILED: "red",
-                            runtime.RunStatus.BLOCKED: "yellow",
-                        }.get(current_run.status, "white")
-
-                        console.print(
-                            f"\n[{status_color}]Run {current_run.status.value}[/{status_color}]"
-                        )
-                        break
+            if "run" in finished:
+                current_run = finished["run"]
+                status_color = {
+                    runtime.RunStatus.COMPLETED: "green",
+                    runtime.RunStatus.FAILED: "red",
+                    runtime.RunStatus.BLOCKED: "yellow",
+                }.get(current_run.status, "white")
+                console.print(
+                    f"\n[{status_color}]Run {current_run.status.value}[/{status_color}]"
+                )
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Streaming interrupted[/yellow]")
@@ -3987,7 +3981,7 @@ def work_follow(
             raise typer.Exit(0)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -4110,7 +4104,7 @@ def work_replay(
                       f"{summary['files_modified']} files modified[/dim]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -4177,11 +4171,11 @@ def work_diff(
             after = change["after"] or ""
 
             if change["before"] is None:
-                console.print(f"[green]+++ {file_path}[/green] (created)")
+                console.print(f"[green]+++ {escape(file_path)}[/green] (created)")
             elif change["after"] is None:
-                console.print(f"[red]--- {file_path}[/red] (deleted)")
+                console.print(f"[red]--- {escape(file_path)}[/red] (deleted)")
             else:
-                console.print(f"[yellow]~~~ {file_path}[/yellow] (modified)")
+                console.print(f"[yellow]~~~ {escape(file_path)}[/yellow] (modified)")
 
             diff_lines = list(
                 difflib.unified_diff(
@@ -4191,18 +4185,20 @@ def work_diff(
                     tofile=f"b/{file_path}",
                 )
             )
+            # Diff lines are file contents: style them, never parse them (#1290).
             for line in diff_lines:
                 line = line.rstrip()
                 if line.startswith("+") and not line.startswith("+++"):
-                    console.print(f"[green]{line}[/green]")
+                    style = "green"
                 elif line.startswith("-") and not line.startswith("---"):
-                    console.print(f"[red]{line}[/red]")
+                    style = "red"
                 else:
-                    console.print(f"[dim]{line}[/dim]")
+                    style = "dim"
+                console.print(line, style=style, markup=False, highlight=False)
             console.print()
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -4268,7 +4264,7 @@ def work_export_trace(
             console.print(content, highlight=False)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -4326,7 +4322,7 @@ def work_rerun(
             console.print("\n[yellow]No remaining steps after this point[/yellow]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -4460,14 +4456,15 @@ def batch_run(
 
     path = workspace_path or Path.cwd()
 
-    # Resolve engine: CLI flag → env var → workspace config → default "react"
-    if engine is None:
-        import os
-        engine = os.environ.get("CODEFRAME_ENGINE")
-    if engine is None:
-        from codeframe.core.config import load_environment_config
-        env_config = load_environment_config(path)
-        engine = env_config.engine if env_config else "react"
+    # Resolve engine: CLI flag → env var → workspace config → default "react".
+    # One resolver for start, resume, retry and batch run (#1281).
+    from codeframe.core.engine_registry import resolve_workspace_engine
+
+    try:
+        engine = resolve_workspace_engine(engine, path)
+    except ValueError as exc:
+        print_error(exc)
+        raise typer.Exit(1)
 
     try:
         workspace = get_workspace(path)
@@ -4506,10 +4503,10 @@ def batch_run(
             for partial_id in task_ids:
                 matching = tasks_module.find_by_prefix(workspace, partial_id)
                 if not matching:
-                    console.print(f"[red]Error:[/red] No task found matching '{partial_id}'")
+                    console.print(f"[red]Error:[/red] No task found matching '{escape(partial_id)}'")
                     raise typer.Exit(1)
                 if len(matching) > 1:
-                    console.print(f"[red]Error:[/red] Multiple tasks match '{partial_id}':")
+                    console.print(f"[red]Error:[/red] Multiple tasks match '{escape(partial_id)}':")
                     for t in matching[:3]:
                         console.print(f"  {t.id[:8]} - {escape(t.title)}")
                     raise typer.Exit(1)
@@ -4524,23 +4521,14 @@ def batch_run(
         console.print(f"  Tasks: {len(ids_to_execute)}")
         console.print(f"  On failure: {escape(on_failure)}")
 
-        # Ahead of the dry-run return: a preview of an engine that would be
-        # refused is misleading, and this is also the pre-run guard that keeps
-        # the gate from raising after conductor.start_batch (#966).
-        from codeframe.core.engine_registry import resolve_engine
-
-        try:
-            resolve_engine(engine)
-        except ValueError as exc:
-            console.print(f"[red]Error:[/red] {exc}")
-            raise typer.Exit(1)
-
+        # The engine was resolved, and a refused one (#966) rejected, at the
+        # top of this command: before any preview and before start_batch.
         if dry_run:
             console.print("\n[dim]Dry run - showing tasks without executing:[/dim]")
             for i, tid in enumerate(ids_to_execute):
                 task = tasks_module.get(workspace, tid)
                 title = task.title if task else tid
-                console.print(f"  [{i + 1}] {tid[:8]} - {title}")
+                console.print(f"  [{i + 1}] {tid[:8]} - {escape(title)}")
             return
 
         # Validate API key before batch execution
@@ -4606,7 +4594,7 @@ def batch_run(
                         # Show truncated output for failures
                         output_lines = check.output.strip().split("\n")[:5]
                         for line in output_lines:
-                            console.print(f"    [dim]{line}[/dim]")
+                            console.print(f"    [dim]{escape(line)}[/dim]")
                         if len(check.output.strip().split("\n")) > 5:
                             console.print("    [dim]...[/dim]")
 
@@ -4621,7 +4609,7 @@ def batch_run(
             raise typer.Exit(1)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -4763,7 +4751,7 @@ def batch_status(
             console.print(table)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -4834,7 +4822,7 @@ def batch_stop(
             console.print(f"[green]Batch {batch.id[:8]} stopping (will finish current tasks)[/green]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -4908,12 +4896,14 @@ def batch_resume(
                 for task_id in blocked_task_ids:
                     runtime.reset_blocked_run(workspace, task_id)
 
-        # Show what we're about to do
-        failed_count = sum(1 for s in batch.results.values() if s in ("FAILED", "BLOCKED"))
+        # Show what we're about to do. The same selection core makes, so the CLI
+        # and the API cannot disagree about whether there is anything to run
+        # (#1280: never-started tasks were missed here).
+        failed_count = len(conductor.resumable_task_ids(batch))
         completed_count = sum(1 for s in batch.results.values() if s == "COMPLETED")
 
         if not force and failed_count == 0:
-            console.print(f"[green]Batch {batch.id[:8]} has no failed/blocked tasks to resume.[/green]")
+            console.print(f"[green]Batch {batch.id[:8]} has no tasks left to resume.[/green]")
             console.print(f"  Status: {batch.status.value}")
             console.print(f"  Completed: {completed_count}/{len(batch.task_ids)}")
             return
@@ -4923,7 +4913,7 @@ def batch_resume(
             console.print(f"  Re-running all {len(batch.task_ids)} tasks")
         else:
             console.print(f"[cyan]Resuming batch {batch.id[:8]}[/cyan]")
-            console.print(f"  Re-running {failed_count} failed/blocked tasks")
+            console.print(f"  Re-running {failed_count} failed, blocked or unstarted tasks")
             console.print(f"  Keeping {completed_count} completed tasks")
 
         # Execute resume
@@ -4939,7 +4929,7 @@ def batch_resume(
             console.print(f"\n[red]✗ Batch {batch.status.value.lower()}[/red]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5212,7 +5202,7 @@ ETA: {eta} | Elapsed: {elapsed}"""
             console.print(f"[red]✗ Batch {batch_id_short} {batch.status.value.lower()}[/red]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5254,7 +5244,7 @@ def events_tail(
     try:
         workspace = get_workspace(path)
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
     recent = events.list_recent(workspace, limit=limit)
@@ -5347,7 +5337,7 @@ def blocker_list(
         console.print(table)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5403,7 +5393,7 @@ def blocker_show(
                 console.print(f"  [dim]Answered: {blocker.answered_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5449,7 +5439,7 @@ def blocker_create(
         console.print(f"  Question: {escape(question[:60])}{'...' if len(question) > 60 else ''}")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5484,7 +5474,7 @@ def blocker_answer(
         console.print(f"\nUse 'codeframe blocker resolve {blocker.id[:8]}' to mark as resolved.")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5522,7 +5512,7 @@ def blocker_resolve(
         console.print("  Status: [green]RESOLVED[/green]")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5586,7 +5576,7 @@ def patch_export(
         )
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5638,7 +5628,7 @@ def patch_list(
         console.print(table)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5691,7 +5681,7 @@ def patch_status(
                 console.print(f"  ... and {len(status['untracked']) - 5} more")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5742,7 +5732,7 @@ def commit_create(
         )
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5796,7 +5786,7 @@ def checkpoint_create(
             console.print(f"  Git: {git_ref[:7]}")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5850,7 +5840,7 @@ def checkpoint_list(
         console.print(table)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5905,7 +5895,7 @@ def checkpoint_show(
         console.print(f"  Open blockers: {summary.get('open_blockers', 0)}")
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 
@@ -5934,16 +5924,20 @@ def checkpoint_restore(
 
     try:
         workspace = get_workspace(path)
-        checkpoint = checkpoints.restore(workspace, name_or_id)
-
-        summary = checkpoint.snapshot.get("summary", {})
+        result = checkpoints.restore(workspace, name_or_id)
 
         console.print("\n[bold green]Checkpoint restored[/bold green]")
-        console.print(f"  Name: {escape(checkpoint.name)}")
-        console.print(f"  Tasks restored: {summary.get('total_tasks', 0)}")
+        console.print(f"  Name: {escape(result.checkpoint.name)}")
+        console.print(f"  Tasks restored: {result.restored}")
+        if result.skipped:
+            console.print(
+                f"  [yellow]Left as they are ({len(result.skipped)}):[/yellow] "
+                "MERGED, or with a run in progress — "
+                + ", ".join(escape(t[:8]) for t in result.skipped)
+            )
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
     except ValueError as e:
         print_error(e)
@@ -5981,7 +5975,7 @@ def checkpoint_delete(
             raise typer.Exit(1)
 
     except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print(f"[red]Error:[/red] No workspace found at {escape(str(path))}")
         raise typer.Exit(1)
 
 

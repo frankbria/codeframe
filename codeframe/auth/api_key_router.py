@@ -8,7 +8,6 @@ Uses core/api_key_service.py for business logic (shared with CLI).
 """
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -28,7 +27,7 @@ from codeframe.auth.api_keys import (
     SCOPE_WRITE,
 )
 from codeframe.core.api_key_service import ApiKeyService
-from codeframe.platform_store.database import Database
+from codeframe.platform_store.database import Database, default_database_path
 from codeframe.lib.audit_logger import AuditEventType, audit_from_request
 
 logger = logging.getLogger(__name__)
@@ -119,7 +118,7 @@ def get_db(request: Request) -> Database:
     """Get database instance from app state (singleton managed by lifespan handler).
 
     Uses the app-scoped database to avoid per-request connection leaks.
-    Falls back to DATABASE_PATH env var if app.state.db not available.
+    Falls back to ``default_database_path()`` if app.state.db is not available.
     """
     # Prefer app-scoped singleton (set by lifespan handler in server.py)
     db = getattr(request.app.state, "db", None)
@@ -130,11 +129,7 @@ def get_db(request: Request) -> Database:
     db = getattr(request.state, "db", None)
     if db is None:
         logger.warning("No db in app.state, creating fallback connection")
-        db_path = os.getenv(
-            "DATABASE_PATH",
-            os.path.join(os.getcwd(), ".codeframe", "state.db")
-        )
-        db = Database(db_path)
+        db = Database(default_database_path())
         db.initialize()
         request.state.db = db
     return db

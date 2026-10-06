@@ -33,6 +33,8 @@ jest.mock('@/lib/api', () => ({
 }));
 
 // Mock SWR
+jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+
 jest.mock('swr', () => {
   return {
     __esModule: true,
@@ -41,6 +43,8 @@ jest.mock('swr', () => {
 });
 
 import useSWR from 'swr';
+import { toast } from 'sonner';
+import { workspaceApi } from '@/lib/api';
 
 const mockUseSWR = useSWR as jest.MockedFunction<typeof useSWR>;
 
@@ -226,6 +230,40 @@ describe('WorkspacePage', () => {
       await waitFor(() => {
         expect(screen.getByText('← Select a different project')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('initializing a workspace (#1297)', () => {
+    beforeEach(() => {
+      localStorageMock.setItem('codeframe_workspace_path', '/home/user/my-app');
+      mockUseSWR.mockImplementation(() => {
+        return {
+          data: undefined,
+          error: { detail: 'Not found', status_code: 404 },
+          isLoading: false,
+          mutate: jest.fn(),
+        } as any;
+      });
+    });
+
+    it('shows its loading state while the init runs', async () => {
+      (workspaceApi.init as jest.Mock).mockReturnValue(new Promise(() => {}));
+      render(<WorkspacePage />);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Initialize Workspace' }));
+
+      const button = await screen.findByRole('button', { name: /initializing/i });
+      expect(button).toBeDisabled();
+    });
+
+    it('says so when the init fails, instead of failing silently', async () => {
+      (workspaceApi.init as jest.Mock).mockRejectedValue({ detail: 'Not a git repository', status_code: 400 });
+      render(<WorkspacePage />);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Initialize Workspace' }));
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Not a git repository')));
+      expect(await screen.findByRole('button', { name: 'Initialize Workspace' })).toBeEnabled();
     });
   });
 });

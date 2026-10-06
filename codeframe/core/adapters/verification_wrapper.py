@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from codeframe.core.adapters.agent_adapter import AgentAdapter, AgentEvent, AgentResult
-from codeframe.core import blockers
+from codeframe.core import blockers, run_control
 from codeframe.core.fix_tracker import (
     EscalationDecision,
     FixAttemptTracker,
@@ -100,7 +100,16 @@ class VerificationWrapper:
             return res
 
         # Run verification gates with self-correction loop
+        def _stopped(rounds: int) -> AgentResult:
+            return _stamp(
+                AgentResult(status="failed", output=result.output, error="Stopped by user"),
+                False, rounds,
+            )
+
         for round_num in range(self._max_correction_rounds):
+            # A Stop must not start another gate run or correction run (#1279).
+            if run_control.cancellation_requested():
+                return _stopped(round_num)
             if on_event:
                 on_event(AgentEvent(
                     type="verification",
@@ -115,6 +124,10 @@ class VerificationWrapper:
                 gates=self._gate_names,
                 verbose=self._verbose,
             )
+            # Gates can take minutes; a Stop during them must not lead to a
+            # quick fix, a blocker or another correction run (codex review).
+            if run_control.cancellation_requested():
+                return _stopped(round_num)
 
             if gate_result.passed:
                 if on_event:
@@ -192,6 +205,8 @@ class VerificationWrapper:
 
         if gate_result.passed:
             return _stamp(result, True, self._max_correction_rounds)
+        if run_control.cancellation_requested():
+            return _stopped(self._max_correction_rounds)
 
         # All rounds exhausted — create blocker
         error_summary = self._format_gate_errors(gate_result)

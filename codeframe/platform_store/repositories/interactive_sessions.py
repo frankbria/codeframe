@@ -82,11 +82,13 @@ class InteractiveSessionRepository(BaseRepository):
         )
 
     def update_cost(
-        self, session_id: str, cost_usd: float, input_tokens: int, output_tokens: int
+        self, session_id: str, cost_usd: Optional[float], input_tokens: int, output_tokens: int
     ) -> None:
         """Accumulate cost and token counts. Called internally by the agent runtime, not via REST API.
 
         The increment is applied atomically at the DB level to prevent lost-update races.
+        ``cost_usd=None`` means unpriced: SQL ``x + NULL`` is NULL, so the session
+        total becomes unknown and stays unknown (#1299) rather than reading $0.
         """
         now = datetime.now(UTC).isoformat()
         self._execute_write(

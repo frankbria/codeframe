@@ -105,6 +105,15 @@ describe('BatchExecutionMonitor — batch state', () => {
     expect(screen.getByText('Blocked')).toBeInTheDocument();
   });
 
+  it('labels a dependency skip as skipped, not blocked (#1280)', async () => {
+    mockGet.mockResolvedValue(
+      batch({ results: { 't-1': 'FAILED', 't-2': 'SKIPPED' } })
+    );
+    await renderMonitor();
+    expect(screen.getByText('Skipped (dependency)')).toBeInTheDocument();
+    expect(screen.queryByText('Blocked')).not.toBeInTheDocument();
+  });
+
   it('surfaces a load failure instead of rendering an empty shell', async () => {
     mockGet.mockRejectedValue(new Error('boom'));
     render(<BatchExecutionMonitor batchId="b-1" workspacePath="/ws" />);

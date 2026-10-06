@@ -7,6 +7,17 @@ import { toast } from 'sonner';
 import { useAdminDenied } from '@/hooks/useAdminDenied';
 import { integrationsApi } from '@/lib/api';
 import type { ApiError, GitHubIntegrationStatus } from '@/types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -124,14 +135,27 @@ export function GitHubIntegrationCard({
             <p className="truncate text-sm">{data.repo}</p>
           </div>
         </div>
-        <Button
-          type="button"
-          variant="destructive"
-          onClick={handleDisconnect}
-          disabled={working || adminDenied}
-        >
-          {working ? 'Disconnecting…' : 'Disconnect'}
-        </Button>
+        {/* One click used to delete the stored PAT (#1297). */}
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button type="button" variant="destructive" disabled={working || adminDenied}>
+              {working ? 'Disconnecting…' : 'Disconnect'}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Disconnect {data.repo}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                The stored GitHub token is deleted. Issue import and auto-close stop until you
+                connect again with a token.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDisconnect}>Disconnect</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         {adminDenied && ADMIN_NOTE}
       </div>
     );

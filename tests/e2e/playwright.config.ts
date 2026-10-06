@@ -24,10 +24,13 @@ const AUTH_SECRET = 'e2e-test-secret-not-a-real-credential';
 
 // Point ALL client transports at the test backend at build time (Next.js bakes
 // NEXT_PUBLIC_* into client code). Without SSE/WS, streaming hooks fall back to
-// :8000 and fail cross-origin.
+// the :8080 loopback default and fail cross-origin.
 const WS_URL = BACKEND_URL.replace(/^http/, 'ws');
+// BACKEND_ORIGIN is where next.config.js points the /api and /auth rewrites,
+// also baked at build time. Without it a non-default E2E_BACKEND_PORT left the
+// REST calls proxied to :8080 — whatever happened to listen there (#1411).
 const FRONTEND_BUILD_ENV =
-  `NEXT_PUBLIC_API_URL=${BACKEND_URL} NEXT_PUBLIC_SSE_URL=${BACKEND_URL} NEXT_PUBLIC_WS_URL=${WS_URL} PORT=${frontendPort}`;
+  `NEXT_PUBLIC_API_URL=${BACKEND_URL} NEXT_PUBLIC_SSE_URL=${BACKEND_URL} NEXT_PUBLIC_WS_URL=${WS_URL} BACKEND_ORIGIN=${BACKEND_URL} PORT=${frontendPort}`;
 
 export default defineConfig({
   testDir: './',
@@ -77,7 +80,9 @@ export default defineConfig({
       // CODEFRAME_LLM_PROVIDER=mock makes task generation and execution
       // deterministic and free. Without it the backend defaults to anthropic
       // and the lifecycle spec would need a paid key.
-      command: `AUTH_SECRET=${AUTH_SECRET} DATABASE_PATH=${CENTRAL_DB_PATH} WORKSPACE_ROOT=${WORKSPACE_ROOT} CODEFRAME_LLM_PROVIDER=mock uv run uvicorn codeframe.ui.server:app --port ${BACKEND_PORT}`,
+      // CORS_ALLOWED_ORIGINS: the server's localhost default lists :3001 only,
+      // so a non-default E2E_FRONTEND_URL had every direct call blocked (#1411).
+      command: `CORS_ALLOWED_ORIGINS=${FRONTEND_URL} AUTH_SECRET=${AUTH_SECRET} DATABASE_PATH=${CENTRAL_DB_PATH} WORKSPACE_ROOT=${WORKSPACE_ROOT} CODEFRAME_LLM_PROVIDER=mock uv run uvicorn codeframe.ui.server:app --port ${BACKEND_PORT}`,
       cwd: '../..',
       url: `${BACKEND_URL}/health`,
       reuseExistingServer: !process.env.CI,

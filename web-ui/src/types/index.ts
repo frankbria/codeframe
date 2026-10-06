@@ -399,12 +399,15 @@ export interface ProofRequirement {
   source_issue: string | null;
   related_reqs: string[];
   scope: ProofScope | null;
+  /** WAIVED with a lapsed waiver (#1360). */
+  waiver_expired?: boolean;
 }
 
 export interface ProofRequirementListResponse {
   requirements: ProofRequirement[];
   total: number;
-  by_status: Partial<Record<ProofReqStatus, number>>;
+  // waiver_expired: WAIVED past expiry, counted apart from `waived` (#1360).
+  by_status: Partial<Record<ProofReqStatus | 'waiver_expired', number>>;
 }
 
 export interface ProofEvidence {
@@ -430,6 +433,8 @@ export interface ProofStatusResponse {
   open: number;
   satisfied: number;
   waived: number;
+  /** WAIVED past expiry; counted here, not in `waived` (#1360). */
+  waiver_expired?: number;
   requirements: ProofRequirement[];
 }
 
@@ -589,7 +594,8 @@ export interface Session {
   model: string;
   created_at: string;
   ended_at: string | null;
-  cost_usd: number;
+  /** null when a turn used an unpriced model: unknown, never $0 (#1299). */
+  cost_usd: number | null;
   agent_name: string | null;
 }
 
@@ -633,7 +639,7 @@ export type AgentChatStatus =
 export interface AgentChatState {
   messages: ChatMessage[];
   status: AgentChatStatus;
-  costUsd: number;
+  costUsd: number | null;
   inputTokens: number;
   outputTokens: number;
   error: string | null;
@@ -645,15 +651,7 @@ export type ProofEvidenceSortCol = 'gate' | 'result' | 'run_id' | 'timestamp' | 
 export type SortDir = 'asc' | 'desc';
 
 // Settings types — mirrors codeframe/ui/models.py
-export type AgentTypeKey = 'claude_code' | 'codex' | 'opencode' | 'react';
-
-export interface AgentTypeModelConfig {
-  agent_type: AgentTypeKey;
-  default_model: string;
-}
-
 export interface AgentSettings {
-  agent_models: AgentTypeModelConfig[];
   max_turns: number;
   max_cost_usd: number | null;
 }

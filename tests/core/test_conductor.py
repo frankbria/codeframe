@@ -383,10 +383,16 @@ class TestStopBatch:
         _active_processes[batch_id] = {"task-1": mock_process}
 
         try:
-            stopped = stop_batch(workspace, batch_id, force=True)
+            # The whole process group goes, not only the worker (#1279); the
+            # real kill is exercised in test_stop_does_stop_1279.py.
+            with patch("codeframe.core.run_control.terminate_trees") as kill_trees:
+                stopped = stop_batch(workspace, batch_id, force=True)
 
-            # Process should have been terminated
-            mock_process.terminate.assert_called_once()
+            from codeframe.core import run_control
+
+            kill_trees.assert_called_once_with(
+                [mock_process], grace_s=run_control.WORKER_GRACE_S
+            )
             assert stopped.status == BatchStatus.CANCELLED
 
             # Process tracking should be cleaned up
@@ -423,10 +429,18 @@ class TestStopBatch:
         _active_processes[batch_id] = {"task-1": mock_process}
 
         try:
-            stopped = stop_batch(workspace, batch_id, force=True)
+            # Its group is still handed over even though the worker exited: its
+            # children can outlive it. terminate_tree itself refuses a group it
+            # cannot verify (test_run_control_safety.py), so a mock is safe there,
+            # but it is patched here too: never put a mock near a real killpg.
+            with patch("codeframe.core.run_control.terminate_trees") as kill_trees:
+                stopped = stop_batch(workspace, batch_id, force=True)
 
-            # terminate should not be called for exited process
-            mock_process.terminate.assert_not_called()
+            from codeframe.core import run_control
+
+            kill_trees.assert_called_once_with(
+                [mock_process], grace_s=run_control.WORKER_GRACE_S
+            )
             assert stopped.status == BatchStatus.CANCELLED
         finally:
             _active_processes.pop(batch_id, None)

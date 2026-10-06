@@ -13,6 +13,8 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -430,8 +432,8 @@ def run(
         gates: Specific gates to run (None = all available)
         verbose: Whether to capture full output
         auto_install_deps: Whether to auto-install missing dependencies before test gates (default: True)
-        test_selector: Optional pytest ``-k`` keyword expression; only applies to
-            the pytest gate. With a selector, "no tests matched" is a failure.
+        test_selector: Optional exact test function name; only applies to the
+            pytest gate. With a selector, "no test of that name" is a failure.
 
     Returns:
         GateResult with all check results
@@ -649,6 +651,21 @@ def _tool_prefix(tool: str, use_uv: bool = True) -> Optional[list[str]]:
     return None
 
 
+class BundledToolConfigSkew(Exception):
+    """CodeFRAME's own copy of a tool cannot read the project's newer config.
+
+    The project has no copy of its own, so ours ran — and ours is older than
+    the config it was handed. That is unverifiable, not a lint failure: the
+    caller reports SKIPPED with this message (#1308).
+    """
+
+
+#: How ruff reports an option, rule or value it does not know — what an older
+#: ruff says about a config written for a newer one. A config that is simply
+#: broken (a missing ``extend`` file, bad TOML) does not match and stays FAILED.
+_RUFF_SKEW_MARKERS = ("unknown field", "unknown variant", "unknown rule selector")
+
+
 def _run_tool(
     tool: str, prefix: Optional[list[str]], args: list[str], repo_path: Path, timeout: int
 ) -> Optional[subprocess.CompletedProcess]:
@@ -665,11 +682,14 @@ def _run_tool(
     config, say) is the answer, even when its stderr says "No such file" —
     which is why this does not use ``_tool_is_missing``.
 
-    Returns None when no copy can be spawned.
+    Returns None when no copy can be spawned. Raises ``BundledToolConfigSkew``
+    when only CodeFRAME's ruff could run and it cannot read the project's
+    config; the project's own ruff failing on that config is returned as-is.
     """
+    bundled = [sys.executable, "-m", tool]
     prefixes = [prefix] if prefix else []
     if importlib.util.find_spec(tool) is not None:
-        prefixes.append([sys.executable, "-m", tool])
+        prefixes.append(bundled)
     for cmd in prefixes:
         try:
             result = subprocess.run(
@@ -687,14 +707,52 @@ def _run_tool(
         stderr = (result.stderr or "").lower()
         # uv's spawn failure, or a version-manager shim with no such version.
         if "failed to spawn" not in stderr and "command not found" not in stderr:
+            if (
+                cmd is bundled
+                and tool == "ruff"
+                and "failed to load configuration" in stderr
+                and any(marker in stderr for marker in _RUFF_SKEW_MARKERS)
+            ):
+                raise BundledToolConfigSkew(
+                    "The project's ruff config needs a newer ruff than the one "
+                    "CodeFRAME ships, and the project has no ruff of its own. "
+                    "Add ruff to the project's dev dependencies to lint it.\n\n"
+                    + (result.stderr or "").strip()
+                )
             return result
     return None
+
+
+# Why an exact-named evidence test that only skipped fails its rule (#1430).
+SKIPPED_NOT_EVIDENCE = "skipped, not run: a skip is not evidence"
+
+
+def _exact_cases_verdict(report: Path, name: str) -> Optional[str]:
+    """From a pytest JUnit report, for the cases named exactly ``name``
+    (parameters ignored): None when there are none, else ``"failed"`` if any
+    failed or errored, ``"skipped"`` if none actually ran (a skip, or an xfail,
+    which JUnit reports as skipped, executed nothing and is not evidence,
+    #1430), else ``"passed"``."""
+    try:
+        cases = [
+            c for c in ET.parse(report).getroot().iter("testcase")
+            if c.get("name", "").split("[", 1)[0] == name
+        ]
+    except (OSError, ET.ParseError):
+        return None
+    if not cases:
+        return None
+    if any(c.find("failure") is not None or c.find("error") is not None for c in cases):
+        return "failed"
+    if all(c.find("skipped") is not None for c in cases):
+        return "skipped"
+    return "passed"
 
 
 def _run_pytest(
     repo_path: Path, verbose: bool = False, test_selector: Optional[str] = None
 ) -> GateCheck:
-    """Run pytest, optionally scoped to a ``-k`` keyword expression."""
+    """Run pytest, optionally scoped to the tests named exactly ``test_selector``."""
     import time
 
     start = time.time()
@@ -709,23 +767,42 @@ def _run_pytest(
 
     try:
         # Try uv run pytest first, fall back to pytest
-        if shutil.which("uv"):
-            cmd = ["uv", "run", "pytest", "-v", "--tb=short"]
-        else:
-            cmd = ["pytest", "-v", "--tb=short"]
-        if test_selector:
-            cmd += ["-k", test_selector]
+        base = ["uv", "run", "pytest"] if shutil.which("uv") else ["pytest"]
+        cmd = base + ["-v", "--tb=short"]
 
-        result = subprocess.run(
-            cmd,
-            cwd=repo_path,
-            env=build_agent_env(repo_path),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=300,  # 5 minute timeout
-        )
+        def _pytest(args: list[str]) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                args,
+                cwd=repo_path,
+                env=build_agent_env(repo_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,  # 5 minute timeout
+            )
+
+        # `-k` is substring matching: `test_unit_total` also ran
+        # `test_unit_total_wrong`, and a missing test passed through any
+        # longer-named one (#1401). The verdict is taken from a JUnit report,
+        # counting only the cases named exactly `test_selector`; the others the
+        # `-k` drags in still run but cannot decide it. A report, not console
+        # output or --deselect: a project's verbosity settings reshaped the
+        # output and --deselect matches node-id prefixes (codex review).
+        exact: Optional[str] = None
+        if test_selector:
+            with tempfile.TemporaryDirectory() as tmp:
+                report = Path(tmp) / "report.xml"
+                # --maxfail=0 (no limit) overrides a project's -x/--maxfail:
+                # stopping on an unrelated match left exact cases unrun, and
+                # the report then held only the ones that passed (codex review).
+                result = _pytest(
+                    cmd + ["-k", test_selector, "--maxfail=0", f"--junitxml={report}"]
+                )
+                if result.returncode in (0, 1, 5):
+                    exact = _exact_cases_verdict(report, test_selector)
+        else:
+            result = _pytest(cmd)
 
         duration_ms = int((time.time() - start) * 1000)
 
@@ -787,11 +864,26 @@ def _run_pytest(
             # Unknown exit code - treat as FAILED
             status = GateStatus.FAILED
 
+        exit_code = result.returncode
+        if test_selector and result.returncode in (0, 1, 5):
+            if exact is None:
+                status, exit_code = GateStatus.FAILED, 5  # named test missing
+                output = f"no test named {test_selector} was collected\n" + output
+            else:
+                passed = exact == "passed"
+                status = GateStatus.PASSED if passed else GateStatus.FAILED
+                exit_code = 0 if passed else 1
+
+        output = output if verbose else _summarize_pytest_output(output)
+        if test_selector and exact == "skipped":
+            # After summarising, which would drop it; the runner keys on it (#1430).
+            output = f"{test_selector}: {SKIPPED_NOT_EVIDENCE}\n{output}"
+
         return GateCheck(
             name="pytest",
             status=status,
-            exit_code=result.returncode,
-            output=output if verbose else _summarize_pytest_output(output),
+            exit_code=exit_code,
+            output=output,
             duration_ms=duration_ms,
         )
 
@@ -807,6 +899,14 @@ def _run_pytest(
             status=GateStatus.ERROR,
             output=str(e),
         )
+
+
+#: Paths the SEC gate's bandit scan skips: tool and virtualenv directories,
+#: and test code (#1284), matched by bandit's glob support.
+_BANDIT_EXCLUDES = ",".join([
+    "./.venv", "./venv", "./.tox", "./.nox", "./.codeframe",
+    "*/tests/*", "*/test_*.py", "*_test.py", "*/conftest.py",
+])
 
 
 def _run_bandit(repo_path: Path, verbose: bool = False) -> GateCheck:
@@ -834,10 +934,16 @@ def _run_bandit(repo_path: Path, verbose: bool = False) -> GateCheck:
     try:
         # -x replaces bandit's defaults. `uv run` syncs the project into .venv
         # before it finds no bandit, and the fallback must not scan that (#1262).
+        # Test code is excluded too (#1284). Every pytest test asserts (B101),
+        # and a test that drives a CLI imports subprocess (B404/B603), so the
+        # SEC gate failed in any workspace with tests, including after its own
+        # stub was implemented. Tests are not production attack surface. B101
+        # is NOT skipped: an `assert user.is_admin` in application code is
+        # exactly what it exists to catch, since `python -O` removes it.
         result = _run_tool(
             "bandit",
             prefix,
-            ["-r", ".", "-q", "-f", "txt", "-x", "./.venv,./venv,./.tox,./.nox,./.codeframe"],
+            ["-r", ".", "-q", "-f", "txt", "-x", _BANDIT_EXCLUDES],
             repo_path,
             timeout=300,
         )
@@ -918,6 +1024,8 @@ def _run_ruff(repo_path: Path, verbose: bool = False) -> GateCheck:
 
         return check
 
+    except BundledToolConfigSkew as e:
+        return GateCheck(name="ruff", status=GateStatus.SKIPPED, output=str(e))
     except subprocess.TimeoutExpired:
         return GateCheck(
             name="ruff",
@@ -1378,7 +1486,9 @@ LINTER_REGISTRY: list[LinterConfig] = [
     LinterConfig(
         name="ruff",
         extensions={".py", ".pyi"},
-        cmd=["ruff", "check", "--output-format=concise", "{file}"],
+        # No --output-format: ruff < 0.3 rejects "concise" (#1308), and
+        # _parse_ruff_errors reads both formats since #1307.
+        cmd=["ruff", "check", "{file}"],
         check_available="ruff",
         use_uv=True,
         parse_errors=_parse_ruff_errors,
@@ -1463,6 +1573,8 @@ def run_lint_on_file(
 
         return check
 
+    except BundledToolConfigSkew as e:
+        return GateCheck(name=cfg.name, status=GateStatus.SKIPPED, output=str(e))
     except subprocess.TimeoutExpired:
         return GateCheck(name=cfg.name, status=GateStatus.ERROR,
                          output=f"Timeout after {timeout}s")
@@ -1521,6 +1633,8 @@ def run_autofix_on_file(
             duration_ms=duration_ms,
         )
 
+    except BundledToolConfigSkew as e:
+        return GateCheck(name=f"autofix-{cfg.name}", status=GateStatus.SKIPPED, output=str(e))
     except subprocess.TimeoutExpired:
         return GateCheck(name=f"autofix-{cfg.name}", status=GateStatus.ERROR,
                          output=f"Timeout after {timeout}s")

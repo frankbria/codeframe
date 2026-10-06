@@ -73,10 +73,12 @@ class TestResolutionBypassesLimit:
 
 
 class TestListingRespectsLimit:
-    def test_default_limit_still_caps_at_100(self, many_tasks):
-        """Backward-compat: the default cap is unchanged (API pagination relies on it)."""
+    def test_explicit_limit_caps_and_default_is_uncapped(self, many_tasks):
+        """The API router passes its own ``limit``; every caller that took the
+        old default of 100 wanted every task and silently lost the rest (#1294)."""
         workspace, _ = many_tasks
-        assert len(tasks.list_tasks(workspace)) == 100
+        assert len(tasks.list_tasks(workspace, limit=100)) == 100
+        assert len(tasks.list_tasks(workspace)) == 150
 
     def test_limit_none_returns_all_tasks(self, many_tasks):
         """AC2: unbounded listing sees every task so counts/bulk ops are complete."""

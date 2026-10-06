@@ -121,7 +121,7 @@ class TestBuiltinRequirementsFollowTheProvider:
         reqs = check_requirements("kilocode", Path.cwd())
 
         assert "OPENAI_API_KEY" not in reqs
-        assert "KILOCODE_PATH" in reqs
+        assert "kilo_binary" in reqs  # kilo's own readiness, not the provider's
 
     def test_a_broken_config_does_not_crash_the_check(self, monkeypatch, tmp_path):
         """Reporting requirements must not be the thing that fails on bad config."""

@@ -322,6 +322,19 @@ class TestWaive:
         assert req.waiver.reason == "No automated test yet"
         assert req.waiver.expires == date(2027, 1, 1)
 
+    def test_waive_records_the_os_user_like_a_merge_override(self, ws_with_req, monkeypatch):
+        """A waiver bypasses the merge gate like an override does; it recorded
+        a constant "cli-user" while the override recorded the OS user (#1306)."""
+        workspace, workspace_path = ws_with_req
+        monkeypatch.setattr("getpass.getuser", lambda: "alice")
+
+        result = runner.invoke(app, [
+            "proof", "waive", "REQ-0001", "-w", str(workspace_path), "--reason", "Accepted risk",
+        ])
+
+        assert result.exit_code == 0, result.output
+        assert ledger.get_requirement(workspace, "REQ-0001").waiver.approved_by == "alice"
+
     def test_waive_without_expiry(self, ws_with_req):
         """waive without --expires should still succeed."""
         workspace, workspace_path = ws_with_req
@@ -455,3 +468,15 @@ class TestClosedLoop:
 
         req = ledger.get_requirement(workspace, "REQ-0001")
         assert req.status == ReqStatus.SATISFIED
+
+
+def test_cli_actor_survives_a_uid_with_no_passwd_entry(monkeypatch):
+    """getpass.getuser raises KeyError (no passwd entry, no USER env), not only
+    OSError; an audited waive must not die on it (GLM review, #1306)."""
+    from codeframe.cli.helpers import cli_actor
+
+    def no_entry():
+        raise KeyError("getpwuid(): uid not found: 4242")
+
+    monkeypatch.setattr("getpass.getuser", no_entry)
+    assert cli_actor() == "cli"

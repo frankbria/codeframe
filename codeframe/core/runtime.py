@@ -5,12 +5,13 @@ Manages task execution runs and the agent loop.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import functools
 import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from codeframe.core import engine_stats, events, tasks
 from codeframe.core.state_machine import (
@@ -100,7 +101,21 @@ def start_task_run(workspace: Workspace, task_id: str) -> Run:
     # Check if there's already an active run
     active = get_active_run(workspace, task_id)
     if active:
-        raise ValueError(f"Task already has an active run: {active.id}")
+        raise ValueError(
+            f"Task already has an active run: {active.id}. "
+            f"Stop it first with `cf work stop {task_id}`."
+        )
+
+    # A stopped run's agent can still be finishing its current step. Starting
+    # another would put two agents on one tree (#1279).
+    from codeframe.core import run_control
+
+    if run_control.previous_run_alive(workspace, task_id):
+        raise ValueError(
+            f"Task {task_id}'s previous run is still stopping: its agent finishes "
+            "the step it is in (an LLM call, a command or a gate run) before it "
+            "exits. Try again once it has."
+        )
 
     # Transition task to IN_PROGRESS (validates the transition)
     # If task is in BACKLOG, we need to go through READY first
@@ -624,6 +639,10 @@ def stop_run(workspace: Workspace, task_id: str) -> Run:
     finally:
         conn.close()
 
+    from codeframe.core import run_control
+
+    run_control.mark_stopped(workspace, run.id)
+
     # Transition task back to READY so it can be restarted (if not already)
     task = tasks.get(workspace, task_id)
     if task and task.status != TaskStatus.READY:
@@ -707,6 +726,35 @@ def execute_stub(workspace: Workspace, run: Run) -> None:
     )
 
 
+def _fail_run_on_escape(fn: Callable[..., "AgentState"]) -> Callable[..., "AgentState"]:
+    """Fail the run when anything escapes ``execute_agent`` (#1280).
+
+    Setup that runs before its own ``try`` (resolving the LLM provider, for one)
+    raises with the run already RUNNING, and a KeyboardInterrupt or SystemExit
+    passes its ``except Exception``. Either way the run stayed RUNNING with no
+    worker, and every later start refused the task. A run that is no longer
+    RUNNING (it finished, or ``stop_run`` got there first) is left alone.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> "AgentState":
+        try:
+            return fn(*args, **kwargs)
+        except BaseException as exc:
+            workspace = args[0] if args else kwargs["workspace"]
+            run = args[1] if len(args) > 1 else kwargs["run"]
+            try:
+                current = get_run(workspace, run.id)
+                if current is not None and current.status == RunStatus.RUNNING:
+                    fail_run(workspace, run.id, reason=f"{type(exc).__name__}: {exc}"[:500])
+            except Exception:
+                logger.warning("Could not fail run %s after an error", run.id, exc_info=True)
+            raise
+
+    return wrapper
+
+
+@_fail_run_on_escape
 def execute_agent(
     workspace: Workspace,
     run: Run,
@@ -759,11 +807,15 @@ def execute_agent(
     from codeframe.core.diagnostics import RunLogger, LogCategory
     from codeframe.core.engine_registry import (
         is_external_engine, resolve_engine, get_external_adapter, get_builtin_adapter,
+        refuse_dry_run_for_external_engine,
     )
     from codeframe.core.adapters.agent_adapter import AgentEvent as AdapterEvent
 
     # Resolve engine (handles "built-in" alias and CODEFRAME_ENGINE env var)
     engine = resolve_engine(engine)
+    # The CLI refuses this before creating a run; this catches every other
+    # caller, and _fail_run_on_escape fails the run it was handed (#1281).
+    refuse_dry_run_for_external_engine(engine, dry_run)
 
     # Resolve LLM provider: CLI flag → env var → workspace config → default "anthropic"
     from codeframe.core.llm_resolution import resolve_llm_settings, create_provider
@@ -826,6 +878,11 @@ def execute_agent(
     # finally block cleans up (merged) vs preserves the branch (failed/conflict).
     worktree_merged = False
 
+    # Heartbeat + the Stop signal the agent and adapters poll (#1279).
+    from codeframe.core import run_control
+
+    control = run_control.start(workspace, run)
+
     try:
         exec_ctx = create_execution_context(
             run.task_id, IsolationLevel(isolation), workspace.repo_path
@@ -865,15 +922,33 @@ def execute_agent(
             category = _event_type_to_category(event_type)
             run_logger.info(category, f"Agent event: {event_type}", data)
 
+        # Builtin engines write output.log themselves (they are handed
+        # output_logger). External engines were not, so `cf work follow` and
+        # GET /output showed nothing for them (#1282): write what they report.
+        external = is_external_engine(engine)
+
         # Bridge AgentEvent callbacks to workspace event system
         def on_adapter_event(event: AdapterEvent) -> None:
             on_agent_event(event.type, event.data)
+            if external:
+                # SubprocessAdapter puts an output line in data["line"]; the
+                # cloud (E2B) adapter puts it in message (review).
+                text = (
+                    (event.data.get("line") or event.message)
+                    if event.type == "output" else event.message
+                )
+                if text:
+                    output_logger.write(str(text).rstrip("\n") + "\n")
+                # codex reports what its agent said as an item, not a line.
+                said = event.data.get("text") if event.data.get("type") == "agentMessage" else None
+                if isinstance(said, str) and said.strip():
+                    output_logger.write(said.rstrip("\n") + "\n")
 
         # Get adapter via registry and run
         # Tell the user when their stall flags will be dropped (#957).
         _warn_if_stall_settings_ignored(engine, stall_timeout_s, stall_action)
 
-        if is_external_engine(engine):
+        if external:
             from codeframe.core.context_packager import TaskContextPackager
             from codeframe.core.adapters.verification_wrapper import VerificationWrapper
 
@@ -919,8 +994,15 @@ def execute_agent(
             }
             # Stall detection is only relevant for the react engine
             if engine in _STALL_AWARE_ENGINES:
+                from codeframe.core.replay import ExecutionRecorder
+
                 builtin_kwargs["stall_timeout_s"] = stall_timeout_s
                 builtin_kwargs["stall_action"] = resolved_action
+                # Without this no production run recorded a trace, so `cf
+                # work replay/diff/export-trace/rerun` always found none
+                # (#1300). State lives on the main workspace, as for every
+                # other run record, even when the run is in a worktree.
+                builtin_kwargs["execution_recorder"] = ExecutionRecorder(workspace, run.id)
             else:
                 # The plan engine's supervisor resolves its own provider (#1264).
                 builtin_kwargs["user_id"] = user_id
@@ -939,6 +1021,20 @@ def execute_agent(
             f"Engine '{engine}' completed: {result.status}",
             {"engine": engine, "output_length": len(result.output)},
         )
+
+        if control.cancelled():
+            # stop_run already failed the run and returned the task to READY.
+            # Do not merge back a half-done tree or transition the run again
+            # (complete_run would raise on a run that is no longer RUNNING).
+            run_logger.info(LogCategory.STATE_CHANGE, "Run stopped by user")
+            if env_config and hook_ctx:
+                # A stopped run did not succeed; fire the same hook a failure does.
+                hook_ctx.task_status = "failed"
+                execute_hook(
+                    "after_task_failure", env_config, workspace.repo_path, hook_ctx,
+                    abort_on_failure=False,
+                )
+            return AgentState(status=AgentStatus.FAILED)
 
         # Map AgentResult to AgentState for rest of runtime
         status_map = {
@@ -1116,6 +1212,7 @@ def execute_agent(
         return AgentState(status=AgentStatus.FAILED)
 
     finally:
+        control.stop()
         # Always close the output logger to ensure file is properly flushed
         output_logger.close()
         # Clean up execution context. For NONE this is a harmless no-op. For a

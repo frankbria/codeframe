@@ -46,12 +46,6 @@ const mockUpdate = settingsApi.update as jest.MockedFunction<typeof settingsApi.
 const WORKSPACE = '/home/user/project';
 
 const SAMPLE_SETTINGS: AgentSettings = {
-  agent_models: [
-    { agent_type: 'claude_code', default_model: 'claude-opus-4' },
-    { agent_type: 'codex', default_model: '' },
-    { agent_type: 'opencode', default_model: '' },
-    { agent_type: 'react', default_model: '' },
-  ],
   max_turns: 25,
   max_cost_usd: 5.0,
 };
@@ -105,6 +99,9 @@ describe('SettingsPage', () => {
         expect(screen.getByLabelText(/Max turns per task/i)).toHaveValue(25);
       });
       expect(screen.getByLabelText(/Max cost per task/i)).toHaveValue(5);
+      // Saved but never read by any engine, so removed rather than kept as a
+      // control that does nothing (#1292).
+      expect(screen.queryByText(/Default model per agent type/i)).toBeNull();
     });
 
     it('saves edited settings via the API', async () => {

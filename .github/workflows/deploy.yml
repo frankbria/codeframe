@@ -276,6 +276,10 @@ jobs:
           ENV_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
           ENV_AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           ENV_CREDENTIAL_SECRET: ${{ secrets.CODEFRAME_CREDENTIAL_SECRET }}
+          # Optional (#1295). Gates first-account registration from the web
+          # UI; empty means unset. Without it in this list the regenerated env
+          # file erased the token deploy/README.md tells operators to set.
+          ENV_BOOTSTRAP_TOKEN: ${{ secrets.CODEFRAME_BOOTSTRAP_TOKEN }}
           ENV_DATABASE_PATH: ${{ secrets.DATABASE_PATH }}
           ENV_WORKSPACE_ROOT: ${{ secrets.WORKSPACE_ROOT }}
           ENV_API_HOST: ${{ secrets.API_HOST }}
@@ -333,6 +337,9 @@ jobs:
             "# Key for the encrypted credential store (#1265). Never rotate it:" \
             "# stored credentials would become undecryptable." \
             "CODEFRAME_CREDENTIAL_SECRET=${ENV_CREDENTIAL_SECRET}" \
+            "# First-account registration token (#897). Empty = only a" \
+            "# host-local request may register: see deploy/README.md." \
+            "CODEFRAME_BOOTSTRAP_TOKEN=${ENV_BOOTSTRAP_TOKEN}" \
             "" \
             "# Database Configuration" \
             "DATABASE_PATH=${ENV_DATABASE_PATH}" \
@@ -383,6 +390,31 @@ jobs:
           "
 
           echo "✅ .env.staging created and verified"
+
+      - name: Create pre-deployment backup
+        run: |
+          # Staging had no backup at all (#1295). Same script as production:
+          # an online backup of the volume DB, failing the deploy when a host
+          # that has run before has lost its database.
+          scp -q deploy/backup-db.sh \
+            "${{ secrets.USER }}@${{ secrets.HOST }}:${{ secrets.PROJECT_PATH }}/"
+
+          # shellcheck disable=SC2087  # client-side expansion is deliberate;
+          # server-side forms are escaped. Keep this heredoc backtick-free
+          # (#1130).
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
+            set -euo pipefail
+            cd ${{ secrets.PROJECT_PATH }}
+            mkdir -p backups
+            chmod 700 backups
+            OUT="backups/codeframe-\$(date +%Y%m%d-%H%M%S).db"
+            bash backup-db.sh "\${OUT}" backups
+            if [ -f "\${OUT}" ]; then gzip "\${OUT}"; fi
+            # Keep the last 10, like production.
+            # || true: on a first deploy there is nothing to list, ls exits 2,
+            # and pipefail would abort the deploy over it.
+            ls -t backups/codeframe-*.db.gz 2>/dev/null | tail -n +11 | xargs -r rm -f || true
+          ENDSSH
 
       - name: Deploy to staging server
         env:
@@ -465,7 +497,7 @@ jobs:
                 -e SRC="/legacy/\$(basename "\${LEGACY_DB}")" \
                 -v codeframe_codeframe-data:/data \
                 -v "\$(dirname "\${LEGACY_DB}")":/legacy:ro \
-                alpine:3.20 sh -c '
+                alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 sh -c '
                   if [ -f /data/codeframe.db ]; then
                     echo "   volume already has a database — left alone"
                   else
@@ -687,6 +719,10 @@ jobs:
           ENV_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
           ENV_AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           ENV_CREDENTIAL_SECRET: ${{ secrets.CODEFRAME_CREDENTIAL_SECRET }}
+          # Optional (#1295). Gates first-account registration from the web
+          # UI; empty means unset. Without it in this list the regenerated env
+          # file erased the token deploy/README.md tells operators to set.
+          ENV_BOOTSTRAP_TOKEN: ${{ secrets.CODEFRAME_BOOTSTRAP_TOKEN }}
           ENV_DATABASE_PATH: ${{ secrets.DATABASE_PATH }}
           ENV_WORKSPACE_ROOT: ${{ secrets.WORKSPACE_ROOT }}
           ENV_API_HOST: ${{ secrets.API_HOST }}
@@ -744,6 +780,9 @@ jobs:
             "# Key for the encrypted credential store (#1265). Never rotate it:" \
             "# stored credentials would become undecryptable." \
             "CODEFRAME_CREDENTIAL_SECRET=${ENV_CREDENTIAL_SECRET}" \
+            "# First-account registration token (#897). Empty = only a" \
+            "# host-local request may register: see deploy/README.md." \
+            "CODEFRAME_BOOTSTRAP_TOKEN=${ENV_BOOTSTRAP_TOKEN}" \
             "" \
             "# Database Configuration" \
             "DATABASE_PATH=${ENV_DATABASE_PATH}" \
@@ -797,6 +836,9 @@ jobs:
 
       - name: Create pre-deployment backup
         run: |
+          scp -q deploy/backup-db.sh \
+            "${{ secrets.USER }}@${{ secrets.HOST }}:${{ secrets.PROJECT_PATH }}/"
+
           # shellcheck disable=SC2087  # client-side expansion is deliberate:
           # ${NEXT_PUBLIC_*} and ${BACKEND_NAME}/${FRONTEND_NAME} are runner env
           # and must be baked in here. The forms that must resolve on the server
@@ -820,8 +862,12 @@ jobs:
             mkdir -p \${BACKUP_BASE}
             chmod 700 \${BACKUP_BASE}
 
-            # Create temporary staging directory
-            mkdir -p \${TMP_BACKUP}
+            # Create temporary staging directory. 700: it receives the env
+            # files and the database, under a world-traversable /tmp (#1295).
+            # umask 077 for the whole step: the tar.gz written beside it holds
+            # the same secrets and was chmod 600 only after the mv.
+            umask 077
+            mkdir -m 700 \${TMP_BACKUP}
 
             # Record current commit
             # Since #1121 the host has no checkout — the deploy pulls an image
@@ -837,11 +883,12 @@ jobs:
               images --format json > \${TMP_BACKUP}/previous_images.json 2>/dev/null || true
             echo "📝 Previous version: \$(head -1 \${TMP_BACKUP}/previous_commit.txt)"
 
-            # Backup database
-            if [ -f .codeframe/state.db ]; then
-              cp .codeframe/state.db \${TMP_BACKUP}/
-              echo "✅ Database backed up"
-            fi
+            # Back up the live database (#1295): an online SQLite backup of
+            # /data/codeframe.db in the data volume. This used to copy
+            # .codeframe/state.db, which a container host does not have, so
+            # it skipped silently. It now fails the deploy when this host has
+            # a data volume but no database in it.
+            bash backup-db.sh "\${TMP_BACKUP}/codeframe.db" "\${BACKUP_BASE}"
 
             # Backup config files
             if [ -d .codeframe ]; then

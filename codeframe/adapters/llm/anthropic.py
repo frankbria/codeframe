@@ -169,7 +169,8 @@ class AnthropicProvider(LLMProvider):
             response = self.client.messages.create(**kwargs)
         except Exception as exc:
             raise map_provider_error(
-                exc, provider="anthropic", model=model, purpose=purpose
+                exc, provider="anthropic", model=model, purpose=purpose,
+                key_source=self.key_source,
             ) from exc
 
         # Parse response
@@ -216,7 +217,8 @@ class AnthropicProvider(LLMProvider):
             # Same mapping as the sync path — the async path previously produced
             # typed errors but stringified the raw SDK body into them (#1110).
             raise map_provider_error(
-                exc, provider="anthropic", model=model, purpose=purpose
+                exc, provider="anthropic", model=model, purpose=purpose,
+                key_source=self.key_source,
             ) from exc
 
     def supports(self, capability: str) -> bool:
@@ -296,60 +298,74 @@ class AnthropicProvider(LLMProvider):
             else:
                 raise
 
-        async with stream_ctx as stream:
-            async for sdk_event in stream:
-                if interrupt_event and interrupt_event.is_set():
-                    return
+        from codeframe.adapters.llm.errors import map_provider_error
 
-                event_type = sdk_event.type
+        # Every API failure gets complete()'s actionable mapping: interactive
+        # chat streams, and it showed users the raw SDK error string (#1434).
+        # A cancel is BaseException and passes through untouched.
+        try:
+            async with stream_ctx as stream:
+                async for sdk_event in stream:
+                    if interrupt_event and interrupt_event.is_set():
+                        return
 
-                if event_type == "content_block_start":
-                    block = sdk_event.content_block
-                    if block.type == "tool_use":
-                        active_tool_id = block.id
+                    event_type = sdk_event.type
+
+                    if event_type == "content_block_start":
+                        block = sdk_event.content_block
+                        if block.type == "tool_use":
+                            active_tool_id = block.id
+                            yield StreamChunk(
+                                type="tool_use_start",
+                                tool_id=block.id,
+                                tool_name=block.name,
+                                tool_input=getattr(block, "input", {}),
+                            )
+
+                    elif event_type == "content_block_delta":
+                        delta = sdk_event.delta
+                        if delta.type == "text_delta":
+                            yield StreamChunk(type="text_delta", text=delta.text)
+                        elif delta.type == "thinking_delta":
+                            yield StreamChunk(type="thinking_delta", text=delta.thinking)
+                        elif delta.type == "input_json_delta":
+                            # Final inputs are rebuilt from message_stop; this is
+                            # yielded so a call cut off mid-arguments is still
+                            # charged for them (#1405).
+                            yield StreamChunk(type="tool_input_delta", text=delta.partial_json)
+
+                    elif event_type == "content_block_stop":
+                        if active_tool_id is not None:
+                            yield StreamChunk(type="tool_use_stop")
+                            active_tool_id = None
+
+                    elif event_type == "message_stop":
+                        # Flush any open tool block
+                        if active_tool_id is not None:
+                            yield StreamChunk(type="tool_use_stop")
+                            active_tool_id = None
+
+                        final_msg = await stream.get_final_message()
+                        stop_reason = final_msg.stop_reason or "end_turn"
+
+                        # Build tool_inputs_by_id from final content blocks
+                        tool_inputs_by_id: dict = {}
+                        if hasattr(final_msg, "content"):
+                            for block in final_msg.content:
+                                if getattr(block, "type", None) == "tool_use" and hasattr(block, "id"):
+                                    tool_inputs_by_id[block.id] = getattr(block, "input", {})
+
                         yield StreamChunk(
-                            type="tool_use_start",
-                            tool_id=block.id,
-                            tool_name=block.name,
-                            tool_input=getattr(block, "input", {}),
+                            type="message_stop",
+                            stop_reason=stop_reason,
+                            input_tokens=final_msg.usage.input_tokens,
+                            output_tokens=final_msg.usage.output_tokens,
+                            tool_inputs_by_id=tool_inputs_by_id,
                         )
-
-                elif event_type == "content_block_delta":
-                    delta = sdk_event.delta
-                    if delta.type == "text_delta":
-                        yield StreamChunk(type="text_delta", text=delta.text)
-                    elif delta.type == "thinking_delta":
-                        yield StreamChunk(type="thinking_delta", text=delta.thinking)
-                    # input_json_delta: final inputs are rebuilt from message_stop
-
-                elif event_type == "content_block_stop":
-                    if active_tool_id is not None:
-                        yield StreamChunk(type="tool_use_stop")
-                        active_tool_id = None
-
-                elif event_type == "message_stop":
-                    # Flush any open tool block
-                    if active_tool_id is not None:
-                        yield StreamChunk(type="tool_use_stop")
-                        active_tool_id = None
-
-                    final_msg = await stream.get_final_message()
-                    stop_reason = final_msg.stop_reason or "end_turn"
-
-                    # Build tool_inputs_by_id from final content blocks
-                    tool_inputs_by_id: dict = {}
-                    if hasattr(final_msg, "content"):
-                        for block in final_msg.content:
-                            if getattr(block, "type", None) == "tool_use" and hasattr(block, "id"):
-                                tool_inputs_by_id[block.id] = getattr(block, "input", {})
-
-                    yield StreamChunk(
-                        type="message_stop",
-                        stop_reason=stop_reason,
-                        input_tokens=final_msg.usage.input_tokens,
-                        output_tokens=final_msg.usage.output_tokens,
-                        tool_inputs_by_id=tool_inputs_by_id,
-                    )
+        except Exception as exc:
+            raise map_provider_error(
+                exc, provider="anthropic", model=model, key_source=self.key_source,
+            ) from exc
 
     def stream(
         self,

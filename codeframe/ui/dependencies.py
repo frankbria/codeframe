@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from fastapi import Depends, HTTPException, Query, Request
+from starlette.requests import HTTPConnection
 
 from codeframe.auth.dependencies import require_auth
 
@@ -299,7 +300,7 @@ def get_credential_manager_readonly(
 
 
 def check_spend_limit(
-    request: Request,
+    request: HTTPConnection,
     workspace: Workspace,
     auth: Dict[str, Any],
     *,
@@ -360,6 +361,49 @@ def check_spend_limit(
             detail=api_error(str(exc), ErrorCodes.SPEND_LIMIT_EXCEEDED),
         )
     return spend_scope, budget
+
+
+async def reserve_planning_budget(
+    request: HTTPConnection, workspace: Workspace, auth: Dict[str, Any]
+) -> Optional[float]:
+    """Reserve what is left of the principal's daily limit for this request's
+    planning calls, and bound them to it (#1345).
+
+    Raises the 429 when nothing is left. Pair with
+    ``release_planning_budget`` in a ``finally``. A stress test makes many
+    calls, so an entry-only check let one run spend past the ceiling, and two
+    concurrent ones could both spend the same remainder.
+    """
+    import functools
+
+    from fastapi.concurrency import run_in_threadpool
+
+    from codeframe.core.usage_recording import begin_budget
+
+    _scope, budget = await run_in_threadpool(
+        functools.partial(check_spend_limit, request, workspace, auth, reserve=True)
+    )
+    begin_budget(budget)
+    return budget
+
+
+def release_planning_budget(auth: Dict[str, Any], budget: Optional[float]) -> None:
+    """Return a ``reserve_planning_budget`` hold once its spend is recorded.
+
+    Call it from the handler's own context: a call still running in a worker
+    thread keeps the hold until it finishes and records.
+    """
+    from codeframe.core import spend_limit
+    from codeframe.core.usage_recording import settle_budget
+
+    settle_budget(lambda: spend_limit.release(auth.get("user_id"), budget))
+
+
+def spend_limit_http(exc: Exception) -> HTTPException:
+    """The 429 for a run that used up its share of the daily limit mid-way."""
+    from codeframe.ui.response_models import ErrorCodes, api_error
+
+    return HTTPException(status_code=429, detail=api_error(str(exc), ErrorCodes.SPEND_LIMIT_EXCEEDED))
 
 
 def resolve_github_pat(credential_manager, auth: Dict[str, Any]) -> Optional[str]:

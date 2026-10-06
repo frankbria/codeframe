@@ -54,8 +54,9 @@ describe('wsBase (#944)', () => {
     ).toBe('wss://sockets.example.com');
   });
 
-  it('falls back to localhost when nothing is configured', () => {
-    expect(wsBase({})).toBe('ws://localhost:8000');
+  it('falls back to the local backend on cf serve’s default port', () => {
+    // 8080, the port `cf serve` binds; 8000 matched nothing (#1296).
+    expect(wsBase({})).toBe('ws://localhost:8080');
   });
 
   it('never returns the old hardcoded value when an API URL is set', () => {
