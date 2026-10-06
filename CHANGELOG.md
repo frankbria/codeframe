@@ -174,6 +174,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **Restarting a stopped worktree run says it is resuming, and `--fresh`
+  discards it (#1440).** Since #1363, `cf work start <task> --execute
+  --isolation worktree` silently built on the work a stopped or failed run left
+  behind, uncommitted edits included, and merged it all at the end. That is
+  risky when you pressed Stop because the agent was going wrong. The start now
+  warns first: `Resuming a stopped or failed run on cf/<task>: N commits and M
+  uncommitted files will be built on and merged back`. `--fresh` throws that
+  work away and starts from the base branch. A directory in the worktree slot
+  that is not that task's worktree is never deleted.
+
 - **Interactive chat shows a provider error's actionable message, not the raw
   SDK string (#1434).** `map_provider_error` turns provider failures into typed
   errors with readable text (#1110, #1349, #1418), but the streaming path chat
