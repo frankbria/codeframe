@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-10-06
+
 ### Changed
 
 - **Create PR from the web UI attaches the PROOF9 report (#1358).** `cf pr
@@ -23,6 +25,38 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   install `cf --help`, interactive `cf proof capture` with a typo, and
   telemetry command names work as before. Choice metavars now render as
   `<a|b>` instead of `[a|b]`.
+
+- **The container deploy keeps the keys and GitHub token saved in Settings,
+  and now requires `CODEFRAME_CREDENTIAL_SECRET` (#1265).** The credential
+  store lives at `$HOME/.codeframe`, which was outside every volume, so each
+  deploy wiped it. Compose now sets `HOME=/data/home` on the `codeframe-data`
+  volume. The image also pins `/etc/machine-id` and sets
+  `CODEFRAME_DISABLE_KEYRING=1`, so the store's key stays the same when the
+  container is recreated. **Behavior change:** `docker compose` refuses to start
+  without `CODEFRAME_CREDENTIAL_SECRET`. Set it once per environment and never
+  rotate it: a new value makes every stored credential unreadable. Rolling
+  back to an image built before this change cannot read credentials stored
+  after it. See `deploy/README.md` → "The credential-store secret".
+
+- **The web UI disables admin-only actions for non-admin users and explains
+  why (#1255).** The new `GET /auth/me` returns the session's `scopes` and
+  `is_admin`. The auth-off operator counts as admin. Merge (the only way into
+  the override dialog), Create PR, and GitHub connect/disconnect are disabled,
+  each with a note saying why. GitHub-token Save/Remove are gated the same way;
+  LLM-key Save/Remove are not, since #1303 made those per-user. A control is
+  disabled only on an explicit `is_admin: false`. The server's 403 is still the
+  real check. The Review sidebar also scrolls now, instead of overflowing onto
+  PR History.
+
+- **The quickstart's first run executes one task, and its PROVE step reaches
+  a real pass (#1171, #1173).** The README told new users to promote every
+  generated task and run `cf work batch run --all-ready`. On a cold start that
+  was 25 serial agent runs and 19m37s. Step 6 is now
+  `cf work start <task-id> --execute` on one promoted task. The measured
+  walkthrough takes 5m59s. The full backlog run is still documented, marked
+  as long-running. PROVE used to end on `cf proof run` against an empty ledger,
+  which exits 2. It now shows the whole loop: capture, turn the draft stub
+  into a real test, then `cf proof run --full`. `docs/QUICKSTART.md` matches.
 
 - **`cf pr create` works as the README shows it (#1273).** It no longer needs
   `--title`: the title defaults to the branch's newest commit. The body now
@@ -174,6 +208,27 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **A lapsed waiver shows as expired, not waived (#1360).** Since #1276 the
+  merge gate blocks on a WAIVED requirement whose waiver has expired. The
+  `/proof` page, the dashboard widget and `GET /api/v2/proof/status` still
+  counted it as waived, so a user could see "0 open" and have a merge refused
+  for that very requirement. They now count it as `waiver_expired` and badge
+  it "waiver expired". The check is read-only and uses the gate's own
+  predicate. `cf proof status` already reverted such waivers to open.
+
+- **The daily spend limit now counts THINK-stage and chat spend (#1345).**
+  #1303 limited task and batch runs only, and only ReactAgent wrote to the
+  `token_usage` table the limit sums. PRD stress-test and refine, discovery,
+  LLM task generation and interactive session chat spent tokens the limit
+  never saw. Each now records its usage (`call_type` `planning` or
+  `session_chat`), refuses with 429 `SPEND_LIMIT_EXCEEDED` once the user's
+  spend is used up, and reserves its share of what is left. That share is
+  enforced between calls, so a recursive stress test or a tool-calling chat
+  turn stops at the ceiling instead of running past it. An unpriced model's
+  spend cannot be counted, so a day with unpriced usage refuses, naming
+  `CODEFRAME_MODEL_PRICING`. Chat in a directory with no workspace ledger is
+  refused while a limit is on.
+
 - **Restarting a stopped worktree run says it is resuming, and `--fresh`
   discards it (#1440).** Since #1363, `cf work start <task> --execute
   --isolation worktree` silently built on the work a stopped or failed run left
@@ -303,14 +358,6 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   `urllib3>=2.8.0`, so an unlocked install cannot resolve a vulnerable
   version.
 
-- **A lapsed waiver shows as expired, not waived (#1360).** Since #1276 the
-  merge gate blocks on a WAIVED requirement whose waiver has expired. The
-  `/proof` page, the dashboard widget and `GET /api/v2/proof/status` still
-  counted it as waived, so a user could see "0 open" and have a merge refused
-  for that very requirement. They now count it as `waiver_expired` and badge
-  it "waiver expired". The check is read-only and uses the gate's own
-  predicate. `cf proof status` already reverted such waivers to open.
-
 - **`cf engines check kilocode` tells you whether kilo can actually run
   (#1353).** It checked only the binary, so a never-logged-in kilo passed and
   then failed every task with "You need to sign in to use this model". It now
@@ -351,6 +398,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   digests, with the restore image moved to the supported `alpine:3.22`. A test fails if one
   loses its digest, and deploy/README.md explains how to refresh them, since
   Dependabot does not scan shell scripts or workflow steps.
+
 - **Two more `role="button"` wrappers are real buttons (#1393).** A recent
   project on the workspace selector was a `div role="button"` that wrapped its
   own remove button (axe `nested-interactive`). It is now two sibling buttons.
@@ -358,6 +406,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   row and column relationships from screen readers. The row keeps its table
   semantics, with a pressed button in its first cell. The a11y smoke spec now
   also scans the workspace selector and a proof page with run history.
+
 - **The ruff gate no longer fails clean code over a config written for a
   newer ruff (#1308).** When a project has no ruff of its own, CodeFRAME's
   copy lints it against the project's config. If that config uses options
@@ -367,6 +416,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   rejecting its own config, still fails. Per-edit lint also stops forcing
   `--output-format=concise`, which ruff < 0.3 rejects with a usage error on
   every edit.
+
 - **A batch of low-severity correctness fixes (#1306).**
   - `cf checkpoint restore` no longer revives MERGED tasks or rewinds a task
     whose run is still in progress. It reports how many tasks it actually
@@ -384,18 +434,6 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   - `gitpython` is now `>=3.1.60,<4`. 3.1.59's Actor ReDoS was reachable
     through `/api/v2/git/commits`.
 
-- **The daily spend limit now counts THINK-stage and chat spend (#1345).**
-  #1303 limited task and batch runs only, and only ReactAgent wrote to the
-  `token_usage` table the limit sums. PRD stress-test and refine, discovery,
-  LLM task generation and interactive session chat spent tokens the limit
-  never saw. Each now records its usage (`call_type` `planning` or
-  `session_chat`), refuses with 429 `SPEND_LIMIT_EXCEEDED` once the user's
-  spend is used up, and reserves its share of what is left. That share is
-  enforced between calls, so a recursive stress test or a tool-calling chat
-  turn stops at the ceiling instead of running past it. An unpriced model's
-  spend cannot be counted, so a day with unpriced usage refuses, naming
-  `CODEFRAME_MODEL_PRICING`. Chat in a directory with no workspace ledger is
-  refused while a limit is on.
 - **Docs and deploy config match what ships (#1304).**
   - `docs/GOLDEN_PATH.md`, which CLAUDE.md tells agents to read first, listed
     an `IN_REVIEW` state and PR-driven task transitions that were never built,
@@ -411,6 +449,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
     `cf work diagnose` is pattern-based.
   - A superseded legacy doc that carried the VPS's public IP is removed, and a
     test fails on any routable IPv4 in tracked docs or deploy config.
+
 - **Concurrent `cf proof capture` runs no longer overwrite each other
   (#1399).** Capture read the next `REQ-####` id and saved the row later, on a
   separate connection with `INSERT OR REPLACE`. Two captures at once took the
@@ -429,12 +468,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   503. The stress-test stream's error event carries the same code. An
   unexpected stream failure no longer sends its internal exception text: the
   client gets a correlation id, as other routes already do.
+
 - **Interactive-session cost is priced correctly, and unknown when it cannot be
   (#1299).** Sessions on the web UI's default model, `claude-sonnet-4-6`, were
   recorded at $0.00, and Opus 4.5 and Haiku 4.5 turns were mispriced, because
   sessions kept their own stale price table. They now use the same
   `MODEL_PRICING` as everything else, `CODEFRAME_MODEL_PRICING` included. A
   session on a model with no price shows "Cost unknown" rather than $0.
+
 - **A requirement's proof checks only its own tests (#1397).** Same-title
   requirements also shared their test *function* names, and `cf proof run`
   selects tests by name, so a re-captured glitch whose regression was not fixed
@@ -442,6 +483,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   both. New requirements name their tests by id as well as title
   (`test_unit_req_0002_total_wrong`). Requirements captured earlier keep the
   names they have.
+
 - **Two PROOF9 requirements with the same title can both be satisfied (#1372).**
   Capturing a recurring glitch again under its old title, the normal LOOP
   step, wrote stub files with the same name into both requirements' folders.
@@ -451,11 +493,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   captured before this release keep their old file names. If two of them share
   a title, rename one of the two files by hand, keeping the `test_` function
   inside it as it is.
+
 - **`cf work replay` works on real runs (#1300).** The built-in react engine now
   records an execution trace on every run. Before, no production path recorded
   one, so `cf work replay`, `diff`, `export-trace` and `rerun` always answered
   "No trace found". A run that is resumed after a blocker, or retried after a
   stall, continues its step numbering instead of mixing two attempts together.
+
 - **Web UI accessibility baseline, enforced in CI (#1298).** An axe-core pass
   (WCAG 2.1 AA) over the ten core pages at laptop and phone width now runs with
   the PR smoke suite and fails on serious or critical violations. It started at
@@ -468,6 +512,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   - **PRD editor:** its tabs point at real tab panels.
   - **Contrast:** muted text, destructive red and diff colours meet AA.
   - **Costs:** its scrolling chart and table can be scrolled from the keyboard.
+
 - **Web UI: confirmations, visible failures, and pages that fit the screen (#1297).**
   - Removing an API key, disconnecting GitHub, and Stop on a task card now ask
     first. Each one used to delete a credential or stop a running agent on a
@@ -477,6 +522,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   - The task board's six columns no longer overlap at 1280 to 1440px; it scrolls
     sideways instead. At phone width the execution page no longer overflows, so
     its Stop button stays on screen.
+
 - **A self-hosted web UI streams, and a local one runs out of the box (#1296).**
   - The task and stress-test streams now find the backend from
     `NEXT_PUBLIC_API_URL` when `NEXT_PUBLIC_SSE_URL` is not set. They used to
@@ -489,6 +535,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   - `docs/QUICKSTART.md` documents `WORKSPACE_ROOT`, without which the server
     refuses to start, and how to run the web UI locally. `.env.example`
     gains `WORKSPACE_ROOT`.
+
 - **Container deploys back up the real database and can create their first account (#1295).**
   - Every deploy, staging included, now takes an online SQLite backup of the
     live `/data/codeframe.db` (`deploy/backup-db.sh`). The old step copied a
@@ -501,6 +548,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
     From the host it was always refused, because there the request arrives
     from the Docker bridge, not loopback. The README also documents restoring
     a backup.
+
 - **Large workspaces no longer lose tasks, blockers or events past a list limit (#1294).**
   - `cf tasks generate --overwrite` removes every old task. Past 100 tasks the
     rest survived, and `cf work batch run --all-ready` would run them.
@@ -511,6 +559,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
     more than 50 arrive between polls, so a batch's final event is not missed.
     `GET /api/v2/events?since_id=N` now returns the events right after `N`
     rather than the newest ones.
+
 - **THINK-stage output fails loudly instead of corrupting your plan (#1293).**
   - **`cf tasks generate --recursive`:** an unclear answer from the model now
     stops with an error. It used to produce placeholder tasks such as
@@ -687,6 +736,85 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   A process group is only signalled once it is proven to be our own child's.
   An agent cannot be stopped in the middle of an LLM call it has already made.
 
+- **`cf pr merge` now scopes its PROOF9 gate to the PR's own files, like the
+  API (#1254).** The CLI still checked every requirement in the workspace, so
+  `cf pr merge` and the web UI could disagree about the same PR. The changed
+  files are fetched only when something would otherwise block, and they
+  include a rename's old path. Any failure falls back to the workspace-wide
+  check. A scope captured as `./x.py`, `src/../x.py` or `./` used to match no
+  file at all. Scope paths are now normalized in both gates and in
+  `cf proof run`, and a root scope covers every file.
+
+- **`cf proof capture --where` handles absolute paths correctly (#1258).** An
+  absolute path inside the workspace now becomes a repo-relative file scope.
+  Before, some absolute paths were stored as file scopes that could never
+  match, so a scoped merge gate let the PR through: paths with a space, a `+`
+  or a drive letter (`C:/…`), and `~/…`, `file://…` or `\…` paths. A path
+  that cannot be repo-relative is now stored as a tag, which blocks the gate
+  instead. The capture prints a warning naming that path. Routes such as
+  `/login` are still routes, even under a repo at `/app`.
+
+- **A dead OS keyring no longer hangs credential reads (#1181).** On a
+  headless box, container or SSH session with no D-Bus, SecretService can be
+  selected and then never answer. Every credential read blocked forever,
+  including `GET /api/v2/settings/keys`. Each keyring call now has a time
+  limit, `CODEFRAME_KEYRING_TIMEOUT` (default 2.0s). After a timeout, the store
+  falls back to the encrypted file for the rest of the process.
+  `CODEFRAME_DISABLE_KEYRING=1` skips the keyring entirely. The API's
+  credential calls now run off the event loop, so a slow keyring holds up only
+  its own request.
+
+- **The codex engine can run on an API key, and kilo 7.x stays logged in
+  (#1270).** `codex app-server` ignores API keys in its environment, so a
+  key-only setup failed with "401 Missing bearer". CodeFRAME now logs codex in
+  through its protocol with `CODEX_API_KEY`, or else the OpenAI key from the
+  environment or `cf auth setup`. The login runs in a private per-run
+  `CODEX_HOME`, and its `auth.json` is deleted right after login. An existing
+  `codex login` wins over a key, so a ChatGPT plan is not switched to metered
+  billing. kilo 7.x keeps its login in `~/.config/kilo` and
+  `~/.local/share/kilo`; both now pass through, and Anthropic/OpenAI keys
+  now reach it.
+
+- **Create PR in the web UI works again (#1272).** The Review page sent an
+  empty branch name, and the backend rejected it with a 422. It now sends the
+  checked-out branch, shows it in the panel ("From branch …") and checks it
+  again when you click. On a detached HEAD or a repo with no commits, the
+  button is disabled and says why.
+
+- **CLI commands no longer crash when an argument contains Rich markup
+  (#1054, #1206).** A value such as `[/b]` in a command argument or a stored
+  field raised `MarkupError`. In `except` handlers, that turned an error
+  CodeFRAME had already caught into a crash. Commands fixed include
+  `cf blocker list`, `cf prd show` and `cf hooks`. User text, including
+  arguments echoed in error messages, is now escaped before it is rendered.
+  CI tests every command against hostile markup, and a new command fails CI
+  until it is checked.
+
+- **Starting PRD discovery twice no longer leaves an orphaned session
+  (#1042, #1202).** Two concurrent `POST /api/v2/discovery/start` calls could
+  both create a session. The database now allows one active session per
+  workspace, and an upgrade closes all but the newest existing one. A reset
+  during a slow LLM call used to be undone by the save that followed. Now that
+  call returns 409. In `cf prd generate`, declining to resume closes the old
+  session. `--resume <id> --force` (`-f`) takes over a slot another session
+  holds. Reset in the web UI now closes the session it displays.
+
+- **`/health` reports the build that is actually running (#1160).** In a
+  container, `commit` was always `unknown`, and `deployed_at` was the time of
+  the request. `commit` is now the `GIT_COMMIT` stamped into the image at build
+  time. `deployed_at` is when the process started. The deploy workflow fails
+  if the reported commit is not the one it built. **Behavior change:**
+  `codeframe serve` from a source checkout reports `commit: "unknown"` unless
+  `GIT_COMMIT` is set.
+
+- **Saving AGENTS.md in place during a batch run no longer drops it from the
+  agent's instructions (#1219).** An editor that truncates and then writes the
+  file could be caught at zero bytes. The watcher then reloaded that file's
+  instructions as empty. A file that had content and now reads as empty is
+  treated as mid-write. The reload, including other files changed in the same
+  poll, waits until it settles. A file that stays empty for three polls is
+  taken as a deliberate clear and reloaded.
+
 - **Three ways the PROOF9 merge gate let a merge through (#1276).** Both `cf pr
   merge` and the web/API merge now block on:
   - a **lapsed waiver**: a requirement whose waiver expiry date has passed blocks
@@ -792,6 +920,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   executable, and no workflow may resolve this project's npm dependencies
   without the lockfile.
 
+### Security
+
+- **A GitHub issue-search label can no longer read another repo's issues
+  (#1275).** A `"` in the `label` filter closed the label phrase and could add
+  a `repo:` qualifier. That listed issues from any repo the stored PAT could
+  read. This is the #956 hole reached through a different field. Quotes and
+  backslashes are now removed from the label and from free-text search words.
+
+- **pytest is raised to 9.x to clear GHSA-6w46-j5rx-g56g (#1244).** pytest is
+  a runtime dependency, because the PROOF9 gate runs it and the generated
+  stubs import it. Versions below 9.0.3 have the advisory's vulnerable tmpdir
+  handling. The pin is now `pytest>=9.0.3,<10`, with `pytest-asyncio>=1.4.0`.
+
 ### Added
 
 - **`DESIGN_PARTNERS.md` — the beta design-partner program (#619).** #618 shipped
@@ -828,7 +969,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
-- **Self-correction token/cost records were silently dropped (#1168 follow-up).**
+- **Self-correction token/cost records were silently dropped (#1168 follow-up, #1176).**
   `ReactAgent` bills each verification-fix retry as `call_type="verification_fix"`
   (`react_agent.py:943`), but `CallType` never defined that member, so `TokenUsage`
   rejected every such record and `_persist_token_usage` swallowed it with only a
