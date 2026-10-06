@@ -71,13 +71,17 @@ def test_discard_removes_the_branch_and_worktree_so_the_next_run_starts_from_bas
 
 
 def test_discard_never_touches_a_stray_directory_that_is_not_the_tasks_worktree(git_repo):
-    """#1363 refuses to overwrite one; --fresh must not delete it either."""
-    stray = git_repo / ".codeframe" / "worktrees" / "task-abc"
-    stray.mkdir(parents=True)
-    (stray / "someone_elses.txt").write_text("x")
+    """#1363 refuses to overwrite one; --fresh must not delete it either. The
+    branch is real, so only the registration check stands between a stray
+    directory in the worktree slot and `git worktree remove --force`."""
+    path = _stopped_run(git_repo)
+    _git(git_repo, "worktree", "remove", "--force", str(path))
+    path.mkdir(parents=True)
+    (path / "someone_elses.txt").write_text("x")
 
     assert discard_leftover_run("task-abc", git_repo) is False
-    assert (stray / "someone_elses.txt").exists()
+    assert (path / "someone_elses.txt").exists()
+    assert "cf/task-abc" in _git(git_repo, "branch", "--list", "cf/task-abc")
 
 
 # --- CLI ----------------------------------------------------------------------
