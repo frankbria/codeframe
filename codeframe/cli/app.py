@@ -2905,6 +2905,14 @@ def work_start(
         help="Task execution isolation: none (default) or worktree",
         case_sensitive=False,
     ),
+    fresh: bool = typer.Option(
+        False,
+        "--fresh",
+        help=(
+            "With --isolation worktree: discard work left by a stopped or failed "
+            "run of this task and start from the base branch (default: resume it)"
+        ),
+    ),
     cloud_timeout: int = typer.Option(
         30,
         "--cloud-timeout",
@@ -2977,6 +2985,40 @@ def work_start(
         except (ValueError, NotImplementedError) as exc:
             console.print(f"[red]Error:[/red] {exc}")
             raise typer.Exit(1)
+
+        # A worktree run left by Stop or a failure is resumed and merged back
+        # (#1363). Say so before building on it, or discard it with --fresh: a
+        # run stopped because the agent was going wrong should not be (#1440).
+        worktree = IsolationLevel(isolation) == IsolationLevel.WORKTREE
+        if fresh and not worktree:
+            console.print(
+                "[red]Error:[/red] --fresh discards a leftover worktree run, "
+                "so it needs --isolation worktree"
+            )
+            raise typer.Exit(1)
+        if execute and worktree:
+            from codeframe.core.sandbox.context import discard_leftover_run, leftover_run
+
+            left = leftover_run(task.id, workspace.repo_path)
+            if left and fresh:
+                try:
+                    discarded = discard_leftover_run(task.id, workspace.repo_path)
+                except ValueError as exc:
+                    print_error(exc)
+                    raise typer.Exit(1)
+                if discarded:
+                    console.print(
+                        f"[yellow]Discarded the leftover run on {escape(left.branch)}[/yellow] "
+                        "(--fresh); starting from the base branch."
+                    )
+            elif left:
+                commits = f"{left.commits} commit{'s' if left.commits != 1 else ''}"
+                files = f"{left.uncommitted} uncommitted file{'s' if left.uncommitted != 1 else ''}"
+                console.print(
+                    f"[yellow]Resuming a stopped or failed run on {escape(left.branch)}[/yellow]: "
+                    f"{commits} and {files} will be built on and merged back. "
+                    "To discard them and start from the base branch, re-run with --fresh."
+                )
 
         # Validate API key before creating run record (avoids dangling IN_PROGRESS state)
         if execute:
