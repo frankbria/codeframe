@@ -225,6 +225,9 @@ class EnvironmentConfig:
     # Settings page (issue #554) — UI-managed agent settings
     max_cost_usd: Optional[float] = None
 
+    # PRD discovery question cap (#1443); None means the default of 10.
+    discovery_max_questions: Optional[int] = None
+
     def validate(self) -> list[str]:
         """Validate configuration values.
 
