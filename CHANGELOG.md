@@ -7,6 +7,22 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- **PRD discovery is bounded (#1443).** `cf prd generate` used to stop only
+  when the model said it had enough, and a model that never said so asked
+  30+ near-duplicate questions. Discovery now also completes:
+  - at `discovery_max_questions` answers (`.codeframe/config.yaml`, or
+    `--max-questions` for one run; default 10);
+  - when coverage, tracked as its running max, gains less than 5 points over
+    3 answers;
+  - when the model repeats a question.
+
+  `/done` finishes early. Areas still uncovered become an "Open Questions"
+  section of the PRD. An unreadable coverage reply keeps the last
+  assessment instead of resetting progress to 0%. The same rules apply to
+  the web UI and the API.
+
 ## [0.9.4] - 2026-10-06
 
 ### Changed

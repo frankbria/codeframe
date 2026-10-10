@@ -293,6 +293,14 @@ Each command:
 - `codeframe.core.prd.refine_prd(prd_id, feedback) -> PrdRecord`
 - `codeframe.core.events.emit(workspace_id, "PRD_GENERATED", payload)`
 
+**Stopping (#1443):** discovery is bounded in core `PrdDiscoverySession`, so the
+CLI, API and web UI share the rules. A session completes when the model says
+it's ready, or at `discovery_max_questions` answers (`.codeframe/config.yaml`;
+`--max-questions N` for one run; default 10), or when the running-max coverage
+gains < 5 points over 3 answers, or when the model repeats a question after
+one regeneration. `/done` finishes now. Categories still under 60 become an
+"Open Questions" section of the PRD.
+
 **State writes:**
 - Discovery session records
 - Comprehensive PRD record with technical specs
