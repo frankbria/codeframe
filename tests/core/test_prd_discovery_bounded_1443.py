@@ -299,6 +299,19 @@ class TestNearDuplicateGuard:
         # The regeneration named the duplicate so the model can steer away.
         assert dup in provider.question_prompts[-1]
 
+    @pytest.mark.parametrize(
+        "earlier, later",
+        [
+            ("What is the target platform?", "What is the target audience?"),
+            ("Who are the primary users of this app?", "Who are the primary competitors of this app?"),
+        ],
+    )
+    def test_same_template_different_topic_is_not_a_duplicate(self, earlier, later):
+        """Short questions share their stopwords; only content words count."""
+        from codeframe.core.prd_discovery import _is_near_duplicate
+
+        assert not _is_near_duplicate(later, [earlier])
+
     def test_persistent_duplicates_end_discovery(self, workspace):
         q = "What would you need to see from teammates to trust the list?"
         provider = FakeProvider([_coverage_json(a) for a in range(10, 100, 6)], questions=[q])

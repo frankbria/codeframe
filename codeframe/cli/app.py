@@ -1842,7 +1842,7 @@ def prd_generate(
                         console.print()
                         continue
 
-                    if answer.lower() in ("/done", "done"):
+                    if answer.lower() == "/done":
                         if not session.answered_count:
                             console.print(
                                 "[yellow]Answer at least one question before finishing.[/yellow]"
