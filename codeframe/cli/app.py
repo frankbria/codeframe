@@ -1620,8 +1620,10 @@ def prd_generate(
         "--max-questions",
         min=1,
         help=(
-            "Finish discovery after this many answers (default: "
-            "discovery_max_questions in .codeframe/config.yaml, else 10)"
+            "Finish discovery after this many answers, for this run only "
+            "(like --template, repeat it on --resume). Set "
+            "discovery_max_questions in .codeframe/config.yaml to make it "
+            "stick; the default is 10."
         ),
     ),
 ) -> None:
