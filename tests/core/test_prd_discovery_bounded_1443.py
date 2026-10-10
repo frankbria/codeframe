@@ -263,6 +263,40 @@ class TestResumeOverTheCap:
         assert session.is_complete()
         assert session.get_current_question() is None
 
+    def test_answering_a_session_completed_on_load_is_a_clean_completion(self, workspace):
+        """The web path reloads per answer; a lowered cap must not surface as a 409."""
+        from codeframe.core.prd_discovery import process_discovery_answer
+
+        provider, session, _ = self._session_with_answers(workspace, 3)
+        (Path(workspace.repo_path) / ".codeframe" / "config.yaml").write_text(
+            "discovery_max_questions: 2\n"
+        )
+
+        with patch("codeframe.core.prd_discovery.AnthropicProvider", return_value=provider):
+            result = process_discovery_answer(workspace, session.session_id, "late", api_key="k")
+
+        assert result["is_complete"] is True
+        assert result["accepted"] is False
+        assert result["next_question"] is None
+
+    def test_blocker_resume_under_a_lower_cap_completes(self, workspace):
+        """`cf prd generate --resume <blocker>` goes through resume_discovery()."""
+        from codeframe.core.prd_discovery import PrdDiscoverySession
+
+        provider, session, _ = self._session_with_answers(workspace, 3)
+        blocker_id = session.pause_discovery("break")
+        (Path(workspace.repo_path) / ".codeframe" / "config.yaml").write_text(
+            "discovery_max_questions: 3\n"
+        )
+
+        with patch("codeframe.core.prd_discovery.AnthropicProvider", return_value=provider):
+            resumed = PrdDiscoverySession(workspace, api_key="k")
+        resumed.resume_discovery(blocker_id)
+
+        assert resumed.is_complete()
+        assert resumed.get_current_question() is None
+        assert resumed.generate_prd().title == "Todo API"
+
     def test_under_the_cap_is_left_alone(self, workspace):
         _, session, _ = self._session_with_answers(workspace, 2)
 
