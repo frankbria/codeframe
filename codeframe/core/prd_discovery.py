@@ -550,6 +550,11 @@ Be warm and encouraging. Just output the question, nothing else."""
         self._qa_history = json.loads(row[2]) if row[2] else []
         self._current_question = row[3]
         self._coverage = json.loads(row[4]) if row[4] else None
+        # Sessions saved before #1443 carry no per-answer scores. Give the last
+        # answer the stored assessment, or progress and the plateau rule would
+        # read every earlier answer as 0%.
+        if self._qa_history and "coverage" not in self._qa_history[-1]:
+            self._qa_history[-1]["coverage"] = _score((self._coverage or {}).get("average"))
         self._blocker_id = row[5]
         self._is_complete = bool(row[6]) if row[6] is not None else False
 

@@ -218,6 +218,29 @@ class TestPlateau:
         assert seen == [40, 70, 70, 90]
 
 
+class TestLegacySessions:
+    def test_session_saved_before_1443_keeps_its_progress(self, workspace):
+        """Pre-#1443 rows have no per-answer scores, only the last assessment."""
+        from codeframe.core.prd_discovery import get_session
+        from codeframe.core.workspace import get_db_connection
+
+        provider = FakeProvider([_coverage_json(a) for a in range(20, 100, 6)])
+        session = _session(workspace, provider)
+        legacy = [{"question": f"q{i}", "answer": f"a{i}", "timestamp": "t"} for i in range(3)]
+        conn = get_db_connection(workspace)
+        conn.execute(
+            "UPDATE discovery_sessions SET qa_history = ?, coverage = ? WHERE id = ?",
+            (json.dumps(legacy), _coverage_json(75), session.session_id),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch("codeframe.core.prd_discovery.AnthropicProvider", return_value=provider):
+            loaded = get_session(workspace, session.session_id, api_key="k")
+
+        assert loaded.get_progress()["percentage"] == 75
+
+
 class TestUnparseableAssessment:
     def test_garbage_once_keeps_prior_coverage(self, workspace):
         provider = FakeProvider(
