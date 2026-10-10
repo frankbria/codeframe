@@ -10,11 +10,13 @@ This module is headless - no FastAPI or HTTP dependencies.
 
 import json
 import logging
+import re
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any, Optional
 
 from codeframe.adapters.llm.anthropic import AnthropicProvider
@@ -115,6 +117,26 @@ DISCOVERY_CATEGORIES = [
     "tech_stack",   # What technologies are preferred?
 ]
 
+# Stop rules (#1443). Completion used to be the model's call alone, and a model
+# that never called it asked 30+ near-duplicate questions.
+DEFAULT_MAX_QUESTIONS = 10
+# Coverage is re-scored from scratch on every answer and wobbles a few points
+# from noise, so the plateau rule reads the running max, not the raw series.
+PLATEAU_WINDOW = 3
+PLATEAU_MIN_GAIN = 5
+# A category below this score is listed as an open question in the PRD.
+COVERED_SCORE = 60
+DUPLICATE_SIMILARITY = 0.6
+_WORD_RE = re.compile(r"[a-z0-9]+")
+# Short questions are mostly these words, so counting them made "What is the
+# target platform?" a duplicate of "What is the target audience?".
+_STOPWORDS = frozenset(
+    "a about an and any are as at be by can could do does for from had has have "
+    "how i if in into is it its me my of on or our should so that the their them "
+    "there these they this to us was we were what when where which who whom why "
+    "will with would you your".split()
+)
+
 # System prompt for the discovery AI
 DISCOVERY_SYSTEM_PROMPT = """You are an expert product manager conducting Socratic discovery to gather requirements for a software project. Your goal is to ask thoughtful, context-sensitive questions that help clarify the project vision.
 
@@ -166,6 +188,19 @@ If you believe we have enough information (all categories adequately covered), r
 DISCOVERY_COMPLETE
 
 Otherwise, respond with just the question text, nothing else."""
+
+REPEATED_QUESTION_NOTE = """
+
+## Avoid Repeating
+This question repeats one already asked, in different words. Do not ask it again:
+{question}"""
+
+OPEN_QUESTIONS_NOTE = """
+
+## Open Questions
+Discovery ended before these areas were covered: {areas}.
+Add an "Open Questions" section that lists what is still unknown for each of
+them, rather than inventing details."""
 
 ANSWER_VALIDATION_PROMPT = """Evaluate whether this answer adequately addresses the question.
 
@@ -283,6 +318,63 @@ def _normalize_validation(parsed: Any) -> dict[str, Any]:
     }
 
 
+def _parse_json_object(content: str) -> Optional[dict[str, Any]]:
+    """Read the JSON object in a model reply, ignoring prose or fences around it."""
+    start, end = content.find("{"), content.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        parsed = json.loads(content[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _score(value: Any) -> Optional[float]:
+    """A 0-100 score from a model reply, or None if it is not a number."""
+    if isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _content_words(text: str) -> set[str]:
+    return set(_WORD_RE.findall(text.lower())) - _STOPWORDS
+
+
+def _is_near_duplicate(question: str, asked: list[str]) -> bool:
+    """True if ``question`` shares most of its content words with one already asked."""
+    words = _content_words(question)
+    if not words:
+        return False
+    for earlier in asked:
+        other = _content_words(earlier)
+        if other and len(words & other) / len(words | other) >= DUPLICATE_SIMILARITY:
+            return True
+    return False
+
+
+def _configured_max_questions(workspace: Workspace) -> int:
+    """``discovery_max_questions`` from ``.codeframe/config.yaml``, else the default."""
+    from codeframe.core.config import load_environment_config
+
+    config = load_environment_config(Path(workspace.repo_path))
+    value = getattr(config, "discovery_max_questions", None)
+    if value is None:
+        return DEFAULT_MAX_QUESTIONS
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        logger.warning(
+            "Ignoring discovery_max_questions=%r in config.yaml: expected a "
+            "positive integer. Using %d.",
+            value,
+            DEFAULT_MAX_QUESTIONS,
+        )
+        return DEFAULT_MAX_QUESTIONS
+    return value
+
+
 @dataclass
 class PrdDiscoverySession:
     """Manages an AI-driven PRD discovery session.
@@ -301,6 +393,8 @@ class PrdDiscoverySession:
             ``CODEFRAME_LLM_PROVIDER`` → ``.codeframe/config.yaml`` → anthropic.
         user_id: Server principal whose stored key to use; None (CLI) uses
             the machine-wide store (#1264)
+        max_questions: Answers after which discovery completes. None reads
+            ``discovery_max_questions`` from the workspace config, else 10.
         session_id: Unique session identifier
         state: Current session state
     """
@@ -308,6 +402,7 @@ class PrdDiscoverySession:
     workspace: Workspace
     api_key: Optional[str] = None
     user_id: Optional[int] = None
+    max_questions: Optional[int] = None
     session_id: Optional[str] = field(default=None, init=False)
     state: SessionState = field(default=SessionState.IDLE, init=False)
     _llm_provider: Any = field(default=None, init=False)
@@ -331,6 +426,11 @@ class PrdDiscoverySession:
         """
         from codeframe.core.models import CallType
         from codeframe.core.usage_recording import UsageRecordingProvider
+
+        if self.max_questions is None:
+            self.max_questions = _configured_max_questions(self.workspace)
+        elif self.max_questions < 1:
+            raise ValueError(f"max_questions must be at least 1, got {self.max_questions}")
 
         # Recorded where the daily spend limit reads it (#1345).
         if self.api_key:
@@ -462,10 +562,34 @@ Be warm and encouraging. Just output the question, nothing else."""
         self._qa_history = json.loads(row[2]) if row[2] else []
         self._current_question = row[3]
         self._coverage = json.loads(row[4]) if row[4] else None
+        # Sessions saved before #1443 carry no per-answer scores. Give the last
+        # answer the stored assessment, or progress and the plateau rule would
+        # read every earlier answer as 0%.
+        if self._qa_history and "coverage" not in self._qa_history[-1]:
+            self._qa_history[-1]["coverage"] = _score((self._coverage or {}).get("average"))
         self._blocker_id = row[5]
         self._is_complete = bool(row[6]) if row[6] is not None else False
+        self.complete_if_capped()
 
         logger.info(f"Loaded session {session_id} with {len(self._qa_history)} Q&A pairs")
+
+    def complete_if_capped(self) -> None:
+        """Complete a session that already holds ``max_questions`` answers.
+
+        Reached on resume: an older session, or a lower cap than the one it was
+        started under. Without this it would ask one more question, and a
+        non-interactive run could fail for lack of an answer instead of
+        generating the PRD. Persisted, so the row releases the active slot.
+        """
+        if (
+            self._is_complete
+            or self.state == SessionState.COMPLETED
+            or self.answered_count < self.max_questions
+        ):
+            return
+        self._is_complete = True
+        self._current_question = None
+        self._save_session(require_active=True)
 
     def get_current_question(self) -> Optional[dict[str, Any]]:
         """Get the current question to display.
@@ -548,12 +672,20 @@ Be warm and encouraging. Just output the question, nothing else."""
             "timestamp": _utc_now().isoformat(),
         })
 
-        # Check coverage and generate next question
-        self._update_coverage()
-        next_question = self._generate_next_question()
+        # The per-answer score feeds the plateau rule; None marks a failed
+        # assessment, which adds no gain.
+        self._qa_history[-1]["coverage"] = self._update_coverage()
 
-        # Complete when AI signals done OR coverage assessment says ready
-        if next_question == "DISCOVERY_COMPLETE" or self._coverage_is_sufficient():
+        # The bounded rules are checked first: they cost no LLM call.
+        next_question: Optional[str] = None
+        if not (
+            self.answered_count >= self.max_questions
+            or self._coverage_plateaued()
+            or self._coverage_is_sufficient()
+        ):
+            next_question = self._next_distinct_question()
+
+        if next_question is None or next_question == "DISCOVERY_COMPLETE":
             self._is_complete = True
             self._current_question = None
         else:
@@ -598,8 +730,15 @@ Be warm and encouraging. Just output the question, nothing else."""
 
         return _normalize_validation(parsed)
 
-    def _update_coverage(self) -> None:
-        """Update the coverage assessment based on conversation history."""
+    def _update_coverage(self) -> Optional[float]:
+        """Update the coverage assessment based on conversation history.
+
+        Returns:
+            The new average, or None if the reply was unreadable. An unreadable
+            reply keeps the last good assessment: dropping it to None used to
+            show 0% and hand the questioner "Not yet assessed", which invited
+            from-the-top questions again (#1443).
+        """
 
         qa_history = self._format_qa_history()
 
@@ -608,25 +747,39 @@ Be warm and encouraging. Just output the question, nothing else."""
         response = self._llm_provider.complete(
             messages=[{"role": "user", "content": prompt}],
             purpose=Purpose.GENERATION,
-            max_tokens=500,
+            # 500 truncated replies late in long sessions, as the history grew.
+            max_tokens=1000,
             temperature=0.3,
         )
 
-        try:
-            content = response.content.strip()
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-            parsed = json.loads(content)
-            # Same call path as _validate_answer: a list/scalar here would blow up
-            # _coverage_is_sufficient's .get() one frame later (#928).
-            self._coverage = parsed if isinstance(parsed, dict) else None
-            if self._coverage is None:
-                logger.warning(f"Unexpected coverage shape: {response.content}")
-        except json.JSONDecodeError:
+        # A list/scalar here would blow up _coverage_is_sufficient's .get()
+        # one frame later (#928), so only a dict is accepted.
+        parsed = _parse_json_object(response.content)
+        if parsed is None:
             logger.warning(f"Could not parse coverage response: {response.content}")
-            self._coverage = None
+            return None
+        self._coverage = parsed
+        return _score(parsed.get("average"))
+
+    def _coverage_peaks(self) -> list[float]:
+        """Running max of per-answer coverage, one entry per answer."""
+        best, peaks = 0.0, []
+        for qa in self._qa_history:
+            score = _score(qa.get("coverage"))
+            if score is not None:
+                best = max(best, score)
+            peaks.append(best)
+        return peaks
+
+    def _coverage_plateaued(self) -> bool:
+        """True when coverage rose less than PLATEAU_MIN_GAIN over the last answers.
+
+        Three unreadable assessments in a row also land here: they add no gain.
+        """
+        peaks = self._coverage_peaks()
+        if len(peaks) <= PLATEAU_WINDOW:
+            return False
+        return peaks[-1] - peaks[-1 - PLATEAU_WINDOW] < PLATEAU_MIN_GAIN
 
     def _coverage_is_sufficient(self) -> bool:
         """Check if coverage is sufficient to generate PRD.
@@ -638,7 +791,23 @@ Be warm and encouraging. Just output the question, nothing else."""
             return False
         return self._coverage.get("ready_for_prd", False)
 
-    def _generate_next_question(self) -> str:
+    def _next_distinct_question(self) -> Optional[str]:
+        """The next question, or None if the model keeps repeating itself.
+
+        A near-duplicate gets one regeneration that names it; a second one means
+        the model has run out of new ground, so discovery ends (#1443).
+        """
+        asked = [qa["question"] for qa in self._qa_history]
+        question = self._generate_next_question()
+        if question == "DISCOVERY_COMPLETE" or not _is_near_duplicate(question, asked):
+            return question
+        question = self._generate_next_question(avoid=question)
+        if question == "DISCOVERY_COMPLETE" or not _is_near_duplicate(question, asked):
+            return question
+        logger.info("Discovery is repeating questions; completing session %s", self.session_id)
+        return None
+
+    def _generate_next_question(self, avoid: Optional[str] = None) -> str:
         """Generate the next discovery question based on context."""
 
         qa_history = self._format_qa_history()
@@ -648,6 +817,8 @@ Be warm and encouraging. Just output the question, nothing else."""
             qa_history=qa_history,
             coverage_assessment=coverage_str,
         )
+        if avoid:
+            prompt += REPEATED_QUESTION_NOTE.format(question=avoid)
 
         response = self._llm_provider.complete(
             messages=[{"role": "user", "content": prompt}],
@@ -679,18 +850,46 @@ Be warm and encouraging. Just output the question, nothing else."""
         """
         return self._is_complete
 
+    def finish_now(self) -> None:
+        """End discovery at the user's request; the PRD is generated from what is known.
+
+        Raises:
+            DiscoveryError: If no question has been answered yet.
+            SessionResetError: If the session was reset meanwhile.
+        """
+        if self._is_complete:
+            return
+        if not self._qa_history:
+            raise DiscoveryError("Answer at least one question before finishing discovery.")
+        self._is_complete = True
+        self._current_question = None
+        self._require_still_active()
+
     def get_progress(self) -> dict[str, Any]:
         """Get discovery progress statistics.
 
         Returns:
-            Dict with coverage scores and completion status
+            Dict with coverage scores and completion status. ``percentage`` is
+            the best coverage reached so far, so it never moves backwards.
         """
+        peaks = self._coverage_peaks()
         return {
             "answered": len(self._qa_history),
+            "max_questions": self.max_questions,
             "coverage": self._coverage or {},
             "is_complete": self._is_complete,
-            "percentage": self._coverage.get("average", 0) if self._coverage else 0,
+            "percentage": round(peaks[-1]) if peaks else 0,
         }
+
+    def _uncovered_categories(self) -> list[str]:
+        """Categories scoring below COVERED_SCORE; all of them if never assessed."""
+        scores = (self._coverage or {}).get("scores")
+        if not isinstance(scores, dict):
+            return list(DISCOVERY_CATEGORIES)
+        return [
+            c for c in DISCOVERY_CATEGORIES
+            if (_score(scores.get(c)) or 0) < COVERED_SCORE
+        ]
 
     def pause_discovery(self, reason: str) -> str:
         """Pause the discovery session.
@@ -851,6 +1050,11 @@ Be warm and encouraging. Just output the question, nothing else."""
 
         # Build prompt based on template and get the resolved template ID
         prompt, resolved_template_id = self._build_prd_prompt(qa_history, template_id)
+        # A bounded session can end with gaps; name them instead of letting the
+        # model fill them in (#1443).
+        uncovered = self._uncovered_categories()
+        if uncovered:
+            prompt += OPEN_QUESTIONS_NOTE.format(areas=", ".join(uncovered))
 
         response = self._llm_provider.complete(
             messages=[{"role": "user", "content": prompt}],
@@ -1341,6 +1545,16 @@ def process_discovery_answer(
             prd = generate_prd_from_discovery(workspace, session_id)
     """
     session = get_session(workspace, session_id, api_key=api_key, user_id=user_id)
+    if session.is_complete():
+        # Loading can complete it (a cap lowered mid-session). Report that, not
+        # the 409 submit_answer would raise; nothing is recorded.
+        return {
+            "accepted": False,
+            "feedback": "Discovery has enough answers. Generate the PRD.",
+            "coverage": session._coverage,
+            "is_complete": True,
+            "next_question": None,
+        }
     result = session.submit_answer(answer)
 
     # Add convenience fields
