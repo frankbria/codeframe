@@ -569,8 +569,27 @@ Be warm and encouraging. Just output the question, nothing else."""
             self._qa_history[-1]["coverage"] = _score((self._coverage or {}).get("average"))
         self._blocker_id = row[5]
         self._is_complete = bool(row[6]) if row[6] is not None else False
+        self.complete_if_capped()
 
         logger.info(f"Loaded session {session_id} with {len(self._qa_history)} Q&A pairs")
+
+    def complete_if_capped(self) -> None:
+        """Complete a session that already holds ``max_questions`` answers.
+
+        Reached on resume: an older session, or a lower cap than the one it was
+        started under. Without this it would ask one more question, and a
+        non-interactive run could fail for lack of an answer instead of
+        generating the PRD. Persisted, so the row releases the active slot.
+        """
+        if (
+            self._is_complete
+            or self.state == SessionState.COMPLETED
+            or self.answered_count < self.max_questions
+        ):
+            return
+        self._is_complete = True
+        self._current_question = None
+        self._save_session(require_active=True)
 
     def get_current_question(self) -> Optional[dict[str, Any]]:
         """Get the current question to display.

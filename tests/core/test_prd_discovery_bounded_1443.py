@@ -218,6 +218,61 @@ class TestPlateau:
         assert seen == [40, 70, 70, 90]
 
 
+class TestResumeOverTheCap:
+    """A session resumed with as many answers as the cap must not ask again."""
+
+    def _session_with_answers(self, workspace, n):
+        from codeframe.core.workspace import get_db_connection
+
+        provider = FakeProvider([_coverage_json(a) for a in range(10, 100, 6)])
+        session = _session(workspace, provider, max_questions=20)
+        for i in range(n):
+            session.submit_answer(f"a{i}")
+        assert not session.is_complete()
+        return provider, session, get_db_connection
+
+    def test_loading_under_a_lower_config_cap_completes_it(self, workspace):
+        from codeframe.core.prd_discovery import get_active_session, get_session
+
+        provider, session, get_db_connection = self._session_with_answers(workspace, 3)
+        (Path(workspace.repo_path) / ".codeframe" / "config.yaml").write_text(
+            "discovery_max_questions: 2\n"
+        )
+
+        with patch("codeframe.core.prd_discovery.AnthropicProvider", return_value=provider):
+            loaded = get_session(workspace, session.session_id, api_key="k")
+
+        assert loaded.is_complete()
+        assert loaded.get_current_question() is None
+        assert loaded.generate_prd().title == "Todo API"
+        # Persisted, so the row no longer holds the workspace's active slot.
+        conn = get_db_connection(workspace)
+        assert conn.execute(
+            "SELECT is_complete FROM discovery_sessions WHERE id = ?", (session.session_id,)
+        ).fetchone()[0] == 1
+        conn.close()
+        assert get_active_session(workspace) is None
+
+    def test_lowering_the_cap_after_load_completes_it(self, workspace):
+        """The CLI applies --max-questions after loading the session."""
+        _, session, _ = self._session_with_answers(workspace, 3)
+
+        session.max_questions = 3
+        session.complete_if_capped()
+
+        assert session.is_complete()
+        assert session.get_current_question() is None
+
+    def test_under_the_cap_is_left_alone(self, workspace):
+        _, session, _ = self._session_with_answers(workspace, 2)
+
+        session.max_questions = 3
+        session.complete_if_capped()
+
+        assert not session.is_complete()
+        assert session.get_current_question() is not None
+
+
 class TestLegacySessions:
     def test_session_saved_before_1443_keeps_its_progress(self, workspace):
         """Pre-#1443 rows have no per-answer scores, only the last assessment."""

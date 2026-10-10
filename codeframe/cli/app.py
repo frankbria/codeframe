@@ -1767,6 +1767,7 @@ def prd_generate(
 
         if max_questions is not None:
             session.max_questions = max_questions
+            session.complete_if_capped()
 
         console.print("\n[bold]Starting AI-driven PRD discovery...[/bold]")
         console.print("[dim]The AI will ask questions to understand your project.[/dim]")
