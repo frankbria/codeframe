@@ -128,6 +128,14 @@ PLATEAU_MIN_GAIN = 5
 COVERED_SCORE = 60
 DUPLICATE_SIMILARITY = 0.6
 _WORD_RE = re.compile(r"[a-z0-9]+")
+# Short questions are mostly these words, so counting them made "What is the
+# target platform?" a duplicate of "What is the target audience?".
+_STOPWORDS = frozenset(
+    "a about an and any are as at be by can could do does for from had has have "
+    "how i if in into is it its me my of on or our should so that the their them "
+    "there these they this to us was we were what when where which who whom why "
+    "will with would you your".split()
+)
 
 # System prompt for the discovery AI
 DISCOVERY_SYSTEM_PROMPT = """You are an expert product manager conducting Socratic discovery to gather requirements for a software project. Your goal is to ask thoughtful, context-sensitive questions that help clarify the project vision.
@@ -332,13 +340,17 @@ def _score(value: Any) -> Optional[float]:
         return None
 
 
+def _content_words(text: str) -> set[str]:
+    return set(_WORD_RE.findall(text.lower())) - _STOPWORDS
+
+
 def _is_near_duplicate(question: str, asked: list[str]) -> bool:
-    """True if ``question`` shares most of its words with one already asked."""
-    words = set(_WORD_RE.findall(question.lower()))
+    """True if ``question`` shares most of its content words with one already asked."""
+    words = _content_words(question)
     if not words:
         return False
     for earlier in asked:
-        other = set(_WORD_RE.findall(earlier.lower()))
+        other = _content_words(earlier)
         if other and len(words & other) / len(words | other) >= DUPLICATE_SIMILARITY:
             return True
     return False

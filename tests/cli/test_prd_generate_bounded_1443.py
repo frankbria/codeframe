@@ -37,9 +37,8 @@ def _run(workspace_dir: Path, answers: list[str], *extra: str):
         )
 
 
-@pytest.mark.parametrize("command", ["done", "/done"])
-def test_done_generates_the_prd(workspace_dir, command):
-    result = _run(workspace_dir, ["A todo API for my team.", command])
+def test_done_generates_the_prd(workspace_dir):
+    result = _run(workspace_dir, ["A todo API for my team.", "/done"])
 
     assert result.exit_code == 0, result.output
     assert "PRD generated" in result.output
@@ -47,8 +46,16 @@ def test_done_generates_the_prd(workspace_dir, command):
     assert record.metadata["questions_asked"] == 1
 
 
+def test_bare_done_is_an_ordinary_answer(workspace_dir):
+    """"Done" is a plausible answer ("Is auth built?"), so only /done finishes."""
+    result = _run(workspace_dir, ["A todo API for my team.", "Done", "/done"])
+
+    assert result.exit_code == 0, result.output
+    assert prd.get_latest(get_workspace(workspace_dir)).metadata["questions_asked"] == 2
+
+
 def test_done_before_any_answer_is_refused(workspace_dir):
-    result = _run(workspace_dir, ["done", "A todo API for my team.", "done"])
+    result = _run(workspace_dir, ["/done", "A todo API for my team.", "/done"])
 
     assert result.exit_code == 0, result.output
     assert "Answer at least one question" in result.output
