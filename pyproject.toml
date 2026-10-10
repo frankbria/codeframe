@@ -41,7 +41,7 @@ dependencies = [
     "tenacity>=8.2.0",
     # Capped at the tested major (#1268, the #1168 lesson): an unlocked install
     # resolved openai 3.x against a locked 2.x with nothing checking it.
-    "openai>=1.12.0,<3",
+    "openai>=1.12.0,<4",
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
     "websockets>=12.0",
