@@ -1545,6 +1545,16 @@ def process_discovery_answer(
             prd = generate_prd_from_discovery(workspace, session_id)
     """
     session = get_session(workspace, session_id, api_key=api_key, user_id=user_id)
+    if session.is_complete():
+        # Loading can complete it (a cap lowered mid-session). Report that, not
+        # the 409 submit_answer would raise; nothing is recorded.
+        return {
+            "accepted": False,
+            "feedback": "Discovery has enough answers. Generate the PRD.",
+            "coverage": session._coverage,
+            "is_complete": True,
+            "next_question": None,
+        }
     result = session.submit_answer(answer)
 
     # Add convenience fields
