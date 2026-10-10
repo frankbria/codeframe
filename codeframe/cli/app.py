@@ -1615,6 +1615,15 @@ def prd_generate(
             "survives a rejected answer."
         ),
     ),
+    max_questions: Optional[int] = typer.Option(
+        None,
+        "--max-questions",
+        min=1,
+        help=(
+            "Finish discovery after this many answers (default: "
+            "discovery_max_questions in .codeframe/config.yaml, else 10)"
+        ),
+    ),
 ) -> None:
     """Generate a PRD through AI-driven Socratic discovery.
 
@@ -1631,7 +1640,11 @@ def prd_generate(
     - Determines when enough information has been gathered
     - Generates the final PRD from the conversation
 
+    Discovery stops after --max-questions answers, or sooner once coverage
+    stops improving; areas still uncovered become open questions in the PRD.
+
     Special commands during discovery:
+      /done   - Finish now and generate the PRD from what's been answered
       /pause  - Save progress and exit (creates a blocker for resume)
       /quit   - Exit without saving
       /help   - Show available commands
@@ -1750,6 +1763,9 @@ def prd_generate(
                 console.print("\n[dim]Set the API key named above to use AI discovery.[/dim]")
                 raise typer.Exit(1)
 
+        if max_questions is not None:
+            session.max_questions = max_questions
+
         console.print("\n[bold]Starting AI-driven PRD discovery...[/bold]")
         console.print("[dim]The AI will ask questions to understand your project.[/dim]")
         console.print("[dim]Type /help for available commands[/dim]\n")
@@ -1787,7 +1803,10 @@ def prd_generate(
             progress_bar = "█" * int(pct // 5)
             progress_empty = "░" * (20 - len(progress_bar))
 
-            console.print(f"[dim]Question {question['question_number']} | Coverage: {pct}%[/dim]")
+            console.print(
+                f"[dim]Question {question['question_number']} of at most "
+                f"{progress.get('max_questions')} | Coverage: {pct}%[/dim]"
+            )
             console.print(f"[dim]{progress_bar}{progress_empty}[/dim]\n")
 
             # Show question
@@ -1814,11 +1833,21 @@ def prd_generate(
                     # Handle special commands
                     if answer.lower() == "/help":
                         console.print("\n[bold]Available commands:[/bold]")
+                        console.print("  /done   - Finish now and generate the PRD")
                         console.print("  /pause  - Save progress and exit")
                         console.print("  /quit   - Exit without saving")
                         console.print("  /help   - Show this help")
                         console.print()
                         continue
+
+                    if answer.lower() in ("/done", "done"):
+                        if not session.answered_count:
+                            console.print(
+                                "[yellow]Answer at least one question before finishing.[/yellow]"
+                            )
+                            continue
+                        session.finish_now()
+                        break
 
                     if answer.lower() == "/quit":
                         if typer.confirm("Exit without saving?"):
