@@ -387,7 +387,7 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
     return (
       <div className="rounded-lg border border-destructive bg-destructive/10 p-6">
         <h2 className="text-lg font-semibold text-destructive">Error</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-2 text-sm text-foreground">
           {error.detail || 'Failed to load tasks'}
         </p>
       </div>

@@ -121,7 +121,7 @@ export function SessionDetailClient({ sessionId }: SessionDetailClientProps) {
             {isNotFound ? (
               <>
                 <p className="text-sm font-medium text-foreground">Session not found</p>
-                <p className="mt-2 text-xs text-muted-foreground">
+                <p className="mt-2 text-xs text-foreground">
                   This session may have been deleted or the ID is incorrect.
                 </p>
                 <Button asChild variant="outline" size="sm" className="mt-4">
@@ -131,7 +131,7 @@ export function SessionDetailClient({ sessionId }: SessionDetailClientProps) {
             ) : (
               <>
                 <p className="text-sm font-medium text-destructive">Failed to load session</p>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-xs text-foreground">
                   {error?.detail ?? 'An unexpected error occurred.'}
                 </p>
               </>

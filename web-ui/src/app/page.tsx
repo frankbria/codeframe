@@ -185,7 +185,7 @@ export default function WorkspacePage() {
         <div className="mx-auto max-w-7xl px-4 py-8">
           <div className="rounded-lg border border-destructive bg-destructive/10 p-6">
             <h2 className="text-lg font-semibold text-destructive">Error</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-foreground">
               {workspaceError.detail || 'Failed to load workspace'}
             </p>
             <button

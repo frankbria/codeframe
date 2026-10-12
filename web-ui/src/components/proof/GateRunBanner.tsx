@@ -49,7 +49,7 @@ export function GateRunBanner({ passed, message, onRetry, unverifiableCount = 0 
     >
       <span className="h-2.5 w-2.5 rounded-full bg-red-400" aria-hidden="true" />
       <p className="text-sm font-medium text-destructive">Some gates failed</p>
-      {message && <span className="text-xs text-destructive/80 ml-1 flex-1">{message}</span>}
+      {message && <span className="text-xs text-destructive ml-1 flex-1">{message}</span>}
       <Button variant="ghost" size="sm" onClick={onRetry} className="text-destructive hover:text-destructive/80">
         Retry
       </Button>

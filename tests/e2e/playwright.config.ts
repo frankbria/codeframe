@@ -82,7 +82,10 @@ export default defineConfig({
       // and the lifecycle spec would need a paid key.
       // CORS_ALLOWED_ORIGINS: the server's localhost default lists :3001 only,
       // so a non-default E2E_FRONTEND_URL had every direct call blocked (#1411).
-      command: `CORS_ALLOWED_ORIGINS=${FRONTEND_URL} AUTH_SECRET=${AUTH_SECRET} DATABASE_PATH=${CENTRAL_DB_PATH} WORKSPACE_ROOT=${WORKSPACE_ROOT} CODEFRAME_LLM_PROVIDER=mock uv run uvicorn codeframe.ui.server:app --port ${BACKEND_PORT}`,
+      // RATE_LIMIT_ENABLED=false: the nightly sweep runs every spec in three
+      // browsers against this one server, and Firefox hit the 100/minute limit
+      // and got 429 error pages instead of the app (#1447).
+      command: `RATE_LIMIT_ENABLED=false CORS_ALLOWED_ORIGINS=${FRONTEND_URL} AUTH_SECRET=${AUTH_SECRET} DATABASE_PATH=${CENTRAL_DB_PATH} WORKSPACE_ROOT=${WORKSPACE_ROOT} CODEFRAME_LLM_PROVIDER=mock uv run uvicorn codeframe.ui.server:app --port ${BACKEND_PORT}`,
       cwd: '../..',
       url: `${BACKEND_URL}/health`,
       reuseExistingServer: !process.env.CI,
