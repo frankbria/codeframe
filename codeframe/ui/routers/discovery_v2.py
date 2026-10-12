@@ -360,6 +360,11 @@ async def finish_discovery(
     except DiscoveryError as e:
         # Must follow NoApiKeyError, which subclasses it.
         raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        # Loading the session builds the LLM provider, which can refuse a
+        # repo-supplied base_url (UntrustedBaseURLError, #903).
+        logger.error(f"Failed to finish discovery: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/{session_id}/generate-prd", response_model=GeneratePrdResponse)

@@ -85,3 +85,37 @@ def test_finish_an_unknown_session_is_not_found(client):
 
     assert response.status_code == 404, response.text
     assert "not found" in response.json()["detail"].lower()
+
+
+def test_an_untrusted_base_url_is_a_logged_500_not_an_escape(client, workspace, caplog):
+    """create_provider runs on session load and can refuse a repo's base_url (#903)."""
+    from codeframe.core.llm_resolution import UntrustedBaseURLError
+
+    session_id = _start(client)
+    with patch(
+        "codeframe.core.prd_discovery.get_session",
+        side_effect=UntrustedBaseURLError("config.yaml names a non-loopback base_url"),
+    ):
+        response = client.post(f"/api/v2/discovery/{session_id}/finish")
+
+    assert response.status_code == 500, response.text
+    assert "base_url" in response.json()["detail"]
+    assert "Failed to finish discovery" in caplog.text
+
+
+def test_a_stale_finish_does_not_drop_an_answer_saved_meanwhile(workspace, provider):
+    """Tab B loads the session, tab A's answer lands, then B finishes (#1449 review)."""
+    from codeframe.core.prd_discovery import PrdDiscoverySession, get_session
+
+    with patch("codeframe.core.prd_discovery.AnthropicProvider", return_value=provider):
+        tab_a = PrdDiscoverySession(workspace, api_key="k")
+        tab_a.start_discovery()
+        tab_a.submit_answer("first")
+        tab_b = get_session(workspace, tab_a.session_id, api_key="k")
+
+        tab_a.submit_answer("second")  # lands after B loaded
+        tab_b.finish_now()
+
+        stored = get_session(workspace, tab_a.session_id, api_key="k")
+    assert stored.is_complete()
+    assert [qa["answer"] for qa in stored._qa_history] == ["first", "second"]
