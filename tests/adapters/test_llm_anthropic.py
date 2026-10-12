@@ -5,13 +5,18 @@ from unittest.mock import MagicMock
 import pytest
 
 from codeframe.adapters.llm.anthropic import AnthropicProvider
-from codeframe.adapters.llm.base import LLMResponse
+from codeframe.adapters.llm.base import LLMResponse, ModelSelector
 
 pytestmark = pytest.mark.v2
 
 
 def _provider() -> AnthropicProvider:
-    return AnthropicProvider(api_key="test-key")
+    # A model that still takes sampling parameters (#1267). The default moved to
+    # claude-sonnet-5-5 (#1348), which rejects temperature, so the adapter sends
+    # none for it; these tests are about temperature=0.0 not being dropped.
+    return AnthropicProvider(
+        api_key="test-key", model_selector=ModelSelector(execution_model="claude-haiku-4-5")
+    )
 
 
 @pytest.mark.parametrize("temperature", [0.0, 0.7])

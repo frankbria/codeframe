@@ -60,6 +60,13 @@ class TestCLILifecycle:
         print("\n=== Acceptance report ===")
         print(report)
 
+        # What the run cost, so a model change can be compared run against run
+        # (#1348). lifecycle.yml passes -rP so this reaches the log on a pass.
+        for args in (("stats", "tokens"), ("stats", "costs")):
+            stats = cf(*args)
+            print(f"\n=== cf {' '.join(args)} ===")
+            print(stats.stdout or stats.stderr)
+
         assert passed, f"Acceptance checks failed.\n{report}"
 
     def test_agent_task_status_after_execution(self, initialized_workspace, cf):

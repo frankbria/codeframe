@@ -23,7 +23,7 @@ SAMPLE_PROJECT_DIR = Path(__file__).parent / "sample_project"
 # uses the requested model class instead of the compiled-in defaults.
 _LIFECYCLE_MODEL_MAP: dict[str, str] = {
     "haiku": "claude-haiku-4-5",
-    "sonnet": "claude-sonnet-4-5",
+    "sonnet": "claude-sonnet-5-5",  # the Sonnet-tier default since #1348
 }
 
 

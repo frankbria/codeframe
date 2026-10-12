@@ -39,7 +39,7 @@ Detailed reference for CodeFRAME's agent system. Loaded on-demand — not requir
 
 Task-based heuristic via `Purpose` enum (`adapters/llm/base.py`, each overridable
 with `CODEFRAME_<PURPOSE>_MODEL`):
-- **PLANNING / EXECUTION / CORRECTION / SUPERVISION** → `claude-sonnet-4-5`
+- **PLANNING / EXECUTION / CORRECTION / SUPERVISION** → `claude-sonnet-5-5` (since #1348; was `claude-sonnet-4-5`)
 - **GENERATION** → `claude-haiku-4-5` (fast/cheap)
 
 **Request shape follows the model (#1267).** Opus 4.7+, Opus 5/5.5, Sonnet 5/5.5
@@ -58,7 +58,7 @@ The request-shape fix above is the prerequisite — it lets any current model ru
 
 1. **Ship the request-shape fix** (#1267) in a release, so a user who overrides
    `CODEFRAME_*_MODEL` to a current model already works.
-2. **By 2026-10-31, move the Sonnet-tier defaults** (planning, execution,
+2. **Done in #1348.** ~~By 2026-10-31, move the Sonnet-tier defaults~~ (planning, execution,
    correction, supervision) to `claude-sonnet-5-5` in one PR: update
    `base.py` and `tests/adapters/test_model_defaults_guard_1112.py`.
    Before merging, run `scripts/lifecycle --mode cli` against the new default

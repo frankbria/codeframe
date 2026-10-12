@@ -78,6 +78,7 @@ jobs:
           uv run pytest ${{ steps.tests.outputs.path }} \
             -m lifecycle \
             -v \
+            -rP \
             --tb=long \
             --no-header \
             -p no:warnings \
