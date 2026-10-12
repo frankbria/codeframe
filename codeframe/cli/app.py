@@ -214,6 +214,43 @@ def _load_brief_file(path: Path) -> str:
     return brief
 
 
+def _finish_non_interactive(session, question: dict) -> bool:
+    """--brief-file after MAX_ANSWER_ATTEMPTS: finish if an answer is in, else stop.
+
+    There is no list to desynchronise, so repeated rejection means the brief does
+    not cover what is being asked. With an answer in, finishing beats failing:
+    the PRD lists what is still uncovered (#1443, #1450).
+    """
+    answered = session.answered_count
+    if not answered:
+        console.print(
+            "[red]Error:[/red] giving up in non-interactive mode. The stand-in "
+            "answered from the brief five times without being accepted, which "
+            "usually means the brief does not cover what this question asks:\n\n"
+            f"  {escape(question.get('text', ''))}\n\n"
+            "Extend the brief to cover it, or run interactively."
+        )
+        raise typer.Exit(1)
+    console.print(
+        f"[yellow]Finishing discovery with the {answered} answer"
+        f"{'' if answered == 1 else 's'} accepted so far; the PRD will list "
+        "what is still uncovered as open questions.[/yellow]"
+    )
+    session.finish_now()
+    return True
+
+
+def _offer_finish(session) -> bool:
+    """Interactive: offer to finish now when an answer is in (#1450)."""
+    if not session.answered_count or not typer.confirm(
+        "Finish discovery now and generate the PRD from what's been answered?",
+        default=True,
+    ):
+        return False
+    session.finish_now()
+    return True
+
+
 def _handle_answer_attempts_exhausted(session, answers: "_AnswerSource", question: dict) -> bool:
     """React to MAX_ANSWER_ATTEMPTS rejections on one question (#1114).
 
@@ -223,8 +260,8 @@ def _handle_answer_attempts_exhausted(session, answers: "_AnswerSource", questio
 
     A canned --answers-file stops: a list that has desynchronised will not
     resynchronise by being fed more of itself. Otherwise, once an answer has
-    been accepted, finishing is the better exit — since #1443 the PRD lists the
-    areas still uncovered. Interactive runs are asked; --brief-file finishes.
+    been accepted, finishing is the better exit. Interactive runs are asked;
+    --brief-file finishes.
     """
     console.print(
         f"\n[yellow]That question has been answered {MAX_ANSWER_ATTEMPTS} times "
@@ -239,45 +276,23 @@ def _handle_answer_attempts_exhausted(session, answers: "_AnswerSource", questio
             "actually asked, or run interactively."
         )
         raise typer.Exit(1)
-    answered = session.answered_count
     if not answers.interactive:
-        if answered:
-            console.print(
-                f"[yellow]Finishing discovery with the {answered} answer"
-                f"{'' if answered == 1 else 's'} accepted so far; the PRD will list "
-                "what is still uncovered as open questions.[/yellow]"
-            )
-            session.finish_now()
-            return True
-        # --brief-file: there is no list to desynchronise, so repeated rejection
-        # means the brief does not cover what is being asked.
-        console.print(
-            "[red]Error:[/red] giving up in non-interactive mode. The stand-in "
-            "answered from the brief five times without being accepted, which "
-            "usually means the brief does not cover what this question asks:\n\n"
-            f"  {escape(question.get('text', ''))}\n\n"
-            "Extend the brief to cover it, or run interactively."
-        )
-        raise typer.Exit(1)
+        return _finish_non_interactive(session, question)
 
     console.print(
         "[dim]Questions often have two parts; make sure the answer covers all of "
         "them. You can also type /pause to save and come back.[/dim]"
     )
-    if not typer.confirm("Keep trying this question?", default=True):
-        if answered and typer.confirm(
-            "Finish discovery now and generate the PRD from what's been answered?",
-            default=True,
-        ):
-            session.finish_now()
-            return True
-        blocker_id = session.pause_discovery("Stuck on a question")
-        console.print("\n[green]✓[/green] Session paused")
-        console.print(
-            f"To resume: [cyan]cf prd generate --resume {blocker_id[:8]}[/cyan]"
-        )
-        return False
-    return True
+    if typer.confirm("Keep trying this question?", default=True):
+        return True
+    if _offer_finish(session):
+        return True
+    blocker_id = session.pause_discovery("Stuck on a question")
+    console.print("\n[green]✓[/green] Session paused")
+    console.print(
+        f"To resume: [cyan]cf prd generate --resume {blocker_id[:8]}[/cyan]"
+    )
+    return False
 
 
 def _load_answers_file(path: Path) -> list[str]:
