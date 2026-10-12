@@ -172,6 +172,15 @@ jobs:
           git config --global user.name "Engine Smoke"
           git config --global user.email "engine-smoke@codeframe.test"
 
+      - name: Let codex's bubblewrap sandbox start
+        # codex sandboxes every command with a bundled bwrap, which needs
+        # unprivileged user namespaces; ubuntu-24.04 runners restrict them
+        # through AppArmor, so the sandbox fails to start and the adapter
+        # (which declines escalation, #1278) ends with no file written (#1451).
+        # A per-binary AppArmor profile is the long-lived-host fix; this runner
+        # is single-use, so lifting the sysctl for the job is enough.
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Run the full tier
         env:
           CODEFRAME_ENGINE_SMOKE: '1'
