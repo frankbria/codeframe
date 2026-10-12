@@ -343,6 +343,34 @@ class TestLegacySessions:
         assert loaded.get_progress()["percentage"] == 75
 
 
+def _coverage_without_average(score: int) -> str:
+    """The shape claude-haiku-4-5 actually returns: scores, no `average` (5/5 probes)."""
+    return json.dumps(
+        {
+            "scores": {c: score for c in ["problem", "users", "features", "constraints", "tech_stack"]},
+            "weakest_category": "constraints",
+            "ready_for_prd": False,
+            "reasoning": "gaps remain",
+        }
+    )
+
+
+class TestAssessmentWithoutAverage:
+    def test_missing_average_is_the_mean_of_the_scores(self, workspace):
+        provider = FakeProvider([_coverage_without_average(72)])
+        session = _session(workspace, provider, max_questions=10)
+
+        session.submit_answer("first")
+
+        assert session.get_progress()["percentage"] == 72
+
+    def test_plateau_still_fires_when_the_model_omits_average(self, workspace):
+        provider = FakeProvider([_coverage_without_average(70)])
+        session = _session(workspace, provider, max_questions=10)
+
+        assert _answer_until_complete(session) == 6
+
+
 class TestUnparseableAssessment:
     def test_garbage_once_keeps_prior_coverage(self, workspace):
         provider = FakeProvider(

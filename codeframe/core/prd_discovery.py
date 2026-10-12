@@ -347,6 +347,23 @@ def _content_words(text: str) -> set[str]:
     return set(_WORD_RE.findall(text.lower())) - _STOPWORDS
 
 
+def _coverage_average(assessment: dict[str, Any]) -> Optional[float]:
+    """The assessment's `average`, else the mean of its category scores.
+
+    The model routinely omits `average` (claude-haiku-4-5 did in 5 of 5 probes
+    on the cleanroom brief), which recorded no score per answer: progress read
+    0% and the plateau rule could never fire.
+    """
+    average = _score(assessment.get("average"))
+    if average is not None:
+        return average
+    scores = assessment.get("scores")
+    if not isinstance(scores, dict):
+        return None
+    values = [v for v in (_score(scores.get(c)) for c in DISCOVERY_CATEGORIES) if v is not None]
+    return sum(values) / len(values) if values else None
+
+
 def _is_near_duplicate(question: str, asked: list[str]) -> bool:
     """True if ``question`` shares most of its content words with one already asked."""
     words = _content_words(question)
@@ -568,8 +585,8 @@ Be warm and encouraging. Just output the question, nothing else."""
         # Sessions saved before #1443 carry no per-answer scores. Give the last
         # answer the stored assessment, or progress and the plateau rule would
         # read every earlier answer as 0%.
-        if self._qa_history and "coverage" not in self._qa_history[-1]:
-            self._qa_history[-1]["coverage"] = _score((self._coverage or {}).get("average"))
+        if self._qa_history and "coverage" not in self._qa_history[-1] and self._coverage:
+            self._qa_history[-1]["coverage"] = _coverage_average(self._coverage)
         self._blocker_id = row[5]
         self._is_complete = bool(row[6]) if row[6] is not None else False
         self.complete_if_capped()
@@ -762,7 +779,7 @@ Be warm and encouraging. Just output the question, nothing else."""
             logger.warning(f"Could not parse coverage response: {response.content}")
             return None
         self._coverage = parsed
-        return _score(parsed.get("average"))
+        return _coverage_average(parsed)
 
     def _coverage_peaks(self) -> list[float]:
         """Running max of per-answer coverage, one entry per answer."""
