@@ -319,6 +319,49 @@ async def submit_answer(
         release_planning_budget(auth, budget)
 
 
+class FinishResponse(BaseModel):
+    """Response for finishing discovery early."""
+
+    is_complete: bool
+    answered: int
+
+
+@router.post("/{session_id}/finish", response_model=FinishResponse)
+@rate_limit_standard()
+async def finish_discovery(
+    request: Request,
+    session_id: str,
+    workspace: Workspace = Depends(get_v2_workspace),
+    auth: dict = Depends(require_auth),
+) -> FinishResponse:
+    """End discovery now and go to PRD generation (#1449).
+
+    The web UI's counterpart of the CLI's `/done`; areas still uncovered become
+    open questions in the PRD. No LLM call, so no planning budget is reserved.
+
+    Raises:
+        HTTPException:
+            - 404: Session not found
+            - 409: No question answered yet, or the session was reset
+            - 500: No API key available to load the session
+    """
+    try:
+        result = await run_in_threadpool(
+            prd_discovery.finish_discovery,
+            workspace,
+            session_id,
+            user_id=auth.get("user_id"),
+        )
+        return FinishResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except NoApiKeyError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except DiscoveryError as e:
+        # Must follow NoApiKeyError, which subclasses it.
+        raise HTTPException(status_code=409, detail=str(e))
+
+
 @router.post("/{session_id}/generate-prd", response_model=GeneratePrdResponse)
 @rate_limit_ai()
 async def generate_prd(

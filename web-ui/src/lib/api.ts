@@ -27,6 +27,7 @@ import type {
   AnswerResponse,
   DiscoveryStatusResponse,
   GeneratePrdResponse,
+  FinishDiscoveryResponse,
   GenerateTasksResponse,
   Blocker,
   BlockerStatus,
@@ -766,6 +767,18 @@ export const discoveryApi = {
     const response = await api.post<GeneratePrdResponse>(
       `/api/v2/discovery/${sessionId}/generate-prd`,
       { ...(templateId ? { template_id: templateId } : {}) },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  finish: async (
+    sessionId: string,
+    workspacePath: string
+  ): Promise<FinishDiscoveryResponse> => {
+    const response = await api.post<FinishDiscoveryResponse>(
+      `/api/v2/discovery/${sessionId}/finish`,
+      {},
       { params: { workspace_path: workspacePath } }
     );
     return response.data;

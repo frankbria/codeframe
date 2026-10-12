@@ -70,6 +70,11 @@ export interface DiscoveryStatusResponse {
   error: string | null;
 }
 
+export interface FinishDiscoveryResponse {
+  is_complete: boolean;
+  answered: number;
+}
+
 export interface GeneratePrdResponse {
   prd_id: string;
   title: string;

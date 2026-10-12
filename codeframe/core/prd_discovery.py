@@ -560,6 +560,9 @@ Be warm and encouraging. Just output the question, nothing else."""
         Raises:
             ValueError: If session not found
         """
+        # A workspace that never started discovery has no table yet; that is
+        # "session not found" (404), not an OperationalError (500) (#1449).
+        _ensure_discovery_schema(self.workspace)
         conn = get_db_connection(self.workspace)
         cursor = conn.cursor()
 
@@ -1585,6 +1588,28 @@ def process_discovery_answer(
         result["next_question"] = None
 
     return result
+
+
+def finish_discovery(
+    workspace: Workspace,
+    session_id: str,
+    api_key: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> dict[str, Any]:
+    """End discovery now, at the user's request; the web UI's 'Finish now' (#1449).
+
+    Returns:
+        Dict with ``is_complete`` (True) and ``answered``.
+
+    Raises:
+        ValueError: If session not found
+        DiscoveryError: If no question has been answered yet, or the session
+            was reset meanwhile (SessionResetError)
+        NoApiKeyError: If no API key available to load the session
+    """
+    session = get_session(workspace, session_id, api_key=api_key, user_id=user_id)
+    session.finish_now()
+    return {"is_complete": True, "answered": session.answered_count}
 
 
 def generate_prd_from_discovery(
