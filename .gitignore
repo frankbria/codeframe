@@ -35,6 +35,7 @@ ENV/
 *.swo
 *~
 .claude/settings.local.json
+.claude/settings.local.*.json
 
 # Testing
 .pytest_cache/
@@ -42,6 +43,7 @@ ENV/
 coverage.xml
 coverage.json
 htmlcov/
+coverage/
 *.log
 .hypothesis/
 artifacts/
