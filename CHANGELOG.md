@@ -7,6 +7,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- **Sonnet-tier defaults are `claude-sonnet-5-5` (#1348).** Planning,
+  execution, correction and supervision moved off `claude-sonnet-4-5`, which
+  reaches end of life on 2026-11-30, and so did the interactive-session
+  default. Generation stays on `claude-haiku-4-5` until it has a retirement
+  date. Sonnet 5.5 runs adaptive thinking and takes no sampling parameters;
+  the adapter already sends it that request shape (#1267). The pricing table
+  now carries the current models (`claude-sonnet-5-5` $2/$10,
+  `claude-opus-5-5` $4/$20, `claude-haiku-5-5` $0.10/$0.50,
+  `claude-fable-5-1` $10/$50 per 1M tokens), so their usage is not recorded
+  at $0 (#932). `CODEFRAME_PLANNING_MODEL` and friends still override the
+  default.
+
 ### Fixed
 
 - **PRD discovery is bounded (#1443).** `cf prd generate` used to stop only

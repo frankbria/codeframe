@@ -60,12 +60,14 @@ class Purpose(str, Enum):
     SUPERVISION = "supervision"  # Supervisor decisions (blocker triage, tactical resolution)
 
 
-# Default model aliases (use valid Anthropic model identifiers)
-DEFAULT_PLANNING_MODEL = "claude-sonnet-4-5"
-DEFAULT_EXECUTION_MODEL = "claude-sonnet-4-5"
+# Default model aliases (use valid Anthropic model identifiers). The Sonnet tier
+# moved to 5.5 before claude-sonnet-4-5 retires on 2026-11-30 (#1348); Haiku 4.5
+# stays the generation default until it has an announced retirement date.
+DEFAULT_PLANNING_MODEL = "claude-sonnet-5-5"
+DEFAULT_EXECUTION_MODEL = "claude-sonnet-5-5"
 DEFAULT_GENERATION_MODEL = "claude-haiku-4-5"
-DEFAULT_CORRECTION_MODEL = "claude-sonnet-4-5"  # Use same tier; override via CODEFRAME_CORRECTION_MODEL for a stronger model
-DEFAULT_SUPERVISION_MODEL = "claude-sonnet-4-5"  # Use same tier; override via CODEFRAME_SUPERVISION_MODEL for a stronger model
+DEFAULT_CORRECTION_MODEL = "claude-sonnet-5-5"  # Use same tier; override via CODEFRAME_CORRECTION_MODEL for a stronger model
+DEFAULT_SUPERVISION_MODEL = "claude-sonnet-5-5"  # Use same tier; override via CODEFRAME_SUPERVISION_MODEL for a stronger model
 
 
 @dataclass

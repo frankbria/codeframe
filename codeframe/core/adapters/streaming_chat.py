@@ -22,7 +22,13 @@ from enum import Enum
 from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
 
-from codeframe.adapters.llm.base import LLMProvider, Tool, ToolCall, ToolResult
+from codeframe.adapters.llm.base import (
+    DEFAULT_PLANNING_MODEL,
+    LLMProvider,
+    Tool,
+    ToolCall,
+    ToolResult,
+)
 from codeframe.core.spend_limit import SpendLimitExceeded
 from codeframe.core.usage_recording import charge_budget, check_budget, mark_unrecorded
 from codeframe.lib.metrics_tracker import MetricsTracker
@@ -36,10 +42,11 @@ from codeframe.core.tools import (
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Default model (matches DEFAULT_PLANNING_MODEL in base.py)
+# Default model: the planning default, so it moves with base.py instead of
+# drifting onto a retired ID (#1348)
 # ---------------------------------------------------------------------------
 
-_DEFAULT_MODEL = "claude-sonnet-4-5"
+_DEFAULT_MODEL = DEFAULT_PLANNING_MODEL
 
 # Maximum token budget for conversation history passed to the API.
 # claude-sonnet-4 context window is 200k; leave 20k for response headroom.

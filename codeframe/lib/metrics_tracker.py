@@ -69,6 +69,15 @@ MODEL_PRICING = {
     # missing here records every turn of such a session as unpriced.
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     "claude-opus-4-6": {"input": 5.00, "output": 25.00},
+    # Current models (#1348; Claude API reference, cached 2026-10-06). The
+    # Sonnet-tier defaults run on claude-sonnet-5-5.
+    "claude-sonnet-5-5": {"input": 2.00, "output": 10.00},
+    "claude-opus-5-5": {"input": 4.00, "output": 20.00},
+    # ponytail: flat rate is the <=100K-token prompt price; prompts above 100K
+    # bill $0.50/$2.50 and are under-counted. Add tiered pricing if Haiku 5.5
+    # ever carries long prompts here.
+    "claude-haiku-5-5": {"input": 0.10, "output": 0.50},
+    "claude-fable-5-1": {"input": 10.00, "output": 50.00},
     # OpenAI (advertised as a supported provider)
     "gpt-4o": {"input": 2.50, "output": 10.00},
     "gpt-4o-mini": {"input": 0.15, "output": 0.60},
