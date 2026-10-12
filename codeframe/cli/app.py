@@ -217,11 +217,14 @@ def _load_brief_file(path: Path) -> str:
 def _handle_answer_attempts_exhausted(session, answers: "_AnswerSource", question: dict) -> bool:
     """React to MAX_ANSWER_ATTEMPTS rejections on one question (#1114).
 
-    Returns True to keep trying, False when the caller should stop.
+    Returns True to keep trying, False when the caller should stop. When it
+    finishes discovery instead (#1450), the session is complete on return and
+    the caller goes on to generate the PRD.
 
-    Non-interactive runs stop: a canned list that has desynchronised will not
-    resynchronise by being fed more of itself. Interactive runs are told what is
-    happening and offered the pause they would otherwise have to discover.
+    A canned --answers-file stops: a list that has desynchronised will not
+    resynchronise by being fed more of itself. Otherwise, once an answer has
+    been accepted, finishing is the better exit — since #1443 the PRD lists the
+    areas still uncovered. Interactive runs are asked; --brief-file finishes.
     """
     console.print(
         f"\n[yellow]That question has been answered {MAX_ANSWER_ATTEMPTS} times "
@@ -236,7 +239,16 @@ def _handle_answer_attempts_exhausted(session, answers: "_AnswerSource", questio
             "actually asked, or run interactively."
         )
         raise typer.Exit(1)
+    answered = session.answered_count
     if not answers.interactive:
+        if answered:
+            console.print(
+                f"[yellow]Finishing discovery with the {answered} answer"
+                f"{'' if answered == 1 else 's'} accepted so far; the PRD will list "
+                "what is still uncovered as open questions.[/yellow]"
+            )
+            session.finish_now()
+            return True
         # --brief-file: there is no list to desynchronise, so repeated rejection
         # means the brief does not cover what is being asked.
         console.print(
@@ -253,6 +265,12 @@ def _handle_answer_attempts_exhausted(session, answers: "_AnswerSource", questio
         "them. You can also type /pause to save and come back.[/dim]"
     )
     if not typer.confirm("Keep trying this question?", default=True):
+        if answered and typer.confirm(
+            "Finish discovery now and generate the PRD from what's been answered?",
+            default=True,
+        ):
+            session.finish_now()
+            return True
         blocker_id = session.pause_discovery("Stuck on a question")
         console.print("\n[green]✓[/green] Session paused")
         console.print(
@@ -1825,6 +1843,8 @@ def prd_generate(
                             session, answers, question
                         ):
                             return
+                        if session.is_complete():
+                            break
                         attempts = 1
 
                     answer = answers.ask(question["text"])

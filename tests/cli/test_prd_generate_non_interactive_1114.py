@@ -399,7 +399,9 @@ class TestReviewFindings:
         question = {"text": "What problem, and what inspired it?"}
 
         with pytest.raises(typer.Exit):
-            _handle_answer_attempts_exhausted(MagicMock(), source, question)
+            # Nothing accepted yet: with an answer in, the handler now finishes
+            # instead (#1450), so the stub has to say which case this is.
+            _handle_answer_attempts_exhausted(MagicMock(answered_count=0), source, question)
 
         out = capsys.readouterr().out
         assert "brief" in out.lower()
