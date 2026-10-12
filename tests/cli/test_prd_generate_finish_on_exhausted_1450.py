@@ -43,6 +43,14 @@ class AcceptsFirstThenRejects(FakeProvider):
         return super().complete(messages, **kwargs)
 
 
+class RejectsAll(AcceptsFirstThenRejects):
+    """Rejects every answer, the first included."""
+
+    def __init__(self):
+        super().__init__()
+        self.validations = 1  # as if the accepted first answer had already happened
+
+
 @pytest.fixture
 def workspace_dir(tmp_path: Path) -> Path:
     create_or_load_workspace(tmp_path)
@@ -94,11 +102,6 @@ def test_interactive_offers_finish_instead_of_only_pause(workspace_dir):
 def test_interactive_with_nothing_accepted_still_pauses(workspace_dir):
     """No answer in: finishing would generate a PRD from nothing, so pause as before."""
 
-    class RejectsAll(AcceptsFirstThenRejects):
-        def complete(self, messages, **kwargs):
-            self.validations = max(self.validations, 1)
-            return super().complete(messages, **kwargs)
-
     provider = RejectsAll()
     stdin = "\n".join([f"partial {i}" for i in range(MAX_ANSWER_ATTEMPTS)] + ["n"]) + "\n"
 
@@ -112,4 +115,54 @@ def test_interactive_with_nothing_accepted_still_pauses(workspace_dir):
 
     assert "Session paused" in result.output, result.output
     assert "Finish discovery now" not in result.output
+    assert prd.get_latest(get_workspace(workspace_dir)) is None
+
+
+def test_answers_file_still_fails_loudly_even_with_an_answer_in(workspace_dir):
+    """Unchanged (#1114): a desynchronised canned list must not finish silently."""
+    answers = workspace_dir / "answers.json"
+    answers.write_text(json.dumps(["first answer"] + [f"partial {i}" for i in range(10)]))
+
+    with patch("codeframe.core.llm_resolution.create_provider", return_value=AcceptsFirstThenRejects()):
+        result = runner.invoke(
+            app,
+            ["prd", "generate", "-w", str(workspace_dir), "--answers-file", str(answers)],
+            env={"ANTHROPIC_API_KEY": "test-key"},
+        )
+
+    assert result.exit_code == 1, result.output
+    assert "--brief-file" in result.output
+    assert prd.get_latest(get_workspace(workspace_dir)) is None
+
+
+def test_brief_mode_with_nothing_accepted_still_exits_1(workspace_dir):
+    brief = workspace_dir / "brief.md"
+    brief.write_text("A self-hosted todo API for developers.")
+
+    with patch("codeframe.core.llm_resolution.create_provider", return_value=RejectsAll()):
+        result = runner.invoke(
+            app,
+            ["prd", "generate", "-w", str(workspace_dir), "--brief-file", str(brief)],
+            env={"ANTHROPIC_API_KEY": "test-key"},
+        )
+
+    assert result.exit_code == 1, result.output
+    assert "brief" in result.output.lower()
+    assert prd.get_latest(get_workspace(workspace_dir)) is None
+
+
+def test_interactive_declining_both_prompts_pauses(workspace_dir):
+    answers = ["first answer"] + [f"partial {i}" for i in range(MAX_ANSWER_ATTEMPTS)]
+    stdin = "\n".join(answers + ["n", "n"]) + "\n"
+
+    with patch("codeframe.core.llm_resolution.create_provider", return_value=AcceptsFirstThenRejects()):
+        result = runner.invoke(
+            app,
+            ["prd", "generate", "-w", str(workspace_dir)],
+            input=stdin,
+            env={"ANTHROPIC_API_KEY": "test-key"},
+        )
+
+    assert "Finish discovery now" in result.output
+    assert "Session paused" in result.output, result.output
     assert prd.get_latest(get_workspace(workspace_dir)) is None
