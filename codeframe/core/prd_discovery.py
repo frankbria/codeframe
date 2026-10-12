@@ -560,11 +560,19 @@ Be warm and encouraging. Just output the question, nothing else."""
         Raises:
             ValueError: If session not found
         """
-        # A workspace that never started discovery has no table yet; that is
-        # "session not found" (404), not an OperationalError (500) (#1449).
-        _ensure_discovery_schema(self.workspace)
         conn = get_db_connection(self.workspace)
         cursor = conn.cursor()
+
+        # A workspace that never started discovery has no table yet: that is
+        # "session not found" (404), not an OperationalError (500) (#1449).
+        # Checked read-only; _ensure_discovery_schema takes a write lock, and
+        # running it on every load raced concurrent requests into "database is
+        # locked".
+        if not cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'discovery_sessions'"
+        ).fetchone():
+            conn.close()
+            raise ValueError(f"Session not found: {session_id}")
 
         cursor.execute(
             """
