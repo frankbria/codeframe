@@ -201,6 +201,19 @@ class TestPlateau:
         # the last three answers, under the 5-point bar.
         assert asked == 6
 
+    def test_flat_low_coverage_keeps_asking_until_the_cap(self, workspace):
+        """A session stuck at 25% is not done; stopping it would yield a thin PRD."""
+        provider = FakeProvider([_coverage_json(a) for a in [20, 25, 24, 25, 26, 25]])
+        session = _session(workspace, provider, max_questions=10)
+
+        assert _answer_until_complete(session) == 10
+
+    def test_plateau_never_fires_before_answer_six(self, workspace):
+        provider = FakeProvider([_coverage_json(a) for a in [70, 71, 71, 71]])
+        session = _session(workspace, provider, max_questions=10)
+
+        assert _answer_until_complete(session) == 6
+
     def test_rising_coverage_does_not_plateau(self, workspace):
         provider = FakeProvider([_coverage_json(a) for a in range(10, 100, 6)])
         session = _session(workspace, provider, max_questions=8)
@@ -356,17 +369,22 @@ class TestUnparseableAssessment:
 
         assert session._coverage["average"] == 64
 
-    def test_repeated_failures_end_discovery(self, workspace):
-        provider = FakeProvider([_coverage_json(30), "nope"])
+    def test_repeated_failures_after_good_coverage_end_discovery(self, workspace):
+        provider = FakeProvider([_coverage_json(70), "nope"])
         session = _session(workspace, provider, max_questions=10)
 
         asked = _answer_until_complete(session)
 
-        # One good assessment, then three failures: no rise over three answers
-        # is a plateau, so repeated failures end discovery without a rule of
-        # their own.
-        assert asked == 4
+        # Failures add no gain, so once coverage is past the floor they end
+        # discovery through the plateau rule at the earliest allowed answer.
+        assert asked == 6
         assert session.is_complete()
+
+    def test_repeated_failures_at_low_coverage_are_bounded_by_the_cap(self, workspace):
+        provider = FakeProvider([_coverage_json(30), "nope"])
+        session = _session(workspace, provider, max_questions=10)
+
+        assert _answer_until_complete(session) == 10
 
 
 class TestNearDuplicateGuard:

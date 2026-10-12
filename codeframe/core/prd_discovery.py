@@ -124,8 +124,11 @@ DEFAULT_MAX_QUESTIONS = 10
 # from noise, so the plateau rule reads the running max, not the raw series.
 PLATEAU_WINDOW = 3
 PLATEAU_MIN_GAIN = 5
-# A category below this score is listed as an open question in the PRD.
+# A category below this score is listed as an open question in the PRD. The
+# plateau rule also waits for coverage to reach it: a session stuck at 25% is
+# not done, and stopping it would produce a thin PRD. Only the cap ends that.
 COVERED_SCORE = 60
+PLATEAU_MIN_ANSWERS = 6
 DUPLICATE_SIMILARITY = 0.6
 _WORD_RE = re.compile(r"[a-z0-9]+")
 # Short questions are mostly these words, so counting them made "What is the
@@ -772,12 +775,12 @@ Be warm and encouraging. Just output the question, nothing else."""
         return peaks
 
     def _coverage_plateaued(self) -> bool:
-        """True when coverage rose less than PLATEAU_MIN_GAIN over the last answers.
+        """True when coverage, already past COVERED_SCORE, has stopped rising.
 
-        Three unreadable assessments in a row also land here: they add no gain.
+        Unreadable assessments add no gain, so a run of them lands here too.
         """
         peaks = self._coverage_peaks()
-        if len(peaks) <= PLATEAU_WINDOW:
+        if len(peaks) < PLATEAU_MIN_ANSWERS or peaks[-1] < COVERED_SCORE:
             return False
         return peaks[-1] - peaks[-1 - PLATEAU_WINDOW] < PLATEAU_MIN_GAIN
 

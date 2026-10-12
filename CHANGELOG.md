@@ -14,8 +14,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   30+ near-duplicate questions. Discovery now also completes:
   - at `discovery_max_questions` answers (`.codeframe/config.yaml`, or
     `--max-questions` for one run; default 10);
-  - when coverage, tracked as its running max, gains less than 5 points over
-    3 answers;
+  - from answer 6 on, when coverage has reached 60% and its running max
+    gains less than 5 points over 3 answers (a session stuck below 60% keeps
+    asking until the cap);
   - when the model repeats a question.
 
   `/done` finishes early. Areas still uncovered become an "Open Questions"
