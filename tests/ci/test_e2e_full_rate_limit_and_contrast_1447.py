@@ -11,9 +11,12 @@ Two defects, found together:
 2. That error card failed axe's color-contrast rule, a real defect the rate limit
    merely exposed: `text-destructive` on its own `bg-destructive/10` tint measured
    4.13:1, and `text-muted-foreground` on the same tint 4.48:1 (WCAG AA is 4.5:1).
-   The tint appears on 17 surfaces, so the fix is in the light-theme tokens.
+   The tint appears on 17 surfaces, so `--destructive` itself is darkened. The
+   grey had to stay put: darkening `--muted-foreground` dropped inline
+   `text-primary` links below axe's 3:1 link-in-text-block bar against the grey
+   around them. So the error cards' message line uses `text-foreground` instead.
    With rate limiting off the E2E suite no longer renders the card, so this file
-   computes the contrast directly from `globals.css`.
+   computes the contrast from `globals.css` and pins the card markup.
 """
 
 import colorsys
@@ -61,7 +64,7 @@ def _tint(color, background, alpha: float = 0.10):
     return tuple(alpha * c + (1 - alpha) * g for c, g in zip(color, background))
 
 
-@pytest.mark.parametrize("foreground", ["destructive", "muted-foreground"])
+@pytest.mark.parametrize("foreground", ["destructive", "foreground"])
 def test_text_on_the_destructive_tint_meets_wcag_aa(foreground: str):
     tokens = _light_tokens()
     tint = _tint(tokens["destructive"], tokens["background"])
@@ -70,6 +73,33 @@ def test_text_on_the_destructive_tint_meets_wcag_aa(foreground: str):
         f"text-{foreground} on bg-destructive/10 is {ratio:.2f}:1, below {AA}:1 — "
         "every error card fails axe color-contrast (#1447)"
     )
+
+
+ERROR_CARDS = [
+    "web-ui/src/app/page.tsx",
+    "web-ui/src/app/prd/page.tsx",
+    "web-ui/src/components/tasks/TaskBoardView.tsx",
+]
+CARD = re.compile(
+    r'bg-destructive/10[^"]*">\s*<h2[^>]*>Error</h2>\s*<p className="([^"]*)"'
+)
+
+
+@pytest.mark.parametrize("path", ERROR_CARDS)
+def test_error_card_message_is_not_grey_on_the_tint(path: str):
+    """muted-foreground on the tint is 4.4:1; it cannot be darkened (see above)."""
+    match = CARD.search((ROOT / path).read_text())
+    assert match, f"{path}: the Error card markup moved; update this guard"
+    assert "text-muted-foreground" not in match.group(1), (
+        f"{path}: the Error card message is grey on bg-destructive/10 (#1447)"
+    )
+
+
+def test_muted_text_keeps_inline_links_distinguishable():
+    """text-primary links inside muted text need 3:1 against it (axe link-in-text-block)."""
+    tokens = _light_tokens()
+    ratio = _contrast(tokens["primary"], tokens["muted-foreground"])
+    assert ratio >= 3.0, f"a text-primary link in muted text is {ratio:.2f}:1 against it"
 
 
 def test_white_text_on_destructive_buttons_still_meets_wcag_aa():

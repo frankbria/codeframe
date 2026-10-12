@@ -20,7 +20,7 @@
 
     --muted: 220 9% 96%;
     /* 44%, not the preset's 46%: 4.4:1 on --muted failed WCAG AA (#1298). */
-    --muted-foreground: 220 9% 41%;
+    --muted-foreground: 220 9% 44%;
 
     --accent: 220 9% 96%;
     --accent-foreground: 220 9% 14%;
