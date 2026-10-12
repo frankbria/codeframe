@@ -139,3 +139,23 @@ def test_a_slow_answer_cannot_unfinish_a_session_finished_meanwhile(workspace, p
     assert stored.is_complete()
     assert stored.get_current_question() is None
     assert [qa["answer"] for qa in stored._qa_history] == ["first"]
+
+
+def test_a_completing_answer_cannot_overwrite_a_session_finished_meanwhile(workspace, provider):
+    """Tab A's in-flight answer hits the cap after tab B finished (codex review)."""
+    from codeframe.core.prd_discovery import PrdDiscoverySession, SessionResetError, get_session
+
+    with patch("codeframe.core.prd_discovery.AnthropicProvider", return_value=provider):
+        tab_b = PrdDiscoverySession(workspace, api_key="k", max_questions=2)
+        tab_b.start_discovery()
+        tab_b.submit_answer("first")
+        tab_a = get_session(workspace, tab_b.session_id, api_key="k")
+        tab_a.max_questions = 2  # A's next answer completes discovery
+
+        tab_b.finish_now()
+        with pytest.raises(SessionResetError):
+            tab_a.submit_answer("second")
+
+        stored = get_session(workspace, tab_b.session_id, api_key="k")
+    assert stored.is_complete()
+    assert [qa["answer"] for qa in stored._qa_history] == ["first"]

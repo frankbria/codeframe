@@ -1316,14 +1316,11 @@ Follow the template structure exactly. This PRD should be sufficient to generate
             self.workspace.id,
         ]
         if require_active:
-            # An incomplete in-memory copy must hold the active slot to write: a
-            # row finished meanwhile (finish_now sets only is_complete) would
-            # otherwise be reopened by a slow answer (#1449).
-            sql += (
-                f" AND {ACTIVE_SLOT_PREDICATE}"
-                if not self._is_complete
-                else " AND state != 'completed'"
-            )
+            # The STORED row must still hold the active slot, whatever this copy
+            # proposes: a row finished meanwhile (finish_now sets only
+            # is_complete) must not be overwritten by a slow answer, whether
+            # that answer reopens it or itself completes discovery (#1449).
+            sql += f" AND {ACTIVE_SLOT_PREDICATE}"
 
         conn = get_db_connection(self.workspace)
         try:
