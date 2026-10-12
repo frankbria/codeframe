@@ -1,0 +1,5 @@
+{
+  "coverageCommand": "uv run coverage run -m pytest tests/ --ignore=tests/e2e -m \"not lifecycle\" -q -p no:cacheprovider && uv run coverage lcov -o \"$QUARTERMASTER_COVERAGE_DIR/lcov.info\"",
+  "sources": ["codeframe"],
+  "base": "main"
+}

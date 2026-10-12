@@ -1,0 +1,7 @@
+{
+  "enabledPlugins": {
+    "codebase-mapper@eigenwise-toolshed": true,
+    "live-rules@eigenwise-toolshed": true,
+    "sidequest@eigenwise-toolshed": false
+  }
+}

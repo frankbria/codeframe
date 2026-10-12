@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "path": "rules/crap-gate.md",
+      "hash": "df9eb9b731d75147209b4a6539f9464cf5e4e628ac1f359880fe3b5f6d1f325d",
+      "description": "Keep changed code within the CRAP ceiling",
+      "globs": [],
+      "dirs": [],
+      "prompt": [],
+      "priority": 85,
+      "enabled": true,
+      "include": []
+    },
+    {
+      "path": "rules/reuse-first.md",
+      "hash": "0f394c64fde06e27351a5398a6a8e7c98f863fc86eab4be45676e6bc6da8b5b4",
+      "description": "Reuse-first implementation in CodeFRAME",
+      "globs": [],
+      "dirs": [],
+      "prompt": [],
+      "priority": 90,
+      "enabled": true,
+      "include": []
+    },
+    {
+      "path": "rules/self-improvement.md",
+      "hash": "3e07f782c44fd8af4a5e9cb4aac03d761d9bad387cfd2763c2fbb7e3b17fb72e",
+      "description": "Self-improvement: build the capability that makes the next goal cheaper",
+      "globs": [],
+      "dirs": [],
+      "prompt": [],
+      "priority": 40,
+      "enabled": true,
+      "include": []
+    }
+  ]
+}
