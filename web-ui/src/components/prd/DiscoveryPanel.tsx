@@ -48,6 +48,8 @@ export function DiscoveryPanel({
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingSession, setPendingSession] = useState<PendingSession | null>(null);
+  // Accepted answers this session; "Finish now" needs at least one (#1449).
+  const [answered, setAnswered] = useState(0);
 
   // ─── Start a brand-new session ─────────────────────────────────
   // Declared before initSession so it can be a stable dependency of it.
@@ -58,6 +60,7 @@ export function DiscoveryPanel({
       const resp = await discoveryApi.start(workspacePath);
       setSessionId(resp.session_id);
       setState('discovering');
+      setAnswered(0);
       setMessages([
         {
           role: 'assistant',
@@ -80,10 +83,10 @@ export function DiscoveryPanel({
 
       if (status.session_id && status.state === 'discovering') {
         // Active session found — surface the resume prompt
+        // core's get_progress() sends `answered`; reading `answered_count`
+        // showed 0 for every session (#1449).
         const answeredCount =
-          typeof status.progress?.answered_count === 'number'
-            ? status.progress.answered_count
-            : 0;
+          typeof status.progress?.answered === 'number' ? status.progress.answered : 0;
         setPendingSession({
           sessionId: status.session_id,
           answeredCount,
@@ -110,6 +113,7 @@ export function DiscoveryPanel({
     if (!pendingSession) return;
     setSessionId(pendingSession.sessionId);
     setState('discovering');
+    setAnswered(pendingSession.answeredCount);
     setPendingSession(null);
 
     const introMessages: DiscoveryMessage[] = [
@@ -182,6 +186,7 @@ export function DiscoveryPanel({
           ...prev,
           { role: 'assistant', content: aiReply, timestamp: now() },
         ]);
+        if (resp.accepted) setAnswered((n) => n + 1);
 
         if (resp.is_complete) {
           setState('completed');
@@ -195,6 +200,31 @@ export function DiscoveryPanel({
     },
     [sessionId, workspacePath]
   );
+
+  // ─── Finish now: generate the PRD from what's been answered ───
+  const handleFinish = useCallback(async () => {
+    if (!sessionId) return;
+    setIsThinking(true);
+    setError(null);
+    try {
+      await discoveryApi.finish(sessionId, workspacePath);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content:
+            'Discovery finished. Areas not yet covered will be listed as open questions in the PRD.',
+          timestamp: now(),
+        },
+      ]);
+      setState('completed');
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setError(apiErr.detail || 'Failed to finish discovery');
+    } finally {
+      setIsThinking(false);
+    }
+  }, [sessionId, workspacePath]);
 
   // ─── Generate PRD ──────────────────────────────────────────────
   const handleGeneratePrd = useCallback(async () => {
@@ -288,6 +318,18 @@ export function DiscoveryPanel({
             ) : (
               'Generate PRD'
             )}
+          </Button>
+        </div>
+      )}
+
+      {/* Finish now: end discovery early once something has been answered */}
+      {state === 'discovering' && answered > 0 && (
+        <div className="flex items-center justify-between gap-2 border-t px-4 py-2">
+          <p className="text-xs text-muted-foreground">
+            Have enough? Uncovered areas become open questions in the PRD.
+          </p>
+          <Button size="sm" variant="outline" onClick={handleFinish} disabled={isThinking}>
+            Finish now
           </Button>
         </div>
       )}

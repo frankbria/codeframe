@@ -12,6 +12,7 @@ export type {
   AnswerResponse,
   DiscoveryStatusResponse,
   GeneratePrdResponse,
+  FinishDiscoveryResponse,
   GenerateTasksResponse,
   DiscoveryMessage,
   DiscoveryRole,

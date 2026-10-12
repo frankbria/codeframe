@@ -561,18 +561,29 @@ Be warm and encouraging. Just output the question, nothing else."""
             ValueError: If session not found
         """
         conn = get_db_connection(self.workspace)
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
+            # A workspace that never started discovery has no table yet: that is
+            # "session not found" (404), not an OperationalError (500) (#1449).
+            # Checked read-only; _ensure_discovery_schema takes a write lock, and
+            # running it on every load raced concurrent requests into "database
+            # is locked".
+            if not cursor.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'discovery_sessions'"
+            ).fetchone():
+                raise ValueError(f"Session not found: {session_id}")
 
-        cursor.execute(
-            """
-            SELECT id, state, qa_history, current_question, coverage, blocker_id, is_complete
-            FROM discovery_sessions
-            WHERE id = ? AND workspace_id = ?
-            """,
-            (session_id, self.workspace.id),
-        )
-        row = cursor.fetchone()
-        conn.close()
+            cursor.execute(
+                """
+                SELECT id, state, qa_history, current_question, coverage, blocker_id, is_complete
+                FROM discovery_sessions
+                WHERE id = ? AND workspace_id = ?
+                """,
+                (session_id, self.workspace.id),
+            )
+            row = cursor.fetchone()
+        finally:
+            conn.close()
 
         if not row:
             raise ValueError(f"Session not found: {session_id}")
@@ -881,9 +892,26 @@ Be warm and encouraging. Just output the question, nothing else."""
             return
         if not self._qa_history:
             raise DiscoveryError("Answer at least one question before finishing discovery.")
+        # Only the completion columns: re-saving the whole row from this copy
+        # would drop an answer another tab saved after it was loaded (#1449).
+        conn = get_db_connection(self.workspace)
+        try:
+            cursor = conn.execute(
+                "UPDATE discovery_sessions SET is_complete = 1, current_question = NULL, "
+                "updated_at = ? WHERE id = ? AND workspace_id = ? AND state != 'completed'",
+                (_utc_now().isoformat(), self.session_id, self.workspace.id),
+            )
+            conn.commit()
+            finished = cursor.rowcount > 0
+        finally:
+            conn.close()
+        if not finished:
+            self.state = SessionState.COMPLETED
+            raise SessionResetError(
+                f"Discovery session {self.session_id} was reset and can no longer be updated."
+            )
         self._is_complete = True
         self._current_question = None
-        self._require_still_active()
 
     def get_progress(self) -> dict[str, Any]:
         """Get discovery progress statistics.
@@ -1288,7 +1316,11 @@ Follow the template structure exactly. This PRD should be sufficient to generate
             self.workspace.id,
         ]
         if require_active:
-            sql += " AND state != 'completed'"
+            # The STORED row must still hold the active slot, whatever this copy
+            # proposes: a row finished meanwhile (finish_now sets only
+            # is_complete) must not be overwritten by a slow answer, whether
+            # that answer reopens it or itself completes discovery (#1449).
+            sql += f" AND {ACTIVE_SLOT_PREDICATE}"
 
         conn = get_db_connection(self.workspace)
         try:
@@ -1585,6 +1617,28 @@ def process_discovery_answer(
         result["next_question"] = None
 
     return result
+
+
+def finish_discovery(
+    workspace: Workspace,
+    session_id: str,
+    api_key: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> dict[str, Any]:
+    """End discovery now, at the user's request; the web UI's 'Finish now' (#1449).
+
+    Returns:
+        Dict with ``is_complete`` (True) and ``answered``.
+
+    Raises:
+        ValueError: If session not found
+        DiscoveryError: If no question has been answered yet, or the session
+            was reset meanwhile (SessionResetError)
+        NoApiKeyError: If no API key available to load the session
+    """
+    session = get_session(workspace, session_id, api_key=api_key, user_id=user_id)
+    session.finish_now()
+    return {"is_complete": True, "answered": session.answered_count}
 
 
 def generate_prd_from_discovery(

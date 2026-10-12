@@ -19,6 +19,7 @@ jest.mock('@/lib/api', () => ({
     submitAnswer: jest.fn(),
     generatePrd: jest.fn(),
     reset: jest.fn(),
+    finish: jest.fn(),
   },
   prdApi: { getLatest: jest.fn() },
 }));
@@ -65,6 +66,7 @@ const mockStatus = discoveryApi.getStatus as jest.Mock;
 const mockSubmit = discoveryApi.submitAnswer as jest.Mock;
 const mockGenerate = discoveryApi.generatePrd as jest.Mock;
 const mockReset = discoveryApi.reset as jest.Mock;
+const mockFinish = discoveryApi.finish as jest.Mock;
 const mockGetLatest = prdApi.getLatest as jest.Mock;
 
 const onPrdGenerated = jest.fn();
@@ -141,7 +143,9 @@ describe('DiscoveryPanel — resume', () => {
     mockStatus.mockResolvedValue({
       session_id: 's-existing',
       state: 'discovering',
-      progress: { answered_count: 3 },
+      // `answered` is the key core's get_progress() sends; these mocks used
+      // `answered_count`, matching the panel's bug, so it passed (#1449).
+      progress: { answered: 3 },
       current_question: { text: 'Who are the users?' },
     });
   });
@@ -170,7 +174,7 @@ describe('DiscoveryPanel — resume', () => {
     mockStatus.mockResolvedValue({
       session_id: 's-existing',
       state: 'discovering',
-      progress: { answered_count: 1 },
+      progress: { answered: 1 },
       current_question: { text: 'Q?' },
     });
     renderPanel();
@@ -304,6 +308,75 @@ describe('DiscoveryPanel — submit answer', () => {
     await waitFor(() =>
       expect(transcript().join('\n')).toContain('user: my answer')
     );
+  });
+});
+
+// ── Finish now (#1449) ─────────────────────────────────────────────────
+
+describe('DiscoveryPanel — finish now', () => {
+  it('is not offered before any question is answered', async () => {
+    renderPanel();
+    await screen.findByRole('button', { name: 'submit-answer' });
+    expect(screen.queryByRole('button', { name: /finish now/i })).not.toBeInTheDocument();
+  });
+
+  it('is offered once an answer is accepted, and finishing goes to PRD generation', async () => {
+    mockSubmit.mockResolvedValue({
+      accepted: true,
+      feedback: 'Answer recorded.',
+      is_complete: false,
+      next_question: { text: 'Who are the users?' },
+    });
+    mockFinish.mockResolvedValue({ is_complete: true, answered: 1 });
+    renderPanel();
+    await userEvent.click(await screen.findByRole('button', { name: 'submit-answer' }));
+
+    await userEvent.click(await screen.findByRole('button', { name: /finish now/i }));
+
+    expect(mockFinish).toHaveBeenCalledWith('s-1', '/ws');
+    expect(await screen.findByRole('button', { name: 'Generate PRD' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'submit-answer' })).not.toBeInTheDocument();
+  });
+
+  it('is not offered after an answer that was not accepted', async () => {
+    mockSubmit.mockResolvedValue({
+      accepted: false,
+      feedback: 'Please add detail.',
+      follow_up: 'Could you say more?',
+      is_complete: false,
+    });
+    renderPanel();
+    await userEvent.click(await screen.findByRole('button', { name: 'submit-answer' }));
+    await waitFor(() => expect(transcript().join('\n')).toContain('Could you say more?'));
+    expect(screen.queryByRole('button', { name: /finish now/i })).not.toBeInTheDocument();
+  });
+
+  it('is offered straight away when resuming a session with answers', async () => {
+    mockStatus.mockResolvedValue({
+      session_id: 's-existing',
+      state: 'discovering',
+      progress: { answered: 2 },
+      current_question: { text: 'Q?' },
+    });
+    renderPanel();
+    await userEvent.click(await screen.findByRole('button', { name: /resume/i }));
+    expect(screen.getByRole('button', { name: /finish now/i })).toBeInTheDocument();
+  });
+
+  it('surfaces a failure to finish', async () => {
+    mockSubmit.mockResolvedValue({
+      accepted: true,
+      feedback: 'Answer recorded.',
+      is_complete: false,
+      next_question: { text: 'Next?' },
+    });
+    mockFinish.mockRejectedValue({ detail: 'Discovery session was reset' });
+    renderPanel();
+    await userEvent.click(await screen.findByRole('button', { name: 'submit-answer' }));
+    await userEvent.click(await screen.findByRole('button', { name: /finish now/i }));
+
+    expect(await screen.findByText('Discovery session was reset')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Generate PRD' })).not.toBeInTheDocument();
   });
 });
 
