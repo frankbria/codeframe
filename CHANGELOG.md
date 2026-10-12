@@ -7,6 +7,23 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-10-12
+
+### Added
+
+- **Finish discovery early from the web UI (#1449).** The `/prd` discovery
+  panel offers **Finish now** once a question has been answered (or when
+  resuming a session that has answers), and goes straight to Generate PRD; the
+  areas still uncovered become open questions in the PRD. Backed by
+  `POST /api/v2/discovery/{session_id}/finish` (404 for an unknown session, 409
+  before any answer). The CLI equivalent is `/done` (#1443).
+- **`cf prd generate` finishes instead of failing after repeated rejections
+  (#1450).** After five rejected answers to one question, `--brief-file`
+  finishes discovery and generates the PRD once an answer has been accepted
+  (it used to exit 1), and an interactive run offers **Finish discovery now**
+  alongside pausing. `--answers-file` still exits 1, and so does every mode
+  with nothing accepted.
+
 ### Changed
 
 - **Sonnet-tier defaults are `claude-sonnet-5-5` (#1348).** Planning,
@@ -23,6 +40,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- **The web UI's discovery resume prompt shows the real answer count
+  (#1449).** It read a progress field the server never sends, so it reported
+  0 questions answered for every session. Loading an unknown discovery
+  session in a workspace that never started discovery now returns 404 instead
+  of a 500, and a finish in one browser tab can no longer drop or be undone by
+  an answer submitted from another.
+- **Error banners meet WCAG AA contrast (#1447).** Red text on the pale-red
+  error background measured 4.13:1 (the light-theme `--destructive` token is
+  darker now: 4.94:1), and the error cards that put grey text on it use the
+  normal text color.
 - **PRD discovery is bounded (#1443).** `cf prd generate` used to stop only
   when the model said it had enough, and a model that never said so asked
   30+ near-duplicate questions. Discovery now also completes:
@@ -1228,7 +1255,10 @@ name claim is being pursued in parallel. The CLI entry point remains `cf`.
 - Version bumped from a placeholder `0.1.0` to an honest beta `0.9.0`; development status classifier moved to `4 - Beta`.
 - README installation section now leads with `uv tool install` instead of git-clone; status badge updated to **beta** with a stability statement.
 
-[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/frankbria/codeframe/compare/v0.9.5...HEAD
+[0.9.5]: https://github.com/frankbria/codeframe/compare/v0.9.4...v0.9.5
+[0.9.4]: https://github.com/frankbria/codeframe/compare/v0.9.3...v0.9.4
+[0.9.3]: https://github.com/frankbria/codeframe/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/frankbria/codeframe/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/frankbria/codeframe/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/frankbria/codeframe/releases/tag/v0.9.0
