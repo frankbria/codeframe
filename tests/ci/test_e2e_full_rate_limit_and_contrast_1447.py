@@ -14,9 +14,10 @@ Two defects, found together:
    The tint appears on 17 surfaces, so `--destructive` itself is darkened. The
    grey had to stay put: darkening `--muted-foreground` dropped inline
    `text-primary` links below axe's 3:1 link-in-text-block bar against the grey
-   around them. So the error cards' message line uses `text-foreground` instead.
-   With rate limiting off the E2E suite no longer renders the card, so this file
-   computes the contrast from `globals.css` and pins the card markup.
+   around them. So text on the tint uses `text-foreground` (or full
+   `text-destructive`) instead, everywhere the tint appears.
+   With rate limiting off the E2E suite no longer renders these cards, so this
+   file computes the contrast from `globals.css` and scans every tinted element.
 """
 
 import colorsys
@@ -75,23 +76,51 @@ def test_text_on_the_destructive_tint_meets_wcag_aa(foreground: str):
     )
 
 
-ERROR_CARDS = [
-    "web-ui/src/app/page.tsx",
-    "web-ui/src/app/prd/page.tsx",
-    "web-ui/src/components/tasks/TaskBoardView.tsx",
-]
-CARD = re.compile(
-    r'bg-destructive/10[^"]*">\s*<h2[^>]*>Error</h2>\s*<p className="([^"]*)"'
-)
+WEB_SRC = ROOT / "web-ui" / "src"
+# Text that measured below AA on bg-destructive/10: grey (4.43:1) and any
+# alpha-faded destructive (text-destructive/80 composites to 3.80:1). Hover-only
+# variants are excluded: axe does not evaluate hover states.
+LOW_CONTRAST_ON_TINT = re.compile(r"(?<![\w:-])(text-muted-foreground|text-destructive/\d+)\b")
+TINT = re.compile(r"(?<![\w:-])bg-destructive/10\b")
 
 
-@pytest.mark.parametrize("path", ERROR_CARDS)
-def test_error_card_message_is_not_grey_on_the_tint(path: str):
-    """muted-foreground on the tint is 4.4:1; it cannot be darkened (see above)."""
-    match = CARD.search((ROOT / path).read_text())
-    assert match, f"{path}: the Error card markup moved; update this guard"
-    assert "text-muted-foreground" not in match.group(1), (
-        f"{path}: the Error card message is grey on bg-destructive/10 (#1447)"
+def _tinted_children(path: Path):
+    """Yield (line_no, line) for every line nested under a bg-destructive/10 element.
+
+    JSX here is consistently indented, so a container's children are the lines
+    indented deeper than it, up to the first line back at its own level.
+    """
+    lines = path.read_text().splitlines()
+    for i, line in enumerate(lines):
+        if not TINT.search(line):
+            continue
+        # A multi-line opening tag puts className below `<div`; measure the
+        # container's depth from the line its tag opens on.
+        k = i
+        while k > 0 and "<" not in lines[k]:
+            k -= 1
+        indent = len(lines[k]) - len(lines[k].lstrip())
+        yield i + 1, line
+        for j in range(i + 1, len(lines)):
+            child = lines[j]
+            if child.strip() == ">":  # end of a multi-line opening tag
+                continue
+            if child.strip() and len(child) - len(child.lstrip()) <= indent:
+                break
+            yield j + 1, child
+
+
+def test_no_low_contrast_text_on_the_destructive_tint():
+    offenders = [
+        f"{path.relative_to(ROOT)}:{n}: {line.strip()[:100]}"
+        for path in sorted(WEB_SRC.rglob("*.tsx"))
+        if "__tests__" not in path.parts
+        for n, line in _tinted_children(path)
+        if LOW_CONTRAST_ON_TINT.search(line)
+    ]
+    assert not offenders, (
+        "grey or faded-destructive text on bg-destructive/10 is below WCAG AA "
+        "(#1447); use text-foreground or text-destructive:\n" + "\n".join(offenders)
     )
 
 

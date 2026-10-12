@@ -206,7 +206,7 @@ export function StressTestModal({
               <HugeiconsIcon icon={Alert01Icon} className="h-4 w-4" />
               Stress test failed
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-foreground">
               {error ?? 'An unexpected error occurred.'}
             </p>
           </div>
