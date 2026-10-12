@@ -213,10 +213,14 @@ class TestARejectingValidatorDoesNotHang:
                     "weakest_category": "problem",
                     "reasoning": "nothing yet",
                 })
-            elif "validate" in lowered or "adequate" in lowered:
+            elif "evaluate whether this answer" in lowered:
+                # `adequate` is the key the validator reads. This mock used to
+                # send `accepted`, which was ignored, so every answer was
+                # accepted and the test only exited 1 because unbounded
+                # discovery ran through all 30 answers (#1443).
                 response.content = json.dumps({
-                    "accepted": False,
-                    "feedback": "Omits the second part of the question.",
+                    "adequate": False,
+                    "reason": "Omits the second part of the question.",
                     "follow_up": None,
                 })
             else:

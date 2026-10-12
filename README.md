@@ -300,6 +300,7 @@ cf status                             # Workspace status
 # Requirements
 cf prd generate                       # AI-guided Socratic PRD creation
 cf prd generate --template lean       # Use a specific template
+cf prd generate --max-questions 6     # Cap discovery (default 10; /done finishes early)
 cf prd add <file.md>                  # Import existing PRD
 cf prd show                           # Display current PRD
 
