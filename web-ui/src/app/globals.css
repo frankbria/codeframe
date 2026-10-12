@@ -20,13 +20,13 @@
 
     --muted: 220 9% 96%;
     /* 44%, not the preset's 46%: 4.4:1 on --muted failed WCAG AA (#1298). */
-    --muted-foreground: 220 9% 44%;
+    --muted-foreground: 220 9% 41%;
 
     --accent: 220 9% 96%;
     --accent-foreground: 220 9% 14%;
 
     /* red-600, not red-500: white on it, and it on white, were 3.8:1 (#1298). */
-    --destructive: 0 72% 51%;
+    --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 98%;
 
     --border: 220 9% 90%;
