@@ -119,3 +119,23 @@ def test_a_stale_finish_does_not_drop_an_answer_saved_meanwhile(workspace, provi
         stored = get_session(workspace, tab_a.session_id, api_key="k")
     assert stored.is_complete()
     assert [qa["answer"] for qa in stored._qa_history] == ["first", "second"]
+
+
+def test_a_slow_answer_cannot_unfinish_a_session_finished_meanwhile(workspace, provider):
+    """Tab A's answer is in flight, tab B finishes, then A saves (#1449 review)."""
+    from codeframe.core.prd_discovery import PrdDiscoverySession, SessionResetError, get_session
+
+    with patch("codeframe.core.prd_discovery.AnthropicProvider", return_value=provider):
+        tab_b = PrdDiscoverySession(workspace, api_key="k")
+        tab_b.start_discovery()
+        tab_b.submit_answer("first")
+        tab_a = get_session(workspace, tab_b.session_id, api_key="k")  # loaded before the finish
+
+        tab_b.finish_now()
+        with pytest.raises(SessionResetError):
+            tab_a.submit_answer("second")  # stale copy: is_complete False in memory
+
+        stored = get_session(workspace, tab_b.session_id, api_key="k")
+    assert stored.is_complete()
+    assert stored.get_current_question() is None
+    assert [qa["answer"] for qa in stored._qa_history] == ["first"]

@@ -1316,7 +1316,14 @@ Follow the template structure exactly. This PRD should be sufficient to generate
             self.workspace.id,
         ]
         if require_active:
-            sql += " AND state != 'completed'"
+            # An incomplete in-memory copy must hold the active slot to write: a
+            # row finished meanwhile (finish_now sets only is_complete) would
+            # otherwise be reopened by a slow answer (#1449).
+            sql += (
+                f" AND {ACTIVE_SLOT_PREDICATE}"
+                if not self._is_complete
+                else " AND state != 'completed'"
+            )
 
         conn = get_db_connection(self.workspace)
         try:
