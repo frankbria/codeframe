@@ -38,6 +38,11 @@ import json
 
 import pytest
 
+from codeframe.adapters.llm.base import ModelSelector
+
+#: A model on the legacy request shape, which takes temperature (#1267).
+SAMPLING_MODEL = "claude-haiku-4-5"
+
 pytestmark = pytest.mark.v2
 
 # Every key AnthropicProvider puts into `kwargs` unconditionally, across
@@ -113,7 +118,12 @@ def test_temperature_reaches_the_request_body_over_the_wire(temperature):
 
     from codeframe.adapters.llm.anthropic import AnthropicProvider
 
-    provider = AnthropicProvider(api_key="test-key")
+    # Pinned to a model that still takes sampling parameters: the default
+    # (claude-sonnet-5-5 since #1348) rejects temperature, so the adapter
+    # rightly sends none, which is the inverse test below.
+    provider = AnthropicProvider(
+        api_key="test-key", model_selector=ModelSelector(execution_model=SAMPLING_MODEL)
+    )
     provider._client = anthropic.Anthropic(
         api_key="test-key",
         http_client=anthropic.DefaultHttpxClient(
@@ -186,7 +196,12 @@ def test_temperature_reaches_the_stream_request_body_too(temperature):
 
     from codeframe.adapters.llm.anthropic import AnthropicProvider
 
-    provider = AnthropicProvider(api_key="test-key")
+    # Pinned to a model that still takes sampling parameters: the default
+    # (claude-sonnet-5-5 since #1348) rejects temperature, so the adapter
+    # rightly sends none, which is the inverse test below.
+    provider = AnthropicProvider(
+        api_key="test-key", model_selector=ModelSelector(execution_model=SAMPLING_MODEL)
+    )
     provider._client = anthropic.Anthropic(
         api_key="test-key",
         http_client=anthropic.DefaultHttpxClient(
@@ -202,3 +217,43 @@ def test_temperature_reaches_the_stream_request_body_too(temperature):
 
     assert chunks == ["hi"], chunks
     assert captured["body"]["temperature"] == temperature
+
+
+def test_the_default_model_sends_no_temperature_over_the_wire():
+    """claude-sonnet-5-5 (the default since #1348) returns 400 on a temperature.
+
+    The other half of the wire guard: extra_body must be merged when sampling is
+    accepted, and must carry no temperature when the model rejects it.
+    """
+    import anthropic
+    import httpx2
+
+    captured = {}
+
+    def handler(request):
+        captured["body"] = json.loads(request.content)
+        return httpx2.Response(
+            200,
+            json={
+                "id": "msg_1",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-sonnet-5-5",
+                "content": [{"type": "text", "text": "hi"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        )
+
+    from codeframe.adapters.llm.anthropic import AnthropicProvider
+
+    provider = AnthropicProvider(api_key="test-key")
+    provider._client = anthropic.Anthropic(
+        api_key="test-key",
+        http_client=anthropic.DefaultHttpxClient(transport=httpx2.MockTransport(handler)),
+    )
+
+    provider.complete(messages=[{"role": "user", "content": "hi"}], temperature=0.7)
+
+    assert captured["body"]["model"] == "claude-sonnet-5-5"
+    assert "temperature" not in captured["body"]
