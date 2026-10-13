@@ -151,6 +151,7 @@ cf schedule bottlenecks               # Identify blocking tasks
 # Migration / on-ramps
 cf import ralph [path]                # Import a ralph-claude-code project
 cf import ralph [path] --dry-run      # Preview the mapping without changes
+cf import ralph [path] -w <workspace> # Import into a specific workspace
 ```
 
 ## Build: execution

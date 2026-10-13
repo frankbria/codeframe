@@ -223,7 +223,7 @@ To run the web UI from the checkout, follow
   … test that runs by name, and a missing test is a failure. `MANUAL` is
   resolved only by a justified waiver.
 - **Scoped runs**: `cf proof run` checks only the requirements your diff
-  touches, and `--full` checks everything.
+  touches, and `--full` checks every requirement except waived ones.
 - **Waivers** require a reason, record who approved them, can expire, and stay in the
   audit trail.
 
