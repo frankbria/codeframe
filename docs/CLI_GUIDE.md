@@ -48,7 +48,7 @@ cf tasks list
 
 Discovery asks at most 10 questions by default (`--max-questions` changes the
 cap) and stops early once answers stop adding coverage. Type `/done` to finish
-on the spot, or `/pause` to save and resume later with `cf prd generate --resume`.
+on the spot, or `/pause` to save and resume later with `cf prd generate --resume <id>` (the ID `/pause` prints).
 Anything still uncovered is written into the PRD as open questions.
 
 `cf tasks generate` creates every task in `BACKLOG`, so nothing touches your code
@@ -92,7 +92,7 @@ placeholder `assert False`. Rename each to `test_*.py` and replace the
 placeholder with an assertion that proves the bug is fixed. Then:
 
 ```bash
-cf proof run --full      # every open requirement
+cf proof run --full      # every requirement except waived ones
 cf proof run             # only the requirements your current diff touches
 ```
 
@@ -199,7 +199,7 @@ default strategy. Start the batch, then watch it from another terminal with
 ```bash
 cf proof capture                      # Capture a glitch as a permanent requirement
 cf proof run                          # Run obligations touched by the current diff
-cf proof run --full                   # Run every open obligation
+cf proof run --full                   # Re-check every non-waived requirement
 cf proof list                         # List all requirements
 cf proof status                       # Summary across all gates
 cf proof show <id>                    # Requirement detail and evidence
@@ -212,7 +212,7 @@ cf checkpoint restore <id>            # Restore task statuses (files untouched)
 ```
 
 **How each gate is verified.** `UNIT` and `CONTRACT` run pytest, and `SEC` runs
-ruff. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` have no dedicated runner and
+bandit. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` have no dedicated runner and
 are enforced through their evidence rules: `cf proof capture` generates a
 `test_<gate>_*` stub per obligation, and once implemented that test is run by
 name. A named test that does not exist is a failure, not a pass.
@@ -229,7 +229,7 @@ counted as proof.
 ```bash
 cf pr create --title "Add search"     # PR from the current branch, PROOF9 report appended
 cf pr list                            # List open PRs
-cf pr status                          # Review state and CI checks
+cf pr status                          # Open PR for the current branch
 cf pr get <number>                    # Details for one PR
 cf pr merge <number>                  # Merge (refused while an in-scope requirement is open)
 cf pr close <number>                  # Close without merging
@@ -243,7 +243,8 @@ Anthropic is the default. Any OpenAI-compatible endpoint works too:
 
 ```bash
 cf work start <id> --execute --llm-provider openai --llm-model gpt-4o
-cf work start <id> --execute --llm-provider openai --llm-model qwen2.5-coder:7b   # Ollama
+OPENAI_BASE_URL=http://localhost:11434/v1 \
+  cf work start <id> --execute --llm-provider ollama --llm-model qwen2.5-coder:7b
 ```
 
 The same choice can be made with `CODEFRAME_LLM_PROVIDER` / `CODEFRAME_LLM_MODEL`

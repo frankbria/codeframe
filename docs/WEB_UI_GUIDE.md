@@ -86,7 +86,7 @@ diff and restore. From here you can:
 ![Kanban task board with Backlog, Ready, In Progress, Blocked, Failed and Done columns; in-progress cards show their cost so far](images/web-tasks.png)
 
 The task board is a Kanban view of every task, with search, status filters,
-a dependency graph, and per-card cost badges once an agent has run. Promote,
+dependency badges, and per-card cost badges once an agent has run. Promote,
 execute or stop tasks individually, or select several and run them as a
 **Batch** (serial, parallel or auto). **Import from GitHub** turns open issues
 from a connected repository into tasks, linked back to the issue and optionally
@@ -116,8 +116,8 @@ gates with live progress, and keeps the run history.
 Each requirement's page shows its scope, the status of every obligation, and the
 evidence from each run. Evidence is checksummed and bound to the run that
 produced it, so edited artifacts are flagged rather than trusted. A requirement
-can be waived only with a reason, an optional expiry and an approver, all kept
-in the audit trail.
+can be waived only with a reason and an optional expiry; who approved it is
+recorded automatically, and all of it stays in the audit trail.
 
 ## Ship: review, commit and pull requests
 

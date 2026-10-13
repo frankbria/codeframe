@@ -218,13 +218,13 @@ To run the web UI from the checkout, follow
   and gate that produced them. A run that verified nothing is reported as
   vacuous, never as a pass.
 - **Every gate has a real check**: `UNIT` and `CONTRACT` run pytest and `SEC`
-  runs ruff. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` are enforced through
+  runs bandit. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` are enforced through
   their evidence rules: each obligation gets a `test_a11y_*` / `test_perf_*` /
   … test that runs by name, and a missing test is a failure. `MANUAL` is
   resolved only by a justified waiver.
 - **Scoped runs**: `cf proof run` checks only the requirements your diff
   touches, and `--full` checks everything.
-- **Waivers** require a reason and an approver, can expire, and stay in the
+- **Waivers** require a reason, record who approved them, can expire, and stay in the
   audit trail.
 
 ### Ship
@@ -290,8 +290,8 @@ export OPENAI_BASE_URL=http://localhost:11434/v1 # Ollama, vLLM, LM Studio, ...
 ```
 
 Per-workspace settings live in `.codeframe/config.yaml` (an `llm:` block, and
-`discovery_max_questions`). Precedence is CLI flag, then environment, then
-workspace config, then default.
+`discovery_max_questions`). For the LLM provider and model, precedence is CLI
+flag, then environment, then workspace config, then default.
 
 Running the server needs `AUTH_SECRET` and `WORKSPACE_ROOT`; see the
 [Quickstart](docs/QUICKSTART.md) and the [deployment guide](deploy/README.md)
@@ -364,7 +364,7 @@ The [product roadmap](docs/PRODUCT_ROADMAP.md) is the authority on phase status.
 
 **Web UI**
 - [x] Workspace and PRD views with Socratic discovery, version history, diff/restore
-- [x] Task board with Kanban, dependency graph, traceability badges, batch execution
+- [x] Task board with Kanban, dependency badges, traceability badges, batch execution
 - [x] Blocker resolution, review and commit with diff viewer
 - [x] Interactive Agent Sessions: chat panel (tool calls, thinking blocks), XTerm.js terminal
 - [x] Run gates button, live gate progress, per-gate evidence display, run history panel
