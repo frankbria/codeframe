@@ -1,100 +1,175 @@
 ![CodeFRAME Header](./codeframe_github_header_1600x500.png)
 
-# CodeFRAME™
+<h1 align="center">CodeFRAME™</h1>
 
-![Status](https://img.shields.io/badge/status-beta-orange)
-[![PyPI](https://img.shields.io/pypi/v/codeframe-ai)](https://pypi.org/project/codeframe-ai/)
-![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
-![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-[![CI](https://github.com/frankbria/codeframe/actions/workflows/test.yml/badge.svg)](https://github.com/frankbria/codeframe/actions/workflows/test.yml)
-![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen)
-[![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
+<p align="center">
+  <strong>A project delivery system for AI-written software.</strong><br>
+  CodeFRAME owns everything before and after the code: requirements, task planning, verification and release.<br>
+  The coding itself goes to the agent of your choice.
+</p>
 
-> [!WARNING]
-> **Prerequisite:** CodeFRAME requires an API key matching your LLM provider — by default an `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com/), or `OPENAI_API_KEY` when using `--llm-provider openai` (local providers like Ollama need no key). Get your key before running any `cf` command.
+<p align="center">
+  <img src="https://img.shields.io/badge/status-beta-orange" alt="Status: beta">
+  <a href="https://pypi.org/project/codeframe-ai/"><img src="https://img.shields.io/pypi/v/codeframe-ai" alt="PyPI"></a>
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0">
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
+  <a href="https://github.com/frankbria/codeframe/actions/workflows/test.yml"><img src="https://github.com/frankbria/codeframe/actions/workflows/test.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/coverage-80%25-brightgreen" alt="Coverage">
+  <a href="https://x.com/FrankBria18044"><img src="https://img.shields.io/twitter/follow/FrankBria18044?style=social" alt="Follow on X"></a>
+</p>
 
----
-
-> **The IDE of the future is not a better text editor with AI autocomplete. It is a project delivery system where writing code is a subprocess.**
-
----
-
-## The Problem
-
-Coding agents are getting remarkably good at writing code. But shipping software is not the same as writing code.
-
-Before code gets written, someone has to figure out *what* to build, decompose it into tasks that an agent can execute, and resolve ambiguities. After code gets written, someone has to verify it actually works, catch regressions, and deploy with confidence. Today, that "someone" is still you.
-
-CodeFRAME owns the **edges** of the pipeline -- everything that happens before and after the code gets written. The actual coding is delegated to frontier agents (Claude Code, Codex, OpenCode, Kilocode, or CodeFRAME's built-in ReAct agent) that are better at it than any custom agent could be.
-
-## Think. Build. Prove. Ship.
-
-```text
-THINK    What are you building? How should it be broken down?
-           cf prd generate         Socratic requirements gathering
-           cf prd stress-test      Recursive decomposition, surface ambiguities
-           cf tasks generate       Atomic tasks with dependency graphs
-
-BUILD    Delegate to the best coding agent for the job
-           cf work start <task> --engine  Claude Code, Codex, OpenCode, Kilocode, or built-in
-           CodeFRAME owns: verification gates, self-correction, stall detection
-
-PROVE    Is the output any good?
-           cf proof run            9-gate evidence-based quality system
-           cf proof capture        Glitch becomes a permanent requirement
-           cf proof list           All active proof obligations
-           cf proof status         Summary across all gates
-           cf proof show <id>      Requirement detail and evidence
-           cf proof waive <id>     Waive a requirement with justification
-
-SHIP     Deploy with confidence
-           cf pr create            PR with proof report attached
-           cf pr merge <number>    Only merges if proof passes
-
-THE CLOSED LOOP
-  Glitch in production
-    -> cf proof capture
-    -> New requirement
-    -> Enforced on every future build
-    = Quality compounding interest
-```
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#see-it-in-action">Demos</a> ·
+  <a href="docs/CLI_GUIDE.md">CLI guide</a> ·
+  <a href="docs/WEB_UI_GUIDE.md">Web UI guide</a> ·
+  <a href="#documentation">Docs</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
 ---
 
-## Why CodeFRAME
+## Overview
 
-**Nobody else does the full upstream pipeline.** Most orchestrators assume issues and specs already exist. CodeFRAME generates them through AI-guided Socratic discovery and recursive decomposition.
+Coding agents have become very good at writing code, but writing code is not
+the same as shipping software. Before the code, someone decides what to build,
+breaks it into tasks an agent can finish, and resolves the ambiguities. After
+it, someone checks that it works, makes sure old bugs stay fixed, and merges
+with confidence. Today that someone is still you.
 
-**Agent-agnostic execution.** CodeFRAME does not compete with Claude Code or Codex. It orchestrates them. The built-in ReAct agent is a capable fallback, not the point.
+CodeFRAME automates those two edges. It turns an idea into a PRD and a
+dependency-ordered task graph, delegates each task to **Claude Code, Codex,
+OpenCode, Kilocode** or its built-in ReAct agent, verifies the result against
+an evidence-based quality ledger, and refuses to merge while a known problem is
+still open.
 
-**Quality memory (PROOF9).** Every failure becomes a permanent proof obligation across 9 verification gates. Not just test coverage -- evidence-based verification that compounds over time. The closed loop is what turns a project into a learning system.
+| Stage | What CodeFRAME does | Commands |
+|---|---|---|
+| **Think** | Socratic requirements discovery, ambiguity stress-testing, task decomposition with dependencies | `cf prd generate` · `cf prd stress-test` · `cf tasks generate` |
+| **Build** | Runs each task on the engine you choose, with verification gates, self-correction, stall detection and human-in-the-loop blockers | `cf work start --engine …` · `cf work batch run` |
+| **Prove** | **PROOF9**: every glitch becomes a permanent requirement, verified across nine gates with checksummed evidence | `cf proof capture` · `cf proof run` |
+| **Ship** | Pull requests carry the proof report; merge is blocked while an in-scope requirement is open | `cf pr create` · `cf pr merge` |
 
-**Radical simplicity.** Single CLI binary, SQLite, no daemons, no infrastructure. Install and start building in under a minute.
-
----
+The result is a closed loop: a bug found in production becomes a requirement,
+and that requirement is checked on every build that follows.
 
 > [!NOTE]
-> **CodeFRAME is in public beta (`0.9.5`).** The vision and the Golden Path CLI
-> (`cf init/prd/tasks/work/proof/pr`) and v2 API are stable enough to build on;
-> the web UI and anything marked "in progress" in
-> [`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md) are still moving, and
-> on-disk `.codeframe/` formats may change between betas. Expect rough edges and
-> [tell us about them](https://github.com/frankbria/codeframe/issues/new/choose).
+> **CodeFRAME is in public beta (`0.9.5`).** The Golden Path CLI
+> (`cf init/prd/tasks/work/proof/pr`) and the v2 API are stable enough to build
+> on. The web UI and anything marked in progress in the
+> [roadmap](docs/PRODUCT_ROADMAP.md) are still moving, and on-disk `.codeframe/`
+> formats may change between betas.
+> [Report rough edges](https://github.com/frankbria/codeframe/issues/new/choose).
+
+---
+
+## See it in action
+
+### Command line
+
+The CLI is the primary interface and needs no server. Below, a real session
+initializes a workspace, imports a PRD, generates 18 dependency-ordered tasks
+with one LLM call, and captures a bug as a PROOF9 requirement.
+
+<p align="center">
+  <img src="docs/images/cli-tour.gif" alt="Terminal session: cf init, cf prd add, cf tasks generate producing 18 tasks, cf tasks list with dependencies, cf proof capture, cf proof status" width="820">
+</p>
+<p align="center"><sub>Sped up; the LLM wait is trimmed. Full walkthrough and command reference: <a href="docs/CLI_GUIDE.md">CLI guide</a>.</sub></p>
+
+### Web UI
+
+The optional web UI puts the same workspace in the browser. The tour covers the
+overview, the PRD, the task board, PROOF9 requirements and their evidence, the
+review diff, and costs.
+
+<p align="center">
+  <img src="docs/images/web-tour.gif" alt="Web UI walkthrough: workspace overview, PRD, task board, PROOF9 requirements, requirement evidence, review diff, costs" width="900">
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/WEB_UI_GUIDE.md#build-task-board-execution-blockers"><img src="docs/images/web-tasks.png" alt="Task board"></a><p align="center"><sub><b>Task board</b>: Kanban, dependencies, batch runs, per-task cost</sub></p></td>
+    <td width="50%"><a href="docs/WEB_UI_GUIDE.md#prove-proof9-requirements-and-evidence"><img src="docs/images/web-proof.png" alt="PROOF9 requirements"></a><p align="center"><sub><b>PROOF9</b>: requirements, gate runs, waivers with audit trail</sub></p></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/WEB_UI_GUIDE.md#ship-review-commit-and-pull-requests"><img src="docs/images/web-review.png" alt="Review and commit"></a><p align="center"><sub><b>Review</b>: diff, gates, commit and pull request</sub></p></td>
+    <td width="50%"><a href="docs/WEB_UI_GUIDE.md#costs"><img src="docs/images/web-costs.png" alt="Costs"></a><p align="center"><sub><b>Costs</b>: spend by day, task and agent</sub></p></td>
+  </tr>
+</table>
+
+<p align="center"><sub>Every page, explained: <a href="docs/WEB_UI_GUIDE.md">Web UI guide</a>.</sub></p>
+
+---
 
 ## Quick Start
 
-**Step 1 — Install**
+**Prerequisites:** Python 3.11+, git, and an API key for your LLM provider. By
+default that is `ANTHROPIC_API_KEY` from
+[console.anthropic.com](https://console.anthropic.com/). `OPENAI_API_KEY` works
+with `--llm-provider openai`, and local providers such as Ollama need no key.
+
+**1. Install**
 
 ```bash
-uv tool install codeframe-ai     # installs the `cf` command globally
-cf --help                        # smoke test — should print the command tree
+uv tool install codeframe-ai     # installs the `cf` command
+cf --help
 ```
 
-No `uv`? `pipx install codeframe-ai` works too, or run without installing via
-`uvx codeframe-ai --help`. (The PyPI package is `codeframe-ai`; the command is `cf`.)
+`pipx install codeframe-ai` works too, or run it without installing via
+`uvx codeframe-ai --help`. The package is `codeframe-ai`; the command is `cf`.
+
+**2. Set your API key**
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+# or store it once: cf auth setup --provider anthropic
+```
+
+**3. Think: requirements and tasks**
+
+```bash
+cd /path/to/your/project
+cf init . --detect       # create the workspace, detect the tech stack
+cf prd generate          # Socratic discovery (or: cf prd add PRD.md)
+cf tasks generate        # dependency-ordered tasks, created in BACKLOG
+cf tasks list
+```
+
+**4. Build: run one task**
+
+```bash
+cf tasks set status <task-id> READY
+cf work start <task-id> --execute                       # built-in agent
+cf work start <task-id> --execute --engine claude-code  # or codex, opencode, kilocode
+```
+
+If the agent needs a decision it cannot make, it stops and files a blocker.
+`cf blocker list` shows it and `cf blocker answer <id> "..."` unblocks the task.
+
+**5. Prove: capture a requirement, then verify it**
+
+```bash
+cf proof capture --title "add() is wrong for negatives" \
+  --description "add(-1, -1) returned 0" --where src/calc.py --severity high --source qa
+# turn the generated tests/proof/REQ-0001/draft_*.py stubs into real tests, then:
+cf proof run --full
+```
+
+**6. Ship**
+
+```bash
+export GITHUB_TOKEN=... GITHUB_REPO=owner/repo   # or connect in Settings → Integrations
+cf pr create
+cf pr merge <number>     # refused while an in-scope requirement is open
+```
+
+An empty directory through a green `cf proof run` takes **about 6 minutes** on
+a clean machine: [measured, step by step](docs/demos/quickstart-cleanroom.md).
+The [CLI guide](docs/CLI_GUIDE.md#walkthrough) explains each step in depth,
+including batch runs over a whole backlog.
 
 <details>
-<summary>Install from source (for contributors)</summary>
+<summary>Install from source (contributors)</summary>
 
 ```bash
 git clone https://github.com/frankbria/codeframe.git && cd codeframe
@@ -103,467 +178,260 @@ uv venv && source .venv/bin/activate && uv sync
 uv run cf --help
 ```
 
-When working from source, prefix the commands below with `uv run`.
+To run the web UI from the checkout, follow
+[Running the web UI](docs/WEB_UI_GUIDE.md#running-the-web-ui).
 </details>
 
-**Step 2 — Set your API key**
+---
 
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."   # get yours at https://console.anthropic.com/
-# or store it once instead: cf auth setup --provider anthropic
-```
+## Features
 
-**Step 3 — Initialize your project**
+### Think
+- **Socratic PRD discovery** that stops on its own: at most 10 questions by
+  default, an early stop once coverage plateaus, a duplicate-question guard, and
+  `/done` to finish on demand. Uncovered areas become open questions in the PRD.
+- **Stress testing** extracts every goal, analyzes it, and returns
+  severity-tagged ambiguities that you answer to refine the PRD.
+- **Task decomposition** into atomic tasks with a dependency graph, 5 PRD
+  templates, 7 task templates, and CPM-based schedule prediction.
+- **GitHub Issues import**: turn a repository's open issues into tasks that
+  link back and close the issue when done.
 
-```bash
-cf init /path/to/your/project --detect
-```
+### Build
+- **Agent-agnostic execution**: Claude Code, Codex, OpenCode, Kilocode, or the
+  built-in ReAct agent, selected per run with `--engine`.
+- **Verification gates** (ruff, pytest, build) with a self-correction loop and
+  loop prevention.
+- **Stall detection** with configurable recovery: retry, raise a blocker, or fail.
+- **Batch execution**: serial, parallel, or auto (LLM-inferred dependencies),
+  with retries and git worktree isolation for parallel agents.
+- **Human-in-the-loop blockers**, checkpoints, replay of past runs, and a TUI
+  dashboard.
+- **Multi-provider LLM**: Anthropic by default, or any OpenAI-compatible
+  endpoint (OpenAI, Ollama, vLLM, LM Studio).
 
-**Step 4 — Think: generate a PRD and tasks**
+### Prove
+- **PROOF9 quality memory**: nine gates (unit, contract, e2e, visual, a11y,
+  perf, sec, demo, manual). A captured glitch gets its obligations and draft
+  test stubs generated automatically.
+- **Evidence you can trust**: artifacts are checksummed and bound to the run
+  and gate that produced them. A run that verified nothing is reported as
+  vacuous, never as a pass.
+- **Every gate has a real check**: `UNIT` and `CONTRACT` run pytest and `SEC`
+  runs ruff. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` are enforced through
+  their evidence rules: each obligation gets a `test_a11y_*` / `test_perf_*` /
+  … test that runs by name, and a missing test is a failure. `MANUAL` is
+  resolved only by a justified waiver.
+- **Scoped runs**: `cf proof run` checks only the requirements your diff
+  touches, and `--full` checks everything.
+- **Waivers** require a reason and an approver, can expire, and stay in the
+  audit trail.
 
-```bash
-cf prd generate          # AI-guided Socratic requirements discovery
-cf tasks generate        # Decompose PRD into atomic tasks with dependencies
-cf tasks list            # Review what was generated
-```
+### Ship
+- **Pull requests with a proof report** attached to the body.
+- **Merge gate** enforced server-side and in `cf pr merge`, scoped to the
+  PR's changed files (renames included). An override requires a reason and is
+  recorded in an audit ledger.
+- **Cost tracking** per task, per agent and per day, plus an optional per-user
+  daily spend limit on the server.
 
-**Step 5 — Promote one task**
-
-`cf tasks generate` creates tasks in `BACKLOG` so you can review them before an
-agent touches your code. Pick one and move it to `READY` — `cf tasks list` prints
-an 8-character ID for each task, and that prefix is all you need:
-
-```bash
-cf tasks list                            # copy the ID of the task you want
-cf tasks set status <task-id> READY      # note: id before status
-```
-
-Start with one. A generated backlog is typically 20+ tasks, and your first run
-should show you the loop, not build the whole project in one sitting.
-
-**Step 6 — Build: hand the task to an agent**
-
-```bash
-cf work start <task-id> --execute
-```
-
-**Step 7 — Prove: capture a requirement, then verify it**
-
-PROOF9 verifies *obligations*, and a new workspace has none — so verifying it
-first would report that nothing was checked and exit `2`. That is deliberate: a
-run that checked nothing is not a pass. Give it something to check.
-
-```bash
-cf proof capture \
-  --title "add() returns the wrong sum for negative numbers" \
-  --description "Calculation is wrong: add(-1, -1) returned 0 instead of -2" \
-  --where src/calc.py --severity high --source qa
-```
-
-That creates a requirement, picks the gates that would have caught it, and
-writes a **draft** test stub per gate under `tests/proof/<REQ-ID>/`. The stubs
-are named `draft_*.py` so pytest does not collect them yet, and each one is a
-placeholder `assert False`. Turn them into real tests — drop the `draft_`
-prefix from each filename, and replace the placeholder with an assertion that
-actually proves the bug is fixed:
-
-```bash
-ls tests/proof/REQ-0001/          # draft_test_..._unit.py, draft_test_..._contract.py
-# rename each to test_*.py and write the real assertion
-```
-
-Now the gates have evidence to collect:
-
-```bash
-cf proof run --full               # -> All obligations satisfied. (exit 0)
-```
-
-`--full` checks every open requirement; plain `cf proof run` checks only the
-ones your current diff touches. The `unit` and `contract` gates run **your
-project's** pytest, so the project needs pytest available (`uv add --dev
-pytest`) — a gate with no way to run is reported as unverified, never as a pass.
-
-This is the loop that compounds: every glitch you capture stays a permanent
-check, and `cf pr merge` refuses to merge while any of them is open.
-
-**Step 8 — Ship**
-
-`cf pr` talks to GitHub, so it needs a token and the repository: connect them in
-the web UI (Settings → Integrations), or export `GITHUB_TOKEN` (a PAT with
-`repo` scope) and `GITHUB_REPO=owner/repo`.
-
-```bash
-cf pr create                        # Open a PR with proof report attached
-```
-
-The title defaults to the branch's newest commit (`--title` overrides it), and
-the body ends with the workspace's PROOF9 status: requirement counts, the open
-ones by name, and the latest `cf proof run` verdict.
-
-That is the entire workflow. An empty directory through a green `cf proof run`
-is **5m59s** of wall clock on a clean machine — measured, not estimated, in
-[this walkthrough](docs/demos/quickstart-cleanroom.md) — most of it in
-`cf prd generate` and the agent run; Step 7 costs 7 seconds of it. `cf pr create`
-needs a GitHub remote, so it is outside that measurement.
-
-If the agent needs a decision it cannot make, it stops and files a blocker
-rather than guessing — `cf blocker list` shows it and `cf blocker answer <id>
-"..."` unblocks the task.
-
-<details>
-<summary>Running the whole backlog</summary>
-
-Once you trust the loop, promote everything and let it run:
-
-```bash
-cf tasks set status READY --all --from BACKLOG   # every BACKLOG task
-cf work batch run --all-ready                    # execute them
-```
-
-This is **long-running** — each task is a full agent run, and serial is the
-default strategy — so start it and watch it from another terminal rather than
-waiting on the prompt:
-
-```bash
-cf work batch status              # lists recent batches and their IDs
-cf work batch follow <batch-id>   # live progress for one of them
-```
-
-`--strategy parallel --max-parallel 4` and `--retry 2` are worth knowing about
-before you kick off a large batch; see [`docs/QUICKSTART.md`](docs/QUICKSTART.md).
-</details>
-
-> **See it run from scratch.** [Cold start on a clean machine](docs/demos/quickstart-cleanroom.md)
-> is a narrated walkthrough of exactly these steps in a throwaway container —
-> real transcripts, per-step timings, and the rough edges left in. Reproduce it
-> with `scripts/quickstart-cleanroom/run.sh`.
+### Platform
+- **CLI-first**: the whole pipeline runs from the terminal with no server.
+  SQLite storage, no daemons.
+- **Optional server and web UI**: FastAPI v2 API (OpenAPI docs, API keys,
+  scoped JWT auth, rate limiting, SSE and WebSocket streams) and a Next.js
+  dashboard with interactive agent sessions and an in-browser terminal.
+- **Notifications**: in-app and browser notifications, plus an outbound webhook
+  for batch completions, blockers and merges.
 
 ---
 
 ## Architecture
 
 ```
-    YOU
-     |
-     v
-  +-THINK---------------------------------------------+
-  |  cf prd generate    Socratic requirements          |
-  |  cf tasks generate  Atomic decomposition           |
-  +----------------------------+-----------------------+
-                               |
-                               v
-  +-BUILD---------------------------------------------+
-  |  cf work start <task> --engine <agent>             |
-  |                                                    |
-  |  +-- Claude Code / Codex / OpenCode / Kilocode / ReAct        |
-  |  |                                                 |
-  |  +-- Verification gates (ruff, pytest, BUILD)      |
-  |  +-- Self-correction loop (up to 5 retries)        |
-  |  +-- Stall detection -> retry / blocker / fail       |
-  +----------------------------+-----------------------+
-                               |
-                               v
-  +-PROVE---------------------------------------------+
-  |  cf proof run       9-gate quality system          |
-  |  cf review          Verification gates             |
-  +----------------------------+-----------------------+
-                               |
-                               v
-  +-SHIP----------------------------------------------+
-  |  cf pr create       PR with proof report           |
-  |  cf pr merge <n>    Merge if proof passes          |
-  +---------------------------------------------------+
-                               |
-            Glitch in production?
-                               |
-                               v
-            cf proof capture -> new requirement
-            -> enforced forever (closed loop)
+            ┌──────────────── cf CLI ────────────────┐     ┌──── Web UI (Next.js) ────┐
+            │  direct calls, no server required      │     │  REST · SSE · WebSocket  │
+            └───────────────────┬────────────────────┘     └────────────┬─────────────┘
+                                │                                       │
+                                │                      ┌────────────────▼─────────────┐
+                                │                      │  FastAPI server (optional)   │
+                                │                      │  thin adapter, auth, limits  │
+                                ▼                      └────────────────┬─────────────┘
+            ┌───────────────────────────────────────────────────────────▼─────────────┐
+            │  codeframe/core: headless domain and orchestration                      │
+            │  THINK  prd · discovery · stress test · tasks · dependency graph        │
+            │  BUILD  runtime · conductor · gates · self-correction · stall detection │
+            │  PROVE  PROOF9 ledger · scope · evidence                                │
+            │  SHIP   GitHub PRs · merge gate                                         │
+            └───────────┬──────────────────────────────┬──────────────────────────────┘
+                        ▼                              ▼
+         Coding engines                       LLM providers                 Storage
+         Claude Code · Codex · OpenCode       Anthropic · OpenAI ·          .codeframe/state.db
+         Kilocode · built-in ReAct            any OpenAI-compatible         (per workspace)
 ```
 
-The core domain is headless and runs entirely from the CLI. The FastAPI server and web UI are optional adapters for teams that want a dashboard.
-
----
-
-## CLI Reference
-
-> All commands below assume the virtual environment is active (`source .venv/bin/activate`). If it is not active, prefix every `cf` command with `uv run` — e.g., `uv run cf init .`.
-
-### THINK -- Requirements and Planning
-
-```bash
-# Workspace
-cf init <path>                        # Initialize workspace
-cf init <path> --detect               # Auto-detect tech stack
-cf status                             # Workspace status
-
-# Requirements
-cf prd generate                       # AI-guided Socratic PRD creation
-cf prd generate --template lean       # Use a specific template
-cf prd generate --max-questions 6     # Cap discovery (default 10; /done finishes early)
-cf prd add <file.md>                  # Import existing PRD
-cf prd show                           # Display current PRD
-
-# Task decomposition
-cf tasks generate                     # Generate tasks from PRD (LLM-powered)
-cf tasks list                         # List all tasks
-cf tasks list --status READY          # Filter by status
-cf tasks show <id>                    # Task details with dependencies
-
-# Scheduling
-cf schedule show                      # Task schedule with dependencies
-cf schedule predict                   # Completion date estimates
-cf schedule bottlenecks               # Identify blocking tasks
-
-# Migration / on-ramps
-cf import ralph [path]                # Import a ralph-claude-code project
-cf import ralph [path] --dry-run      # Preview mapping without changes
-cf import ralph [path] -w <workspace> # Import into a specific workspace
-```
-
-### BUILD -- Execution
-
-```bash
-# Single task
-cf work start <id> --execute          # Execute with default engine (ReAct)
-cf work start <id> --execute --engine plan   # Use legacy plan engine
-cf work start <id> --execute --verbose       # Detailed progress output
-cf work start <id> --execute --dry-run       # Preview without applying
-cf work start <id> --execute --stall-timeout 120   # Custom stall timeout (seconds)
-cf work start <id> --execute --stall-action retry  # Auto-retry on stall (blocker|retry|fail)
-cf work start <id> --execute --llm-provider openai --llm-model gpt-4o  # Use OpenAI
-cf work start <id> --execute --llm-provider openai --llm-model qwen2.5-coder:7b  # Use Ollama
-cf work follow <id>                   # Stream live output
-cf work stop <id>                     # Cancel a run
-cf work resume <id>                   # Resume after answering blockers
-
-# Batch execution
-cf work batch run --all-ready                # All READY tasks
-cf work batch run --strategy parallel        # Parallel execution
-cf work batch run --strategy auto            # LLM-inferred dependencies
-cf work batch run --retry 3                  # Auto-retry failures
-cf work batch status [batch_id]              # Batch progress
-cf work batch resume <batch_id>              # Re-run failed tasks
-
-# Blockers (human-in-the-loop)
-cf blocker list                       # Questions the agent needs answered
-cf blocker show <id>                  # Blocker details
-cf blocker answer <id> "answer"       # Unblock the agent
-
-# Diagnostics
-cf work diagnose <id>                 # Pattern-based failure analysis
-cf env check                          # Validate environment
-cf env doctor                         # Comprehensive health check
-```
-
-### PROVE -- Verification
-
-```bash
-# PROOF9 quality memory
-cf proof run                          # Run all 9 proof gates
-cf proof capture                      # Capture glitch as permanent requirement
-cf proof list                         # List all proof requirements
-cf proof status                       # Summary status across all gates
-cf proof show <id>                    # Detail for a specific requirement
-cf proof waive <id> --reason "..."    # Waive a requirement with justification
-```
-
-**How each gate is verified.** `UNIT` and `CONTRACT` run pytest and `SEC` runs
-ruff directly. The other gates — `E2E`, `VISUAL`, `A11Y`, `PERF`, `DEMO` — have
-no dedicated tool runner and are enforced through their **evidence rules**:
-`cf proof capture` generates a `test_a11y_*` / `test_perf_*` / … stub per
-obligation, and once you implement that test it is run scoped by name, so the
-obligation passes or fails on real evidence. A named test that does not exist
-is a failure, not a pass.
-
-`MANUAL` is deliberately never machine-verified — its `manual_check_*` rules
-mean a human has to look — so a MANUAL obligation reports `unverifiable` and is
-resolved by waiving it with a justification.
-
-```bash
-
-# Checkpoints and gates
-cf review                             # Run verification gates
-cf checkpoint create "milestone"      # Snapshot project state
-cf checkpoint list                    # List checkpoints
-cf checkpoint restore <id>            # Restore task statuses (files untouched)
-
-# Debugging
-cf work replay <run-id>               # Replay and debug a past run (built-in react engine)
-cf dashboard                          # Launch TUI dashboard
-```
-
-### SHIP -- Delivery
-
-```bash
-cf pr create --title "Add search"     # PR from the current branch, PROOF9 report appended
-cf pr list                            # List open PRs
-cf pr status                          # PR status, review state and CI checks
-cf pr get <number>                    # Details for one PR
-cf pr merge <number>                  # Merge it (refused while a requirement is open)
-cf pr close <number>                  # Close a PR without merging
-cf commit create -m "feat: search"    # Commit verified changes
-cf patch export                       # Export changes as patch
-```
-
----
-
-## What Works Today
-
-CodeFRAME delivers the full Think-Build-Prove-Ship loop from the CLI and browser:
-
-- **THINK**: Socratic PRD generation with recursive stress-testing, LLM-powered task decomposition with dependency graphs, 5 PRD templates, 7 task templates, CPM-based scheduling
-- **BUILD**: ReAct agent with 7 tools, self-correction with loop prevention, verification gates (ruff/pytest/BUILD), stall detection with configurable recovery (retry/blocker/fail), batch execution (serial/parallel/auto), human-in-the-loop blockers, checkpointing, state persistence, replay/debug mode for built-in react runs (`cf work replay`), dynamic config reload, TUI dashboard (`cf dashboard`)
-- **PROVE**: PROOF9 quality memory system — 9-gate evidence-based verification (`cf proof run/capture/list/status/show/waive`), every glitch becomes a permanent proof obligation
-- **SHIP**: GitHub PR workflow, environment validation, task self-diagnosis
-- **Engine adapters**: Claude Code, Codex, OpenCode, Kilocode, and built-in ReAct — all via `--engine` flag
-- **Multi-provider LLM**: Anthropic (default) or any OpenAI-compatible endpoint (OpenAI, Ollama, vLLM, LM Studio, Qwen, Deepseek) via `--llm-provider` / `--llm-model` or env vars
-- **Server layer** (optional): FastAPI with 16+ v2 routers, API key auth, rate limiting, SSE streaming, WebSocket endpoints (agent chat, interactive terminal), OpenAPI docs
-- **Web UI**: Workspace view, PRD discovery, Task board, Blocker resolution, Review/commit, PROOF9 requirements list + per-gate evidence display + run history panel + waiver audit trail, agent chat panel with streaming tool-call display, interactive terminal for session workspaces, Sessions list with active-session badge
-- **Test suite**: 5100+ tests, 81.9% measured coverage (CI enforces an 80% floor)
-
----
-
-## Roadmap
-
-### THINK (upstream pipeline)
-- [x] `cf prd stress-test` -- Recursive decomposition that surfaces ambiguities before execution
-- [x] Multi-round PRD refinement with domain-specific probes
-- [ ] Specification-level dependency analysis
-
-### BUILD (agent adapters)
-- [x] Agent adapter architecture -- delegate to Claude Code, Codex, OpenCode, Kilocode via workspace hooks
-- [x] Worktree isolation for parallel agent execution
-- [x] Reconciliation layer for multi-agent output
-- [x] Replay/debug mode (`cf work replay`, built-in react engine)
-- [x] TUI dashboard (`cf dashboard`)
-- [x] Dynamic config reload during batch execution
-- [x] Multi-provider LLM -- Anthropic, OpenAI, or any OpenAI-compatible endpoint
-- [ ] Engine performance tracking and automatic routing
-
-### PROVE (quality memory)
-- [x] PROOF9 -- 9-gate evidence-based quality system
-- [x] `cf proof capture` -- Glitch-to-requirement closed loop
-- [x] Quality compounding: every failure becomes a permanent proof obligation
-- [x] Run gates from the web UI -- live progress, per-gate evidence, run history
-- [x] Glitch capture web UI -- `CaptureGlitchModal` plus the REQ detail view at `/proof/[req_id]`
-- [x] Merge gating on PROOF9 pass -- enforced server-side at the merge API, with an explicit audited override (actor + reason)
-
-### SHIP (delivery confidence)
-- [x] PR status tracking + CI check display in web UI (`PRStatusPanel` on `/review`)
-- [ ] Post-merge glitch capture loop
-
-### Web UI
-- [x] Workspace and PRD views with Socratic discovery, version history, diff/restore
-- [x] Onboarding guidance card for new workspaces (Think→Build→Prove→Ship pipeline steps)
-- [x] Task board with Kanban, dependency graph visualization, traceability badges, batch execution
-- [x] Blocker Resolution view with lifecycle guidance
-- [x] Review and Commit view with diff viewer and file tree
-- [x] PROOF9 requirements list, detail, evidence history, sort/filter controls, waiver with audit trail
-- [x] Interactive Agent Sessions — chat panel (tool calls, thinking blocks), XTerm.js terminal, SplitPane layout
-- [x] Run gates button, live gate progress, per-gate evidence display, run history panel (PROOF9 page)
-- [x] Glitch capture form and REQ detail view (markdown description, scope metadata, obligations table, sortable evidence history)
-- [x] PR status panel with PROOF9-gated merge button (gate also enforced server-side)
+The core is headless and runs entirely from the CLI. The server and web UI are
+optional adapters over it. See [Agent System Reference](docs/AGENT_SYSTEM_REFERENCE.md)
+for the execution flows.
 
 ---
 
 ## Configuration
 
 ```bash
-# Required (Anthropic is the default provider)
+# Required for the default provider
 export ANTHROPIC_API_KEY=sk-ant-...
 
-# Multi-provider LLM (optional — override default Anthropic provider)
-export CODEFRAME_LLM_PROVIDER=openai        # anthropic | openai (OpenAI-compatible)
-export CODEFRAME_LLM_MODEL=gpt-4o           # model name for the chosen provider
-export OPENAI_API_KEY=sk-...                # required when provider=openai
-export OPENAI_BASE_URL=http://localhost:11434/v1  # for Ollama, vLLM, LM Studio, etc.
-# Per-workspace: .codeframe/config.yaml supports an `llm:` block for the same options
-
-# Optional
-export DATABASE_PATH=./codeframe.db         # Server accounts/keys; default ./.codeframe/platform.db
-export RATE_LIMIT_ENABLED=true              # API rate limiting
-export RATE_LIMIT_DEFAULT=100/minute        # Default limit
+# Another provider (optional)
+export CODEFRAME_LLM_PROVIDER=openai             # anthropic | openai | ollama | vllm | compatible
+export CODEFRAME_LLM_MODEL=gpt-4o
+export OPENAI_API_KEY=sk-...                     # not needed for local providers
+export OPENAI_BASE_URL=http://localhost:11434/v1 # Ollama, vLLM, LM Studio, ...
 ```
 
-For server configuration, rate limiting options, and API key setup, see [docs/PHASE_2_DEVELOPER_GUIDE.md](docs/PHASE_2_DEVELOPER_GUIDE.md).
+Per-workspace settings live in `.codeframe/config.yaml` (an `llm:` block, and
+`discovery_max_questions`). Precedence is CLI flag, then environment, then
+workspace config, then default.
 
-### Privacy & telemetry
+Running the server needs `AUTH_SECRET` and `WORKSPACE_ROOT`; see the
+[Quickstart](docs/QUICKSTART.md) and the [deployment guide](deploy/README.md)
+for every server, auth and rate-limit option.
 
-CodeFRAME has **opt-in** (default off) anonymous telemetry and crash reporting
-to help us fix beta bugs — command name, duration, exit code, version, and OS
-only; never code, prompts, arguments, or file paths. Control it with
-`cf config telemetry on|off|status`, `CODEFRAME_TELEMETRY=on|off`, or
-`DO_NOT_TRACK=1`. See [PRIVACY.md](PRIVACY.md) for exactly what is collected,
-where it goes, and retention.
+### Privacy and telemetry
 
----
-
-## Testing
-
-```bash
-# Python / CLI
-uv run pytest                          # All tests
-uv run pytest -m v2                    # v2 tests only
-uv run pytest tests/core/             # Core module tests
-uv run pytest --cov=codeframe --cov-report=html   # With coverage
-
-# Web UI (Phase 3)
-cd web-ui && npm test                  # Jest unit tests
-cd web-ui && npm run build             # Production build verification
-```
+Telemetry is **opt-in** and off by default. When enabled it sends the command
+name, duration, exit code, version and OS, never code, prompts, arguments or
+file paths. Control it with `cf config telemetry on|off|status`,
+`CODEFRAME_TELEMETRY=on|off`, or `DO_NOT_TRACK=1`. See [PRIVACY.md](PRIVACY.md).
 
 ---
 
 ## Documentation
 
-- [Product Roadmap](docs/PRODUCT_ROADMAP.md) -- Current phase plan and feature status
-- [Vision](docs/VISION.md) -- Think → Build → Prove → Ship thesis
-- [Golden Path](docs/GOLDEN_PATH.md) -- The CLI-first workflow contract
-- [CLI Wireframe](docs/CLI_WIREFRAME.md) -- Command-to-module mapping
-- [Agent System Reference](docs/AGENT_SYSTEM_REFERENCE.md) -- Agent components, execution flows
-- [ReAct Agent Architecture](docs/REACT_AGENT_ARCHITECTURE.md) -- Tools, editor, token management
-- [Phase 2 Developer Guide](docs/PHASE_2_DEVELOPER_GUIDE.md) -- Server layer patterns
-- [Phase 3 UI Architecture](docs/PHASE_3_UI_ARCHITECTURE.md) -- Web UI information design
+| Guide | What's in it |
+|---|---|
+| [CLI guide](docs/CLI_GUIDE.md) | Walkthrough plus the complete command reference |
+| [Web UI guide](docs/WEB_UI_GUIDE.md) | Running the dashboard, page by page with screenshots |
+| [Quickstart](docs/QUICKSTART.md) | Install, keys, server variables, first run |
+| [Cold start on a clean machine](docs/demos/quickstart-cleanroom.md) | A measured, narrated run of the Golden Path |
+| [Golden Path](docs/GOLDEN_PATH.md) | The CLI-first workflow contract |
+| [Product roadmap](docs/PRODUCT_ROADMAP.md) | Phase plan and feature status |
+| [Vision](docs/VISION.md) | The Think → Build → Prove → Ship thesis |
+| [Agent system reference](docs/AGENT_SYSTEM_REFERENCE.md) | Agent components, model selection, execution flows |
+| [ReAct agent architecture](docs/REACT_AGENT_ARCHITECTURE.md) | Tools, editor, token management |
+| [Server developer guide](docs/PHASE_2_DEVELOPER_GUIDE.md) | v2 router patterns and the API layer |
+| [Web UI architecture](docs/PHASE_3_UI_ARCHITECTURE.md) | Pages, components, data flow |
+| [Deployment](deploy/README.md) | Container deployment behind Caddy |
+
+---
+
+## Roadmap
+
+Think, Build, Prove and Ship all work end to end from the CLI and the browser.
+The [product roadmap](docs/PRODUCT_ROADMAP.md) is the authority on phase status.
+
+**Next up**
+
+- [ ] Post-merge glitch capture loop
+- [ ] Engine performance tracking and automatic routing
+- [ ] Specification-level dependency analysis
+
+<details>
+<summary><b>Shipped</b></summary>
+
+**Think**
+- [x] `cf prd stress-test`: recursive decomposition that surfaces ambiguities before execution
+- [x] Multi-round PRD refinement with domain-specific probes
+
+**Build**
+- [x] Agent adapter architecture: delegate to Claude Code, Codex, OpenCode, Kilocode
+- [x] Worktree isolation for parallel agent execution
+- [x] Reconciliation layer for multi-agent output
+- [x] Replay/debug mode (`cf work replay`, built-in ReAct engine)
+- [x] TUI dashboard (`cf dashboard`)
+- [x] Dynamic config reload during batch execution
+- [x] Multi-provider LLM: Anthropic, OpenAI, or any OpenAI-compatible endpoint
+
+**Prove**
+- [x] PROOF9: 9-gate evidence-based quality system
+- [x] `cf proof capture`: the glitch-to-requirement closed loop
+- [x] Run gates from the web UI: live progress, per-gate evidence, run history
+- [x] Glitch capture web UI: `CaptureGlitchModal` plus the REQ detail view at `/proof/[req_id]`
+- [x] Merge gating on PROOF9 pass: enforced server-side at the merge API, with an audited override (actor + reason)
+
+**Ship**
+- [x] PR status tracking + CI check display in the web UI (`PRStatusPanel` on `/review`)
+
+**Web UI**
+- [x] Workspace and PRD views with Socratic discovery, version history, diff/restore
+- [x] Task board with Kanban, dependency graph, traceability badges, batch execution
+- [x] Blocker resolution, review and commit with diff viewer
+- [x] Interactive Agent Sessions: chat panel (tool calls, thinking blocks), XTerm.js terminal
+- [x] Run gates button, live gate progress, per-gate evidence display, run history panel
+- [x] Glitch capture form and REQ detail view (scope metadata, obligations, sortable evidence history)
+- [x] PR status panel with PROOF9-gated merge button (gate also enforced server-side)
+
+</details>
 
 ---
 
 ## Contributing
 
-1. Fork and clone the repository
-2. Install dependencies: `uv sync`
-3. Install pre-commit hooks: `pre-commit install`
-4. Run tests: `uv run pytest`
-5. Submit PR with tests and clear description
+```bash
+uv sync --extra dev && pre-commit install
+uv run pytest tests/ --ignore=tests/e2e -m "not lifecycle"   # the CI gate
+uv run ruff check .
+cd web-ui && npm ci && npm test && npm run build              # web UI
+```
 
-Code standards: PEP 8, `ruff` for linting, type hints required, 80%+ test coverage (enforced by CI via `.coveragerc`).
-
-During the beta, feature ideas go to [Discussions -> Ideas](https://github.com/frankbria/codeframe/discussions/categories/ideas) before code. See [CONTRIBUTING.md](CONTRIBUTING.md) for what's stable, what isn't, and how to propose changes.
+The suite has 5,000+ tests, and contributions need 80% test coverage, the floor CI enforces. Code
+standards are ruff, type hints and tests with every change. During the beta,
+feature ideas go to [Discussions → Ideas](https://github.com/frankbria/codeframe/discussions/categories/ideas)
+before code. See [CONTRIBUTING.md](CONTRIBUTING.md) for what is stable and how
+to propose changes.
 
 ---
 
-## Security, licensing & support
+## Security, licensing and support
 
-CodeFRAME is in **public beta**.
-
-- **Security:** found a vulnerability? Report it privately via [GitHub private vulnerability reporting](https://github.com/frankbria/codeframe/security/advisories/new) (or `security@codeframe.sh`) -- never a public issue. See [SECURITY.md](SECURITY.md) for scope and response expectations.
-- **Licensing:** CodeFRAME is [AGPL-3.0](LICENSE), an open-core stance. [LICENSING.md](LICENSING.md) explains what that means for individuals, internal company use, and embedding -- and how to reach us about **commercial licensing or a hosted offering** (both planned). Commercial inquiries: `licensing@codeframe.sh`.
-- **Trademark:** the code is AGPL-3.0, but the **CodeFRAME name and logo are trademarks** and are *not* covered by the code license. See [TRADEMARKS.md](TRADEMARKS.md) before using the name for a fork or product.
-- **Early access / design partners:** we are recruiting 5-10 teams for the beta design-partner cohort -- see [DESIGN_PARTNERS.md](DESIGN_PARTNERS.md) for what partners get and commit. To be included, email `hello@codeframe.sh` or reply to the pinned [Discussion](https://github.com/frankbria/codeframe/discussions).
-- **Help & community:** [Discussions -> Q&A](https://github.com/frankbria/codeframe/discussions/categories/q-a) for questions, [Ideas](https://github.com/frankbria/codeframe/discussions/categories/ideas) for feature requests, and [bug reports](https://github.com/frankbria/codeframe/issues/new/choose) for confirmed bugs.
+- **Security:** report vulnerabilities privately through
+  [GitHub private vulnerability reporting](https://github.com/frankbria/codeframe/security/advisories/new)
+  or `security@codeframe.sh`, never in a public issue. See [SECURITY.md](SECURITY.md).
+- **Licensing:** CodeFRAME is [AGPL-3.0](LICENSE), an open-core stance.
+  [LICENSING.md](LICENSING.md) explains what that means for individuals,
+  internal company use and embedding. Commercial licensing and a hosted offering
+  are planned: `licensing@codeframe.sh`.
+- **Trademark:** the CodeFRAME name and logo are trademarks and are *not*
+  covered by the code license. See [TRADEMARKS.md](TRADEMARKS.md) before using
+  the name for a fork or product.
+- **Design partners:** we are recruiting 5–10 teams for the beta cohort. See
+  [DESIGN_PARTNERS.md](DESIGN_PARTNERS.md), then email `hello@codeframe.sh` or
+  reply to the pinned [Discussion](https://github.com/frankbria/codeframe/discussions).
+- **Help:** [Q&A](https://github.com/frankbria/codeframe/discussions/categories/q-a)
+  for questions, [Ideas](https://github.com/frankbria/codeframe/discussions/categories/ideas)
+  for feature requests, and [issues](https://github.com/frankbria/codeframe/issues/new/choose)
+  for confirmed bugs.
 
 ---
 
 ## License
 
-[AGPL-3.0](LICENSE) -- Free to use, modify, and distribute. Derivative works and network services must release source code under the same license. See [LICENSING.md](LICENSING.md) for a plain-language explanation and commercial options.
+[AGPL-3.0](LICENSE): free to use, modify and distribute. Derivative works and
+network services must release their source under the same license. See
+[LICENSING.md](LICENSING.md) for a plain-language explanation and commercial
+options.
 
-The code is AGPL-3.0; the **CodeFRAME™ name and logo are trademarks** of Noatak Enterprises, LLC, dba Bria Strategy Group, and are not licensed under the AGPL -- see [TRADEMARKS.md](TRADEMARKS.md).
+The **CodeFRAME™ name and logo are trademarks** of Noatak Enterprises, LLC,
+dba Bria Strategy Group, and are not licensed under the AGPL. See
+[TRADEMARKS.md](TRADEMARKS.md).
 
 ---
 
-**Built by [Frank Bria](https://x.com/FrankBria18044)**
+<p align="center">
+  <b>Built by <a href="https://x.com/FrankBria18044">Frank Bria</a></b><br>
+  <a href="https://github.com/frankbria/codeframe/issues">Issues</a> ·
+  <a href="https://github.com/frankbria/codeframe/discussions">Discussions</a> ·
+  <a href="https://github.com/frankbria/codeframe/tree/main/docs">Documentation</a>
+</p>
 
-[Issues](https://github.com/frankbria/codeframe/issues) | [Discussions](https://github.com/frankbria/codeframe/discussions) | [Documentation](https://github.com/frankbria/codeframe/tree/main/docs)
-
-_CodeFRAME™ is a trademark of Noatak Enterprises, LLC, dba Bria Strategy Group. All rights reserved._
+<p align="center"><sub>CodeFRAME™ is a trademark of Noatak Enterprises, LLC, dba Bria Strategy Group. All rights reserved.</sub></p>
