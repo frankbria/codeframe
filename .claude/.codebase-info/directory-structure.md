@@ -36,8 +36,7 @@ web-ui/src/
 ├── contexts/, types/, __tests__/
 
 tests/                    # core/, cli/, ui/, adapters/, integration/, lifecycle/, e2e/, ci/, …
-docs/                     # GOLDEN_PATH, CLI_WIREFRAME, PRODUCT_ROADMAP, VISION, … (archive/ = old)
+docs/                     # GOLDEN_PATH, CLI_WIREFRAME, PRODUCT_ROADMAP, VISION, CLI/WEB_UI guides, images/
 scripts/                  # lifecycle runner, quickstart-cleanroom/, ci/ helpers, verify scripts
 deploy/                   # Caddyfile.example, backup-db.sh, README.md (runbook)
-specs/, sprints/          # Legacy v1 reference only
 ```

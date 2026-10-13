@@ -23,7 +23,7 @@ pytestmark = pytest.mark.v2
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# Docs a user actually reads. Everything under docs/archive is history.
+# Docs a user actually reads: the root docs plus top-level docs/*.md.
 DOC_FILES = [REPO_ROOT / "README.md", REPO_ROOT / "CLAUDE.md"] + sorted(
     (REPO_ROOT / "docs").glob("*.md")
 )

@@ -26,9 +26,6 @@ pytestmark = pytest.mark.v2
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-#: Frozen v1 history (see CLAUDE.md "Legacy (v1 reference only)"). These are a
-#: record of what was, not instructions anyone runs, so they are not rewritten.
-FROZEN = ("legacydocs/", "specs/", "sprints/")
 
 #: `/home/<somebody>` — but a documentation placeholder is fine. `/home/user` is
 #: what QUICKSTART shows; `$USER` and `<user>` are what a parameterized script uses.
@@ -42,7 +39,7 @@ def _tracked() -> list[str]:
     out = subprocess.run(
         ["git", "ls-files"], cwd=REPO_ROOT, capture_output=True, text=True, check=True
     )
-    return [p for p in out.stdout.splitlines() if not p.startswith(FROZEN)]
+    return out.stdout.splitlines()
 
 
 def _text(path: str) -> str:

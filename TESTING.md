@@ -4,7 +4,7 @@
 > which no longer exist (`codeframe.agents.providers.anthropic_provider`,
 > `codeframe.providers.base`) and told you to start the server with a command that
 > was renamed several releases ago. It has been replaced with what the suite
-> actually is today (#950). Sprint history lives in [`legacydocs/SPRINTS.md`](legacydocs/SPRINTS.md).
+> actually is today (#950). Sprint history is in git history.
 
 ## The one command
 
