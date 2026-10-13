@@ -23,7 +23,7 @@ announcement (see [Timeline](#timeline)).
 - **Public credit.** Your team or company named as a launch design partner, in
   the README and in launch materials — opt-in, and you can decline or withdraw at
   any time without affecting anything else here.
-- **Continuity on what comes next.** Commercial licensing and a hosted offering
+- **Continuity on what comes next.** A hosted offering and commercial support
   are planned but not priced (see [LICENSING.md](LICENSING.md)). Partners get
   first access to both and their pilot terms honored when pricing lands.
 
@@ -97,6 +97,6 @@ will say so here rather than leaving the form open.
 ## The fine print
 
 Nothing here changes the software license: CodeFRAME is
-[AGPL-3.0](LICENSE) for partners and everyone else, and the name and logo remain
+[Apache-2.0](LICENSE) for partners and everyone else, and the name and logo remain
 trademarks — see [TRADEMARKS.md](TRADEMARKS.md). Partnership terms, including any
 confidentiality on your side or ours, are agreed in writing before kickoff.

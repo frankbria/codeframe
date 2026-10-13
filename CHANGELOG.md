@@ -7,6 +7,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- **License is now Apache-2.0** (was AGPL-3.0-or-later). `LICENSE` carries the
+  Apache 2.0 text, a new `NOTICE` file holds the copyright and trademark notice,
+  and the package metadata, OpenAPI `license_info`, README, `LICENSING.md`,
+  `TRADEMARKS.md` and `DESIGN_PARTNERS.md` match. Releases up to and including
+  0.9.5 remain available under AGPL-3.0. The CodeFRAME name and logo are still
+  trademarks and are not covered by the code license.
+
 ### Documentation
 
 - **README rewrite with demos.** The README now opens with a terminal GIF of a

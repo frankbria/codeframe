@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/status-beta-orange" alt="Status: beta">
   <a href="https://pypi.org/project/codeframe-ai/"><img src="https://img.shields.io/pypi/v/codeframe-ai" alt="PyPI"></a>
-  <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0">
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
   <a href="https://github.com/frankbria/codeframe/actions/workflows/test.yml"><img src="https://github.com/frankbria/codeframe/actions/workflows/test.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/coverage-80%25-brightgreen" alt="Coverage">
@@ -397,10 +397,10 @@ to propose changes.
 - **Security:** report vulnerabilities privately through
   [GitHub private vulnerability reporting](https://github.com/frankbria/codeframe/security/advisories/new)
   or `security@codeframe.sh`, never in a public issue. See [SECURITY.md](SECURITY.md).
-- **Licensing:** CodeFRAME is [AGPL-3.0](LICENSE), an open-core stance.
-  [LICENSING.md](LICENSING.md) explains what that means for individuals,
-  internal company use and embedding. Commercial licensing and a hosted offering
-  are planned: `licensing@codeframe.sh`.
+- **Licensing:** CodeFRAME is [Apache-2.0](LICENSE).
+  [LICENSING.md](LICENSING.md) explains what that allows and the few things it
+  asks of you. A hosted offering and commercial support are planned:
+  `licensing@codeframe.sh`.
 - **Trademark:** the CodeFRAME name and logo are trademarks and are *not*
   covered by the code license. See [TRADEMARKS.md](TRADEMARKS.md) before using
   the name for a fork or product.
@@ -416,13 +416,13 @@ to propose changes.
 
 ## License
 
-[AGPL-3.0](LICENSE): free to use, modify and distribute. Derivative works and
-network services must release their source under the same license. See
-[LICENSING.md](LICENSING.md) for a plain-language explanation and commercial
-options.
+[Apache-2.0](LICENSE): free to use, modify and distribute, including in
+commercial and closed-source products. Keep the license and [NOTICE](NOTICE)
+file with any copy you distribute, and mark the files you change. See
+[LICENSING.md](LICENSING.md) for a plain-language explanation.
 
 The **CodeFRAME™ name and logo are trademarks** of Noatak Enterprises, LLC,
-dba Bria Strategy Group, and are not licensed under the AGPL. See
+dba Bria Strategy Group, and are not licensed under Apache-2.0. See
 [TRADEMARKS.md](TRADEMARKS.md).
 
 ---

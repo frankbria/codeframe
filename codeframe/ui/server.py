@@ -700,8 +700,8 @@ app = FastAPI(
         "url": "https://github.com/frankbria/codeframe",
     },
     license_info={
-        "name": "AGPL-3.0-or-later",
-        "identifier": "AGPL-3.0-or-later",
+        "name": "Apache-2.0",
+        "identifier": "Apache-2.0",
     },
 )
 
