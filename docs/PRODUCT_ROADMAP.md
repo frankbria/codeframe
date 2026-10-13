@@ -3,7 +3,7 @@
 **Updated**: 2026-09-17
 **Vision**: *CodeFRAME is the project delivery system that turns ideas into verified, deployed code — AI agents write the code, CodeFRAME owns everything before and after.*
 
-This is the **single source of truth** for CodeFRAME's product roadmap. All prior planning documents (V2_STRATEGIC_ROADMAP, FEATURE_ROADMAP, IMPLEMENTATION_ROADMAP, etc.) are archived in `docs/archive/`.
+This is the **single source of truth** for CodeFRAME's product roadmap. All prior planning documents (V2_STRATEGIC_ROADMAP, FEATURE_ROADMAP, IMPLEMENTATION_ROADMAP, etc.) were retired and remain in git history.
 
 This document focuses on gaps in the web product that block the end-to-end vision. It is not a comprehensive feature list. Items included here were selected because they are load-bearing for the Think → Build → Prove → Ship pipeline or because their absence creates a significant hole in the user experience.
 

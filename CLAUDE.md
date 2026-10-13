@@ -759,7 +759,8 @@ DO_NOT_TRACK=1                        # Standard convention; disables telemetry 
 | `docs/PHASE_2_DEVELOPER_GUIDE.md` | Server layer + v2 router patterns |
 | `docs/PHASE_2_CLI_API_MAPPING.md` | CLI to API endpoint mapping |
 | `docs/QUICKSTART.md` | User-facing quickstart guide |
+| `docs/CLI_GUIDE.md` | CLI walkthrough + full command reference |
+| `docs/WEB_UI_GUIDE.md` | Web UI tour, page by page with screenshots |
 
-Archived (completed plans, old gap analyses): `docs/archive/`
-
-Legacy (v1 reference only): `SPRINTS.md`, `sprints/`, `specs/`, `CODEFRAME_SPEC.md`
+v1 history (sprint plans, specs, legacy docs) and archived v2 plans were removed
+from the tree; they remain in git history.
