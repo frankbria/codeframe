@@ -7,6 +7,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Documentation
+
+- **README rewrite with demos.** The README now opens with a terminal GIF of a
+  real CLI session and a walkthrough GIF plus screenshots of the web UI. The
+  full command reference moved to the new [CLI guide](docs/CLI_GUIDE.md), and
+  the new [Web UI guide](docs/WEB_UI_GUIDE.md) covers each page with a
+  screenshot.
+
 ## [0.9.5] - 2026-10-12
 
 ### Added
