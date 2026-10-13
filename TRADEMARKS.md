@@ -15,14 +15,14 @@ be updated to ® if and when registration issues.
 
 ## The code license does not grant trademark rights
 
-CodeFRAME's source code is licensed under [AGPL-3.0](LICENSE) (see
+CodeFRAME's source code is licensed under [Apache-2.0](LICENSE) (see
 [LICENSING.md](LICENSING.md)). **That license covers copyright in the code only.
 It does not grant any right to use the CodeFRAME name or logo.** This is the
 standard position for open-source licenses, which deliberately exclude
-trademarks.
+trademarks; Apache-2.0 says so explicitly in Section 6.
 
 In other words: you are free to use, modify, and redistribute the *code* under
-the AGPL — but the *name and logo* are not part of that grant.
+Apache-2.0 — but the *name and logo* are not part of that grant.
 
 ## What you may do (no permission needed)
 

@@ -1,82 +1,69 @@
 # Licensing
 
-CodeFRAME is released under the [GNU Affero General Public License v3.0
-(AGPL-3.0)](LICENSE). This page explains, in plain language, what that means for
-you — and what to do if the AGPL doesn't fit your situation.
+CodeFRAME is released under the [Apache License 2.0 (Apache-2.0)](LICENSE). This
+page explains, in plain language, what that means for you.
 
 > This is a practical summary, not legal advice. The [LICENSE](LICENSE) file is
 > the binding text. When in doubt, consult a lawyer.
 
-> **Code vs. brand.** AGPL-3.0 licenses the **code**. It does **not** grant any
+> **Code vs. brand.** Apache-2.0 licenses the **code**. It does **not** grant any
 > right to the **CodeFRAME™ name or logo**, which are trademarks covered
-> separately — see [TRADEMARKS.md](TRADEMARKS.md). You can fork the code under
-> the AGPL, but a fork must use a different name.
+> separately (Section 6 of the license says so explicitly) — see
+> [TRADEMARKS.md](TRADEMARKS.md). You can fork the code, but a fork must use a
+> different name.
 
-## Why AGPL-3.0
+## Why Apache-2.0
 
-CodeFRAME is **open core**: the project is fully open source, and we intend to
-keep the core that way. The AGPL is a deliberate choice. It guarantees that
-CodeFRAME — and improvements to it — stay open, including when the software is
-offered to others as a network service. This protects the community from a
-closed fork being run as a competing hosted product without giving anything
-back.
+CodeFRAME orchestrates the coding agents and tools teams already use, so it has
+to fit wherever those teams work: inside companies, in internal platforms, and
+alongside closed-source products. A permissive license removes the legal review
+that stops adoption, and Apache-2.0 adds an explicit patent grant that plainer
+permissive licenses lack.
 
 ## What it means for you
 
-### Individuals and teams using CodeFRAME
+You can **use, run, modify, self-host, embed and redistribute** CodeFRAME for any
+purpose, including commercial and closed-source products and hosted services, at
+no cost. You do not have to publish your changes.
 
-You can **use, run, modify, and self-host** CodeFRAME for any purpose, including
-commercial work, at no cost. If you run it for yourself or your team and don't
-distribute it or offer it to outside users as a service, the AGPL asks nothing
-further of you. Use it freely.
+When you **distribute** CodeFRAME or a derivative work (source or binary), the
+license asks you to:
 
-### Companies using it internally
+- include a copy of the [LICENSE](LICENSE);
+- keep the [NOTICE](NOTICE) file and the copyright notices in the source;
+- mark the files you modified as changed.
 
-The same applies to internal company use. Running CodeFRAME on your own
-infrastructure to deliver software for your own organization is fine and creates
-no source-disclosure obligation, even if you modify it — as long as those
-modified versions are not conveyed to outside parties or exposed to outside
-users over a network.
+Running it for yourself, your team or your company, or offering it as a hosted
+service without handing out copies, is not distribution and asks nothing of you.
 
-### Companies offering it to others (the AGPL trigger)
+| Your situation                                              | What Apache-2.0 asks                         |
+| ----------------------------------------------------------- | -------------------------------------------- |
+| Run it for yourself / your team, unmodified or modified     | Nothing                                      |
+| Internal company use                                        | Nothing                                      |
+| Offer it (or a derivative) to outside users over a network  | Nothing; the trademark policy still applies |
+| Distribute it or embed it in software you ship              | Include LICENSE + NOTICE, mark changed files |
 
-The AGPL's defining clause is **Section 13**: if you run a modified version of
-CodeFRAME and let users interact with it **over a network** (for example, a
-hosted SaaS built on or embedding CodeFRAME), you must offer those users the
-**complete corresponding source code** of your modified version, under the
-AGPL. The same applies if you distribute CodeFRAME or a derivative work: the
-recipient gets the source under the AGPL.
+**Patents.** Each contributor grants you a license to any of their patents that
+the contribution practices. That grant ends for anyone who sues claiming
+CodeFRAME infringes a patent.
 
-In short:
+**Contributions.** Unless you say otherwise, anything you submit to this
+repository is contributed under Apache-2.0 (Section 5). No separate CLA is
+needed.
 
-| Your situation                                              | AGPL obligation                                  |
-| ----------------------------------------------------------- | ------------------------------------------------ |
-| Run it for yourself / your team, unmodified or modified     | None beyond keeping the notices                  |
-| Internal company use, not exposed to outside users          | None beyond keeping the notices                  |
-| Offer it (or a derivative) to outside users over a network  | Publish your complete source under AGPL-3.0      |
-| Distribute it or embed it in software you ship              | Recipients get source under AGPL-3.0             |
+## Hosted offering and commercial support (planned)
 
-## Commercial licensing and hosted offering (planned)
-
-If the AGPL's network-source-disclosure requirement doesn't work for your
-business — for example, you want to **embed CodeFRAME in a closed-source
-product** or offer a hosted service **without** publishing your modifications —
-we plan to offer:
-
-- **Commercial / OEM licenses** that release you from the AGPL's copyleft
-  obligations for embedding and redistribution.
-- A **hosted CodeFRAME** offering for teams that would rather not self-host.
-
-Pricing and terms are still being finalized, but the path exists. If you have a
-commercial need, **tell us now** — early conversations shape what we build.
+We plan to offer a **hosted CodeFRAME** for teams that would rather not
+self-host, and **commercial support** for teams that want it. Pricing and terms
+are still being finalized. If you have a need, **tell us now**: early
+conversations shape what we build.
 
 ## Get in touch
 
-- **Commercial licensing / OEM / hosted interest:** email
-  **licensing@codeframe.sh**, or start a thread in the pinned *Early access &
-  commercial interest* [discussion](https://github.com/frankbria/codeframe/discussions)
-  if you'd rather do it in the open. This is the capture point for launch —
-  even before pricing is published.
+- **Hosted / commercial support interest:** email **licensing@codeframe.sh**, or
+  start a thread in the pinned *Early access & commercial interest*
+  [discussion](https://github.com/frankbria/codeframe/discussions) if you'd
+  rather do it in the open.
 - **Design partners & early access:** email **hello@codeframe.sh** or reply to
   the same pinned discussion to be included. See
   [DESIGN_PARTNERS.md](DESIGN_PARTNERS.md) for what the design-partner program
