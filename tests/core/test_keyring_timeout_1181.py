@@ -32,10 +32,14 @@ BOUND = 6.0
 class BlockingKeyring:
     """A backend that is present and selected, and never answers."""
 
+    def __init__(self):
+        self.writes = 0
+
     def get_password(self, service, username):
         time.sleep(3600)
 
     def set_password(self, service, username, password):
+        self.writes += 1
         time.sleep(3600)
 
     def delete_password(self, service, username):
@@ -145,11 +149,11 @@ class TestTheTimeoutVerdictIsStickyPerProcess:
         CredentialStore(tmp_path).retrieve(CredentialProvider.LLM_ANTHROPIC)
         assert stale._keyring_available is True  # built before the verdict
 
-        started = time.monotonic()
         stale.store(Credential(provider=CredentialProvider.LLM_ANTHROPIC, value="sk-c"))
-        elapsed = time.monotonic() - started
 
-        assert elapsed < 0.3, f"paid the timeout again ({elapsed:.2f}s)"
+        # Counted, not timed: the encrypted-file write alone (PBKDF2) can take
+        # longer than the 0.3s timeout on a slow machine.
+        assert blocking_keyring.writes == 0, "started another keyring worker"
         assert stale.retrieve(CredentialProvider.LLM_ANTHROPIC).value == "sk-c"
 
     def test_that_the_same_instance_stops_asking_a_dead_backend(
