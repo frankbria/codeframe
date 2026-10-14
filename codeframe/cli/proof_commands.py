@@ -67,17 +67,23 @@ def capture(
     Creates a REQ with proof obligations and generates test stubs.
     Interactive when run without arguments.
 
+    Works in any git repository: the workspace is created on first use,
+    so `cf init` is not required.
+
     Example:
         codeframe proof capture
         codeframe proof capture --title "Login rejects empty password" --severity high
     """
-    from codeframe.core.workspace import get_workspace
+    from codeframe.core.workspace import (
+        capture_workspace_root,
+        create_or_load_workspace,
+        find_workspace_root,
+    )
     from codeframe.core.proof.models import Severity, Source
     from codeframe.core.proof.capture import capture_requirement
 
-    workspace_path = repo_path or Path.cwd()
     try:
-        workspace = get_workspace(workspace_path)
+        workspace_path = capture_workspace_root(repo_path or Path.cwd())
     except Exception as e:
         print_error(e)
         raise typer.Exit(1)
@@ -110,6 +116,17 @@ def capture(
 
     def _scope_warning(message: str) -> None:
         console.print(f"[yellow]⚠[/yellow] {escape(message)}")
+
+    # Created only now, after the input is known good: a rejected capture
+    # must not leave an empty workspace behind (#1464).
+    created = find_workspace_root(workspace_path) != workspace_path
+    try:
+        workspace = create_or_load_workspace(workspace_path)
+    except Exception as e:
+        print_error(e)
+        raise typer.Exit(1)
+    if created:
+        console.print("Created .codeframe/ in this repository.")
 
     req, stubs = capture_requirement(
         workspace,

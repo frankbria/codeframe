@@ -212,6 +212,10 @@ cf checkpoint list
 cf checkpoint restore <id>            # Restore task statuses (files untouched)
 ```
 
+`cf proof capture` works in any git repository, with or without `cf init`: it
+creates `.codeframe/` at the repository's top level the first time it runs.
+Every other `cf proof` command needs a workspace that already exists.
+
 **How each gate is verified.** `UNIT` and `CONTRACT` run pytest, and `SEC` runs
 bandit. `E2E`, `VISUAL`, `A11Y`, `PERF` and `DEMO` have no dedicated runner and
 are enforced through their evidence rules: `cf proof capture` generates a

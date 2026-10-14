@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import sqlite3
+import subprocess
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -997,6 +998,51 @@ def find_workspace_root(start: Path) -> Optional[Path]:
         if (candidate / CODEFRAME_DIR / STATE_DB_NAME).is_file():
             return candidate
     return None
+
+
+def capture_workspace_root(start: Path) -> Path:
+    """Where a command that may create the workspace should put it (#1464).
+
+    Never simply ``start``: from ``repo/src/`` that would nest a second
+    workspace and split the repository's ledger in two.
+
+    An enclosing workspace wins when it belongs to this repository. Otherwise
+    the git top level. A workspace found *above* the git top level is some
+    other project's and is not used.
+
+    Raises:
+        FileNotFoundError: ``start`` is neither inside a workspace nor inside a
+            git repository, or the root would be the home directory —
+            ``~/.codeframe`` is the machine-wide store, and a state.db there
+            makes every path under ``$HOME`` resolve to one workspace.
+    """
+    start = start.resolve()
+    git_root: Optional[Path] = None
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            git_root = Path(proc.stdout.strip()).resolve()
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    existing = find_workspace_root(start)
+    if existing is not None and (git_root is None or existing.is_relative_to(git_root)):
+        return existing
+    if git_root is None:
+        raise FileNotFoundError(
+            f"{start} is not inside a git repository. Run this from a git "
+            "repository, or create a workspace explicitly with `cf init`."
+        )
+    if git_root == Path.home().resolve():
+        raise FileNotFoundError(
+            f"Refusing to create a workspace in the home directory ({git_root})."
+        )
+    return git_root
 
 
 def get_workspace(repo_path: Path) -> Workspace:

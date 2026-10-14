@@ -7,6 +7,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+
+- **`cf proof capture` no longer needs `cf init`** (#1464). In a git repository
+  with no workspace it creates `.codeframe/` at the repository's top level and
+  says so once. Run from a subdirectory, it uses the enclosing workspace rather
+  than creating a nested one. Outside a git repository it refuses. Every other
+  `cf proof` command still requires an existing workspace.
+
 ### Changed
 
 - **License is now Apache-2.0** (was AGPL-3.0-or-later). `LICENSE` carries the
