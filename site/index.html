@@ -8,6 +8,8 @@
   <meta name="description" content="CodeFRAME owns everything before and after the code: requirements, task planning, verification and release. The coding itself goes to the agent of your choice.">
   <meta name="color-scheme" content="light dark">
   <link rel="canonical" href="https://codeframe.sh/">
+  <!-- No logo yet; an empty icon stops the browser requesting /favicon.ico. -->
+  <link rel="icon" href="data:,">
 
   <!-- Social card. Crawlers need absolute URLs; regenerate the image with make-og-image.sh. -->
   <meta property="og:type" content="website">
@@ -97,7 +99,7 @@
 
   <section aria-labelledby="limits">
     <h2 id="limits">Limitations</h2>
-    <!-- Verbatim from the README's [!NOTE] block; tests/site/test_site_1465.py fails if they drift. -->
+    <!-- Verbatim from the README's [!NOTE] block; tests/ci/test_site_1465.py fails if they drift. -->
     <blockquote id="limitations">
       <p><strong>CodeFRAME is in public beta (<code>0.9.5</code>).</strong> The Golden Path CLI
         (<code>cf init/prd/tasks/work/proof/pr</code>) and the v2 API are stable enough to build
