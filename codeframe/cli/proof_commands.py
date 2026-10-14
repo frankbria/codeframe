@@ -169,6 +169,7 @@ def capture(
 
     _print_captured(req, stubs, workspace.repo_path)
 
+
 @proof_app.command("run")
 def run(
     repo_path: Optional[Path] = typer.Option(
