@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- COPY: page title and description -->
+  <title>CodeFRAME: a project delivery system for AI-written software</title>
+  <meta name="description" content="CodeFRAME owns everything before and after the code: requirements, task planning, verification and release. The coding itself goes to the agent of your choice.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="canonical" href="https://codeframe.sh/">
+
+  <!-- Social card. Crawlers need absolute URLs; regenerate the image with make-og-image.sh. -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://codeframe.sh/">
+  <meta property="og:title" content="CodeFRAME: a project delivery system for AI-written software">
+  <meta property="og:description" content="CodeFRAME owns everything before and after the code: requirements, task planning, verification and release. The coding itself goes to the agent of your choice.">
+  <meta property="og:image" content="https://codeframe.sh/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="CodeFRAME: a project delivery system for AI-written software. Think, Build, Prove, Ship.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://codeframe.sh/og-image.png">
+
+  <style>
+    :root {
+      --bg: #ffffff; --fg: #1f2329; --muted: #5d636e; --line: #e3e5e8; --panel: #f5f6f7; --link: #1f2329;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0e0f11; --fg: #fafafa; --muted: #9fa3ab; --line: #26292e; --panel: #16181b; --link: #fafafa; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    main { max-width: 760px; margin: 0 auto; padding: 48px 16px 32px; }
+    h1 { font-size: clamp(1.9rem, 6vw, 2.8rem); line-height: 1.15; margin: 0 0 12px; letter-spacing: -0.02em; }
+    h2 { font-size: 1.15rem; margin: 48px 0 8px; }
+    p { margin: 0 0 12px; }
+    a { color: var(--link); text-underline-offset: 3px; }
+    a:focus-visible { outline: 3px solid var(--muted); outline-offset: 2px; border-radius: 2px; }
+    code { font: 0.9em ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+    .brand { font-weight: 700; letter-spacing: 0.02em; color: var(--muted); margin-bottom: 24px; }
+    .lede { color: var(--muted); font-size: 1.1rem; }
+    figure { margin: 28px 0 0; }
+    figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; }
+    figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 8px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 12px 0 16px; }
+    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+    .stat b { display: block; font-size: 1.8rem; line-height: 1.2; }
+    .stat span { color: var(--muted); font-size: 0.9rem; }
+    blockquote { margin: 0; padding: 12px 16px; border-left: 4px solid var(--line); background: var(--panel); border-radius: 0 8px 8px 0; }
+    footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">CodeFRAME™</div>
+    <!-- COPY: one sentence for someone who has never heard of it (README header) -->
+    <h1>A project delivery system for AI-written software.</h1>
+    <p class="lede">CodeFRAME owns everything before and after the code: requirements, task planning,
+      verification and release. The coding itself goes to the agent of your choice.</p>
+
+    <figure>
+      <!-- Reduced-motion visitors get the last frame; the GIF loops forever otherwise. -->
+      <picture>
+        <source srcset="cli-tour-still.png" media="(prefers-reduced-motion: reduce)">
+        <img src="cli-tour.gif" width="979" height="739"
+             alt="Terminal demo: cf init, cf prd add, cf tasks generate producing a task graph of 18 tasks, cf proof capture recording a bug as requirement REQ-0001, and cf proof status showing it open.">
+      </picture>
+      <!-- COPY: caption -->
+      <figcaption>The command line, sped up. Full walkthrough in the
+        <a href="https://github.com/frankbria/codeframe/blob/main/docs/CLI_GUIDE.md">CLI guide</a>.</figcaption>
+    </figure>
+  </header>
+
+  <section aria-labelledby="who">
+    <h2 id="who">Who built it</h2>
+    <!-- COPY: builder -->
+    <p>Built by <a href="https://x.com/FrankBria18044">Frank Bria</a>. Open source under
+      <a href="https://github.com/frankbria/codeframe/blob/main/LICENSE">Apache-2.0</a>.</p>
+  </section>
+
+  <section aria-labelledby="substance">
+    <h2 id="substance">Proof of substance</h2>
+    <!-- COPY: figures. Real numbers from CI run 38608698828 on main (d26a5c8, 2026-10-14):
+         Backend Unit Tests "7891 passed", coverage 87.42% against fail_under = 80. Update from CI, never round up. -->
+    <div class="stats">
+      <div class="stat"><b>7,891</b><span>backend tests passing in CI</span></div>
+      <div class="stat"><b>80%</b><span>coverage floor CI enforces (87.42% measured)</span></div>
+    </div>
+    <p>Read the code in the <a href="https://github.com/frankbria/codeframe">repository</a>
+      and what changed in each release in the
+      <a href="https://github.com/frankbria/codeframe/blob/main/CHANGELOG.md">changelog</a>.</p>
+  </section>
+
+  <section aria-labelledby="limits">
+    <h2 id="limits">Limitations</h2>
+    <!-- Verbatim from the README's [!NOTE] block; tests/site/test_site_1465.py fails if they drift. -->
+    <blockquote id="limitations">
+      <p><strong>CodeFRAME is in public beta (<code>0.9.5</code>).</strong> The Golden Path CLI
+        (<code>cf init/prd/tasks/work/proof/pr</code>) and the v2 API are stable enough to build
+        on. The web UI and anything marked in progress in the
+        <a href="https://github.com/frankbria/codeframe/blob/main/docs/PRODUCT_ROADMAP.md">roadmap</a> are still moving, and on-disk <code>.codeframe/</code>
+        formats may change between betas.
+        <a href="https://github.com/frankbria/codeframe/issues/new/choose">Report rough edges</a>.</p>
+    </blockquote>
+  </section>
+
+  <section aria-labelledby="contact">
+    <h2 id="contact">Contact</h2>
+    <!-- COPY: contact. Add a calendar link here when one exists. -->
+    <p>If you ship software with coding agents and want to compare notes, write to
+      <a href="mailto:hello@codeframe.sh">hello@codeframe.sh</a>.</p>
+  </section>
+
+  <footer>
+    <p>CodeFRAME™ is a trademark of Noatak Enterprises, LLC, dba Bria Strategy Group. All rights reserved.</p>
+  </footer>
+</main>
+</body>
+</html>
